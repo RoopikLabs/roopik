@@ -1,0 +1,7 @@
+{
+  "maxReviewers": 4,
+  "requiredOrgs": ["RoopikLabs"],
+  "skipAlreadyAssignedPR": true,
+  "skipAlreadyMentionedPR": true,
+  "skipCollaboratorPR": true
+}
