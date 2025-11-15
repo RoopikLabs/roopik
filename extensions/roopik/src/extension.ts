@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
+import { CanvasPanel } from './canvasPanel';
 
 /**
  * Roopik Extension Entry Point
@@ -23,7 +24,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register the "Open Canvas" command
 	const openCanvasCommand = vscode.commands.registerCommand('roopik.openCanvas', () => {
-		vscode.window.showInformationMessage('Roopik Canvas coming soon!');
+		CanvasPanel.createOrShow(context.extensionUri);
 	});
 
 	context.subscriptions.push(openCanvasCommand);
