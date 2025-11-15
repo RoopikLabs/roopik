@@ -23,3 +23,10 @@ product.overrides.json
 *.tsbuildinfo
 .vscode-test
 vscode-telemetry-docs/
+
+# AI Context Documentation
+CLAUDE.md
+/Self-Learning
+COPILOT-INSTRUCTIONS.md
+.cursorrules
+.claude/*
