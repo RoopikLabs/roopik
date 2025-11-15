@@ -1,0 +1,32 @@
+{
+  "name": "roopik",
+  "displayName": "Roopik",
+  "description": "AI-native canvas-first IDE for frontend development",
+  "version": "0.1.0",
+  "publisher": "roopik",
+  "engines": {
+    "vscode": "^1.107.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "roopik.openCanvas",
+        "title": "Roopik: Open Canvas"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "22.x"
+  }
+}

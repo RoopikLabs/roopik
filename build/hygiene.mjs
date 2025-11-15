@@ -16,9 +16,17 @@ import eslint from './gulp-eslint.js';
 import formatter from './lib/formatter.js';
 import gulpstylelint from './stylelint.mjs';
 
+// ROOPIK: Allow both Microsoft and Roopik copyright headers
 const copyrightHeaderLines = [
 	'/*---------------------------------------------------------------------------------------------',
 	' *  Copyright (c) Microsoft Corporation. All rights reserved.',
+	' *  Licensed under the MIT License. See License.txt in the project root for license information.',
+	' *--------------------------------------------------------------------------------------------*/',
+];
+
+const roopikCopyrightHeaderLines = [
+	'/*---------------------------------------------------------------------------------------------',
+	' *  Copyright (c) Roopik. All rights reserved.',
 	' *  Licensed under the MIT License. See License.txt in the project root for license information.',
 	' *--------------------------------------------------------------------------------------------*/',
 ];
@@ -106,12 +114,22 @@ export function hygiene(some, runEslint = true) {
 	const copyrights = es.through(function (file) {
 		const lines = file.__lines;
 
+		// ROOPIK: Check if file matches either Microsoft or Roopik copyright header
+		let hasMicrosoftCopyright = true;
+		let hasRoopikCopyright = true;
+
 		for (let i = 0; i < copyrightHeaderLines.length; i++) {
 			if (lines[i] !== copyrightHeaderLines[i]) {
-				console.error(file.relative + ': Missing or bad copyright statement');
-				errorCount++;
-				break;
+				hasMicrosoftCopyright = false;
 			}
+			if (lines[i] !== roopikCopyrightHeaderLines[i]) {
+				hasRoopikCopyright = false;
+			}
+		}
+
+		if (!hasMicrosoftCopyright && !hasRoopikCopyright) {
+			console.error(file.relative + ': Missing or bad copyright statement');
+			errorCount++;
 		}
 
 		this.emit('data', file);
