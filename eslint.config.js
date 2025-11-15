@@ -2182,4 +2182,25 @@ export default tseslint.config(
 			'@typescript-eslint/consistent-generic-constructors': ['warn', 'constructor'],
 		}
 	},
+	// ROOPIK: Override header rule for roopik extension
+	{
+		files: [
+			'extensions/roopik/**/*.{ts,tsx,js,jsx}',
+		],
+		plugins: {
+			header: pluginHeader,
+		},
+		rules: {
+			'header/header': [
+				2,
+				'block',
+				[
+					'---------------------------------------------------------------------------------------------',
+					' *  Copyright (c) Roopik. All rights reserved.',
+					' *  Licensed under the MIT License. See License.txt in the project root for license information.',
+					' *--------------------------------------------------------------------------------------------'
+				]
+			]
+		}
+	},
 );

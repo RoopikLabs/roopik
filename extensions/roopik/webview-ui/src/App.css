@@ -1,0 +1,59 @@
+.app {
+	padding: 20px;
+	max-width: 800px;
+	margin: 0 auto;
+	font-family: system-ui, -apple-system, sans-serif;
+}
+
+header {
+	margin-bottom: 30px;
+}
+
+header h1 {
+	color: #58a6ff;
+	margin-bottom: 10px;
+}
+
+button {
+	background: #58a6ff;
+	color: #fff;
+	border: none;
+	padding: 10px 20px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+button:hover {
+	background: #4088d9;
+}
+
+.controls {
+	display: flex;
+	gap: 10px;
+	margin-bottom: 20px;
+}
+
+.messages {
+	background: #0d1117;
+	border: 1px solid #30363d;
+	border-radius: 6px;
+	padding: 15px;
+	margin-bottom: 20px;
+}
+
+.messages h3 {
+	margin-top: 0;
+	color: #58a6ff;
+}
+
+.messages ul {
+	list-style: none;
+	padding: 0;
+	font-family: monospace;
+	font-size: 13px;
+}
+
+.info {
+	color: #8b949e;
+	font-size: 14px;
+}
