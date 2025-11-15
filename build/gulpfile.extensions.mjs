@@ -44,6 +44,7 @@ const compilations = [
 	'extensions/emmet/tsconfig.json',
 	'extensions/extension-editing/tsconfig.json',
 	'extensions/git/tsconfig.json',
+	'extensions/roopik/tsconfig.json', // ROOPIK: Our canvas-first IDE extension
 	'extensions/git-base/tsconfig.json',
 	'extensions/github/tsconfig.json',
 	'extensions/github-authentication/tsconfig.json',
