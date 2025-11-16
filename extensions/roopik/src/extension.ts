@@ -8,6 +8,7 @@ import { CanvasPanel } from './canvasPanel';
 import { DashboardPanel } from './dashboardPanel';
 import { ConfigManager } from './config';
 import { ActivityBarViewProvider } from './activityBarView';
+import { SandboxServerManager } from './sandboxServer';
 
 /**
  * Roopik Extension Entry Point
@@ -35,6 +36,15 @@ export function activate(context: vscode.ExtensionContext) {
 	const workspaceRoot = workspaceFolders[0].uri.fsPath;
 	const configManager = ConfigManager.getInstance(workspaceRoot);
 	const config = configManager.getConfig();
+
+	// Initialize SandboxServerManager for Vite dev servers
+	const sandboxServerManager = new SandboxServerManager(context);
+	CanvasPanel.setSandboxServerManager(sandboxServerManager);
+
+	// Register cleanup on deactivation
+	context.subscriptions.push({
+		dispose: () => sandboxServerManager.stopAllServers()
+	});
 
 	// Restore last session after a delay (wait for VS Code to fully initialize)
 	setTimeout(() => {
