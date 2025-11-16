@@ -105,6 +105,68 @@ export function activate(context: vscode.ExtensionContext) {
 		});
 	});
 
+	// Command 5: Delete canvas
+	const deleteCanvasCommand = vscode.commands.registerCommand('roopik.deleteCanvas', async (canvasId: string) => {
+		const confirmation = await vscode.window.showWarningMessage(
+			`Delete canvas "${canvasId}"? This cannot be undone.`,
+			{ modal: true },
+			'Delete'
+		);
+
+		if (confirmation === 'Delete') {
+			const success = CanvasPanel.deleteCanvas(canvasId, workspaceRoot);
+			if (success) {
+				vscode.window.showInformationMessage(`Canvas "${canvasId}" deleted.`);
+			} else {
+				vscode.window.showErrorMessage(`Failed to delete canvas "${canvasId}".`);
+			}
+		}
+	});
+
+	// Command 6: Rename canvas
+	const renameCanvasCommand = vscode.commands.registerCommand('roopik.renameCanvas', async (canvasId: string, currentName: string) => {
+		const newName = await vscode.window.showInputBox({
+			prompt: 'Enter new canvas name',
+			value: currentName,
+			validateInput: (value) => {
+				if (!value || value.trim().length === 0) {
+					return 'Canvas name cannot be empty';
+				}
+				if (value.length > 50) {
+					return 'Canvas name is too long (max 50 characters)';
+				}
+				return null;
+			}
+		});
+
+		if (newName && newName !== currentName) {
+			const success = CanvasPanel.renameCanvas(canvasId, newName, workspaceRoot);
+			if (success) {
+				vscode.window.showInformationMessage(`Canvas renamed to "${newName}".`);
+			} else {
+				vscode.window.showErrorMessage(`Failed to rename canvas.`);
+			}
+		}
+	});
+
+	// Command 7: Export canvas
+	const exportCanvasCommand = vscode.commands.registerCommand('roopik.exportCanvas', async (canvasId: string) => {
+		const exportPath = await CanvasPanel.exportCanvas(canvasId, workspaceRoot);
+		if (exportPath) {
+			vscode.window.showInformationMessage(`Canvas exported to ${exportPath}`);
+		} else {
+			vscode.window.showErrorMessage('Failed to export canvas.');
+		}
+	});
+
+	// Command 8: Import canvas
+	const importCanvasCommand = vscode.commands.registerCommand('roopik.importCanvas', async () => {
+		const importedId = await CanvasPanel.importCanvas(workspaceRoot, context.extensionUri);
+		if (importedId) {
+			vscode.window.showInformationMessage(`Canvas "${importedId}" imported successfully.`);
+		}
+	});
+
 	// Register Activity Bar view provider
 	const activityBarViewProvider = new ActivityBarViewProvider(workspaceRoot);
 	const dashboardViewProvider = vscode.window.registerWebviewViewProvider(
@@ -118,6 +180,10 @@ export function activate(context: vscode.ExtensionContext) {
 		newCanvasCommand,
 		closeAllCanvasesCommand,
 		showCanvasesCommand,
+		deleteCanvasCommand,
+		renameCanvasCommand,
+		exportCanvasCommand,
+		importCanvasCommand,
 		dashboardViewProvider
 	);
 

@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { ConfigManager } from './config';
 import { CanvasPanel } from './canvasPanel';
+import { SettingsPanel } from './settingsPanel';
 
 /**
  * Dashboard Panel - Welcome screen and canvas management interface
@@ -97,6 +98,15 @@ export class DashboardPanel {
 					case 'deleteCanvas':
 						this.handleDeleteCanvas(message.canvasId);
 						break;
+					case 'renameCanvas':
+						this.handleRenameCanvas(message.canvasId, message.currentName);
+						break;
+					case 'exportCanvas':
+						this.handleExportCanvas(message.canvasId);
+						break;
+					case 'importCanvas':
+						this.handleImportCanvas();
+						break;
 					case 'refreshData':
 						this.refresh();
 						break;
@@ -179,38 +189,67 @@ export class DashboardPanel {
 	 * Handle deleting a canvas
 	 */
 	private async handleDeleteCanvas(canvasId: string) {
-		const confirm = await vscode.window.showWarningMessage(
-			`Are you sure you want to delete canvas "${canvasId}"? This cannot be undone.`,
-			{ modal: true },
-			'Delete'
-		);
-
-		if (confirm === 'Delete') {
-			const statePath = this.configManager.getCanvasStatePath(canvasId);
-
-			try {
-				if (fs.existsSync(statePath)) {
-					fs.unlinkSync(statePath);
-					console.log(`[Dashboard] Deleted canvas: ${canvasId}`);
-					vscode.window.showInformationMessage(`Canvas "${canvasId}" deleted.`);
-
-					// Refresh dashboard
-					this.refresh();
-				}
-			} catch (error) {
-				console.error(`[Dashboard] Failed to delete canvas:`, error);
-				vscode.window.showErrorMessage(`Failed to delete canvas: ${error}`);
-			}
+		// Use the new centralized delete method
+		const success = CanvasPanel.deleteCanvas(canvasId, this.workspaceRoot);
+		if (success) {
+			vscode.window.showInformationMessage(`Canvas "${canvasId}" deleted.`);
+			// Refresh dashboard
+			this.refresh();
+		} else {
+			vscode.window.showErrorMessage(`Failed to delete canvas "${canvasId}".`);
 		}
+	}
+
+	/**
+	 * Handle renaming a canvas
+	 */
+	private handleRenameCanvas(canvasId: string, currentName: string) {
+		// Execute the rename command which will show input box
+		vscode.commands.executeCommand('roopik.renameCanvas', canvasId, currentName)
+			.then(() => {
+				// Refresh dashboard after rename
+				setTimeout(() => {
+					this.refresh();
+				}, 100);
+			});
+	}
+
+	/**
+	 * Handle exporting a canvas
+	 */
+	private handleExportCanvas(canvasId: string) {
+		vscode.commands.executeCommand('roopik.exportCanvas', canvasId);
+	}
+
+	/**
+	 * Handle importing a canvas
+	 */
+	private handleImportCanvas() {
+		vscode.commands.executeCommand('roopik.importCanvas')
+			.then(() => {
+				// Refresh dashboard after import
+				setTimeout(() => {
+					this.refresh();
+				}, 100);
+			});
 	}
 
 	/**
 	 * Handle updating settings
 	 */
-	private handleUpdateSettings(settings: any) {
-		// For now, just log. In future, implement config updates
+	private async handleUpdateSettings(settings: any) {
 		console.log('[Dashboard] Settings update requested:', settings);
-		vscode.window.showInformationMessage('Settings will be implemented in a future update.');
+		try {
+			await this.configManager.updateConfig(settings);
+			vscode.window.showInformationMessage('Settings updated successfully.');
+			// Refresh dashboard to reflect changes
+			setTimeout(() => {
+				this.refresh();
+			}, 100);
+		} catch (error) {
+			console.error('[Dashboard] Failed to update settings:', error);
+			vscode.window.showErrorMessage('Failed to update settings.');
+		}
 	}
 
 	/**
@@ -326,6 +365,31 @@ export class DashboardPanel {
 			flex-shrink: 0;
 			padding: 32px 40px 24px 40px;
 			border-bottom: 1px solid var(--vscode-panel-border);
+			position: relative;
+		}
+
+		.settings-icon {
+			position: absolute;
+			top: 32px;
+			right: 40px;
+			width: 32px;
+			height: 32px;
+			border-radius: 4px;
+			border: none;
+			background-color: transparent;
+			color: var(--vscode-foreground);
+			font-size: 18px;
+			cursor: pointer;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			transition: all 0.2s;
+			padding: 0;
+		}
+
+		.settings-icon:hover {
+			background-color: var(--vscode-toolbar-hoverBackground);
+			color: var(--vscode-focusBorder);
 		}
 
 		h1 {
@@ -676,6 +740,56 @@ export class DashboardPanel {
 				0 3px 16px rgba(0, 0, 0, 0.12),
 				0 0 0 2px var(--vscode-focusBorder);
 		}
+
+		.canvas-actions {
+			position: absolute;
+			top: 8px;
+			right: 8px;
+			display: flex;
+			gap: 4px;
+			opacity: 0;
+			transition: opacity 0.2s;
+		}
+
+		.canvas-card:hover .canvas-actions {
+			opacity: 1;
+		}
+
+		.export-btn,
+		.delete-btn {
+			width: 24px;
+			height: 24px;
+			border-radius: 4px;
+			border: none;
+			background-color: transparent;
+			color: var(--vscode-descriptionForeground);
+			cursor: pointer;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			transition: all 0.2s;
+			padding: 0;
+		}
+
+		.export-btn {
+			font-size: 14px;
+		}
+
+		.delete-btn {
+			font-size: 20px;
+			line-height: 1;
+		}
+
+		.export-btn:hover {
+			background-color: var(--vscode-button-secondaryBackground);
+			color: var(--vscode-button-secondaryForeground);
+		}
+
+		.delete-btn:hover {
+			background-color: var(--vscode-inputValidation-errorBackground);
+			color: var(--vscode-inputValidation-errorForeground);
+		}
+
 		.canvas-name {
 			font-size: 16px;
 			font-weight: 600;
@@ -683,16 +797,19 @@ export class DashboardPanel {
 			display: flex;
 			align-items: center;
 			gap: 8px;
+			padding-right: 28px; /* Make space for delete button */
+			cursor: text; /* Indicate it's editable */
 		}
+
+		.canvas-name:hover {
+			text-decoration: underline;
+			text-decoration-style: dotted;
+		}
+
 		.canvas-meta {
 			font-size: 12px;
 			color: var(--vscode-descriptionForeground);
 			margin-bottom: 4px;
-		}
-		.canvas-actions {
-			margin-top: 12px;
-			display: flex;
-			gap: 8px;
 		}
 		button {
 			padding: 8px 16px;
@@ -769,11 +886,14 @@ export class DashboardPanel {
 			font-size: 13px;
 			user-select: none;
 		}
+
+		${SettingsPanel.getSettingsCSS()}
 	</style>
 </head>
 <body>
 	<div class="container">
 		<div class="header">
+			<button class="settings-icon" onclick="openSettings()" title="Settings">⚙️</button>
 			<h1>Roopik</h1>
 			<p class="subtitle">Editing evolved</p>
 		</div>
@@ -796,6 +916,12 @@ export class DashboardPanel {
 								<a class="start-link" onclick="showAllCanvases()">
 									<span class="start-icon">□</span>
 									<span>Open Canvas...</span>
+								</a>
+							</li>
+							<li class="start-item">
+								<a class="start-link" onclick="importCanvas()">
+									<span class="start-icon">↓</span>
+									<span>Import Canvas...</span>
 								</a>
 							</li>
 						</ul>
@@ -852,19 +978,21 @@ export class DashboardPanel {
 			const isOpen = dashboardData.openCanvasIds.includes(canvas.id);
 			return `
 										<div class="canvas-card ${isOpen ? 'open' : ''}" onclick="openCanvas('${canvas.id}', '${canvas.name}')">
-											<div class="canvas-name">
+											<div class="canvas-actions">
+												<button class="export-btn" onclick="event.stopPropagation(); exportCanvas('${canvas.id}')" title="Export canvas">
+													<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+														<path d="M8 1L8 11M8 1L5 4M8 1L11 4M2 11V13C2 13.5304 2.21071 14.0391 2.58579 14.4142C2.96086 14.7893 3.46957 15 4 15H12C12.5304 15 13.0391 14.7893 13.4142 14.4142C13.7893 14.0391 14 13.5304 14 13V11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+													</svg>
+												</button>
+												<button class="delete-btn" onclick="event.stopPropagation(); deleteCanvas('${canvas.id}')" title="Delete canvas">×</button>
+											</div>
+											<div class="canvas-name" onclick="event.stopPropagation(); renameCanvas('${canvas.id}', '${canvas.name}')" title="Click to rename">
 												${isOpen ? '<span class="status-badge"></span>' : ''}
 												${canvas.name}
 											</div>
 											<div class="canvas-meta">${canvas.components?.length || 0} components</div>
 											<div class="canvas-meta">Created: ${new Date(canvas.createdAt).toLocaleDateString()}</div>
 											<div class="canvas-meta">Last updated: ${new Date(canvas.updatedAt).toLocaleString()}</div>
-											<div class="canvas-actions" onclick="event.stopPropagation()">
-												<button class="secondary" onclick="openCanvas('${canvas.id}', '${canvas.name}')">
-													${isOpen ? 'Focus' : 'Open'}
-												</button>
-												<button class="danger" onclick="deleteCanvas('${canvas.id}')">Delete</button>
-											</div>
 										</div>
 									`;
 		}).join('')}
@@ -895,6 +1023,8 @@ export class DashboardPanel {
 		</div>
 	</div>
 
+	${SettingsPanel.getSettingsHTML(dashboardData.config)}
+
 	<script>
 		const vscode = acquireVsCodeApi();
 
@@ -919,6 +1049,21 @@ export class DashboardPanel {
 			});
 		}
 
+		function renameCanvas(canvasId, currentName) {
+			vscode.postMessage({
+				type: 'renameCanvas',
+				canvasId: canvasId,
+				currentName: currentName
+			});
+		}
+
+		function exportCanvas(canvasId) {
+			vscode.postMessage({
+				type: 'exportCanvas',
+				canvasId: canvasId
+			});
+		}
+
 		function showAllCanvases() {
 			// Scroll to All Canvases section
 			document.querySelector('.canvas-grid')?.scrollIntoView({ behavior: 'smooth' });
@@ -934,6 +1079,14 @@ export class DashboardPanel {
 				}
 			});
 		}
+
+		function importCanvas() {
+			vscode.postMessage({
+				type: 'importCanvas'
+			});
+		}
+
+		${SettingsPanel.getSettingsJS()}
 
 		// Listen for data updates from extension
 		window.addEventListener('message', event => {

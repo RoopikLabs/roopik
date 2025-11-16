@@ -32,6 +32,25 @@
       {
         "command": "roopik.closeAllCanvases",
         "title": "Roopik: Close All Canvases"
+      },
+      {
+        "command": "roopik.deleteCanvas",
+        "title": "Roopik: Delete Canvas",
+        "enablement": "false"
+      },
+      {
+        "command": "roopik.renameCanvas",
+        "title": "Roopik: Rename Canvas",
+        "enablement": "false"
+      },
+      {
+        "command": "roopik.exportCanvas",
+        "title": "Roopik: Export Canvas",
+        "enablement": "false"
+      },
+      {
+        "command": "roopik.importCanvas",
+        "title": "Roopik: Import Canvas"
       }
     ],
     "viewsContainers": {

@@ -55,75 +55,80 @@ export class CanvasPanel {
 		canvasId: string,
 		canvasName?: string
 	) {
-		const column = vscode.window.activeTextEditor
-			? vscode.window.activeTextEditor.viewColumn
-			: undefined;
+		try {
+			const column = vscode.window.activeTextEditor
+				? vscode.window.activeTextEditor.viewColumn
+				: undefined;
 
-		// Get workspace root for config
-		const workspaceFolders = vscode.workspace.workspaceFolders;
-		if (!workspaceFolders) {
-			vscode.window.showErrorMessage('Please open a workspace folder first.');
-			return;
-		}
-		const workspaceRoot = workspaceFolders[0].uri.fsPath;
-		const configManager = ConfigManager.getInstance(workspaceRoot);
-		const config = configManager.getConfig();
-
-		// If this specific canvas already exists, show it
-		const existingPanel = CanvasPanel.panels.get(canvasId);
-		if (existingPanel) {
-			existingPanel._panel.reveal(column);
-			// Notify listeners (in case dashboard needs to update focus state)
-			CanvasPanel.onDidChangePanelsEmitter.fire();
-			return;
-		}
-
-		// Check max canvas limit before creating new
-		if (CanvasPanel.panels.size >= config.performance.maxCanvases) {
-			vscode.window.showWarningMessage(
-				`Maximum ${config.performance.maxCanvases} canvases reached. Close some before opening new ones.`,
-				'Close All Canvases'
-			).then(selection => {
-				if (selection === 'Close All Canvases') {
-					CanvasPanel.closeAll();
-				}
-			});
-			return;
-		}
-
-		// Warning at threshold
-		if (CanvasPanel.panels.size >= config.performance.warnAtCanvases) {
-			vscode.window.showInformationMessage(
-				`You have ${CanvasPanel.panels.size + 1} canvases open. Performance may be affected.`
-			);
-		}
-
-		// Create new panel with unique viewType per canvas ID
-		const panel = vscode.window.createWebviewPanel(
-			`roopikCanvas-${canvasId}`,
-			canvasName || `Roopik Canvas - ${canvasId}`,
-			column || vscode.ViewColumn.One,
-			{
-				enableScripts: true,
-				retainContextWhenHidden: true,
-				localResourceRoots: [
-					vscode.Uri.joinPath(extensionUri, 'out'),
-					vscode.Uri.joinPath(extensionUri, 'webview-ui', 'build')
-				]
+			// Get workspace root for config
+			const workspaceFolders = vscode.workspace.workspaceFolders;
+			if (!workspaceFolders) {
+				vscode.window.showErrorMessage('Please open a workspace folder first.');
+				return;
 			}
-		);
+			const workspaceRoot = workspaceFolders[0].uri.fsPath;
+			const configManager = ConfigManager.getInstance(workspaceRoot);
+			const config = configManager.getConfig();
 
-		// Create new canvas panel instance
-		const canvasPanel = new CanvasPanel(panel, extensionUri, canvasId, canvasName);
-		CanvasPanel.panels.set(canvasId, canvasPanel);
+			// If this specific canvas already exists, show it
+			const existingPanel = CanvasPanel.panels.get(canvasId);
+			if (existingPanel) {
+				existingPanel._panel.reveal(column);
+				// Notify listeners (in case dashboard needs to update focus state)
+				CanvasPanel.onDidChangePanelsEmitter.fire();
+				return;
+			}
 
-		// Save session after creating canvas
-		CanvasPanel.saveSession(workspaceRoot);
+			// Check max canvas limit before creating new
+			if (CanvasPanel.panels.size >= config.performance.maxCanvases) {
+				vscode.window.showWarningMessage(
+					`Maximum ${config.performance.maxCanvases} canvases reached. Close some before opening new ones.`,
+					'Close All Canvases'
+				).then(selection => {
+					if (selection === 'Close All Canvases') {
+						CanvasPanel.closeAll();
+					}
+				});
+				return;
+			}
 
-		// Notify listeners that panels changed
-		CanvasPanel.onDidChangePanelsEmitter.fire();
+			// Warning at threshold
+			if (CanvasPanel.panels.size >= config.performance.warnAtCanvases) {
+				vscode.window.showInformationMessage(
+					`You have ${CanvasPanel.panels.size + 1} canvases open. Performance may be affected.`
+				);
+			}
 
-		console.log(`[Roopik] Canvas "${canvasId}" created. Total canvases: ${CanvasPanel.panels.size}`);
+			// Create new panel with unique viewType per canvas ID
+			const panel = vscode.window.createWebviewPanel(
+				`roopikCanvas-${canvasId}`,
+				canvasName || `Roopik Canvas - ${canvasId}`,
+				column || vscode.ViewColumn.One,
+				{
+					enableScripts: true,
+					retainContextWhenHidden: true,
+					localResourceRoots: [
+						vscode.Uri.joinPath(extensionUri, 'out'),
+						vscode.Uri.joinPath(extensionUri, 'webview-ui', 'build')
+					]
+				}
+			);
+
+			// Create new canvas panel instance
+			const canvasPanel = new CanvasPanel(panel, extensionUri, canvasId, canvasName);
+			CanvasPanel.panels.set(canvasId, canvasPanel);
+
+			// Save session after creating canvas
+			CanvasPanel.saveSession(workspaceRoot);
+
+			// Notify listeners that panels changed
+			CanvasPanel.onDidChangePanelsEmitter.fire();
+
+			console.log(`[Roopik] Canvas "${canvasId}" created. Total canvases: ${CanvasPanel.panels.size}`);
+		} catch (error) {
+			console.error('[Roopik] Error in createOrShow:', error);
+			vscode.window.showErrorMessage(`Failed to create canvas: ${error}`);
+		}
 	}
 
 	/**
@@ -135,6 +140,87 @@ export class CanvasPanel {
 		// Notify listeners that all panels closed
 		CanvasPanel.onDidChangePanelsEmitter.fire();
 		console.log('[Roopik] All canvases closed');
+	}
+
+	/**
+	 * Delete a canvas permanently (close panel + remove state file)
+	 * @param canvasId - Canvas ID to delete
+	 * @param workspaceRoot - Workspace root path
+	 */
+	public static deleteCanvas(canvasId: string, workspaceRoot: string): boolean {
+		try {
+			// Close panel if open
+			const panel = CanvasPanel.panels.get(canvasId);
+			if (panel) {
+				panel.dispose();
+			}
+
+			// Delete state file
+			const configManager = ConfigManager.getInstance(workspaceRoot);
+			const statePath = configManager.getCanvasStatePath(canvasId);
+
+			if (fs.existsSync(statePath)) {
+				fs.unlinkSync(statePath);
+				console.log(`[Roopik] Canvas "${canvasId}" deleted from disk`);
+			}
+
+			// Save session to update list
+			CanvasPanel.saveSession(workspaceRoot);
+
+			// Notify listeners
+			CanvasPanel.onDidChangePanelsEmitter.fire();
+
+			return true;
+		} catch (error) {
+			console.error(`[Roopik] Failed to delete canvas "${canvasId}":`, error);
+			return false;
+		}
+	}
+
+	/**
+	 * Rename a canvas
+	 * @param canvasId - Canvas ID to rename
+	 * @param newName - New display name
+	 * @param workspaceRoot - Workspace root path
+	 */
+	public static renameCanvas(canvasId: string, newName: string, workspaceRoot: string): boolean {
+		try {
+			const configManager = ConfigManager.getInstance(workspaceRoot);
+			const statePath = configManager.getCanvasStatePath(canvasId);
+
+			if (!fs.existsSync(statePath)) {
+				console.error(`[Roopik] Canvas "${canvasId}" not found`);
+				return false;
+			}
+
+			// Load current state
+			const stateFile = fs.readFileSync(statePath, 'utf8');
+			const state = JSON.parse(stateFile) as CanvasState;
+
+			// Update name
+			state.name = newName;
+			state.updatedAt = Date.now();
+
+			// Save back
+			fs.writeFileSync(statePath, JSON.stringify(state, null, '\t'), 'utf8');
+
+			// Update panel title if open
+			const panel = CanvasPanel.panels.get(canvasId);
+			if (panel) {
+				panel._panel.title = `Roopik Canvas - ${newName}`;
+				panel.canvasState.name = newName;
+			}
+
+			console.log(`[Roopik] Canvas "${canvasId}" renamed to "${newName}"`);
+
+			// Notify listeners
+			CanvasPanel.onDidChangePanelsEmitter.fire();
+
+			return true;
+		} catch (error) {
+			console.error(`[Roopik] Failed to rename canvas "${canvasId}":`, error);
+			return false;
+		}
 	}
 
 	/**
@@ -234,6 +320,153 @@ export class CanvasPanel {
 
 		// Sort by most recently updated
 		return states.sort((a, b) => b.updatedAt - a.updatedAt);
+	}
+
+	/**
+	 * Export a canvas to a JSON file
+	 * @param canvasId - Canvas ID to export
+	 * @param workspaceRoot - Workspace root path
+	 * @returns Export file path or null on failure
+	 */
+	public static async exportCanvas(canvasId: string, workspaceRoot: string): Promise<string | null> {
+		try {
+			const configManager = ConfigManager.getInstance(workspaceRoot);
+			const statePath = configManager.getCanvasStatePath(canvasId);
+
+			if (!fs.existsSync(statePath)) {
+				console.error(`[Roopik] Canvas "${canvasId}" not found`);
+				return null;
+			}
+
+			// Load canvas state
+			const stateFile = fs.readFileSync(statePath, 'utf8');
+			const state = JSON.parse(stateFile) as CanvasState;
+
+			// Create export object with metadata
+			const exportData = {
+				version: '1.0',
+				exportedAt: Date.now(),
+				canvas: state
+			};
+
+			// Prompt user for save location
+			const uri = await vscode.window.showSaveDialog({
+				defaultUri: vscode.Uri.file(`${state.name}.roopik.json`),
+				filters: {
+					'Roopik Canvas': ['roopik.json'],
+					'JSON': ['json']
+				}
+			});
+
+			if (!uri) {
+				return null; // User cancelled
+			}
+
+			// Write export file
+			fs.writeFileSync(uri.fsPath, JSON.stringify(exportData, null, '\t'), 'utf8');
+			console.log(`[Roopik] Canvas "${canvasId}" exported to ${uri.fsPath}`);
+
+			return uri.fsPath;
+		} catch (error) {
+			console.error(`[Roopik] Failed to export canvas "${canvasId}":`, error);
+			return null;
+		}
+	}
+
+	/**
+	 * Import a canvas from a JSON file
+	 * @param workspaceRoot - Workspace root path
+	 * @param extensionUri - Extension URI for creating panels
+	 * @returns Imported canvas ID or null on failure
+	 */
+	public static async importCanvas(workspaceRoot: string, extensionUri: vscode.Uri): Promise<string | null> {
+		try {
+			// Prompt user for file
+			const uris = await vscode.window.showOpenDialog({
+				canSelectMany: false,
+				filters: {
+					'Roopik Canvas': ['roopik.json'],
+					'JSON': ['json']
+				}
+			});
+
+			if (!uris || uris.length === 0) {
+				return null; // User cancelled
+			}
+
+			// Read import file
+			const importFile = fs.readFileSync(uris[0].fsPath, 'utf8');
+			const importData = JSON.parse(importFile);
+
+			// Validate import format
+			if (!importData.canvas || !importData.canvas.id) {
+				vscode.window.showErrorMessage('Invalid canvas export file format');
+				return null;
+			}
+
+			const canvasState = importData.canvas as CanvasState;
+
+			// Check if canvas ID already exists
+			const configManager = ConfigManager.getInstance(workspaceRoot);
+			let finalCanvasId = canvasState.id;
+			let finalCanvasName = canvasState.name;
+
+			const existingStatePath = configManager.getCanvasStatePath(finalCanvasId);
+			if (fs.existsSync(existingStatePath)) {
+				// Canvas ID exists, prompt for new name
+				const newName = await vscode.window.showInputBox({
+					prompt: `Canvas "${finalCanvasId}" already exists. Enter a new name:`,
+					value: `${canvasState.name} (imported)`,
+					validateInput: (value) => {
+						if (!value || value.trim().length === 0) {
+							return 'Canvas name cannot be empty';
+						}
+						return null;
+					}
+				});
+
+				if (!newName) {
+					return null; // User cancelled
+				}
+
+				finalCanvasName = newName;
+				finalCanvasId = newName.toLowerCase()
+					.trim()
+					.replace(/\s+/g, '-')
+					.replace(/[^a-z0-9-]/g, '');
+			}
+
+			// Create new canvas state with updated ID and name
+			const newState: CanvasState = {
+				...canvasState,
+				id: finalCanvasId,
+				name: finalCanvasName,
+				createdAt: Date.now(),
+				updatedAt: Date.now()
+			};
+
+			// Save canvas state
+			const newStatePath = configManager.getCanvasStatePath(finalCanvasId);
+			const stateDir = require('path').dirname(newStatePath);
+			if (!fs.existsSync(stateDir)) {
+				fs.mkdirSync(stateDir, { recursive: true });
+			}
+			fs.writeFileSync(newStatePath, JSON.stringify(newState, null, '\t'), 'utf8');
+
+			console.log(`[Roopik] Canvas imported as "${finalCanvasId}"`);
+
+			// Open the imported canvas
+			CanvasPanel.createOrShow(extensionUri, finalCanvasId, finalCanvasName);
+
+			// Notify listeners
+			CanvasPanel.onDidChangePanelsEmitter.fire();
+
+			return finalCanvasId;
+		} catch (error) {
+			console.error('[Roopik] Failed to import canvas:', error);
+			vscode.window.showErrorMessage(`Failed to import canvas: ${error}`);
+			return null;
+		}
 	}
 
 	private constructor(
