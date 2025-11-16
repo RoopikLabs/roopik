@@ -4,31 +4,104 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import { ConfigManager } from './config';
 
 /**
- * Manages the Canvas webview panel
- * This is where the React app will render for visual component design
+ * Canvas State Interface
+ * Represents the state of a single canvas instance
+ */
+export interface CanvasState {
+	id: string;
+	name: string;
+	components: any[]; // Will be typed properly when we build component system
+	layout: any; // Will be typed properly later
+	createdAt: number;
+	updatedAt: number;
+}
+
+/**
+ * Manages Canvas webview panels with ID-based singleton pattern
+ * Each canvas ID can have only one panel, but multiple canvas IDs can exist simultaneously
+ *
+ * Examples:
+ * - Canvas "login" can exist alongside canvas "onboarding"
+ * - Opening "login" twice will focus the existing panel (ID-based singleton)
+ * - Max canvases enforced by config (default: 5)
  */
 export class CanvasPanel {
-	public static currentPanel: CanvasPanel | undefined;
+	// ID-based map instead of global singleton
+	private static panels: Map<string, CanvasPanel> = new Map();
+
+	// Event emitter for canvas open/close events
+	private static readonly onDidChangePanelsEmitter = new vscode.EventEmitter<void>();
+	public static readonly onDidChangePanels = CanvasPanel.onDidChangePanelsEmitter.event;
+
 	private readonly _panel: vscode.WebviewPanel;
 	private _disposables: vscode.Disposable[] = [];
+	private readonly canvasId: string;
+	private readonly extensionUri: vscode.Uri;
+	private canvasState: CanvasState;
+	private configManager: ConfigManager;
 
-	public static createOrShow(extensionUri: vscode.Uri) {
+	/**
+	 * Create or show a canvas panel by ID
+	 * @param extensionUri - Extension URI for loading resources
+	 * @param canvasId - Unique canvas identifier (required)
+	 * @param canvasName - Display name for the canvas (optional)
+	 */
+	public static createOrShow(
+		extensionUri: vscode.Uri,
+		canvasId: string,
+		canvasName?: string
+	) {
 		const column = vscode.window.activeTextEditor
 			? vscode.window.activeTextEditor.viewColumn
 			: undefined;
 
-		// If we already have a panel, show it
-		if (CanvasPanel.currentPanel) {
-			CanvasPanel.currentPanel._panel.reveal(column);
+		// Get workspace root for config
+		const workspaceFolders = vscode.workspace.workspaceFolders;
+		if (!workspaceFolders) {
+			vscode.window.showErrorMessage('Please open a workspace folder first.');
+			return;
+		}
+		const workspaceRoot = workspaceFolders[0].uri.fsPath;
+		const configManager = ConfigManager.getInstance(workspaceRoot);
+		const config = configManager.getConfig();
+
+		// If this specific canvas already exists, show it
+		const existingPanel = CanvasPanel.panels.get(canvasId);
+		if (existingPanel) {
+			existingPanel._panel.reveal(column);
+			// Notify listeners (in case dashboard needs to update focus state)
+			CanvasPanel.onDidChangePanelsEmitter.fire();
 			return;
 		}
 
-		// Otherwise, create a new panel
+		// Check max canvas limit before creating new
+		if (CanvasPanel.panels.size >= config.performance.maxCanvases) {
+			vscode.window.showWarningMessage(
+				`Maximum ${config.performance.maxCanvases} canvases reached. Close some before opening new ones.`,
+				'Close All Canvases'
+			).then(selection => {
+				if (selection === 'Close All Canvases') {
+					CanvasPanel.closeAll();
+				}
+			});
+			return;
+		}
+
+		// Warning at threshold
+		if (CanvasPanel.panels.size >= config.performance.warnAtCanvases) {
+			vscode.window.showInformationMessage(
+				`You have ${CanvasPanel.panels.size + 1} canvases open. Performance may be affected.`
+			);
+		}
+
+		// Create new panel with unique viewType per canvas ID
 		const panel = vscode.window.createWebviewPanel(
-			'roopikCanvas',
-			'Roopik Canvas',
+			`roopikCanvas-${canvasId}`,
+			canvasName || `Roopik Canvas - ${canvasId}`,
 			column || vscode.ViewColumn.One,
 			{
 				enableScripts: true,
@@ -40,11 +113,146 @@ export class CanvasPanel {
 			}
 		);
 
-		CanvasPanel.currentPanel = new CanvasPanel(panel, extensionUri);
+		// Create new canvas panel instance
+		const canvasPanel = new CanvasPanel(panel, extensionUri, canvasId, canvasName);
+		CanvasPanel.panels.set(canvasId, canvasPanel);
+
+		// Save session after creating canvas
+		CanvasPanel.saveSession(workspaceRoot);
+
+		// Notify listeners that panels changed
+		CanvasPanel.onDidChangePanelsEmitter.fire();
+
+		console.log(`[Roopik] Canvas "${canvasId}" created. Total canvases: ${CanvasPanel.panels.size}`);
 	}
 
-	private constructor(panel: vscode.WebviewPanel, _extensionUri: vscode.Uri) {
+	/**
+	 * Close all canvas panels
+	 */
+	public static closeAll() {
+		CanvasPanel.panels.forEach(panel => panel.dispose());
+		CanvasPanel.panels.clear();
+		// Notify listeners that all panels closed
+		CanvasPanel.onDidChangePanelsEmitter.fire();
+		console.log('[Roopik] All canvases closed');
+	}
+
+	/**
+	 * Get all open canvas IDs
+	 */
+	public static getOpenCanvasIds(): string[] {
+		return Array.from(CanvasPanel.panels.keys());
+	}
+
+	/**
+	 * Get count of open canvases
+	 */
+	public static getOpenCount(): number {
+		return CanvasPanel.panels.size;
+	}
+
+	/**
+	 * Save current session (list of open canvas IDs) to disk
+	 */
+	public static saveSession(workspaceRoot: string) {
+		const configManager = ConfigManager.getInstance(workspaceRoot);
+		const sessionPath = configManager.getSessionPath();
+		const session = {
+			canvasIds: Array.from(CanvasPanel.panels.keys()),
+			timestamp: Date.now()
+		};
+
+		try {
+			fs.writeFileSync(sessionPath, JSON.stringify(session, null, '\t'), 'utf8');
+			console.log(`[Roopik] Session saved: ${session.canvasIds.length} canvases`);
+		} catch (error) {
+			console.error('[Roopik] Failed to save session:', error);
+		}
+	}
+
+	/**
+	 * Restore last session (reopen canvases from previous session)
+	 */
+	public static restoreSession(extensionUri: vscode.Uri, workspaceRoot: string) {
+		const configManager = ConfigManager.getInstance(workspaceRoot);
+		const config = configManager.getConfig();
+
+		if (!config.canvas.restoreLastSession) {
+			console.log('[Roopik] Session restore disabled in config');
+			return;
+		}
+
+		const sessionPath = configManager.getSessionPath();
+
+		try {
+			if (fs.existsSync(sessionPath)) {
+				const sessionFile = fs.readFileSync(sessionPath, 'utf8');
+				const session = JSON.parse(sessionFile);
+
+				if (session.canvasIds && session.canvasIds.length > 0) {
+					console.log(`[Roopik] Restoring session: ${session.canvasIds.length} canvases`);
+
+					// Reopen each canvas
+					session.canvasIds.forEach((canvasId: string) => {
+						// Load canvas state to get the name
+						const statePath = configManager.getCanvasStatePath(canvasId);
+						if (fs.existsSync(statePath)) {
+							const stateFile = fs.readFileSync(statePath, 'utf8');
+							const state = JSON.parse(stateFile);
+							CanvasPanel.createOrShow(extensionUri, canvasId, state.name);
+						}
+					});
+				}
+			}
+		} catch (error) {
+			console.error('[Roopik] Failed to restore session:', error);
+		}
+	}
+
+	/**
+	 * Get list of all canvas states (for dashboard)
+	 */
+	public static getAllCanvasStates(workspaceRoot: string): CanvasState[] {
+		const states: CanvasState[] = [];
+		const roopikDir = require('path').join(workspaceRoot, '.roopik');
+
+		try {
+			if (fs.existsSync(roopikDir)) {
+				const files = fs.readdirSync(roopikDir);
+				files.forEach(file => {
+					if (file.startsWith('canvas-') && file.endsWith('.json')) {
+						const filePath = require('path').join(roopikDir, file);
+						const stateFile = fs.readFileSync(filePath, 'utf8');
+						const state = JSON.parse(stateFile) as CanvasState;
+						states.push(state);
+					}
+				});
+			}
+		} catch (error) {
+			console.error('[Roopik] Failed to get canvas states:', error);
+		}
+
+		// Sort by most recently updated
+		return states.sort((a, b) => b.updatedAt - a.updatedAt);
+	}
+
+	private constructor(
+		panel: vscode.WebviewPanel,
+		extensionUri: vscode.Uri,
+		canvasId: string,
+		canvasName?: string
+	) {
 		this._panel = panel;
+		this.extensionUri = extensionUri;
+		this.canvasId = canvasId;
+
+		// Initialize config manager
+		const workspaceFolders = vscode.workspace.workspaceFolders;
+		const workspaceRoot = workspaceFolders![0].uri.fsPath;
+		this.configManager = ConfigManager.getInstance(workspaceRoot);
+
+		// Load or create canvas state
+		this.canvasState = this.loadOrCreateState(canvasName);
 
 		// Set the webview's initial html content
 		this._update();
@@ -60,7 +268,13 @@ export class CanvasPanel {
 						vscode.window.showInformationMessage(message.text);
 						break;
 					case 'log':
-						console.log('[Webview]', message.text);
+						console.log(`[Canvas ${this.canvasId}]`, message.text);
+						break;
+					case 'saveState':
+						this.saveState(message.state);
+						break;
+					case 'error':
+						this.handleError(message.error);
 						break;
 				}
 			},
@@ -69,9 +283,98 @@ export class CanvasPanel {
 		);
 	}
 
-	public dispose() {
-		CanvasPanel.currentPanel = undefined;
+	/**
+	 * Load canvas state from disk or create new
+	 */
+	private loadOrCreateState(canvasName?: string): CanvasState {
+		const statePath = this.configManager.getCanvasStatePath(this.canvasId);
 
+		try {
+			if (fs.existsSync(statePath)) {
+				const stateFile = fs.readFileSync(statePath, 'utf8');
+				const state = JSON.parse(stateFile) as CanvasState;
+				console.log(`[Canvas ${this.canvasId}] State loaded from disk`);
+				return state;
+			}
+		} catch (error) {
+			console.error(`[Canvas ${this.canvasId}] Failed to load state:`, error);
+		}
+
+		// Create new state if doesn't exist
+		const newState: CanvasState = {
+			id: this.canvasId,
+			name: canvasName || this.canvasId,
+			components: [],
+			layout: {},
+			createdAt: Date.now(),
+			updatedAt: Date.now()
+		};
+
+		this.saveState(newState);
+		console.log(`[Canvas ${this.canvasId}] New state created`);
+		return newState;
+	}
+
+	/**
+	 * Save canvas state to disk
+	 */
+	private saveState(state: Partial<CanvasState>) {
+		this.canvasState = {
+			...this.canvasState,
+			...state,
+			updatedAt: Date.now()
+		};
+
+		const statePath = this.configManager.getCanvasStatePath(this.canvasId);
+
+		try {
+			// Ensure directory exists
+			const stateDir = require('path').dirname(statePath);
+			if (!fs.existsSync(stateDir)) {
+				fs.mkdirSync(stateDir, { recursive: true });
+			}
+
+			fs.writeFileSync(statePath, JSON.stringify(this.canvasState, null, '\t'), 'utf8');
+			console.log(`[Canvas ${this.canvasId}] State saved to disk`);
+		} catch (error) {
+			console.error(`[Canvas ${this.canvasId}] Failed to save state:`, error);
+		}
+	}
+
+	/**
+	 * Handle errors from webview
+	 */
+	private handleError(error: any) {
+		console.error(`[Canvas ${this.canvasId}] Error:`, error);
+
+		// Show error message but don't crash
+		vscode.window.showErrorMessage(
+			`Error in canvas "${this.canvasState.name}": ${error.message || error}`
+		);
+
+		// Save state before potential crash
+		this.saveState(this.canvasState);
+	}
+
+	public dispose() {
+		console.log(`[Canvas ${this.canvasId}] Disposing...`);
+
+		// Remove from map
+		CanvasPanel.panels.delete(this.canvasId);
+
+		// Save final state
+		this.saveState(this.canvasState);
+
+		// Save session (update list of open canvases)
+		const workspaceFolders = vscode.workspace.workspaceFolders;
+		if (workspaceFolders) {
+			CanvasPanel.saveSession(workspaceFolders[0].uri.fsPath);
+		}
+
+		// Notify listeners that panels changed (before disposing)
+		CanvasPanel.onDidChangePanelsEmitter.fire();
+
+		// Clean up panel
 		this._panel.dispose();
 
 		while (this._disposables.length) {
@@ -80,6 +383,8 @@ export class CanvasPanel {
 				disposable.dispose();
 			}
 		}
+
+		console.log(`[Canvas ${this.canvasId}] Disposed. Remaining canvases: ${CanvasPanel.panels.size}`);
 	}
 
 	private _update() {
@@ -89,10 +394,10 @@ export class CanvasPanel {
 
 	private _getHtmlForWebview(webview: vscode.Webview) {
 		const scriptUri = webview.asWebviewUri(
-			vscode.Uri.joinPath(this._panel.webview.options.localResourceRoots![1], 'assets', 'index.js')
+			vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'build', 'assets', 'index.js')
 		);
 		const styleUri = webview.asWebviewUri(
-			vscode.Uri.joinPath(this._panel.webview.options.localResourceRoots![1], 'assets', 'index.css')
+			vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'build', 'assets', 'index.css')
 		);
 
 		return `<!DOCTYPE html>
@@ -100,13 +405,24 @@ export class CanvasPanel {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src ${webview.cspSource};">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource};">
+	<style>
+		/* VS Code CSS variables are automatically available in webviews */
+		body {
+			color: var(--vscode-foreground);
+			background-color: var(--vscode-editor-background);
+		}
+	</style>
 	<link href="${styleUri}" rel="stylesheet">
-	<title>Roopik Canvas</title>
+	<title>Roopik Canvas - ${this.canvasState.name}</title>
 </head>
 <body>
 	<div id="root"></div>
 	<script type="module" src="${scriptUri}"></script>
+	<script>
+		// Pass canvas state to React app
+		window.CANVAS_STATE = ${JSON.stringify(this.canvasState)};
+	</script>
 </body>
 </html>`;
 	}

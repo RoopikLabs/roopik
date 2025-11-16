@@ -18,9 +18,49 @@
     "commands": [
       {
         "command": "roopik.openCanvas",
-        "title": "Roopik: Open Canvas"
+        "title": "Roopik: Dashboard",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "roopik.newCanvas",
+        "title": "Roopik: New Canvas"
+      },
+      {
+        "command": "roopik.showCanvases",
+        "title": "Roopik: Show Open Canvases"
+      },
+      {
+        "command": "roopik.closeAllCanvases",
+        "title": "Roopik: Close All Canvases"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "roopik",
+          "title": "Roopik",
+          "icon": "resources/roopik-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "roopik": [
+        {
+          "id": "roopik.dashboard",
+          "name": "Dashboard",
+          "type": "webview"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "roopik.openCanvas",
+          "when": "view == roopik.dashboard",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "compile": "tsc -p ./",
