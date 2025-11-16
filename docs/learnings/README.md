@@ -18,6 +18,15 @@ Weekly learnings from building Roopik - organized by week.
   - React + Vite integration
   - Watch mode for fast development
 
+- [Week 3](./week-03.md) - Multi-Canvas Architecture & Independent Contexts
+  - ID-based singleton pattern (not global)
+  - Multiple independent canvas instances
+  - Canvas state persistence (.roopik/canvas-{id}.json)
+  - Configurable performance limits
+  - Crash isolation and sandboxing
+  - Command system (openCanvas, newCanvas, showCanvases, closeAllCanvases)
+
 ---
+
 
 **Note:** Each week's learnings are in separate files to keep them focused. We'll merge shorter weeks later if needed.
