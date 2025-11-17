@@ -3,6 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { ColorPicker } from './ColorPicker';
+
 type BackgroundPattern = 'grid' | 'dots' | 'plain';
 
 interface Transform {
@@ -16,12 +18,14 @@ interface StatusBarProps {
 	fps: number;
 	sandboxCount: number;
 	pattern: BackgroundPattern;
+	backgroundColor: string;
 	selectedSandboxId: string | null;
 	focusedSandboxId: string | null;
 	onZoomIn: () => void;
 	onZoomOut: () => void;
 	onResetView: () => void;
 	onTogglePattern: () => void;
+	onBackgroundColorChange: (color: string) => void;
 }
 
 export function StatusBar({
@@ -29,12 +33,14 @@ export function StatusBar({
 	fps,
 	sandboxCount,
 	pattern,
+	backgroundColor,
 	selectedSandboxId,
 	focusedSandboxId,
 	onZoomIn,
 	onZoomOut,
 	onResetView,
-	onTogglePattern
+	onTogglePattern,
+	onBackgroundColorChange
 }: StatusBarProps) {
 	return (
 		<div className="status-bar">
@@ -64,6 +70,10 @@ export function StatusBar({
 				)}
 			</div>
 			<div className="status-right">
+				<ColorPicker
+					currentColor={backgroundColor}
+					onColorChange={onBackgroundColorChange}
+				/>
 				<button onClick={onTogglePattern} className="pattern-btn" title="Toggle Pattern">
 					{pattern === 'grid' ? '⊞' : pattern === 'dots' ? '⋮' : '▢'}
 				</button>

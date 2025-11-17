@@ -21,10 +21,12 @@ interface InfiniteCanvasProps {
 	focusedSandboxId: string | null;
 	transform: Transform;
 	pattern: BackgroundPattern;
+	backgroundColor: string;
 	onTransformChange: (transform: Transform) => void;
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
 	onSandboxUpdate: (id: string, updates: Partial<Sandbox>) => void;
+	onSandboxDelete: (id: string) => void;
 }
 
 export function InfiniteCanvas({
@@ -33,10 +35,12 @@ export function InfiniteCanvas({
 	focusedSandboxId,
 	transform,
 	pattern,
+	backgroundColor,
 	onTransformChange,
 	onSandboxClick,
 	onSandboxDoubleClick,
-	onSandboxUpdate
+	onSandboxUpdate,
+	onSandboxDelete
 }: InfiniteCanvasProps) {
 	const canvasRef = useRef<HTMLDivElement>(null);
 	const [isPanning, setIsPanning] = useState(false);
@@ -147,7 +151,10 @@ export function InfiniteCanvas({
 			onMouseUp={handleMouseUp}
 			onMouseLeave={handleMouseUp}
 			onWheel={handleWheel}
-			style={getBackgroundStyle()}
+			style={{
+				...getBackgroundStyle(),
+				backgroundColor: backgroundColor,
+			}}
 		>
 			{/* Canvas content with transform */}
 			<div
@@ -167,6 +174,7 @@ export function InfiniteCanvas({
 						onMouseDown={(e) => handleSandboxMouseDown(e, sandbox.id)}
 						onClick={() => onSandboxClick(sandbox.id)}
 						onDoubleClick={() => onSandboxDoubleClick(sandbox.id)}
+						onDelete={() => onSandboxDelete(sandbox.id)}
 					/>
 				))}
 			</div>

@@ -8,6 +8,7 @@ import type { Sandbox } from './types';
 import { FloatingToolbar } from './components/FloatingToolbar';
 import { InfiniteCanvas } from './components/InfiniteCanvas';
 import { StatusBar } from './components/StatusBar';
+import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { useFPS } from './hooks/useFPS';
 import { SAMPLE_COMPONENTS } from './data/sampleComponents';
 import './App.css';
@@ -39,10 +40,12 @@ type BackgroundPattern = 'grid' | 'dots' | 'plain';
 function App() {
 	const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
 	const [pattern, setPattern] = useState<BackgroundPattern>('dots');
+	const [backgroundColor, setBackgroundColor] = useState<string>('#000000');
 	const [sandboxes, _setSandboxes] = useState<Sandbox[]>([]);
 	const [selectedSandboxId, setSelectedSandboxId] = useState<string | null>(null);
 	const [focusedSandboxId, setFocusedSandboxId] = useState<string | null>(null);
 	const [_sandboxTemplate, setSandboxTemplate] = useState<string | null>(null);
+	const [showDeleteModal, setShowDeleteModal] = useState(false);
 	const fps = useFPS();
 
 	// Load initial state from extension on mount
@@ -293,7 +296,50 @@ function App() {
 	};
 
 	const handleResetView = () => {
-		setTransform({ x: 0, y: 0, scale: 1 });
+		if (sandboxes.length === 0) {
+			// No sandboxes: reset to origin
+			setTransform({ x: 0, y: 0, scale: 1 });
+		} else {
+			// Has sandboxes: reorganize to grid and fit view
+			reorganizeToGrid();
+		}
+	};
+
+	// Reorganize all sandboxes to proper grid layout
+	const reorganizeToGrid = (sandboxList?: Sandbox[]) => {
+		// Use provided list or current sandboxes state
+		const currentSandboxes = sandboxList || sandboxes;
+
+		const SANDBOX_WIDTH = 500;
+		const SANDBOX_HEIGHT = 500;
+		const GRID_COLUMNS = 4;
+		const CONTAINER_MARGIN = 20;
+		const CONTAINER_PADDING_LR = 120;
+		const CONTAINER_PADDING_TB = 40;
+		const TOTAL_WIDTH = SANDBOX_WIDTH + (CONTAINER_MARGIN * 2) + (CONTAINER_PADDING_LR * 2);
+		const TOTAL_HEIGHT = SANDBOX_HEIGHT + (CONTAINER_MARGIN * 2) + (CONTAINER_PADDING_TB * 2);
+		const GAP_X = 60;
+		const GAP_Y = 60;
+		const START_X = 100;
+		const START_Y = 100;
+
+		// Reorganize sandboxes to grid positions
+		const reorganized = currentSandboxes.map((sandbox, index) => {
+			const col = index % GRID_COLUMNS;
+			const row = Math.floor(index / GRID_COLUMNS);
+			return {
+				...sandbox,
+				x: START_X + (col * (TOTAL_WIDTH + GAP_X)),
+				y: START_Y + (row * (TOTAL_HEIGHT + GAP_Y)),
+			};
+		});
+
+		_setSandboxes(reorganized);
+
+		// Fit view to show all sandboxes after reorganization
+		setTimeout(() => {
+			fitAllSandboxes(reorganized);
+		}, 100);
 	};
 
 	// Pattern toggle
@@ -343,13 +389,41 @@ function App() {
 		});
 	};
 
-	// Component deletion
+	// Component deletion - show modal
 	const handleDeleteSelected = () => {
+		if (!selectedSandboxId) {return;}
+		setShowDeleteModal(true);
+	};
+
+	// Handle delete button click from sandbox
+	const handleSandboxDelete = (sandboxId: string) => {
+		setSelectedSandboxId(sandboxId);
+		setShowDeleteModal(true);
+	};
+
+	// Confirm deletion
+	const confirmDelete = () => {
 		if (!selectedSandboxId) {return;}
 
 		console.log('[Canvas] Deleting sandbox:', selectedSandboxId);
-		_setSandboxes(prev => prev.filter(s => s.id !== selectedSandboxId));
+		const updatedSandboxes = sandboxes.filter(s => s.id !== selectedSandboxId);
 		setSelectedSandboxId(null);
+		setShowDeleteModal(false);
+
+		// Auto-reorganize remaining sandboxes to fill the gap
+		if (updatedSandboxes.length > 0) {
+			setTimeout(() => {
+				reorganizeToGrid(updatedSandboxes);
+			}, 50);
+		} else {
+			// No sandboxes left, just clear the state
+			_setSandboxes([]);
+		}
+	};
+
+	// Cancel deletion
+	const cancelDelete = () => {
+		setShowDeleteModal(false);
 	};
 
 	// Keyboard shortcuts
@@ -396,12 +470,14 @@ function App() {
 				focusedSandboxId={focusedSandboxId}
 				transform={transform}
 				pattern={pattern}
+				backgroundColor={backgroundColor}
 				onTransformChange={setTransform}
 				onSandboxClick={handleSandboxClick}
 				onSandboxDoubleClick={focusSandbox}
 				onSandboxUpdate={(id, updates) => {
 					_setSandboxes(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
 				}}
+				onSandboxDelete={handleSandboxDelete}
 			/>
 
 			<StatusBar
@@ -409,13 +485,24 @@ function App() {
 				fps={fps}
 				sandboxCount={sandboxes.length}
 				pattern={pattern}
+				backgroundColor={backgroundColor}
 				selectedSandboxId={selectedSandboxId}
 				focusedSandboxId={focusedSandboxId}
 				onZoomIn={handleZoomIn}
 				onZoomOut={handleZoomOut}
 				onResetView={handleResetView}
 				onTogglePattern={handleTogglePattern}
+				onBackgroundColorChange={setBackgroundColor}
 			/>
+
+			{/* Delete confirmation modal */}
+			{showDeleteModal && selectedSandboxId && (
+				<DeleteConfirmModal
+					sandboxId={selectedSandboxId}
+					onConfirm={confirmDelete}
+					onCancel={cancelDelete}
+				/>
+			)}
 		</div>
 	);
 }

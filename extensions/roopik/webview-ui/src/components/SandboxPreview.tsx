@@ -13,11 +13,23 @@ interface SandboxPreviewProps {
 	onMouseDown: (e: React.MouseEvent) => void;
 	onClick: () => void;
 	onDoubleClick: () => void;
+	onDelete: () => void;
 }
 
-export function SandboxPreview({ sandbox, isSelected, isFocused, onMouseDown, onClick, onDoubleClick }: SandboxPreviewProps) {
+export function SandboxPreview({ sandbox, isSelected, isFocused, onMouseDown, onClick, onDoubleClick, onDelete }: SandboxPreviewProps) {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [isHovered, setIsHovered] = useState(false);
+
+	// Handler for expand button (TODO: implement fullscreen mode)
+	const handleExpandClick = () => {
+		// TODO: Implement fullscreen/expand mode in future
+		console.log('[SandboxPreview] Expand clicked for:', sandbox.id);
+	};
+
+	// Handler for delete button
+	const handleDeleteClick = () => {
+		onDelete();
+	};
 
 	// Send sandboxMessage to iframe when it loads
 	useEffect(() => {
@@ -266,6 +278,111 @@ export function SandboxPreview({ sandbox, isSelected, isFocused, onMouseDown, on
 					{sandbox.id}
 				</span>
 			</div>
+
+			{/* Action buttons - top right (visible on hover, selected, or focused) */}
+			{(isHovered || isSelected || isFocused) && (
+				<div
+					style={{
+						position: 'absolute',
+						top: '16px',
+						right: '20px',
+						display: 'flex',
+						alignItems: 'center',
+						gap: '8px',
+						zIndex: 10,
+					}}
+				>
+					{/* Expand button */}
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							handleExpandClick();
+						}}
+						style={{
+							background: 'transparent',
+							border: 'none',
+							padding: '4px',
+							cursor: 'pointer',
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							transition: 'all 0.2s ease',
+							opacity: 0.7,
+						}}
+						onMouseEnter={(e) => {
+							e.currentTarget.style.opacity = '1';
+						}}
+						onMouseLeave={(e) => {
+							e.currentTarget.style.opacity = '0.7';
+						}}
+						title="Expand to fullscreen (Coming soon)"
+					>
+						<svg
+							width="18"
+							height="18"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="rgba(255, 255, 255, 0.9)"
+							strokeWidth="1.5"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						>
+							{/* Top-left arrow */}
+							<path d="M2 6 L2 2 L6 2" />
+							{/* Top-right arrow */}
+							<path d="M10 2 L14 2 L14 6" />
+							{/* Bottom-right arrow */}
+							<path d="M14 10 L14 14 L10 14" />
+							{/* Bottom-left arrow */}
+							<path d="M6 14 L2 14 L2 10" />
+						</svg>
+					</button>
+
+					{/* Delete button */}
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							handleDeleteClick();
+						}}
+						style={{
+							background: 'transparent',
+							border: 'none',
+							padding: '4px',
+							cursor: 'pointer',
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							transition: 'all 0.2s ease',
+							opacity: 0.7,
+						}}
+						onMouseEnter={(e) => {
+							e.currentTarget.style.opacity = '1';
+							const svg = e.currentTarget.querySelector('svg');
+							if (svg) svg.setAttribute('stroke', '#ef4444');
+						}}
+						onMouseLeave={(e) => {
+							e.currentTarget.style.opacity = '0.7';
+							const svg = e.currentTarget.querySelector('svg');
+							if (svg) svg.setAttribute('stroke', 'rgba(255, 255, 255, 0.9)');
+						}}
+						title="Delete sandbox"
+					>
+						<svg
+							width="18"
+							height="18"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="rgba(255, 255, 255, 0.9)"
+							strokeWidth="2"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						>
+							<path d="M4 4 L12 12" />
+							<path d="M12 4 L4 12" />
+						</svg>
+					</button>
+				</div>
+			)}
 
 			{/* Content area with iframe */}
 			<div

@@ -254,6 +254,7 @@
 .status-right {
 	display: flex;
 	align-items: center;
+	gap: 8px;
 }
 
 .status-bar span {

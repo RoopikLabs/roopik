@@ -528,7 +528,7 @@ export class CanvasPanel {
 						this.saveState(message.state);
 						break;
 					case 'error':
-						this.handleError(message.error);
+						this.handleError(message.message || message.error);
 						break;
 					case 'loadComponent':
 						await this.handleLoadComponent(message.component);
@@ -614,9 +614,14 @@ export class CanvasPanel {
 	private handleError(error: any) {
 		console.error(`[Canvas ${this.canvasId}] Error:`, error);
 
+		// Extract error message
+		const errorMessage = typeof error === 'string'
+			? error
+			: error?.message || JSON.stringify(error);
+
 		// Show error message but don't crash
 		vscode.window.showErrorMessage(
-			`Error in canvas "${this.canvasState.name}": ${error.message || error}`
+			`Error in canvas "${this.canvasState.name}": ${errorMessage}`
 		);
 
 		// Save state before potential crash
