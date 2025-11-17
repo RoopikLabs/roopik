@@ -21,6 +21,7 @@ import { ActivityBarViewProvider } from './activityBarView';
  * - Each canvas is independent with isolated state and AI context
  * - Integrates AI for code generation and design assistance
  * - Manages bidirectional sync between canvas and code
+ * - Uses Mode 1 preview system: client-side transpilation (Babel) in iframes
  */
 
 export function activate(context: vscode.ExtensionContext) {
@@ -35,6 +36,10 @@ export function activate(context: vscode.ExtensionContext) {
 	const workspaceRoot = workspaceFolders[0].uri.fsPath;
 	const configManager = ConfigManager.getInstance(workspaceRoot);
 	const config = configManager.getConfig();
+
+	// Initialize Mode 1 Preview System (client-side transpilation)
+	CanvasPanel.initializePreviewSystem(context);
+	console.log('[Roopik] Mode 1 preview system initialized (client-side transpilation)');
 
 	// Restore last session after a delay (wait for VS Code to fully initialize)
 	setTimeout(() => {

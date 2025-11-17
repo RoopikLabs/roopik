@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roopik Component Sandbox</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #ffffff;
+            overflow: auto;
+        }
+
+        #root {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .sandbox-error {
+            background: #fee;
+            border: 2px solid #fcc;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 600px;
+            margin: 20px;
+        }
+
+        .sandbox-error h3 {
+            color: #c33;
+            margin-bottom: 10px;
+        }
+
+        .sandbox-error pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+
+        .sandbox-loading {
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <div class="sandbox-loading">Initializing sandbox...</div>
+    </div>
+
+    <!-- Babel Standalone for JSX transpilation -->
+    <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+
+    <script>
+        /**
+         * Roopik Sandbox Template - Mode 1 Engine
+         *
+         * This template is loaded once per iframe.
+         * It receives code and CDN URLs via postMessage.
+         * All transpilation happens client-side using Babel.
+         */
+
+        let cdnScriptsLoaded = false;
+        let currentComponent = null;
+
+        /**
+         * Load CDN scripts dynamically
+         */
+        function loadCDNScripts(urls) {
+            return new Promise((resolve, reject) => {
+                if (urls.length === 0) {
+                    resolve();
+                    return;
+                }
+
+                let loaded = 0;
+                const total = urls.length;
+
+                urls.forEach(url => {
+                    const script = document.createElement('script');
+                    script.src = url;
+                    script.crossOrigin = 'anonymous';
+
+                    script.onload = () => {
+                        loaded++;
+                        if (loaded === total) {
+                            cdnScriptsLoaded = true;
+                            resolve();
+                        }
+                    };
+
+                    script.onerror = () => {
+                        reject(new Error(`Failed to load CDN script: ${url}`));
+                    };
+
+                    document.head.appendChild(script);
+                });
+            });
+        }
+
+        /**
+         * Transpile and render component
+         */
+        function renderComponent(code) {
+            try {
+                // Transpile JSX to JavaScript using Babel
+                const transpiled = Babel.transform(code, {
+                    presets: ['react'],
+                    filename: 'component.jsx'
+                }).code;
+
+                // Clear root
+                const root = document.getElementById('root');
+                root.innerHTML = '';
+
+                // Create a new function and execute it
+                const componentFunc = new Function('React', 'ReactDOM', transpiled + '\n\nreturn Component;');
+                const Component = componentFunc(window.React, window.ReactDOM);
+
+                // Render using React 18 createRoot API
+                if (window.ReactDOM.createRoot) {
+                    const reactRoot = window.ReactDOM.createRoot(root);
+                    reactRoot.render(window.React.createElement(Component));
+                } else {
+                    // Fallback for React 17
+                    window.ReactDOM.render(window.React.createElement(Component), root);
+                }
+
+                // Notify parent: ready
+                window.parent.postMessage({ type: 'ready' }, '*');
+
+            } catch (error) {
+                // Show error in sandbox
+                const root = document.getElementById('root');
+                root.innerHTML = `
+                    <div class="sandbox-error">
+                        <h3>Component Error</h3>
+                        <pre>${error.message}\n\n${error.stack || ''}</pre>
+                    </div>
+                `;
+
+                // Notify parent: error
+                window.parent.postMessage({
+                    type: 'error',
+                    message: error.message
+                }, '*');
+
+                console.error('[Sandbox] Component error:', error);
+            }
+        }
+
+        /**
+         * Handle messages from parent window
+         */
+        window.addEventListener('message', async (event) => {
+            const message = event.data;
+
+            if (message.type === 'init') {
+                // Initial load: load CDN scripts first
+                try {
+                    if (message.cdnUrls && message.cdnUrls.length > 0) {
+                        await loadCDNScripts(message.cdnUrls);
+                    }
+                    renderComponent(message.code);
+                } catch (error) {
+                    console.error('[Sandbox] Init error:', error);
+                    const root = document.getElementById('root');
+                    root.innerHTML = `
+                        <div class="sandbox-error">
+                            <h3>Initialization Error</h3>
+                            <pre>${error.message}</pre>
+                        </div>
+                    `;
+                }
+            } else if (message.type === 'update') {
+                // Hot-reload: CDN scripts already loaded, just re-render
+                renderComponent(message.code);
+            }
+        });
+
+        // Notify parent that sandbox is ready to receive messages
+        window.parent.postMessage({ type: 'sandbox-ready' }, '*');
+    </script>
+</body>
+</html>

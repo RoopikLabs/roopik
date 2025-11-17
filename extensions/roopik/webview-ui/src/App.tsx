@@ -1,66 +1,145 @@
-import { useState } from 'react';
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import { useState, useEffect } from 'react';
+import type { Sandbox } from './types';
+import { FloatingToolbar } from './components/FloatingToolbar';
+import { InfiniteCanvas } from './components/InfiniteCanvas';
+import { StatusBar } from './components/StatusBar';
+import { useFPS } from './hooks/useFPS';
+import { SAMPLE_COMPONENTS } from './data/sampleComponents';
 import './App.css';
 
-// VS Code API for PostMessage communication
-declare const acquireVsCodeApi: any;
+// VS Code API
+declare const acquireVsCodeApi: () => any;
 const vscode = acquireVsCodeApi();
 
+// Transform matrix for pan/zoom
+interface Transform {
+	x: number;
+	y: number;
+	scale: number;
+}
+
+// Background pattern types
+type BackgroundPattern = 'grid' | 'dots' | 'plain';
+
 function App() {
-	const [messages, setMessages] = useState<string[]>([]);
+	const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
+	const [pattern, setPattern] = useState<BackgroundPattern>('dots');
+	const [sandboxes, _setSandboxes] = useState<Sandbox[]>([]);
+	const [_sandboxTemplate, setSandboxTemplate] = useState<string | null>(null);
+	const fps = useFPS();
 
-	const sendToExtension = () => {
-		vscode.postMessage({
-			type: 'alert',
-			text: 'Hello from React app!'
-		});
-		addMessage('Sent: Hello from React app!');
+	// Request sandbox template on mount
+	useEffect(() => {
+		console.log('[Canvas] Requesting sandbox template from extension');
+		vscode.postMessage({ type: 'getSandboxTemplate' });
+
+		// Listen for messages from extension
+		const handleMessage = (event: MessageEvent) => {
+			const message = event.data;
+			console.log('[Canvas] Received message from extension:', message.type);
+
+			switch (message.type) {
+				case 'sandboxTemplate':
+					console.log('[Canvas] Sandbox template received');
+					setSandboxTemplate(message.html);
+					break;
+
+				case 'componentReady':
+					console.log('[Canvas] Component ready:', message.componentId);
+
+					// Create new sandbox on canvas
+					const newSandbox: Sandbox = {
+						id: message.componentId,
+						x: 100 + (sandboxes.length * 50), // Offset each new component
+						y: 100 + (sandboxes.length * 50),
+						width: 400,
+						height: 400,
+						sandboxMessage: message.sandboxMessage
+					};
+
+					_setSandboxes(prev => [...prev, newSandbox]);
+					console.log('[Canvas] Sandbox added to canvas:', newSandbox.id);
+					break;
+
+				case 'componentUpdate':
+					console.log('[Canvas] Component update:', message.componentId);
+					// TODO: Send update message to existing sandbox iframe
+					break;
+			}
+		};
+
+		window.addEventListener('message', handleMessage);
+		return () => window.removeEventListener('message', handleMessage);
+	}, []);
+
+	// Zoom controls
+	const handleZoomIn = () => {
+		setTransform(prev => ({ ...prev, scale: Math.min(10, prev.scale * 1.2) }));
 	};
 
-	const testLog = () => {
-		vscode.postMessage({
-			type: 'log',
-			text: 'React app console test'
-		});
-		addMessage('Logged to extension console');
+	const handleZoomOut = () => {
+		setTransform(prev => ({ ...prev, scale: Math.max(0.1, prev.scale / 1.2) }));
 	};
 
-	const addMessage = (msg: string) => {
-		setMessages(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+	const handleResetView = () => {
+		setTransform({ x: 0, y: 0, scale: 1 });
+	};
+
+	// Pattern toggle
+	const handleTogglePattern = () => {
+		const patterns: BackgroundPattern[] = ['grid', 'dots', 'plain'];
+		const currentIndex = patterns.indexOf(pattern);
+		const nextIndex = (currentIndex + 1) % patterns.length;
+		setPattern(patterns[nextIndex]);
+	};
+
+	// Load sample component
+	const handleLoadSample = (sampleIndex: number) => {
+		const sample = SAMPLE_COMPONENTS[sampleIndex];
+		if (!sample) {
+			console.error('[Canvas] Sample not found:', sampleIndex);
+			return;
+		}
+
+		console.log('[Canvas] Loading sample component:', sample.name);
+
+		// Send component to extension for processing
+		vscode.postMessage({
+			type: 'loadComponent',
+			component: {
+				id: sample.id,
+				code: sample.code,
+				dependencies: sample.dependencies
+			}
+		});
 	};
 
 	return (
 		<div className="app">
-			<header>
-				<h1>Roopik Canvas</h1>
-				<p>React + Vite + PostMessage working!</p>
-			</header>
+			<FloatingToolbar tabName="Canvas" onLoadSample={handleLoadSample} />
 
-			<div className="controls">
-				<button onClick={sendToExtension}>
-					Send Message to Extension
-				</button>
-				<button onClick={testLog}>
-					Log to Console
-				</button>
-			</div>
+			<InfiniteCanvas
+				sandboxes={sandboxes}
+				transform={transform}
+				pattern={pattern}
+				onTransformChange={setTransform}
+			/>
 
-			<div className="messages">
-				<h3>Activity Log:</h3>
-				{messages.length === 0 ? (
-					<p>Click buttons to test communication...</p>
-				) : (
-					<ul>
-						{messages.map((msg, i) => (
-							<li key={i}>{msg}</li>
-						))}
-					</ul>
-				)}
-			</div>
-
-			<div className="info">
-				<p>This is a React app running inside VS Code webview</p>
-				<p>Built with Vite for hot reload during development</p>
-			</div>
+			<StatusBar
+				transform={transform}
+				fps={fps}
+				sandboxCount={sandboxes.length}
+				pattern={pattern}
+				onZoomIn={handleZoomIn}
+				onZoomOut={handleZoomOut}
+				onResetView={handleResetView}
+				onTogglePattern={handleTogglePattern}
+			/>
 		</div>
 	);
 }

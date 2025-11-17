@@ -6,6 +6,9 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { ConfigManager } from './config';
+import { PreviewManager } from './preview/core/PreviewManager';
+import { ComponentSandbox } from './preview/renderer/ComponentSandbox';
+import type { ComponentSource } from './preview/core/types';
 
 /**
  * Canvas State Interface
@@ -33,9 +36,25 @@ export class CanvasPanel {
 	// ID-based map instead of global singleton
 	private static panels: Map<string, CanvasPanel> = new Map();
 
+	// Preview Manager (Mode 1 - import/const translator)
+	private static previewManager: PreviewManager | null = null;
+
+	// Component Sandbox (Mode 1 - iframe renderer)
+	private static componentSandbox: ComponentSandbox | null = null;
+
 	// Event emitter for canvas open/close events
 	private static readonly onDidChangePanelsEmitter = new vscode.EventEmitter<void>();
 	public static readonly onDidChangePanels = CanvasPanel.onDidChangePanelsEmitter.event;
+
+	/**
+	 * Initialize the Mode 1 preview system
+	 * Called once during extension activation
+	 */
+	public static initializePreviewSystem(context: vscode.ExtensionContext) {
+		CanvasPanel.previewManager = new PreviewManager();
+		CanvasPanel.componentSandbox = new ComponentSandbox(context);
+		console.log('[CanvasPanel] Mode 1 preview system initialized');
+	}
 
 	private readonly _panel: vscode.WebviewPanel;
 	private _disposables: vscode.Disposable[] = [];
@@ -495,7 +514,7 @@ export class CanvasPanel {
 
 		// Handle messages from the webview
 		this._panel.webview.onDidReceiveMessage(
-			message => {
+			async message => {
 				switch (message.type) {
 					case 'alert':
 						vscode.window.showInformationMessage(message.text);
@@ -508,6 +527,15 @@ export class CanvasPanel {
 						break;
 					case 'error':
 						this.handleError(message.error);
+						break;
+					case 'loadComponent':
+						await this.handleLoadComponent(message.component);
+						break;
+					case 'updateComponent':
+						await this.handleUpdateComponent(message.componentId, message.code);
+						break;
+					case 'getSandboxTemplate':
+						await this.handleGetSandboxTemplate();
 						break;
 				}
 			},
@@ -589,6 +617,105 @@ export class CanvasPanel {
 		this.saveState(this.canvasState);
 	}
 
+	/**
+	 * Handle component load (Mode 1 - AI generated component)
+	 * Receives import-based code with manifest, transforms it, sends session code to webview
+	 */
+	private async handleLoadComponent(component: ComponentSource) {
+		if (!CanvasPanel.previewManager || !CanvasPanel.componentSandbox) {
+			console.error('[CanvasPanel] Preview system not initialized');
+			return;
+		}
+
+		try {
+			console.log(`[Canvas ${this.canvasId}] Loading component ${component.id}`);
+
+			// Parse dependency manifest from code
+			const dependencies = CanvasPanel.previewManager.parseDependencyManifest(component.code);
+			const componentSource: ComponentSource = {
+				...component,
+				dependencies
+			};
+
+			// Transform to session code (import → const)
+			const sessionCode = CanvasPanel.previewManager.transformToSessionCode(componentSource);
+
+			// Create init message for sandbox
+			const sandboxMessage = CanvasPanel.componentSandbox.createInitMessage(sessionCode);
+
+			console.log(`[Canvas ${this.canvasId}] Component transformed, sending to webview`);
+
+			// Send session code to webview
+			this._panel.webview.postMessage({
+				type: 'componentReady',
+				componentId: component.id,
+				sandboxMessage: sandboxMessage
+			});
+		} catch (error) {
+			console.error(`[Canvas ${this.canvasId}] Failed to load component:`, error);
+			this.handleError(error);
+		}
+	}
+
+	/**
+	 * Handle component update (Mode 1 - hot reload)
+	 * For live editing without reloading CDN scripts
+	 */
+	private async handleUpdateComponent(componentId: string, code: string) {
+		if (!CanvasPanel.componentSandbox) {
+			console.error('[CanvasPanel] Preview system not initialized');
+			return;
+		}
+
+		try {
+			console.log(`[Canvas ${this.canvasId}] Updating component ${componentId}`);
+
+			// Create update message (no CDN reload)
+			const sandboxMessage = CanvasPanel.componentSandbox.createUpdateMessage(code);
+
+			// Send update to webview
+			this._panel.webview.postMessage({
+				type: 'componentUpdate',
+				componentId: componentId,
+				sandboxMessage: sandboxMessage
+			});
+
+			console.log(`[Canvas ${this.canvasId}] Component update sent for hot-reload`);
+		} catch (error) {
+			console.error(`[Canvas ${this.canvasId}] Failed to update component:`, error);
+			this.handleError(error);
+		}
+	}
+
+	/**
+	 * Handle request for sandbox template
+	 * Sends the sandbox_template.html content to webview
+	 */
+	private async handleGetSandboxTemplate() {
+		if (!CanvasPanel.componentSandbox) {
+			console.error('[CanvasPanel] Preview system not initialized');
+			return;
+		}
+
+		try {
+			console.log(`[Canvas ${this.canvasId}] Fetching sandbox template`);
+
+			// Get sandbox template HTML
+			const templateHtml = await CanvasPanel.componentSandbox.getSandboxTemplate();
+
+			// Send to webview
+			this._panel.webview.postMessage({
+				type: 'sandboxTemplate',
+				html: templateHtml
+			});
+
+			console.log(`[Canvas ${this.canvasId}] Sandbox template sent to webview`);
+		} catch (error) {
+			console.error(`[Canvas ${this.canvasId}] Failed to get sandbox template:`, error);
+			this.handleError(error);
+		}
+	}
+
 	public dispose() {
 		console.log(`[Canvas ${this.canvasId}] Disposing...`);
 
@@ -633,12 +760,23 @@ export class CanvasPanel {
 			vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'build', 'assets', 'index.css')
 		);
 
+		// CSP updated to allow unpkg.com and unsafe-eval for Babel Standalone
+		const csp = `
+			default-src 'none';
+			style-src ${webview.cspSource} 'unsafe-inline';
+			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https://unpkg.com;
+			font-src ${webview.cspSource};
+			img-src ${webview.cspSource} data:;
+			connect-src ${webview.cspSource} https://unpkg.com;
+			frame-src ${webview.cspSource} data: blob:;
+		`;
+
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource};">
+	<meta http-equiv="Content-Security-Policy" content="${csp.replace(/\s+/g, ' ').trim()}">
 	<style>
 		/* VS Code CSS variables are automatically available in webviews */
 		body {
