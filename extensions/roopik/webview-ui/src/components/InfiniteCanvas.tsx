@@ -50,6 +50,11 @@ export function InfiniteCanvas({
 	const [sandboxDragStart, setSandboxDragStart] = useState({ x: 0, y: 0 });
 	const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
+	// For smooth touchpad zoom with accumulation
+	const accumulatedDeltaRef = useRef(0);
+	const lastZoomTimeRef = useRef(0);
+	const zoomCursorPosRef = useRef({ x: 0, y: 0 });
+
 	// Mouse down - start panning
 	const handleMouseDown = (e: React.MouseEvent) => {
 		if (e.button === 0 || e.button === 1) {
@@ -104,15 +109,64 @@ export function InfiniteCanvas({
 	const handleWheel = (e: React.WheelEvent) => {
 		e.preventDefault();
 
-		const delta = -e.deltaY;
-		const zoomIntensity = 0.001;
-		const newScale = Math.max(0.1, Math.min(10, transform.scale + delta * zoomIntensity));
+		// Detect if this is a pinch gesture (ctrlKey is set for pinch zoom)
+		const isPinch = e.ctrlKey;
 
-		// Zoom towards mouse cursor
 		const rect = canvasRef.current?.getBoundingClientRect();
-		if (rect) {
-			const mouseX = e.clientX - rect.left;
-			const mouseY = e.clientY - rect.top;
+		if (!rect) return;
+
+		const mouseX = e.clientX - rect.left;
+		const mouseY = e.clientY - rect.top;
+
+		// Store cursor position for accumulated zoom
+		zoomCursorPosRef.current = { x: mouseX, y: mouseY };
+
+		let delta = -e.deltaY;
+
+		// Normalize delta based on deltaMode
+		if (e.deltaMode === 1) {
+			delta *= 33; // Line mode (Firefox)
+		} else if (e.deltaMode === 2) {
+			delta *= 100; // Page mode
+		}
+
+		if (isPinch) {
+			// For touchpad pinch: accumulate deltas and apply in discrete steps
+			const now = Date.now();
+			const timeSinceLastZoom = now - lastZoomTimeRef.current;
+
+			// Accumulate the delta
+			accumulatedDeltaRef.current += delta;
+
+			// Apply zoom in 10% steps (0.1 scale change threshold)
+			// Adjusted threshold for touchpad sensitivity
+			const threshold = 100; // Adjust this to control step size
+			const steps = Math.floor(Math.abs(accumulatedDeltaRef.current) / threshold);
+
+			if (steps > 0 || timeSinceLastZoom > 150) {
+				// Apply zoom in discrete steps
+				const direction = accumulatedDeltaRef.current > 0 ? 1 : -1;
+				const scaleStep = 0.1; // 10% zoom per step
+				const scaleChange = direction * scaleStep * (steps > 0 ? steps : 1);
+
+				const newScale = Math.max(0.1, Math.min(10, transform.scale + scaleChange));
+
+				const scaleRatio = newScale / transform.scale;
+				const newX = mouseX - (mouseX - transform.x) * scaleRatio;
+				const newY = mouseY - (mouseY - transform.y) * scaleRatio;
+
+				onTransformChange({ x: newX, y: newY, scale: newScale });
+
+				// Reset accumulator after applying
+				if (steps > 0) {
+					accumulatedDeltaRef.current = accumulatedDeltaRef.current % threshold;
+				}
+				lastZoomTimeRef.current = now;
+			}
+		} else {
+			// For mouse wheel: immediate discrete steps (like before)
+			const zoomIntensity = 0.001;
+			const newScale = Math.max(0.1, Math.min(10, transform.scale + delta * zoomIntensity));
 
 			const scaleRatio = newScale / transform.scale;
 			const newX = mouseX - (mouseX - transform.x) * scaleRatio;
