@@ -3,16 +3,21 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import type { Sandbox } from '../types';
 
 interface SandboxPreviewProps {
 	sandbox: Sandbox;
-	onClick?: () => void;
+	isSelected: boolean;
+	isFocused: boolean;
+	onMouseDown: (e: React.MouseEvent) => void;
+	onClick: () => void;
+	onDoubleClick: () => void;
 }
 
-export function SandboxPreview({ sandbox, onClick }: SandboxPreviewProps) {
+export function SandboxPreview({ sandbox, isSelected, isFocused, onMouseDown, onClick, onDoubleClick }: SandboxPreviewProps) {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
+	const [isHovered, setIsHovered] = useState(false);
 
 	// Send sandboxMessage to iframe when it loads
 	useEffect(() => {
@@ -167,27 +172,128 @@ export function SandboxPreview({ sandbox, onClick }: SandboxPreviewProps) {
 				top: sandbox.y,
 				width: sandbox.width,
 				height: sandbox.height,
-				border: '1px solid rgba(255, 255, 255, 0.1)',
-				borderRadius: '8px',
-				overflow: 'hidden',
-				background: 'white',
-				boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+				zIndex: sandbox.zIndex,
+				padding: '40px 120px', // Less top/bottom, 5x more left/right
+				margin: '20px', // Add margin between containers
+				display: 'flex',
+				flexDirection: 'column',
+				background: isSelected
+					? 'linear-gradient(135deg, rgba(30, 30, 35, 0.95) 0%, rgba(20, 20, 25, 0.95) 100%)'
+					: 'linear-gradient(135deg, rgba(40, 40, 45, 0.85) 0%, rgba(30, 30, 35, 0.85) 100%)',
+				backdropFilter: 'blur(20px) saturate(180%)',
+				WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+				borderRadius: '16px',
+				border: isFocused
+					? '2px solid rgba(0, 122, 204, 0.6)'
+					: isSelected
+					? '2px solid rgba(75, 85, 190, 0.6)'
+					: isHovered
+					? '2px solid rgba(255, 165, 0, 0.5)'
+					: '1px solid rgba(255, 255, 255, 0.1)',
+				boxShadow: isFocused
+					? '0 0 0 4px rgba(0, 122, 204, 0.15), 0 20px 60px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+					: isSelected
+					? '0 0 0 4px rgba(75, 85, 190, 0.15), 0 20px 60px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 20px rgba(75, 85, 190, 0.2)'
+					: isHovered
+					? '0 0 0 4px rgba(255, 165, 0, 0.1), 0 16px 48px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 20px rgba(255, 165, 0, 0.2)'
+					: '0 8px 32px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05)',
+				transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+				cursor: 'pointer', // Show it's clickable
 			}}
-			onClick={onClick}
+			onMouseEnter={() => setIsHovered(true)}
+			onMouseLeave={() => setIsHovered(false)}
+			onClick={(e) => {
+				// Select on click anywhere on container background (not label, not iframe)
+				if (e.target === e.currentTarget) {
+					onClick();
+				}
+			}}
+			onDoubleClick={(e) => {
+				// Focus mode - double-click anywhere on container to zoom in
+				if (e.target === e.currentTarget) {
+					onDoubleClick();
+				}
+			}}
 		>
-			{/* Sandbox iframe with inline HTML */}
-			<iframe
-				ref={iframeRef}
-				className="sandbox-iframe"
-				srcDoc={sandboxHTML}
-				sandbox="allow-scripts allow-same-origin"
-				title={sandbox.id}
+			{/* Sandbox ID label - top left */}
+			<div
+				className="sandbox-label"
 				style={{
-					width: '100%',
-					height: '100%',
-					border: 'none',
+					position: 'absolute',
+					top: '16px',
+					left: '20px',
+					display: 'flex',
+					alignItems: 'center',
+					gap: '8px',
+					cursor: 'move',
+					userSelect: 'none',
+					zIndex: 10,
 				}}
-			/>
+				onMouseDown={(e) => {
+					e.stopPropagation();
+					onMouseDown(e);
+				}}
+			>
+				{/* Drag icon */}
+				<svg
+					width="14"
+					height="14"
+					viewBox="0 0 16 16"
+					fill="none"
+					style={{
+						opacity: isFocused ? 0.6 : isSelected ? 0.6 : 0.3,
+						flexShrink: 0,
+						color: isFocused ? '#007acc' : isSelected ? '#5865f2' : '#ffffff'
+					}}
+				>
+					<circle cx="4" cy="4" r="1.5" fill="currentColor" />
+					<circle cx="12" cy="4" r="1.5" fill="currentColor" />
+					<circle cx="4" cy="8" r="1.5" fill="currentColor" />
+					<circle cx="12" cy="8" r="1.5" fill="currentColor" />
+					<circle cx="4" cy="12" r="1.5" fill="currentColor" />
+					<circle cx="12" cy="12" r="1.5" fill="currentColor" />
+				</svg>
+
+				<span
+					style={{
+						fontSize: '12px',
+						fontWeight: 600,
+						color: isFocused ? '#4fc3f7' : isSelected ? '#7c87f7' : 'rgba(255, 255, 255, 0.6)',
+						letterSpacing: '0.05em',
+						textTransform: 'uppercase',
+					}}
+				>
+					{sandbox.id}
+				</span>
+			</div>
+
+			{/* Content area with iframe */}
+			<div
+				style={{
+					flex: 1,
+					position: 'relative',
+					background: '#ffffff',
+					borderRadius: '8px',
+					overflow: 'hidden',
+					boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.1)',
+					marginTop: '10px', // Space for label
+				}}
+			>
+				<iframe
+					ref={iframeRef}
+					className="sandbox-iframe"
+					srcDoc={sandboxHTML}
+					sandbox="allow-scripts allow-same-origin"
+					title={sandbox.id}
+					style={{
+						width: '100%',
+						height: '100%',
+						border: 'none',
+						display: 'block',
+						pointerEvents: 'auto',
+					}}
+				/>
+			</div>
 		</div>
 	);
 }

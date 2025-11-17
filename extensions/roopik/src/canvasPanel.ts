@@ -18,7 +18,9 @@ export interface CanvasState {
 	id: string;
 	name: string;
 	components: any[]; // Will be typed properly when we build component system
+	sandboxes: any[]; // Live sandbox instances on canvas
 	layout: any; // Will be typed properly later
+	viewport?: { x: number; y: number; scale: number }; // Canvas viewport transform
 	createdAt: number;
 	updatedAt: number;
 }
@@ -537,6 +539,9 @@ export class CanvasPanel {
 					case 'getSandboxTemplate':
 						await this.handleGetSandboxTemplate();
 						break;
+					case 'saveSandboxes':
+						await this.handleSaveSandboxes(message.sandboxes);
+						break;
 				}
 			},
 			null,
@@ -566,6 +571,7 @@ export class CanvasPanel {
 			id: this.canvasId,
 			name: canvasName || this.canvasId,
 			components: [],
+			sandboxes: [],
 			layout: {},
 			createdAt: Date.now(),
 			updatedAt: Date.now()
@@ -712,6 +718,37 @@ export class CanvasPanel {
 			console.log(`[Canvas ${this.canvasId}] Sandbox template sent to webview`);
 		} catch (error) {
 			console.error(`[Canvas ${this.canvasId}] Failed to get sandbox template:`, error);
+			this.handleError(error);
+		}
+	}
+
+	/**
+	 * Handle sandbox state updates from webview
+	 * Saves sandbox positions, sizes, etc. to canvas state
+	 */
+	private async handleSaveSandboxes(data: { sandboxes: any[], viewport?: any }) {
+		try {
+			const sandboxes = data.sandboxes || data; // Support both new and old format
+			console.log(`[Canvas ${this.canvasId}] Saving ${Array.isArray(sandboxes) ? sandboxes.length : 0} sandboxes`);
+
+			// Update canvas state with new sandboxes
+			if (Array.isArray(sandboxes)) {
+				this.canvasState.sandboxes = sandboxes;
+			}
+
+			// Save viewport if provided
+			if (data.viewport) {
+				this.canvasState.viewport = data.viewport;
+			}
+
+			this.canvasState.updatedAt = Date.now();
+
+			// Persist to disk
+			this.saveState(this.canvasState);
+
+			console.log(`[Canvas ${this.canvasId}] State saved successfully`);
+		} catch (error) {
+			console.error(`[Canvas ${this.canvasId}] Failed to save state:`, error);
 			this.handleError(error);
 		}
 	}

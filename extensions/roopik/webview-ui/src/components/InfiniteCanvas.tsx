@@ -17,20 +17,32 @@ interface Transform {
 
 interface InfiniteCanvasProps {
 	sandboxes: Sandbox[];
+	selectedSandboxId: string | null;
+	focusedSandboxId: string | null;
 	transform: Transform;
 	pattern: BackgroundPattern;
 	onTransformChange: (transform: Transform) => void;
+	onSandboxClick: (id: string) => void;
+	onSandboxDoubleClick: (id: string) => void;
+	onSandboxUpdate: (id: string, updates: Partial<Sandbox>) => void;
 }
 
 export function InfiniteCanvas({
 	sandboxes,
+	selectedSandboxId,
+	focusedSandboxId,
 	transform,
 	pattern,
-	onTransformChange
+	onTransformChange,
+	onSandboxClick,
+	onSandboxDoubleClick,
+	onSandboxUpdate
 }: InfiniteCanvasProps) {
 	const canvasRef = useRef<HTMLDivElement>(null);
 	const [isPanning, setIsPanning] = useState(false);
 	const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+	const [draggingSandbox, setDraggingSandbox] = useState<string | null>(null);
+	const [sandboxDragStart, setSandboxDragStart] = useState({ x: 0, y: 0 });
 
 	// Mouse down - start panning
 	const handleMouseDown = (e: React.MouseEvent) => {
@@ -41,18 +53,41 @@ export function InfiniteCanvas({
 		}
 	};
 
-	// Mouse move - pan the canvas
+	// Mouse move - pan canvas or drag sandbox
 	const handleMouseMove = (e: React.MouseEvent) => {
-		if (isPanning) {
+		if (draggingSandbox) {
+			// Dragging a sandbox
+			const deltaX = (e.clientX - sandboxDragStart.x) / transform.scale;
+			const deltaY = (e.clientY - sandboxDragStart.y) / transform.scale;
+
+			const sandbox = sandboxes.find(s => s.id === draggingSandbox);
+			if (sandbox) {
+				onSandboxUpdate(draggingSandbox, {
+					x: sandbox.x + deltaX,
+					y: sandbox.y + deltaY
+				});
+			}
+			setSandboxDragStart({ x: e.clientX, y: e.clientY });
+		} else if (isPanning) {
+			// Panning canvas
 			const newX = e.clientX - dragStart.x;
 			const newY = e.clientY - dragStart.y;
 			onTransformChange({ ...transform, x: newX, y: newY });
 		}
 	};
 
-	// Mouse up - stop panning
+	// Mouse up - stop panning or dragging
 	const handleMouseUp = () => {
 		setIsPanning(false);
+		setDraggingSandbox(null);
+	};
+
+	// Handle sandbox mouse down (for dragging)
+	const handleSandboxMouseDown = (e: React.MouseEvent, sandboxId: string) => {
+		e.stopPropagation(); // Prevent canvas panning
+		setDraggingSandbox(sandboxId);
+		setSandboxDragStart({ x: e.clientX, y: e.clientY });
+		onSandboxClick(sandboxId); // Also select it
 	};
 
 	// Wheel - zoom in/out
@@ -124,7 +159,15 @@ export function InfiniteCanvas({
 			>
 				{/* Render sandboxes as iframes */}
 				{sandboxes.map((sandbox) => (
-					<SandboxPreview key={sandbox.id} sandbox={sandbox} />
+					<SandboxPreview
+						key={sandbox.id}
+						sandbox={sandbox}
+						isSelected={sandbox.id === selectedSandboxId}
+						isFocused={sandbox.id === focusedSandboxId}
+						onMouseDown={(e) => handleSandboxMouseDown(e, sandbox.id)}
+						onClick={() => onSandboxClick(sandbox.id)}
+						onDoubleClick={() => onSandboxDoubleClick(sandbox.id)}
+					/>
 				))}
 			</div>
 		</div>

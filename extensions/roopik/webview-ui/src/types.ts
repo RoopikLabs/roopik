@@ -11,6 +11,7 @@ export interface Sandbox {
 	y: number;                     // Canvas Y position
 	width: number;                 // Sandbox width
 	height: number;                // Sandbox height
+	zIndex: number;                // Stacking order (higher = on top)
 	sandboxMessage: {              // Message to send to iframe
 		type: 'init' | 'update';
 		code: string;              // Transformed code (const-based)
