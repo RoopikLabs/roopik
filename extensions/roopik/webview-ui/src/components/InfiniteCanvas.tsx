@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import type { Sandbox } from '../types';
 import { SandboxPreview } from './SandboxPreview';
 import { isLightColor } from '../utils/colors';
@@ -55,6 +55,75 @@ export function InfiniteCanvas({
 	const lastZoomTimeRef = useRef(0);
 	const zoomCursorPosRef = useRef({ x: 0, y: 0 });
 
+	// Add native wheel event listener to prevent passive event listener warning
+	useEffect(() => {
+		const canvas = canvasRef.current;
+		if (!canvas) return;
+
+		const handleNativeWheel = (e: WheelEvent) => {
+			e.preventDefault();
+
+			// Detect if this is a pinch gesture
+			const isPinch = e.ctrlKey;
+			const rect = canvas.getBoundingClientRect();
+			const mouseX = e.clientX - rect.left;
+			const mouseY = e.clientY - rect.top;
+
+			zoomCursorPosRef.current = { x: mouseX, y: mouseY };
+
+			let delta = -e.deltaY;
+
+			// Normalize delta
+			if (e.deltaMode === 1) delta *= 33;
+			else if (e.deltaMode === 2) delta *= 100;
+
+			if (isPinch) {
+				// Accumulate for touchpad
+				const now = Date.now();
+				const timeSinceLastZoom = now - lastZoomTimeRef.current;
+				accumulatedDeltaRef.current += delta;
+
+				const threshold = 80; // Lower threshold for smoother response
+				const steps = Math.floor(Math.abs(accumulatedDeltaRef.current) / threshold);
+
+				if (steps > 0 || timeSinceLastZoom > 100) {
+					const direction = accumulatedDeltaRef.current > 0 ? 1 : -1;
+					const scaleStep = 0.1; // Back to 10% steps to match mouse wheel
+					const scaleChange = direction * scaleStep * (steps > 0 ? steps : 1);
+
+					const newScale = Math.max(0.1, Math.min(10, transform.scale + scaleChange));
+					const scaleRatio = newScale / transform.scale;
+					const newX = mouseX - (mouseX - transform.x) * scaleRatio;
+					const newY = mouseY - (mouseY - transform.y) * scaleRatio;
+
+					onTransformChange({ x: newX, y: newY, scale: newScale });
+
+					if (steps > 0) {
+						accumulatedDeltaRef.current = accumulatedDeltaRef.current % threshold;
+					}
+					lastZoomTimeRef.current = now;
+				}
+			} else {
+				// Mouse wheel: immediate discrete steps
+				const zoomIntensity = 0.001;
+				const scaleChange = delta * zoomIntensity;
+				const newScale = Math.max(0.1, Math.min(10, transform.scale + scaleChange));
+				const scaleRatio = newScale / transform.scale;
+				const newX = mouseX - (mouseX - transform.x) * scaleRatio;
+				const newY = mouseY - (mouseY - transform.y) * scaleRatio;
+
+				onTransformChange({ x: newX, y: newY, scale: newScale });
+			}
+		};
+
+		// Add with { passive: false } to allow preventDefault
+		canvas.addEventListener('wheel', handleNativeWheel, { passive: false });
+
+		return () => {
+			canvas.removeEventListener('wheel', handleNativeWheel);
+		};
+	}, [transform, onTransformChange]);
+
 	// Mouse down - start panning
 	const handleMouseDown = (e: React.MouseEvent) => {
 		if (e.button === 0 || e.button === 1) {
@@ -105,77 +174,6 @@ export function InfiniteCanvas({
 		onSandboxClick(sandboxId); // Also select it
 	};
 
-	// Wheel - zoom in/out
-	const handleWheel = (e: React.WheelEvent) => {
-		e.preventDefault();
-
-		// Detect if this is a pinch gesture (ctrlKey is set for pinch zoom)
-		const isPinch = e.ctrlKey;
-
-		const rect = canvasRef.current?.getBoundingClientRect();
-		if (!rect) return;
-
-		const mouseX = e.clientX - rect.left;
-		const mouseY = e.clientY - rect.top;
-
-		// Store cursor position for accumulated zoom
-		zoomCursorPosRef.current = { x: mouseX, y: mouseY };
-
-		let delta = -e.deltaY;
-
-		// Normalize delta based on deltaMode
-		if (e.deltaMode === 1) {
-			delta *= 33; // Line mode (Firefox)
-		} else if (e.deltaMode === 2) {
-			delta *= 100; // Page mode
-		}
-
-		if (isPinch) {
-			// For touchpad pinch: accumulate deltas and apply in discrete steps
-			const now = Date.now();
-			const timeSinceLastZoom = now - lastZoomTimeRef.current;
-
-			// Accumulate the delta
-			accumulatedDeltaRef.current += delta;
-
-			// Apply zoom in 10% steps (0.1 scale change threshold)
-			// Adjusted threshold for touchpad sensitivity
-			const threshold = 100; // Adjust this to control step size
-			const steps = Math.floor(Math.abs(accumulatedDeltaRef.current) / threshold);
-
-			if (steps > 0 || timeSinceLastZoom > 150) {
-				// Apply zoom in discrete steps
-				const direction = accumulatedDeltaRef.current > 0 ? 1 : -1;
-				const scaleStep = 0.1; // 10% zoom per step
-				const scaleChange = direction * scaleStep * (steps > 0 ? steps : 1);
-
-				const newScale = Math.max(0.1, Math.min(10, transform.scale + scaleChange));
-
-				const scaleRatio = newScale / transform.scale;
-				const newX = mouseX - (mouseX - transform.x) * scaleRatio;
-				const newY = mouseY - (mouseY - transform.y) * scaleRatio;
-
-				onTransformChange({ x: newX, y: newY, scale: newScale });
-
-				// Reset accumulator after applying
-				if (steps > 0) {
-					accumulatedDeltaRef.current = accumulatedDeltaRef.current % threshold;
-				}
-				lastZoomTimeRef.current = now;
-			}
-		} else {
-			// For mouse wheel: immediate discrete steps (like before)
-			const zoomIntensity = 0.001;
-			const newScale = Math.max(0.1, Math.min(10, transform.scale + delta * zoomIntensity));
-
-			const scaleRatio = newScale / transform.scale;
-			const newX = mouseX - (mouseX - transform.x) * scaleRatio;
-			const newY = mouseY - (mouseY - transform.y) * scaleRatio;
-
-			onTransformChange({ x: newX, y: newY, scale: newScale });
-		}
-	};
-
 	// Generate background pattern based on type
 	const getBackgroundStyle = (): React.CSSProperties => {
 		const gridSize = 20 * transform.scale;
@@ -219,7 +217,6 @@ export function InfiniteCanvas({
 			onMouseMove={handleMouseMove}
 			onMouseUp={handleMouseUp}
 			onMouseLeave={handleMouseUp}
-			onWheel={handleWheel}
 			style={{
 				...getBackgroundStyle(),
 				backgroundColor: backgroundColor,
