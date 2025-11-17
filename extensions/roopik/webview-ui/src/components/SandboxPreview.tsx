@@ -413,31 +413,9 @@ export function SandboxPreview({ sandbox, isSelected, isFocused, isDragging = fa
 						height: '100%',
 						border: 'none',
 						display: 'block',
-						visibility: isDragging ? 'hidden' : 'visible',
 						pointerEvents: isDragging ? 'none' : 'auto',
 					}}
 				/>
-				{isDragging && (
-					<div
-						style={{
-							position: 'absolute',
-							top: 0,
-							left: 0,
-							right: 0,
-							bottom: 0,
-							background: 'linear-gradient(135deg, rgba(100, 150, 255, 0.08), rgba(150, 100, 255, 0.08))',
-							display: 'flex',
-							alignItems: 'center',
-							justifyContent: 'center',
-							color: 'rgba(100, 120, 200, 0.6)',
-							fontSize: '13px',
-							fontWeight: 500,
-							pointerEvents: 'none',
-						}}
-					>
-						⋯
-					</div>
-				)}
 			</div>
 		</div>
 	);
