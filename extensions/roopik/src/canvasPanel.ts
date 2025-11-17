@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { ConfigManager } from './config';
+import { SandboxServerManager } from './sandboxServer';
 
 /**
  * Canvas State Interface
@@ -33,9 +34,20 @@ export class CanvasPanel {
 	// ID-based map instead of global singleton
 	private static panels: Map<string, CanvasPanel> = new Map();
 
+	// Sandbox server manager for Vite dev servers
+	private static sandboxServerManager: SandboxServerManager | null = null;
+
 	// Event emitter for canvas open/close events
 	private static readonly onDidChangePanelsEmitter = new vscode.EventEmitter<void>();
 	public static readonly onDidChangePanels = CanvasPanel.onDidChangePanelsEmitter.event;
+
+	/**
+	 * Set the SandboxServerManager instance
+	 * Called once during extension activation
+	 */
+	public static setSandboxServerManager(manager: SandboxServerManager) {
+		CanvasPanel.sandboxServerManager = manager;
+	}
 
 	private readonly _panel: vscode.WebviewPanel;
 	private _disposables: vscode.Disposable[] = [];
@@ -495,7 +507,7 @@ export class CanvasPanel {
 
 		// Handle messages from the webview
 		this._panel.webview.onDidReceiveMessage(
-			message => {
+			async message => {
 				switch (message.type) {
 					case 'alert':
 						vscode.window.showInformationMessage(message.text);
@@ -508,6 +520,12 @@ export class CanvasPanel {
 						break;
 					case 'error':
 						this.handleError(message.error);
+						break;
+					case 'createSandbox':
+						await this.handleCreateSandbox(message.sandbox);
+						break;
+					case 'updateSandboxFiles':
+						await this.handleUpdateSandboxFiles(message.sandboxId, message.files);
 						break;
 				}
 			},
@@ -587,6 +605,61 @@ export class CanvasPanel {
 
 		// Save state before potential crash
 		this.saveState(this.canvasState);
+	}
+
+	/**
+	 * Handle sandbox creation - starts Vite dev server
+	 */
+	private async handleCreateSandbox(sandbox: any) {
+		if (!CanvasPanel.sandboxServerManager) {
+			console.error('[CanvasPanel] SandboxServerManager not initialized');
+			return;
+		}
+
+		try {
+			console.log(`[Canvas ${this.canvasId}] Creating Vite dev server for sandbox ${sandbox.id}`);
+
+			// Create Vite dev server for the sandbox
+			const devServerUrl = await CanvasPanel.sandboxServerManager.createSandboxServer(
+				sandbox.id,
+				sandbox.files,
+				sandbox.entryPoint
+			);
+
+			console.log(`[Canvas ${this.canvasId}] Vite dev server created at ${devServerUrl}`);
+
+			// Send dev server URL back to webview
+			this._panel.webview.postMessage({
+				type: 'sandboxServerReady',
+				sandboxId: sandbox.id,
+				devServerUrl: devServerUrl
+			});
+		} catch (error) {
+			console.error(`[Canvas ${this.canvasId}] Failed to create sandbox server:`, error);
+			this.handleError(error);
+		}
+	}
+
+	/**
+	 * Handle sandbox file updates - triggers HMR
+	 */
+	private async handleUpdateSandboxFiles(sandboxId: string, files: { [path: string]: string }) {
+		if (!CanvasPanel.sandboxServerManager) {
+			console.error('[CanvasPanel] SandboxServerManager not initialized');
+			return;
+		}
+
+		try {
+			console.log(`[Canvas ${this.canvasId}] Updating files for sandbox ${sandboxId}`);
+
+			// Update files - Vite will automatically trigger HMR
+			await CanvasPanel.sandboxServerManager.updateSandboxFiles(sandboxId, files);
+
+			console.log(`[Canvas ${this.canvasId}] Files updated, HMR triggered for ${sandboxId}`);
+		} catch (error) {
+			console.error(`[Canvas ${this.canvasId}] Failed to update sandbox files:`, error);
+			this.handleError(error);
+		}
 	}
 
 	public dispose() {
