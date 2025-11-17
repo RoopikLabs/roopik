@@ -6,6 +6,7 @@
 import { useRef, useState } from 'react';
 import type { Sandbox } from '../types';
 import { SandboxPreview } from './SandboxPreview';
+import { isLightColor } from '../utils/colors';
 
 type BackgroundPattern = 'grid' | 'dots' | 'plain';
 
@@ -122,18 +123,27 @@ export function InfiniteCanvas({
 		const offsetX = transform.x % gridSize;
 		const offsetY = transform.y % gridSize;
 
+		// Use dark pattern for light backgrounds, light pattern for dark backgrounds
+		const isLight = isLightColor(backgroundColor);
+		const patternColor = isLight
+			? 'rgba(0, 0, 0, 0.1)' // Dark pattern for light backgrounds
+			: 'rgba(255, 255, 255, 0.05)'; // Light pattern for dark backgrounds
+		const dotColor = isLight
+			? 'rgba(0, 0, 0, 0.15)' // Dark dots for light backgrounds
+			: 'rgba(255, 255, 255, 0.15)'; // Light dots for dark backgrounds
+
 		if (pattern === 'grid') {
 			return {
 				backgroundImage: `
-					linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-					linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px)
+					linear-gradient(${patternColor} 1px, transparent 1px),
+					linear-gradient(90deg, ${patternColor} 1px, transparent 1px)
 				`,
 				backgroundSize: `${gridSize}px ${gridSize}px`,
 				backgroundPosition: `${offsetX}px ${offsetY}px`,
 			};
 		} else if (pattern === 'dots') {
 			return {
-				backgroundImage: `radial-gradient(circle, rgba(255, 255, 255, 0.15) 1px, transparent 1px)`,
+				backgroundImage: `radial-gradient(circle, ${dotColor} 1px, transparent 1px)`,
 				backgroundSize: `${gridSize}px ${gridSize}px`,
 				backgroundPosition: `${offsetX}px ${offsetY}px`,
 			};

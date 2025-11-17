@@ -43,7 +43,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Restore last session after a delay (wait for VS Code to fully initialize)
 	setTimeout(() => {
-		CanvasPanel.restoreSession(context.extensionUri, workspaceRoot);
+		const preferences = CanvasPanel.restoreSession(context.extensionUri, workspaceRoot);
+		console.log('[Roopik] Session preferences loaded:', preferences);
 
 		// Show dashboard on startup if configured
 		if (config.canvas.showDashboardOnStartup) {

@@ -190,25 +190,25 @@ export function SandboxPreview({ sandbox, isSelected, isFocused, onMouseDown, on
 				display: 'flex',
 				flexDirection: 'column',
 				background: isSelected
-					? 'linear-gradient(135deg, rgba(30, 30, 35, 0.95) 0%, rgba(20, 20, 25, 0.95) 100%)'
-					: 'linear-gradient(135deg, rgba(40, 40, 45, 0.85) 0%, rgba(30, 30, 35, 0.85) 100%)',
-				backdropFilter: 'blur(20px) saturate(180%)',
-				WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-				borderRadius: '16px',
+					? 'linear-gradient(135deg, rgba(30, 30, 35, 0.35) 0%, rgba(20, 20, 25, 0.35) 100%)'
+					: 'linear-gradient(135deg, rgba(40, 40, 45, 0.25) 0%, rgba(30, 30, 35, 0.25) 100%)',
+				backdropFilter: 'blur(60px) saturate(250%) brightness(1.1)',
+				WebkitBackdropFilter: 'blur(60px) saturate(250%) brightness(1.1)',
+				borderRadius: '20px',
 				border: isFocused
-					? '2px solid rgba(0, 122, 204, 0.6)'
+					? '1px solid rgba(0, 122, 204, 0.5)'
 					: isSelected
-					? '2px solid rgba(75, 85, 190, 0.6)'
+					? '1px solid rgba(75, 85, 190, 0.5)'
 					: isHovered
-					? '2px solid rgba(255, 165, 0, 0.5)'
-					: '1px solid rgba(255, 255, 255, 0.1)',
+					? '1px solid rgba(255, 165, 0, 0.45)'
+					: '1px solid rgba(255, 255, 255, 0.2)',
 				boxShadow: isFocused
-					? '0 0 0 4px rgba(0, 122, 204, 0.15), 0 20px 60px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+					? '0 0 0 4px rgba(0, 122, 204, 0.15), 0 32px 80px rgba(0, 0, 0, 0.4), inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(255, 255, 255, 0.05)'
 					: isSelected
-					? '0 0 0 4px rgba(75, 85, 190, 0.15), 0 20px 60px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 20px rgba(75, 85, 190, 0.2)'
+					? '0 0 0 4px rgba(75, 85, 190, 0.15), 0 32px 80px rgba(0, 0, 0, 0.4), inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(255, 255, 255, 0.05), 0 0 32px rgba(75, 85, 190, 0.2)'
 					: isHovered
-					? '0 0 0 4px rgba(255, 165, 0, 0.1), 0 16px 48px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 20px rgba(255, 165, 0, 0.2)'
-					: '0 8px 32px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05)',
+					? '0 0 0 4px rgba(255, 165, 0, 0.1), 0 24px 64px rgba(0, 0, 0, 0.35), inset 0 2px 0 rgba(255, 255, 255, 0.2), inset 0 -2px 0 rgba(255, 255, 255, 0.05), 0 0 32px rgba(255, 165, 0, 0.2)'
+					: '0 12px 48px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2), inset 0 2px 0 rgba(255, 255, 255, 0.15), inset 0 -2px 0 rgba(255, 255, 255, 0.05)',
 				transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
 				cursor: 'pointer', // Show it's clickable
 			}}
@@ -253,9 +253,9 @@ export function SandboxPreview({ sandbox, isSelected, isFocused, onMouseDown, on
 					viewBox="0 0 16 16"
 					fill="none"
 					style={{
-						opacity: isFocused ? 0.6 : isSelected ? 0.6 : 0.3,
+						opacity: 0.7,
 						flexShrink: 0,
-						color: isFocused ? '#007acc' : isSelected ? '#5865f2' : '#ffffff'
+						color: '#ffffff'
 					}}
 				>
 					<circle cx="4" cy="4" r="1.5" fill="currentColor" />
@@ -269,10 +269,11 @@ export function SandboxPreview({ sandbox, isSelected, isFocused, onMouseDown, on
 				<span
 					style={{
 						fontSize: '12px',
-						fontWeight: 600,
-						color: isFocused ? '#4fc3f7' : isSelected ? '#7c87f7' : 'rgba(255, 255, 255, 0.6)',
+						fontWeight: 700,
+						color: '#ffffff',
 						letterSpacing: '0.05em',
 						textTransform: 'uppercase',
+						textShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
 					}}
 				>
 					{sandbox.id}

@@ -24,6 +24,10 @@ declare global {
 			sandboxes?: Sandbox[];
 			viewport?: { x: number; y: number; scale: number };
 		};
+		SESSION_PREFERENCES?: {
+			backgroundColor?: string;
+			backgroundPattern?: string;
+		};
 	}
 }
 
@@ -40,7 +44,7 @@ type BackgroundPattern = 'grid' | 'dots' | 'plain';
 function App() {
 	const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
 	const [pattern, setPattern] = useState<BackgroundPattern>('dots');
-	const [backgroundColor, setBackgroundColor] = useState<string>('#000000');
+	const [backgroundColor, setBackgroundColor] = useState<string>('#1a1a1a');
 	const [sandboxes, _setSandboxes] = useState<Sandbox[]>([]);
 	const [selectedSandboxId, setSelectedSandboxId] = useState<string | null>(null);
 	const [focusedSandboxId, setFocusedSandboxId] = useState<string | null>(null);
@@ -52,6 +56,8 @@ function App() {
 	useEffect(() => {
 		try {
 			const initialState = window.CANVAS_STATE;
+			const preferences = window.SESSION_PREFERENCES;
+
 			if (initialState) {
 				console.log('[Canvas] Loading initial state from extension:', initialState);
 
@@ -68,6 +74,27 @@ function App() {
 				}
 			} else {
 				console.log('[Canvas] No initial state found, starting with empty canvas');
+			}
+
+			// Load session preferences (backgroundColor, backgroundPattern)
+			if (preferences && typeof preferences === 'object') {
+				console.log('[Canvas] Loading session preferences:', preferences);
+
+				// Validate and apply backgroundColor
+				if (preferences.backgroundColor && typeof preferences.backgroundColor === 'string') {
+					// Basic validation: check if it's a hex color
+					if (/^#[0-9A-Fa-f]{6}$/.test(preferences.backgroundColor)) {
+						setBackgroundColor(preferences.backgroundColor);
+					}
+				}
+
+				// Validate and apply backgroundPattern
+				if (preferences.backgroundPattern && typeof preferences.backgroundPattern === 'string') {
+					const validPatterns: BackgroundPattern[] = ['grid', 'dots', 'plain'];
+					if (validPatterns.includes(preferences.backgroundPattern as BackgroundPattern)) {
+						setPattern(preferences.backgroundPattern as BackgroundPattern);
+					}
+				}
 			}
 		} catch (error) {
 			console.error('[Canvas] Failed to load initial state:', error);
@@ -347,7 +374,31 @@ function App() {
 		const patterns: BackgroundPattern[] = ['grid', 'dots', 'plain'];
 		const currentIndex = patterns.indexOf(pattern);
 		const nextIndex = (currentIndex + 1) % patterns.length;
-		setPattern(patterns[nextIndex]);
+		const newPattern = patterns[nextIndex];
+		setPattern(newPattern);
+
+		// Save preference to session
+		vscode.postMessage({
+			type: 'savePreferences',
+			preferences: {
+				backgroundColor,
+				backgroundPattern: newPattern
+			}
+		});
+	};
+
+	// Background color change handler
+	const handleBackgroundColorChange = (color: string) => {
+		setBackgroundColor(color);
+
+		// Save preference to session
+		vscode.postMessage({
+			type: 'savePreferences',
+			preferences: {
+				backgroundColor: color,
+				backgroundPattern: pattern
+			}
+		});
 	};
 
 	// Load sample component
@@ -492,7 +543,7 @@ function App() {
 				onZoomOut={handleZoomOut}
 				onResetView={handleResetView}
 				onTogglePattern={handleTogglePattern}
-				onBackgroundColorChange={setBackgroundColor}
+				onBackgroundColorChange={handleBackgroundColorChange}
 			/>
 
 			{/* Delete confirmation modal */}
