@@ -10,13 +10,15 @@ interface SandboxPreviewProps {
 	sandbox: Sandbox;
 	isSelected: boolean;
 	isFocused: boolean;
+	isDragging?: boolean;
+	dragOffset?: { x: number; y: number };
 	onMouseDown: (e: React.MouseEvent) => void;
 	onClick: () => void;
 	onDoubleClick: () => void;
 	onDelete: () => void;
 }
 
-export function SandboxPreview({ sandbox, isSelected, isFocused, onMouseDown, onClick, onDoubleClick, onDelete }: SandboxPreviewProps) {
+export function SandboxPreview({ sandbox, isSelected, isFocused, isDragging = false, dragOffset, onMouseDown, onClick, onDoubleClick, onDelete }: SandboxPreviewProps) {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [isHovered, setIsHovered] = useState(false);
 
@@ -192,8 +194,8 @@ export function SandboxPreview({ sandbox, isSelected, isFocused, onMouseDown, on
 				background: isSelected
 					? 'linear-gradient(135deg, rgba(30, 30, 35, 0.35) 0%, rgba(20, 20, 25, 0.35) 100%)'
 					: 'linear-gradient(135deg, rgba(40, 40, 45, 0.25) 0%, rgba(30, 30, 35, 0.25) 100%)',
-				backdropFilter: 'blur(60px) saturate(250%) brightness(1.1)',
-				WebkitBackdropFilter: 'blur(60px) saturate(250%) brightness(1.1)',
+				backdropFilter: isDragging ? 'none' : 'blur(60px) saturate(250%) brightness(1.1)',
+				WebkitBackdropFilter: isDragging ? 'none' : 'blur(60px) saturate(250%) brightness(1.1)',
 				borderRadius: '20px',
 				border: isFocused
 					? '1px solid rgba(0, 122, 204, 0.5)'
@@ -202,15 +204,18 @@ export function SandboxPreview({ sandbox, isSelected, isFocused, onMouseDown, on
 					: isHovered
 					? '1px solid rgba(255, 165, 0, 0.45)'
 					: '1px solid rgba(255, 255, 255, 0.2)',
-				boxShadow: isFocused
+				boxShadow: isDragging
+					? '0 8px 32px rgba(0, 0, 0, 0.5)'
+					: isFocused
 					? '0 0 0 4px rgba(0, 122, 204, 0.15), 0 32px 80px rgba(0, 0, 0, 0.4), inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(255, 255, 255, 0.05)'
 					: isSelected
 					? '0 0 0 4px rgba(75, 85, 190, 0.15), 0 32px 80px rgba(0, 0, 0, 0.4), inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(255, 255, 255, 0.05), 0 0 32px rgba(75, 85, 190, 0.2)'
 					: isHovered
 					? '0 0 0 4px rgba(255, 165, 0, 0.1), 0 24px 64px rgba(0, 0, 0, 0.35), inset 0 2px 0 rgba(255, 255, 255, 0.2), inset 0 -2px 0 rgba(255, 255, 255, 0.05), 0 0 32px rgba(255, 165, 0, 0.2)'
 					: '0 12px 48px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2), inset 0 2px 0 rgba(255, 255, 255, 0.15), inset 0 -2px 0 rgba(255, 255, 255, 0.05)',
-				transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-				cursor: 'pointer', // Show it's clickable
+				transition: isDragging ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+				cursor: isDragging ? 'grabbing' : 'pointer',
+				transform: dragOffset ? `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)` : 'none',
 			}}
 			onMouseEnter={() => setIsHovered(true)}
 			onMouseLeave={() => setIsHovered(false)}
@@ -408,9 +413,31 @@ export function SandboxPreview({ sandbox, isSelected, isFocused, onMouseDown, on
 						height: '100%',
 						border: 'none',
 						display: 'block',
-						pointerEvents: 'auto',
+						visibility: isDragging ? 'hidden' : 'visible',
+						pointerEvents: isDragging ? 'none' : 'auto',
 					}}
 				/>
+				{isDragging && (
+					<div
+						style={{
+							position: 'absolute',
+							top: 0,
+							left: 0,
+							right: 0,
+							bottom: 0,
+							background: 'linear-gradient(135deg, rgba(100, 150, 255, 0.08), rgba(150, 100, 255, 0.08))',
+							display: 'flex',
+							alignItems: 'center',
+							justifyContent: 'center',
+							color: 'rgba(100, 120, 200, 0.6)',
+							fontSize: '13px',
+							fontWeight: 500,
+							pointerEvents: 'none',
+						}}
+					>
+						⋯
+					</div>
+				)}
 			</div>
 		</div>
 	);

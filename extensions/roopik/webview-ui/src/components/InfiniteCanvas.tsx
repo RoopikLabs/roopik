@@ -48,6 +48,7 @@ export function InfiniteCanvas({
 	const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 	const [draggingSandbox, setDraggingSandbox] = useState<string | null>(null);
 	const [sandboxDragStart, setSandboxDragStart] = useState({ x: 0, y: 0 });
+	const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
 	// Mouse down - start panning
 	const handleMouseDown = (e: React.MouseEvent) => {
@@ -61,18 +62,11 @@ export function InfiniteCanvas({
 	// Mouse move - pan canvas or drag sandbox
 	const handleMouseMove = (e: React.MouseEvent) => {
 		if (draggingSandbox) {
-			// Dragging a sandbox
+			// Dragging a sandbox - only update offset, not actual position
 			const deltaX = (e.clientX - sandboxDragStart.x) / transform.scale;
 			const deltaY = (e.clientY - sandboxDragStart.y) / transform.scale;
 
-			const sandbox = sandboxes.find(s => s.id === draggingSandbox);
-			if (sandbox) {
-				onSandboxUpdate(draggingSandbox, {
-					x: sandbox.x + deltaX,
-					y: sandbox.y + deltaY
-				});
-			}
-			setSandboxDragStart({ x: e.clientX, y: e.clientY });
+			setDragOffset({ x: deltaX, y: deltaY });
 		} else if (isPanning) {
 			// Panning canvas
 			const newX = e.clientX - dragStart.x;
@@ -83,8 +77,19 @@ export function InfiniteCanvas({
 
 	// Mouse up - stop panning or dragging
 	const handleMouseUp = () => {
+		if (draggingSandbox && (dragOffset.x !== 0 || dragOffset.y !== 0)) {
+			// Commit the final position
+			const sandbox = sandboxes.find(s => s.id === draggingSandbox);
+			if (sandbox) {
+				onSandboxUpdate(draggingSandbox, {
+					x: sandbox.x + dragOffset.x,
+					y: sandbox.y + dragOffset.y
+				});
+			}
+		}
 		setIsPanning(false);
 		setDraggingSandbox(null);
+		setDragOffset({ x: 0, y: 0 });
 	};
 
 	// Handle sandbox mouse down (for dragging)
@@ -175,18 +180,23 @@ export function InfiniteCanvas({
 				}}
 			>
 				{/* Render sandboxes as iframes */}
-				{sandboxes.map((sandbox) => (
-					<SandboxPreview
-						key={sandbox.id}
-						sandbox={sandbox}
-						isSelected={sandbox.id === selectedSandboxId}
-						isFocused={sandbox.id === focusedSandboxId}
-						onMouseDown={(e) => handleSandboxMouseDown(e, sandbox.id)}
-						onClick={() => onSandboxClick(sandbox.id)}
-						onDoubleClick={() => onSandboxDoubleClick(sandbox.id)}
-						onDelete={() => onSandboxDelete(sandbox.id)}
-					/>
-				))}
+				{sandboxes.map((sandbox) => {
+					const isDragging = draggingSandbox === sandbox.id;
+					return (
+						<SandboxPreview
+							key={sandbox.id}
+							sandbox={sandbox}
+							isSelected={sandbox.id === selectedSandboxId}
+							isFocused={sandbox.id === focusedSandboxId}
+							isDragging={isDragging}
+							dragOffset={isDragging ? dragOffset : undefined}
+							onMouseDown={(e) => handleSandboxMouseDown(e, sandbox.id)}
+							onClick={() => onSandboxClick(sandbox.id)}
+							onDoubleClick={() => onSandboxDoubleClick(sandbox.id)}
+							onDelete={() => onSandboxDelete(sandbox.id)}
+						/>
+					);
+				})}
 			</div>
 		</div>
 	);
