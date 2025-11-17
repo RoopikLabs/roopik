@@ -18,7 +18,9 @@ export interface CanvasState {
 	id: string;
 	name: string;
 	components: any[]; // Will be typed properly when we build component system
+	sandboxes: any[]; // Live sandbox instances on canvas
 	layout: any; // Will be typed properly later
+	viewport?: { x: number; y: number; scale: number }; // Canvas viewport transform
 	createdAt: number;
 	updatedAt: number;
 }
@@ -41,6 +43,9 @@ export class CanvasPanel {
 
 	// Component Sandbox (Mode 1 - iframe renderer)
 	private static componentSandbox: ComponentSandbox | null = null;
+
+	// Session preferences (backgroundColor, backgroundPattern)
+	private static sessionPreferences: { backgroundColor?: string; backgroundPattern?: string } | null = null;
 
 	// Event emitter for canvas open/close events
 	private static readonly onDidChangePanelsEmitter = new vscode.EventEmitter<void>();
@@ -88,6 +93,31 @@ export class CanvasPanel {
 			const workspaceRoot = workspaceFolders[0].uri.fsPath;
 			const configManager = ConfigManager.getInstance(workspaceRoot);
 			const config = configManager.getConfig();
+
+			// Load session preferences if not already loaded
+			if (!CanvasPanel.sessionPreferences) {
+				const sessionPath = configManager.getSessionPath();
+				try {
+					if (fs.existsSync(sessionPath)) {
+						const sessionFile = fs.readFileSync(sessionPath, 'utf8');
+						const session = JSON.parse(sessionFile);
+
+						// Validate preferences structure before using
+						if (session && typeof session === 'object' && session.preferences) {
+							const prefs = session.preferences;
+							// Only set if preferences is an object with valid structure
+							if (typeof prefs === 'object' && prefs !== null) {
+								CanvasPanel.sessionPreferences = prefs;
+								console.log('[Roopik] Loaded session preferences:', CanvasPanel.sessionPreferences);
+							}
+						}
+					}
+				} catch (error) {
+					// Silently ignore errors (file doesn't exist, corrupted JSON, etc.)
+					console.log('[Roopik] No valid session preferences found, using defaults');
+					CanvasPanel.sessionPreferences = null;
+				}
+			}
 
 			// If this specific canvas already exists, show it
 			const existingPanel = CanvasPanel.panels.get(canvasId);
@@ -259,11 +289,27 @@ export class CanvasPanel {
 	/**
 	 * Save current session (list of open canvas IDs) to disk
 	 */
-	public static saveSession(workspaceRoot: string) {
+	public static saveSession(workspaceRoot: string, preferences?: { backgroundColor?: string; backgroundPattern?: string }) {
 		const configManager = ConfigManager.getInstance(workspaceRoot);
 		const sessionPath = configManager.getSessionPath();
+
+		// Load existing session to preserve preferences if not provided
+		let existingPreferences = {};
+		try {
+			if (fs.existsSync(sessionPath)) {
+				const sessionFile = fs.readFileSync(sessionPath, 'utf8');
+				const existingSession = JSON.parse(sessionFile);
+				if (existingSession.preferences) {
+					existingPreferences = existingSession.preferences;
+				}
+			}
+		} catch (error) {
+			// Ignore read errors, will create new session
+		}
+
 		const session = {
 			canvasIds: Array.from(CanvasPanel.panels.keys()),
+			preferences: preferences || existingPreferences,
 			timestamp: Date.now()
 		};
 
@@ -277,14 +323,15 @@ export class CanvasPanel {
 
 	/**
 	 * Restore last session (reopen canvases from previous session)
+	 * Returns the session preferences (backgroundColor, backgroundPattern)
 	 */
-	public static restoreSession(extensionUri: vscode.Uri, workspaceRoot: string) {
+	public static restoreSession(extensionUri: vscode.Uri, workspaceRoot: string): { backgroundColor?: string; backgroundPattern?: string } | null {
 		const configManager = ConfigManager.getInstance(workspaceRoot);
 		const config = configManager.getConfig();
 
 		if (!config.canvas.restoreLastSession) {
 			console.log('[Roopik] Session restore disabled in config');
-			return;
+			return null;
 		}
 
 		const sessionPath = configManager.getSessionPath();
@@ -294,27 +341,42 @@ export class CanvasPanel {
 				const sessionFile = fs.readFileSync(sessionPath, 'utf8');
 				const session = JSON.parse(sessionFile);
 
-				if (session.canvasIds && session.canvasIds.length > 0) {
+				if (session.canvasIds && Array.isArray(session.canvasIds) && session.canvasIds.length > 0) {
 					console.log(`[Roopik] Restoring session: ${session.canvasIds.length} canvases`);
 
 					// Reopen each canvas
 					session.canvasIds.forEach((canvasId: string) => {
-						// Load canvas state to get the name
-						const statePath = configManager.getCanvasStatePath(canvasId);
-						if (fs.existsSync(statePath)) {
-							const stateFile = fs.readFileSync(statePath, 'utf8');
-							const state = JSON.parse(stateFile);
-							CanvasPanel.createOrShow(extensionUri, canvasId, state.name);
+						try {
+							// Load canvas state to get the name
+							const statePath = configManager.getCanvasStatePath(canvasId);
+							if (fs.existsSync(statePath)) {
+								const stateFile = fs.readFileSync(statePath, 'utf8');
+								const state = JSON.parse(stateFile);
+								CanvasPanel.createOrShow(extensionUri, canvasId, state.name);
+							}
+						} catch (canvasError) {
+							console.error(`[Roopik] Failed to restore canvas "${canvasId}":`, canvasError);
+							// Continue with other canvases
 						}
 					});
 				}
+
+				// Store preferences in static property for all canvases (with validation)
+				if (session.preferences && typeof session.preferences === 'object' && session.preferences !== null) {
+					CanvasPanel.sessionPreferences = session.preferences;
+					console.log('[Roopik] Session preferences restored:', session.preferences);
+					return session.preferences;
+				} else {
+					CanvasPanel.sessionPreferences = null;
+				}
 			}
 		} catch (error) {
-			console.error('[Roopik] Failed to restore session:', error);
+			console.log('[Roopik] No valid session found, starting fresh');
+			CanvasPanel.sessionPreferences = null;
 		}
-	}
 
-	/**
+		return null;
+	}	/**
 	 * Get list of all canvas states (for dashboard)
 	 */
 	public static getAllCanvasStates(workspaceRoot: string): CanvasState[] {
@@ -525,8 +587,11 @@ export class CanvasPanel {
 					case 'saveState':
 						this.saveState(message.state);
 						break;
+					case 'savePreferences':
+						this.handleSavePreferences(message.preferences);
+						break;
 					case 'error':
-						this.handleError(message.error);
+						this.handleError(message.message || message.error);
 						break;
 					case 'loadComponent':
 						await this.handleLoadComponent(message.component);
@@ -536,6 +601,9 @@ export class CanvasPanel {
 						break;
 					case 'getSandboxTemplate':
 						await this.handleGetSandboxTemplate();
+						break;
+					case 'saveSandboxes':
+						await this.handleSaveSandboxes(message.sandboxes);
 						break;
 				}
 			},
@@ -566,6 +634,7 @@ export class CanvasPanel {
 			id: this.canvasId,
 			name: canvasName || this.canvasId,
 			components: [],
+			sandboxes: [],
 			layout: {},
 			createdAt: Date.now(),
 			updatedAt: Date.now()
@@ -603,14 +672,32 @@ export class CanvasPanel {
 	}
 
 	/**
+	 * Handle saving preferences (backgroundColor, backgroundPattern)
+	 */
+	private handleSavePreferences(preferences: { backgroundColor?: string; backgroundPattern?: string }) {
+		console.log(`[Canvas ${this.canvasId}] Saving preferences:`, preferences);
+
+		// Save to session.json
+		const workspaceFolders = vscode.workspace.workspaceFolders;
+		if (workspaceFolders) {
+			CanvasPanel.saveSession(workspaceFolders[0].uri.fsPath, preferences);
+		}
+	}
+
+	/**
 	 * Handle errors from webview
 	 */
 	private handleError(error: any) {
 		console.error(`[Canvas ${this.canvasId}] Error:`, error);
 
+		// Extract error message
+		const errorMessage = typeof error === 'string'
+			? error
+			: error?.message || JSON.stringify(error);
+
 		// Show error message but don't crash
 		vscode.window.showErrorMessage(
-			`Error in canvas "${this.canvasState.name}": ${error.message || error}`
+			`Error in canvas "${this.canvasState.name}": ${errorMessage}`
 		);
 
 		// Save state before potential crash
@@ -716,6 +803,37 @@ export class CanvasPanel {
 		}
 	}
 
+	/**
+	 * Handle sandbox state updates from webview
+	 * Saves sandbox positions, sizes, etc. to canvas state
+	 */
+	private async handleSaveSandboxes(data: { sandboxes: any[], viewport?: any }) {
+		try {
+			const sandboxes = data.sandboxes || data; // Support both new and old format
+			console.log(`[Canvas ${this.canvasId}] Saving ${Array.isArray(sandboxes) ? sandboxes.length : 0} sandboxes`);
+
+			// Update canvas state with new sandboxes
+			if (Array.isArray(sandboxes)) {
+				this.canvasState.sandboxes = sandboxes;
+			}
+
+			// Save viewport if provided
+			if (data.viewport) {
+				this.canvasState.viewport = data.viewport;
+			}
+
+			this.canvasState.updatedAt = Date.now();
+
+			// Persist to disk
+			this.saveState(this.canvasState);
+
+			console.log(`[Canvas ${this.canvasId}] State saved successfully`);
+		} catch (error) {
+			console.error(`[Canvas ${this.canvasId}] Failed to save state:`, error);
+			this.handleError(error);
+		}
+	}
+
 	public dispose() {
 		console.log(`[Canvas ${this.canvasId}] Disposing...`);
 
@@ -791,8 +909,9 @@ export class CanvasPanel {
 	<div id="root"></div>
 	<script type="module" src="${scriptUri}"></script>
 	<script>
-		// Pass canvas state to React app
+		// Pass canvas state and preferences to React app
 		window.CANVAS_STATE = ${JSON.stringify(this.canvasState)};
+		window.SESSION_PREFERENCES = ${JSON.stringify(CanvasPanel.sessionPreferences || {})};
 	</script>
 </body>
 </html>`;
