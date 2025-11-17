@@ -4,34 +4,18 @@
  *--------------------------------------------------------------------------------------------*/
 
 // Sandbox represents a live, interactive preview environment (iframe)
+// Mode 1: Client-side transpilation with Babel
 export interface Sandbox {
-	id: string;                    // "sandbox_123"
-	name: string;                  // "Login Screen - Variation A"
-
-	// Full file system storage
-	files: {
-		[path: string]: string;      // File path → File content
+	id: string;                    // Component ID: "button_sample_001"
+	x: number;                     // Canvas X position
+	y: number;                     // Canvas Y position
+	width: number;                 // Sandbox width
+	height: number;                // Sandbox height
+	sandboxMessage: {              // Message to send to iframe
+		type: 'init' | 'update';
+		code: string;              // Transformed code (const-based)
+		cdnUrls?: string[];        // CDN scripts to load
 	};
-
-	entryPoint: string;            // "src/App.tsx" or "index.html"
-
-	// Compiled output (cached after bundling)
-	compiled?: {
-		html: string;                // Single bundled HTML
-		css: string;                 // Single bundled CSS
-		js: string;                  // Single bundled JS (all imports resolved)
-		errors?: string[];           // Compilation errors if any
-	};
-
-	// Vite dev server URL (for HMR-enabled preview)
-	devServerUrl?: string;         // "http://localhost:5173"
-
-	position: { x: number; y: number; };  // Canvas position
-	size: { width: number; height: number; };
-	isSelected: boolean;           // Currently focused?
-	isVisible: boolean;            // In viewport?
-	createdAt: number;
-	updatedAt: number;
 }
 
 export interface CanvasState {

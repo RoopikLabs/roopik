@@ -8,7 +8,6 @@ import { CanvasPanel } from './canvasPanel';
 import { DashboardPanel } from './dashboardPanel';
 import { ConfigManager } from './config';
 import { ActivityBarViewProvider } from './activityBarView';
-import { SandboxServerManager } from './sandboxServer';
 
 /**
  * Roopik Extension Entry Point
@@ -22,6 +21,7 @@ import { SandboxServerManager } from './sandboxServer';
  * - Each canvas is independent with isolated state and AI context
  * - Integrates AI for code generation and design assistance
  * - Manages bidirectional sync between canvas and code
+ * - Uses Mode 1 preview system: client-side transpilation (Babel) in iframes
  */
 
 export function activate(context: vscode.ExtensionContext) {
@@ -37,14 +37,9 @@ export function activate(context: vscode.ExtensionContext) {
 	const configManager = ConfigManager.getInstance(workspaceRoot);
 	const config = configManager.getConfig();
 
-	// Initialize SandboxServerManager for Vite dev servers
-	const sandboxServerManager = new SandboxServerManager(context);
-	CanvasPanel.setSandboxServerManager(sandboxServerManager);
-
-	// Register cleanup on deactivation
-	context.subscriptions.push({
-		dispose: () => sandboxServerManager.stopAllServers()
-	});
+	// Initialize Mode 1 Preview System (client-side transpilation)
+	CanvasPanel.initializePreviewSystem(context);
+	console.log('[Roopik] Mode 1 preview system initialized (client-side transpilation)');
 
 	// Restore last session after a delay (wait for VS Code to fully initialize)
 	setTimeout(() => {

@@ -6,7 +6,9 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { ConfigManager } from './config';
-import { SandboxServerManager } from './sandboxServer';
+import { PreviewManager } from './preview/core/PreviewManager';
+import { ComponentSandbox } from './preview/renderer/ComponentSandbox';
+import type { ComponentSource } from './preview/core/types';
 
 /**
  * Canvas State Interface
@@ -34,19 +36,24 @@ export class CanvasPanel {
 	// ID-based map instead of global singleton
 	private static panels: Map<string, CanvasPanel> = new Map();
 
-	// Sandbox server manager for Vite dev servers
-	private static sandboxServerManager: SandboxServerManager | null = null;
+	// Preview Manager (Mode 1 - import/const translator)
+	private static previewManager: PreviewManager | null = null;
+
+	// Component Sandbox (Mode 1 - iframe renderer)
+	private static componentSandbox: ComponentSandbox | null = null;
 
 	// Event emitter for canvas open/close events
 	private static readonly onDidChangePanelsEmitter = new vscode.EventEmitter<void>();
 	public static readonly onDidChangePanels = CanvasPanel.onDidChangePanelsEmitter.event;
 
 	/**
-	 * Set the SandboxServerManager instance
+	 * Initialize the Mode 1 preview system
 	 * Called once during extension activation
 	 */
-	public static setSandboxServerManager(manager: SandboxServerManager) {
-		CanvasPanel.sandboxServerManager = manager;
+	public static initializePreviewSystem(context: vscode.ExtensionContext) {
+		CanvasPanel.previewManager = new PreviewManager();
+		CanvasPanel.componentSandbox = new ComponentSandbox(context);
+		console.log('[CanvasPanel] Mode 1 preview system initialized');
 	}
 
 	private readonly _panel: vscode.WebviewPanel;
@@ -521,11 +528,14 @@ export class CanvasPanel {
 					case 'error':
 						this.handleError(message.error);
 						break;
-					case 'createSandbox':
-						await this.handleCreateSandbox(message.sandbox);
+					case 'loadComponent':
+						await this.handleLoadComponent(message.component);
 						break;
-					case 'updateSandboxFiles':
-						await this.handleUpdateSandboxFiles(message.sandboxId, message.files);
+					case 'updateComponent':
+						await this.handleUpdateComponent(message.componentId, message.code);
+						break;
+					case 'getSandboxTemplate':
+						await this.handleGetSandboxTemplate();
 						break;
 				}
 			},
@@ -608,56 +618,100 @@ export class CanvasPanel {
 	}
 
 	/**
-	 * Handle sandbox creation - starts Vite dev server
+	 * Handle component load (Mode 1 - AI generated component)
+	 * Receives import-based code with manifest, transforms it, sends session code to webview
 	 */
-	private async handleCreateSandbox(sandbox: any) {
-		if (!CanvasPanel.sandboxServerManager) {
-			console.error('[CanvasPanel] SandboxServerManager not initialized');
+	private async handleLoadComponent(component: ComponentSource) {
+		if (!CanvasPanel.previewManager || !CanvasPanel.componentSandbox) {
+			console.error('[CanvasPanel] Preview system not initialized');
 			return;
 		}
 
 		try {
-			console.log(`[Canvas ${this.canvasId}] Creating Vite dev server for sandbox ${sandbox.id}`);
+			console.log(`[Canvas ${this.canvasId}] Loading component ${component.id}`);
 
-			// Create Vite dev server for the sandbox
-			const devServerUrl = await CanvasPanel.sandboxServerManager.createSandboxServer(
-				sandbox.id,
-				sandbox.files,
-				sandbox.entryPoint
-			);
+			// Parse dependency manifest from code
+			const dependencies = CanvasPanel.previewManager.parseDependencyManifest(component.code);
+			const componentSource: ComponentSource = {
+				...component,
+				dependencies
+			};
 
-			console.log(`[Canvas ${this.canvasId}] Vite dev server created at ${devServerUrl}`);
+			// Transform to session code (import → const)
+			const sessionCode = CanvasPanel.previewManager.transformToSessionCode(componentSource);
 
-			// Send dev server URL back to webview
+			// Create init message for sandbox
+			const sandboxMessage = CanvasPanel.componentSandbox.createInitMessage(sessionCode);
+
+			console.log(`[Canvas ${this.canvasId}] Component transformed, sending to webview`);
+
+			// Send session code to webview
 			this._panel.webview.postMessage({
-				type: 'sandboxServerReady',
-				sandboxId: sandbox.id,
-				devServerUrl: devServerUrl
+				type: 'componentReady',
+				componentId: component.id,
+				sandboxMessage: sandboxMessage
 			});
 		} catch (error) {
-			console.error(`[Canvas ${this.canvasId}] Failed to create sandbox server:`, error);
+			console.error(`[Canvas ${this.canvasId}] Failed to load component:`, error);
 			this.handleError(error);
 		}
 	}
 
 	/**
-	 * Handle sandbox file updates - triggers HMR
+	 * Handle component update (Mode 1 - hot reload)
+	 * For live editing without reloading CDN scripts
 	 */
-	private async handleUpdateSandboxFiles(sandboxId: string, files: { [path: string]: string }) {
-		if (!CanvasPanel.sandboxServerManager) {
-			console.error('[CanvasPanel] SandboxServerManager not initialized');
+	private async handleUpdateComponent(componentId: string, code: string) {
+		if (!CanvasPanel.componentSandbox) {
+			console.error('[CanvasPanel] Preview system not initialized');
 			return;
 		}
 
 		try {
-			console.log(`[Canvas ${this.canvasId}] Updating files for sandbox ${sandboxId}`);
+			console.log(`[Canvas ${this.canvasId}] Updating component ${componentId}`);
 
-			// Update files - Vite will automatically trigger HMR
-			await CanvasPanel.sandboxServerManager.updateSandboxFiles(sandboxId, files);
+			// Create update message (no CDN reload)
+			const sandboxMessage = CanvasPanel.componentSandbox.createUpdateMessage(code);
 
-			console.log(`[Canvas ${this.canvasId}] Files updated, HMR triggered for ${sandboxId}`);
+			// Send update to webview
+			this._panel.webview.postMessage({
+				type: 'componentUpdate',
+				componentId: componentId,
+				sandboxMessage: sandboxMessage
+			});
+
+			console.log(`[Canvas ${this.canvasId}] Component update sent for hot-reload`);
 		} catch (error) {
-			console.error(`[Canvas ${this.canvasId}] Failed to update sandbox files:`, error);
+			console.error(`[Canvas ${this.canvasId}] Failed to update component:`, error);
+			this.handleError(error);
+		}
+	}
+
+	/**
+	 * Handle request for sandbox template
+	 * Sends the sandbox_template.html content to webview
+	 */
+	private async handleGetSandboxTemplate() {
+		if (!CanvasPanel.componentSandbox) {
+			console.error('[CanvasPanel] Preview system not initialized');
+			return;
+		}
+
+		try {
+			console.log(`[Canvas ${this.canvasId}] Fetching sandbox template`);
+
+			// Get sandbox template HTML
+			const templateHtml = await CanvasPanel.componentSandbox.getSandboxTemplate();
+
+			// Send to webview
+			this._panel.webview.postMessage({
+				type: 'sandboxTemplate',
+				html: templateHtml
+			});
+
+			console.log(`[Canvas ${this.canvasId}] Sandbox template sent to webview`);
+		} catch (error) {
+			console.error(`[Canvas ${this.canvasId}] Failed to get sandbox template:`, error);
 			this.handleError(error);
 		}
 	}
@@ -706,12 +760,23 @@ export class CanvasPanel {
 			vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'build', 'assets', 'index.css')
 		);
 
+		// CSP updated to allow unpkg.com and unsafe-eval for Babel Standalone
+		const csp = `
+			default-src 'none';
+			style-src ${webview.cspSource} 'unsafe-inline';
+			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https://unpkg.com;
+			font-src ${webview.cspSource};
+			img-src ${webview.cspSource} data:;
+			connect-src ${webview.cspSource} https://unpkg.com;
+			frame-src ${webview.cspSource} data: blob:;
+		`;
+
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource};">
+	<meta http-equiv="Content-Security-Policy" content="${csp.replace(/\s+/g, ' ').trim()}">
 	<style>
 		/* VS Code CSS variables are automatically available in webviews */
 		body {

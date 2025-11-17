@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sandbox Template Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .test-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .description {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .test-controls {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .test-controls h3 {
+            margin-top: 0;
+            color: #333;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #007acc;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background: #005a9e;
+        }
+
+        button.secondary {
+            background: #5c6bc0;
+        }
+
+        button.secondary:hover {
+            background: #3f51b5;
+        }
+
+        .code-section {
+            margin-top: 15px;
+        }
+
+        .code-section label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 5px;
+            color: #333;
+        }
+
+        textarea {
+            width: 100%;
+            height: 150px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+        }
+
+        .sandbox-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .sandbox-container h3 {
+            margin-top: 0;
+            color: #333;
+        }
+
+        iframe {
+            width: 100%;
+            height: 500px;
+            border: 2px solid #e0e0e0;
+            border-radius: 4px;
+            background: white;
+        }
+
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .status.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #a5d6a7;
+        }
+
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #ef9a9a;
+        }
+
+        .status.info {
+            background: #e3f2fd;
+            color: #1565c0;
+            border: 1px solid #90caf9;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🧪 Sandbox Template Test</h1>
+        <p class="description">
+            This page tests the <code>sandbox_template.html</code> in isolation.
+            It loads the template in an iframe and sends component code via postMessage.
+            Test different scenarios to verify the sandbox works correctly.
+        </p>
+
+        <div class="test-controls">
+            <h3>Test Controls</h3>
+
+            <div class="button-group">
+                <button onclick="testSimpleButton()">Test 1: Simple Button</button>
+                <button onclick="testCounter()" class="secondary">Test 2: Counter with State</button>
+                <button onclick="testStyledCard()" class="secondary">Test 3: Styled Card</button>
+                <button onclick="testHotReload()">Test 4: Hot Reload</button>
+            </div>
+
+            <div class="code-section">
+                <label for="customCode">Custom Component Code (with manifest):</label>
+                <p style="font-size: 12px; color: #666; margin: 5px 0;">
+                    <strong>Important:</strong> Manifest must be valid JSON (no inline comments).
+                    Use compact format: <code>// DEPENDENCIES: [{"npm": "...", "global": "...", "url": "..."}]</code>
+                </p>
+                <textarea id="customCode" placeholder="Paste component code with // DEPENDENCIES manifest..."></textarea>
+                <button onclick="testCustomCode()" style="margin-top: 10px;">Send Custom Code</button>
+            </div>
+        </div>
+
+        <div class="sandbox-container">
+            <h3>Sandbox Preview</h3>
+            <iframe id="sandbox" src="sandbox_template.html"></iframe>
+            <div id="status" class="status info">Waiting for sandbox to initialize...</div>
+        </div>
+    </div>
+
+    <script>
+        const sandbox = document.getElementById('sandbox');
+        const statusEl = document.getElementById('status');
+
+        // Listen for messages from sandbox
+        window.addEventListener('message', (event) => {
+            console.log('[Test] Received message from sandbox:', event.data);
+
+            if (event.data.type === 'sandbox-ready') {
+                showStatus('Sandbox initialized and ready!', 'success');
+            } else if (event.data.type === 'ready') {
+                showStatus('Component rendered successfully!', 'success');
+            } else if (event.data.type === 'error') {
+                showStatus('Error: ' + event.data.message, 'error');
+            }
+        });
+
+        function showStatus(message, type = 'info') {
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + type;
+        }
+
+        // Test 1: Simple Button
+        function testSimpleButton() {
+            showStatus('Sending simple button component...', 'info');
+
+            const code = `// DEPENDENCIES: [{"npm": "react", "global": "React", "url": "https://unpkg.com/react@18.2.0/umd/react.production.min.js"}, {"npm": "react-dom", "global": "ReactDOM", "url": "https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"}]
+
+const { useState } = React;
+
+function Component() {
+    return (
+        <div style={{ padding: '40px', textAlign: 'center' }}>
+            <h1 style={{ color: '#007acc', marginBottom: '20px' }}>Hello from Sandbox!</h1>
+            <button
+                style={{
+                    padding: '12px 24px',
+                    background: '#007acc',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    fontSize: '16px',
+                    cursor: 'pointer'
+                }}
+            >
+                Click Me
+            </button>
+        </div>
+    );
+}`;
+
+            sandbox.contentWindow.postMessage({
+                type: 'init',
+                code: code,
+                cdnUrls: [
+                    'https://unpkg.com/react@18.2.0/umd/react.production.min.js',
+                    'https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js'
+                ]
+            }, '*');
+        }
+
+        // Test 2: Counter with State
+        function testCounter() {
+            showStatus('Sending counter component with state...', 'info');
+
+            const code = `// DEPENDENCIES: [
+//   { "npm": "react", "global": "React", "url": "https://unpkg.com/react@18.2.0/umd/react.production.min.js" },
+//   { "npm": "react-dom", "global": "ReactDOM", "url": "https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" }
+// ]
+
+const { useState } = React;
+
+function Component() {
+    const [count, setCount] = useState(0);
+
+    return (
+        <div style={{
+            padding: '40px',
+            textAlign: 'center',
+            fontFamily: 'system-ui, sans-serif'
+        }}>
+            <h2 style={{ color: '#333', marginBottom: '20px' }}>Counter Example</h2>
+            <div style={{
+                fontSize: '48px',
+                fontWeight: 'bold',
+                color: '#007acc',
+                marginBottom: '30px'
+            }}>
+                {count}
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                <button
+                    onClick={() => setCount(count - 1)}
+                    style={{
+                        padding: '12px 24px',
+                        background: '#e53935',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        fontSize: '16px',
+                        cursor: 'pointer'
+                    }}
+                >
+                    Decrement
+                </button>
+                <button
+                    onClick={() => setCount(0)}
+                    style={{
+                        padding: '12px 24px',
+                        background: '#757575',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        fontSize: '16px',
+                        cursor: 'pointer'
+                    }}
+                >
+                    Reset
+                </button>
+                <button
+                    onClick={() => setCount(count + 1)}
+                    style={{
+                        padding: '12px 24px',
+                        background: '#43a047',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        fontSize: '16px',
+                        cursor: 'pointer'
+                    }}
+                >
+                    Increment
+                </button>
+            </div>
+        </div>
+    );
+}`;
+
+            sandbox.contentWindow.postMessage({
+                type: 'init',
+                code: code,
+                cdnUrls: [
+                    'https://unpkg.com/react@18.2.0/umd/react.production.min.js',
+                    'https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js'
+                ]
+            }, '*');
+        }
+
+        // Test 3: Styled Card
+        function testStyledCard() {
+            showStatus('Sending styled card component...', 'info');
+
+            const code = `// DEPENDENCIES: [
+//   { "npm": "react", "global": "React", "url": "https://unpkg.com/react@18.2.0/umd/react.production.min.js" },
+//   { "npm": "react-dom", "global": "ReactDOM", "url": "https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js" }
+// ]
+
+function Component() {
+    return (
+        <div style={{
+            padding: '40px',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            minHeight: '400px',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+        }}>
+            <div style={{
+                background: 'white',
+                borderRadius: '12px',
+                padding: '30px',
+                maxWidth: '400px',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+            }}>
+                <h2 style={{
+                    margin: '0 0 10px 0',
+                    color: '#333',
+                    fontSize: '24px'
+                }}>
+                    Beautiful Card
+                </h2>
+                <p style={{
+                    color: '#666',
+                    lineHeight: '1.6',
+                    margin: '0 0 20px 0'
+                }}>
+                    This is a styled card component rendered in the sandbox.
+                    It demonstrates that CSS styling works perfectly!
+                </p>
+                <button style={{
+                    width: '100%',
+                    padding: '12px',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '16px',
+                    fontWeight: '500',
+                    cursor: 'pointer'
+                }}>
+                    Learn More
+                </button>
+            </div>
+        </div>
+    );
+}`;
+
+            sandbox.contentWindow.postMessage({
+                type: 'init',
+                code: code,
+                cdnUrls: [
+                    'https://unpkg.com/react@18.2.0/umd/react.production.min.js',
+                    'https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js'
+                ]
+            }, '*');
+        }
+
+        // Test 4: Hot Reload (modify existing component)
+        let hotReloadCount = 0;
+        function testHotReload() {
+            hotReloadCount++;
+            showStatus('Testing hot reload (update #' + hotReloadCount + ')...', 'info');
+
+            const colors = ['#007acc', '#e53935', '#43a047', '#ff6f00', '#8e24aa'];
+            const color = colors[hotReloadCount % colors.length];
+
+            const code = `const { useState } = React;
+
+function Component() {
+    return (
+        <div style={{
+            padding: '40px',
+            textAlign: 'center',
+            background: '${color}',
+            color: 'white',
+            minHeight: '400px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center'
+        }}>
+            <h1 style={{ fontSize: '48px', margin: '0 0 20px 0' }}>
+                Hot Reload Test #{${hotReloadCount}}
+            </h1>
+            <p style={{ fontSize: '20px', opacity: 0.9 }}>
+                The background color changed without reloading the page!
+            </p>
+            <button
+                onClick={() => alert('Button still works!')}
+                style={{
+                    padding: '12px 24px',
+                    background: 'white',
+                    color: '${color}',
+                    border: 'none',
+                    borderRadius: '4px',
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    marginTop: '20px'
+                }}
+            >
+                Test Interaction
+            </button>
+        </div>
+    );
+}`;
+
+            // Use 'update' type for hot reload (no CDN reload)
+            sandbox.contentWindow.postMessage({
+                type: 'update',
+                code: code
+            }, '*');
+        }
+
+        // Test custom code
+        function testCustomCode() {
+            const code = document.getElementById('customCode').value.trim();
+
+            if (!code) {
+                showStatus('Please enter component code first!', 'error');
+                return;
+            }
+
+            showStatus('Sending custom component code...', 'info');
+
+            // Parse CDN URLs from manifest
+            const manifestRegex = /\/\/ DEPENDENCIES: (\[[\s\S]*?\])/;
+            const match = code.match(manifestRegex);
+            let cdnUrls = [];
+
+            if (match) {
+                try {
+                    const deps = JSON.parse(match[1]);
+                    cdnUrls = deps.map(dep => dep.url);
+                } catch (e) {
+                    showStatus('Error parsing dependency manifest: ' + e.message, 'error');
+                    return;
+                }
+            }
+
+            sandbox.contentWindow.postMessage({
+                type: 'init',
+                code: code,
+                cdnUrls: cdnUrls
+            }, '*');
+        }
+
+        // Auto-run Test 1 on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                console.log('[Test] Auto-running Test 1: Simple Button');
+                testSimpleButton();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

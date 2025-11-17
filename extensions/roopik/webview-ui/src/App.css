@@ -53,6 +53,28 @@
 	letter-spacing: 0.3px;
 }
 
+.toolbar-button {
+	padding: 6px 12px;
+	background: rgba(255, 255, 255, 0.05);
+	color: rgba(255, 255, 255, 0.9);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 6px;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.toolbar-button:hover {
+	background: rgba(255, 255, 255, 0.1);
+	border-color: rgba(255, 255, 255, 0.2);
+	transform: translateY(-1px);
+}
+
+.toolbar-button:active {
+	transform: translateY(0);
+}
+
 .canvas-name {
 	font-size: 12px;
 	color: var(--vscode-descriptionForeground);
