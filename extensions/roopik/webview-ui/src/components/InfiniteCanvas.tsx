@@ -54,6 +54,8 @@ export function InfiniteCanvas({
 	const accumulatedDeltaRef = useRef(0);
 	const lastZoomTimeRef = useRef(0);
 	const zoomCursorPosRef = useRef({ x: 0, y: 0 });
+	const scrollAnimationFrameRef = useRef<number | null>(null);
+	const pendingScrollDeltaRef = useRef({ x: 0, y: 0 });
 
 	// Add native wheel event listener to prevent passive event listener warning
 	useEffect(() => {
@@ -61,10 +63,67 @@ export function InfiniteCanvas({
 		if (!canvas) return;
 
 		const handleNativeWheel = (e: WheelEvent) => {
-			e.preventDefault();
-
-			// Detect if this is a pinch gesture
+			// Detect if this is a pinch gesture (zoom) or scroll gesture (pan)
 			const isPinch = e.ctrlKey;
+
+			// Detect touchpad scroll vs mouse wheel:
+			// - Touchpad scroll: has horizontal delta (e.deltaX > 0) OR small fractional deltas
+			// - Mouse wheel: only vertical delta with larger discrete values (typically 100)
+			const hasHorizontalDelta = Math.abs(e.deltaX) > 0;
+			const isTouchpadScroll = hasHorizontalDelta || (Math.abs(e.deltaY) > 0 && Math.abs(e.deltaY) < 50);
+
+			// Only treat as pan if it's NOT a pinch and IS a touchpad scroll gesture
+			if (!isPinch && isTouchpadScroll) {
+				// Touchpad scroll (two/three finger swipe) - accumulate and apply via RAF
+				e.preventDefault();
+
+				// Accumulate scroll deltas
+				pendingScrollDeltaRef.current.x += e.deltaX;
+				pendingScrollDeltaRef.current.y += e.deltaY;
+
+				// Cancel existing animation frame if any
+				if (scrollAnimationFrameRef.current !== null) {
+					cancelAnimationFrame(scrollAnimationFrameRef.current);
+				}
+
+				// Apply scroll on next animation frame
+				scrollAnimationFrameRef.current = requestAnimationFrame(() => {
+					const newX = transform.x - pendingScrollDeltaRef.current.x;
+					const newY = transform.y - pendingScrollDeltaRef.current.y;
+
+					// Reset pending deltas
+					pendingScrollDeltaRef.current = { x: 0, y: 0 };
+					scrollAnimationFrameRef.current = null;
+
+					onTransformChange({ ...transform, x: newX, y: newY });
+				});
+				return;
+			}
+
+			if (!isPinch) {
+				// Regular mouse wheel zoom (no ctrlKey, no horizontal scroll)
+				e.preventDefault();
+				const rect = canvas.getBoundingClientRect();
+				const mouseX = e.clientX - rect.left;
+				const mouseY = e.clientY - rect.top;
+
+				let delta = -e.deltaY;
+				if (e.deltaMode === 1) delta *= 33;
+				else if (e.deltaMode === 2) delta *= 100;
+
+				const zoomIntensity = 0.001;
+				const scaleChange = delta * zoomIntensity;
+				const newScale = Math.max(0.1, Math.min(10, transform.scale + scaleChange));
+				const scaleRatio = newScale / transform.scale;
+				const newX = mouseX - (mouseX - transform.x) * scaleRatio;
+				const newY = mouseY - (mouseY - transform.y) * scaleRatio;
+
+				onTransformChange({ x: newX, y: newY, scale: newScale });
+				return;
+			}
+
+			// Touchpad pinch zoom
+			e.preventDefault();
 			const rect = canvas.getBoundingClientRect();
 			const mouseX = e.clientX - rect.left;
 			const mouseY = e.clientY - rect.top;
@@ -103,16 +162,6 @@ export function InfiniteCanvas({
 					}
 					lastZoomTimeRef.current = now;
 				}
-			} else {
-				// Mouse wheel: immediate discrete steps
-				const zoomIntensity = 0.001;
-				const scaleChange = delta * zoomIntensity;
-				const newScale = Math.max(0.1, Math.min(10, transform.scale + scaleChange));
-				const scaleRatio = newScale / transform.scale;
-				const newX = mouseX - (mouseX - transform.x) * scaleRatio;
-				const newY = mouseY - (mouseY - transform.y) * scaleRatio;
-
-				onTransformChange({ x: newX, y: newY, scale: newScale });
 			}
 		};
 
@@ -121,6 +170,10 @@ export function InfiniteCanvas({
 
 		return () => {
 			canvas.removeEventListener('wheel', handleNativeWheel);
+			// Clean up pending animation frame
+			if (scrollAnimationFrameRef.current !== null) {
+				cancelAnimationFrame(scrollAnimationFrameRef.current);
+			}
 		};
 	}, [transform, onTransformChange]);
 
