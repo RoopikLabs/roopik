@@ -51,6 +51,11 @@
       {
         "command": "roopik.importCanvas",
         "title": "Roopik: Import Canvas"
+      },
+      {
+        "command": "roopik.openProjectPreview",
+        "title": "Roopik: Open Project Preview",
+        "category": "Roopik"
       }
     ],
     "viewsContainers": {
