@@ -1,8 +1,30 @@
 # Build Commands
 
+## VS Code Editor Build
+
+**Build whole VS Code editor:**
+
+```bash
+# From roopik root directory
+npm run compile
+```
+
+**For native modules (terminal, etc.) or after pulling upstream changes:**
+
+```bash
+# From roopik root directory
+npm run postinstall
+```
+
+This rebuilds native modules like `node-pty` for Electron.
+
+---
+
+## Roopik Extension Build
+
 **All commands run from `extensions/roopik/` directory**
 
-## Quick Start
+### Quick Start
 
 ```bash
 # Build everything (extension + webview)
@@ -12,7 +34,7 @@ npm run build
 npm run watch:all
 ```
 
-## Individual Builds
+### Individual Builds
 
 ```bash
 # Extension only
