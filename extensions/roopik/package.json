@@ -87,7 +87,7 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
+    "compile": "tsc -p ./ && node scripts/copyAssets.js",
     "watch": "tsc -watch -p ./",
     "build": "npm run compile && npm run build --prefix webview-ui",
     "build:extension": "npm run compile",
@@ -101,6 +101,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "@babel/core": "^7.28.5",
     "@vitejs/plugin-react": "^5.1.1",
     "vite": "^7.2.2"
   }

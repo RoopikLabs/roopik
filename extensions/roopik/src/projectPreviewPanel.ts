@@ -61,11 +61,11 @@ export class ProjectPreviewPanel {
 
 	private constructor(
 		panel: vscode.WebviewPanel,
-		_extensionUri: vscode.Uri,
+		extensionUri: vscode.Uri,
 		projectRoot: string
 	) {
 		this._panel = panel;
-		this._serverManager = ViteServerManager.getInstance(projectRoot);
+		this._serverManager = ViteServerManager.getInstance(projectRoot, extensionUri.fsPath);
 
 		// Set initial HTML (loading state)
 		this._update();
