@@ -14,6 +14,44 @@ const ROOPIK_INJECT_SCRIPT = `
 (function() {
 	if (window.parent === window) return;
 
+	// SECURITY: Hide page until webview sends handshake
+	document.documentElement.style.display = 'none';
+
+	const EXPECTED_SECRET = 'ROOPIK_IDE_HANDSHAKE_v1';
+	let authenticated = false;
+
+	// Listen for handshake from VSCode webview
+	window.addEventListener('message', (event) => {
+		const message = event.data;
+
+		// Check for handshake
+		if (!authenticated && message.type === 'ROOPIK_HANDSHAKE_SYN' && message.secret === EXPECTED_SECRET) {
+			authenticated = true;
+			document.documentElement.style.display = '';
+			console.log('[Roopik] ✓ Authenticated with VSCode webview');
+
+			// Send ACK back to webview
+			window.parent.postMessage({ type: 'ROOPIK_HANDSHAKE_ACK' }, '*');
+			return;
+		}
+	});
+
+	// Timeout: Show error if no handshake received
+	setTimeout(() => {
+		if (!authenticated) {
+			document.documentElement.style.display = '';
+			document.body.innerHTML = \`
+				<div style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1e1e1e;color:#fff;font-family:system-ui,-apple-system,sans-serif;">
+					<div style="text-align:center;max-width:500px;padding:40px;">
+						<h1 style="color:#f48771;margin:0 0 20px 0;">🔒 Access Denied</h1>
+						<p style="color:#ccc;line-height:1.6;">This Roopik development server can only be viewed inside the Roopik IDE.</p>
+						<p style="color:#888;font-size:14px;margin-top:20px;">If you're seeing this in the IDE, please reload the preview.</p>
+					</div>
+				</div>
+			\`;
+		}
+	}, 2000);
+
 	console.log('[Roopik] Click-to-source enabled');
 
 	let debugMode = false;

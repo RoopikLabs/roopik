@@ -4,80 +4,76 @@
  *--------------------------------------------------------------------------------------------*/
 
 /**
- * Authentication Middleware
- * Protects dev server from external access
+ * Webview-Only Access Control Middleware
+ * Blocks external browsers by detecting VSCode's Electron user-agent
  */
 
-function createAuthMiddleware(authToken) {
+function createAuthMiddleware() {
 	return (req, res, next) => {
 		// Allow OPTIONS requests (CORS preflight)
 		if (req.method === 'OPTIONS') {
 			return next();
 		}
 
-		// Skip auth for HMR WebSocket connections
-		if (req.url?.startsWith('/@vite/client') || req.url?.startsWith('/@fs/')) {
-			// Check if cookie is present
-			const cookies = parseCookies(req.headers.cookie);
-			if (cookies.roopik_auth === authToken) {
-				return next();
-			}
-		}
+		const userAgent = req.headers['user-agent'] || '';
+		const origin = req.headers['origin'] || req.headers['referer'] || '';
 
-		// Check token in query param or header
-		const url = new URL(req.url || '/', `http://${req.headers.host}`);
-		const queryToken = url.searchParams.get('token');
-		const headerToken = req.headers['x-roopik-token'];
+		// Log all headers for debugging
+		console.log('[Roopik Auth] User-Agent:', userAgent);
+		console.log('[Roopik Auth] Origin:', origin);
 
-		if (queryToken === authToken || headerToken === authToken) {
-			// Valid token, set cookie for future requests
-			res.setHeader('Set-Cookie', `roopik_auth=${authToken}; HttpOnly; SameSite=Strict; Path=/`);
-
-			// Remove token from URL (redirect)
-			if (queryToken) {
-				url.searchParams.delete('token');
-				const newUrl = url.pathname + (url.search || '');
-
-				// For non-root paths, just continue (cookie is set)
-				if (url.pathname !== '/') {
-					return next();
-				}
-
-				// For root, redirect to remove token from URL
-				res.statusCode = 302;
-				res.setHeader('Location', newUrl);
-				res.end();
-				return;
-			}
-
+		// VSCode webview runs in Electron, so User-Agent contains "Electron"
+		// External browsers (Chrome, Firefox, Edge) do NOT contain "Electron"
+		if (userAgent.includes('Electron') || userAgent.includes('VSCode')) {
+			console.log('[Roopik Auth] ✓ Allowed VSCode webview (Electron detected)');
 			return next();
 		}
 
-		// Check cookie
-		const cookies = parseCookies(req.headers.cookie);
-		if (cookies.roopik_auth === authToken) {
-			return next();
-		}
-
-		// Unauthorized
+		// Block all other origins (external browsers, curl, etc.)
+		console.log('[Roopik Auth] ✗ Blocked external request');
 		res.statusCode = 403;
-		res.setHeader('Content-Type', 'text/plain');
-		res.end('Forbidden: Invalid or missing authentication token');
-	};
-}
-
-function parseCookies(cookieHeader) {
-	const cookies = {};
-	if (!cookieHeader) return cookies;
-
-	cookieHeader.split(';').forEach(cookie => {
-		const [key, value] = cookie.trim().split('=');
-		if (key && value) {
-			cookies[key] = value;
+		res.setHeader('Content-Type', 'text/html');
+		res.end(`
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Access Denied - Roopik</title>
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			height: 100vh;
+			margin: 0;
+			background: #1e1e1e;
+			color: #fff;
 		}
-	});
-
-	return cookies;
+		.container {
+			text-align: center;
+			max-width: 500px;
+			padding: 40px;
+		}
+		h1 {
+			color: #f48771;
+			margin: 0 0 20px 0;
+		}
+		p {
+			color: #ccc;
+			line-height: 1.6;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<h1>🔒 Access Denied</h1>
+		<p>This Roopik development server requires authentication.</p>
+		<p>Please open this preview from within the Roopik IDE.</p>
+	</div>
+</body>
+</html>
+		`);
+	};
 }
 
 module.exports = { createAuthMiddleware };

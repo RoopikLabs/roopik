@@ -137,7 +137,7 @@ function regexFallbackTransform(code, id) {
  * Start Vite server with Roopik plugins
  */
 async function startViteServer(config) {
-	const { root, port, authToken } = config;
+	const { root, port } = config;
 
 	console.log('[Roopik Worker] Starting Vite server...');
 	console.log('[Roopik Worker] Root:', root);
@@ -154,9 +154,40 @@ async function startViteServer(config) {
 		server: {
 			port: port,
 			host: '127.0.0.1',
-			strictPort: false
+			strictPort: false,
+			cors: {
+				origin: true, // Allow all origins (safe because of auth middleware)
+				credentials: true
+			}
 		},
 		plugins: [
+			// Authentication plugin (MUST run via configureServer to be in correct middleware position)
+			{
+				name: 'roopik-auth',
+				configureServer(server) {
+					// Insert middleware at the BEGINNING of the chain (before Vite's serve middleware)
+					return () => {
+						// Add CORS middleware
+						server.middlewares.use((req, res, next) => {
+							res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+							res.setHeader('Access-Control-Allow-Credentials', 'true');
+							res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+							res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Roopik-Auth');
+
+							if (req.method === 'OPTIONS') {
+								res.statusCode = 200;
+								res.end();
+								return;
+							}
+							next();
+						});
+
+						// Add authentication middleware
+						server.middlewares.use(createAuthMiddleware());
+					};
+				}
+			},
+
 			// Babel-based source injection (with regex fallback)
 			createBabelSourcePlugin(),
 
@@ -165,14 +196,11 @@ async function startViteServer(config) {
 		]
 	});
 
-	// Inject authentication middleware
-	server.middlewares.use(createAuthMiddleware(authToken));
-
 	// Start server
 	await server.listen();
 
 	const actualPort = server.config.server.port;
-	const url = `http://127.0.0.1:${actualPort}?token=${authToken}`;
+	const url = `http://127.0.0.1:${actualPort}`;
 
 	console.log('[Roopik Worker] ✓ Server started:', url);
 
@@ -185,12 +213,12 @@ async function startViteServer(config) {
 process.on('message', async (message) => {
 	if (message.type === 'START') {
 		try {
-			const { root, port, authToken, framework } = message.payload;
+			const { root, port, framework } = message.payload;
 
 			let result;
 
 			if (framework === 'vite') {
-				result = await startViteServer({ root, port, authToken });
+				result = await startViteServer({ root, port });
 			} else {
 				throw new Error(`Unsupported framework: ${framework}`);
 			}

@@ -7,7 +7,6 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as cp from 'child_process';
-import * as crypto from 'crypto';
 
 /**
  * Vite Server Manager - Worker Pattern
@@ -24,7 +23,6 @@ export class ViteServerManager {
 	private static instance: ViteServerManager | undefined;
 	private workerProcess: cp.ChildProcess | undefined;
 	private serverUrl: string | undefined;
-	private authToken: string | undefined;
 	private projectRoot: string;
 	private extensionPath: string;
 	private outputChannel: vscode.OutputChannel;
@@ -44,6 +42,7 @@ export class ViteServerManager {
 
 	/**
 	 * Start dev server using worker process
+	 * @returns Server URL
 	 */
 	public async start(): Promise<string> {
 		this.outputChannel.show();
@@ -64,12 +63,10 @@ export class ViteServerManager {
 			throw new Error('Could not detect supported framework (Vite, Next.js, etc.)');
 		}
 
-		// Generate random auth token
-		this.authToken = crypto.randomBytes(32).toString('hex');
-		this.outputChannel.appendLine(`[Roopik] Generated auth token: ${this.authToken.substring(0, 8)}...`);
-
 		// Start worker process
-		return await this.startWorker(framework);
+		const url = await this.startWorker(framework);
+
+		return url;
 	}
 
 	/**
@@ -139,7 +136,6 @@ export class ViteServerManager {
 				payload: {
 					root: this.projectRoot,
 					port: 5173,
-					authToken: this.authToken,
 					framework: framework
 				}
 			});
@@ -190,7 +186,6 @@ export class ViteServerManager {
 
 			this.workerProcess = undefined;
 			this.serverUrl = undefined;
-			this.authToken = undefined;
 			console.log('[Roopik] Dev server stopped');
 		}
 	}

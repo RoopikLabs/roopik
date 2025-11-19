@@ -254,7 +254,8 @@ export class ProjectPreviewPanel {
 	 * Generate HTML for webview with browser-like UI
 	 */
 	private _getHtmlForWebview(_webview: vscode.Webview): string {
-		const viteUrl = this._viteServerUrl;
+		// Origin-based authentication - no tokens needed!
+		// The server checks if requests come from vscode-webview:// origin
 
 		return `<!DOCTYPE html>
 <html lang="en">
@@ -417,7 +418,7 @@ export class ProjectPreviewPanel {
 			type="text"
 			class="address-bar"
 			id="address-bar"
-			value="${viteUrl}"
+			value="${this._viteServerUrl || 'Loading...'}"
 		/>
 
 		<!-- Highlight Mode Toggle -->
@@ -434,15 +435,15 @@ export class ProjectPreviewPanel {
 
 	<!-- Preview Frame -->
 	<div class="preview-container">
-		<div class="loading" id="loading">
+		<div class="loading" id="loading" style="${this._viteServerUrl ? 'display: none;' : ''}">
 			<p>Loading preview...</p>
-			<p style="font-size: 12px; margin-top: 8px;">Make sure Vite dev server is running</p>
+			<p style="font-size: 12px; margin-top: 8px;">Starting dev server...</p>
 		</div>
 		<iframe
 			id="preview-frame"
-			src="${viteUrl}"
 			sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
-			style="display: none;"
+			src="${this._viteServerUrl}"
+			style="${this._viteServerUrl ? 'display: block;' : 'display: none;'}"
 		></iframe>
 	</div>
 
@@ -467,6 +468,17 @@ export class ProjectPreviewPanel {
 			loading.style.display = 'none';
 			frame.style.display = 'block';
 			console.log('[Roopik] Preview loaded successfully');
+
+			// SEND HANDSHAKE to unlock the preview (security)
+			try {
+				frame.contentWindow.postMessage({
+					type: 'ROOPIK_HANDSHAKE_SYN',
+					secret: 'ROOPIK_IDE_HANDSHAKE_v1'
+				}, '*');
+				console.log('[Roopik] Sent authentication handshake to iframe');
+			} catch (error) {
+				console.error('[Roopik] Failed to send handshake:', error);
+			}
 
 			// Set initial address bar (will be updated by messages from iframe)
 			addressBar.value = frame.src;
@@ -523,9 +535,6 @@ export class ProjectPreviewPanel {
 
 		// Listen for messages FROM iframe (postMessage)
 		window.addEventListener('message', (event) => {
-			// Log ALL messages for debugging
-			console.log('[Roopik Webview] Message received:', event.data);
-
 			// Accept messages from any origin (iframe can be localhost:5173 or any port)
 			const message = event.data;
 
@@ -538,7 +547,6 @@ export class ProjectPreviewPanel {
 				});
 			} else if (message.type === 'roopik-click-to-source') {
 				// Received click-to-source from iframe
-				console.log('[Roopik Webview] ✓ Got click-to-source, forwarding to extension');
 				vscode.postMessage({
 					type: 'click-to-source',
 					file: message.file,
@@ -546,7 +554,6 @@ export class ProjectPreviewPanel {
 					column: message.column,
 					componentName: message.componentName
 				});
-				console.log('[Roopik Webview] ✓ Forwarded to extension');
 			} else if (message.type === 'roopik-navigate') {
 				// Update address bar with current URL
 				const newUrl = message.url;
@@ -561,8 +568,6 @@ export class ProjectPreviewPanel {
 					currentHistoryIndex = navigationHistory.length - 1;
 					updateNavigationButtons();
 				}
-			} else {
-				console.log('[Roopik Webview] Unknown message type:', message.type);
 			}
 		});
 
@@ -611,9 +616,6 @@ export class ProjectPreviewPanel {
 				}
 			}
 		});
-
-		// Initial URL set
-		addressBar.value = '${viteUrl}';
 	</script>
 </body>
 </html>`;
