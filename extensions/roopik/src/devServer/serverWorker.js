@@ -5,16 +5,19 @@
 
 /**
  * Vite Dev Server Worker (Child Process)
+ * Modular plugin-based architecture for framework-agnostic preview
  */
 
 const { createServer } = require('vite');
 const path = require('path');
 const { createRoopikInjectPlugin } = require('./plugins/roopikInjectPlugin');
 const { createAuthMiddleware } = require('./plugins/authMiddleware');
+const { getSourcePlugin, supportsClickToSource } = require('./plugins/pluginFactory');
+const { detectFramework, getFrameworkDisplayName } = require('./frameworkDetector');
 
 /**
  * Get extension's node_modules path
- * Worker runs in user's project, but we need OUR Babel installation
+ * Worker runs in user's project, but we need OUR dependencies (Babel, etc.)
  */
 function getExtensionNodeModules() {
 	// __dirname = /extension/out/devServer
@@ -23,126 +26,25 @@ function getExtensionNodeModules() {
 }
 
 /**
- * Babel-based source attribute injection
- * Uses extension's Babel installation (not user's)
- */
-function createBabelSourcePlugin() {
-	return {
-		name: 'roopik-babel-source',
-		enforce: 'pre', // Run BEFORE @vitejs/plugin-react
-		transform(code, id) {
-			// Only process JSX/TSX files
-			if (!/\.[jt]sx$/.test(id)) {
-				return null;
-			}
-
-			try {
-				// Load Babel from EXTENSION's node_modules (not user's!)
-				const extensionNodeModules = getExtensionNodeModules();
-				const babelPath = path.join(extensionNodeModules, '@babel', 'core');
-				const babel = require(babelPath);
-
-				// Transform with Babel
-				const result = babel.transformSync(code, {
-					filename: id,
-					plugins: [
-						// Babel plugin (inline, no external dependency)
-						function roopikBabelPlugin({ types: t }) {
-							return {
-								visitor: {
-									JSXOpeningElement(path, state) {
-										const { node } = path;
-										const loc = node.loc;
-										if (!loc) return;
-
-										const filename = state.filename || id;
-										const relPath = filename.replace(/\\/g, '/');
-										const sourceValue = `${relPath}:${loc.start.line}:${loc.start.column}`;
-
-										const sourceAttr = t.jsxAttribute(
-											t.jsxIdentifier('data-roopik-source'),
-											t.stringLiteral(sourceValue)
-										);
-
-										const hasRoopikAttr = node.attributes.some(
-											attr => t.isJSXAttribute(attr) && attr.name.name === 'data-roopik-source'
-										);
-
-										if (!hasRoopikAttr) {
-											node.attributes.push(sourceAttr);
-										}
-									}
-								}
-							};
-						}
-					],
-					parserOpts: {
-						plugins: ['jsx', 'typescript']
-					}
-				});
-
-				return result ? { code: result.code, map: result.map } : null;
-			} catch (error) {
-				// Fallback to regex if Babel fails
-				console.warn('[Roopik] Babel transform failed, using regex fallback:', error.message);
-				return regexFallbackTransform(code, id);
-			}
-		}
-	};
-}
-
-/**
- * Regex fallback (for when Babel fails)
- */
-function regexFallbackTransform(code, id) {
-	try {
-		const lines = code.split('\n');
-		const modifiedLines = [];
-
-		for (let i = 0; i < lines.length; i++) {
-			let line = lines[i];
-			const lineNumber = i + 1;
-
-			// Match JSX opening tags
-			const jsxTagRegex = /<([A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*)\s*([^/>]*?)>/g;
-
-			line = line.replace(jsxTagRegex, (match, tagName, attributes) => {
-				if (attributes.includes('data-roopik-source')) {
-					return match;
-				}
-
-				const columnNumber = lines[i].indexOf('<' + tagName);
-				const sourceAttr = ` data-roopik-source="${id}:${lineNumber}:${columnNumber}"`;
-
-				return `<${tagName}${sourceAttr} ${attributes}>`;
-			});
-
-			modifiedLines.push(line);
-		}
-
-		const modifiedCode = modifiedLines.join('\n');
-
-		if (modifiedCode !== code) {
-			return { code: modifiedCode, map: null };
-		}
-
-		return null;
-	} catch (error) {
-		console.error('[Roopik] Regex fallback error:', error);
-		return null;
-	}
-}
-
-/**
  * Start Vite server with Roopik plugins
+ * Uses plugin factory to select appropriate source tracking plugin
  */
 async function startViteServer(config) {
-	const { root, port } = config;
+	const { root, port, framework } = config;
 
 	console.log('[Roopik Worker] Starting Vite server...');
 	console.log('[Roopik Worker] Root:', root);
 	console.log('[Roopik Worker] Port:', port);
+	console.log('[Roopik Worker] Framework:', getFrameworkDisplayName(framework));
 	console.log('[Roopik Worker] Extension node_modules:', getExtensionNodeModules());
+
+	// Get framework-specific source plugin
+	const extensionNodeModules = getExtensionNodeModules();
+	const sourcePlugin = getSourcePlugin(framework, extensionNodeModules);
+
+	// Check if click-to-source is supported
+	const hasClickToSource = supportsClickToSource(framework);
+	console.log('[Roopik Worker] Click-to-source support:', hasClickToSource ? '✓ Enabled' : '✗ Not available');
 
 	// Load user's vite.config.js (if exists)
 	const configPath = path.join(root, 'vite.config.js');
@@ -161,7 +63,7 @@ async function startViteServer(config) {
 			}
 		},
 		plugins: [
-			// Authentication plugin (MUST run via configureServer to be in correct middleware position)
+			// 1. Authentication plugin (MUST run via configureServer to be in correct middleware position)
 			{
 				name: 'roopik-auth',
 				configureServer(server) {
@@ -188,10 +90,10 @@ async function startViteServer(config) {
 				}
 			},
 
-			// Babel-based source injection (with regex fallback)
-			createBabelSourcePlugin(),
+			// 2. Framework-specific source tracking plugin (React, Vue, etc.)
+			sourcePlugin,
 
-			// HTML injection plugin
+			// 3. HTML injection plugin (universal - works for all frameworks)
 			createRoopikInjectPlugin()
 		]
 	});
@@ -213,14 +115,23 @@ async function startViteServer(config) {
 process.on('message', async (message) => {
 	if (message.type === 'START') {
 		try {
-			const { root, port, framework } = message.payload;
+			const { root, port, framework: frameworkHint } = message.payload;
+
+			// Detect framework from package.json (more accurate than the hint)
+			const detectedFramework = detectFramework(root);
+			const framework = detectedFramework !== 'unknown' ? detectedFramework : frameworkHint;
+
+			console.log('[Roopik Worker] Framework hint:', frameworkHint);
+			console.log('[Roopik Worker] Detected framework:', detectedFramework);
+			console.log('[Roopik Worker] Using framework:', framework);
 
 			let result;
 
-			if (framework === 'vite') {
-				result = await startViteServer({ root, port });
+			// All Vite-based frameworks use the same server
+			if (framework.includes('-vite') || framework === 'vite') {
+				result = await startViteServer({ root, port, framework });
 			} else {
-				throw new Error(`Unsupported framework: ${framework}`);
+				throw new Error(`Unsupported framework: ${framework}. Currently only Vite-based projects are supported.`);
 			}
 
 			// Notify parent extension

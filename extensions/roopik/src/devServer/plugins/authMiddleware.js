@@ -66,9 +66,9 @@ function createAuthMiddleware() {
 </head>
 <body>
 	<div class="container">
-		<h1>🔒 Access Denied</h1>
-		<p>This Roopik development server requires authentication.</p>
-		<p>Please open this preview from within the Roopik IDE.</p>
+		<h1>Access Restricted</h1>
+		<p>This development server is only accessible through the Roopik IDE environment.</p>
+		<p style="font-size: 14px; color: #888; margin-top: 20px;">Error: Invalid runtime context</p>
 	</div>
 </body>
 </html>
