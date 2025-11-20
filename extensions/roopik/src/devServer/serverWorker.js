@@ -30,17 +30,18 @@ function getExtensionNodeModules() {
  * Uses plugin factory to select appropriate source tracking plugin
  */
 async function startViteServer(config) {
-	const { root, port, framework } = config;
+	const { root, port, framework, pluginConfig } = config;
 
 	console.log('[Roopik Worker] Starting Vite server...');
 	console.log('[Roopik Worker] Root:', root);
 	console.log('[Roopik Worker] Port:', port);
 	console.log('[Roopik Worker] Framework:', getFrameworkDisplayName(framework));
 	console.log('[Roopik Worker] Extension node_modules:', getExtensionNodeModules());
+	console.log('[Roopik Worker] Plugin Config:', pluginConfig);
 
 	// Get framework-specific source plugin
 	const extensionNodeModules = getExtensionNodeModules();
-	const sourcePlugin = getSourcePlugin(framework, extensionNodeModules);
+	const sourcePlugin = getSourcePlugin(framework, extensionNodeModules, pluginConfig);
 
 	// Check if click-to-source is supported
 	const hasClickToSource = supportsClickToSource(framework);
@@ -115,7 +116,7 @@ async function startViteServer(config) {
 process.on('message', async (message) => {
 	if (message.type === 'START') {
 		try {
-			const { root, port, framework: frameworkHint } = message.payload;
+			const { root, port, framework: frameworkHint, pluginConfig } = message.payload;
 
 			// Detect framework from package.json (more accurate than the hint)
 			const detectedFramework = detectFramework(root);
@@ -129,7 +130,7 @@ process.on('message', async (message) => {
 
 			// All Vite-based frameworks use the same server
 			if (framework.includes('-vite') || framework === 'vite') {
-				result = await startViteServer({ root, port, framework });
+				result = await startViteServer({ root, port, framework, pluginConfig });
 			} else {
 				throw new Error(`Unsupported framework: ${framework}. Currently only Vite-based projects are supported.`);
 			}

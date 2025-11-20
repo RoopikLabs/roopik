@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as cp from 'child_process';
+import { ConfigManager } from '../config';
 
 /**
  * Vite Server Manager - Worker Pattern
@@ -130,13 +131,21 @@ export class ViteServerManager {
 				this.serverUrl = undefined;
 			});
 
+			// Load plugin configuration
+			const configManager = ConfigManager.getInstance(this.projectRoot);
+			const pluginConfig = {
+				forceRegexMode: configManager.isRegexModeForced(),
+				verboseLogging: configManager.getConfig().plugins.verboseLogging
+			};
+
 			// Send START command to worker
 			this.workerProcess.send({
 				type: 'START',
 				payload: {
 					root: this.projectRoot,
 					port: 5173,
-					framework: framework
+					framework: framework,
+					pluginConfig: pluginConfig
 				}
 			});
 

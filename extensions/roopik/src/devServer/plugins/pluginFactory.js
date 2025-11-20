@@ -16,15 +16,16 @@ const { createPlainHtmlSourcePlugin } = require('./plainHtmlSourcePlugin');
  * Get source plugin for framework
  * @param {string} framework - Framework identifier ('react-vite', 'vue-vite', etc.)
  * @param {string} extensionNodeModules - Path to extension's node_modules
+ * @param {Object} pluginConfig - Plugin configuration {forceRegexMode, verboseLogging}
  * @returns {Object} Vite plugin
  */
-function getSourcePlugin(framework, extensionNodeModules) {
+function getSourcePlugin(framework, extensionNodeModules, pluginConfig) {
 	switch (framework) {
 		case 'react-vite':
-			return createReactSourcePlugin(extensionNodeModules);
+			return createReactSourcePlugin(extensionNodeModules, pluginConfig);
 
 		case 'vue-vite':
-			return createVueSourcePlugin(extensionNodeModules);
+			return createVueSourcePlugin(extensionNodeModules, pluginConfig);
 
 		case 'svelte-vite':
 			// TODO: Implement Svelte plugin
@@ -33,7 +34,7 @@ function getSourcePlugin(framework, extensionNodeModules) {
 
 		case 'solid-vite':
 			// Solid uses JSX like React, so we can reuse the React plugin!
-			return createReactSourcePlugin(extensionNodeModules);
+			return createReactSourcePlugin(extensionNodeModules, pluginConfig);
 
 		case 'plain-html-vite':
 			return createPlainHtmlSourcePlugin();
@@ -52,8 +53,8 @@ function getSourcePlugin(framework, extensionNodeModules) {
 function supportsClickToSource(framework) {
 	const supportedFrameworks = [
 		'react-vite',
+		'vue-vite',      // ✅ Now supported via regex-based template transformation
 		'solid-vite',
-		// 'vue-vite' will be supported once we implement the Vue compiler plugin
 	];
 
 	return supportedFrameworks.includes(framework);
