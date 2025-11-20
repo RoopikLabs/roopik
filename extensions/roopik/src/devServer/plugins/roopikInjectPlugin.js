@@ -60,15 +60,35 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 		}
 	});
 
+	// Initialize lastUrl - will be set by parent via message
 	let lastUrl = location.href;
+	let urlTrackingInitialized = false;
+
 	function notifyUrlChange() {
 		if (location.href !== lastUrl) {
 			lastUrl = location.href;
 			window.parent.postMessage({ type: 'roopik-navigate', url: location.href }, '*');
 		}
 	}
-	setInterval(notifyUrlChange, 500);
+
+	// Listen for initial URL from parent (source of truth)
+	window.addEventListener('message', (event) => {
+		const message = event.data;
+		if (message.type === 'roopik-init-url' && !urlTrackingInitialized) {
+			lastUrl = message.url;
+			urlTrackingInitialized = true;
+			console.log('[Roopik] Initialized URL tracking with:', lastUrl);
+		}
+	});
+
+	// Use shorter interval for more responsive URL updates (100ms instead of 500ms)
+	setInterval(notifyUrlChange, 100);
+
+	// Listen for navigation events (instant detection)
 	window.addEventListener('popstate', notifyUrlChange);
+
+	// Also listen for hashchange for SPAs
+	window.addEventListener('hashchange', notifyUrlChange);
 
 	const BROWSER_SHORTCUT_KEYS = new Set(['s', 'p', 'o', 'l', 'n', 't', 'w', 'u']);
 	const BROWSER_DEVTOOLS_KEYS = ['i', 'j', 'c']; // Ctrl/Cmd + Shift + key
@@ -194,7 +214,8 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 		return 'Unknown';
 	}
 
-	window.parent.postMessage({ type: 'roopik-navigate', url: location.href }, '*');
+	// Don't send initial navigation - let the parent's iframe src be the source of truth
+	// Only send navigation updates when user actually navigates (handled by setInterval above)
 })();
 `;
 

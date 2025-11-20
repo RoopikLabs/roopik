@@ -312,9 +312,9 @@ export class ProjectPreviewPanel {
 			let html = fs.readFileSync(templatePath, 'utf8');
 
 			// Replace placeholders
-			html = html.replace(/\{\{VITE_SERVER_URL\}\}/g, this._viteServerUrl || 'Loading...');
-			html = html.replace(/\{\{LOADING_DISPLAY\}\}/g, this._viteServerUrl ? 'display: none;' : '');
-			html = html.replace(/\{\{IFRAME_DISPLAY\}\}/g, this._viteServerUrl ? 'display: block;' : 'display: none;');
+			html = html.replace(/__VITE_SERVER_URL__/g, this._viteServerUrl || 'Loading...');
+			html = html.replace(/__LOADING_DISPLAY__/g, this._viteServerUrl ? 'none' : 'block');
+			html = html.replace(/__IFRAME_DISPLAY__/g, this._viteServerUrl ? 'block' : 'none');
 
 			return html;
 		} catch (error) {

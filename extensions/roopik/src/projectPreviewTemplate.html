@@ -366,7 +366,7 @@
 			type="text"
 			class="address-bar"
 			id="address-bar"
-			value="{{VITE_SERVER_URL}}"
+			value="__VITE_SERVER_URL__"
 		/>
 
 		<!-- Debug Mode Toggle -->
@@ -383,7 +383,7 @@
 
 	<!-- Preview Frame -->
 	<div class="preview-container">
-		<div class="loading" id="loading" style="{{LOADING_DISPLAY}}">
+		<div class="loading" id="loading" style="display: __LOADING_DISPLAY__;">
 			<p>Loading preview...</p>
 			<p style="font-size: 12px; margin-top: 8px;">Starting dev server...</p>
 		</div>
@@ -397,8 +397,8 @@
 		<iframe
 			id="preview-frame"
 			sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
-			src="{{VITE_SERVER_URL}}"
-			style="{{IFRAME_DISPLAY}}"
+			src="__VITE_SERVER_URL__"
+			style="display: __IFRAME_DISPLAY__;"
 		></iframe>
 	</div>
 
@@ -472,6 +472,13 @@
 					secret: 'ROOPIK_IDE_HANDSHAKE_v1'
 				}, '*');
 				console.log('[Roopik] Sent authentication handshake to iframe');
+
+				// Send initial URL to iframe (source of truth for URL tracking)
+				frame.contentWindow.postMessage({
+					type: 'roopik-init-url',
+					url: frame.src
+				}, '*');
+				console.log('[Roopik] Sent initial URL to iframe:', frame.src);
 			} catch (error) {
 				console.error('[Roopik] Failed to send handshake:', error);
 			}
