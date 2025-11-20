@@ -30,18 +30,18 @@ function getSourcePlugin(framework, extensionNodeModules, pluginConfig) {
 		case 'svelte-vite':
 			// TODO: Implement Svelte plugin
 			console.log('[Roopik] Svelte source plugin not yet implemented');
-			return createPlainHtmlSourcePlugin();
+			return createPlainHtmlSourcePlugin(pluginConfig);
 
 		case 'solid-vite':
 			// Solid uses JSX like React, so we can reuse the React plugin!
 			return createReactSourcePlugin(extensionNodeModules, pluginConfig);
 
 		case 'plain-html-vite':
-			return createPlainHtmlSourcePlugin();
+			return createPlainHtmlSourcePlugin(pluginConfig);
 
 		default:
 			console.warn('[Roopik] Unknown framework, using plain HTML plugin:', framework);
-			return createPlainHtmlSourcePlugin();
+			return createPlainHtmlSourcePlugin(pluginConfig);
 	}
 }
 
@@ -53,8 +53,9 @@ function getSourcePlugin(framework, extensionNodeModules, pluginConfig) {
 function supportsClickToSource(framework) {
 	const supportedFrameworks = [
 		'react-vite',
-		'vue-vite',      // ✅ Now supported via regex-based template transformation
-		'solid-vite',
+		'vue-vite',           // ✅ Supported via regex-based template transformation
+		'solid-vite',         // ✅ Reuses React plugin (JSX-based)
+		'plain-html-vite',    // ✅ Supported via regex-based HTML transformation
 	];
 
 	return supportedFrameworks.includes(framework);

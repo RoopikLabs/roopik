@@ -618,6 +618,238 @@ Only real JSX elements get attributes, strings are protected!
 
 ---
 
+## Plain HTML Projects - Regex-Only Implementation 📄
+
+Plain HTML projects are the **simplest and purest** implementation of our click-to-source feature. Unlike React (JSX) or Vue (SFC), there's **no compilation step, no AST, no build transformation** - just pure regex-based text transformation!
+
+### **Why Plain HTML is Different**
+
+| Aspect | React/Vue | Plain HTML |
+|--------|-----------|------------|
+| **Compilation** | Babel AST / Vue SFC compiler | ❌ None - direct HTML serving |
+| **Strategy** | AST primary, regex fallback | ✅ Regex only (no AST available) |
+| **Vite Hook** | `transform` (for .jsx/.vue modules) | `transformIndexHtml` (for .html files) |
+| **Complexity** | High (syntax parsing, scope analysis) | Low (simple text matching) |
+| **Performance** | Slower (AST traversal + transformation) | Faster (single regex pass) |
+
+### **How It Works**
+
+**Plugin Architecture**:
+```javascript
+// File: plainHtmlSourcePlugin.js
+function createPlainHtmlSourcePlugin(pluginConfig = {}) {
+    return {
+        name: 'roopik-plain-html-source',
+        enforce: 'pre',
+
+        // CRITICAL: Use transformIndexHtml, NOT transform!
+        // Vite's transform hook doesn't process HTML files
+        transformIndexHtml: {
+            order: 'pre',
+            handler(html, ctx) {
+                // Regex transformation happens here
+            }
+        }
+    };
+}
+```
+
+**Why `transformIndexHtml` instead of `transform`?**
+
+- Vite treats HTML files specially (they're entry points, not modules)
+- The `transform` hook only processes JavaScript/CSS modules
+- `transformIndexHtml` is specifically designed for HTML transformation
+- This took debugging to discover - the plugin silently did nothing with `transform`!
+
+### **Security Considerations for HTML**
+
+Plain HTML has **different security concerns** than JSX:
+
+```javascript
+function isInsideStringOrScript(html, position) {
+    let inScript = false;
+    let inStyle = false;
+    let inSingleQuote = false;
+    let inDoubleQuote = false;
+
+    for (let i = 0; i < position; i++) {
+        const char = html[i];
+        const remaining = html.substring(i, Math.min(i + 20, html.length));
+
+        // Check for script/style tag boundaries
+        if (remaining.startsWith('<script')) {
+            inScript = true;
+        } else if (remaining.startsWith('</script>')) {
+            inScript = false;
+        } else if (remaining.startsWith('<style')) {
+            inStyle = true;
+        } else if (remaining.startsWith('</style>')) {
+            inStyle = false;
+        }
+
+        // Track quote context (for attribute values)
+        if (!inScript && !inStyle) {
+            if (char === "'" && !inDoubleQuote) {
+                inSingleQuote = !inSingleQuote;
+            } else if (char === '"' && !inSingleQuote) {
+                inDoubleQuote = !inDoubleQuote;
+            }
+        }
+    }
+
+    return inScript || inStyle || inSingleQuote || inDoubleQuote;
+}
+```
+
+**What we skip**:
+1. **`<script>` tags** - Don't inject into JavaScript code
+2. **`<style>` tags** - Don't inject into CSS rules
+3. **Attribute values** - Don't inject into `href="..."` or `class="..."`
+4. **Non-visual elements** - Skip `<meta>`, `<title>`, `<link>`, `<base>`
+
+### **Example Transformation**
+
+**Input HTML** (`index.html`):
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>My Website</title>
+    <style>
+        body { margin: 0; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Welcome!</h1>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/about">About</a>
+        </nav>
+    </header>
+    <main>
+        <section class="hero">
+            <p>This is my website</p>
+        </section>
+    </main>
+    <script>
+        console.log('Hello!');
+    </script>
+</body>
+</html>
+```
+
+**Output HTML** (with source tracking):
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>My Website</title>
+    <style>
+        body { margin: 0; }
+    </style>
+</head>
+<body data-roopik-source="index.html:9:0">
+    <header data-roopik-source="index.html:10:4">
+        <h1 data-roopik-source="index.html:11:8">Welcome!</h1>
+        <nav data-roopik-source="index.html:12:8">
+            <a data-roopik-source="index.html:13:12" href="/">Home</a>
+            <a data-roopik-source="index.html:14:12" href="/about">About</a>
+        </nav>
+    </header>
+    <main data-roopik-source="index.html:17:4">
+        <section data-roopik-source="index.html:18:8" class="hero">
+            <p data-roopik-source="index.html:19:12">This is my website</p>
+        </section>
+    </main>
+    <script>
+        console.log('Hello!');
+    </script>
+</body>
+</html>
+```
+
+**Notice**:
+- ✅ Visual elements (`<body>`, `<header>`, `<h1>`, `<nav>`, `<a>`, `<main>`, `<section>`, `<p>`) get tracking
+- ❌ `<html>`, `<head>`, `<meta>`, `<title>` are skipped (non-visual)
+- ❌ `<style>` and `<script>` content is untouched (security)
+- ✅ Line numbers are accurate (9, 10, 11, 12, etc.)
+
+### **Plugin Factory Integration**
+
+```javascript
+// File: pluginFactory.js
+function getSourcePlugin(framework, extensionNodeModules, pluginConfig) {
+    switch (framework) {
+        case 'react-vite':
+            return createReactSourcePlugin(extensionNodeModules, pluginConfig);
+
+        case 'vue-vite':
+            return createVueSourcePlugin(extensionNodeModules, pluginConfig);
+
+        case 'plain-html-vite':
+            return createPlainHtmlSourcePlugin(pluginConfig);  // ✅ No AST needed!
+
+        default:
+            console.warn('[Roopik] Unknown framework, using plain HTML plugin:', framework);
+            return createPlainHtmlSourcePlugin(pluginConfig);  // Safe fallback
+    }
+}
+
+function supportsClickToSource(framework) {
+    const supportedFrameworks = [
+        'react-vite',
+        'vue-vite',
+        'solid-vite',
+        'plain-html-vite',  // ✅ Fully supported!
+    ];
+    return supportedFrameworks.includes(framework);
+}
+```
+
+### **Advantages of Plain HTML Approach**
+
+1. **Simplicity** - No AST parsing, no compilation overhead
+2. **Speed** - Single regex pass, minimal processing
+3. **Reliability** - Fewer dependencies, fewer failure modes
+4. **Universality** - Works with any HTML structure
+5. **No build tools required** - Can work even without Vite (future enhancement)
+
+### **Why This Implementation is Elegant**
+
+Unlike React/Vue where we need:
+- Babel transforms for JSX
+- Vue SFC compiler for templates
+- Complex AST traversal
+- Scope analysis for context
+
+Plain HTML just needs:
+- One regex pattern: `/<([a-zA-Z][a-zA-Z0-9-]*)([\s\/>])/g`
+- Simple string position tracking
+- Basic security checks
+
+**It's the same regex fallback we use for React/Vue, but without the complexity of AST fallback logic!**
+
+### **Real-World Use Cases**
+
+This enables click-to-source for:
+- 🌐 **Static websites** - Landing pages, portfolios, documentation
+- 📚 **Multi-page sites** - Traditional server-rendered HTML
+- 🎓 **Learning projects** - Beginner HTML/CSS/JS tutorials
+- 🚀 **Prototypes** - Quick mockups without framework overhead
+- 📄 **HTML emails** - Email template development (future)
+
+### **Files Involved**
+
+- [plainHtmlSourcePlugin.js](src/devServer/plugins/plainHtmlSourcePlugin.js) - Main implementation
+- [pluginFactory.js](src/devServer/plugins/pluginFactory.js) - Framework detection and plugin selection
+- [serverWorker.js](src/devServer/serverWorker.js) - Vite server configuration
+- [config.ts](src/config.ts) - Plugin configuration system
+
+---
+
 ## Future Enhancements
 
 ### Potential Improvements
