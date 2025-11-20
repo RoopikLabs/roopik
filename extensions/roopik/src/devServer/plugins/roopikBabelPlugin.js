@@ -17,7 +17,7 @@ function createRoopikBabelPlugin() {
 				JSXOpeningElement(path, state) {
 					const { node } = path;
 					const loc = node.loc;
-					if (!loc) return;
+					if (!loc) { return; }
 
 					// Get file path - use absolute path for Windows compatibility
 					const filename = state.filename || state.file.opts.filename || '';

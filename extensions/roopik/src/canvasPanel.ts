@@ -9,6 +9,7 @@ import { ConfigManager } from './config';
 import { PreviewManager } from './preview/core/PreviewManager';
 import { ComponentSandbox } from './preview/renderer/ComponentSandbox';
 import type { ComponentSource } from './preview/core/types';
+import { Logger } from './logger';
 
 /**
  * Canvas State Interface
@@ -58,7 +59,7 @@ export class CanvasPanel {
 	public static initializePreviewSystem(context: vscode.ExtensionContext) {
 		CanvasPanel.previewManager = new PreviewManager();
 		CanvasPanel.componentSandbox = new ComponentSandbox(context);
-		console.log('[CanvasPanel] Mode 1 preview system initialized');
+		Logger.getInstance().info('CanvasPanel', 'Mode 1 preview system initialized');
 	}
 
 	private readonly _panel: vscode.WebviewPanel;
@@ -67,6 +68,7 @@ export class CanvasPanel {
 	private readonly extensionUri: vscode.Uri;
 	private canvasState: CanvasState;
 	private configManager: ConfigManager;
+	private logger: ReturnType<typeof Logger.prototype.createScoped>;
 
 	/**
 	 * Create or show a canvas panel by ID
@@ -108,13 +110,13 @@ export class CanvasPanel {
 							// Only set if preferences is an object with valid structure
 							if (typeof prefs === 'object' && prefs !== null) {
 								CanvasPanel.sessionPreferences = prefs;
-								console.log('[Roopik] Loaded session preferences:', CanvasPanel.sessionPreferences);
+								Logger.getInstance().info('CanvasPanel', 'Loaded session preferences', CanvasPanel.sessionPreferences);
 							}
 						}
 					}
 				} catch (error) {
 					// Silently ignore errors (file doesn't exist, corrupted JSON, etc.)
-					console.log('[Roopik] No valid session preferences found, using defaults');
+					Logger.getInstance().debug('CanvasPanel', 'No valid session preferences found, using defaults');
 					CanvasPanel.sessionPreferences = null;
 				}
 			}
@@ -173,9 +175,9 @@ export class CanvasPanel {
 			// Notify listeners that panels changed
 			CanvasPanel.onDidChangePanelsEmitter.fire();
 
-			console.log(`[Roopik] Canvas "${canvasId}" created. Total canvases: ${CanvasPanel.panels.size}`);
+			Logger.getInstance().info('CanvasPanel', `Canvas "${canvasId}" created. Total canvases: ${CanvasPanel.panels.size}`);
 		} catch (error) {
-			console.error('[Roopik] Error in createOrShow:', error);
+			Logger.getInstance().error('CanvasPanel', 'Error in createOrShow', error);
 			vscode.window.showErrorMessage(`Failed to create canvas: ${error}`);
 		}
 	}
@@ -188,7 +190,7 @@ export class CanvasPanel {
 		CanvasPanel.panels.clear();
 		// Notify listeners that all panels closed
 		CanvasPanel.onDidChangePanelsEmitter.fire();
-		console.log('[Roopik] All canvases closed');
+		Logger.getInstance().info('CanvasPanel', 'All canvases closed');
 	}
 
 	/**
@@ -210,7 +212,7 @@ export class CanvasPanel {
 
 			if (fs.existsSync(statePath)) {
 				fs.unlinkSync(statePath);
-				console.log(`[Roopik] Canvas "${canvasId}" deleted from disk`);
+				Logger.getInstance().info('CanvasPanel', `Canvas "${canvasId}" deleted from disk`);
 			}
 
 			// Save session to update list
@@ -221,7 +223,7 @@ export class CanvasPanel {
 
 			return true;
 		} catch (error) {
-			console.error(`[Roopik] Failed to delete canvas "${canvasId}":`, error);
+			Logger.getInstance().error('CanvasPanel', `Failed to delete canvas "${canvasId}"`, error);
 			return false;
 		}
 	}
@@ -238,7 +240,7 @@ export class CanvasPanel {
 			const statePath = configManager.getCanvasStatePath(canvasId);
 
 			if (!fs.existsSync(statePath)) {
-				console.error(`[Roopik] Canvas "${canvasId}" not found`);
+				Logger.getInstance().error('CanvasPanel', `Canvas "${canvasId}" not found`);
 				return false;
 			}
 
@@ -260,14 +262,14 @@ export class CanvasPanel {
 				panel.canvasState.name = newName;
 			}
 
-			console.log(`[Roopik] Canvas "${canvasId}" renamed to "${newName}"`);
+			Logger.getInstance().info('CanvasPanel', `Canvas "${canvasId}" renamed to "${newName}"`);
 
 			// Notify listeners
 			CanvasPanel.onDidChangePanelsEmitter.fire();
 
 			return true;
 		} catch (error) {
-			console.error(`[Roopik] Failed to rename canvas "${canvasId}":`, error);
+			Logger.getInstance().error('CanvasPanel', `Failed to rename canvas "${canvasId}"`, error);
 			return false;
 		}
 	}
@@ -315,9 +317,9 @@ export class CanvasPanel {
 
 		try {
 			fs.writeFileSync(sessionPath, JSON.stringify(session, null, '\t'), 'utf8');
-			console.log(`[Roopik] Session saved: ${session.canvasIds.length} canvases`);
+			Logger.getInstance().debug('CanvasPanel', `Session saved: ${session.canvasIds.length} canvases`);
 		} catch (error) {
-			console.error('[Roopik] Failed to save session:', error);
+			Logger.getInstance().error('CanvasPanel', 'Failed to save session', error);
 		}
 	}
 
@@ -330,7 +332,7 @@ export class CanvasPanel {
 		const config = configManager.getConfig();
 
 		if (!config.canvas.restoreLastSession) {
-			console.log('[Roopik] Session restore disabled in config');
+			Logger.getInstance().info('CanvasPanel', 'Session restore disabled in config');
 			return null;
 		}
 
@@ -342,7 +344,7 @@ export class CanvasPanel {
 				const session = JSON.parse(sessionFile);
 
 				if (session.canvasIds && Array.isArray(session.canvasIds) && session.canvasIds.length > 0) {
-					console.log(`[Roopik] Restoring session: ${session.canvasIds.length} canvases`);
+					Logger.getInstance().info('CanvasPanel', `Restoring session: ${session.canvasIds.length} canvases`);
 
 					// Reopen each canvas
 					session.canvasIds.forEach((canvasId: string) => {
@@ -355,7 +357,7 @@ export class CanvasPanel {
 								CanvasPanel.createOrShow(extensionUri, canvasId, state.name);
 							}
 						} catch (canvasError) {
-							console.error(`[Roopik] Failed to restore canvas "${canvasId}":`, canvasError);
+							Logger.getInstance().error('CanvasPanel', `Failed to restore canvas "${canvasId}"`, canvasError);
 							// Continue with other canvases
 						}
 					});
@@ -364,14 +366,14 @@ export class CanvasPanel {
 				// Store preferences in static property for all canvases (with validation)
 				if (session.preferences && typeof session.preferences === 'object' && session.preferences !== null) {
 					CanvasPanel.sessionPreferences = session.preferences;
-					console.log('[Roopik] Session preferences restored:', session.preferences);
+					Logger.getInstance().info('CanvasPanel', 'Session preferences restored', session.preferences);
 					return session.preferences;
 				} else {
 					CanvasPanel.sessionPreferences = null;
 				}
 			}
 		} catch (error) {
-			console.log('[Roopik] No valid session found, starting fresh');
+			Logger.getInstance().debug('CanvasPanel', 'No valid session found, starting fresh');
 			CanvasPanel.sessionPreferences = null;
 		}
 
@@ -396,7 +398,7 @@ export class CanvasPanel {
 				});
 			}
 		} catch (error) {
-			console.error('[Roopik] Failed to get canvas states:', error);
+			Logger.getInstance().error('CanvasPanel', 'Failed to get canvas states', error);
 		}
 
 		// Sort by most recently updated
@@ -415,7 +417,7 @@ export class CanvasPanel {
 			const statePath = configManager.getCanvasStatePath(canvasId);
 
 			if (!fs.existsSync(statePath)) {
-				console.error(`[Roopik] Canvas "${canvasId}" not found`);
+				Logger.getInstance().error('CanvasPanel', `Canvas "${canvasId}" not found`);
 				return null;
 			}
 
@@ -445,11 +447,11 @@ export class CanvasPanel {
 
 			// Write export file
 			fs.writeFileSync(uri.fsPath, JSON.stringify(exportData, null, '\t'), 'utf8');
-			console.log(`[Roopik] Canvas "${canvasId}" exported to ${uri.fsPath}`);
+			Logger.getInstance().info('CanvasPanel', `Canvas "${canvasId}" exported to ${uri.fsPath}`);
 
 			return uri.fsPath;
 		} catch (error) {
-			console.error(`[Roopik] Failed to export canvas "${canvasId}":`, error);
+			Logger.getInstance().error('CanvasPanel', `Failed to export canvas "${canvasId}"`, error);
 			return null;
 		}
 	}
@@ -534,7 +536,7 @@ export class CanvasPanel {
 			}
 			fs.writeFileSync(newStatePath, JSON.stringify(newState, null, '\t'), 'utf8');
 
-			console.log(`[Roopik] Canvas imported as "${finalCanvasId}"`);
+			Logger.getInstance().info('CanvasPanel', `Canvas imported as "${finalCanvasId}"`);
 
 			// Open the imported canvas
 			CanvasPanel.createOrShow(extensionUri, finalCanvasId, finalCanvasName);
@@ -544,7 +546,7 @@ export class CanvasPanel {
 
 			return finalCanvasId;
 		} catch (error) {
-			console.error('[Roopik] Failed to import canvas:', error);
+			Logger.getInstance().error('CanvasPanel', 'Failed to import canvas', error);
 			vscode.window.showErrorMessage(`Failed to import canvas: ${error}`);
 			return null;
 		}
@@ -564,6 +566,7 @@ export class CanvasPanel {
 		const workspaceFolders = vscode.workspace.workspaceFolders;
 		const workspaceRoot = workspaceFolders![0].uri.fsPath;
 		this.configManager = ConfigManager.getInstance(workspaceRoot);
+		this.logger = Logger.getInstance().createScoped(`Canvas-${canvasId}`);
 
 		// Load or create canvas state
 		this.canvasState = this.loadOrCreateState(canvasName);
@@ -582,7 +585,7 @@ export class CanvasPanel {
 						vscode.window.showInformationMessage(message.text);
 						break;
 					case 'log':
-						console.log(`[Canvas ${this.canvasId}]`, message.text);
+						this.logger.info(message.text);
 						break;
 					case 'saveState':
 						this.saveState(message.state);
@@ -622,11 +625,11 @@ export class CanvasPanel {
 			if (fs.existsSync(statePath)) {
 				const stateFile = fs.readFileSync(statePath, 'utf8');
 				const state = JSON.parse(stateFile) as CanvasState;
-				console.log(`[Canvas ${this.canvasId}] State loaded from disk`);
+				this.logger.info('State loaded from disk');
 				return state;
 			}
 		} catch (error) {
-			console.error(`[Canvas ${this.canvasId}] Failed to load state:`, error);
+			this.logger.error('Failed to load state', error);
 		}
 
 		// Create new state if doesn't exist
@@ -641,7 +644,7 @@ export class CanvasPanel {
 		};
 
 		this.saveState(newState);
-		console.log(`[Canvas ${this.canvasId}] New state created`);
+		this.logger.info('New state created');
 		return newState;
 	}
 
@@ -665,9 +668,9 @@ export class CanvasPanel {
 			}
 
 			fs.writeFileSync(statePath, JSON.stringify(this.canvasState, null, '\t'), 'utf8');
-			console.log(`[Canvas ${this.canvasId}] State saved to disk`);
+			this.logger.debug('State saved to disk');
 		} catch (error) {
-			console.error(`[Canvas ${this.canvasId}] Failed to save state:`, error);
+			this.logger.error('Failed to save state', error);
 		}
 	}
 
@@ -675,7 +678,7 @@ export class CanvasPanel {
 	 * Handle saving preferences (backgroundColor, backgroundPattern)
 	 */
 	private handleSavePreferences(preferences: { backgroundColor?: string; backgroundPattern?: string }) {
-		console.log(`[Canvas ${this.canvasId}] Saving preferences:`, preferences);
+		this.logger.debug('Saving preferences', preferences);
 
 		// Save to session.json
 		const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -688,7 +691,7 @@ export class CanvasPanel {
 	 * Handle errors from webview
 	 */
 	private handleError(error: any) {
-		console.error(`[Canvas ${this.canvasId}] Error:`, error);
+		this.logger.error('Webview error', error);
 
 		// Extract error message
 		const errorMessage = typeof error === 'string'
@@ -710,12 +713,12 @@ export class CanvasPanel {
 	 */
 	private async handleLoadComponent(component: ComponentSource) {
 		if (!CanvasPanel.previewManager || !CanvasPanel.componentSandbox) {
-			console.error('[CanvasPanel] Preview system not initialized');
+			this.logger.error('Preview system not initialized');
 			return;
 		}
 
 		try {
-			console.log(`[Canvas ${this.canvasId}] Loading component ${component.id}`);
+			this.logger.info(`Loading component ${component.id}`);
 
 			// Parse dependency manifest from code
 			const dependencies = CanvasPanel.previewManager.parseDependencyManifest(component.code);
@@ -730,7 +733,7 @@ export class CanvasPanel {
 			// Create init message for sandbox
 			const sandboxMessage = CanvasPanel.componentSandbox.createInitMessage(sessionCode);
 
-			console.log(`[Canvas ${this.canvasId}] Component transformed, sending to webview`);
+			this.logger.debug('Component transformed, sending to webview');
 
 			// Send session code to webview
 			this._panel.webview.postMessage({
@@ -739,7 +742,7 @@ export class CanvasPanel {
 				sandboxMessage: sandboxMessage
 			});
 		} catch (error) {
-			console.error(`[Canvas ${this.canvasId}] Failed to load component:`, error);
+			this.logger.error('Failed to load component', error);
 			this.handleError(error);
 		}
 	}
@@ -750,12 +753,12 @@ export class CanvasPanel {
 	 */
 	private async handleUpdateComponent(componentId: string, code: string) {
 		if (!CanvasPanel.componentSandbox) {
-			console.error('[CanvasPanel] Preview system not initialized');
+			this.logger.error('Preview system not initialized');
 			return;
 		}
 
 		try {
-			console.log(`[Canvas ${this.canvasId}] Updating component ${componentId}`);
+			this.logger.info(`Updating component ${componentId}`);
 
 			// Create update message (no CDN reload)
 			const sandboxMessage = CanvasPanel.componentSandbox.createUpdateMessage(code);
@@ -767,9 +770,9 @@ export class CanvasPanel {
 				sandboxMessage: sandboxMessage
 			});
 
-			console.log(`[Canvas ${this.canvasId}] Component update sent for hot-reload`);
+			this.logger.debug('Component update sent for hot-reload');
 		} catch (error) {
-			console.error(`[Canvas ${this.canvasId}] Failed to update component:`, error);
+			this.logger.error('Failed to update component', error);
 			this.handleError(error);
 		}
 	}
@@ -780,12 +783,12 @@ export class CanvasPanel {
 	 */
 	private async handleGetSandboxTemplate() {
 		if (!CanvasPanel.componentSandbox) {
-			console.error('[CanvasPanel] Preview system not initialized');
+			this.logger.error('Preview system not initialized');
 			return;
 		}
 
 		try {
-			console.log(`[Canvas ${this.canvasId}] Fetching sandbox template`);
+			this.logger.debug('Fetching sandbox template');
 
 			// Get sandbox template HTML
 			const templateHtml = await CanvasPanel.componentSandbox.getSandboxTemplate();
@@ -796,9 +799,9 @@ export class CanvasPanel {
 				html: templateHtml
 			});
 
-			console.log(`[Canvas ${this.canvasId}] Sandbox template sent to webview`);
+			this.logger.debug('Sandbox template sent to webview');
 		} catch (error) {
-			console.error(`[Canvas ${this.canvasId}] Failed to get sandbox template:`, error);
+			this.logger.error('Failed to get sandbox template', error);
 			this.handleError(error);
 		}
 	}
@@ -807,10 +810,10 @@ export class CanvasPanel {
 	 * Handle sandbox state updates from webview
 	 * Saves sandbox positions, sizes, etc. to canvas state
 	 */
-	private async handleSaveSandboxes(data: { sandboxes: any[], viewport?: any }) {
+	private async handleSaveSandboxes(data: { sandboxes: any[]; viewport?: any }) {
 		try {
 			const sandboxes = data.sandboxes || data; // Support both new and old format
-			console.log(`[Canvas ${this.canvasId}] Saving ${Array.isArray(sandboxes) ? sandboxes.length : 0} sandboxes`);
+			this.logger.debug(`Saving ${Array.isArray(sandboxes) ? sandboxes.length : 0} sandboxes`);
 
 			// Update canvas state with new sandboxes
 			if (Array.isArray(sandboxes)) {
@@ -827,15 +830,15 @@ export class CanvasPanel {
 			// Persist to disk
 			this.saveState(this.canvasState);
 
-			console.log(`[Canvas ${this.canvasId}] State saved successfully`);
+			this.logger.debug('State saved successfully');
 		} catch (error) {
-			console.error(`[Canvas ${this.canvasId}] Failed to save state:`, error);
+			this.logger.error('Failed to save state', error);
 			this.handleError(error);
 		}
 	}
 
 	public dispose() {
-		console.log(`[Canvas ${this.canvasId}] Disposing...`);
+		this.logger.debug('Disposing...');
 
 		// Remove from map
 		CanvasPanel.panels.delete(this.canvasId);
@@ -862,7 +865,7 @@ export class CanvasPanel {
 			}
 		}
 
-		console.log(`[Canvas ${this.canvasId}] Disposed. Remaining canvases: ${CanvasPanel.panels.size}`);
+		this.logger.debug(`Disposed. Remaining canvases: ${CanvasPanel.panels.size}`);
 	}
 
 	private _update() {

@@ -25,6 +25,7 @@ const OUT_DIR = path.join(__dirname, '..', 'out');
  */
 const COPY_PATTERNS = [
 	'**/*.js',     // JavaScript files (serverWorker.js, plugins, etc.)
+	'**/*.html',   // HTML templates (projectPreviewTemplate.html, etc.)
 ];
 
 /**

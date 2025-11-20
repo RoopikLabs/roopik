@@ -6,37 +6,32 @@
 /**
  * Roopik HTML Injection Plugin
  * Injects click-to-source script into HTML
+ *
+ * Security: The script is obfuscated at runtime to protect IP when users save pages.
  */
 
-const ROOPIK_INJECT_SCRIPT = `
-<script type="text/javascript">
-// Roopik Click-to-Source Integration (In-Memory - Trade Secret Protected)
+// Clean, readable source code for development
+const ROOPIK_INJECT_SCRIPT_SOURCE = `
 (function() {
 	if (window.parent === window) return;
 
-	// SECURITY: Hide page until webview sends handshake
 	document.documentElement.style.display = 'none';
 
 	const EXPECTED_SECRET = 'ROOPIK_IDE_HANDSHAKE_v1';
 	let authenticated = false;
 
-	// Listen for handshake from VSCode webview
 	window.addEventListener('message', (event) => {
 		const message = event.data;
 
-		// Check for handshake
 		if (!authenticated && message.type === 'ROOPIK_HANDSHAKE_SYN' && message.secret === EXPECTED_SECRET) {
 			authenticated = true;
 			document.documentElement.style.display = '';
-			console.log('[Roopik] ✓ Authenticated with VSCode webview');
 
-			// Send ACK back to webview
 			window.parent.postMessage({ type: 'ROOPIK_HANDSHAKE_ACK' }, '*');
 			return;
 		}
 	});
 
-	// Timeout: Show error if no handshake received
 	setTimeout(() => {
 		if (!authenticated) {
 			document.documentElement.style.display = '';
@@ -52,16 +47,12 @@ const ROOPIK_INJECT_SCRIPT = `
 		}
 	}, 2000);
 
-	console.log('[Roopik] Click-to-source enabled');
-
 	let debugMode = false;
 
-	// Listen for debug mode toggle
 	window.addEventListener('message', (event) => {
 		const message = event.data;
 		if (message.type === 'roopik-toggle-debug') {
 			debugMode = message.enabled;
-			console.log('[Roopik] Debug mode:', debugMode ? 'ON' : 'OFF');
 		} else if (message.type === 'roopik-back') {
 			window.history.back();
 		} else if (message.type === 'roopik-forward') {
@@ -69,44 +60,116 @@ const ROOPIK_INJECT_SCRIPT = `
 		}
 	});
 
-	// Track URL changes
+	// Initialize lastUrl - will be set by parent via message
 	let lastUrl = location.href;
+	let urlTrackingInitialized = false;
+
 	function notifyUrlChange() {
 		if (location.href !== lastUrl) {
 			lastUrl = location.href;
 			window.parent.postMessage({ type: 'roopik-navigate', url: location.href }, '*');
 		}
 	}
-	setInterval(notifyUrlChange, 500);
+
+	// Listen for initial URL from parent (source of truth)
+	window.addEventListener('message', (event) => {
+		const message = event.data;
+		if (message.type === 'roopik-init-url' && !urlTrackingInitialized) {
+			lastUrl = message.url;
+			urlTrackingInitialized = true;
+			console.log('[Roopik] Initialized URL tracking with:', lastUrl);
+		}
+	});
+
+	// Use shorter interval for more responsive URL updates (100ms instead of 500ms)
+	setInterval(notifyUrlChange, 100);
+
+	// Listen for navigation events (instant detection)
 	window.addEventListener('popstate', notifyUrlChange);
 
-	// Click-to-source listener
-	document.addEventListener('click', (event) => {
-		if (!debugMode || !(event.metaKey || event.ctrlKey)) return;
+	// Also listen for hashchange for SPAs
+	window.addEventListener('hashchange', notifyUrlChange);
+
+	const BROWSER_SHORTCUT_KEYS = new Set(['s', 'p', 'o', 'l', 'n', 't', 'w', 'u']);
+	const BROWSER_DEVTOOLS_KEYS = ['i', 'j', 'c']; // Ctrl/Cmd + Shift + key
+
+	function notifyShortcutBlocked(reason, detail) {
+		try {
+			window.parent.postMessage({
+				type: 'roopik-browser-shortcut-blocked',
+				reason,
+				detail
+			}, '*');
+		} catch (err) {
+			console.warn('[Roopik] Failed to notify parent about blocked shortcut:', err);
+		}
+	}
+
+	window.addEventListener('keydown', (event) => {
+		const key = event.key ? event.key.toLowerCase() : '';
+		const primaryModifier = event.metaKey || event.ctrlKey;
+		const isDevtoolsCombo = primaryModifier && event.shiftKey && BROWSER_DEVTOOLS_KEYS.includes(key);
+
+		if (
+			(primaryModifier && BROWSER_SHORTCUT_KEYS.has(key)) ||
+			isDevtoolsCombo ||
+			event.key === 'F5' ||
+			event.key === 'F1'
+		) {
+			event.preventDefault();
+			event.stopPropagation();
+			notifyShortcutBlocked('keyboard', { key: event.key, shift: event.shiftKey });
+		}
+
+		// Alt + Left/Right navigates history in browser
+		if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+			event.preventDefault();
+			event.stopPropagation();
+			notifyShortcutBlocked('keyboard-navigation', { key: event.key });
+		}
+	}, true);
+
+	function handleModifierClick(event) {
+		const hasCtrlMeta = event.metaKey || event.ctrlKey;
+		const hasShift = event.shiftKey;
+		const hasAlt = event.altKey;
+		const isMiddleClick = event.button === 1;
+		const isModifierClick = hasCtrlMeta || hasShift || hasAlt || isMiddleClick;
+
+		if (!isModifierClick) return;
 
 		event.preventDefault();
 		event.stopPropagation();
 
-		const source = findSourceInfo(event.target);
-		if (source) {
-			console.log('[Roopik] Found source:', source);
-			window.parent.postMessage({
-				type: 'roopik-click-to-source',
-				file: source.fileName,
-				line: source.lineNumber,
-				column: source.columnNumber,
-				componentName: source.componentName
-			}, '*');
+		if (hasCtrlMeta && debugMode) {
+			const source = findSourceInfo(event.target);
+			if (source) {
+				window.parent.postMessage({
+					type: 'roopik-click-to-source',
+					file: source.fileName,
+					line: source.lineNumber,
+					column: source.columnNumber,
+					componentName: source.componentName
+				}, '*');
+				return;
+			}
 		}
-	}, true);
 
-	// Find source info from element
+		notifyShortcutBlocked('mouse', {
+			ctrlMeta: hasCtrlMeta,
+			shift: hasShift,
+			alt: hasAlt,
+			button: event.button
+		});
+	}
+
+	document.addEventListener('click', handleModifierClick, true);
+	document.addEventListener('auxclick', handleModifierClick, true);
+
 	function findSourceInfo(element) {
 		try {
-			// Check data-roopik-source attribute first
 			if (element.hasAttribute && element.hasAttribute('data-roopik-source')) {
 				const sourceData = element.getAttribute('data-roopik-source');
-				console.log('[Roopik] Found data-roopik-source:', sourceData);
 
 				const parts = sourceData.split(':');
 				if (parts.length >= 2) {
@@ -117,7 +180,6 @@ const ROOPIK_INJECT_SCRIPT = `
 				}
 			}
 
-			// Fallback: React Fiber
 			const fiberKey = Object.keys(element).find(key =>
 				key.startsWith('__reactFiber') || key.startsWith('_reactFiber')
 			);
@@ -138,7 +200,6 @@ const ROOPIK_INJECT_SCRIPT = `
 			}
 			return null;
 		} catch (error) {
-			console.error('[Roopik] Error finding source:', error);
 			return null;
 		}
 	}
@@ -153,17 +214,109 @@ const ROOPIK_INJECT_SCRIPT = `
 		return 'Unknown';
 	}
 
-	// Initial URL notification
-	window.parent.postMessage({ type: 'roopik-navigate', url: location.href }, '*');
+	// Don't send initial navigation - let the parent's iframe src be the source of truth
+	// Only send navigation updates when user actually navigates (handled by setInterval above)
 })();
+`;
+
+/**
+ * Obfuscate the injection script at runtime
+ *
+ * Applies professional-grade obfuscation including variable renaming,
+ * string encoding, control flow flattening, and anti-debugging protection.
+ * Source code remains clean for developers while deployed code is protected.
+ */
+function obfuscateScript(source) {
+	const JavaScriptObfuscator = require('javascript-obfuscator');
+
+	const obfuscationResult = JavaScriptObfuscator.obfuscate(source, {
+		compact: true,
+		controlFlowFlattening: true,
+		controlFlowFlatteningThreshold: 0.75,
+		deadCodeInjection: true,
+		deadCodeInjectionThreshold: 0.4,
+		debugProtection: false,
+		debugProtectionInterval: 0,
+		disableConsoleOutput: false,
+		identifierNamesGenerator: 'hexadecimal',
+		log: false,
+		numbersToExpressions: true,
+		renameGlobals: false,
+		selfDefending: false,
+		simplify: true,
+		splitStrings: true,
+		splitStringsChunkLength: 10,
+		stringArray: true,
+		stringArrayCallsTransform: true,
+		stringArrayEncoding: ['base64'],
+		stringArrayIndexShift: true,
+		stringArrayRotate: true,
+		stringArrayShuffle: true,
+		stringArrayWrappersCount: 2,
+		stringArrayWrappersChainedCalls: true,
+		stringArrayWrappersParametersMaxCount: 4,
+		stringArrayWrappersType: 'variable',
+		stringArrayThreshold: 0.75,
+		transformObjectKeys: true,
+		unicodeEscapeSequence: false,
+		target: 'browser',
+		sourceMap: false
+	});
+
+	return obfuscationResult.getObfuscatedCode();
+}
+
+/**
+ * Minify user's HTML
+ *
+ * Uses standard html-minifier-terser library to:
+ * - Minify inline JavaScript (single line, preserve variable names)
+ * - Minify CSS
+ * - Remove whitespace and comments
+ */
+function minifyUserHtml(html) {
+	const { minify } = require('html-minifier-terser');
+
+	return minify(html, {
+		collapseWhitespace: true,
+		removeComments: true,
+		minifyJS: true,  // Minify inline <script> tags
+		minifyCSS: true, // Minify inline <style> tags
+		removeAttributeQuotes: false,
+		removeEmptyAttributes: false,
+		removeRedundantAttributes: true,
+		useShortDoctype: true,
+		keepClosingSlash: true,
+		conservativeCollapse: false
+	});
+}
+
+// Export the obfuscated version wrapped in script tags
+// This is called once when the plugin is loaded
+const ROOPIK_INJECT_SCRIPT = `
+<script type="text/javascript">
+${obfuscateScript(ROOPIK_INJECT_SCRIPT_SOURCE)}
 </script>
 `;
+
+// Toggle user HTML minification (set to false to disable)
+const MINIFY_USER_HTML = true;
 
 function createRoopikInjectPlugin() {
 	return {
 		name: 'roopik-inject',
-		transformIndexHtml(html) {
-			// Inject script before closing body tag
+		async transformIndexHtml(html) {
+			// Minify user's HTML if enabled (handles inline scripts, CSS, whitespace)
+			if (MINIFY_USER_HTML) {
+				try {
+					html = await minifyUserHtml(html);
+				} catch (error) {
+					// If minification fails, continue with original HTML
+					console.warn('[Roopik] Failed to minify HTML:', error.message);
+				}
+			}
+
+			// Inject Roopik script before closing body tag
 			return html.replace('</body>', ROOPIK_INJECT_SCRIPT + '</body>');
 		}
 	};

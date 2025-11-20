@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { Logger } from './logger';
 
 /**
  * Roopik Configuration Schema
@@ -28,6 +29,24 @@ export interface RoopikConfig {
 		enableContextIsolation: boolean;
 		maxChatHistory: number;
 		enableDesignMemory: boolean;
+		/**
+		 * Enable style context gathering for AI
+		 *
+		 * When true:
+		 * - Automatically finds related CSS/style files when user clicks element
+		 * - Includes style files in AI context for better style modifications
+		 * - Helps AI understand CSS Modules, Tailwind, inline styles, etc.
+		 *
+		 * When false:
+		 * - Only sends the component file (like standard IDEs)
+		 * - Reduces token usage
+		 * - May result in less accurate style suggestions
+		 *
+		 * Use cases:
+		 * - Enable: User frequently asks for style changes ("make it bigger", "change color")
+		 * - Disable: Concerns about LLM hallucination or token costs
+		 */
+		enableStyleContext: boolean;
 	};
 	plugins: {
 		/**
@@ -62,6 +81,52 @@ export interface RoopikConfig {
 			};
 		};
 	};
+	logging: {
+		/**
+		 * Log level (TRACE=0, DEBUG=1, INFO=2, WARN=3, ERROR=4, NONE=5)
+		 *
+		 * - TRACE: Most verbose, includes function entry/exit, variable values
+		 * - DEBUG: Debugging information (state changes, intermediate values)
+		 * - INFO: General informational messages (normal operations)
+		 * - WARN: Warning messages (potential issues)
+		 * - ERROR: Error messages only
+		 * - NONE: Disable all logging
+		 *
+		 * Default: INFO (2)
+		 */
+		level: number;
+
+		/**
+		 * Enable file-based logging
+		 *
+		 * When true:
+		 * - Logs are written to .roopik/logs/ directory
+		 * - Useful for customer support diagnostics
+		 * - Automatic log rotation when size limit reached
+		 *
+		 * When false:
+		 * - Logs only appear in VS Code Output Channel
+		 */
+		enableFileLogging: boolean;
+
+		/**
+		 * Maximum log file size in bytes (default: 10MB)
+		 * When exceeded, log file is rotated automatically
+		 */
+		maxLogFileSize: number;
+
+		/**
+		 * Maximum number of log files to keep (default: 5)
+		 * Older log files are automatically deleted
+		 */
+		maxLogFiles: number;
+
+		/**
+		 * Auto-show Output Channel on ERROR level logs
+		 * Useful for immediate error visibility
+		 */
+		showOutputOnError: boolean;
+	};
 }
 
 /**
@@ -83,12 +148,20 @@ const DEFAULT_CONFIG: RoopikConfig = {
 	ai: {
 		enableContextIsolation: true,
 		maxChatHistory: 50,
-		enableDesignMemory: true
+		enableDesignMemory: true,
+		enableStyleContext: true  // Enable by default for better AI suggestions
 	},
 	plugins: {
 		forceRegexMode: false,  // Set to true to test regex mode
 		verboseLogging: true,
 		frameworkOverrides: {}
+	},
+	logging: {
+		level: 2,  // INFO level (TRACE=0, DEBUG=1, INFO=2, WARN=3, ERROR=4, NONE=5)
+		enableFileLogging: true,  // Enable file logging for customer support
+		maxLogFileSize: 10 * 1024 * 1024,  // 10MB
+		maxLogFiles: 5,  // Keep last 5 log files
+		showOutputOnError: true  // Auto-show Output Channel on errors
 	}
 };
 
@@ -100,9 +173,11 @@ export class ConfigManager {
 	private static instance: ConfigManager;
 	private config: RoopikConfig;
 	private configPath: string;
+	private logger: ReturnType<typeof Logger.prototype.createScoped>;
 
 	private constructor(workspaceRoot: string) {
 		this.configPath = path.join(workspaceRoot, '.roopik', 'config.json');
+		this.logger = Logger.getInstance().createScoped('ConfigManager');
 		this.config = this.loadConfig();
 	}
 
@@ -130,7 +205,7 @@ export class ConfigManager {
 				return this.mergeWithDefaults(userConfig);
 			}
 		} catch (error) {
-			console.error('[Roopik Config] Failed to load config:', error);
+			this.logger.error('Failed to load config', error);
 			vscode.window.showWarningMessage(
 				'Failed to load Roopik config. Using defaults.'
 			);
@@ -160,6 +235,10 @@ export class ConfigManager {
 			plugins: {
 				...DEFAULT_CONFIG.plugins,
 				...userConfig.plugins
+			},
+			logging: {
+				...DEFAULT_CONFIG.logging,
+				...userConfig.logging
 			}
 		};
 	}
@@ -192,9 +271,9 @@ export class ConfigManager {
 				'utf8'
 			);
 
-			console.log('[Roopik Config] Configuration updated successfully');
+			this.logger.info('Configuration updated successfully');
 		} catch (error) {
-			console.error('[Roopik Config] Failed to save config:', error);
+			this.logger.error('Failed to save config', error);
 			vscode.window.showErrorMessage('Failed to save Roopik configuration.');
 		}
 	}
@@ -204,7 +283,7 @@ export class ConfigManager {
 	 */
 	public reload(): void {
 		this.config = this.loadConfig();
-		console.log('[Roopik Config] Configuration reloaded');
+		this.logger.info('Configuration reloaded');
 	}
 
 	/**

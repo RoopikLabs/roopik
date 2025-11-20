@@ -164,6 +164,85 @@ export class SettingsPanel {
 							</div>
 						</div>
 					</div>
+					<div class="settings-item">
+						<div class="settings-item-label">
+							<div class="settings-item-name">Enable Style Context</div>
+							<div class="settings-item-desc">Include related CSS/style files in AI context for better style modifications</div>
+						</div>
+						<div class="settings-item-control">
+							<div class="settings-toggle ${config.ai.enableStyleContext ? 'active' : ''}"
+								onclick="updateSetting('ai.enableStyleContext', !${config.ai.enableStyleContext}); this.classList.toggle('active')">
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- Logging Section -->
+				<div class="settings-section">
+					<h3 class="settings-section-title">Logging</h3>
+					<div class="settings-item">
+						<div class="settings-item-label">
+							<div class="settings-item-name">Log Level</div>
+							<div class="settings-item-desc">Control verbosity: TRACE (0), DEBUG (1), INFO (2), WARN (3), ERROR (4), NONE (5)</div>
+						</div>
+						<div class="settings-item-control">
+							<select class="settings-select" id="logLevel"
+								onchange="updateSetting('logging.level', parseInt(this.value))">
+								<option value="0" ${config.logging.level === 0 ? 'selected' : ''}>TRACE (Most Verbose)</option>
+								<option value="1" ${config.logging.level === 1 ? 'selected' : ''}>DEBUG</option>
+								<option value="2" ${config.logging.level === 2 ? 'selected' : ''}>INFO (Default)</option>
+								<option value="3" ${config.logging.level === 3 ? 'selected' : ''}>WARN</option>
+								<option value="4" ${config.logging.level === 4 ? 'selected' : ''}>ERROR</option>
+								<option value="5" ${config.logging.level === 5 ? 'selected' : ''}>NONE (Disabled)</option>
+							</select>
+						</div>
+					</div>
+					<div class="settings-item">
+						<div class="settings-item-label">
+							<div class="settings-item-name">Enable File Logging</div>
+							<div class="settings-item-desc">Save logs to .roopik/logs/ directory (useful for customer support)</div>
+						</div>
+						<div class="settings-item-control">
+							<div class="settings-toggle ${config.logging.enableFileLogging ? 'active' : ''}"
+								onclick="updateSetting('logging.enableFileLogging', !${config.logging.enableFileLogging}); this.classList.toggle('active')">
+							</div>
+						</div>
+					</div>
+					<div class="settings-item">
+						<div class="settings-item-label">
+							<div class="settings-item-name">Max Log File Size (MB)</div>
+							<div class="settings-item-desc">Rotate log file when this size is reached</div>
+						</div>
+						<div class="settings-item-control">
+							<input type="number" class="settings-number" id="maxLogFileSize"
+								value="${Math.round(config.logging.maxLogFileSize / (1024 * 1024))}"
+								onchange="updateSetting('logging.maxLogFileSize', parseInt(this.value) * 1024 * 1024)"
+								min="1" max="100">
+						</div>
+					</div>
+					<div class="settings-item">
+						<div class="settings-item-label">
+							<div class="settings-item-name">Max Log Files</div>
+							<div class="settings-item-desc">Number of old log files to keep (older ones are deleted)</div>
+						</div>
+						<div class="settings-item-control">
+							<input type="number" class="settings-number" id="maxLogFiles"
+								value="${config.logging.maxLogFiles}"
+								onchange="updateSetting('logging.maxLogFiles', parseInt(this.value))"
+								min="1" max="20">
+						</div>
+					</div>
+					<div class="settings-item">
+						<div class="settings-item-label">
+							<div class="settings-item-name">Show Output on Error</div>
+							<div class="settings-item-desc">Automatically show Output Channel when errors occur</div>
+						</div>
+						<div class="settings-item-control">
+							<div class="settings-toggle ${config.logging.showOutputOnError ? 'active' : ''}"
+								onclick="updateSetting('logging.showOutputOnError', !${config.logging.showOutputOnError}); this.classList.toggle('active')">
+							</div>
+						</div>
+					</div>
 				</div>
 
 				<!-- Plugins Section -->
@@ -368,6 +447,22 @@ export class SettingsPanel {
 		}
 
 		.settings-number:focus {
+			outline: none;
+			border-color: var(--vscode-focusBorder);
+		}
+
+		.settings-select {
+			width: 200px;
+			padding: 6px 8px;
+			background-color: var(--vscode-input-background);
+			color: var(--vscode-input-foreground);
+			border: 1px solid var(--vscode-panel-border);
+			border-radius: 4px;
+			font-size: 13px;
+			cursor: pointer;
+		}
+
+		.settings-select:focus {
 			outline: none;
 			border-color: var(--vscode-focusBorder);
 		}

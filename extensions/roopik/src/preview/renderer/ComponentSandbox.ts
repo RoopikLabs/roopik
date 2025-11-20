@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import type { SessionCode, SandboxMessage } from '../core/types';
+import { Logger } from '../../logger';
 
 /**
  * ComponentSandbox - Mode 1 Renderer
@@ -15,6 +16,7 @@ import type { SessionCode, SandboxMessage } from '../core/types';
  */
 export class ComponentSandbox {
 	private sandboxTemplateUri: vscode.Uri;
+	private logger: ReturnType<typeof Logger.prototype.createScoped>;
 
 	constructor(context: vscode.ExtensionContext) {
 		// Path to sandbox_template.html in webviews/sandbox/
@@ -24,6 +26,7 @@ export class ComponentSandbox {
 			'sandbox',
 			'sandbox_template.html'
 		);
+		this.logger = Logger.getInstance().createScoped('ComponentSandbox');
 	}
 
 	/**
@@ -35,7 +38,7 @@ export class ComponentSandbox {
 			const templateBytes = await vscode.workspace.fs.readFile(this.sandboxTemplateUri);
 			return Buffer.from(templateBytes).toString('utf8');
 		} catch (error) {
-			console.error('[ComponentSandbox] Failed to read sandbox template:', error);
+			this.logger.error('Failed to read sandbox template', error);
 			throw new Error('Sandbox template not found');
 		}
 	}

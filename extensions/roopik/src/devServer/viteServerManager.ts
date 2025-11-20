@@ -27,11 +27,25 @@ export class ViteServerManager {
 	private projectRoot: string;
 	private extensionPath: string;
 	private outputChannel: vscode.OutputChannel;
+	private isDisposed: boolean = false;
 
 	private constructor(projectRoot: string, extensionPath: string) {
 		this.projectRoot = projectRoot;
 		this.extensionPath = extensionPath;
 		this.outputChannel = vscode.window.createOutputChannel('Roopik Dev Server');
+	}
+
+	/**
+	 * Safely write to output channel (prevents "Channel has been closed" errors)
+	 */
+	private safeLog(message: string): void {
+		if (!this.isDisposed) {
+			try {
+				this.safeLog(message);
+			} catch (error) {
+				// Channel was disposed, ignore silently
+			}
+		}
 	}
 
 	public static getInstance(projectRoot: string, extensionPath: string): ViteServerManager {
@@ -46,19 +60,21 @@ export class ViteServerManager {
 	 * @returns Server URL
 	 */
 	public async start(): Promise<string> {
-		this.outputChannel.show();
-		this.outputChannel.appendLine('[Roopik] Starting dev server (worker pattern)...');
+		if (!this.isDisposed) {
+			this.outputChannel.show();
+		}
+		this.safeLog('[Roopik] Starting dev server (worker pattern)...');
 
 		// Check if dependencies are installed
 		const hasNodeModules = fs.existsSync(path.join(this.projectRoot, 'node_modules'));
 		if (!hasNodeModules) {
-			this.outputChannel.appendLine('[Roopik] node_modules not found. Installing dependencies...');
+			this.safeLog('[Roopik] node_modules not found. Installing dependencies...');
 			await this.installDependencies();
 		}
 
 		// Detect framework
 		const framework = this.detectFramework();
-		this.outputChannel.appendLine(`[Roopik] Detected framework: ${framework}`);
+		this.safeLog(`[Roopik] Detected framework: ${framework}`);
 
 		if (framework === 'unknown') {
 			throw new Error('Could not detect supported framework (Vite, Next.js, etc.)');
@@ -78,7 +94,7 @@ export class ViteServerManager {
 			// Path to compiled worker script
 			const workerPath = path.join(this.extensionPath, 'out', 'devServer', 'serverWorker.js');
 
-			this.outputChannel.appendLine(`[Roopik] Worker script: ${workerPath}`);
+			this.safeLog(`[Roopik] Worker script: ${workerPath}`);
 
 			if (!fs.existsSync(workerPath)) {
 				reject(new Error(`Worker script not found: ${workerPath}`));
@@ -95,38 +111,50 @@ export class ViteServerManager {
 				stdio: ['pipe', 'pipe', 'pipe', 'ipc'] // Enable IPC
 			});
 
-			this.outputChannel.appendLine('[Roopik] Worker process forked (PID: ' + this.workerProcess.pid + ')');
+			this.safeLog('[Roopik] Worker process forked (PID: ' + this.workerProcess.pid + ')');
 
 			// Listen for stdout/stderr
 			this.workerProcess.stdout?.on('data', (data) => {
-				this.outputChannel.append(data.toString());
+				if (!this.isDisposed) {
+					try {
+						this.outputChannel.append(data.toString());
+					} catch (error) {
+						// Channel disposed, ignore
+					}
+				}
 			});
 
 			this.workerProcess.stderr?.on('data', (data) => {
-				this.outputChannel.append(data.toString());
+				if (!this.isDisposed) {
+					try {
+						this.outputChannel.append(data.toString());
+					} catch (error) {
+						// Channel disposed, ignore
+					}
+				}
 			});
 
 			// Listen for IPC messages from worker
 			this.workerProcess.on('message', (msg: any) => {
 				if (msg.type === 'READY') {
 					this.serverUrl = msg.url;
-					this.outputChannel.appendLine(`[Roopik] ✓ Server ready: ${msg.url}`);
+					this.safeLog(`[Roopik] ✓ Server ready: ${msg.url}`);
 					resolve(msg.url);
 				} else if (msg.type === 'ERROR') {
-					this.outputChannel.appendLine(`[Roopik] ✗ Worker error: ${msg.message}`);
-					this.outputChannel.appendLine(msg.stack || '');
+					this.safeLog(`[Roopik] ✗ Worker error: ${msg.message}`);
+					this.safeLog(msg.stack || '');
 					reject(new Error(msg.message));
 				}
 			});
 
 			// Handle worker process errors
 			this.workerProcess.on('error', (error) => {
-				this.outputChannel.appendLine(`[Roopik] ✗ Worker process error: ${error.message}`);
+				this.safeLog(`[Roopik] ✗ Worker process error: ${error.message}`);
 				reject(error);
 			});
 
 			this.workerProcess.on('exit', (code, signal) => {
-				this.outputChannel.appendLine(`[Roopik] Worker process exited (code: ${code}, signal: ${signal})`);
+				this.safeLog(`[Roopik] Worker process exited (code: ${code}, signal: ${signal})`);
 				this.workerProcess = undefined;
 				this.serverUrl = undefined;
 			});
@@ -149,7 +177,7 @@ export class ViteServerManager {
 				}
 			});
 
-			this.outputChannel.appendLine('[Roopik] Sent START command to worker');
+			this.safeLog('[Roopik] Sent START command to worker');
 
 			// Timeout after 60 seconds
 			setTimeout(() => {
@@ -165,7 +193,7 @@ export class ViteServerManager {
 	 */
 	public stop(): void {
 		if (this.workerProcess) {
-			console.log('[Roopik] Stopping worker process...');
+			this.safeLog('[Roopik] Stopping worker process...');
 
 			// Send STOP message first (graceful shutdown)
 			try {
@@ -195,7 +223,7 @@ export class ViteServerManager {
 
 			this.workerProcess = undefined;
 			this.serverUrl = undefined;
-			console.log('[Roopik] Dev server stopped');
+			this.safeLog('[Roopik] Dev server stopped');
 		}
 	}
 
@@ -227,7 +255,7 @@ export class ViteServerManager {
 
 			install.on('close', (code) => {
 				if (code === 0) {
-					this.outputChannel.appendLine('[Roopik] ✓ Dependencies installed');
+					this.safeLog('[Roopik] ✓ Dependencies installed');
 					resolve();
 				} else {
 					reject(new Error(`npm install failed with code ${code}`));
@@ -273,7 +301,7 @@ export class ViteServerManager {
 
 			return 'unknown';
 		} catch (error) {
-			this.outputChannel.appendLine(`[Roopik] Error reading package.json: ${error}`);
+			this.safeLog(`[Roopik] Error reading package.json: ${error}`);
 			return 'unknown';
 		}
 	}
@@ -282,6 +310,7 @@ export class ViteServerManager {
 	 * Clean up resources
 	 */
 	public dispose(): void {
+		this.isDisposed = true; // Mark as disposed to prevent further writes
 		this.stop();
 
 		if (this.outputChannel) {

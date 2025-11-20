@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import { ConfigManager } from './config';
 import { CanvasPanel } from './canvasPanel';
 import { SettingsPanel } from './settingsPanel';
+import { Logger } from './logger';
 
 /**
  * Dashboard Panel - Welcome screen and canvas management interface
@@ -28,6 +29,7 @@ export class DashboardPanel {
 	private readonly workspaceRoot: string;
 	private configManager: ConfigManager;
 	private refreshTimeout: NodeJS.Timeout | undefined;
+	private logger: ReturnType<typeof Logger.prototype.createScoped>;
 
 	/**
 	 * Create or show the dashboard panel (singleton)
@@ -78,6 +80,7 @@ export class DashboardPanel {
 		this.extensionUri = extensionUri;
 		this.workspaceRoot = workspaceRoot;
 		this.configManager = ConfigManager.getInstance(workspaceRoot);
+		this.logger = Logger.getInstance().createScoped('Dashboard');
 
 		// Set the webview's initial html content
 		this._update();
@@ -114,10 +117,10 @@ export class DashboardPanel {
 						this.handleUpdateSettings(message.settings);
 						break;
 					case 'log':
-						console.log('[Dashboard]', message.text);
+						this.logger.info(message.text);
 						break;
 					case 'error':
-						console.error('[Dashboard]', message.error);
+						this.logger.error(message.error);
 						vscode.window.showErrorMessage(`Dashboard error: ${message.error}`);
 						break;
 				}
@@ -143,7 +146,7 @@ export class DashboardPanel {
 	 * Handle opening a canvas from dashboard
 	 */
 	private handleOpenCanvas(canvasId: string, canvasName?: string) {
-		console.log(`[Dashboard] Opening canvas: ${canvasId}`);
+		this.logger.info(`Opening canvas: ${canvasId}`);
 		CanvasPanel.createOrShow(this.extensionUri, canvasId, canvasName);
 
 		// Refresh dashboard to update status badges (Open → Focus, blue border)
@@ -238,7 +241,7 @@ export class DashboardPanel {
 	 * Handle updating settings
 	 */
 	private async handleUpdateSettings(settings: any) {
-		console.log('[Dashboard] Settings update requested:', settings);
+		this.logger.info('Settings update requested', settings);
 		try {
 			await this.configManager.updateConfig(settings);
 			vscode.window.showInformationMessage('Settings updated successfully.');
@@ -247,7 +250,7 @@ export class DashboardPanel {
 				this.refresh();
 			}, 100);
 		} catch (error) {
-			console.error('[Dashboard] Failed to update settings:', error);
+			this.logger.error('Failed to update settings', error);
 			vscode.window.showErrorMessage('Failed to update settings.');
 		}
 	}
@@ -256,7 +259,7 @@ export class DashboardPanel {
 	 * Refresh dashboard data by regenerating HTML
 	 */
 	public refresh() {
-		console.log('[Dashboard] Refreshing data...');
+		this.logger.debug('Refreshing data...');
 		this._update(); // Regenerate the entire HTML
 	}
 
@@ -278,7 +281,7 @@ export class DashboardPanel {
 				recentCanvasIds = session.canvasIds || [];
 			}
 		} catch (error) {
-			console.error('[Dashboard] Failed to load recent canvases:', error);
+			this.logger.error('Failed to load recent canvases', error);
 		}
 
 		// Map recent canvas IDs to full canvas states
@@ -300,7 +303,7 @@ export class DashboardPanel {
 	}
 
 	public dispose() {
-		console.log('[Dashboard] Disposing...');
+		this.logger.debug('Disposing...');
 
 		DashboardPanel.currentPanel = undefined;
 
@@ -319,7 +322,7 @@ export class DashboardPanel {
 			}
 		}
 
-		console.log('[Dashboard] Disposed');
+		this.logger.debug('Disposed');
 	}
 
 	private _update() {
