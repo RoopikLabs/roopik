@@ -459,6 +459,8 @@
 					currentHistoryIndex = navigationHistory.length - 1;
 					updateNavigationButtons();
 				}
+			} else if (message.type === 'roopik-browser-shortcut-blocked') {
+				console.log('[Roopik Preview] Blocked browser shortcut:', message.reason, message.detail);
 			}
 		});
 

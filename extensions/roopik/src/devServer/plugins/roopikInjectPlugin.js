@@ -70,23 +70,81 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 	setInterval(notifyUrlChange, 500);
 	window.addEventListener('popstate', notifyUrlChange);
 
-	document.addEventListener('click', (event) => {
-		if (!debugMode || !(event.metaKey || event.ctrlKey)) return;
+	const BROWSER_SHORTCUT_KEYS = new Set(['s', 'p', 'o', 'l', 'n', 't', 'w', 'u']);
+	const BROWSER_DEVTOOLS_KEYS = ['i', 'j', 'c']; // Ctrl/Cmd + Shift + key
+
+	function notifyShortcutBlocked(reason, detail) {
+		try {
+			window.parent.postMessage({
+				type: 'roopik-browser-shortcut-blocked',
+				reason,
+				detail
+			}, '*');
+		} catch (err) {
+			console.warn('[Roopik] Failed to notify parent about blocked shortcut:', err);
+		}
+	}
+
+	window.addEventListener('keydown', (event) => {
+		const key = event.key ? event.key.toLowerCase() : '';
+		const primaryModifier = event.metaKey || event.ctrlKey;
+		const isDevtoolsCombo = primaryModifier && event.shiftKey && BROWSER_DEVTOOLS_KEYS.includes(key);
+
+		if (
+			(primaryModifier && BROWSER_SHORTCUT_KEYS.has(key)) ||
+			isDevtoolsCombo ||
+			event.key === 'F5' ||
+			event.key === 'F1'
+		) {
+			event.preventDefault();
+			event.stopPropagation();
+			notifyShortcutBlocked('keyboard', { key: event.key, shift: event.shiftKey });
+		}
+
+		// Alt + Left/Right navigates history in browser
+		if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+			event.preventDefault();
+			event.stopPropagation();
+			notifyShortcutBlocked('keyboard-navigation', { key: event.key });
+		}
+	}, true);
+
+	function handleModifierClick(event) {
+		const hasCtrlMeta = event.metaKey || event.ctrlKey;
+		const hasShift = event.shiftKey;
+		const hasAlt = event.altKey;
+		const isMiddleClick = event.button === 1;
+		const isModifierClick = hasCtrlMeta || hasShift || hasAlt || isMiddleClick;
+
+		if (!isModifierClick) return;
 
 		event.preventDefault();
 		event.stopPropagation();
 
-		const source = findSourceInfo(event.target);
-		if (source) {
-			window.parent.postMessage({
-				type: 'roopik-click-to-source',
-				file: source.fileName,
-				line: source.lineNumber,
-				column: source.columnNumber,
-				componentName: source.componentName
-			}, '*');
+		if (hasCtrlMeta && debugMode) {
+			const source = findSourceInfo(event.target);
+			if (source) {
+				window.parent.postMessage({
+					type: 'roopik-click-to-source',
+					file: source.fileName,
+					line: source.lineNumber,
+					column: source.columnNumber,
+					componentName: source.componentName
+				}, '*');
+				return;
+			}
 		}
-	}, true);
+
+		notifyShortcutBlocked('mouse', {
+			ctrlMeta: hasCtrlMeta,
+			shift: hasShift,
+			alt: hasAlt,
+			button: event.button
+		});
+	}
+
+	document.addEventListener('click', handleModifierClick, true);
+	document.addEventListener('auxclick', handleModifierClick, true);
 
 	function findSourceInfo(element) {
 		try {
