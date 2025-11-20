@@ -21,15 +21,18 @@
 			flex-direction: column;
 		}
 
-		/* Browser Chrome (Top Bar) */
+		/* Browser Chrome (Top Bar) - Modern Glassmorphism */
 		.browser-chrome {
-			background: var(--vscode-titleBar-activeBackground);
-			border-bottom: 1px solid var(--vscode-panel-border);
-			padding: 8px 12px;
+			background: rgba(255, 255, 255, 0.05);
+			backdrop-filter: blur(20px);
+			-webkit-backdrop-filter: blur(20px);
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+			padding: 12px 16px;
 			display: flex;
 			align-items: center;
-			gap: 8px;
+			gap: 12px;
 			flex-shrink: 0;
+			box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 		}
 
 		.browser-controls {
@@ -38,59 +41,121 @@
 		}
 
 		.control-btn {
-			background: var(--vscode-button-secondaryBackground);
+			background: transparent;
+			color: var(--vscode-foreground);
 			border: none;
-			color: var(--vscode-button-secondaryForeground);
-			padding: 4px 8px;
-			border-radius: 4px;
+			padding: 6px;
 			cursor: pointer;
-			font-size: 14px;
-			transition: background 0.2s;
+			font-size: 18px;
+			transition: all 0.2s ease;
+			min-width: 32px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			filter: drop-shadow(0 0 0 transparent);
 		}
 
-		.control-btn:hover {
-			background: var(--vscode-button-secondaryHoverBackground);
+		.control-btn.home-icon {
+			font-size: 20px;
+		}
+
+		.control-btn svg {
+			width: 20px;
+			height: 20px;
+			fill: currentColor;
+		}
+
+		.control-btn:hover:not(:disabled) {
+			filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+			transform: translateY(-1px);
+		}
+
+		.control-btn:active:not(:disabled) {
+			filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+			transform: translateY(0);
 		}
 
 		.control-btn:disabled {
-			opacity: 0.5;
+			opacity: 0.3;
 			cursor: not-allowed;
 		}
 
 		.address-bar {
 			flex: 1;
-			background: var(--vscode-input-background);
-			border: 1px solid var(--vscode-input-border);
-			color: var(--vscode-input-foreground);
-			padding: 6px 12px;
-			border-radius: 4px;
+			background: rgba(255, 255, 255, 0.08);
+			backdrop-filter: blur(10px);
+			-webkit-backdrop-filter: blur(10px);
+			color: var(--vscode-foreground);
+			border: 1px solid rgba(255, 255, 255, 0.15);
+			padding: 10px 16px;
 			font-size: 13px;
+			border-radius: 12px;
 			font-family: var(--vscode-editor-font-family);
+			transition: all 0.3s ease;
+			box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
 		}
 
-		/* Highlight Toggle Button */
+		.address-bar:focus {
+			outline: none;
+			border-color: rgba(100, 150, 255, 0.5);
+			background: rgba(255, 255, 255, 0.12);
+			box-shadow: 0 0 0 3px rgba(100, 150, 255, 0.1),
+						inset 0 2px 4px rgba(0, 0, 0, 0.1);
+		}
+
+		/* Debug Toggle - Modern with Status Indicator */
 		.highlight-toggle {
-			background: var(--vscode-button-background);
-			color: var(--vscode-button-foreground);
-			border: none;
-			padding: 6px 12px;
-			border-radius: 4px;
+			background: rgba(120, 120, 120, 0.2);
+			backdrop-filter: blur(10px);
+			-webkit-backdrop-filter: blur(10px);
+			color: var(--vscode-foreground);
+			border: 1px solid rgba(255, 255, 255, 0.15);
+			padding: 8px 18px;
 			cursor: pointer;
-			font-size: 12px;
-			font-weight: 500;
+			font-size: 13px;
+			border-radius: 10px;
+			transition: all 0.3s ease;
 			display: flex;
 			align-items: center;
-			gap: 6px;
-			transition: all 0.2s;
+			gap: 8px;
+			font-weight: 500;
+			position: relative;
+			box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+			min-height: 36px;
+		}
+
+		.highlight-toggle::before {
+			content: '';
+			width: 8px;
+			height: 8px;
+			border-radius: 50%;
+			background: #888;
+			transition: all 0.3s ease;
+			box-shadow: 0 0 0 rgba(136, 136, 136, 0.4);
 		}
 
 		.highlight-toggle:hover {
-			background: var(--vscode-button-hoverBackground);
+			background: rgba(150, 150, 150, 0.25);
+			border-color: rgba(255, 255, 255, 0.25);
+			transform: translateY(-1px);
+			box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 		}
 
 		.highlight-toggle.active {
-			background: #4fc3f7;
-			color: #000;
+			background: rgba(76, 175, 80, 0.2);
+			border-color: rgba(76, 175, 80, 0.4);
+			color: #4CAF50;
+		}
+
+		.highlight-toggle.active::before {
+			background: #4CAF50;
+			box-shadow: 0 0 12px rgba(76, 175, 80, 0.6);
+			animation: pulse 2s ease-in-out infinite;
+		}
+
+		@keyframes pulse {
+			0%, 100% { box-shadow: 0 0 8px rgba(76, 175, 80, 0.6); }
+			50% { box-shadow: 0 0 16px rgba(76, 175, 80, 0.8); }
 		}
 
 		.highlight-indicator {
@@ -100,23 +165,58 @@
 			background: currentColor;
 		}
 
-		/* Stop Server Button */
+		/* Stop Server Button - Modern Glassmorphic with Glow */
 		.stop-server-btn {
-			background: #e74c3c;
-			color: white;
-			border: none;
-			padding: 6px 12px;
-			border-radius: 4px;
+			background: rgba(231, 76, 60, 0.15);
+			backdrop-filter: blur(10px);
+			-webkit-backdrop-filter: blur(10px);
+			color: #e74c3c;
+			border: 1px solid rgba(231, 76, 60, 0.3);
+			padding: 8px 18px;
 			cursor: pointer;
-			font-size: 14px;
+			font-size: 13px;
+			border-radius: 10px;
+			transition: all 0.3s ease;
 			font-weight: 500;
+			position: relative;
+			overflow: hidden;
+			box-shadow: 0 2px 8px rgba(231, 76, 60, 0.2);
 			display: flex;
 			align-items: center;
-			transition: all 0.2s;
+			gap: 8px;
+			min-height: 36px;
+		}
+
+		.stop-server-btn::before {
+			content: '';
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			width: 0;
+			height: 0;
+			border-radius: 50%;
+			background: rgba(255, 255, 255, 0.3);
+			transform: translate(-50%, -50%);
+			transition: width 0.6s, height 0.6s;
 		}
 
 		.stop-server-btn:hover {
-			background: #c0392b;
+			background: rgba(231, 76, 60, 0.25);
+			border-color: rgba(231, 76, 60, 0.5);
+			color: #ff5544;
+			transform: translateY(-1px);
+			box-shadow: 0 4px 16px rgba(231, 76, 60, 0.4),
+						0 0 20px rgba(231, 76, 60, 0.2);
+		}
+
+		.stop-server-btn:hover::before {
+			width: 300px;
+			height: 300px;
+		}
+
+		.stop-server-btn:active {
+			transform: translateY(0);
+			box-shadow: 0 2px 8px rgba(231, 76, 60, 0.3);
 		}
 
 		/* Preview Frame */
@@ -256,6 +356,9 @@
 			<button class="control-btn" id="back-btn" title="Back" disabled>←</button>
 			<button class="control-btn" id="forward-btn" title="Forward" disabled>→</button>
 			<button class="control-btn" id="refresh-btn" title="Refresh">⟳</button>
+			<button class="control-btn home-icon" id="home-btn" title="Home">
+				<svg viewBox="0 0 24 24"><path d="M12 5.69l5 4.5V18h-3v-4H10v4H7v-7.81l5-4.5m0-2.69L2 12h3v8h6v-4h2v4h6v-8h3L12 3z"/></svg>
+			</button>
 		</div>
 
 		<!-- Address Bar -->
@@ -266,15 +369,15 @@
 			value="{{VITE_SERVER_URL}}"
 		/>
 
-		<!-- Highlight Mode Toggle -->
-		<button class="highlight-toggle" id="highlight-toggle" title="Toggle click-to-source debugging">
-			<span class="highlight-indicator"></span>
-			<span id="highlight-label">Debug Off</span>
+		<!-- Debug Mode Toggle -->
+		<button class="highlight-toggle" id="highlight-toggle" title="Toggle click-to-source debugging (Ctrl+Click elements)">
+			<span id="highlight-label">Debug</span>
 		</button>
 
 		<!-- Stop Server Button -->
 		<button class="stop-server-btn" id="stop-server" title="Stop dev server and close preview">
-			<span>⏹</span>
+			<span style="font-size: 14px;">⏹</span>
+			<span>Stop</span>
 		</button>
 	</div>
 
@@ -308,6 +411,7 @@
 		const highlightLabel = document.getElementById('highlight-label');
 		const backBtn = document.getElementById('back-btn');
 		const forwardBtn = document.getElementById('forward-btn');
+		const homeBtn = document.getElementById('home-btn');
 		const refreshBtn = document.getElementById('refresh-btn');
 		const stopServerBtn = document.getElementById('stop-server');
 		const debugNotification = document.getElementById('debug-notification');
@@ -318,6 +422,7 @@
 		let navigationHistory = [];
 		let currentHistoryIndex = -1;
 		let notificationTimeout = null;
+		let isRefreshing = false; // Flag to prevent tracking 'about:blank' during refresh
 
 		// Show debug notification with auto-dismiss
 		function showDebugNotification() {
@@ -353,6 +458,12 @@
 			loading.style.display = 'none';
 			frame.style.display = 'block';
 			console.log('[Roopik] Preview loaded successfully');
+
+			// Skip all processing during refresh (prevents 'about:blank' from being tracked)
+			if (isRefreshing) {
+				console.log('[Roopik] Ignoring load event during refresh');
+				return;
+			}
 
 			// SEND HANDSHAKE to unlock the preview (security)
 			try {
@@ -394,7 +505,7 @@
 		highlightToggle.addEventListener('click', () => {
 			highlightMode = !highlightMode;
 			highlightToggle.classList.toggle('active', highlightMode);
-			highlightLabel.textContent = highlightMode ? 'Debug On' : 'Debug Off';
+			// Keep label as just "Debug", status shown by indicator glow
 
 			// Show or hide notification based on debug mode
 			if (highlightMode) {
@@ -450,6 +561,13 @@
 			} else if (message.type === 'roopik-navigate') {
 				// Update address bar with current URL
 				const newUrl = message.url;
+
+				// Skip navigation tracking during refresh (prevents 'about:blank' from being added to history)
+				if (isRefreshing) {
+					console.log('[Roopik Webview] Ignoring navigation during refresh:', newUrl);
+					return;
+				}
+
 				addressBar.value = newUrl;
 				currentIframeUrl = newUrl;
 				console.log('[Roopik Webview] Navigation:', newUrl);
@@ -488,12 +606,25 @@
 			}
 		});
 
+		homeBtn.addEventListener('click', () => {
+			// Navigate to the root localhost URL
+			const rootUrl = frame.src.split('/').slice(0, 3).join('/');
+			frame.src = rootUrl;
+			currentIframeUrl = rootUrl;
+			addressBar.value = rootUrl;
+		});
+
 		refreshBtn.addEventListener('click', () => {
 			// Reload iframe by changing src
+			isRefreshing = true; // Set flag to prevent navigation tracking
 			const currentSrc = currentIframeUrl || frame.src;
 			frame.src = 'about:blank';
 			setTimeout(() => {
 				frame.src = currentSrc;
+				// Clear flag after reload completes
+				setTimeout(() => {
+					isRefreshing = false;
+				}, 100);
 			}, 10);
 		});
 
