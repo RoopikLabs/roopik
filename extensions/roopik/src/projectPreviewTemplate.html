@@ -314,6 +314,7 @@
 		const notificationClose = document.getElementById('notification-close');
 
 		let highlightMode = false;
+		let currentIframeUrl = '';
 		let navigationHistory = [];
 		let currentHistoryIndex = -1;
 		let notificationTimeout = null;
@@ -366,6 +367,7 @@
 
 			// Set initial address bar (will be updated by messages from iframe)
 			addressBar.value = frame.src;
+			currentIframeUrl = frame.src;
 
 			// Add to navigation history
 			if (currentHistoryIndex === -1 || navigationHistory[currentHistoryIndex] !== frame.src) {
@@ -449,6 +451,7 @@
 				// Update address bar with current URL
 				const newUrl = message.url;
 				addressBar.value = newUrl;
+				currentIframeUrl = newUrl;
 				console.log('[Roopik Webview] Navigation:', newUrl);
 
 				// Update history
@@ -487,7 +490,7 @@
 
 		refreshBtn.addEventListener('click', () => {
 			// Reload iframe by changing src
-			const currentSrc = frame.src;
+			const currentSrc = currentIframeUrl || frame.src;
 			frame.src = 'about:blank';
 			setTimeout(() => {
 				frame.src = currentSrc;
@@ -506,6 +509,7 @@
 				const newUrl = addressBar.value.trim();
 				if (newUrl && newUrl.startsWith('http')) {
 					frame.src = newUrl;
+					currentIframeUrl = newUrl;
 				}
 			}
 		});
