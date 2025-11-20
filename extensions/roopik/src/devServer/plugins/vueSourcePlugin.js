@@ -14,6 +14,10 @@
 
 const path = require('path');
 
+// Configuration: Parent Context Metadata
+const MAX_PARENT_DEPTH = 3; // Maximum number of parent elements to track
+const ENABLE_PARENT_METADATA = true; // Toggle to enable/disable parent metadata collection
+
 /**
  * Create Vue source plugin for Vite
  * @param {string} extensionNodeModules - Path to extension's node_modules
@@ -180,26 +184,88 @@ function isInsideString(template, position) {
 }
 
 /**
- * Add source attributes to template using global regex
- * Handles multiline Vue component tags (e.g., <component v-if="..." class="...">)
+ * Add source attributes to template using regex
+ * Handles multiline Vue component tags with full element span tracking
+ *
+ * Features (matching React plugin):
+ * - Multi-line element detection (start + end positions)
+ * - Parent context metadata (component name + tag chain)
+ * - Component name from source
+ * - Reversed chain order (root → child)
  */
 function addSourceAttributesToTemplateAST(template, filename, templateStartLine) {
 	try {
 		const relPath = filename.replace(/\\/g, '/');
 
-		// Process template with global regex to handle multiline tags
-		const tagRegex = /<([a-zA-Z][a-zA-Z0-9-]*)([\s\/>])/g;
+		// Extract component name from .vue filename (e.g., "Home.vue" → "Home")
+		const componentName = path.basename(filename, '.vue');
 
+		// Parse template to build element tree with positions
+		const elements = parseTemplateElements(template, templateStartLine, relPath, componentName);
+
+		// Apply replacements in reverse order to maintain positions
 		let modifiedTemplate = template;
-		let match;
-		const replacements = [];
+		for (let i = elements.length - 1; i >= 0; i--) {
+			const elem = elements[i];
+			modifiedTemplate = modifiedTemplate.substring(0, elem.start) + elem.replacement + modifiedTemplate.substring(elem.end);
+		}
 
-		// Find all tag matches with their positions
-		while ((match = tagRegex.exec(template)) !== null) {
-			const tagName = match[1];
-			const trailing = match[2];
-			const matchStart = match.index;
-			const matchEnd = matchStart + match[0].length;
+		return modifiedTemplate;
+	} catch (error) {
+		console.error('[Roopik Vue Plugin] AST attribute injection error:', error);
+		return template;
+	}
+}
+
+/**
+ * Parse template to find all elements with their positions and parent chains
+ * Returns array of replacement operations
+ */
+function parseTemplateElements(template, templateStartLine, relPath, componentName) {
+	const replacements = [];
+	const elementStack = []; // Stack to track parent elements
+
+	// Match opening tags: <TagName (followed by space, /, or >)
+	const tagRegex = /<([a-zA-Z][a-zA-Z0-9-]*)([\s\/>])/g;
+	const closingTagRegex = /<\/([a-zA-Z][a-zA-Z0-9-]*)>/g;
+
+	let match;
+	const allMatches = [];
+
+	// Collect all opening and closing tags with positions
+	while ((match = tagRegex.exec(template)) !== null) {
+		allMatches.push({
+			type: 'opening',
+			tagName: match[1],
+			trailing: match[2],
+			start: match.index,
+			end: match.index + match[0].length,
+			fullMatch: match[0]
+		});
+	}
+
+	// Reset regex
+	closingTagRegex.lastIndex = 0;
+
+	while ((match = closingTagRegex.exec(template)) !== null) {
+		allMatches.push({
+			type: 'closing',
+			tagName: match[1],
+			start: match.index,
+			end: match.index + match[0].length
+		});
+	}
+
+	// Sort by position
+	allMatches.sort((a, b) => a.start - b.start);
+
+	// Process matches to build element tree
+	for (const item of allMatches) {
+		if (item.type === 'opening') {
+			const matchStart = item.start;
+			const matchEnd = item.end;
+			const tagName = item.tagName;
+			const trailing = item.trailing;
 
 			// Skip if already has data-roopik-source
 			const surroundingCode = template.substring(matchStart, Math.min(matchEnd + 100, template.length));
@@ -208,43 +274,108 @@ function addSourceAttributesToTemplateAST(template, filename, templateStartLine)
 			}
 
 			// SECURITY: Skip if inside string literal
-			// This prevents injecting attributes into code preview/documentation strings
 			if (isInsideString(template, matchStart)) {
 				continue;
 			}
 
-			// Calculate line and column number (relative to template start)
+			// Calculate start position
 			const beforeMatch = template.substring(0, matchStart);
-			const lineOffset = beforeMatch.split('\n').length - 1; // 0-based offset
+			const lineOffset = beforeMatch.split('\n').length - 1;
 			const lastNewline = beforeMatch.lastIndexOf('\n');
-			const columnNumber = matchStart - lastNewline - 1;
+			const startColumn = matchStart - lastNewline - 1;
+			const startLine = templateStartLine + lineOffset;
 
-			// Calculate actual line number in .vue file
-			const actualLineNumber = templateStartLine + lineOffset;
+			// Check if this is a self-closing tag (ends with />)
+			const isSelfClosing = trailing === '/';
 
-			// Create replacement
-			const sourceAttr = ` data-roopik-source="${relPath}:${actualLineNumber}:${columnNumber}"`;
-			const replacement = `<${tagName}${sourceAttr}${trailing}`;
+			// Find matching closing tag to get end position
+			let endLine = startLine;
+			let endColumn = startColumn;
+
+			if (!isSelfClosing) {
+				// Find the matching closing tag
+				const closingTag = findMatchingClosingTag(template, matchStart, tagName, allMatches);
+				if (closingTag) {
+					const beforeClosing = template.substring(0, closingTag.end);
+					const closingLineOffset = beforeClosing.split('\n').length - 1;
+					const closingLastNewline = beforeClosing.lastIndexOf('\n');
+					endLine = templateStartLine + closingLineOffset;
+					endColumn = closingTag.end - closingLastNewline - 1;
+				}
+			} else {
+				// Self-closing: end is same as opening tag end
+				const beforeEnd = template.substring(0, matchEnd);
+				const endLineOffset = beforeEnd.split('\n').length - 1;
+				const endLastNewline = beforeEnd.lastIndexOf('\n');
+				endLine = templateStartLine + endLineOffset;
+				endColumn = matchEnd - endLastNewline - 1;
+			}
+
+			// Build parent chain (root → child order, reversed)
+			let parentChain = '';
+			if (ENABLE_PARENT_METADATA) {
+				const parents = elementStack.slice(-MAX_PARENT_DEPTH).map(p => p.tagName);
+				parents.push(tagName); // Append clicked element
+				parentChain = parents.join('>');
+			}
+
+			// Create attributes
+			const sourceAttr = ` data-roopik-source="${relPath}:${startLine}:${startColumn}:${endLine}:${endColumn}"`;
+			const componentAttr = ` data-roopik-component="${tagName}"`;
+			const parentAttr = ENABLE_PARENT_METADATA ? ` data-roopik-parent="${componentName}|${parentChain}"` : '';
+
+			const replacement = `<${tagName}${sourceAttr}${componentAttr}${parentAttr}${trailing}`;
 
 			replacements.push({
 				start: matchStart,
 				end: matchEnd,
-				original: match[0],
+				original: item.fullMatch,
 				replacement: replacement
 			});
-		}
 
-		// Apply replacements in reverse order to maintain positions
-		for (let i = replacements.length - 1; i >= 0; i--) {
-			const r = replacements[i];
-			modifiedTemplate = modifiedTemplate.substring(0, r.start) + r.replacement + modifiedTemplate.substring(r.end);
+			// Push to stack if not self-closing
+			if (!isSelfClosing) {
+				elementStack.push({ tagName, startPos: matchStart });
+			}
+		} else if (item.type === 'closing') {
+			// Pop from stack when closing tag found
+			if (elementStack.length > 0 && elementStack[elementStack.length - 1].tagName === item.tagName) {
+				elementStack.pop();
+			}
 		}
-
-		return modifiedTemplate;
-	} catch (error) {
-		console.error('[Roopik Vue Plugin] AST attribute injection error:', error);
-		return template;
 	}
+
+	return replacements;
+}
+
+/**
+ * Find matching closing tag for an opening tag
+ */
+function findMatchingClosingTag(template, openingPos, tagName, allMatches) {
+	let depth = 1;
+	let foundOpening = false;
+
+	for (const match of allMatches) {
+		if (match.start < openingPos) continue;
+		if (match.start === openingPos && match.type === 'opening') {
+			foundOpening = true;
+			continue;
+		}
+		if (!foundOpening) continue;
+
+		if (match.tagName === tagName) {
+			if (match.type === 'opening') {
+				depth++;
+			} else if (match.type === 'closing') {
+				depth--;
+				if (depth === 0) {
+					return match;
+				}
+			}
+		}
+	}
+
+	return null;
 }
 
 /**
@@ -308,64 +439,29 @@ function transformVueTemplateRegex(code, filename, verboseLogging) {
 
 /**
  * Add data-roopik-source attributes to HTML elements in template (REGEX VERSION)
- * Handles multiline Vue component tags
+ * Handles multiline Vue component tags with full element span tracking
+ *
+ * Features (matching React plugin):
+ * - Multi-line element detection (start + end positions)
+ * - Parent context metadata (component name + tag chain)
+ * - Component name from source
+ * - Reversed chain order (root → child)
  */
 function addSourceAttributesToTemplateRegex(template, filename, templateStartLine) {
 	try {
 		const relPath = filename.replace(/\\/g, '/');
 
-		// Process template with global regex to handle multiline tags
-		const tagRegex = /<([a-zA-Z][a-zA-Z0-9-]*)([\s\/>])/g;
+		// Extract component name from .vue filename (e.g., "Home.vue" → "Home")
+		const componentName = path.basename(filename, '.vue');
 
-		let modifiedTemplate = template;
-		let match;
-		const replacements = [];
-
-		// Find all tag matches with their positions
-		while ((match = tagRegex.exec(template)) !== null) {
-			const tagName = match[1];
-			const trailing = match[2];
-			const matchStart = match.index;
-			const matchEnd = matchStart + match[0].length;
-
-			// Skip if already has data-roopik-source
-			const surroundingCode = template.substring(matchStart, Math.min(matchEnd + 100, template.length));
-			if (surroundingCode.includes('data-roopik-source')) {
-				continue;
-			}
-
-			// SECURITY: Skip if inside string literal
-			// This prevents injecting attributes into code preview/documentation strings
-			if (isInsideString(template, matchStart)) {
-				continue;
-			}
-
-			// Calculate line and column number (relative to template start)
-			const beforeMatch = template.substring(0, matchStart);
-			const lineOffset = beforeMatch.split('\n').length - 1; // 0-based offset
-			const lastNewline = beforeMatch.lastIndexOf('\n');
-			const columnNumber = matchStart - lastNewline - 1;
-
-			// Calculate actual line number in .vue file
-			// templateStartLine includes lines before <template>, +1 for <template> tag itself
-			const actualLineNumber = templateStartLine + lineOffset;
-
-			// Create replacement
-			const sourceAttr = ` data-roopik-source="${relPath}:${actualLineNumber}:${columnNumber}"`;
-			const replacement = `<${tagName}${sourceAttr}${trailing}`;
-
-			replacements.push({
-				start: matchStart,
-				end: matchEnd,
-				original: match[0],
-				replacement: replacement
-			});
-		}
+		// Parse template to build element tree with positions
+		const elements = parseTemplateElements(template, templateStartLine, relPath, componentName);
 
 		// Apply replacements in reverse order to maintain positions
-		for (let i = replacements.length - 1; i >= 0; i--) {
-			const r = replacements[i];
-			modifiedTemplate = modifiedTemplate.substring(0, r.start) + r.replacement + modifiedTemplate.substring(r.end);
+		let modifiedTemplate = template;
+		for (let i = elements.length - 1; i >= 0; i--) {
+			const elem = elements[i];
+			modifiedTemplate = modifiedTemplate.substring(0, elem.start) + elem.replacement + modifiedTemplate.substring(elem.end);
 		}
 
 		return modifiedTemplate;
