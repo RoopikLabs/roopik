@@ -455,6 +455,169 @@ Users can control the behavior via `.roopik/config.json`:
 
 ---
 
+## Critical Bug Found & Fixed (2025-01-19)
+
+### **The String Literal Vulnerability** 🚨
+
+During real-world testing, we discovered that the regex implementation was **injecting `data-roopik-source` attributes into string literals**, revealing our proprietary click-to-source technology to anyone viewing HTML code as text content.
+
+#### **The Scenario**
+
+User was building an HTML preview tile to display code examples:
+
+```jsx
+<div className="code-tile">
+  <code>
+{`<!DOCTYPE html>
+<html>
+  <body>
+    <h1>Hello World!</h1>
+  </body>
+</html>`}
+  </code>
+</div>
+```
+
+#### **What Went Wrong**
+
+**AST Mode (Secure ✅)**:
+- Babel understands syntax context
+- Knows `<code>` is JSX, but `"<html>"` is a string literal
+- Only injects attribute into real JSX elements
+
+**Regex Mode (Vulnerable ❌)**:
+- Pattern matching without context awareness
+- Sees `<html>`, `<body>`, `<h1>` and matches them all
+- Injects attributes **into the string content itself**!
+
+**Result**:
+```html
+<!-- LEAKED! -->
+<code data-roopik-source="Home.jsx:10:2">
+  {"<html data-roopik-source='Home.jsx:11:5'>
+      <body data-roopik-source='Home.jsx:12:6'>
+        <h1 data-roopik-source='Home.jsx:13:8'>Hello World!</h1>
+      </body>
+    </html>"}
+</code>
+```
+
+This exposed our trade secret to:
+- Documentation sites showing code examples
+- Tutorial apps with HTML snippets
+- LeetCode clones displaying code previews
+- Any code playground built with Roopik
+
+### **The Fix: Context-Aware String Detection**
+
+We added an `isInsideString()` helper that scans code character-by-character to track string context:
+
+```javascript
+/**
+ * Check if a position in code is inside a string literal or template literal
+ * @param {string} code - The full source code
+ * @param {number} position - Character position to check
+ * @returns {boolean} - True if inside a string/template literal
+ */
+function isInsideString(code, position) {
+    let inSingleQuote = false;
+    let inDoubleQuote = false;
+    let inTemplateString = false;
+    let prevChar = '';
+
+    for (let i = 0; i < position; i++) {
+        const char = code[i];
+
+        // Skip escaped characters
+        if (prevChar === '\\') {
+            prevChar = char;
+            continue;
+        }
+
+        // Toggle string states
+        if (char === "'" && !inDoubleQuote && !inTemplateString) {
+            inSingleQuote = !inSingleQuote;
+        } else if (char === '"' && !inSingleQuote && !inTemplateString) {
+            inDoubleQuote = !inDoubleQuote;
+        } else if (char === '`' && !inSingleQuote && !inDoubleQuote) {
+            inTemplateString = !inTemplateString;
+        }
+
+        prevChar = char;
+    }
+
+    return inSingleQuote || inDoubleQuote || inTemplateString;
+}
+```
+
+**Integration**:
+```javascript
+while ((match = tagRegex.exec(code)) !== null) {
+    // Skip if already has attribute
+    if (surroundingCode.includes('data-roopik-source')) {
+        continue;
+    }
+
+    // SECURITY: Skip if inside string literal
+    if (isInsideString(code, match.index)) {
+        continue;  // ✅ Protect trade secret!
+    }
+
+    // ... inject attribute
+}
+```
+
+### **Edge Cases Handled**
+
+1. **Escaped quotes**: `"She said \"Hello\""`
+   - Check `prevChar === '\\'` and skip toggle
+
+2. **Nested quotes**: `'He said "Hello"'`
+   - Only toggle if not already in another quote type
+
+3. **Template literals**: `` `<div>${content}</div>` ``
+   - Track backticks separately
+
+4. **Multiline strings**:
+   ```javascript
+   const html = `
+     <div>Content</div>
+   `;
+   ```
+   - Character-by-character scan handles naturally
+
+### **Result (Secure ✅)**
+
+```html
+<!-- Fixed! -->
+<div className="code-tile" data-roopik-source="Home.jsx:10:0">
+  <code data-roopik-source="Home.jsx:10:22">
+    {"<html>
+        <body>
+          <h1>Hello World!</h1>
+        </body>
+      </html>"}
+  </code>
+</div>
+```
+
+Only real JSX elements get attributes, strings are protected!
+
+### **Files Modified**
+
+- [reactSourcePlugin.js](src/devServer/plugins/reactSourcePlugin.js) - Added `isInsideString()` + security check
+- [vueSourcePlugin.js](src/devServer/plugins/vueSourcePlugin.js) - Added `isInsideString()` + security check (both AST and Regex functions)
+
+### **Lessons Learned**
+
+1. **Real-world testing reveals critical issues** - The HTML preview tile exposed this vulnerability
+2. **AST is inherently more secure** - Context awareness prevents these issues
+3. **Regex needs manual security checks** - Pattern matching requires explicit context validation
+4. **Think like a competitor** - How would someone discover our implementation?
+5. **Defense in depth works** - Multiple security layers (tokens + string protection)
+
+---
+
 ## Future Enhancements
 
 ### Potential Improvements

@@ -145,6 +145,41 @@ function tryASTTransformation(code, filename, extensionNodeModules, verboseLoggi
 }
 
 /**
+ * Check if a position in template is inside a string literal
+ * This prevents modifying HTML code that's displayed as text content
+ * @param {string} template - The template code
+ * @param {number} position - Character position to check
+ * @returns {boolean} - True if inside a string literal
+ */
+function isInsideString(template, position) {
+	// Track string context by scanning character by character
+	let inSingleQuote = false;
+	let inDoubleQuote = false;
+	let prevChar = '';
+
+	for (let i = 0; i < position; i++) {
+		const char = template[i];
+
+		// Skip escaped characters
+		if (prevChar === '\\') {
+			prevChar = char;
+			continue;
+		}
+
+		// Toggle string states
+		if (char === "'" && !inDoubleQuote) {
+			inSingleQuote = !inSingleQuote;
+		} else if (char === '"' && !inSingleQuote) {
+			inDoubleQuote = !inDoubleQuote;
+		}
+
+		prevChar = char;
+	}
+
+	return inSingleQuote || inDoubleQuote;
+}
+
+/**
  * Add source attributes to template using global regex
  * Handles multiline Vue component tags (e.g., <component v-if="..." class="...">)
  */
@@ -169,6 +204,12 @@ function addSourceAttributesToTemplateAST(template, filename, templateStartLine)
 			// Skip if already has data-roopik-source
 			const surroundingCode = template.substring(matchStart, Math.min(matchEnd + 100, template.length));
 			if (surroundingCode.includes('data-roopik-source')) {
+				continue;
+			}
+
+			// SECURITY: Skip if inside string literal
+			// This prevents injecting attributes into code preview/documentation strings
+			if (isInsideString(template, matchStart)) {
 				continue;
 			}
 
@@ -290,6 +331,12 @@ function addSourceAttributesToTemplateRegex(template, filename, templateStartLin
 			// Skip if already has data-roopik-source
 			const surroundingCode = template.substring(matchStart, Math.min(matchEnd + 100, template.length));
 			if (surroundingCode.includes('data-roopik-source')) {
+				continue;
+			}
+
+			// SECURITY: Skip if inside string literal
+			// This prevents injecting attributes into code preview/documentation strings
+			if (isInsideString(template, matchStart)) {
 				continue;
 			}
 

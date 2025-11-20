@@ -119,6 +119,44 @@ function createReactSourcePlugin(extensionNodeModules, pluginConfig = {}) {
 }
 
 /**
+ * Check if a position in code is inside a string literal or template literal
+ * This prevents modifying HTML code that's displayed as text content
+ * @param {string} code - The full source code
+ * @param {number} position - Character position to check
+ * @returns {boolean} - True if inside a string/template literal
+ */
+function isInsideString(code, position) {
+	// Track string context by scanning character by character
+	let inSingleQuote = false;
+	let inDoubleQuote = false;
+	let inTemplateString = false;
+	let prevChar = '';
+
+	for (let i = 0; i < position; i++) {
+		const char = code[i];
+
+		// Skip escaped characters
+		if (prevChar === '\\') {
+			prevChar = char;
+			continue;
+		}
+
+		// Toggle string states
+		if (char === "'" && !inDoubleQuote && !inTemplateString) {
+			inSingleQuote = !inSingleQuote;
+		} else if (char === '"' && !inSingleQuote && !inTemplateString) {
+			inDoubleQuote = !inDoubleQuote;
+		} else if (char === '`' && !inSingleQuote && !inDoubleQuote) {
+			inTemplateString = !inTemplateString;
+		}
+
+		prevChar = char;
+	}
+
+	return inSingleQuote || inDoubleQuote || inTemplateString;
+}
+
+/**
  * Fallback: Regex-based source attribute injection
  * Less reliable than AST, but works when Babel fails
  * Uses line-by-line approach like Vue plugin for accurate line numbers
@@ -145,6 +183,12 @@ function tryRegexFallback(code, filename, verboseLogging) {
 			// Skip if already has data-roopik-source
 			const surroundingCode = code.substring(matchStart, Math.min(matchEnd + 100, code.length));
 			if (surroundingCode.includes('data-roopik-source')) {
+				continue;
+			}
+
+			// SECURITY: Skip if inside string literal or template literal
+			// This prevents injecting attributes into code preview/documentation strings
+			if (isInsideString(code, matchStart)) {
 				continue;
 			}
 
