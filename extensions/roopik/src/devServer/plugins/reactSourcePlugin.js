@@ -292,61 +292,28 @@ function isInsideString(code, position) {
 /**
  * Fallback: Regex-based source attribute injection
  * Less reliable than AST, but works when Babel fails
- * Uses line-by-line approach like Vue plugin for accurate line numbers
+ *
+ * Features (matching AST mode):
+ * - Multi-line element detection (start + end positions)
+ * - Parent context metadata (component name + tag chain)
+ * - Component name from source
+ * - Reversed chain order (root → child)
  */
 function tryRegexFallback(code, filename, verboseLogging) {
 	try {
 		const relPath = filename.replace(/\\/g, '/');
 
-		// Process code with global regex to handle multiline JSX tags
-		// Match opening tags: <TagName (followed by space, /, or >)
-		const tagRegex = /<([a-zA-Z][a-zA-Z0-9-]*)([\s\/>])/g;
+		// Extract component name from filename (e.g., "Home.jsx" → "Home")
+		const componentName = path.basename(filename, path.extname(filename));
 
-		let modifiedCode = code;
-		let match;
-		const replacements = [];
-
-		// Find all tag matches with their positions
-		while ((match = tagRegex.exec(code)) !== null) {
-			const tagName = match[1];
-			const trailing = match[2];
-			const matchStart = match.index;
-			const matchEnd = matchStart + match[0].length;
-
-			// Skip if already has data-roopik-source
-			const surroundingCode = code.substring(matchStart, Math.min(matchEnd + 100, code.length));
-			if (surroundingCode.includes('data-roopik-source')) {
-				continue;
-			}
-
-			// SECURITY: Skip if inside string literal or template literal
-			// This prevents injecting attributes into code preview/documentation strings
-			if (isInsideString(code, matchStart)) {
-				continue;
-			}
-
-			// Calculate line and column number
-			const beforeMatch = code.substring(0, matchStart);
-			const lineNumber = beforeMatch.split('\n').length;
-			const lastNewline = beforeMatch.lastIndexOf('\n');
-			const columnNumber = matchStart - lastNewline - 1;
-
-			// Create replacement
-			const sourceAttr = ` data-roopik-source="${relPath}:${lineNumber}:${columnNumber}"`;
-			const replacement = `<${tagName}${sourceAttr}${trailing}`;
-
-			replacements.push({
-				start: matchStart,
-				end: matchEnd,
-				original: match[0],
-				replacement: replacement
-			});
-		}
+		// Parse JSX to build element tree with positions
+		const elements = parseJsxElements(code, relPath, componentName);
 
 		// Apply replacements in reverse order to maintain positions
-		for (let i = replacements.length - 1; i >= 0; i--) {
-			const r = replacements[i];
-			modifiedCode = modifiedCode.substring(0, r.start) + r.replacement + modifiedCode.substring(r.end);
+		let modifiedCode = code;
+		for (let i = elements.length - 1; i >= 0; i--) {
+			const elem = elements[i];
+			modifiedCode = modifiedCode.substring(0, elem.start) + elem.replacement + modifiedCode.substring(elem.end);
 		}
 
 		if (verboseLogging) {
@@ -361,6 +328,164 @@ function tryRegexFallback(code, filename, verboseLogging) {
 		console.error('[Roopik React Plugin] Regex fallback error:', error);
 		return null;
 	}
+}
+
+/**
+ * Parse JSX to find all elements with their positions and parent chains
+ * Returns array of replacement operations
+ */
+function parseJsxElements(code, relPath, componentName) {
+	const replacements = [];
+	const elementStack = []; // Stack to track parent elements
+
+	// Match opening tags: <TagName (followed by space, /, or >)
+	const tagRegex = /<([a-zA-Z][a-zA-Z0-9-]*)([\s\/>])/g;
+	const closingTagRegex = /<\/([a-zA-Z][a-zA-Z0-9-]*)>/g;
+
+	let match;
+	const allMatches = [];
+
+	// Collect all opening and closing tags with positions
+	while ((match = tagRegex.exec(code)) !== null) {
+		allMatches.push({
+			type: 'opening',
+			tagName: match[1],
+			trailing: match[2],
+			start: match.index,
+			end: match.index + match[0].length,
+			fullMatch: match[0]
+		});
+	}
+
+	// Reset regex
+	closingTagRegex.lastIndex = 0;
+
+	while ((match = closingTagRegex.exec(code)) !== null) {
+		allMatches.push({
+			type: 'closing',
+			tagName: match[1],
+			start: match.index,
+			end: match.index + match[0].length
+		});
+	}
+
+	// Sort by position
+	allMatches.sort((a, b) => a.start - b.start);
+
+	// Process matches to build element tree
+	for (const item of allMatches) {
+		if (item.type === 'opening') {
+			const matchStart = item.start;
+			const matchEnd = item.end;
+			const tagName = item.tagName;
+			const trailing = item.trailing;
+
+			// Skip if already has data-roopik-source
+			const surroundingCode = code.substring(matchStart, Math.min(matchEnd + 100, code.length));
+			if (surroundingCode.includes('data-roopik-source')) {
+				continue;
+			}
+
+			// SECURITY: Skip if inside string literal or template literal
+			if (isInsideString(code, matchStart)) {
+				continue;
+			}
+
+			// Calculate start position
+			const beforeMatch = code.substring(0, matchStart);
+			const startLine = beforeMatch.split('\n').length;
+			const lastNewline = beforeMatch.lastIndexOf('\n');
+			const startColumn = matchStart - lastNewline - 1;
+
+			// Check if this is a self-closing tag (ends with />)
+			const isSelfClosing = trailing === '/';
+
+			// Find matching closing tag to get end position
+			let endLine = startLine;
+			let endColumn = startColumn;
+
+			if (!isSelfClosing) {
+				// Find the matching closing tag
+				const closingTag = findMatchingClosingTag(code, matchStart, tagName, allMatches);
+				if (closingTag) {
+					const beforeClosing = code.substring(0, closingTag.end);
+					endLine = beforeClosing.split('\n').length;
+					const closingLastNewline = beforeClosing.lastIndexOf('\n');
+					endColumn = closingTag.end - closingLastNewline - 1;
+				}
+			} else {
+				// Self-closing: end is same as opening tag end
+				const beforeEnd = code.substring(0, matchEnd);
+				endLine = beforeEnd.split('\n').length;
+				const endLastNewline = beforeEnd.lastIndexOf('\n');
+				endColumn = matchEnd - endLastNewline - 1;
+			}
+
+			// Build parent chain (root → child order, reversed)
+			let parentChain = '';
+			if (ENABLE_PARENT_METADATA) {
+				const parents = elementStack.slice(-MAX_PARENT_DEPTH).map(p => p.tagName);
+				parents.push(tagName); // Append clicked element
+				parentChain = parents.join('>');
+			}
+
+			// Create attributes
+			const sourceAttr = ` data-roopik-source="${relPath}:${startLine}:${startColumn}:${endLine}:${endColumn}"`;
+			const componentAttr = ` data-roopik-component="${tagName}"`;
+			const parentAttr = ENABLE_PARENT_METADATA ? ` data-roopik-parent="${componentName}|${parentChain}"` : '';
+
+			const replacement = `<${tagName}${sourceAttr}${componentAttr}${parentAttr}${trailing}`;
+
+			replacements.push({
+				start: matchStart,
+				end: matchEnd,
+				original: item.fullMatch,
+				replacement: replacement
+			});
+
+			// Push to stack if not self-closing
+			if (!isSelfClosing) {
+				elementStack.push({ tagName, startPos: matchStart });
+			}
+		} else if (item.type === 'closing') {
+			// Pop from stack when closing tag found
+			if (elementStack.length > 0 && elementStack[elementStack.length - 1].tagName === item.tagName) {
+				elementStack.pop();
+			}
+		}
+	}
+
+	return replacements;
+}
+
+/**
+ * Find matching closing tag for an opening tag
+ */
+function findMatchingClosingTag(code, openingPos, tagName, allMatches) {
+	let depth = 1;
+	let foundOpening = false;
+
+	for (const match of allMatches) {
+		if (match.start < openingPos) continue;
+		if (match.start === openingPos && match.type === 'opening') {
+			foundOpening = true;
+			continue;
+		}
+		if (!foundOpening) continue;
+
+		if (match.tagName === tagName) {
+			if (match.type === 'opening') {
+				depth++;
+			} else if (match.type === 'closing') {
+				depth--;
+				if (depth === 0) {
+					return match;
+				}
+			}
+		}
+	}
+
+	return null;
 }
 
 module.exports = { createReactSourcePlugin };
