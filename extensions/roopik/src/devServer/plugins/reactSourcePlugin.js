@@ -10,6 +10,10 @@
 
 const path = require('path');
 
+// Configuration: Parent Context Metadata
+const MAX_PARENT_DEPTH = 3; // Maximum number of parent JSX elements to track
+const ENABLE_PARENT_METADATA = true; // Toggle to enable/disable parent metadata collection
+
 /**
  * Create React source plugin for Vite
  * @param {string} extensionNodeModules - Path to extension's node_modules
@@ -57,8 +61,84 @@ function createReactSourcePlugin(extensionNodeModules, pluginConfig = {}) {
 				const result = babel.transformSync(code, {
 					filename: id,
 					plugins: [
-						// Inline Babel plugin for adding data-roopik-source
+						// Inline Babel plugin for adding data-roopik-source and data-roopik-parent
 						function roopikBabelPlugin({ types: t }) {
+							/**
+							 * Get parent context metadata for an element
+							 * Format: "ComponentName|tag>parent>grandparent"
+							 * @param {Object} path - Babel AST path
+							 * @param {number} maxDepth - Maximum depth to traverse
+							 * @returns {string} Parent metadata string
+							 */
+							function getParentMetadata(path, currentElementName, maxDepth = MAX_PARENT_DEPTH) {
+								// Find parent component name (function/arrow function)
+								let parentComponent = 'Unknown';
+								let currentPath = path.parentPath;
+
+								while (currentPath) {
+									if (currentPath.isFunctionDeclaration() && currentPath.node.id) {
+										parentComponent = currentPath.node.id.name;
+										break;
+									} else if (currentPath.isVariableDeclarator() && currentPath.node.id) {
+										// Handle: const Component = () => { ... }
+										const declarator = currentPath.node;
+										if (declarator.init &&
+											(t.isArrowFunctionExpression(declarator.init) ||
+											 t.isFunctionExpression(declarator.init))) {
+											parentComponent = declarator.id.name;
+											break;
+										}
+									}
+									currentPath = currentPath.parentPath;
+								}
+
+								// Collect parent JSX tag chain
+								// ALWAYS include all parents in chain, but only COUNT meaningful ones toward depth limit
+								const parentTags = [];
+								let parentPath = path.parentPath;
+								let meaningfulDepth = 0; // Only count non-generic wrappers
+
+								while (parentPath && meaningfulDepth < maxDepth) {
+									if (parentPath.isJSXElement()) {
+										const openingElement = parentPath.node.openingElement;
+										const name = openingElement.name;
+
+										// Extract tag name (handle namespaced components)
+										let tagName;
+										if (t.isJSXIdentifier(name)) {
+											tagName = name.name;
+										} else if (t.isJSXMemberExpression(name)) {
+											// Handle: <Foo.Bar>
+											tagName = `${name.object.name}.${name.property.name}`;
+										} else {
+											tagName = 'Unknown';
+										}
+
+										// ALWAYS add to chain (preserve complete structure)
+										parentTags.push(tagName);
+
+										// Check if this is a meaningful parent (not a generic wrapper)
+										const isGenericWrapper = (tagName === 'div' || tagName === 'span') &&
+											openingElement.attributes.length === 0;
+
+										// Only increment depth counter for meaningful parents
+										if (!isGenericWrapper) {
+											meaningfulDepth++;
+										}
+									}
+									parentPath = parentPath.parentPath;
+								}
+
+								// Reverse chain to read root → child (more natural)
+								// and append the clicked element at the end (doesn't count toward depth limit)
+								parentTags.reverse();
+								parentTags.push(currentElementName);
+
+								// Format: "ComponentName|section>div>div>Link" (root → child)
+								const tagChain = parentTags.length > 0 ? parentTags.join('>') : currentElementName;
+								return `${parentComponent}|${tagChain}`;
+							}
+
 							return {
 								visitor: {
 									JSXElement(path, state) {
@@ -70,6 +150,18 @@ function createReactSourcePlugin(extensionNodeModules, pluginConfig = {}) {
 										const openingElement = node.openingElement;
 										if (!openingElement) return;
 
+										// Extract current element's tag name (for component name)
+										const name = openingElement.name;
+										let currentElementName;
+										if (t.isJSXIdentifier(name)) {
+											currentElementName = name.name;
+										} else if (t.isJSXMemberExpression(name)) {
+											// Handle: <Foo.Bar>
+											currentElementName = `${name.object.name}.${name.property.name}`;
+										} else {
+											currentElementName = 'Unknown';
+										}
+
 										const filename = state.filename || id;
 										const relPath = filename.replace(/\\/g, '/');
 
@@ -77,19 +169,53 @@ function createReactSourcePlugin(extensionNodeModules, pluginConfig = {}) {
 										// This captures the entire element including children and closing tag
 										const sourceValue = `${relPath}:${elementLoc.start.line}:${elementLoc.start.column}:${elementLoc.end.line}:${elementLoc.end.column}`;
 
-										// Create JSXAttribute node
+										// Create JSXAttribute node for source location
 										const sourceAttr = t.jsxAttribute(
 											t.jsxIdentifier('data-roopik-source'),
 											t.stringLiteral(sourceValue)
 										);
 
-										// Add attribute (only if not already present)
+										// Add source attribute (only if not already present)
 										const hasRoopikAttr = openingElement.attributes.some(
 											attr => t.isJSXAttribute(attr) && attr.name.name === 'data-roopik-source'
 										);
 
 										if (!hasRoopikAttr) {
 											openingElement.attributes.push(sourceAttr);
+										}
+
+										// Store actual component name (from source, not DOM)
+										const componentNameAttr = t.jsxAttribute(
+											t.jsxIdentifier('data-roopik-component'),
+											t.stringLiteral(currentElementName)
+										);
+
+										const hasComponentAttr = openingElement.attributes.some(
+											attr => t.isJSXAttribute(attr) && attr.name.name === 'data-roopik-component'
+										);
+
+										if (!hasComponentAttr) {
+											openingElement.attributes.push(componentNameAttr);
+										}
+
+										// Add parent context metadata if enabled
+										if (ENABLE_PARENT_METADATA) {
+											const parentValue = getParentMetadata(path, currentElementName);
+
+											// Create JSXAttribute for parent metadata
+											const parentAttr = t.jsxAttribute(
+												t.jsxIdentifier('data-roopik-parent'),
+												t.stringLiteral(parentValue)
+											);
+
+											// Add attribute (only if not already present)
+											const hasParentAttr = openingElement.attributes.some(
+												attr => t.isJSXAttribute(attr) && attr.name.name === 'data-roopik-parent'
+											);
+
+											if (!hasParentAttr) {
+												openingElement.attributes.push(parentAttr);
+											}
 										}
 									}
 								}

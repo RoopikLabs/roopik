@@ -565,7 +565,8 @@
 					column: message.column,
 					endLine: message.endLine, // Multi-line support
 					endColumn: message.endColumn, // Multi-line support
-					componentName: message.componentName
+					componentName: message.componentName,
+					parentContext: message.parentContext // Parent metadata: "ComponentName|tag>parent>grandparent"
 				});
 			} else if (message.type === 'roopik-navigate') {
 				// Update address bar with current URL

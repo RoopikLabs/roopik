@@ -212,13 +212,25 @@ export class ProjectPreviewPanel {
 	 * Handle click-to-source message from webview
 	 */
 	private async _handleClickToSource(message: any) {
-		const { file, line, column, endLine, endColumn, componentName } = message;
+		const { file, line, column, endLine, endColumn, componentName, parentContext } = message;
 
 		this._logger.info('========================================');
 		this._logger.info('Click-to-source received!');
 		this._logger.info(`  File: ${file}`);
 		this._logger.info(`  Line: ${line}:${column}${endLine ? ` → ${endLine}:${endColumn}` : ''}`);
 		this._logger.info(`  Component: ${componentName || 'unknown'}`);
+
+		// Log parent context metadata if available
+		if (parentContext) {
+			this._logger.info(`  Parent Context: ${parentContext}`);
+			// Parse and display parent metadata
+			const parts = parentContext.split('|');
+			if (parts.length === 2) {
+				const [componentName, tagChain] = parts;
+				this._logger.info(`    → Parent Component: ${componentName}`);
+				this._logger.info(`    → Parent Tag Chain: ${tagChain}`);
+			}
+		}
 
 		const workspaceRoot = getWorkspaceRoot();
 		this._logger.info(`  Workspace root: ${workspaceRoot}`);

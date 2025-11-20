@@ -151,7 +151,8 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 					column: source.columnNumber,
 					endLine: source.endLine, // Multi-line support
 					endColumn: source.endColumn, // Multi-line support
-					componentName: source.componentName
+					componentName: source.componentName,
+					parentContext: source.parentContext // Parent metadata: "ComponentName|tag>parent>grandparent"
 				}, '*');
 				return;
 			}
@@ -172,6 +173,14 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 		try {
 			if (element.hasAttribute && element.hasAttribute('data-roopik-source')) {
 				const sourceData = element.getAttribute('data-roopik-source');
+				const parentData = element.hasAttribute('data-roopik-parent')
+					? element.getAttribute('data-roopik-parent')
+					: null;
+
+				// Get component name from source attribute (e.g., "Link" not "A")
+				const componentName = element.hasAttribute('data-roopik-component')
+					? element.getAttribute('data-roopik-component')
+					: (element.tagName || 'Unknown');
 
 				const parts = sourceData.split(':');
 				// New format: filename:startLine:startCol:endLine:endCol (5+ parts)
@@ -189,14 +198,21 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 						columnNumber: startColumn,
 						endLine,
 						endColumn,
-						componentName: element.tagName || 'Unknown'
+						componentName, // From source, not DOM (e.g., "Link" not "A")
+						parentContext: parentData // Parent metadata: "ComponentName|section>div>div>Link"
 					};
 				} else if (parts.length >= 3) {
 					// Legacy single-line format (backward compatibility for regex mode)
 					const fileName = parts.slice(0, -2).join(':');
 					const lineNumber = parseInt(parts[parts.length - 2], 10);
 					const columnNumber = parseInt(parts[parts.length - 1], 10);
-					return { fileName, lineNumber, columnNumber, componentName: element.tagName || 'Unknown' };
+					return {
+						fileName,
+						lineNumber,
+						columnNumber,
+						componentName, // From source, not DOM
+						parentContext: parentData // Parent metadata even in legacy mode
+					};
 				}
 			}
 
