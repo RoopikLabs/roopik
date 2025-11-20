@@ -29,6 +29,39 @@ export interface RoopikConfig {
 		maxChatHistory: number;
 		enableDesignMemory: boolean;
 	};
+	plugins: {
+		/**
+		 * Force regex-based transformation for all frameworks
+		 *
+		 * When true:
+		 * - Skips AST-based transformation (Babel, Vue SFC, etc.)
+		 * - Always uses regex fallback
+		 *
+		 * When false (default):
+		 * - Tries AST-based first (more accurate)
+		 * - Falls back to regex if AST fails
+		 *
+		 * Use cases:
+		 * - Testing regex implementation
+		 * - Debugging AST issues
+		 * - Performance comparison
+		 */
+		forceRegexMode: boolean;
+
+		/**
+		 * Enable verbose logging for plugin transformations
+		 */
+		verboseLogging: boolean;
+
+		/**
+		 * Framework-specific overrides (future use)
+		 */
+		frameworkOverrides?: {
+			[framework: string]: {
+				forceRegex?: boolean;
+			};
+		};
+	};
 }
 
 /**
@@ -51,6 +84,11 @@ const DEFAULT_CONFIG: RoopikConfig = {
 		enableContextIsolation: true,
 		maxChatHistory: 50,
 		enableDesignMemory: true
+	},
+	plugins: {
+		forceRegexMode: false,  // Set to true to test regex mode
+		verboseLogging: true,
+		frameworkOverrides: {}
 	}
 };
 
@@ -118,6 +156,10 @@ export class ConfigManager {
 			ai: {
 				...DEFAULT_CONFIG.ai,
 				...userConfig.ai
+			},
+			plugins: {
+				...DEFAULT_CONFIG.plugins,
+				...userConfig.plugins
 			}
 		};
 	}
@@ -187,5 +229,38 @@ export class ConfigManager {
 	public getSessionPath(): string {
 		const workspaceRoot = path.dirname(path.dirname(this.configPath));
 		return path.join(workspaceRoot, '.roopik', 'session.json');
+	}
+
+	/**
+	 * Check if regex mode is forced
+	 * @returns {boolean}
+	 */
+	public isRegexModeForced(): boolean {
+		return this.config.plugins.forceRegexMode;
+	}
+
+	/**
+	 * Get plugin strategy for a specific framework
+	 * @param {string} framework - Framework identifier
+	 * @returns {Object} Strategy configuration
+	 */
+	public getPluginStrategy(framework: string): {
+		forceRegex: boolean;
+		verboseLogging: boolean;
+	} {
+		// Check framework-specific override first
+		const override = this.config.plugins.frameworkOverrides?.[framework];
+		if (override) {
+			return {
+				forceRegex: override.forceRegex ?? this.isRegexModeForced(),
+				verboseLogging: this.config.plugins.verboseLogging
+			};
+		}
+
+		// Return global strategy
+		return {
+			forceRegex: this.isRegexModeForced(),
+			verboseLogging: this.config.plugins.verboseLogging
+		};
 	}
 }

@@ -8,6 +8,7 @@ import { CanvasPanel } from './canvasPanel';
 import { DashboardPanel } from './dashboardPanel';
 import { ConfigManager } from './config';
 import { ActivityBarViewProvider } from './activityBarView';
+import { ProjectPreviewPanel } from './projectPreviewPanel';
 
 /**
  * Roopik Extension Entry Point
@@ -173,6 +174,44 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// Command 9: Open Project Preview (Mode 2)
+	const openProjectPreviewCommand = vscode.commands.registerCommand('roopik.openProjectPreview', async () => {
+		// Ask user to select project directory
+		const projectUri = await vscode.window.showOpenDialog({
+			canSelectFiles: false,
+			canSelectFolders: true,
+			canSelectMany: false,
+			openLabel: 'Select Project Folder',
+			title: 'Select the project folder containing package.json',
+			defaultUri: vscode.Uri.file(workspaceRoot)
+		});
+
+		if (!projectUri || projectUri.length === 0) {
+			return; // User cancelled
+		}
+
+		const projectRoot = projectUri[0].fsPath;
+
+		// Verify package.json exists
+		const packageJsonPath = vscode.Uri.file(projectRoot + '/package.json');
+		try {
+			await vscode.workspace.fs.stat(packageJsonPath);
+		} catch {
+			const retry = await vscode.window.showErrorMessage(
+				'No package.json found in selected folder. Please select a valid project directory.',
+				'Try Again',
+				'Cancel'
+			);
+			if (retry === 'Try Again') {
+				vscode.commands.executeCommand('roopik.openProjectPreview');
+			}
+			return;
+		}
+
+		// Start preview with selected project
+		await ProjectPreviewPanel.createOrShow(context.extensionUri, projectRoot);
+	});
+
 	// Register Activity Bar view provider
 	const activityBarViewProvider = new ActivityBarViewProvider(workspaceRoot);
 	const dashboardViewProvider = vscode.window.registerWebviewViewProvider(
@@ -190,13 +229,15 @@ export function activate(context: vscode.ExtensionContext) {
 		renameCanvasCommand,
 		exportCanvasCommand,
 		importCanvasCommand,
+		openProjectPreviewCommand,
 		dashboardViewProvider
 	);
 
 	// Log successful activation
 	console.log('Roopik: Extension activated successfully');
-	console.log('Roopik: Commands registered (openCanvas [Dashboard], newCanvas, closeAllCanvases, showCanvases)');
+	console.log('Roopik: Commands registered (openCanvas [Dashboard], newCanvas, closeAllCanvases, showCanvases, openProjectPreview)');
 	console.log('Roopik: Multi-canvas architecture with Dashboard UI ready');
+	console.log('Roopik: Mode 2 Project Preview available');
 	console.log('Roopik: Activity Bar icon registered');
 }
 

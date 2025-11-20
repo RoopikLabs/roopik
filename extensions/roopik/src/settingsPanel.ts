@@ -165,6 +165,33 @@ export class SettingsPanel {
 						</div>
 					</div>
 				</div>
+
+				<!-- Plugins Section -->
+				<div class="settings-section">
+					<h3 class="settings-section-title">Plugins (Advanced)</h3>
+					<div class="settings-item">
+						<div class="settings-item-label">
+							<div class="settings-item-name">Force Regex Mode</div>
+							<div class="settings-item-desc">Use regex-based transformation instead of AST (for testing/debugging)</div>
+						</div>
+						<div class="settings-item-control">
+							<div class="settings-toggle ${config.plugins.forceRegexMode ? 'active' : ''}"
+								onclick="updateSetting('plugins.forceRegexMode', !${config.plugins.forceRegexMode}); this.classList.toggle('active')">
+							</div>
+						</div>
+					</div>
+					<div class="settings-item">
+						<div class="settings-item-label">
+							<div class="settings-item-name">Verbose Logging</div>
+							<div class="settings-item-desc">Enable detailed plugin transformation logs in console</div>
+						</div>
+						<div class="settings-item-control">
+							<div class="settings-toggle ${config.plugins.verboseLogging ? 'active' : ''}"
+								onclick="updateSetting('plugins.verboseLogging', !${config.plugins.verboseLogging}); this.classList.toggle('active')">
+							</div>
+						</div>
+					</div>
+				</div>
 			</div>
 		</div>
 	</div>`;
