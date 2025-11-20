@@ -5,8 +5,12 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { openFileAtLine, getWorkspaceRoot } from './utils/editorControl';
 import { ViteServerManager } from './devServer/viteServerManager';
+import { StyleContextGatherer } from './styleContextGatherer';
+import { ConfigManager } from './config';
+import { Logger } from './logger';
 
 /**
  * Mode 2: Project Preview Panel
@@ -24,6 +28,8 @@ export class ProjectPreviewPanel {
 	private _viteServerUrl: string = '';
 	private _highlightMode: boolean = false; // Default: disabled
 	private _serverManager: ViteServerManager | undefined;
+	private _logger: ReturnType<typeof Logger.prototype.createScoped>;
+	private _iframeLogger: ReturnType<typeof Logger.prototype.createScoped>;
 
 	/**
 	 * Create or show project preview panel
@@ -67,6 +73,11 @@ export class ProjectPreviewPanel {
 		this._panel = panel;
 		this._serverManager = ViteServerManager.getInstance(projectRoot, extensionUri.fsPath);
 
+		// Initialize loggers
+		const logger = Logger.getInstance();
+		this._logger = logger.createScoped('ProjectPreview');
+		this._iframeLogger = logger.createScoped('Iframe');
+
 		// Set initial HTML (loading state)
 		this._update();
 
@@ -77,24 +88,28 @@ export class ProjectPreviewPanel {
 		this._panel.webview.onDidReceiveMessage(
 			async (message) => {
 				switch (message.type) {
-					case 'iframe-log':
-						// Relay iframe console logs to extension console
-						const prefix = '[Roopik Iframe]';
+					case 'iframe-log': {
+						// Relay iframe console logs to Logger
 						const args = message.args || [];
+						const logMessage = args.map((arg: any) =>
+							typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+						).join(' ');
+
 						switch (message.level) {
 							case 'log':
-								console.log(prefix, ...args);
+								this._iframeLogger.info(logMessage);
 								break;
 							case 'warn':
-								console.warn(prefix, ...args);
+								this._iframeLogger.warn(logMessage);
 								break;
 							case 'error':
-								console.error(prefix, ...args);
+								this._iframeLogger.error(logMessage);
 								break;
 							default:
-								console.log(prefix, ...args);
+								this._iframeLogger.info(logMessage);
 						}
 						break;
+					}
 
 					case 'click-to-source':
 						await this._handleClickToSource(message);
@@ -102,11 +117,11 @@ export class ProjectPreviewPanel {
 
 					case 'toggle-highlight-mode':
 						this._highlightMode = message.enabled;
-						console.log('[Roopik] Highlight mode:', this._highlightMode ? 'ON' : 'OFF');
+						this._logger.debug('Highlight mode toggled: ' + (this._highlightMode ? 'ON' : 'OFF'));
 						break;
 
 					case 'navigate':
-						console.log('[Roopik] Navigation:', message.url);
+						this._logger.debug('Navigation: ' + message.url);
 						// Could track current route here if needed
 						break;
 
@@ -199,24 +214,57 @@ export class ProjectPreviewPanel {
 	private async _handleClickToSource(message: any) {
 		const { file, line, column, componentName } = message;
 
-		console.log(`[Roopik] ========================================`);
-		console.log(`[Roopik] Click-to-source received!`);
-		console.log(`[Roopik]   File: ${file}`);
-		console.log(`[Roopik]   Line: ${line}`);
-		console.log(`[Roopik]   Column: ${column}`);
-		console.log(`[Roopik]   Component: ${componentName || 'unknown'}`);
+		this._logger.info('========================================');
+		this._logger.info('Click-to-source received!');
+		this._logger.info(`  File: ${file}`);
+		this._logger.info(`  Line: ${line}`);
+		this._logger.info(`  Column: ${column}`);
+		this._logger.info(`  Component: ${componentName || 'unknown'}`);
 
 		const workspaceRoot = getWorkspaceRoot();
-		console.log(`[Roopik]   Workspace root: ${workspaceRoot}`);
+		this._logger.info(`  Workspace root: ${workspaceRoot}`);
 
 		if (!workspaceRoot) {
-			console.error('[Roopik] ✗ No workspace folder open');
+			this._logger.error('✗ No workspace folder open');
 			vscode.window.showErrorMessage('No workspace folder open');
 			return;
 		}
 
+		// TEST: Style Context Gatherer
 		try {
-			console.log(`[Roopik] Opening file in VS Code...`);
+			// file is already an absolute path (e.g., C:/Users/.../Home.jsx)
+			// Just normalize slashes for Windows
+			const absoluteFilePath = file.replace(/\//g, '\\');
+			const gatherer = new StyleContextGatherer(vscode.Uri.file(workspaceRoot));
+			const configManager = ConfigManager.getInstance(workspaceRoot);
+			const config = configManager.getConfig();
+			const styleContext = await gatherer.gatherContext(absoluteFilePath, { enabled: config.ai.enableStyleContext });
+
+			this._logger.info('');
+			this._logger.info('========== STYLE CONTEXT RESULT ==========');
+			this._logger.info(`Found ${styleContext.relatedFiles.length} style files for ${file}`);
+
+			styleContext.relatedFiles.forEach((f, i) => {
+				this._logger.info('');
+				this._logger.info(`--- File ${i + 1}: ${f.relativePath} ---`);
+				this._logger.info(`  Full Path: ${f.path}`);
+				this._logger.info(`  Type: ${f.type}`);
+				this._logger.info(`  Strategy: ${f.strategy}`);
+				this._logger.info(`  Language: ${f.language}`);
+				this._logger.info(`  Content Size: ${f.content.length} bytes`);
+				this._logger.info(`  Content Preview:`);
+				this._logger.info(`  ${f.content.replace(/\n/g, '\n  ')}`);
+			});
+
+			this._logger.info('');
+			this._logger.info('========== END STYLE CONTEXT ==========');
+			this._logger.info('');
+		} catch (err) {
+			this._logger.error('Style Context Test Error', err);
+		}
+
+		try {
+			this._logger.info('Opening file in VS Code...');
 
 			// Open file in VS Code editor (left column)
 			await openFileAtLine(workspaceRoot, {
@@ -228,7 +276,7 @@ export class ProjectPreviewPanel {
 				preserveFocus: false // Focus the editor
 			});
 
-			console.log(`[Roopik] ✓ File opened successfully`);
+			this._logger.info('✓ File opened successfully');
 
 			// Show success message
 			vscode.window.setStatusBarMessage(
@@ -236,10 +284,10 @@ export class ProjectPreviewPanel {
 				3000
 			);
 		} catch (error) {
-			console.error(`[Roopik] ✗ Failed to open file:`, error);
+			this._logger.error('✗ Failed to open file', error);
 			vscode.window.showErrorMessage(`Failed to open ${file}: ${error}`);
 		}
-		console.log(`[Roopik] ========================================`);
+		this._logger.info('========================================');
 	}
 
 	/**
@@ -252,382 +300,43 @@ export class ProjectPreviewPanel {
 
 	/**
 	 * Generate HTML for webview with browser-like UI
+	 * Loads from external template file for easier maintenance
 	 */
 	private _getHtmlForWebview(_webview: vscode.Webview): string {
 		// Origin-based authentication - no tokens needed!
 		// The server checks if requests come from vscode-webview:// origin
 
-		return `<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Roopik Preview</title>
-	<style>
-		* {
-			margin: 0;
-			padding: 0;
-			box-sizing: border-box;
-		}
+		try {
+			// Read template file
+			const templatePath = path.join(__dirname, 'projectPreviewTemplate.html');
+			let html = fs.readFileSync(templatePath, 'utf8');
 
-		body {
-			font-family: var(--vscode-font-family);
-			background-color: var(--vscode-editor-background);
-			color: var(--vscode-editor-foreground);
-			overflow: hidden;
-			height: 100vh;
-			display: flex;
-			flex-direction: column;
-		}
+			// Replace placeholders
+			html = html.replace(/\{\{VITE_SERVER_URL\}\}/g, this._viteServerUrl || 'Loading...');
+			html = html.replace(/\{\{LOADING_DISPLAY\}\}/g, this._viteServerUrl ? 'display: none;' : '');
+			html = html.replace(/\{\{IFRAME_DISPLAY\}\}/g, this._viteServerUrl ? 'display: block;' : 'display: none;');
 
-		/* Browser Chrome (Top Bar) */
-		.browser-chrome {
-			background: var(--vscode-titleBar-activeBackground);
-			border-bottom: 1px solid var(--vscode-panel-border);
-			padding: 8px 12px;
-			display: flex;
-			align-items: center;
-			gap: 8px;
-			flex-shrink: 0;
-		}
-
-		.browser-controls {
-			display: flex;
-			gap: 4px;
-		}
-
-		.control-btn {
-			background: var(--vscode-button-secondaryBackground);
-			border: none;
-			color: var(--vscode-button-secondaryForeground);
-			padding: 4px 8px;
-			border-radius: 4px;
-			cursor: pointer;
-			font-size: 14px;
-			transition: background 0.2s;
-		}
-
-		.control-btn:hover {
-			background: var(--vscode-button-secondaryHoverBackground);
-		}
-
-		.control-btn:disabled {
-			opacity: 0.5;
-			cursor: not-allowed;
-		}
-
-		.address-bar {
-			flex: 1;
-			background: var(--vscode-input-background);
-			border: 1px solid var(--vscode-input-border);
-			color: var(--vscode-input-foreground);
-			padding: 6px 12px;
-			border-radius: 4px;
-			font-size: 13px;
-			font-family: var(--vscode-editor-font-family);
-		}
-
-		/* Highlight Toggle Button */
-		.highlight-toggle {
-			background: var(--vscode-button-background);
-			color: var(--vscode-button-foreground);
-			border: none;
-			padding: 6px 12px;
-			border-radius: 4px;
-			cursor: pointer;
-			font-size: 12px;
-			font-weight: 500;
-			display: flex;
-			align-items: center;
-			gap: 6px;
-			transition: all 0.2s;
-		}
-
-		.highlight-toggle:hover {
-			background: var(--vscode-button-hoverBackground);
-		}
-
-		.highlight-toggle.active {
-			background: #4fc3f7;
-			color: #000;
-		}
-
-		.highlight-indicator {
-			width: 8px;
-			height: 8px;
-			border-radius: 50%;
-			background: currentColor;
-		}
-
-		/* Stop Server Button */
-		.stop-server-btn {
-			background: #e74c3c;
-			color: white;
-			border: none;
-			padding: 6px 12px;
-			border-radius: 4px;
-			cursor: pointer;
-			font-size: 14px;
-			font-weight: 500;
-			display: flex;
-			align-items: center;
-			transition: all 0.2s;
-		}
-
-		.stop-server-btn:hover {
-			background: #c0392b;
-		}
-
-		/* Preview Frame */
-		.preview-container {
-			flex: 1;
-			position: relative;
-			overflow: hidden;
-		}
-
-		#preview-frame {
-			width: 100%;
-			height: 100%;
-			border: none;
-			background: white;
-		}
-
-		/* Loading State */
-		.loading {
-			position: absolute;
-			top: 50%;
-			left: 50%;
-			transform: translate(-50%, -50%);
-			text-align: center;
-			color: var(--vscode-descriptionForeground);
-		}
-	</style>
-</head>
+			return html;
+		} catch (error) {
+			this._logger.error('Failed to load preview template', error);
+			// Fallback to minimal HTML
+			return `<!DOCTYPE html>
+<html>
+<head><title>Roopik Preview</title></head>
 <body>
-	<!-- Browser Chrome -->
-	<div class="browser-chrome">
-		<!-- Navigation Controls -->
-		<div class="browser-controls">
-			<button class="control-btn" id="back-btn" title="Back" disabled>←</button>
-			<button class="control-btn" id="forward-btn" title="Forward" disabled>→</button>
-			<button class="control-btn" id="refresh-btn" title="Refresh">⟳</button>
-		</div>
-
-		<!-- Address Bar -->
-		<input
-			type="text"
-			class="address-bar"
-			id="address-bar"
-			value="${this._viteServerUrl || 'Loading...'}"
-		/>
-
-		<!-- Highlight Mode Toggle -->
-		<button class="highlight-toggle" id="highlight-toggle" title="Toggle click-to-source debugging">
-			<span class="highlight-indicator"></span>
-			<span id="highlight-label">Debug Off</span>
-		</button>
-
-		<!-- Stop Server Button -->
-		<button class="stop-server-btn" id="stop-server" title="Stop dev server and close preview">
-			<span>⏹</span>
-		</button>
-	</div>
-
-	<!-- Preview Frame -->
-	<div class="preview-container">
-		<div class="loading" id="loading" style="${this._viteServerUrl ? 'display: none;' : ''}">
-			<p>Loading preview...</p>
-			<p style="font-size: 12px; margin-top: 8px;">Starting dev server...</p>
-		</div>
-		<iframe
-			id="preview-frame"
-			sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
-			src="${this._viteServerUrl}"
-			style="${this._viteServerUrl ? 'display: block;' : 'display: none;'}"
-		></iframe>
-	</div>
-
-	<script>
-		const vscode = acquireVsCodeApi();
-		const frame = document.getElementById('preview-frame');
-		const loading = document.getElementById('loading');
-		const addressBar = document.getElementById('address-bar');
-		const highlightToggle = document.getElementById('highlight-toggle');
-		const highlightLabel = document.getElementById('highlight-label');
-		const backBtn = document.getElementById('back-btn');
-		const forwardBtn = document.getElementById('forward-btn');
-		const refreshBtn = document.getElementById('refresh-btn');
-		const stopServerBtn = document.getElementById('stop-server');
-
-		let highlightMode = false;
-		let navigationHistory = [];
-		let currentHistoryIndex = -1;
-
-		// Show frame when loaded
-		frame.addEventListener('load', () => {
-			loading.style.display = 'none';
-			frame.style.display = 'block';
-			console.log('[Roopik] Preview loaded successfully');
-
-			// SEND HANDSHAKE to unlock the preview (security)
-			try {
-				frame.contentWindow.postMessage({
-					type: 'ROOPIK_HANDSHAKE_SYN',
-					secret: 'ROOPIK_IDE_HANDSHAKE_v1'
-				}, '*');
-				console.log('[Roopik] Sent authentication handshake to iframe');
-			} catch (error) {
-				console.error('[Roopik] Failed to send handshake:', error);
-			}
-
-			// Set initial address bar (will be updated by messages from iframe)
-			addressBar.value = frame.src;
-
-			// Add to navigation history
-			if (currentHistoryIndex === -1 || navigationHistory[currentHistoryIndex] !== frame.src) {
-				navigationHistory = navigationHistory.slice(0, currentHistoryIndex + 1);
-				navigationHistory.push(frame.src);
-				currentHistoryIndex = navigationHistory.length - 1;
-			}
-			updateNavigationButtons();
-
-			// Notify iframe of debug mode state (via postMessage)
-			// The script is already injected via Vite plugin, just need to send state
-			if (highlightMode) {
-				sendDebugModeToIframe(true);
-			}
-		});
-
-		// Update back/forward button states
-		function updateNavigationButtons() {
-			backBtn.disabled = currentHistoryIndex <= 0;
-			forwardBtn.disabled = currentHistoryIndex >= navigationHistory.length - 1;
-		}
-
-		// Highlight mode toggle
-		highlightToggle.addEventListener('click', () => {
-			highlightMode = !highlightMode;
-			highlightToggle.classList.toggle('active', highlightMode);
-			highlightLabel.textContent = highlightMode ? 'Debug On' : 'Debug Off';
-
-			// Notify extension
-			vscode.postMessage({
-				type: 'toggle-highlight-mode',
-				enabled: highlightMode
-			});
-
-			// Send to iframe via postMessage (cross-origin safe)
-			sendDebugModeToIframe(highlightMode);
-		});
-
-		// Send debug mode state to iframe
-		function sendDebugModeToIframe(enabled) {
-			try {
-				frame.contentWindow.postMessage({
-					type: 'roopik-toggle-debug',
-					enabled: enabled
-				}, '*');
-				console.log('[Roopik] Sent debug mode to iframe:', enabled);
-			} catch (error) {
-				console.error('[Roopik] Failed to send message to iframe:', error);
-			}
-		}
-
-		// Listen for messages FROM iframe (postMessage)
-		window.addEventListener('message', (event) => {
-			// Accept messages from any origin (iframe can be localhost:5173 or any port)
-			const message = event.data;
-
-			// Relay iframe console logs to extension
-			if (message.type === 'roopik-log') {
-				vscode.postMessage({
-					type: 'iframe-log',
-					level: message.level,
-					args: message.args
-				});
-			} else if (message.type === 'roopik-click-to-source') {
-				// Received click-to-source from iframe
-				vscode.postMessage({
-					type: 'click-to-source',
-					file: message.file,
-					line: message.line,
-					column: message.column,
-					componentName: message.componentName
-				});
-			} else if (message.type === 'roopik-navigate') {
-				// Update address bar with current URL
-				const newUrl = message.url;
-				addressBar.value = newUrl;
-				console.log('[Roopik Webview] Navigation:', newUrl);
-
-				// Update history
-				if (currentHistoryIndex === -1 || navigationHistory[currentHistoryIndex] !== newUrl) {
-					// Remove forward history if navigating to new page
-					navigationHistory = navigationHistory.slice(0, currentHistoryIndex + 1);
-					navigationHistory.push(newUrl);
-					currentHistoryIndex = navigationHistory.length - 1;
-					updateNavigationButtons();
-				}
-			}
-		});
-
-		// Browser controls
-		backBtn.addEventListener('click', () => {
-			if (currentHistoryIndex > 0) {
-				currentHistoryIndex--;
-				const url = navigationHistory[currentHistoryIndex];
-				frame.src = url;
-				addressBar.value = url;
-				updateNavigationButtons();
-			}
-		});
-
-		forwardBtn.addEventListener('click', () => {
-			if (currentHistoryIndex < navigationHistory.length - 1) {
-				currentHistoryIndex++;
-				const url = navigationHistory[currentHistoryIndex];
-				frame.src = url;
-				addressBar.value = url;
-				updateNavigationButtons();
-			}
-		});
-
-		refreshBtn.addEventListener('click', () => {
-			// Reload iframe by changing src
-			const currentSrc = frame.src;
-			frame.src = 'about:blank';
-			setTimeout(() => {
-				frame.src = currentSrc;
-			}, 10);
-		});
-
-		// Stop server button
-		stopServerBtn.addEventListener('click', () => {
-			// Can't use confirm() in sandboxed webview, just send directly
-			vscode.postMessage({ type: 'stop-server' });
-		});
-
-		// Address bar manual entry
-		addressBar.addEventListener('keydown', (e) => {
-			if (e.key === 'Enter') {
-				const newUrl = addressBar.value.trim();
-				if (newUrl && newUrl.startsWith('http')) {
-					frame.src = newUrl;
-				}
-			}
-		});
-	</script>
+	<p>Error loading preview template. Please check the extension installation.</p>
 </body>
 </html>`;
+		}
 	}
 
 	public dispose() {
-		console.log('[Roopik] Disposing preview panel...');
+		this._logger.info('Disposing preview panel...');
 		ProjectPreviewPanel.currentPanel = undefined;
 
 		// Stop dev server
 		if (this._serverManager) {
-			console.log('[Roopik] Stopping dev server...');
+			this._logger.info('Stopping dev server...');
 			this._serverManager.stop();
 			this._serverManager.dispose();
 		}

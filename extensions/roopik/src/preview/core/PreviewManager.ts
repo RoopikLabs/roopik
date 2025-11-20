@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type { ComponentSource, SessionCode, TranslationMap, DependencyManifest } from './types';
+import { Logger } from '../../logger';
 
 /**
  * PreviewManager - The Smart Translator
@@ -16,6 +17,11 @@ import type { ComponentSource, SessionCode, TranslationMap, DependencyManifest }
  */
 export class PreviewManager {
 	private translationMaps: Map<string, TranslationMap> = new Map();
+	private logger: ReturnType<typeof Logger.prototype.createScoped>;
+
+	constructor() {
+		this.logger = Logger.getInstance().createScoped('PreviewManager');
+	}
 
 	/**
 	 * Parse dependency manifest from source code
@@ -43,8 +49,8 @@ export class PreviewManager {
 
 			return JSON.parse(jsonStr);
 		} catch (error) {
-			console.error('[PreviewManager] Failed to parse dependency manifest:', error);
-			console.error('[PreviewManager] Manifest string was:', match[1]);
+			this.logger.error('Failed to parse dependency manifest', error);
+			this.logger.error('Manifest string was: ' + match[1]);
 			return [];
 		}
 	}
@@ -128,7 +134,7 @@ export class PreviewManager {
 	transformToSourceCode(componentId: string, sessionCode: string): string {
 		const translationMap = this.translationMaps.get(componentId);
 		if (!translationMap) {
-			console.warn(`[PreviewManager] No translation map found for ${componentId}`);
+			this.logger.warn(`No translation map found for ${componentId}`);
 			return sessionCode;
 		}
 

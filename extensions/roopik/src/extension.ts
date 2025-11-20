@@ -4,11 +4,13 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { CanvasPanel } from './canvasPanel';
 import { DashboardPanel } from './dashboardPanel';
 import { ConfigManager } from './config';
 import { ActivityBarViewProvider } from './activityBarView';
 import { ProjectPreviewPanel } from './projectPreviewPanel';
+import { Logger, LogLevel } from './logger';
 
 /**
  * Roopik Extension Entry Point
@@ -26,8 +28,6 @@ import { ProjectPreviewPanel } from './projectPreviewPanel';
  */
 
 export function activate(context: vscode.ExtensionContext) {
-	console.log('Roopik extension is now active!');
-
 	const workspaceFolders = vscode.workspace.workspaceFolders;
 	if (!workspaceFolders) {
 		vscode.window.showErrorMessage('Please open a workspace folder to use Roopik.');
@@ -35,17 +35,40 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	const workspaceRoot = workspaceFolders[0].uri.fsPath;
+
+	// Initialize Logger FIRST (before any other managers that might use it)
+	const logDirectory = path.join(workspaceRoot, '.roopik', 'logs');
+	const logger = Logger.getInstance({
+		level: LogLevel.INFO, // Default level, will be updated after config loads
+		enableFileLogging: true,
+		logDirectory,
+		maxLogFileSize: 5 * 1024 * 1024, // 5MB default
+		maxLogFiles: 5,
+		showOutputChannel: false
+	});
+
+	// Now initialize ConfigManager (it can safely use Logger)
 	const configManager = ConfigManager.getInstance(workspaceRoot);
 	const config = configManager.getConfig();
 
+	// Update logger config based on loaded settings
+	logger.setLevel(config.logging.level as LogLevel);
+
+	logger.info('Extension', 'Roopik extension is now active!');
+
+	// Dispose logger on deactivation
+	context.subscriptions.push({
+		dispose: () => logger.dispose()
+	});
+
 	// Initialize Mode 1 Preview System (client-side transpilation)
 	CanvasPanel.initializePreviewSystem(context);
-	console.log('[Roopik] Mode 1 preview system initialized (client-side transpilation)');
+	logger.info('Extension', 'Mode 1 preview system initialized (client-side transpilation)');
 
 	// Restore last session after a delay (wait for VS Code to fully initialize)
 	setTimeout(() => {
 		const preferences = CanvasPanel.restoreSession(context.extensionUri, workspaceRoot);
-		console.log('[Roopik] Session preferences loaded:', preferences);
+		logger.info('Extension', 'Session preferences loaded', preferences);
 
 		// Show dashboard on startup if configured
 		if (config.canvas.showDashboardOnStartup) {
@@ -234,13 +257,13 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	// Log successful activation
-	console.log('Roopik: Extension activated successfully');
-	console.log('Roopik: Commands registered (openCanvas [Dashboard], newCanvas, closeAllCanvases, showCanvases, openProjectPreview)');
-	console.log('Roopik: Multi-canvas architecture with Dashboard UI ready');
-	console.log('Roopik: Mode 2 Project Preview available');
-	console.log('Roopik: Activity Bar icon registered');
+	logger.info('Extension', 'Extension activated successfully');
+	logger.info('Extension', 'Commands registered (openCanvas [Dashboard], newCanvas, closeAllCanvases, showCanvases, openProjectPreview)');
+	logger.info('Extension', 'Multi-canvas architecture with Dashboard UI ready');
+	logger.info('Extension', 'Mode 2 Project Preview available');
+	logger.info('Extension', 'Activity Bar icon registered');
 }
 
 export function deactivate() {
-	console.log('Roopik extension deactivated');
+	Logger.getInstance().info('Extension', 'Extension deactivated');
 }

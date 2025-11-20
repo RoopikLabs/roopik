@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Roopik Preview</title>
+	<style>
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+
+		body {
+			font-family: var(--vscode-font-family);
+			background-color: var(--vscode-editor-background);
+			color: var(--vscode-editor-foreground);
+			overflow: hidden;
+			height: 100vh;
+			display: flex;
+			flex-direction: column;
+		}
+
+		/* Browser Chrome (Top Bar) */
+		.browser-chrome {
+			background: var(--vscode-titleBar-activeBackground);
+			border-bottom: 1px solid var(--vscode-panel-border);
+			padding: 8px 12px;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			flex-shrink: 0;
+		}
+
+		.browser-controls {
+			display: flex;
+			gap: 4px;
+		}
+
+		.control-btn {
+			background: var(--vscode-button-secondaryBackground);
+			border: none;
+			color: var(--vscode-button-secondaryForeground);
+			padding: 4px 8px;
+			border-radius: 4px;
+			cursor: pointer;
+			font-size: 14px;
+			transition: background 0.2s;
+		}
+
+		.control-btn:hover {
+			background: var(--vscode-button-secondaryHoverBackground);
+		}
+
+		.control-btn:disabled {
+			opacity: 0.5;
+			cursor: not-allowed;
+		}
+
+		.address-bar {
+			flex: 1;
+			background: var(--vscode-input-background);
+			border: 1px solid var(--vscode-input-border);
+			color: var(--vscode-input-foreground);
+			padding: 6px 12px;
+			border-radius: 4px;
+			font-size: 13px;
+			font-family: var(--vscode-editor-font-family);
+		}
+
+		/* Highlight Toggle Button */
+		.highlight-toggle {
+			background: var(--vscode-button-background);
+			color: var(--vscode-button-foreground);
+			border: none;
+			padding: 6px 12px;
+			border-radius: 4px;
+			cursor: pointer;
+			font-size: 12px;
+			font-weight: 500;
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			transition: all 0.2s;
+		}
+
+		.highlight-toggle:hover {
+			background: var(--vscode-button-hoverBackground);
+		}
+
+		.highlight-toggle.active {
+			background: #4fc3f7;
+			color: #000;
+		}
+
+		.highlight-indicator {
+			width: 8px;
+			height: 8px;
+			border-radius: 50%;
+			background: currentColor;
+		}
+
+		/* Stop Server Button */
+		.stop-server-btn {
+			background: #e74c3c;
+			color: white;
+			border: none;
+			padding: 6px 12px;
+			border-radius: 4px;
+			cursor: pointer;
+			font-size: 14px;
+			font-weight: 500;
+			display: flex;
+			align-items: center;
+			transition: all 0.2s;
+		}
+
+		.stop-server-btn:hover {
+			background: #c0392b;
+		}
+
+		/* Preview Frame */
+		.preview-container {
+			flex: 1;
+			position: relative;
+			overflow: hidden;
+		}
+
+		#preview-frame {
+			width: 100%;
+			height: 100%;
+			border: none;
+			background: white;
+		}
+
+		/* Loading State */
+		.loading {
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			text-align: center;
+			color: var(--vscode-descriptionForeground);
+		}
+	</style>
+</head>
+<body>
+	<!-- Browser Chrome -->
+	<div class="browser-chrome">
+		<!-- Navigation Controls -->
+		<div class="browser-controls">
+			<button class="control-btn" id="back-btn" title="Back" disabled>←</button>
+			<button class="control-btn" id="forward-btn" title="Forward" disabled>→</button>
+			<button class="control-btn" id="refresh-btn" title="Refresh">⟳</button>
+		</div>
+
+		<!-- Address Bar -->
+		<input
+			type="text"
+			class="address-bar"
+			id="address-bar"
+			value="{{VITE_SERVER_URL}}"
+		/>
+
+		<!-- Highlight Mode Toggle -->
+		<button class="highlight-toggle" id="highlight-toggle" title="Toggle click-to-source debugging">
+			<span class="highlight-indicator"></span>
+			<span id="highlight-label">Debug Off</span>
+		</button>
+
+		<!-- Stop Server Button -->
+		<button class="stop-server-btn" id="stop-server" title="Stop dev server and close preview">
+			<span>⏹</span>
+		</button>
+	</div>
+
+	<!-- Preview Frame -->
+	<div class="preview-container">
+		<div class="loading" id="loading" style="{{LOADING_DISPLAY}}">
+			<p>Loading preview...</p>
+			<p style="font-size: 12px; margin-top: 8px;">Starting dev server...</p>
+		</div>
+		<iframe
+			id="preview-frame"
+			sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+			src="{{VITE_SERVER_URL}}"
+			style="{{IFRAME_DISPLAY}}"
+		></iframe>
+	</div>
+
+	<script>
+		const vscode = acquireVsCodeApi();
+		const frame = document.getElementById('preview-frame');
+		const loading = document.getElementById('loading');
+		const addressBar = document.getElementById('address-bar');
+		const highlightToggle = document.getElementById('highlight-toggle');
+		const highlightLabel = document.getElementById('highlight-label');
+		const backBtn = document.getElementById('back-btn');
+		const forwardBtn = document.getElementById('forward-btn');
+		const refreshBtn = document.getElementById('refresh-btn');
+		const stopServerBtn = document.getElementById('stop-server');
+
+		let highlightMode = false;
+		let navigationHistory = [];
+		let currentHistoryIndex = -1;
+
+		// Show frame when loaded
+		frame.addEventListener('load', () => {
+			loading.style.display = 'none';
+			frame.style.display = 'block';
+			console.log('[Roopik] Preview loaded successfully');
+
+			// SEND HANDSHAKE to unlock the preview (security)
+			try {
+				frame.contentWindow.postMessage({
+					type: 'ROOPIK_HANDSHAKE_SYN',
+					secret: 'ROOPIK_IDE_HANDSHAKE_v1'
+				}, '*');
+				console.log('[Roopik] Sent authentication handshake to iframe');
+			} catch (error) {
+				console.error('[Roopik] Failed to send handshake:', error);
+			}
+
+			// Set initial address bar (will be updated by messages from iframe)
+			addressBar.value = frame.src;
+
+			// Add to navigation history
+			if (currentHistoryIndex === -1 || navigationHistory[currentHistoryIndex] !== frame.src) {
+				navigationHistory = navigationHistory.slice(0, currentHistoryIndex + 1);
+				navigationHistory.push(frame.src);
+				currentHistoryIndex = navigationHistory.length - 1;
+			}
+			updateNavigationButtons();
+
+			// Notify iframe of debug mode state (via postMessage)
+			// The script is already injected via Vite plugin, just need to send state
+			if (highlightMode) {
+				sendDebugModeToIframe(true);
+			}
+		});
+
+		// Update back/forward button states
+		function updateNavigationButtons() {
+			backBtn.disabled = currentHistoryIndex <= 0;
+			forwardBtn.disabled = currentHistoryIndex >= navigationHistory.length - 1;
+		}
+
+		// Highlight mode toggle
+		highlightToggle.addEventListener('click', () => {
+			highlightMode = !highlightMode;
+			highlightToggle.classList.toggle('active', highlightMode);
+			highlightLabel.textContent = highlightMode ? 'Debug On' : 'Debug Off';
+
+			// Notify extension
+			vscode.postMessage({
+				type: 'toggle-highlight-mode',
+				enabled: highlightMode
+			});
+
+			// Send to iframe via postMessage (cross-origin safe)
+			sendDebugModeToIframe(highlightMode);
+		});
+
+		// Send debug mode state to iframe
+		function sendDebugModeToIframe(enabled) {
+			try {
+				frame.contentWindow.postMessage({
+					type: 'roopik-toggle-debug',
+					enabled: enabled
+				}, '*');
+				console.log('[Roopik] Sent debug mode to iframe:', enabled);
+			} catch (error) {
+				console.error('[Roopik] Failed to send message to iframe:', error);
+			}
+		}
+
+		// Listen for messages FROM iframe (postMessage)
+		window.addEventListener('message', (event) => {
+			// Accept messages from any origin (iframe can be localhost:5173 or any port)
+			const message = event.data;
+
+			// Relay iframe console logs to extension
+			if (message.type === 'roopik-log') {
+				vscode.postMessage({
+					type: 'iframe-log',
+					level: message.level,
+					args: message.args
+				});
+			} else if (message.type === 'roopik-click-to-source') {
+				// Received click-to-source from iframe
+				vscode.postMessage({
+					type: 'click-to-source',
+					file: message.file,
+					line: message.line,
+					column: message.column,
+					componentName: message.componentName
+				});
+			} else if (message.type === 'roopik-navigate') {
+				// Update address bar with current URL
+				const newUrl = message.url;
+				addressBar.value = newUrl;
+				console.log('[Roopik Webview] Navigation:', newUrl);
+
+				// Update history
+				if (currentHistoryIndex === -1 || navigationHistory[currentHistoryIndex] !== newUrl) {
+					// Remove forward history if navigating to new page
+					navigationHistory = navigationHistory.slice(0, currentHistoryIndex + 1);
+					navigationHistory.push(newUrl);
+					currentHistoryIndex = navigationHistory.length - 1;
+					updateNavigationButtons();
+				}
+			}
+		});
+
+		// Browser controls
+		backBtn.addEventListener('click', () => {
+			if (currentHistoryIndex > 0) {
+				currentHistoryIndex--;
+				const url = navigationHistory[currentHistoryIndex];
+				frame.src = url;
+				addressBar.value = url;
+				updateNavigationButtons();
+			}
+		});
+
+		forwardBtn.addEventListener('click', () => {
+			if (currentHistoryIndex < navigationHistory.length - 1) {
+				currentHistoryIndex++;
+				const url = navigationHistory[currentHistoryIndex];
+				frame.src = url;
+				addressBar.value = url;
+				updateNavigationButtons();
+			}
+		});
+
+		refreshBtn.addEventListener('click', () => {
+			// Reload iframe by changing src
+			const currentSrc = frame.src;
+			frame.src = 'about:blank';
+			setTimeout(() => {
+				frame.src = currentSrc;
+			}, 10);
+		});
+
+		// Stop server button
+		stopServerBtn.addEventListener('click', () => {
+			// Can't use confirm() in sandboxed webview, just send directly
+			vscode.postMessage({ type: 'stop-server' });
+		});
+
+		// Address bar manual entry
+		addressBar.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter') {
+				const newUrl = addressBar.value.trim();
+				if (newUrl && newUrl.startsWith('http')) {
+					frame.src = newUrl;
+				}
+			}
+		});
+	</script>
+</body>
+</html>

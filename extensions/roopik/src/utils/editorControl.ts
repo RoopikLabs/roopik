@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { Logger } from '../logger';
 
 /**
  * VS Code Editor Control Utilities
@@ -61,11 +62,13 @@ export async function openFileAtLine(
 		// Reveal the line in the center of the editor
 		editor.revealRange(selection, vscode.TextEditorRevealType.InCenter);
 
-		console.log(`[Roopik] Opened ${options.file} at line ${options.line}`);
+		const logger = Logger.getInstance();
+		logger.info('EditorControl', `Opened ${options.file} at line ${options.line}`);
 
 		return editor;
 	} catch (error) {
-		console.error('[Roopik] Failed to open file:', error);
+		const logger = Logger.getInstance();
+		logger.error('EditorControl', `Failed to open file: ${options.file}`, error);
 		vscode.window.showErrorMessage(`Failed to open file: ${options.file}`);
 		return undefined;
 	}
