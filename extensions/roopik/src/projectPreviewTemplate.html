@@ -124,6 +124,7 @@
 			flex: 1;
 			position: relative;
 			overflow: hidden;
+			isolation: isolate;
 		}
 
 		#preview-frame {
@@ -141,6 +142,109 @@
 			transform: translate(-50%, -50%);
 			text-align: center;
 			color: var(--vscode-descriptionForeground);
+		}
+
+		/* Debug Mode Notification - Glassmorphism */
+		.debug-notification {
+			position: fixed;
+			top: 90px;
+			right: 30px;
+			background: rgba(255, 248, 240, 0.75);
+			backdrop-filter: blur(12px);
+			-webkit-backdrop-filter: blur(12px);
+			color: #2c3e50;
+			padding: 14px 18px;
+			border-radius: 12px;
+			border: 2px solid transparent;
+			box-shadow:
+				0 8px 32px rgba(0, 0, 0, 0.1),
+				0 0 0 1px rgba(255, 255, 255, 0.1) inset,
+				0 2px 8px rgba(255, 235, 205, 0.4);
+			display: none;
+			align-items: center;
+			gap: 12px;
+			font-size: 13px;
+			font-weight: 500;
+			z-index: 10000;
+			animation: slideDown 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+			max-width: 300px;
+		}
+
+		.debug-notification.show {
+			display: flex;
+		}
+
+		/* Animated flowing border - Black & White gradient */
+		.debug-notification::before {
+			content: '';
+			position: absolute;
+			inset: -2px;
+			border-radius: 12px;
+			padding: 2px;
+			background: linear-gradient(
+				90deg,
+				#000000,
+				#ffffff,
+				#000000,
+				#ffffff,
+				#000000
+			);
+			background-size: 300% 100%;
+			-webkit-mask: linear-gradient(#fff 0 0) content-box,
+						   linear-gradient(#fff 0 0);
+			-webkit-mask-composite: xor;
+			mask: linear-gradient(#fff 0 0) content-box,
+				  linear-gradient(#fff 0 0);
+			mask-composite: exclude;
+			pointer-events: none;
+			animation: flowBorder 3s linear infinite;
+		}
+
+		.debug-notification-close {
+			background: rgba(0, 0, 0, 0.05);
+			border: none;
+			color: #34495e;
+			font-size: 16px;
+			cursor: pointer;
+			padding: 0;
+			width: 22px;
+			height: 22px;
+			border-radius: 6px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			opacity: 0.6;
+			transition: all 0.2s ease;
+			flex-shrink: 0;
+		}
+
+		.debug-notification-close:hover {
+			opacity: 1;
+			background: rgba(0, 0, 0, 0.1);
+			transform: scale(1.1);
+		}
+
+		@keyframes slideDown {
+			0% {
+				transform: translateY(-100px);
+				opacity: 0;
+			}
+			60% {
+				transform: translateY(4px);
+			}
+			100% {
+				transform: translateY(0);
+				opacity: 1;
+			}
+		}
+
+		@keyframes flowBorder {
+			0% {
+				background-position: 0% 0%;
+			}
+			100% {
+				background-position: 300% 0%;
+			}
 		}
 	</style>
 </head>
@@ -180,6 +284,13 @@
 			<p>Loading preview...</p>
 			<p style="font-size: 12px; margin-top: 8px;">Starting dev server...</p>
 		</div>
+
+		<!-- Debug Mode Notification -->
+		<div class="debug-notification" id="debug-notification">
+			<span>💡 Ctrl+Click on any element to edit</span>
+			<button class="debug-notification-close" id="notification-close" title="Close">×</button>
+		</div>
+
 		<iframe
 			id="preview-frame"
 			sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
@@ -199,10 +310,42 @@
 		const forwardBtn = document.getElementById('forward-btn');
 		const refreshBtn = document.getElementById('refresh-btn');
 		const stopServerBtn = document.getElementById('stop-server');
+		const debugNotification = document.getElementById('debug-notification');
+		const notificationClose = document.getElementById('notification-close');
 
 		let highlightMode = false;
 		let navigationHistory = [];
 		let currentHistoryIndex = -1;
+		let notificationTimeout = null;
+
+		// Show debug notification with auto-dismiss
+		function showDebugNotification() {
+			debugNotification.classList.add('show');
+
+			// Clear existing timeout if any
+			if (notificationTimeout) {
+				clearTimeout(notificationTimeout);
+			}
+
+			// Auto-dismiss after 10 seconds
+			notificationTimeout = setTimeout(() => {
+				hideDebugNotification();
+			}, 10000);
+		}
+
+		// Hide debug notification
+		function hideDebugNotification() {
+			debugNotification.classList.remove('show');
+			if (notificationTimeout) {
+				clearTimeout(notificationTimeout);
+				notificationTimeout = null;
+			}
+		}
+
+		// Close button handler
+		notificationClose.addEventListener('click', () => {
+			hideDebugNotification();
+		});
 
 		// Show frame when loaded
 		frame.addEventListener('load', () => {
@@ -250,6 +393,13 @@
 			highlightMode = !highlightMode;
 			highlightToggle.classList.toggle('active', highlightMode);
 			highlightLabel.textContent = highlightMode ? 'Debug On' : 'Debug Off';
+
+			// Show or hide notification based on debug mode
+			if (highlightMode) {
+				showDebugNotification();
+			} else {
+				hideDebugNotification();
+			}
 
 			// Notify extension
 			vscode.postMessage({

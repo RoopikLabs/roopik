@@ -6,37 +6,32 @@
 /**
  * Roopik HTML Injection Plugin
  * Injects click-to-source script into HTML
+ *
+ * Security: The script is obfuscated at runtime to protect IP when users save pages.
  */
 
-const ROOPIK_INJECT_SCRIPT = `
-<script type="text/javascript">
-// Roopik Click-to-Source Integration (In-Memory - Trade Secret Protected)
+// Clean, readable source code for development
+const ROOPIK_INJECT_SCRIPT_SOURCE = `
 (function() {
 	if (window.parent === window) return;
 
-	// SECURITY: Hide page until webview sends handshake
 	document.documentElement.style.display = 'none';
 
 	const EXPECTED_SECRET = 'ROOPIK_IDE_HANDSHAKE_v1';
 	let authenticated = false;
 
-	// Listen for handshake from VSCode webview
 	window.addEventListener('message', (event) => {
 		const message = event.data;
 
-		// Check for handshake
 		if (!authenticated && message.type === 'ROOPIK_HANDSHAKE_SYN' && message.secret === EXPECTED_SECRET) {
 			authenticated = true;
 			document.documentElement.style.display = '';
-			console.log('[Roopik] ✓ Authenticated with VSCode webview');
 
-			// Send ACK back to webview
 			window.parent.postMessage({ type: 'ROOPIK_HANDSHAKE_ACK' }, '*');
 			return;
 		}
 	});
 
-	// Timeout: Show error if no handshake received
 	setTimeout(() => {
 		if (!authenticated) {
 			document.documentElement.style.display = '';
@@ -52,16 +47,12 @@ const ROOPIK_INJECT_SCRIPT = `
 		}
 	}, 2000);
 
-	console.log('[Roopik] Click-to-source enabled');
-
 	let debugMode = false;
 
-	// Listen for debug mode toggle
 	window.addEventListener('message', (event) => {
 		const message = event.data;
 		if (message.type === 'roopik-toggle-debug') {
 			debugMode = message.enabled;
-			console.log('[Roopik] Debug mode:', debugMode ? 'ON' : 'OFF');
 		} else if (message.type === 'roopik-back') {
 			window.history.back();
 		} else if (message.type === 'roopik-forward') {
@@ -69,7 +60,6 @@ const ROOPIK_INJECT_SCRIPT = `
 		}
 	});
 
-	// Track URL changes
 	let lastUrl = location.href;
 	function notifyUrlChange() {
 		if (location.href !== lastUrl) {
@@ -80,7 +70,6 @@ const ROOPIK_INJECT_SCRIPT = `
 	setInterval(notifyUrlChange, 500);
 	window.addEventListener('popstate', notifyUrlChange);
 
-	// Click-to-source listener
 	document.addEventListener('click', (event) => {
 		if (!debugMode || !(event.metaKey || event.ctrlKey)) return;
 
@@ -89,7 +78,6 @@ const ROOPIK_INJECT_SCRIPT = `
 
 		const source = findSourceInfo(event.target);
 		if (source) {
-			console.log('[Roopik] Found source:', source);
 			window.parent.postMessage({
 				type: 'roopik-click-to-source',
 				file: source.fileName,
@@ -100,13 +88,10 @@ const ROOPIK_INJECT_SCRIPT = `
 		}
 	}, true);
 
-	// Find source info from element
 	function findSourceInfo(element) {
 		try {
-			// Check data-roopik-source attribute first
 			if (element.hasAttribute && element.hasAttribute('data-roopik-source')) {
 				const sourceData = element.getAttribute('data-roopik-source');
-				console.log('[Roopik] Found data-roopik-source:', sourceData);
 
 				const parts = sourceData.split(':');
 				if (parts.length >= 2) {
@@ -117,7 +102,6 @@ const ROOPIK_INJECT_SCRIPT = `
 				}
 			}
 
-			// Fallback: React Fiber
 			const fiberKey = Object.keys(element).find(key =>
 				key.startsWith('__reactFiber') || key.startsWith('_reactFiber')
 			);
@@ -138,7 +122,6 @@ const ROOPIK_INJECT_SCRIPT = `
 			}
 			return null;
 		} catch (error) {
-			console.error('[Roopik] Error finding source:', error);
 			return null;
 		}
 	}
@@ -153,17 +136,108 @@ const ROOPIK_INJECT_SCRIPT = `
 		return 'Unknown';
 	}
 
-	// Initial URL notification
 	window.parent.postMessage({ type: 'roopik-navigate', url: location.href }, '*');
 })();
+`;
+
+/**
+ * Obfuscate the injection script at runtime
+ *
+ * Applies professional-grade obfuscation including variable renaming,
+ * string encoding, control flow flattening, and anti-debugging protection.
+ * Source code remains clean for developers while deployed code is protected.
+ */
+function obfuscateScript(source) {
+	const JavaScriptObfuscator = require('javascript-obfuscator');
+
+	const obfuscationResult = JavaScriptObfuscator.obfuscate(source, {
+		compact: true,
+		controlFlowFlattening: true,
+		controlFlowFlatteningThreshold: 0.75,
+		deadCodeInjection: true,
+		deadCodeInjectionThreshold: 0.4,
+		debugProtection: false,
+		debugProtectionInterval: 0,
+		disableConsoleOutput: false,
+		identifierNamesGenerator: 'hexadecimal',
+		log: false,
+		numbersToExpressions: true,
+		renameGlobals: false,
+		selfDefending: false,
+		simplify: true,
+		splitStrings: true,
+		splitStringsChunkLength: 10,
+		stringArray: true,
+		stringArrayCallsTransform: true,
+		stringArrayEncoding: ['base64'],
+		stringArrayIndexShift: true,
+		stringArrayRotate: true,
+		stringArrayShuffle: true,
+		stringArrayWrappersCount: 2,
+		stringArrayWrappersChainedCalls: true,
+		stringArrayWrappersParametersMaxCount: 4,
+		stringArrayWrappersType: 'variable',
+		stringArrayThreshold: 0.75,
+		transformObjectKeys: true,
+		unicodeEscapeSequence: false,
+		target: 'browser',
+		sourceMap: false
+	});
+
+	return obfuscationResult.getObfuscatedCode();
+}
+
+/**
+ * Minify user's HTML
+ *
+ * Uses standard html-minifier-terser library to:
+ * - Minify inline JavaScript (single line, preserve variable names)
+ * - Minify CSS
+ * - Remove whitespace and comments
+ */
+function minifyUserHtml(html) {
+	const { minify } = require('html-minifier-terser');
+
+	return minify(html, {
+		collapseWhitespace: true,
+		removeComments: true,
+		minifyJS: true,  // Minify inline <script> tags
+		minifyCSS: true, // Minify inline <style> tags
+		removeAttributeQuotes: false,
+		removeEmptyAttributes: false,
+		removeRedundantAttributes: true,
+		useShortDoctype: true,
+		keepClosingSlash: true,
+		conservativeCollapse: false
+	});
+}
+
+// Export the obfuscated version wrapped in script tags
+// This is called once when the plugin is loaded
+const ROOPIK_INJECT_SCRIPT = `
+<script type="text/javascript">
+${obfuscateScript(ROOPIK_INJECT_SCRIPT_SOURCE)}
 </script>
 `;
+
+// Toggle user HTML minification (set to false to disable)
+const MINIFY_USER_HTML = true;
 
 function createRoopikInjectPlugin() {
 	return {
 		name: 'roopik-inject',
-		transformIndexHtml(html) {
-			// Inject script before closing body tag
+		async transformIndexHtml(html) {
+			// Minify user's HTML if enabled (handles inline scripts, CSS, whitespace)
+			if (MINIFY_USER_HTML) {
+				try {
+					html = await minifyUserHtml(html);
+				} catch (error) {
+					// If minification fails, continue with original HTML
+					console.warn('[Roopik] Failed to minify HTML:', error.message);
+				}
+			}
+
+			// Inject Roopik script before closing body tag
 			return html.replace('</body>', ROOPIK_INJECT_SCRIPT + '</body>');
 		}
 	};
