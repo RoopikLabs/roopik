@@ -61,14 +61,21 @@ function createReactSourcePlugin(extensionNodeModules, pluginConfig = {}) {
 						function roopikBabelPlugin({ types: t }) {
 							return {
 								visitor: {
-									JSXOpeningElement(path, state) {
+									JSXElement(path, state) {
+										// Visit complete JSX element (opening + children + closing)
 										const { node } = path;
-										const loc = node.loc;
-										if (!loc) return;
+										const elementLoc = node.loc; // Full element span
+										if (!elementLoc) return;
+
+										const openingElement = node.openingElement;
+										if (!openingElement) return;
 
 										const filename = state.filename || id;
 										const relPath = filename.replace(/\\/g, '/');
-										const sourceValue = `${relPath}:${loc.start.line}:${loc.start.column}`;
+
+										// Use FULL ELEMENT location (from opening < to closing >)
+										// This captures the entire element including children and closing tag
+										const sourceValue = `${relPath}:${elementLoc.start.line}:${elementLoc.start.column}:${elementLoc.end.line}:${elementLoc.end.column}`;
 
 										// Create JSXAttribute node
 										const sourceAttr = t.jsxAttribute(
@@ -77,12 +84,12 @@ function createReactSourcePlugin(extensionNodeModules, pluginConfig = {}) {
 										);
 
 										// Add attribute (only if not already present)
-										const hasRoopikAttr = node.attributes.some(
+										const hasRoopikAttr = openingElement.attributes.some(
 											attr => t.isJSXAttribute(attr) && attr.name.name === 'data-roopik-source'
 										);
 
 										if (!hasRoopikAttr) {
-											node.attributes.push(sourceAttr);
+											openingElement.attributes.push(sourceAttr);
 										}
 									}
 								}

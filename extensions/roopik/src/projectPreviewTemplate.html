@@ -563,6 +563,8 @@
 					file: message.file,
 					line: message.line,
 					column: message.column,
+					endLine: message.endLine, // Multi-line support
+					endColumn: message.endColumn, // Multi-line support
 					componentName: message.componentName
 				});
 			} else if (message.type === 'roopik-navigate') {

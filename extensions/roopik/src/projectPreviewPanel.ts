@@ -212,13 +212,12 @@ export class ProjectPreviewPanel {
 	 * Handle click-to-source message from webview
 	 */
 	private async _handleClickToSource(message: any) {
-		const { file, line, column, componentName } = message;
+		const { file, line, column, endLine, endColumn, componentName } = message;
 
 		this._logger.info('========================================');
 		this._logger.info('Click-to-source received!');
 		this._logger.info(`  File: ${file}`);
-		this._logger.info(`  Line: ${line}`);
-		this._logger.info(`  Column: ${column}`);
+		this._logger.info(`  Line: ${line}:${column}${endLine ? ` → ${endLine}:${endColumn}` : ''}`);
 		this._logger.info(`  Component: ${componentName || 'unknown'}`);
 
 		const workspaceRoot = getWorkspaceRoot();
@@ -271,6 +270,8 @@ export class ProjectPreviewPanel {
 				file,
 				line,
 				column,
+				endLine, // Multi-line element support
+				endColumn, // Multi-line element support
 				viewColumn: vscode.ViewColumn.One, // Left side
 				preview: false,
 				preserveFocus: false // Focus the editor

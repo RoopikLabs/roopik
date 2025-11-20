@@ -149,6 +149,8 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 					file: source.fileName,
 					line: source.lineNumber,
 					column: source.columnNumber,
+					endLine: source.endLine, // Multi-line support
+					endColumn: source.endColumn, // Multi-line support
 					componentName: source.componentName
 				}, '*');
 				return;
@@ -172,7 +174,25 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 				const sourceData = element.getAttribute('data-roopik-source');
 
 				const parts = sourceData.split(':');
-				if (parts.length >= 2) {
+				// New format: filename:startLine:startCol:endLine:endCol (5+ parts)
+				// Old format: filename:line:col (3+ parts)
+				if (parts.length >= 5) {
+					// Multi-line format with start/end
+					const fileName = parts.slice(0, -4).join(':');
+					const startLine = parseInt(parts[parts.length - 4], 10);
+					const startColumn = parseInt(parts[parts.length - 3], 10);
+					const endLine = parseInt(parts[parts.length - 2], 10);
+					const endColumn = parseInt(parts[parts.length - 1], 10);
+					return {
+						fileName,
+						lineNumber: startLine,
+						columnNumber: startColumn,
+						endLine,
+						endColumn,
+						componentName: element.tagName || 'Unknown'
+					};
+				} else if (parts.length >= 3) {
+					// Legacy single-line format (backward compatibility for regex mode)
 					const fileName = parts.slice(0, -2).join(':');
 					const lineNumber = parseInt(parts[parts.length - 2], 10);
 					const columnNumber = parseInt(parts[parts.length - 1], 10);
