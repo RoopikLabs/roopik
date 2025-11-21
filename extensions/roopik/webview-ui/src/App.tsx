@@ -9,6 +9,7 @@ import { FloatingToolbar } from './components/FloatingToolbar';
 import { InfiniteCanvas } from './components/InfiniteCanvas';
 import { StatusBar } from './components/StatusBar';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
+import { BottomActionBar } from './components/BottomActionBar';
 import { useFPS } from './hooks/useFPS';
 import { SAMPLE_COMPONENTS } from './data/sampleComponents';
 import './App.css';
@@ -51,6 +52,11 @@ function App() {
 	const [_sandboxTemplate, setSandboxTemplate] = useState<string | null>(null);
 	const [showDeleteModal, setShowDeleteModal] = useState(false);
 	const fps = useFPS();
+
+	// Bottom Action Bar state
+	const [isSelectMode, setIsSelectMode] = useState(false);
+	const [isInspectMode, setIsInspectMode] = useState(false);
+	const [isRectangleMode, setIsRectangleMode] = useState(false);
 
 	// Load initial state from extension on mount
 	useEffect(() => {
@@ -511,6 +517,36 @@ function App() {
 		return () => window.removeEventListener('resize', handleResize);
 	}, [focusedSandboxId, sandboxes]);
 
+	// Bottom Action Bar handlers
+	const handleSelectMode = () => {
+		setIsSelectMode(!isSelectMode);
+		setIsInspectMode(false);
+		setIsRectangleMode(false);
+		console.log('[BottomActionBar] Select mode:', !isSelectMode);
+	};
+
+	const handleInspectMode = () => {
+		setIsInspectMode(!isInspectMode);
+		setIsSelectMode(false);
+		setIsRectangleMode(false);
+		console.log('[BottomActionBar] Inspect mode:', !isInspectMode);
+	};
+
+	const handleRectangleSelection = () => {
+		setIsRectangleMode(!isRectangleMode);
+		setIsSelectMode(false);
+		setIsInspectMode(false);
+		console.log('[BottomActionBar] Rectangle mode:', !isRectangleMode);
+	};
+
+	const handleAIChat = () => {
+		console.log('[BottomActionBar] AI Chat toggled');
+	};
+
+	const handleActionsPanel = () => {
+		console.log('[BottomActionBar] Actions Panel toggled');
+	};
+
 	return (
 		<div className="app">
 			<FloatingToolbar tabName="Canvas" onLoadSample={handleLoadSample} />
@@ -544,6 +580,19 @@ function App() {
 				onResetView={handleResetView}
 				onTogglePattern={handleTogglePattern}
 				onBackgroundColorChange={handleBackgroundColorChange}
+			/>
+
+			{/* Bottom Action Bar - Professional toolbar for element selection and actions */}
+			<BottomActionBar
+				onSelectMode={handleSelectMode}
+				onInspectMode={handleInspectMode}
+				onRectangleSelection={handleRectangleSelection}
+				onAIChat={handleAIChat}
+				onActionsPanel={handleActionsPanel}
+				isSelectMode={isSelectMode}
+				isInspectMode={isInspectMode}
+				isRectangleMode={isRectangleMode}
+				selectedElementType={null} // TODO: Will be determined based on selection
 			/>
 
 			{/* Delete confirmation modal */}
