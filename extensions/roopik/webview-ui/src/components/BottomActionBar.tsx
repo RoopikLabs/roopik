@@ -54,6 +54,8 @@ export function BottomActionBar({
 	const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
 	const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview');
 	const aiInputRef = useRef<HTMLInputElement>(null);
+	const aiChatOverlayRef = useRef<HTMLDivElement>(null);
+	const actionsPanelRef = useRef<HTMLDivElement>(null);
 
 	// Filter commands based on input
 	const filteredCommands = aiInputValue.startsWith('/')
@@ -147,17 +149,44 @@ export function BottomActionBar({
 	// Close overlay when clicking outside (no longer needed without backdrop)
 	// Kept for future use if needed
 
-	// Close AI chat on Escape key
+	// Close AI chat and properties panel on Escape key or click outside
 	useEffect(() => {
 		const handleEscape = (e: KeyboardEvent) => {
-			if (e.key === 'Escape' && isAIChatOpen) {
-				setIsAIChatOpen(false);
+			if (e.key === 'Escape') {
+				if (isAIChatOpen) {
+					setIsAIChatOpen(false);
+				}
+				if (isActionsPanelOpen) {
+					setIsActionsPanelOpen(false);
+				}
+			}
+		};
+
+		const handleClickOutside = (e: MouseEvent) => {
+			const target = e.target as HTMLElement;
+
+			// Close AI chat if clicking outside
+			if (isAIChatOpen && aiChatOverlayRef.current && !aiChatOverlayRef.current.contains(e.target as Node)) {
+				if (!target.closest('[title="AI Assistant (⌘K)"]')) {
+					setIsAIChatOpen(false);
+				}
+			}
+
+			// Close properties panel if clicking outside
+			if (isActionsPanelOpen && actionsPanelRef.current && !actionsPanelRef.current.contains(e.target as Node)) {
+				if (!target.closest('[title="Properties (⌘E)"]')) {
+					setIsActionsPanelOpen(false);
+				}
 			}
 		};
 
 		window.addEventListener('keydown', handleEscape);
-		return () => window.removeEventListener('keydown', handleEscape);
-	}, [isAIChatOpen]);
+		window.addEventListener('mousedown', handleClickOutside);
+		return () => {
+			window.removeEventListener('keydown', handleEscape);
+			window.removeEventListener('mousedown', handleClickOutside);
+		};
+	}, [isAIChatOpen, isActionsPanelOpen]);
 
 	return (
 		<>
@@ -168,7 +197,7 @@ export function BottomActionBar({
 					<div className="action-bar-section">
 						<button
 							className={`action-btn ${isSelectMode ? 'active' : ''}`}
-							onClick={onSelectMode}
+							onClick={() => { setIsAIChatOpen(false); onSelectMode?.(); }}
 							title="Select Mode (V)"
 						>
 							<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -184,7 +213,7 @@ export function BottomActionBar({
 
 						<button
 							className={`action-btn ${isInspectMode ? 'active' : ''}`}
-							onClick={onInspectMode}
+							onClick={() => { setIsAIChatOpen(false); onInspectMode?.(); }}
 							title="Inspect Mode (I)"
 						>
 							<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -207,7 +236,7 @@ export function BottomActionBar({
 
 						<button
 							className={`action-btn ${isRectangleMode ? 'active' : ''}`}
-							onClick={onRectangleSelection}
+							onClick={() => { setIsAIChatOpen(false); onRectangleSelection?.(); }}
 							title="Drag Selection (R)"
 						>
 							<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -384,7 +413,7 @@ export function BottomActionBar({
 
 			{/* AI Chat Input (appears just above bottom bar) */}
 			{isAIChatOpen && (
-				<div className="ai-chat-overlay">
+				<div className="ai-chat-overlay" ref={aiChatOverlayRef}>
 					<div className="ai-chat-input-container-overlay">
 						<input
 							ref={aiInputRef}
@@ -428,7 +457,7 @@ export function BottomActionBar({
 
 			{/* Actions/Properties Panel */}
 			{isActionsPanelOpen && (
-				<div className="actions-panel">
+				<div className="actions-panel" ref={actionsPanelRef}>
 					<div className="actions-panel-header">
 						<div className="actions-panel-title">
 							<svg width="16" height="16" viewBox="0 0 20 20" fill="none">

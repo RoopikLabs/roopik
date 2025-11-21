@@ -63,6 +63,17 @@
 	border-radius: 6px;
 }
 
+.view-mode-toggle .action-btn.active {
+	background: rgba(255, 255, 255, 0.15);
+	/* Lighter grey for visibility */
+	color: var(--vscode-foreground);
+}
+
+.view-mode-toggle .action-btn.active:hover {
+	background: rgba(255, 255, 255, 0.2);
+	/* Slightly lighter on hover */
+}
+
 /* ========================================
    Action Buttons - Icon Only with Tooltips
    ======================================== */
@@ -334,35 +345,40 @@
 	position: fixed;
 	bottom: 112px;
 	/* Just above bottom bar (same as AI chat) */
-	right: 40px;
-	/* From right edge */
-	min-width: 280px;
-	max-width: 400px;
+	left: 50%;
+	/* Center horizontally */
+	transform: translateX(-50%);
+	/* Center alignment */
+	min-width: 320px;
+	max-width: 500px;
+	width: 70%;
+	/* Responsive width like AI chat */
 	min-height: 200px;
 	max-height: 60vh;
-	background: rgba(30, 30, 30, 0.95);
-	/* Glassmorphic translucent */
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	border-radius: 12px;
+	background: rgba(40, 40, 40, 0.85);
+	/* Glassmorphic translucent - darker and more transparent */
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 16px;
+	/* More rounded for modern look */
 	backdrop-filter: blur(20px) saturate(180%);
 	-webkit-backdrop-filter: blur(20px) saturate(180%);
 	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
 	z-index: 999;
-	animation: slideUpFadeRight 0.25s ease;
+	animation: slideUpFadeCenter 0.25s ease;
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
 }
 
-@keyframes slideUpFadeRight {
+@keyframes slideUpFadeCenter {
 	from {
 		opacity: 0;
-		transform: translateY(20px);
+		transform: translateX(-50%) translateY(20px);
 	}
 
 	to {
 		opacity: 1;
-		transform: translateY(0);
+		transform: translateX(-50%) translateY(0);
 	}
 }
 
