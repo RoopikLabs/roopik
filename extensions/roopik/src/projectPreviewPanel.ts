@@ -6,7 +6,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { openFileAtLine, getWorkspaceRoot } from './utils/editorControl';
-import { ViteServerManager } from './devServer/viteServerManager';
+import { ViteServerManager } from './projectRunner/viteServerManager';
 import { StyleContextGatherer } from './styleContextGatherer';
 import { ConfigManager } from './config';
 import { Logger } from './logger';

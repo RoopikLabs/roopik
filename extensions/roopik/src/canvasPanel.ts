@@ -6,9 +6,9 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { ConfigManager } from './config';
-import { PreviewManager } from './preview/core/PreviewManager';
-import { ComponentSandbox } from './preview/renderer/ComponentSandbox';
-import type { ComponentSource } from './preview/core/types';
+import { PreviewManager } from './componentIsolation/core/PreviewManager';
+import { ComponentSandbox } from './componentIsolation/renderer/ComponentSandbox';
+import type { ComponentSource } from './componentIsolation/core/types';
 import { Logger } from './logger';
 
 /**

@@ -92,7 +92,7 @@ export class ViteServerManager {
 	private async startWorker(framework: string): Promise<string> {
 		return new Promise((resolve, reject) => {
 			// Path to compiled worker script
-			const workerPath = path.join(this.extensionPath, 'out', 'devServer', 'serverWorker.js');
+			const workerPath = path.join(this.extensionPath, 'out', 'projectRunner', 'serverWorker.js');
 
 			this.safeLog(`[Roopik] Worker script: ${workerPath}`);
 
