@@ -21,6 +21,8 @@ export interface OpenFileOptions {
 	file: string;
 	line?: number;
 	column?: number;
+	endLine?: number; // For multi-line element highlighting
+	endColumn?: number; // For multi-line element highlighting
 	preview?: boolean;
 	viewColumn?: vscode.ViewColumn;
 	preserveFocus?: boolean;
@@ -42,11 +44,15 @@ export async function openFileAtLine(
 		// Check if file exists
 		const uri = vscode.Uri.file(absolutePath);
 
-		// Create selection range (highlight the line)
+		// Create selection range (highlight the line or multi-line element)
 		const line = (options.line || 1) - 1; // Convert to 0-indexed
 		const column = (options.column || 0);
-		const position = new vscode.Position(line, column);
-		const selection = new vscode.Range(position, position);
+		const endLine = options.endLine ? (options.endLine - 1) : line; // Multi-line support
+		const endColumn = options.endColumn !== undefined ? options.endColumn : column;
+
+		const startPosition = new vscode.Position(line, column);
+		const endPosition = new vscode.Position(endLine, endColumn);
+		const selection = new vscode.Range(startPosition, endPosition);
 
 		// Open the document
 		const document = await vscode.workspace.openTextDocument(uri);

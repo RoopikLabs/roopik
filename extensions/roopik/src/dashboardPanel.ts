@@ -110,6 +110,9 @@ export class DashboardPanel {
 					case 'importCanvas':
 						this.handleImportCanvas();
 						break;
+					case 'openProjectPreview':
+						this.handleOpenProjectPreview();
+						break;
 					case 'refreshData':
 						this.refresh();
 						break;
@@ -235,6 +238,14 @@ export class DashboardPanel {
 					this.refresh();
 				}, 100);
 			});
+	}
+
+	/**
+	 * Handle opening project preview
+	 */
+	private handleOpenProjectPreview() {
+		this.logger.info('Opening project preview from dashboard');
+		vscode.commands.executeCommand('roopik.openProjectPreview');
 	}
 
 	/**
@@ -419,21 +430,26 @@ export class DashboardPanel {
 		}
 
 		.content-grid {
-			display: grid;
-			grid-template-columns: 280px 1fr;
-			gap: 40px;
+			display: flex;
+			flex-direction: column;
+			gap: 24px;
 			max-width: 1600px;
 			flex: 1;
 			min-height: 0; /* Allow flex shrinking */
-			overflow: hidden;
+			overflow-y: auto; /* Enable scrolling for the entire content */
+		}
+
+		/* Desktop layout - side by side */
+		@media (min-width: 901px) {
+			.content-grid {
+				flex-direction: row;
+				gap: 40px;
+				overflow: hidden;
+			}
 		}
 
 		/* Responsive breakpoints */
 		@media (max-width: 900px) {
-			.content-grid {
-				grid-template-columns: 1fr;
-				gap: 24px;
-			}
 			.header {
 				padding: 24px 24px 16px 24px;
 			}
@@ -448,16 +464,23 @@ export class DashboardPanel {
 			flex-direction: column;
 			gap: 24px;
 			min-width: 0; /* Allow shrinking */
-			overflow-y: auto; /* Scroll only if needed */
-			min-height: 0;
+			flex-shrink: 0; /* Don't shrink on small screens */
 		}
 
-		/* On smaller screens, show Start and Recent side-by-side to save vertical space */
+		/* Desktop: fixed width */
+		@media (min-width: 901px) {
+			.left-column {
+				width: 280px;
+				overflow-y: auto; /* Scroll only if needed */
+				min-height: 0;
+			}
+		}
+
+		/* Mobile: show Start options in a single horizontal line */
 		@media (max-width: 900px) {
 			.left-column {
-				flex-direction: row;
-				gap: 20px;
-				overflow-y: visible;
+				flex-direction: column;
+				gap: 16px;
 			}
 		}
 
@@ -468,13 +491,21 @@ export class DashboardPanel {
 			gap: 16px; /* Reduced gap to minimize wasted space */
 			min-width: 0; /* Allow shrinking */
 			min-height: 0; /* Allow flex shrinking */
-			overflow: hidden;
+			flex: 1; /* Take remaining space */
 		}
 
-		/* When stats are hidden, remove gap completely */
+		/* Desktop: scrollable */
+		@media (min-width: 901px) {
+			.right-column {
+				overflow: hidden;
+			}
+		}
+
+		/* Mobile: no fixed height, flows naturally */
 		@media (max-width: 900px) {
 			.right-column {
-				gap: 0;
+				gap: 16px;
+				flex-shrink: 0; /* Don't shrink */
 			}
 		}
 
@@ -495,27 +526,54 @@ export class DashboardPanel {
 			list-style: none;
 			padding: 0;
 			margin: 0;
+			display: flex;
+			flex-direction: column;
+			gap: 4px;
 		}
+
+		/* Mobile: horizontal wrapping layout */
+		@media (max-width: 900px) {
+			.start-list {
+				flex-direction: row;
+				flex-wrap: wrap;
+				gap: 8px;
+			}
+		}
+
 		.start-item {
-			margin-bottom: 8px;
+			margin-bottom: 0;
 		}
+
+		/* Mobile: compact button style */
+		@media (max-width: 900px) {
+			.start-item {
+				flex: 0 1 auto; /* Don't grow, shrink if needed, auto width */
+			}
+		}
+
 		.start-link {
 			display: flex;
 			align-items: center;
-			gap: 8px;
-			color: var(--vscode-textLink-foreground);
+			gap: 10px;
+			color: var(--vscode-foreground);
 			text-decoration: none;
-			padding: 4px 0;
+			padding: 8px 12px;
 			cursor: pointer;
+			border-radius: 4px;
+			transition: all 0.15s ease;
+			background: transparent;
+			font-size: 13px;
+			white-space: nowrap; /* Prevent text wrapping inside button */
 		}
 		.start-link:hover {
-			color: var(--vscode-textLink-activeForeground);
-			text-decoration: underline;
+			background: var(--vscode-list-hoverBackground);
+			color: var(--vscode-list-hoverForeground);
 		}
 		.start-icon {
-			font-size: 16px;
-			width: 20px;
+			font-size: 14px;
+			width: 16px;
 			text-align: center;
+			opacity: 0.8;
 		}
 
 		/* Recent list - simple links with container */
@@ -680,7 +738,8 @@ export class DashboardPanel {
 				grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
 			}
 			.canvases-container {
-				max-height: 400px;
+				max-height: none; /* Remove fixed height to prevent overlap */
+				overflow-y: visible; /* Natural flow on mobile */
 			}
 		}
 
@@ -927,6 +986,12 @@ export class DashboardPanel {
 									<span>Import Canvas...</span>
 								</a>
 							</li>
+							<li class="start-item">
+								<a class="start-link" onclick="openProjectPreview()">
+									<span class="start-icon">▶</span>
+									<span>Open Project</span>
+								</a>
+							</li>
 						</ul>
 					</div>
 
@@ -1086,6 +1151,12 @@ export class DashboardPanel {
 		function importCanvas() {
 			vscode.postMessage({
 				type: 'importCanvas'
+			});
+		}
+
+		function openProjectPreview() {
+			vscode.postMessage({
+				type: 'openProjectPreview'
 			});
 		}
 

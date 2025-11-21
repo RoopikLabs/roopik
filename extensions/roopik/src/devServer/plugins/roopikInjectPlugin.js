@@ -90,6 +90,47 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 	// Also listen for hashchange for SPAs
 	window.addEventListener('hashchange', notifyUrlChange);
 
+	// Track and notify title changes
+	let lastTitle = document.title || 'Preview Mode';
+
+	function notifyTitleChange() {
+		const currentTitle = document.title || 'Preview Mode';
+		if (currentTitle !== lastTitle) {
+			lastTitle = currentTitle;
+			window.parent.postMessage({
+				type: 'roopik-title-change',
+				title: currentTitle
+			}, '*');
+		}
+	}
+
+	// Monitor title changes with MutationObserver
+	const titleObserver = new MutationObserver(() => {
+		notifyTitleChange();
+	});
+
+	// Observe title element changes
+	const titleElement = document.querySelector('title');
+	if (titleElement) {
+		titleObserver.observe(titleElement, {
+			childList: true,
+			characterData: true,
+			subtree: true
+		});
+	}
+
+	// Also observe head for title element addition/removal
+	titleObserver.observe(document.head, {
+		childList: true,
+		subtree: true
+	});
+
+	// Send initial title (always send, even if same as default)
+	window.parent.postMessage({
+		type: 'roopik-title-change',
+		title: document.title || 'Preview Mode'
+	}, '*');
+
 	const BROWSER_SHORTCUT_KEYS = new Set(['s', 'p', 'o', 'l', 'n', 't', 'w', 'u']);
 	const BROWSER_DEVTOOLS_KEYS = ['i', 'j', 'c']; // Ctrl/Cmd + Shift + key
 
@@ -149,7 +190,10 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 					file: source.fileName,
 					line: source.lineNumber,
 					column: source.columnNumber,
-					componentName: source.componentName
+					endLine: source.endLine, // Multi-line support
+					endColumn: source.endColumn, // Multi-line support
+					componentName: source.componentName,
+					parentContext: source.parentContext // Parent metadata: "ComponentName|tag>parent>grandparent"
 				}, '*');
 				return;
 			}
@@ -170,13 +214,46 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 		try {
 			if (element.hasAttribute && element.hasAttribute('data-roopik-source')) {
 				const sourceData = element.getAttribute('data-roopik-source');
+				const parentData = element.hasAttribute('data-roopik-parent')
+					? element.getAttribute('data-roopik-parent')
+					: null;
+
+				// Get component name from source attribute (e.g., "Link" not "A")
+				const componentName = element.hasAttribute('data-roopik-component')
+					? element.getAttribute('data-roopik-component')
+					: (element.tagName || 'Unknown');
 
 				const parts = sourceData.split(':');
-				if (parts.length >= 2) {
+				// New format: filename:startLine:startCol:endLine:endCol (5+ parts)
+				// Old format: filename:line:col (3+ parts)
+				if (parts.length >= 5) {
+					// Multi-line format with start/end
+					const fileName = parts.slice(0, -4).join(':');
+					const startLine = parseInt(parts[parts.length - 4], 10);
+					const startColumn = parseInt(parts[parts.length - 3], 10);
+					const endLine = parseInt(parts[parts.length - 2], 10);
+					const endColumn = parseInt(parts[parts.length - 1], 10);
+					return {
+						fileName,
+						lineNumber: startLine,
+						columnNumber: startColumn,
+						endLine,
+						endColumn,
+						componentName, // From source, not DOM (e.g., "Link" not "A")
+						parentContext: parentData // Parent metadata: "ComponentName|section>div>div>Link"
+					};
+				} else if (parts.length >= 3) {
+					// Legacy single-line format (backward compatibility for regex mode)
 					const fileName = parts.slice(0, -2).join(':');
 					const lineNumber = parseInt(parts[parts.length - 2], 10);
 					const columnNumber = parseInt(parts[parts.length - 1], 10);
-					return { fileName, lineNumber, columnNumber, componentName: element.tagName || 'Unknown' };
+					return {
+						fileName,
+						lineNumber,
+						columnNumber,
+						componentName, // From source, not DOM
+						parentContext: parentData // Parent metadata even in legacy mode
+					};
 				}
 			}
 

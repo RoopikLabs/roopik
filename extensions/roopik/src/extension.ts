@@ -236,7 +236,7 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	// Register Activity Bar view provider
-	const activityBarViewProvider = new ActivityBarViewProvider(workspaceRoot);
+	const activityBarViewProvider = new ActivityBarViewProvider();
 	const dashboardViewProvider = vscode.window.registerWebviewViewProvider(
 		'roopik.dashboard',
 		activityBarViewProvider

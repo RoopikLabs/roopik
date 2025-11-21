@@ -46,7 +46,7 @@ export class ProjectPreviewPanel {
 		// Create new panel
 		const panel = vscode.window.createWebviewPanel(
 			'roopikProjectPreview',
-			'🎨 Roopik Preview',
+			'Preview Mode',
 			column,
 			{
 				enableScripts: true,
@@ -123,6 +123,14 @@ export class ProjectPreviewPanel {
 					case 'navigate':
 						this._logger.debug('Navigation: ' + message.url);
 						// Could track current route here if needed
+						break;
+
+					case 'update-title':
+						// Update panel title with page title
+						if (message.title) {
+							this._panel.title = message.title;
+							this._logger.debug('Panel title updated: ' + message.title);
+						}
 						break;
 
 					case 'stop-server':
@@ -212,14 +220,25 @@ export class ProjectPreviewPanel {
 	 * Handle click-to-source message from webview
 	 */
 	private async _handleClickToSource(message: any) {
-		const { file, line, column, componentName } = message;
+		const { file, line, column, endLine, endColumn, componentName, parentContext } = message;
 
 		this._logger.info('========================================');
 		this._logger.info('Click-to-source received!');
 		this._logger.info(`  File: ${file}`);
-		this._logger.info(`  Line: ${line}`);
-		this._logger.info(`  Column: ${column}`);
+		this._logger.info(`  Line: ${line}:${column}${endLine ? ` → ${endLine}:${endColumn}` : ''}`);
 		this._logger.info(`  Component: ${componentName || 'unknown'}`);
+
+		// Log parent context metadata if available
+		if (parentContext) {
+			this._logger.info(`  Parent Context: ${parentContext}`);
+			// Parse and display parent metadata
+			const parts = parentContext.split('|');
+			if (parts.length === 2) {
+				const [componentName, tagChain] = parts;
+				this._logger.info(`    → Parent Component: ${componentName}`);
+				this._logger.info(`    → Parent Tag Chain: ${tagChain}`);
+			}
+		}
 
 		const workspaceRoot = getWorkspaceRoot();
 		this._logger.info(`  Workspace root: ${workspaceRoot}`);
@@ -271,6 +290,8 @@ export class ProjectPreviewPanel {
 				file,
 				line,
 				column,
+				endLine, // Multi-line element support
+				endColumn, // Multi-line element support
 				viewColumn: vscode.ViewColumn.One, // Left side
 				preview: false,
 				preserveFocus: false // Focus the editor

@@ -82,6 +82,11 @@
           "command": "roopik.openCanvas",
           "when": "view == roopik.dashboard",
           "group": "navigation"
+        },
+        {
+          "command": "roopik.openProjectPreview",
+          "when": "view == roopik.dashboard",
+          "group": "navigation"
         }
       ]
     }
