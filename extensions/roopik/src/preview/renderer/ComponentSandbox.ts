@@ -22,7 +22,7 @@ export class ComponentSandbox {
 		// Path to sandbox_template.html in webviews/sandbox/
 		this.sandboxTemplateUri = vscode.Uri.joinPath(
 			context.extensionUri,
-			'webview-ui',
+			'webview',
 			'sandbox',
 			'sandbox_template.html'
 		);

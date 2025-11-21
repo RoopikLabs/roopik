@@ -160,7 +160,7 @@ export class CanvasPanel {
 					retainContextWhenHidden: true,
 					localResourceRoots: [
 						vscode.Uri.joinPath(extensionUri, 'out'),
-						vscode.Uri.joinPath(extensionUri, 'webview-ui', 'build')
+						vscode.Uri.joinPath(extensionUri, 'webview', 'build')
 					]
 				}
 			);
@@ -875,10 +875,10 @@ export class CanvasPanel {
 
 	private _getHtmlForWebview(webview: vscode.Webview) {
 		const scriptUri = webview.asWebviewUri(
-			vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'build', 'assets', 'index.js')
+			vscode.Uri.joinPath(this.extensionUri, 'webview', 'build', 'assets', 'componentView.js')
 		);
 		const styleUri = webview.asWebviewUri(
-			vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'build', 'assets', 'index.css')
+			vscode.Uri.joinPath(this.extensionUri, 'webview', 'build', 'assets', 'componentView.css')
 		);
 
 		// CSP updated to allow unpkg.com and unsafe-eval for Babel Standalone
@@ -906,6 +906,7 @@ export class CanvasPanel {
 		}
 	</style>
 	<link href="${styleUri}" rel="stylesheet">
+	<link href="${webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'webview', 'build', 'assets', 'BottomActionBar.css'))}" rel="stylesheet">
 	<title>Roopik Canvas - ${this.canvasState.name}</title>
 </head>
 <body>

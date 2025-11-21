@@ -4,15 +4,15 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useState, useEffect } from 'react';
-import type { Sandbox } from './types';
-import { FloatingToolbar } from './components/FloatingToolbar';
-import { InfiniteCanvas } from './components/InfiniteCanvas';
-import { StatusBar } from './components/StatusBar';
-import { DeleteConfirmModal } from './components/DeleteConfirmModal';
-import { BottomActionBar } from './components/BottomActionBar';
-import { useFPS } from './hooks/useFPS';
-import { SAMPLE_COMPONENTS } from './data/sampleComponents';
-import './App.css';
+import type { Sandbox } from '../types';
+import { FloatingToolbar } from '../components/FloatingToolbar';
+import { InfiniteCanvas } from '../components/InfiniteCanvas';
+import { StatusBar } from '../components/StatusBar';
+import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
+import { BottomActionBar } from '../components/BottomActionBar';
+import { useFPS } from '../hooks/useFPS';
+import { SAMPLE_COMPONENTS } from '../data/sampleComponents';
+import './ComponentView.css';
 
 // VS Code API
 declare const acquireVsCodeApi: () => any;
