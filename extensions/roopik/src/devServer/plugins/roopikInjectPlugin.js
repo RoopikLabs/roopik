@@ -90,6 +90,47 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 	// Also listen for hashchange for SPAs
 	window.addEventListener('hashchange', notifyUrlChange);
 
+	// Track and notify title changes
+	let lastTitle = document.title || 'Preview Mode';
+
+	function notifyTitleChange() {
+		const currentTitle = document.title || 'Preview Mode';
+		if (currentTitle !== lastTitle) {
+			lastTitle = currentTitle;
+			window.parent.postMessage({
+				type: 'roopik-title-change',
+				title: currentTitle
+			}, '*');
+		}
+	}
+
+	// Monitor title changes with MutationObserver
+	const titleObserver = new MutationObserver(() => {
+		notifyTitleChange();
+	});
+
+	// Observe title element changes
+	const titleElement = document.querySelector('title');
+	if (titleElement) {
+		titleObserver.observe(titleElement, {
+			childList: true,
+			characterData: true,
+			subtree: true
+		});
+	}
+
+	// Also observe head for title element addition/removal
+	titleObserver.observe(document.head, {
+		childList: true,
+		subtree: true
+	});
+
+	// Send initial title (always send, even if same as default)
+	window.parent.postMessage({
+		type: 'roopik-title-change',
+		title: document.title || 'Preview Mode'
+	}, '*');
+
 	const BROWSER_SHORTCUT_KEYS = new Set(['s', 'p', 'o', 'l', 'n', 't', 'w', 'u']);
 	const BROWSER_DEVTOOLS_KEYS = ['i', 'j', 'c']; // Ctrl/Cmd + Shift + key
 

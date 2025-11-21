@@ -103,7 +103,7 @@
 						inset 0 2px 4px rgba(0, 0, 0, 0.1);
 		}
 
-		/* Debug Toggle - Modern with Status Indicator */
+		/* Edit Toggle - Modern with Pen Icon */
 		.highlight-toggle {
 			background: rgba(120, 120, 120, 0.2);
 			backdrop-filter: blur(10px);
@@ -124,14 +124,11 @@
 			min-height: 36px;
 		}
 
-		.highlight-toggle::before {
-			content: '';
-			width: 8px;
-			height: 8px;
-			border-radius: 50%;
-			background: #888;
+		.highlight-toggle svg {
+			width: 14px;
+			height: 14px;
+			fill: currentColor;
 			transition: all 0.3s ease;
-			box-shadow: 0 0 0 rgba(136, 136, 136, 0.4);
 		}
 
 		.highlight-toggle:hover {
@@ -147,9 +144,8 @@
 			color: #4CAF50;
 		}
 
-		.highlight-toggle.active::before {
-			background: #4CAF50;
-			box-shadow: 0 0 12px rgba(76, 175, 80, 0.6);
+		.highlight-toggle.active svg {
+			filter: drop-shadow(0 0 4px rgba(76, 175, 80, 0.6));
 			animation: pulse 2s ease-in-out infinite;
 		}
 
@@ -369,15 +365,18 @@
 			value="__VITE_SERVER_URL__"
 		/>
 
-		<!-- Debug Mode Toggle -->
-		<button class="highlight-toggle" id="highlight-toggle" title="Toggle click-to-source debugging (Ctrl+Click elements)">
-			<span id="highlight-label">Debug</span>
+		<!-- Edit Mode Toggle -->
+		<button class="highlight-toggle" id="highlight-toggle" title="Toggle edit mode (Ctrl+Click elements to edit)">
+			<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+				<path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+			</svg>
+			<span id="highlight-label">EDIT</span>
 		</button>
 
 		<!-- Stop Server Button -->
 		<button class="stop-server-btn" id="stop-server" title="Stop dev server and close preview">
 			<span style="font-size: 14px;">⏹</span>
-			<span>Stop</span>
+			<span>STOP</span>
 		</button>
 	</div>
 
@@ -567,6 +566,12 @@
 					endColumn: message.endColumn, // Multi-line support
 					componentName: message.componentName,
 					parentContext: message.parentContext // Parent metadata: "ComponentName|tag>parent>grandparent"
+				});
+			} else if (message.type === 'roopik-title-change') {
+				// Update panel title with page title
+				vscode.postMessage({
+					type: 'update-title',
+					title: message.title
 				});
 			} else if (message.type === 'roopik-navigate') {
 				// Update address bar with current URL

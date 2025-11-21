@@ -4,20 +4,16 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import { CanvasPanel } from './canvasPanel';
 
 /**
  * Activity Bar Webview View Provider
  *
  * Provides a compact view in the Activity Bar sidebar showing:
- * - Quick stats (total canvases, open canvases)
- * - Quick action buttons (Dashboard, New Canvas, Show Open)
+ * - Quick action buttons (Dashboard, New Canvas, Show Open, Open Project)
  */
 export class ActivityBarViewProvider implements vscode.WebviewViewProvider {
-	private workspaceRoot: string;
-
-	constructor(workspaceRoot: string) {
-		this.workspaceRoot = workspaceRoot;
+	constructor() {
+		// No need to store workspace root
 	}
 
 	/**
@@ -48,6 +44,9 @@ export class ActivityBarViewProvider implements vscode.WebviewViewProvider {
 				case 'showCanvases':
 					vscode.commands.executeCommand('roopik.showCanvases');
 					break;
+				case 'openProject':
+					vscode.commands.executeCommand('roopik.openProjectPreview');
+					break;
 			}
 		});
 	}
@@ -56,9 +55,6 @@ export class ActivityBarViewProvider implements vscode.WebviewViewProvider {
 	 * Generate HTML content for the Activity Bar view
 	 */
 	private getHtmlContent(): string {
-		const totalCanvases = CanvasPanel.getAllCanvasStates(this.workspaceRoot).length;
-		const openCanvases = CanvasPanel.getOpenCount();
-
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -66,68 +62,89 @@ export class ActivityBarViewProvider implements vscode.WebviewViewProvider {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<style>
 		body {
-			padding: 16px;
+			padding: 12px;
 			color: var(--vscode-foreground);
 			font-family: var(--vscode-font-family);
 			font-size: 13px;
 		}
 
-		.stats {
-			margin-bottom: 16px;
-			padding: 12px;
-			background-color: var(--vscode-editor-inactiveSelectionBackground);
-			border-radius: 4px;
-		}
-
-		.stat-item {
+		.button-list {
 			display: flex;
-			justify-content: space-between;
-			margin-bottom: 4px;
-			font-size: 12px;
-		}
-
-		.stat-item:last-child {
-			margin-bottom: 0;
+			flex-direction: column;
+			gap: 4px;
 		}
 
 		button {
 			width: 100%;
-			padding: 10px;
-			background-color: var(--vscode-button-background);
-			color: var(--vscode-button-foreground);
+			padding: 8px 12px;
+			background: transparent;
+			color: var(--vscode-foreground);
 			border: none;
 			border-radius: 4px;
 			cursor: pointer;
-			font-size: 14px;
-			font-weight: 500;
-			margin-bottom: 8px;
-			transition: background-color 0.2s ease;
+			font-size: 13px;
+			font-weight: 400;
+			text-align: left;
+			transition: all 0.15s ease;
+			display: flex;
+			align-items: center;
+			gap: 8px;
 		}
 
 		button:hover {
-			background-color: var(--vscode-button-hoverBackground);
+			background: var(--vscode-list-hoverBackground);
+			color: var(--vscode-list-hoverForeground);
 		}
 
-		button:last-child {
-			margin-bottom: 0;
+		.button-icon {
+			width: 16px;
+			height: 16px;
+			opacity: 0.8;
+			flex-shrink: 0;
+		}
+
+		.button-icon svg {
+			width: 100%;
+			height: 100%;
+			fill: currentColor;
 		}
 	</style>
 </head>
 <body>
-	<div class="stats">
-		<div class="stat-item">
-			<span>Total Canvases</span>
-			<strong>${totalCanvases}</strong>
-		</div>
-		<div class="stat-item">
-			<span>Open Canvases</span>
-			<strong>${openCanvases}</strong>
-		</div>
+	<div class="button-list">
+		<button onclick="openDashboard()">
+			<span class="button-icon">
+				<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+					<path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/>
+				</svg>
+			</span>
+			<span>Dashboard</span>
+		</button>
+		<button onclick="newCanvas()">
+			<span class="button-icon">
+				<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+					<path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+				</svg>
+			</span>
+			<span>New Canvas</span>
+		</button>
+		<button onclick="showCanvases()">
+			<span class="button-icon">
+				<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+					<path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/>
+				</svg>
+			</span>
+			<span>Show Open</span>
+		</button>
+		<button onclick="openProject()">
+			<span class="button-icon">
+				<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+					<path d="M8 5v14l11-7z"/>
+				</svg>
+			</span>
+			<span>Open Project</span>
+		</button>
 	</div>
-
-	<button onclick="openDashboard()">Dashboard</button>
-	<button onclick="newCanvas()">New Canvas</button>
-	<button onclick="showCanvases()">Show Open</button>
 
 	<script>
 		const vscode = acquireVsCodeApi();
@@ -142,6 +159,10 @@ export class ActivityBarViewProvider implements vscode.WebviewViewProvider {
 
 		function showCanvases() {
 			vscode.postMessage({ command: 'showCanvases' });
+		}
+
+		function openProject() {
+			vscode.postMessage({ command: 'openProject' });
 		}
 	</script>
 </body>

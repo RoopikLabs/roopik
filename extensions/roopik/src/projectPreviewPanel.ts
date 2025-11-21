@@ -46,7 +46,7 @@ export class ProjectPreviewPanel {
 		// Create new panel
 		const panel = vscode.window.createWebviewPanel(
 			'roopikProjectPreview',
-			'🎨 Roopik Preview',
+			'Preview Mode',
 			column,
 			{
 				enableScripts: true,
@@ -123,6 +123,14 @@ export class ProjectPreviewPanel {
 					case 'navigate':
 						this._logger.debug('Navigation: ' + message.url);
 						// Could track current route here if needed
+						break;
+
+					case 'update-title':
+						// Update panel title with page title
+						if (message.title) {
+							this._panel.title = message.title;
+							this._logger.debug('Panel title updated: ' + message.title);
+						}
 						break;
 
 					case 'stop-server':
