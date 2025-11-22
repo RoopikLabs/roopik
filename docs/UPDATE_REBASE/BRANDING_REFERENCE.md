@@ -166,6 +166,22 @@
 
 ---
 
+### 8b. Windows 11+ AppX Manifest (Optional)
+
+**Location:** `resources/win32/appx/AppxManifest.xml`
+**Purpose:** Windows 11+ context menu integration ("Open with Code" → "Open with Roopik")
+
+**Fields to Update:**
+- Line 18: `Publisher="CN=Microsoft Corporation..."` → Change to your company/publisher
+- Line 23: `PublisherDisplayName="Microsoft Corporation"` → Change to `"Roopik Labs"`
+- Line 428 in `build/gulpfile.vscode.mjs`: `'OpenWithCode'` → Change to `'OpenWithRoopik'` (context menu ID)
+
+**Note:** Only needed if shipping Windows installers. Can be removed if not needed (like Void did).
+
+**Rebase Impact:** Low - Manifest rarely changes.
+
+---
+
 ### 9. Build Scripts
 
 **Locations:**
@@ -382,6 +398,7 @@ roopik/
 ### Medium Priority (Nice to Have)
 
 - [ ] `build/win32/code.iss` - Lines 11-14 (publisher info)
+- [ ] `resources/win32/appx/AppxManifest.xml` - Lines 18, 23 (publisher) + `build/gulpfile.vscode.mjs` line 428 (context menu ID: "OpenWithCode" → "OpenWithRoopik")
 - [ ] `cli/src/constants.rs` - Or set build-time env vars
 - [ ] `build/package.json` - Line 2
 
