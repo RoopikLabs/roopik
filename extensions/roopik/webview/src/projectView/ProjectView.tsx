@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { BottomActionBar } from '../components/BottomActionBar';
+import type { InspectedElement } from '../utils/inspectOverlay';
 import './ProjectView.css';
 
 // VS Code API
@@ -29,6 +30,7 @@ function ProjectView() {
 	const [isSelectMode, setIsSelectMode] = useState(false);
 	const [isInspectMode, setIsInspectMode] = useState(false);
 	const [isRectangleMode, setIsRectangleMode] = useState(false);
+	const [inspectedElement, setInspectedElement] = useState<InspectedElement | null>(null);
 
 	// Show debug notification with auto-dismiss
 	const showDebugNotification = () => {
@@ -67,6 +69,31 @@ function ProjectView() {
 			console.error('[Roopik] Failed to send message to iframe:', error);
 		}
 	};
+
+	// Send inspect mode state to iframe
+	const sendInspectModeToIframe = (enabled: boolean) => {
+		try {
+			const iframe = iframeRef.current;
+			if (!iframe || !iframe.contentWindow) {
+				console.log('[Roopik] ❌ Cannot send message - iframe not ready');
+				return;
+			}
+
+			const message = {
+				type: 'roopik-toggle-inspect',
+				enabled: enabled
+			};
+
+			console.log('[Roopik] 📤 Sending inspect mode message:', message);
+			iframe.contentWindow.postMessage(message, '*');
+			console.log('[Roopik] ✅ Sent inspect mode to iframe:', enabled);
+		} catch (error) {
+			console.error('[Roopik] ❌ Failed to send message to iframe:', error);
+		}
+	};
+
+	// Note: Inspect script is injected by Vite plugin, not by webview
+	// The roopikInjectPlugin.js already includes inspect mode functionality
 
 	// Handle iframe load
 	const handleIframeLoad = () => {
@@ -166,12 +193,31 @@ function ProjectView() {
 				case 'roopik-browser-shortcut-blocked':
 					console.log('[Roopik Preview] Blocked browser shortcut:', message.reason, message.detail);
 					break;
+
+				case 'roopik-inspect-element':
+					console.log('[Roopik] Inspect element:', message.element);
+					setInspectedElement(message.element);
+					break;
 			}
 		};
 
 		window.addEventListener('message', handleMessage);
 		return () => window.removeEventListener('message', handleMessage);
 	}, [highlightMode, isRefreshing, navigationHistory, currentHistoryIndex]);
+
+	// Inspect script is already in the iframe via Vite plugin injection
+	// No need to inject from webview side
+
+	// Toggle inspect mode
+	useEffect(() => {
+		if (!isLoading) {
+			console.log('[Roopik] 🔍 Inspect mode:', isInspectMode ? 'ENABLED' : 'DISABLED');
+			sendInspectModeToIframe(isInspectMode);
+			if (!isInspectMode) {
+				setInspectedElement(null);
+			}
+		}
+	}, [isInspectMode, isLoading]);
 
 	// Navigation handlers
 	const handleBack = () => {
@@ -361,9 +407,19 @@ function ProjectView() {
 					isSelectMode={isSelectMode}
 					isInspectMode={isInspectMode}
 					isRectangleMode={isRectangleMode}
+					inspectedElement={inspectedElement}
 					onSelectMode={() => setIsSelectMode(!isSelectMode)}
 					onInspectMode={() => setIsInspectMode(!isInspectMode)}
 					onRectangleSelection={() => setIsRectangleMode(!isRectangleMode)}
+					onOpenInEditor={(file, line) => {
+						// Send message to VS Code extension to open file
+						vscode.postMessage({
+							type: 'click-to-source',
+							file: file,
+							line: line,
+							column: 1
+						});
+					}}
 				/>
 			)}
 		</div>

@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useState, useRef, useEffect } from 'react';
+import type { InspectedElement } from '../utils/inspectOverlay';
 import './BottomActionBar.css';
 
 interface BottomActionBarProps {
@@ -16,6 +17,9 @@ interface BottomActionBarProps {
 	onTextEdit?: () => void;
 	onImageReplace?: () => void;
 	onColorPicker?: () => void;
+	// Inspection
+	inspectedElement?: InspectedElement | null;
+	onOpenInEditor?: (file: string, line: number) => void;
 	// State
 	isSelectMode?: boolean;
 	isInspectMode?: boolean;
@@ -42,6 +46,8 @@ export function BottomActionBar({
 	onTextEdit,
 	onImageReplace,
 	onColorPicker,
+	inspectedElement,
+	onOpenInEditor,
 	isSelectMode = false,
 	isInspectMode = false,
 	isRectangleMode = false,
@@ -148,6 +154,13 @@ export function BottomActionBar({
 
 	// Close overlay when clicking outside (no longer needed without backdrop)
 	// Kept for future use if needed
+
+	// Auto-open properties panel when inspect mode is active and element is inspected
+	useEffect(() => {
+		if (isInspectMode && inspectedElement && !isActionsPanelOpen) {
+			setIsActionsPanelOpen(true);
+		}
+	}, [isInspectMode, inspectedElement]);
 
 	// Close AI chat and properties panel on Escape key or click outside
 	useEffect(() => {
@@ -473,16 +486,141 @@ export function BottomActionBar({
 							</svg>
 						</button>
 					</div>
-					<div className="actions-panel-content">
+				<div className="actions-panel-content">
+					{inspectedElement ? (
+						<div className="inspected-element-details">
+							{/* Component Info */}
+							<div className="property-section">
+								<div className="property-section-title">Component</div>
+								<div className="property-item">
+									<span className="property-label">Name</span>
+									<span className="property-value">{inspectedElement.componentName}</span>
+								</div>
+								{inspectedElement.file && (
+									<div className="property-item">
+										<span className="property-label">Source</span>
+										<div className="property-value" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+											<span style={{ fontSize: '11px', opacity: 0.8 }}>
+												{inspectedElement.file.split('/').pop()}:{inspectedElement.line}
+											</span>
+											<button
+												className="open-in-editor-btn"
+												onClick={() => {
+													if (inspectedElement.file && inspectedElement.line && onOpenInEditor) {
+														onOpenInEditor(inspectedElement.file, inspectedElement.line);
+													}
+												}}
+												title="Open in editor"
+											>
+												<svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+													<path d="M9 2L14 7L9 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+													<path d="M14 7H2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+												</svg>
+											</button>
+										</div>
+									</div>
+								)}
+							</div>
+
+							{/* Props */}
+							{inspectedElement.props && Object.keys(inspectedElement.props).length > 0 && (
+								<div className="property-section">
+									<div className="property-section-title">Props</div>
+									{Object.entries(inspectedElement.props).map(([key, value]) => (
+										<div key={key} className="property-item">
+											<span className="property-label">{key}</span>
+											<span className="property-value" style={{ fontSize: '11px', opacity: 0.8 }}>
+												{typeof value === 'object' ? JSON.stringify(value) : String(value)}
+											</span>
+										</div>
+									))}
+								</div>
+							)}
+
+							{/* Computed Styles */}
+							{inspectedElement.computedStyles && (
+								<div className="property-section">
+									<div className="property-section-title">Styles</div>
+									{inspectedElement.computedStyles.display && (
+										<div className="property-item">
+											<span className="property-label">display</span>
+											<span className="property-value">{inspectedElement.computedStyles.display}</span>
+										</div>
+									)}
+									{inspectedElement.computedStyles.width && (
+										<div className="property-item">
+											<span className="property-label">width</span>
+											<span className="property-value">{inspectedElement.computedStyles.width}</span>
+										</div>
+									)}
+									{inspectedElement.computedStyles.height && (
+										<div className="property-item">
+											<span className="property-label">height</span>
+											<span className="property-value">{inspectedElement.computedStyles.height}</span>
+										</div>
+									)}
+									{inspectedElement.computedStyles.padding && (
+										<div className="property-item">
+											<span className="property-label">padding</span>
+											<span className="property-value">{inspectedElement.computedStyles.padding}</span>
+										</div>
+									)}
+									{inspectedElement.computedStyles.margin && (
+										<div className="property-item">
+											<span className="property-label">margin</span>
+											<span className="property-value">{inspectedElement.computedStyles.margin}</span>
+										</div>
+									)}
+									{inspectedElement.computedStyles.color && (
+										<div className="property-item">
+											<span className="property-label">color</span>
+											<div className="property-value" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+												<span
+													style={{
+														display: 'inline-block',
+														width: '12px',
+														height: '12px',
+														borderRadius: '2px',
+														backgroundColor: inspectedElement.computedStyles.color,
+														border: '1px solid rgba(0,0,0,0.1)'
+													}}
+												/>
+												<span>{inspectedElement.computedStyles.color}</span>
+											</div>
+										</div>
+									)}
+									{inspectedElement.computedStyles.backgroundColor && (
+										<div className="property-item">
+											<span className="property-label">background</span>
+											<div className="property-value" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+												<span
+													style={{
+														display: 'inline-block',
+														width: '12px',
+														height: '12px',
+														borderRadius: '2px',
+														backgroundColor: inspectedElement.computedStyles.backgroundColor,
+														border: '1px solid rgba(0,0,0,0.1)'
+													}}
+												/>
+												<span>{inspectedElement.computedStyles.backgroundColor}</span>
+											</div>
+										</div>
+									)}
+								</div>
+							)}
+						</div>
+					) : (
 						<div className="actions-panel-placeholder">
 							<svg width="48" height="48" viewBox="0 0 20 20" fill="none" opacity="0.3">
 								<circle cx="10" cy="4" r="1.5" fill="currentColor" />
 								<circle cx="10" cy="10" r="1.5" fill="currentColor" />
 								<circle cx="10" cy="16" r="1.5" fill="currentColor" />
 							</svg>
-							<p>Select an element to see available properties and actions</p>
+							<p>{isInspectMode ? 'Hover over elements to inspect them' : 'Select an element to see available properties and actions'}</p>
 						</div>
-					</div>
+					)}
+				</div>
 				</div>
 			)}
 		</>

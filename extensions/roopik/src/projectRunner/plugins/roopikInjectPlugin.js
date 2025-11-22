@@ -48,11 +48,22 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 	}, 2000);
 
 	let debugMode = false;
+	let inspectMode = false;
+	let inspectOverlay = null;
+	let inspectTooltip = null;
+	let currentInspectElement = null;
 
 	window.addEventListener('message', (event) => {
 		const message = event.data;
 		if (message.type === 'roopik-toggle-debug') {
 			debugMode = message.enabled;
+		} else if (message.type === 'roopik-toggle-inspect') {
+			inspectMode = message.enabled;
+			if (inspectMode) {
+				enableInspectMode();
+			} else {
+				disableInspectMode();
+			}
 		} else if (message.type === 'roopik-back') {
 			window.history.back();
 		} else if (message.type === 'roopik-forward') {
@@ -143,6 +154,106 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 			}, '*');
 		} catch (err) {
 			console.warn('[Roopik] Failed to notify parent about blocked shortcut:', err);
+		}
+	}
+
+	// Inspect Mode Implementation
+	function createInspectOverlay() {
+		if (inspectOverlay) return;
+		inspectOverlay = document.createElement('div');
+		inspectOverlay.style.cssText = 'position:absolute;pointer-events:none;border:2px solid #007acc;background:rgba(0,122,204,0.1);z-index:2147483646;box-sizing:border-box;transition:all 0.1s ease;';
+		document.body.appendChild(inspectOverlay);
+	}
+
+	function createInspectTooltip() {
+		if (inspectTooltip) return;
+		inspectTooltip = document.createElement('div');
+		inspectTooltip.style.cssText = 'position:absolute;pointer-events:none;background:rgba(0,0,0,0.9);color:white;padding:8px 12px;border-radius:4px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:12px;z-index:2147483647;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+		document.body.appendChild(inspectTooltip);
+	}
+
+	function enableInspectMode() {
+		createInspectOverlay();
+		createInspectTooltip();
+		document.body.style.cursor = 'crosshair';
+		document.addEventListener('mousemove', handleInspectMouseMove, true);
+		document.addEventListener('click', handleInspectClick, true);
+		console.log('[Roopik Inspect] Mode enabled');
+	}
+
+	function disableInspectMode() {
+		document.body.style.cursor = '';
+		document.removeEventListener('mousemove', handleInspectMouseMove, true);
+		document.removeEventListener('click', handleInspectClick, true);
+		if (inspectOverlay) inspectOverlay.style.display = 'none';
+		if (inspectTooltip) inspectTooltip.style.display = 'none';
+		currentInspectElement = null;
+		console.log('[Roopik Inspect] Mode disabled');
+	}
+
+	function handleInspectMouseMove(e) {
+		if (!inspectMode) return;
+		const element = e.target;
+		if (element === inspectOverlay || element === inspectTooltip) return;
+
+		currentInspectElement = element;
+		const rect = element.getBoundingClientRect();
+
+		inspectOverlay.style.display = 'block';
+		inspectOverlay.style.top = (rect.top + window.scrollY) + 'px';
+		inspectOverlay.style.left = (rect.left + window.scrollX) + 'px';
+		inspectOverlay.style.width = rect.width + 'px';
+		inspectOverlay.style.height = rect.height + 'px';
+
+		const source = findSourceInfo(element);
+		const componentName = source ? source.componentName : element.tagName;
+		const fileName = source ? source.fileName.split('/').pop() : 'Unknown';
+		const line = source ? source.lineNumber : 0;
+
+		inspectTooltip.textContent = componentName + ' · ' + fileName + ':' + line;
+		inspectTooltip.style.display = 'block';
+
+		const tooltipTop = rect.top + window.scrollY - 30;
+		inspectTooltip.style.top = (tooltipTop > 10 ? tooltipTop : rect.bottom + window.scrollY + 5) + 'px';
+		inspectTooltip.style.left = (rect.left + window.scrollX) + 'px';
+	}
+
+	function handleInspectClick(e) {
+		if (!inspectMode || !currentInspectElement) return;
+		e.preventDefault();
+		e.stopPropagation();
+
+		const source = findSourceInfo(currentInspectElement);
+		if (source) {
+			const computed = window.getComputedStyle(currentInspectElement);
+			window.parent.postMessage({
+				type: 'roopik-inspect-element',
+				element: {
+					componentName: source.componentName,
+					file: source.fileName,
+					line: source.lineNumber,
+					column: source.columnNumber || 0,
+					endLine: source.endLine,
+					endColumn: source.endColumn,
+					props: {},
+					computedStyles: {
+						display: computed.display,
+						width: computed.width,
+						height: computed.height,
+						padding: computed.padding,
+						margin: computed.margin,
+						color: computed.color,
+						backgroundColor: computed.backgroundColor,
+						fontSize: computed.fontSize,
+						fontWeight: computed.fontWeight
+					},
+					tagName: currentInspectElement.tagName,
+					className: currentInspectElement.className,
+					id: currentInspectElement.id,
+					textContent: currentInspectElement.textContent ? currentInspectElement.textContent.substring(0, 50) : ''
+				}
+			}, '*');
+			console.log('[Roopik Inspect] Sent element data');
 		}
 	}
 
