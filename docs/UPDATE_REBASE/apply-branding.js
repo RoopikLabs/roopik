@@ -14,8 +14,13 @@
  *   --init       Create branding directory structure with placeholder files
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Configuration
 const ROOT_DIR = path.resolve(__dirname, '../..');
@@ -134,27 +139,43 @@ function initializeBrandingStructure(config) {
 	}
 
 	// Create icon subdirectories and placeholder files
-	const iconCategories = ['win32', 'darwin', 'linux', 'server', 'workbench'];
+	const iconCategories = ['win32', 'darwin', 'linux', 'server', 'workbench', 'extensions'];
 
 	for (const category of iconCategories) {
-		const categoryDir = path.join(BRANDING_ICONS_DIR, category);
 		const icons = config.icons[category] || [];
 
 		if (icons.length > 0) {
-			if (ensureDirectory(categoryDir)) {
-				created.push(`branding/icons/${category}/`);
-			}
-
-			// Create placeholder files
-			for (const icon of icons) {
-				const placeholderPath = path.join(categoryDir, icon.target);
-
-				if (fileExists(placeholderPath)) {
-					skipped.push(`branding/icons/${category}/${icon.target} (already exists)`);
-					continue;
+			// Handle extensions category with subfolders
+			if (category === 'extensions') {
+				// Group icons by their source directory
+				const iconGroups = {};
+				for (const icon of icons) {
+					const sourceDir = path.dirname(icon.source);
+					if (!iconGroups[sourceDir]) {
+						iconGroups[sourceDir] = [];
+					}
+					iconGroups[sourceDir].push(icon);
 				}
 
-				const placeholderContent = `# PLACEHOLDER: ${icon.description}
+				// Create subfolders for each extension
+				for (const [sourceDir, groupIcons] of Object.entries(iconGroups)) {
+					const subfolderName = path.basename(path.dirname(sourceDir)); // e.g., "github-authentication"
+					const categoryDir = path.join(BRANDING_ICONS_DIR, category, subfolderName);
+
+					if (ensureDirectory(categoryDir)) {
+						created.push(`branding/icons/${category}/${subfolderName}/`);
+					}
+
+					// Create placeholder files
+					for (const icon of groupIcons) {
+						const placeholderPath = path.join(categoryDir, icon.target);
+
+						if (fileExists(placeholderPath)) {
+							skipped.push(`branding/icons/${category}/${subfolderName}/${icon.target} (already exists)`);
+							continue;
+						}
+
+						const placeholderContent = `# PLACEHOLDER: ${icon.description}
 
 This is a placeholder file. Replace this file with your actual ${icon.target} icon.
 
@@ -172,8 +193,49 @@ Once you place your icon file here, run:
 The script will automatically copy this icon to replace the VS Code default.
 `;
 
-				if (writeFile(placeholderPath, placeholderContent)) {
-					created.push(`branding/icons/${category}/${icon.target} (placeholder)`);
+						if (writeFile(placeholderPath, placeholderContent)) {
+							created.push(`branding/icons/${category}/${subfolderName}/${icon.target} (placeholder)`);
+						}
+					}
+				}
+			} else {
+				// Regular categories
+				const categoryDir = path.join(BRANDING_ICONS_DIR, category);
+
+				if (ensureDirectory(categoryDir)) {
+					created.push(`branding/icons/${category}/`);
+				}
+
+				// Create placeholder files
+				for (const icon of icons) {
+					const placeholderPath = path.join(categoryDir, icon.target);
+
+					if (fileExists(placeholderPath)) {
+						skipped.push(`branding/icons/${category}/${icon.target} (already exists)`);
+						continue;
+					}
+
+					const placeholderContent = `# PLACEHOLDER: ${icon.description}
+
+This is a placeholder file. Replace this file with your actual ${icon.target} icon.
+
+Requirements:
+- Format: ${icon.format.toUpperCase()}
+- Sizes: ${icon.sizes}
+- Description: ${icon.description}
+
+Source file: ${icon.source} (VS Code default)
+Target file: ${icon.target} (Your Roopik icon)
+
+Once you place your icon file here, run:
+  node docs/UPDATE_REBASE/apply-branding.js
+
+The script will automatically copy this icon to replace the VS Code default.
+`;
+
+					if (writeFile(placeholderPath, placeholderContent)) {
+						created.push(`branding/icons/${category}/${icon.target} (placeholder)`);
+					}
 				}
 			}
 		}
@@ -279,11 +341,17 @@ function updatePackageJson(config) {
 			}
 		}
 
-		// Update repository
+		// Update repository (preserve existing fields like "type")
 		if (pkgConfig.repository) {
-			if (!pkg.repository || pkg.repository.url !== pkgConfig.repository.url) {
+			if (!pkg.repository) {
 				pkg.repository = pkgConfig.repository;
 				needsUpdate = true;
+			} else {
+				// Only update URL, preserve other fields like "type"
+				if (pkg.repository.url !== pkgConfig.repository.url) {
+					pkg.repository.url = pkgConfig.repository.url;
+					needsUpdate = true;
+				}
 			}
 		}
 
@@ -420,23 +488,34 @@ function processIconReplacements(config) {
 	}
 
 	// Process each icon category
-	const iconCategories = ['win32', 'darwin', 'linux', 'server', 'workbench'];
+	const iconCategories = ['win32', 'darwin', 'linux', 'server', 'workbench', 'extensions'];
 
 	for (const category of iconCategories) {
 		const icons = config.icons[category] || [];
 
 		for (const icon of icons) {
 			// Determine paths
-			let vsCodeDir;
-			if (category === 'workbench') {
-				vsCodeDir = 'src/vs/workbench/browser/media';
-			} else {
-				vsCodeDir = `resources/${category}`;
-			}
+			let vsCodePath, brandingPath, fallbackPath;
 
-			const vsCodePath = path.join(ROOT_DIR, vsCodeDir, icon.source);
-			const brandingPath = path.join(BRANDING_ICONS_DIR, category, icon.target);
-			const fallbackPath = path.join(ROOT_DIR, vsCodeDir, icon.target);
+			if (category === 'workbench') {
+				const vsCodeDir = 'src/vs/workbench/browser/media';
+				vsCodePath = path.join(ROOT_DIR, vsCodeDir, icon.source);
+				brandingPath = path.join(BRANDING_ICONS_DIR, category, icon.target);
+				fallbackPath = path.join(ROOT_DIR, vsCodeDir, icon.target);
+			} else if (category === 'extensions') {
+				// Extension icons have full paths in source (e.g., "extensions/github-authentication/media/favicon.ico")
+				vsCodePath = path.join(ROOT_DIR, icon.source);
+				// Extract the extension name from source path (e.g., "github-authentication" from "extensions/github-authentication/media/...")
+				const sourceDir = path.dirname(icon.source); // e.g., "extensions/github-authentication/media"
+				const extensionName = path.basename(path.dirname(sourceDir)); // e.g., "github-authentication"
+				brandingPath = path.join(BRANDING_ICONS_DIR, category, extensionName, icon.target);
+				fallbackPath = path.join(ROOT_DIR, sourceDir, icon.target);
+			} else {
+				const vsCodeDir = `resources/${category}`;
+				vsCodePath = path.join(ROOT_DIR, vsCodeDir, icon.source);
+				brandingPath = path.join(BRANDING_ICONS_DIR, category, icon.target);
+				fallbackPath = path.join(ROOT_DIR, vsCodeDir, icon.target);
+			}
 
 			// Determine source icon location
 			let sourceIconPath = null;

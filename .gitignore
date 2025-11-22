@@ -35,3 +35,4 @@ COPILOT-INSTRUCTIONS.md
 .roopik/canvas-*.json
 .roopik/ai-contexts/*.json
 .roopik/session.json
+/branding

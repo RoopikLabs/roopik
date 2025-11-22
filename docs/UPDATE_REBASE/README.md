@@ -5,7 +5,9 @@ This directory contains tools and documentation for maintaining Roopik branding 
 ## 📁 Contents
 
 - **`BRANDING_REFERENCE.md`** - Complete reference of all branding locations
+- **`branding-config.json`** - Centralized branding configuration
 - **`apply-branding.js`** - Automated script to apply branding changes
+- **`generate-icons.js`** - Icon generator (creates all icon formats from one image)
 - **`README.md`** - This file (usage instructions)
 
 ---
@@ -165,6 +167,32 @@ All branding data is stored in **`branding-config.json`** - a single JSON file t
 
 **Edit this file** to customize any branding values - no need to modify the script!
 
+### Icon Generation
+
+Use **`generate-icons.js`** to automatically generate all required icon formats from a single source image:
+
+```bash
+# Install dependencies (one time)
+npm install sharp to-ico
+
+# Generate icons (uses mylogo.png in current directory by default)
+node docs/UPDATE_REBASE/generate-icons.js
+
+# Or specify custom path
+node docs/UPDATE_REBASE/generate-icons.js path/to/your-icon.png
+```
+
+**Features:**
+- Preserves transparency automatically
+- Generates all required sizes and formats
+- Creates `output_icons/` folder in current directory
+- Can be copied and run anywhere (standalone)
+
+**Source image requirements:**
+- Format: PNG or SVG
+- Size: At least 512x512 (1024x1024 recommended)
+- Must have transparent background
+
 ### Branding Directory Structure
 
 The script looks for Roopik icons in a `branding/` directory at the repository root. This keeps your branding assets separate from VS Code core files, making rebasing easier.
@@ -315,7 +343,25 @@ After running the script, verify these items manually:
 
 ## 📝 Creating Icon Files
 
-### Where to Place Icons
+### Quick Method: Use Icon Generator Script
+
+**Easiest way:** Use the built-in icon generator:
+
+```bash
+# 1. Place your source image as mylogo.png in any directory
+# 2. Run the generator
+node docs/UPDATE_REBASE/generate-icons.js
+
+# 3. Copy generated icons from output_icons/ to branding/icons/
+```
+
+The script automatically:
+- Generates all required sizes
+- Preserves transparency
+- Creates ICO files with multiple resolutions
+- Handles all formats (PNG, ICO, SVG)
+
+### Manual Method: Where to Place Icons
 
 **Option 1: Branding Directory (Recommended)**
 Place all icons in `branding/icons/` subdirectories. This keeps branding separate from VS Code core.
@@ -325,7 +371,7 @@ Place icons directly in the target locations (e.g., `resources/win32/roopik.ico`
 
 ### Icon Requirements
 
-If you need to create icon files, here are the requirements:
+If creating icons manually, here are the requirements:
 
 ### Windows Icons
 
