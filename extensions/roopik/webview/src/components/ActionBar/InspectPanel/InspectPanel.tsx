@@ -147,6 +147,20 @@ export function InspectPanel({
 							onOpenInEditor={onOpenInEditor}
 						/>
 						<StylesSection styles={inspectedElement.computedStyles} />
+
+						{/* Pseudo-elements sections */}
+						{inspectedElement.pseudoElements?.before && (
+							<div className="pseudo-element-section">
+								<div className="pseudo-element-header">::before</div>
+								<StylesSection styles={inspectedElement.pseudoElements.before} />
+							</div>
+						)}
+						{inspectedElement.pseudoElements?.after && (
+							<div className="pseudo-element-section">
+								<div className="pseudo-element-header">::after</div>
+								<StylesSection styles={inspectedElement.pseudoElements.after} />
+							</div>
+						)}
 					</div>
 				) : (
 					<div className="inspect-panel-placeholder">

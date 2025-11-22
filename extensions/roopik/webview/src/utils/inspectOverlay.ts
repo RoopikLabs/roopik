@@ -17,6 +17,10 @@ export interface InspectedElement {
 	endColumn?: number;
 	props: Record<string, unknown>;
 	computedStyles: Record<string, string>;
+	pseudoElements?: {
+		before?: Record<string, string> | null;
+		after?: Record<string, string> | null;
+	};
 	tagName: string;
 	className: string;
 	id: string;

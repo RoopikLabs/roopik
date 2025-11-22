@@ -114,6 +114,24 @@
 	gap: 16px;
 }
 
+/* Pseudo-element sections */
+.pseudo-element-section {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--vscode-panel-border);
+}
+
+.pseudo-element-header {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--vscode-symbolIcon-keywordForeground, var(--vscode-foreground));
+	font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+	padding: 4px 0;
+	opacity: 0.8;
+}
+
 /* Placeholder */
 .inspect-panel-placeholder {
 	display: flex;

@@ -369,6 +369,47 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 		return styles;
 	}
 
+	function extractPseudoElementStyles(element, pseudoElement) {
+		try {
+			const computed = window.getComputedStyle(element, pseudoElement);
+			const content = computed.getPropertyValue('content');
+
+			// Check if pseudo-element actually exists (content !== 'none')
+			if (!content || content === 'none' || content === 'normal') {
+				return null;
+			}
+
+			const styles = {};
+
+			// Extract meaningful styles from pseudo-element
+			if (content) styles.content = content;
+			if (computed.display && computed.display !== 'inline') styles.display = computed.display;
+			if (computed.position && computed.position !== 'static') styles.position = computed.position;
+			if (computed.width && computed.width !== 'auto') styles.width = computed.width;
+			if (computed.height && computed.height !== 'auto') styles.height = computed.height;
+			if (computed.backgroundColor && computed.backgroundColor !== 'rgba(0, 0, 0, 0)') styles.backgroundColor = computed.backgroundColor;
+			if (computed.color && computed.color !== 'rgb(0, 0, 0)') styles.color = computed.color;
+			if (computed.fontSize) styles.fontSize = computed.fontSize;
+			if (computed.fontWeight && computed.fontWeight !== '400') styles.fontWeight = computed.fontWeight;
+			if (computed.top && computed.top !== 'auto') styles.top = computed.top;
+			if (computed.right && computed.right !== 'auto') styles.right = computed.right;
+			if (computed.bottom && computed.bottom !== 'auto') styles.bottom = computed.bottom;
+			if (computed.left && computed.left !== 'auto') styles.left = computed.left;
+			if (computed.margin && computed.margin !== '0px') styles.margin = computed.margin;
+			if (computed.padding && computed.padding !== '0px') styles.padding = computed.padding;
+			if (computed.border && computed.border !== '0px none rgb(0, 0, 0)') styles.border = computed.border;
+			if (computed.borderRadius && computed.borderRadius !== '0px') styles.borderRadius = computed.borderRadius;
+			if (computed.opacity && computed.opacity !== '1') styles.opacity = computed.opacity;
+			if (computed.transform && computed.transform !== 'none') styles.transform = computed.transform;
+			if (computed.zIndex && computed.zIndex !== 'auto') styles.zIndex = computed.zIndex;
+
+			return Object.keys(styles).length > 0 ? styles : null;
+		} catch (e) {
+			console.warn('[Roopik Inspect] Failed to extract pseudo-element styles:', e);
+			return null;
+		}
+	}
+
 	function handleInspectClick(e) {
 		if (!inspectMode || !currentInspectElement) return;
 		e.preventDefault();
@@ -377,6 +418,11 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 		const source = findSourceInfo(currentInspectElement);
 		if (source) {
 			const styles = extractComputedStyles(currentInspectElement);
+
+			// Extract pseudo-element styles (only if they exist)
+			const beforeStyles = extractPseudoElementStyles(currentInspectElement, '::before');
+			const afterStyles = extractPseudoElementStyles(currentInspectElement, '::after');
+
 			window.parent.postMessage({
 				type: 'roopik-inspect-element',
 				element: {
@@ -388,6 +434,10 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 					endColumn: source.endColumn,
 					props: {},
 					computedStyles: styles,
+					pseudoElements: {
+						before: beforeStyles,
+						after: afterStyles
+					},
 					tagName: currentInspectElement.tagName,
 					className: currentInspectElement.className,
 					id: currentInspectElement.id,
@@ -395,11 +445,11 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 					parentContext: source.parentContext
 				}
 			}, '*');
-			console.log('[Roopik Inspect] Sent element data with', Object.keys(styles).length, 'styles');
-		}
-	}
 
-	window.addEventListener('keydown', (event) => {
+			const pseudoCount = (beforeStyles ? 1 : 0) + (afterStyles ? 1 : 0);
+			console.log('[Roopik Inspect] Sent element data with', Object.keys(styles).length, 'styles' + (pseudoCount > 0 ? ' and ' + pseudoCount + ' pseudo-elements' : ''));
+		}
+	}	window.addEventListener('keydown', (event) => {
 		const key = event.key ? event.key.toLowerCase() : '';
 		const primaryModifier = event.metaKey || event.ctrlKey;
 		const isDevtoolsCombo = primaryModifier && event.shiftKey && BROWSER_DEVTOOLS_KEYS.includes(key);
