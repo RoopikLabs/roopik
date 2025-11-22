@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { BottomActionBar } from '../components/BottomActionBar';
+import type { InspectedElement } from '../utils/inspectOverlay';
 import './ProjectView.css';
 
 // VS Code API
@@ -29,6 +30,10 @@ function ProjectView() {
 	const [isSelectMode, setIsSelectMode] = useState(false);
 	const [isInspectMode, setIsInspectMode] = useState(false);
 	const [isRectangleMode, setIsRectangleMode] = useState(false);
+	const [inspectedElement, setInspectedElement] = useState<InspectedElement | null>(null);
+
+	// Track if inspect mode has been initialized (to prevent sending message on mount)
+	const inspectModeInitialized = useRef(false);
 
 	// Show debug notification with auto-dismiss
 	const showDebugNotification = () => {
@@ -67,6 +72,31 @@ function ProjectView() {
 			console.error('[Roopik] Failed to send message to iframe:', error);
 		}
 	};
+
+	// Send inspect mode state to iframe
+	const sendInspectModeToIframe = (enabled: boolean) => {
+		try {
+			const iframe = iframeRef.current;
+			if (!iframe || !iframe.contentWindow) {
+				console.log('[Roopik] ❌ Cannot send message - iframe not ready');
+				return;
+			}
+
+			const message = {
+				type: 'roopik-toggle-inspect',
+				enabled: enabled
+			};
+
+			console.log('[Roopik] 📤 Sending inspect mode message:', message);
+			iframe.contentWindow.postMessage(message, '*');
+			console.log('[Roopik] ✅ Sent inspect mode to iframe:', enabled);
+		} catch (error) {
+			console.error('[Roopik] ❌ Failed to send message to iframe:', error);
+		}
+	};
+
+	// Note: Inspect script is injected by Vite plugin, not by webview
+	// The roopikInjectPlugin.js already includes inspect mode functionality
 
 	// Handle iframe load
 	const handleIframeLoad = () => {
@@ -166,12 +196,54 @@ function ProjectView() {
 				case 'roopik-browser-shortcut-blocked':
 					console.log('[Roopik Preview] Blocked browser shortcut:', message.reason, message.detail);
 					break;
+
+				case 'roopik-inspect-element':
+					console.log('[Roopik] Inspect element:', message.element);
+					setInspectedElement(message.element);
+					break;
 			}
 		};
 
 		window.addEventListener('message', handleMessage);
 		return () => window.removeEventListener('message', handleMessage);
 	}, [highlightMode, isRefreshing, navigationHistory, currentHistoryIndex]);
+
+	// Inspect script is already in the iframe via Vite plugin injection
+	// No need to inject from webview side
+
+	// Toggle inspect mode - only send to iframe when user explicitly toggles it
+	useEffect(() => {
+		// Skip on initial mount (when both values are false by default)
+		if (!inspectModeInitialized.current) {
+			inspectModeInitialized.current = true;
+			return;
+		}
+
+		// Only send if iframe is loaded
+		if (!isLoading && iframeRef.current?.contentWindow) {
+			console.log('[Roopik] 🔍 Inspect mode:', isInspectMode ? 'ENABLED' : 'DISABLED');
+			sendInspectModeToIframe(isInspectMode);
+		}
+	}, [isInspectMode, isLoading]);
+
+	// Keyboard shortcuts for inspect mode
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			// Only handle shortcuts when edit mode is active
+			if (!highlightMode) return;
+
+			// Press 'I' to toggle inspect mode
+			if (e.key === 'i' || e.key === 'I') {
+				if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+					e.preventDefault();
+					setIsInspectMode(prev => !prev);
+				}
+			}
+		};
+
+		window.addEventListener('keydown', handleKeyDown);
+		return () => window.removeEventListener('keydown', handleKeyDown);
+	}, [highlightMode]);
 
 	// Navigation handlers
 	const handleBack = () => {
@@ -343,27 +415,63 @@ function ProjectView() {
 					</button>
 				</div>
 
-				{/* Preview Iframe */}
-				<iframe
-					ref={iframeRef}
-					id="preview-frame"
-					className="preview-frame"
-					sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
-					src={window.VITE_SERVER_URL}
-					onLoad={handleIframeLoad}
-					style={{ display: isLoading ? 'none' : 'block' }}
-				/>
-			</div>
-
-			{/* Bottom Action Bar */}
-			{highlightMode && (
-				<BottomActionBar
-					isSelectMode={isSelectMode}
-					isInspectMode={isInspectMode}
-					isRectangleMode={isRectangleMode}
-					onSelectMode={() => setIsSelectMode(!isSelectMode)}
-					onInspectMode={() => setIsInspectMode(!isInspectMode)}
-					onRectangleSelection={() => setIsRectangleMode(!isRectangleMode)}
+			{/* Preview Iframe */}
+			<iframe
+				ref={iframeRef}
+				id="preview-frame"
+				className="preview-frame"
+				sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+				src={window.VITE_SERVER_URL}
+				onLoad={handleIframeLoad}
+				style={{
+					opacity: isLoading ? 0 : 1,
+					visibility: isLoading ? 'hidden' : 'visible',
+					transition: 'opacity 0.3s ease'
+				}}
+			/>
+		</div>		{/* Bottom Action Bar */}
+		{highlightMode && (
+			<BottomActionBar
+				isSelectMode={isSelectMode}
+				isInspectMode={isInspectMode}
+				isRectangleMode={isRectangleMode}
+				inspectedElement={inspectedElement}
+				onSelectMode={() => {
+					const newState = !isSelectMode;
+					setIsSelectMode(newState);
+					if (newState) {
+						setIsInspectMode(false);
+						setIsRectangleMode(false);
+					}
+				}}
+				onInspectMode={() => {
+					const newState = !isInspectMode;
+					setIsInspectMode(newState);
+					if (newState) {
+						setIsSelectMode(false);
+						setIsRectangleMode(false);
+					} else {
+						// Clear inspected element when turning off inspect mode
+						setInspectedElement(null);
+					}
+				}}
+				onRectangleSelection={() => {
+					const newState = !isRectangleMode;
+					setIsRectangleMode(newState);
+					if (newState) {
+						setIsSelectMode(false);
+						setIsInspectMode(false);
+					}
+				}}
+				onOpenInEditor={(file, line) => {
+					// Send message to VS Code extension to open file
+					vscode.postMessage({
+						type: 'click-to-source',
+						file: file,
+						line: line,
+						column: 1
+					});
+					}}
 				/>
 			)}
 		</div>

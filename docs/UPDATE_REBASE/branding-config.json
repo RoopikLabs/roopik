@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "description": "Roopik IDE Branding Configuration - Centralized place for all branding data",
+  "version": "1.0.0",
+
+  "product": {
+    "nameShort": "Roopik",
+    "nameLong": "Roopik",
+    "applicationName": "roopik",
+    "dataFolderName": ".roopik",
+    "win32DirName": "Roopik",
+    "win32NameVersion": "Roopik",
+    "win32RegValueName": "Roopik",
+    "darwinBundleIdentifier": "com.roopik.code",
+    "linuxIconName": "roopik-editor",
+    "urlProtocol": "roopik",
+    "reportIssueUrl": "https://github.com/RoopikLabs/roopik/issues/new"
+  },
+
+  "package": {
+    "name": "roopik-dev",
+    "author": {
+      "name": "Roopik Labs"
+    },
+    "repository": {
+      "url": "https://github.com/RoopikLabs/roopik.git"
+    },
+    "bugs": {
+      "url": "https://github.com/RoopikLabs/roopik/issues"
+    }
+  },
+
+  "windows": {
+    "visualElementsManifest": {
+      "shortDisplayName": "Roopik"
+    },
+    "installer": {
+      "publisher": "Roopik Labs",
+      "publisherUrl": "https://roopik.com",
+      "supportUrl": "https://roopik.com/support",
+      "updatesUrl": "https://roopik.com/updates"
+    }
+  },
+
+  "linux": {
+    "desktop": {
+      "comment": "AI-Native Canvas-First IDE"
+    }
+  },
+
+  "server": {
+    "manifest": {
+      "name": "Roopik",
+      "shortName": "Roopik"
+    }
+  },
+
+  "icons": {
+    "win32": [
+      {
+        "source": "code.ico",
+        "target": "roopik.ico",
+        "description": "Windows main application icon",
+        "required": true,
+        "sizes": "16x16, 32x32, 48x48, 256x256",
+        "format": "ico"
+      },
+      {
+        "source": "code_150x150.png",
+        "target": "roopik_150x150.png",
+        "description": "Windows tile icon (150x150)",
+        "required": true,
+        "sizes": "150x150",
+        "format": "png"
+      },
+      {
+        "source": "code_70x70.png",
+        "target": "roopik_70x70.png",
+        "description": "Windows tile icon (70x70)",
+        "required": true,
+        "sizes": "70x70",
+        "format": "png"
+      }
+    ],
+    "darwin": [
+      {
+        "source": "code.icns",
+        "target": "roopik.icns",
+        "description": "macOS application icon bundle",
+        "required": true,
+        "sizes": "16x16 to 1024x1024",
+        "format": "icns"
+      }
+    ],
+    "linux": [
+      {
+        "source": "code.png",
+        "target": "roopik.png",
+        "description": "Linux desktop icon",
+        "required": true,
+        "sizes": "512x512 recommended",
+        "format": "png"
+      }
+    ],
+    "server": [
+      {
+        "source": "code-192.png",
+        "target": "roopik-192.png",
+        "description": "PWA icon (192x192)",
+        "required": true,
+        "sizes": "192x192",
+        "format": "png"
+      },
+      {
+        "source": "code-512.png",
+        "target": "roopik-512.png",
+        "description": "PWA icon (512x512)",
+        "required": true,
+        "sizes": "512x512",
+        "format": "png"
+      },
+      {
+        "source": "favicon.ico",
+        "target": "roopik-favicon.ico",
+        "description": "Browser favicon",
+        "required": true,
+        "sizes": "16x16 or 32x32",
+        "format": "ico"
+      }
+    ],
+    "workbench": [
+      {
+        "source": "code-icon.svg",
+        "target": "roopik-icon.svg",
+        "description": "Workbench SVG icon (used in welcome pages)",
+        "required": true,
+        "sizes": "scalable",
+        "format": "svg"
+      }
+    ]
+  },
+
+  "textReplacements": [
+    {
+      "file": "resources/win32/VisualElementsManifest.xml",
+      "description": "Windows tile manifest",
+      "replacements": [
+        {
+          "search": "ShortDisplayName=\"Code - OSS\"",
+          "replace": "ShortDisplayName=\"Roopik\""
+        }
+      ]
+    },
+    {
+      "file": "resources/linux/code.desktop",
+      "description": "Linux desktop entry",
+      "replacements": [
+        {
+          "search": "Comment=Code Editing. Redefined.",
+          "replace": "Comment=AI-Native Canvas-First IDE"
+        }
+      ]
+    }
+  ]
+}
+

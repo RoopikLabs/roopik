@@ -48,11 +48,22 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 	}, 2000);
 
 	let debugMode = false;
+	let inspectMode = false;
+	let inspectOverlay = null;
+	let inspectTooltip = null;
+	let currentInspectElement = null;
 
 	window.addEventListener('message', (event) => {
 		const message = event.data;
 		if (message.type === 'roopik-toggle-debug') {
 			debugMode = message.enabled;
+		} else if (message.type === 'roopik-toggle-inspect') {
+			inspectMode = message.enabled;
+			if (inspectMode) {
+				enableInspectMode();
+			} else {
+				disableInspectMode();
+			}
 		} else if (message.type === 'roopik-back') {
 			window.history.back();
 		} else if (message.type === 'roopik-forward') {
@@ -81,14 +92,23 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 		}
 	});
 
-	// Use shorter interval for more responsive URL updates (100ms instead of 500ms)
-	setInterval(notifyUrlChange, 100);
-
-	// Listen for navigation events (instant detection)
+	// Listen for navigation events (instant detection via browser APIs)
+	// No need for polling - these events catch all navigation types
 	window.addEventListener('popstate', notifyUrlChange);
-
-	// Also listen for hashchange for SPAs
 	window.addEventListener('hashchange', notifyUrlChange);
+
+	// For programmatic navigation (like router.push), use MutationObserver on URL
+	// This is more efficient than setInterval polling
+	const urlObserver = new MutationObserver(() => {
+		notifyUrlChange();
+	});
+
+	// Observe document title changes as a proxy for route changes
+	urlObserver.observe(document.querySelector('title') || document.head, {
+		childList: true,
+		subtree: true,
+		characterData: true
+	});
 
 	// Track and notify title changes
 	let lastTitle = document.title || 'Preview Mode';
@@ -112,18 +132,34 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 	// Observe title element changes
 	const titleElement = document.querySelector('title');
 	if (titleElement) {
+		// Observe only the title element itself
 		titleObserver.observe(titleElement, {
 			childList: true,
 			characterData: true,
 			subtree: true
 		});
-	}
+	} else {
+		// If no title element exists yet, observe head ONLY for direct title addition
+		// Use a separate observer that disconnects after finding title
+		const headObserver = new MutationObserver(() => {
+			const title = document.querySelector('title');
+			if (title) {
+				headObserver.disconnect();
+				titleObserver.observe(title, {
+					childList: true,
+					characterData: true,
+					subtree: true
+				});
+				notifyTitleChange();
+			}
+		});
 
-	// Also observe head for title element addition/removal
-	titleObserver.observe(document.head, {
-		childList: true,
-		subtree: true
-	});
+		// Only observe direct children of head, not subtree
+		headObserver.observe(document.head, {
+			childList: true,
+			subtree: false  // Don't observe nested changes - prevents observer loops
+		});
+	}
 
 	// Send initial title (always send, even if same as default)
 	window.parent.postMessage({
@@ -146,7 +182,274 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 		}
 	}
 
-	window.addEventListener('keydown', (event) => {
+	// Forward keyboard events to parent for global shortcuts (ESC, etc.)
+	document.addEventListener('keydown', (e) => {
+		// Forward ESC key and other important shortcuts to parent
+		if (e.key === 'Escape') {
+			window.parent.postMessage({
+				type: 'roopik-keydown',
+				key: e.key,
+				code: e.code,
+				ctrlKey: e.ctrlKey,
+				shiftKey: e.shiftKey,
+				altKey: e.altKey,
+				metaKey: e.metaKey
+			}, '*');
+		}
+	}, true); // Use capture phase
+
+	// Inspect Mode Implementation
+	let inspectHoverTimeout = null;
+
+	function createInspectOverlay() {
+		if (inspectOverlay) return;
+		inspectOverlay = document.createElement('div');
+		inspectOverlay.style.cssText = 'position:absolute;pointer-events:none;border:2px solid #007acc;background:rgba(0,122,204,0.1);z-index:2147483646;box-sizing:border-box;transition:all 0.1s ease;display:none;';
+		document.body.appendChild(inspectOverlay);
+	}
+
+	function createInspectTooltip() {
+		if (inspectTooltip) return;
+		inspectTooltip = document.createElement('div');
+		inspectTooltip.style.cssText = 'position:absolute;pointer-events:none;background:rgba(0,0,0,0.9);color:white;padding:8px 12px;border-radius:4px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:12px;z-index:2147483647;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:none;';
+		document.body.appendChild(inspectTooltip);
+	}
+
+	function enableInspectMode() {
+		createInspectOverlay();
+		createInspectTooltip();
+		document.body.style.cursor = 'crosshair';
+		document.addEventListener('mousemove', handleInspectMouseMove, true);
+		document.addEventListener('click', handleInspectClick, true);
+		document.addEventListener('keydown', handleInspectKeyboard, true);
+		console.log('[Roopik Inspect] 🔍 Mode enabled (Press Esc to exit)');
+	}
+
+	function disableInspectMode() {
+		document.body.style.cursor = '';
+		document.removeEventListener('mousemove', handleInspectMouseMove, true);
+		document.removeEventListener('click', handleInspectClick, true);
+		document.removeEventListener('keydown', handleInspectKeyboard, true);
+		if (inspectHoverTimeout) {
+			clearTimeout(inspectHoverTimeout);
+			inspectHoverTimeout = null;
+		}
+		if (inspectOverlay) inspectOverlay.style.display = 'none';
+		if (inspectTooltip) inspectTooltip.style.display = 'none';
+		currentInspectElement = null;
+		console.log('[Roopik Inspect] Mode disabled');
+	}
+
+	function handleInspectMouseMove(e) {
+		if (!inspectMode) return;
+		const element = e.target;
+		if (element === inspectOverlay || element === inspectTooltip) return;
+
+		currentInspectElement = element;
+		const rect = element.getBoundingClientRect();
+
+		inspectOverlay.style.display = 'block';
+		inspectOverlay.style.top = (rect.top + window.scrollY) + 'px';
+		inspectOverlay.style.left = (rect.left + window.scrollX) + 'px';
+		inspectOverlay.style.width = rect.width + 'px';
+		inspectOverlay.style.height = rect.height + 'px';
+
+		const source = findSourceInfo(element);
+		const componentName = source ? source.componentName : element.tagName;
+		const fileName = source ? source.fileName.split('/').pop() : 'Unknown';
+
+		inspectTooltip.textContent = componentName + ' · ' + fileName;
+		inspectTooltip.style.display = 'block';
+
+		const tooltipTop = rect.top + window.scrollY - 30;
+		inspectTooltip.style.top = (tooltipTop > 10 ? tooltipTop : rect.bottom + window.scrollY + 5) + 'px';
+		inspectTooltip.style.left = (rect.left + window.scrollX) + 'px';
+	}
+
+	function handleInspectKeyboard(e) {
+		// Press Escape to exit inspect mode
+		if (e.key === 'Escape' && inspectMode) {
+			e.preventDefault();
+			e.stopPropagation();
+			window.parent.postMessage({ type: 'roopik-toggle-inspect', enabled: false }, '*');
+		}
+	}
+
+	function extractComputedStyles(element) {
+		const computed = window.getComputedStyle(element);
+		const styles = {};
+
+		// Layout & Box Model
+		if (computed.display && computed.display !== 'inline') styles.display = computed.display;
+		if (computed.position && computed.position !== 'static') styles.position = computed.position;
+		if (computed.width) styles.width = computed.width;
+		if (computed.height) styles.height = computed.height;
+		if (computed.minWidth && computed.minWidth !== '0px') styles.minWidth = computed.minWidth;
+		if (computed.minHeight && computed.minHeight !== '0px') styles.minHeight = computed.minHeight;
+		if (computed.maxWidth && computed.maxWidth !== 'none') styles.maxWidth = computed.maxWidth;
+		if (computed.maxHeight && computed.maxHeight !== 'none') styles.maxHeight = computed.maxHeight;
+
+		// Spacing
+		if (computed.padding && computed.padding !== '0px') styles.padding = computed.padding;
+		if (computed.margin && computed.margin !== '0px') styles.margin = computed.margin;
+
+		// Flexbox
+		if (computed.display && computed.display.includes('flex')) {
+			if (computed.flexDirection && computed.flexDirection !== 'row') styles.flexDirection = computed.flexDirection;
+			if (computed.justifyContent && computed.justifyContent !== 'normal') styles.justifyContent = computed.justifyContent;
+			if (computed.alignItems && computed.alignItems !== 'normal') styles.alignItems = computed.alignItems;
+			if (computed.gap && computed.gap !== '0px') styles.gap = computed.gap;
+		}
+
+		// Grid
+		if (computed.display && computed.display.includes('grid')) {
+			if (computed.gridTemplateColumns && computed.gridTemplateColumns !== 'none') styles.gridTemplateColumns = computed.gridTemplateColumns;
+			if (computed.gridTemplateRows && computed.gridTemplateRows !== 'none') styles.gridTemplateRows = computed.gridTemplateRows;
+			if (computed.gap && computed.gap !== '0px') styles.gap = computed.gap;
+		}
+
+		// Colors
+		if (computed.color) styles.color = computed.color;
+
+		// Background - handle both solid colors and gradients
+		const bgColor = computed.backgroundColor;
+		const bgImage = computed.backgroundImage;
+
+		if (bgImage && bgImage !== 'none') {
+			styles.backgroundImage = bgImage;
+		}
+		if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)') {
+			styles.backgroundColor = bgColor;
+		}
+		if (computed.backgroundSize && computed.backgroundSize !== 'auto') styles.backgroundSize = computed.backgroundSize;
+		if (computed.backgroundPosition && computed.backgroundPosition !== '0% 0%') styles.backgroundPosition = computed.backgroundPosition;
+		if (computed.backgroundRepeat && computed.backgroundRepeat !== 'repeat') styles.backgroundRepeat = computed.backgroundRepeat;
+
+		// Border
+		if (computed.border && computed.border !== '0px none rgb(0, 0, 0)') {
+			styles.border = computed.border;
+		} else {
+			if (computed.borderWidth && computed.borderWidth !== '0px') styles.borderWidth = computed.borderWidth;
+			if (computed.borderStyle && computed.borderStyle !== 'none') styles.borderStyle = computed.borderStyle;
+			if (computed.borderColor) styles.borderColor = computed.borderColor;
+		}
+		if (computed.borderRadius && computed.borderRadius !== '0px') styles.borderRadius = computed.borderRadius;
+
+		// Typography
+		if (computed.fontSize) styles.fontSize = computed.fontSize;
+		if (computed.fontWeight && computed.fontWeight !== '400') styles.fontWeight = computed.fontWeight;
+		if (computed.fontFamily) styles.fontFamily = computed.fontFamily;
+		if (computed.lineHeight && computed.lineHeight !== 'normal') styles.lineHeight = computed.lineHeight;
+		if (computed.textAlign && computed.textAlign !== 'start') styles.textAlign = computed.textAlign;
+		if (computed.textTransform && computed.textTransform !== 'none') styles.textTransform = computed.textTransform;
+		if (computed.letterSpacing && computed.letterSpacing !== 'normal') styles.letterSpacing = computed.letterSpacing;
+
+		// Effects
+		if (computed.opacity && computed.opacity !== '1') styles.opacity = computed.opacity;
+		if (computed.boxShadow && computed.boxShadow !== 'none') styles.boxShadow = computed.boxShadow;
+		if (computed.textShadow && computed.textShadow !== 'none') styles.textShadow = computed.textShadow;
+		if (computed.transform && computed.transform !== 'none') styles.transform = computed.transform;
+		if (computed.filter && computed.filter !== 'none') styles.filter = computed.filter;
+
+		// Animation
+		if (computed.animation && computed.animation !== 'none') styles.animation = computed.animation;
+		if (computed.transition && computed.transition !== 'all 0s ease 0s') styles.transition = computed.transition;
+
+		// Overflow
+		if (computed.overflow && computed.overflow !== 'visible') styles.overflow = computed.overflow;
+		if (computed.overflowX && computed.overflowX !== 'visible') styles.overflowX = computed.overflowX;
+		if (computed.overflowY && computed.overflowY !== 'visible') styles.overflowY = computed.overflowY;
+
+		// Z-index
+		if (computed.zIndex && computed.zIndex !== 'auto') styles.zIndex = computed.zIndex;
+
+		// Cursor
+		if (computed.cursor && computed.cursor !== 'auto') styles.cursor = computed.cursor;
+
+		return styles;
+	}
+
+	function extractPseudoElementStyles(element, pseudoElement) {
+		try {
+			const computed = window.getComputedStyle(element, pseudoElement);
+			const content = computed.getPropertyValue('content');
+
+			// Check if pseudo-element actually exists (content !== 'none')
+			if (!content || content === 'none' || content === 'normal') {
+				return null;
+			}
+
+			const styles = {};
+
+			// Extract meaningful styles from pseudo-element
+			if (content) styles.content = content;
+			if (computed.display && computed.display !== 'inline') styles.display = computed.display;
+			if (computed.position && computed.position !== 'static') styles.position = computed.position;
+			if (computed.width && computed.width !== 'auto') styles.width = computed.width;
+			if (computed.height && computed.height !== 'auto') styles.height = computed.height;
+			if (computed.backgroundColor && computed.backgroundColor !== 'rgba(0, 0, 0, 0)') styles.backgroundColor = computed.backgroundColor;
+			if (computed.color && computed.color !== 'rgb(0, 0, 0)') styles.color = computed.color;
+			if (computed.fontSize) styles.fontSize = computed.fontSize;
+			if (computed.fontWeight && computed.fontWeight !== '400') styles.fontWeight = computed.fontWeight;
+			if (computed.top && computed.top !== 'auto') styles.top = computed.top;
+			if (computed.right && computed.right !== 'auto') styles.right = computed.right;
+			if (computed.bottom && computed.bottom !== 'auto') styles.bottom = computed.bottom;
+			if (computed.left && computed.left !== 'auto') styles.left = computed.left;
+			if (computed.margin && computed.margin !== '0px') styles.margin = computed.margin;
+			if (computed.padding && computed.padding !== '0px') styles.padding = computed.padding;
+			if (computed.border && computed.border !== '0px none rgb(0, 0, 0)') styles.border = computed.border;
+			if (computed.borderRadius && computed.borderRadius !== '0px') styles.borderRadius = computed.borderRadius;
+			if (computed.opacity && computed.opacity !== '1') styles.opacity = computed.opacity;
+			if (computed.transform && computed.transform !== 'none') styles.transform = computed.transform;
+			if (computed.zIndex && computed.zIndex !== 'auto') styles.zIndex = computed.zIndex;
+
+			return Object.keys(styles).length > 0 ? styles : null;
+		} catch (e) {
+			console.warn('[Roopik Inspect] Failed to extract pseudo-element styles:', e);
+			return null;
+		}
+	}
+
+	function handleInspectClick(e) {
+		if (!inspectMode || !currentInspectElement) return;
+		e.preventDefault();
+		e.stopPropagation();
+
+		const source = findSourceInfo(currentInspectElement);
+		if (source) {
+			const styles = extractComputedStyles(currentInspectElement);
+
+			// Extract pseudo-element styles (only if they exist)
+			const beforeStyles = extractPseudoElementStyles(currentInspectElement, '::before');
+			const afterStyles = extractPseudoElementStyles(currentInspectElement, '::after');
+
+			window.parent.postMessage({
+				type: 'roopik-inspect-element',
+				element: {
+					componentName: source.componentName,
+					file: source.fileName,
+					line: source.lineNumber,
+					column: source.columnNumber || 0,
+					endLine: source.endLine,
+					endColumn: source.endColumn,
+					props: {},
+					computedStyles: styles,
+					pseudoElements: {
+						before: beforeStyles,
+						after: afterStyles
+					},
+					tagName: currentInspectElement.tagName,
+					className: currentInspectElement.className,
+					id: currentInspectElement.id,
+					textContent: currentInspectElement.textContent ? currentInspectElement.textContent.substring(0, 50) : '',
+					parentContext: source.parentContext
+				}
+			}, '*');
+
+			const pseudoCount = (beforeStyles ? 1 : 0) + (afterStyles ? 1 : 0);
+			console.log('[Roopik Inspect] Sent element data with', Object.keys(styles).length, 'styles' + (pseudoCount > 0 ? ' and ' + pseudoCount + ' pseudo-elements' : ''));
+		}
+	}	window.addEventListener('keydown', (event) => {
 		const key = event.key ? event.key.toLowerCase() : '';
 		const primaryModifier = event.metaKey || event.ctrlKey;
 		const isDevtoolsCombo = primaryModifier && event.shiftKey && BROWSER_DEVTOOLS_KEYS.includes(key);

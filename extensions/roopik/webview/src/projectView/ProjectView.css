@@ -209,28 +209,9 @@
 	flex: 1;
 	position: relative;
 	overflow: hidden;
-	isolation: isolate;
 	padding: 0 10px;
 	/* Left and Right padding only */
 	background: transparent;
-}
-
-/* Glass Shine Effect */
-.preview-container::after {
-	content: '';
-	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	background: linear-gradient(120deg,
-			transparent 30%,
-			rgba(255, 255, 255, 0.05) 40%,
-			rgba(255, 255, 255, 0.01) 50%,
-			transparent 50%);
-	pointer-events: none;
-	z-index: 10;
-	opacity: 0.7;
 }
 
 .preview-frame {

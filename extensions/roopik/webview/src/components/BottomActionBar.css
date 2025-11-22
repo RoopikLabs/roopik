@@ -435,6 +435,74 @@
 }
 
 /* ========================================
+   Inspected Element Details
+   ======================================== */
+
+.inspected-element-details {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.property-section {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.property-section-title {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	color: var(--vscode-descriptionForeground);
+	padding-bottom: 4px;
+	border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.property-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px;
+	padding: 6px 0;
+	font-size: 12px;
+}
+
+.property-label {
+	color: var(--vscode-descriptionForeground);
+	flex-shrink: 0;
+	min-width: 80px;
+}
+
+.property-value {
+	color: var(--vscode-editor-foreground);
+	text-align: right;
+	word-break: break-word;
+	flex: 1;
+}
+
+.open-in-editor-btn {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border: none;
+	border-radius: 4px;
+	padding: 4px 8px;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: background 0.15s ease;
+}
+
+.open-in-editor-btn:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.open-in-editor-btn:active {
+	transform: scale(0.95);
+}
+
+/* ========================================
    Responsive Adjustments
    ======================================== */
 

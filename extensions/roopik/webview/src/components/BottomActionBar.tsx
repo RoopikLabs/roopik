@@ -4,6 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useState, useRef, useEffect } from 'react';
+import type { InspectedElement } from '../utils/inspectOverlay';
+import { InspectPanel } from './ActionBar/InspectPanel/InspectPanel';
 import './BottomActionBar.css';
 
 interface BottomActionBarProps {
@@ -16,6 +18,9 @@ interface BottomActionBarProps {
 	onTextEdit?: () => void;
 	onImageReplace?: () => void;
 	onColorPicker?: () => void;
+	// Inspection
+	inspectedElement?: InspectedElement | null;
+	onOpenInEditor?: (file: string, line: number) => void;
 	// State
 	isSelectMode?: boolean;
 	isInspectMode?: boolean;
@@ -38,24 +43,23 @@ export function BottomActionBar({
 	onInspectMode,
 	onRectangleSelection,
 	onAIChat,
-	onActionsPanel,
 	onTextEdit,
 	onImageReplace,
 	onColorPicker,
+	inspectedElement,
+	onOpenInEditor,
 	isSelectMode = false,
 	isInspectMode = false,
 	isRectangleMode = false,
 	selectedElementType = null
 }: BottomActionBarProps) {
 	const [isAIChatOpen, setIsAIChatOpen] = useState(false);
-	const [isActionsPanelOpen, setIsActionsPanelOpen] = useState(false);
 	const [aiInputValue, setAIInputValue] = useState('');
 	const [showCommands, setShowCommands] = useState(false);
 	const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
 	const [viewMode, setViewMode] = useState<'preview' | 'code'>('preview');
 	const aiInputRef = useRef<HTMLInputElement>(null);
 	const aiChatOverlayRef = useRef<HTMLDivElement>(null);
-	const actionsPanelRef = useRef<HTMLDivElement>(null);
 
 	// Filter commands based on input
 	const filteredCommands = aiInputValue.startsWith('/')
@@ -66,11 +70,6 @@ export function BottomActionBar({
 	const handleAIChat = () => {
 		const newState = !isAIChatOpen;
 		setIsAIChatOpen(newState);
-
-		// Close properties panel if opening AI chat
-		if (newState && isActionsPanelOpen) {
-			setIsActionsPanelOpen(false);
-		}
 
 		onAIChat?.();
 
@@ -125,19 +124,6 @@ export function BottomActionBar({
 		}
 	};
 
-	// Handle actions panel toggle
-	const handleActionsPanel = () => {
-		const newState = !isActionsPanelOpen;
-		setIsActionsPanelOpen(newState);
-
-		// Close AI chat if opening properties panel
-		if (newState && isAIChatOpen) {
-			setIsAIChatOpen(false);
-		}
-
-		onActionsPanel?.();
-	};
-
 	// Handle view mode toggle (Preview/Code)
 	const handleViewModeToggle = () => {
 		const newMode = viewMode === 'preview' ? 'code' : 'preview';
@@ -146,19 +132,51 @@ export function BottomActionBar({
 		console.log('View mode toggled to:', newMode);
 	};
 
-	// Close overlay when clicking outside (no longer needed without backdrop)
-	// Kept for future use if needed
-
-	// Close AI chat and properties panel on Escape key or click outside
+	// Global keyboard shortcuts - ESC key handler
 	useEffect(() => {
 		const handleEscape = (e: KeyboardEvent) => {
 			if (e.key === 'Escape') {
+				console.log('[BottomActionBar] ESC key pressed', {
+					isInspectMode,
+					hasInspectedElement: !!inspectedElement,
+					isAIChatOpen,
+					source: e.target === document ? 'parent' : 'iframe'
+				});
+
+				// Priority 1: Close AI chat if open
 				if (isAIChatOpen) {
+					console.log('[BottomActionBar] Closing AI chat');
+					e.preventDefault();
+					e.stopPropagation();
 					setIsAIChatOpen(false);
+					return;
 				}
-				if (isActionsPanelOpen) {
-					setIsActionsPanelOpen(false);
+
+				// Priority 2: Close properties panel if open (keeps inspect mode active)
+				if (isInspectMode && inspectedElement) {
+					console.log('[BottomActionBar] Closing properties panel');
+					e.preventDefault();
+					e.stopPropagation();
+					onInspectMode?.(); // This clears the inspected element but keeps mode active
+					return;
 				}
+
+				// Priority 3: Exit inspect mode if active (no element selected yet)
+				// COMMENTED: Currently we want ESC to only close properties panel, not exit inspect mode
+				// Uncomment this if you want ESC to also deactivate inspect mode when no element is selected
+				// if (isInspectMode && !inspectedElement) {
+				// 	console.log('[BottomActionBar] Exiting inspect mode');
+				// 	e.preventDefault();
+				// 	e.stopPropagation();
+				// 	onInspectMode?.();
+				// 	return;
+				// }
+
+				// TODO: Add more ESC handlers here:
+				// - Exit inspect mode (see Priority 3 above)
+				// - Clear selection in select mode
+				// - Cancel rectangle drag selection
+				// - Close other action panels
 			}
 		};
 
@@ -171,24 +189,33 @@ export function BottomActionBar({
 					setIsAIChatOpen(false);
 				}
 			}
+		};
 
-			// Close properties panel if clicking outside
-			if (isActionsPanelOpen && actionsPanelRef.current && !actionsPanelRef.current.contains(e.target as Node)) {
-				if (!target.closest('[title="Properties (⌘E)"]')) {
-					setIsActionsPanelOpen(false);
-				}
+		// Handle keyboard events from iframe via postMessage
+		const handleIframeMessage = (event: MessageEvent) => {
+			if (event.data?.type === 'roopik-keydown') {
+				// Create a synthetic KeyboardEvent-like object
+				const syntheticEvent = {
+					key: event.data.key,
+					preventDefault: () => {},
+					stopPropagation: () => {},
+					target: null // Indicates it came from iframe
+				} as unknown as KeyboardEvent;
+				handleEscape(syntheticEvent);
 			}
 		};
 
-		window.addEventListener('keydown', handleEscape);
+		// Listen on parent document (capture phase)
+		document.addEventListener('keydown', handleEscape, true);
 		window.addEventListener('mousedown', handleClickOutside);
-		return () => {
-			window.removeEventListener('keydown', handleEscape);
-			window.removeEventListener('mousedown', handleClickOutside);
-		};
-	}, [isAIChatOpen, isActionsPanelOpen]);
+		window.addEventListener('message', handleIframeMessage);
 
-	return (
+		return () => {
+			document.removeEventListener('keydown', handleEscape, true);
+			window.removeEventListener('mousedown', handleClickOutside);
+			window.removeEventListener('message', handleIframeMessage);
+		};
+	}, [isAIChatOpen, isInspectMode, inspectedElement, onInspectMode]);	return (
 		<>
 			{/* Floating Bottom Action Bar */}
 			<div className="bottom-action-bar">
@@ -347,18 +374,18 @@ export function BottomActionBar({
 						</svg>
 					</button>
 
-					<div className="action-bar-divider" />
+				<div className="action-bar-divider" />
 
-					{/* Properties Panel */}
-					<button
-						className={`action-btn ${isActionsPanelOpen ? 'active' : ''}`}
-						onClick={handleActionsPanel}
-						title="Properties (⌘E)"
-					>
-						<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-							<circle cx="10" cy="4" r="1.5" fill="currentColor" />
-							<circle cx="10" cy="10" r="1.5" fill="currentColor" />
-							<circle cx="10" cy="16" r="1.5" fill="currentColor" />
+				{/* Placeholder - Reserved for future feature */}
+				<button
+					className="action-btn"
+					onClick={() => console.log('Placeholder button - feature coming soon')}
+					title="Placeholder (Coming Soon)"
+				>
+					<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+						<circle cx="10" cy="4" r="1.5" fill="currentColor" />
+						<circle cx="10" cy="10" r="1.5" fill="currentColor" />
+						<circle cx="10" cy="16" r="1.5" fill="currentColor" />
 							<circle cx="4" cy="10" r="1.5" fill="currentColor" />
 							<circle cx="16" cy="10" r="1.5" fill="currentColor" />
 						</svg>
@@ -451,40 +478,22 @@ export function BottomActionBar({
 								))}
 							</div>
 						)}
-					</div>
 				</div>
-			)}
+			</div>
+		)}
 
-			{/* Actions/Properties Panel */}
-			{isActionsPanelOpen && (
-				<div className="actions-panel" ref={actionsPanelRef}>
-					<div className="actions-panel-header">
-						<div className="actions-panel-title">
-							<svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-								<circle cx="10" cy="4" r="1.5" fill="currentColor" />
-								<circle cx="10" cy="10" r="1.5" fill="currentColor" />
-								<circle cx="10" cy="16" r="1.5" fill="currentColor" />
-							</svg>
-							<span>Properties</span>
-						</div>
-						<button className="actions-panel-close" onClick={handleActionsPanel} aria-label="Close Properties Panel">
-							<svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-								<path d="M5 5L15 15M15 5L5 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-							</svg>
-						</button>
-					</div>
-					<div className="actions-panel-content">
-						<div className="actions-panel-placeholder">
-							<svg width="48" height="48" viewBox="0 0 20 20" fill="none" opacity="0.3">
-								<circle cx="10" cy="4" r="1.5" fill="currentColor" />
-								<circle cx="10" cy="10" r="1.5" fill="currentColor" />
-								<circle cx="10" cy="16" r="1.5" fill="currentColor" />
-							</svg>
-							<p>Select an element to see available properties and actions</p>
-						</div>
-					</div>
-				</div>
-			)}
-		</>
-	);
+		{/* Properties Panel - Only shown when inspect mode is active with inspected element */}
+		{isInspectMode && inspectedElement && (
+			<InspectPanel
+				inspectedElement={inspectedElement}
+				isInspectMode={isInspectMode}
+				onOpenInEditor={(file, line) => onOpenInEditor?.(file, line)}
+				onClose={() => {
+					// Close the properties panel by stopping inspect mode
+					onInspectMode?.();
+				}}
+			/>
+		)}
+	</>
+);
 }
