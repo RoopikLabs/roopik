@@ -40,3 +40,36 @@ Contains the actual React application that runs inside the VS Code webviews.
 2.  **Panel** loads the React App (`webview/`).
 3.  **React App** communicates back to the Panel via `vscode.postMessage()`.
 4.  **Panel** may use `devServer` to start Vite or `componentIsolation` to prepare a component for rendering.
+
+## 📨 Communication Pattern: postMessage
+
+**All cross-context communication uses `postMessage` for security and consistency.**
+
+### Why postMessage?
+*   **Security**: Browser enforces same-origin policy. Cross-origin iframe access (e.g., `iframe.contentDocument`) throws `SecurityError`.
+*   **Standard**: Works across all contexts: VS Code ↔ Webview, Webview ↔ Iframe, Parent ↔ Child frames.
+*   **Event-Driven**: Clean, decoupled architecture without direct references.
+
+### How It Works
+```javascript
+// Sender (iframe/child):
+window.parent.postMessage({ type: 'roopik-action', data: {...} }, '*');
+
+// Receiver (parent/webview):
+window.addEventListener('message', (event) => {
+  if (event.data.type === 'roopik-action') {
+    // Handle action
+  }
+});
+```
+
+### Key Communication Channels
+1.  **VS Code ↔ Webview**: `vscode.postMessage()` / `window.addEventListener('message')`
+2.  **Webview ↔ Preview Iframe**: `window.parent.postMessage()` / `window.addEventListener('message')`
+3.  **Inject Script → Webview**: Forwards keyboard events (ESC), inspect data, navigation changes
+
+### Best Practices
+*   ✅ **Always use postMessage** for cross-context communication
+*   ✅ **Never access** `iframe.contentDocument` or `iframe.contentWindow.document` (causes SecurityError)
+*   ✅ **Use capture phase** (`addEventListener(event, handler, true)`) to intercept events before child components
+*   ✅ **Type-safe message objects**: Define message types (e.g., `'roopik-keydown'`, `'roopik-inspect'`) for clarity

@@ -32,6 +32,9 @@ function ProjectView() {
 	const [isRectangleMode, setIsRectangleMode] = useState(false);
 	const [inspectedElement, setInspectedElement] = useState<InspectedElement | null>(null);
 
+	// Track if inspect mode has been initialized (to prevent sending message on mount)
+	const inspectModeInitialized = useRef(false);
+
 	// Show debug notification with auto-dismiss
 	const showDebugNotification = () => {
 		setShowNotification(true);
@@ -208,14 +211,18 @@ function ProjectView() {
 	// Inspect script is already in the iframe via Vite plugin injection
 	// No need to inject from webview side
 
-	// Toggle inspect mode
+	// Toggle inspect mode - only send to iframe when user explicitly toggles it
 	useEffect(() => {
-		if (!isLoading) {
+		// Skip on initial mount (when both values are false by default)
+		if (!inspectModeInitialized.current) {
+			inspectModeInitialized.current = true;
+			return;
+		}
+
+		// Only send if iframe is loaded
+		if (!isLoading && iframeRef.current?.contentWindow) {
 			console.log('[Roopik] 🔍 Inspect mode:', isInspectMode ? 'ENABLED' : 'DISABLED');
 			sendInspectModeToIframe(isInspectMode);
-			if (!isInspectMode) {
-				setInspectedElement(null);
-			}
 		}
 	}, [isInspectMode, isLoading]);
 
@@ -408,19 +415,21 @@ function ProjectView() {
 					</button>
 				</div>
 
-				{/* Preview Iframe */}
-				<iframe
-					ref={iframeRef}
-					id="preview-frame"
-					className="preview-frame"
-					sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
-					src={window.VITE_SERVER_URL}
-					onLoad={handleIframeLoad}
-					style={{ display: isLoading ? 'none' : 'block' }}
-				/>
-			</div>
-
-		{/* Bottom Action Bar */}
+			{/* Preview Iframe */}
+			<iframe
+				ref={iframeRef}
+				id="preview-frame"
+				className="preview-frame"
+				sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+				src={window.VITE_SERVER_URL}
+				onLoad={handleIframeLoad}
+				style={{
+					opacity: isLoading ? 0 : 1,
+					visibility: isLoading ? 'hidden' : 'visible',
+					transition: 'opacity 0.3s ease'
+				}}
+			/>
+		</div>		{/* Bottom Action Bar */}
 		{highlightMode && (
 			<BottomActionBar
 				isSelectMode={isSelectMode}
@@ -441,6 +450,9 @@ function ProjectView() {
 					if (newState) {
 						setIsSelectMode(false);
 						setIsRectangleMode(false);
+					} else {
+						// Clear inspected element when turning off inspect mode
+						setInspectedElement(null);
 					}
 				}}
 				onRectangleSelection={() => {

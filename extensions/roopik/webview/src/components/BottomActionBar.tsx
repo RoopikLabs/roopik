@@ -132,38 +132,90 @@ export function BottomActionBar({
 		console.log('View mode toggled to:', newMode);
 	};
 
-	// Close AI chat and properties panel on Escape key or click outside
+	// Global keyboard shortcuts - ESC key handler
 	useEffect(() => {
 		const handleEscape = (e: KeyboardEvent) => {
 			if (e.key === 'Escape') {
+				console.log('[BottomActionBar] ESC key pressed', {
+					isInspectMode,
+					hasInspectedElement: !!inspectedElement,
+					isAIChatOpen,
+					source: e.target === document ? 'parent' : 'iframe'
+				});
+
+				// Priority 1: Close AI chat if open
 				if (isAIChatOpen) {
+					console.log('[BottomActionBar] Closing AI chat');
+					e.preventDefault();
+					e.stopPropagation();
 					setIsAIChatOpen(false);
+					return;
 				}
-				// Close properties panel by stopping inspect mode
+
+				// Priority 2: Close properties panel if open (keeps inspect mode active)
 				if (isInspectMode && inspectedElement) {
-					onInspectMode?.();
+					console.log('[BottomActionBar] Closing properties panel');
+					e.preventDefault();
+					e.stopPropagation();
+					onInspectMode?.(); // This clears the inspected element but keeps mode active
+					return;
 				}
+
+				// Priority 3: Exit inspect mode if active (no element selected yet)
+				// COMMENTED: Currently we want ESC to only close properties panel, not exit inspect mode
+				// Uncomment this if you want ESC to also deactivate inspect mode when no element is selected
+				// if (isInspectMode && !inspectedElement) {
+				// 	console.log('[BottomActionBar] Exiting inspect mode');
+				// 	e.preventDefault();
+				// 	e.stopPropagation();
+				// 	onInspectMode?.();
+				// 	return;
+				// }
+
+				// TODO: Add more ESC handlers here:
+				// - Exit inspect mode (see Priority 3 above)
+				// - Clear selection in select mode
+				// - Cancel rectangle drag selection
+				// - Close other action panels
 			}
 		};
 
 		const handleClickOutside = (e: MouseEvent) => {
 			const target = e.target as HTMLElement;
 
-		// Close AI chat if clicking outside
-		if (isAIChatOpen && aiChatOverlayRef.current && !aiChatOverlayRef.current.contains(e.target as Node)) {
-			if (!target.closest('[title="AI Assistant (⌘K)"]')) {
-				setIsAIChatOpen(false);
+			// Close AI chat if clicking outside
+			if (isAIChatOpen && aiChatOverlayRef.current && !aiChatOverlayRef.current.contains(e.target as Node)) {
+				if (!target.closest('[title="AI Assistant (⌘K)"]')) {
+					setIsAIChatOpen(false);
+				}
 			}
-		}
-	};		window.addEventListener('keydown', handleEscape);
-		window.addEventListener('mousedown', handleClickOutside);
-		return () => {
-			window.removeEventListener('keydown', handleEscape);
-			window.removeEventListener('mousedown', handleClickOutside);
 		};
-	}, [isAIChatOpen, isInspectMode, inspectedElement, onInspectMode]);
 
-	return (
+		// Handle keyboard events from iframe via postMessage
+		const handleIframeMessage = (event: MessageEvent) => {
+			if (event.data?.type === 'roopik-keydown') {
+				// Create a synthetic KeyboardEvent-like object
+				const syntheticEvent = {
+					key: event.data.key,
+					preventDefault: () => {},
+					stopPropagation: () => {},
+					target: null // Indicates it came from iframe
+				} as unknown as KeyboardEvent;
+				handleEscape(syntheticEvent);
+			}
+		};
+
+		// Listen on parent document (capture phase)
+		document.addEventListener('keydown', handleEscape, true);
+		window.addEventListener('mousedown', handleClickOutside);
+		window.addEventListener('message', handleIframeMessage);
+
+		return () => {
+			document.removeEventListener('keydown', handleEscape, true);
+			window.removeEventListener('mousedown', handleClickOutside);
+			window.removeEventListener('message', handleIframeMessage);
+		};
+	}, [isAIChatOpen, isInspectMode, inspectedElement, onInspectMode]);	return (
 		<>
 			{/* Floating Bottom Action Bar */}
 			<div className="bottom-action-bar">

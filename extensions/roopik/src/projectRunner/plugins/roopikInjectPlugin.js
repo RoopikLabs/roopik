@@ -92,14 +92,23 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 		}
 	});
 
-	// Use shorter interval for more responsive URL updates (100ms instead of 500ms)
-	setInterval(notifyUrlChange, 100);
-
-	// Listen for navigation events (instant detection)
+	// Listen for navigation events (instant detection via browser APIs)
+	// No need for polling - these events catch all navigation types
 	window.addEventListener('popstate', notifyUrlChange);
-
-	// Also listen for hashchange for SPAs
 	window.addEventListener('hashchange', notifyUrlChange);
+
+	// For programmatic navigation (like router.push), use MutationObserver on URL
+	// This is more efficient than setInterval polling
+	const urlObserver = new MutationObserver(() => {
+		notifyUrlChange();
+	});
+
+	// Observe document title changes as a proxy for route changes
+	urlObserver.observe(document.querySelector('title') || document.head, {
+		childList: true,
+		subtree: true,
+		characterData: true
+	});
 
 	// Track and notify title changes
 	let lastTitle = document.title || 'Preview Mode';
@@ -123,18 +132,34 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 	// Observe title element changes
 	const titleElement = document.querySelector('title');
 	if (titleElement) {
+		// Observe only the title element itself
 		titleObserver.observe(titleElement, {
 			childList: true,
 			characterData: true,
 			subtree: true
 		});
-	}
+	} else {
+		// If no title element exists yet, observe head ONLY for direct title addition
+		// Use a separate observer that disconnects after finding title
+		const headObserver = new MutationObserver(() => {
+			const title = document.querySelector('title');
+			if (title) {
+				headObserver.disconnect();
+				titleObserver.observe(title, {
+					childList: true,
+					characterData: true,
+					subtree: true
+				});
+				notifyTitleChange();
+			}
+		});
 
-	// Also observe head for title element addition/removal
-	titleObserver.observe(document.head, {
-		childList: true,
-		subtree: true
-	});
+		// Only observe direct children of head, not subtree
+		headObserver.observe(document.head, {
+			childList: true,
+			subtree: false  // Don't observe nested changes - prevents observer loops
+		});
+	}
 
 	// Send initial title (always send, even if same as default)
 	window.parent.postMessage({
@@ -156,6 +181,22 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 			console.warn('[Roopik] Failed to notify parent about blocked shortcut:', err);
 		}
 	}
+
+	// Forward keyboard events to parent for global shortcuts (ESC, etc.)
+	document.addEventListener('keydown', (e) => {
+		// Forward ESC key and other important shortcuts to parent
+		if (e.key === 'Escape') {
+			window.parent.postMessage({
+				type: 'roopik-keydown',
+				key: e.key,
+				code: e.code,
+				ctrlKey: e.ctrlKey,
+				shiftKey: e.shiftKey,
+				altKey: e.altKey,
+				metaKey: e.metaKey
+			}, '*');
+		}
+	}, true); // Use capture phase
 
 	// Inspect Mode Implementation
 	let inspectHoverTimeout = null;
