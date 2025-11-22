@@ -39,7 +39,7 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 				<div style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1e1e1e;color:#fff;font-family:system-ui,-apple-system,sans-serif;">
 					<div style="text-align:center;max-width:500px;padding:40px;">
 						<h1 style="color:#f48771;margin:0 0 20px 0;">🔒 Access Denied</h1>
-						<p style="color:#ccc;line-height:1.6;">This Roopik development server can only be viewed inside the Roopik IDE.</p>
+						<p style="color:#ccc;line-height:1.6;">This Roopik development server can only be viewed inside the IDE.</p>
 						<p style="color:#888;font-size:14px;margin-top:20px;">If you're seeing this in the IDE, please reload the preview.</p>
 					</div>
 				</div>

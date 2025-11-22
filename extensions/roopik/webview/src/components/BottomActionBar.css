@@ -14,18 +14,16 @@
 	left: 50%;
 	transform: translateX(-50%);
 	height: 56px;
-	background: rgba(30, 30, 30, 0.7);
-	/* Glassmorphic translucent */
-	border: 1px solid rgba(255, 255, 255, 0.1);
+	background: var(--vscode-editorWidget-background);
+	/* Theme-aware background */
+	border: 1px solid var(--vscode-widget-border);
 	border-radius: 28px;
 	/* Fully rounded pill shape */
-	backdrop-filter: blur(20px) saturate(180%);
-	-webkit-backdrop-filter: blur(20px) saturate(180%);
 	z-index: 1000;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 	padding: 0 8px;
 }
 
@@ -54,7 +52,8 @@
 	align-items: center;
 	gap: 0px;
 	/* No gap - buttons are connected */
-	background: rgba(255, 255, 255, 0.05);
+	background: var(--vscode-input-background);
+	border: 1px solid var(--vscode-widget-border);
 	border-radius: 8px;
 	padding: 2px;
 }
@@ -64,14 +63,12 @@
 }
 
 .view-mode-toggle .action-btn.active {
-	background: rgba(255, 255, 255, 0.15);
-	/* Lighter grey for visibility */
-	color: var(--vscode-foreground);
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
 }
 
 .view-mode-toggle .action-btn.active:hover {
-	background: rgba(255, 255, 255, 0.2);
-	/* Slightly lighter on hover */
+	background: var(--vscode-button-hoverBackground);
 }
 
 /* ========================================
@@ -87,7 +84,7 @@
 	height: 40px;
 	padding: 0;
 	background: transparent;
-	border: none;
+	border: 1px solid transparent;
 	border-radius: 8px;
 	color: var(--vscode-foreground);
 	cursor: pointer;
@@ -148,6 +145,7 @@
 	pointer-events: none;
 	transition: opacity 0.2s ease;
 	z-index: 10000;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .action-btn:hover::after {
@@ -188,16 +186,14 @@
 	width: 100%;
 	display: flex;
 	align-items: center;
-	background: rgba(40, 40, 40, 0.85);
-	/* Glassmorphic translucent */
-	border: 1px solid rgba(255, 255, 255, 0.15);
+	background: var(--vscode-editorWidget-background);
+	/* Theme-aware background */
+	border: 1px solid var(--vscode-widget-border);
 	border-radius: 28px;
 	height: 56px;
 	padding: 0 0 0 20px;
 	/* Padding for text on left, button touches right edge */
-	backdrop-filter: blur(20px) saturate(180%);
-	-webkit-backdrop-filter: blur(20px) saturate(180%);
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
 }
 
 .ai-chat-input-overlay {
@@ -229,20 +225,16 @@
 	width: 44px;
 	height: 44px;
 	padding: 0;
-	background: rgba(255, 255, 255, 0.1);
-	/* Glassmorphic translucent */
-	border: 1px solid rgba(255, 255, 255, 0.2);
+	background: var(--vscode-button-background);
+	border: 1px solid transparent;
 	border-radius: 22px;
-	color: var(--vscode-foreground);
+	color: var(--vscode-button-foreground);
 	cursor: pointer;
 	transition: all 0.15s ease;
-	backdrop-filter: blur(10px);
-	-webkit-backdrop-filter: blur(10px);
 }
 
 .ai-chat-send-overlay:hover {
-	background: rgba(255, 255, 255, 0.15);
-	border-color: rgba(255, 255, 255, 0.3);
+	background: var(--vscode-button-hoverBackground);
 	transform: scale(1.05);
 }
 
@@ -258,13 +250,10 @@
 	left: 0;
 	min-width: 200px;
 	max-width: fit-content;
-	background: rgba(30, 30, 30, 0.95);
-	/* Glassmorphic translucent */
-	border: 1px solid rgba(255, 255, 255, 0.1);
+	background: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border);
 	border-radius: 8px;
-	backdrop-filter: blur(20px) saturate(180%);
-	-webkit-backdrop-filter: blur(20px) saturate(180%);
-	box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+	box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
 	max-height: 240px;
 	overflow-y: auto;
 	animation: slideUpAppear 0.15s ease;
@@ -291,6 +280,7 @@
 	transition: background 0.1s ease;
 	border-radius: 4px;
 	margin-bottom: 2px;
+	color: var(--vscode-foreground);
 }
 
 .command-item:last-child {
@@ -299,13 +289,14 @@
 
 .command-item:hover,
 .command-item.selected {
-	background: rgba(255, 255, 255, 0.1);
+	background: var(--vscode-list-hoverBackground);
+	color: var(--vscode-list-hoverForeground);
 }
 
 .command-name {
 	font-size: 13px;
 	font-weight: 400;
-	color: rgba(255, 255, 255, 0.7);
+	color: var(--vscode-descriptionForeground);
 	white-space: nowrap;
 }
 
@@ -332,7 +323,7 @@
 .action-bar-divider {
 	width: 1px;
 	height: 24px;
-	background: var(--vscode-panel-border);
+	background: var(--vscode-widget-border);
 	margin: 0 4px;
 	opacity: 0.5;
 }
@@ -355,14 +346,12 @@
 	/* Responsive width like AI chat */
 	min-height: 200px;
 	max-height: 60vh;
-	background: rgba(40, 40, 40, 0.85);
-	/* Glassmorphic translucent - darker and more transparent */
-	border: 1px solid rgba(255, 255, 255, 0.15);
+	background: var(--vscode-editorWidget-background);
+	/* Theme-aware background */
+	border: 1px solid var(--vscode-widget-border);
 	border-radius: 16px;
 	/* More rounded for modern look */
-	backdrop-filter: blur(20px) saturate(180%);
-	-webkit-backdrop-filter: blur(20px) saturate(180%);
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
 	z-index: 999;
 	animation: slideUpFadeCenter 0.25s ease;
 	display: flex;
@@ -388,8 +377,9 @@
 	justify-content: space-between;
 	height: 40px;
 	padding: 0 12px;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	border-bottom: 1px solid var(--vscode-widget-border);
 	flex-shrink: 0;
+	background: var(--vscode-editorWidget-headerBackground, var(--vscode-editorWidget-background));
 }
 
 .actions-panel-title {
@@ -434,7 +424,7 @@
 	height: 100%;
 	gap: 12px;
 	text-align: center;
-	color: rgba(255, 255, 255, 0.5);
+	color: var(--vscode-descriptionForeground);
 }
 
 .actions-panel-placeholder p {
@@ -491,7 +481,7 @@
 
 .ai-chat-input-container-overlay:focus-within {
 	border-color: var(--vscode-focusBorder);
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 2px var(--vscode-focusBorder);
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 0 0 2px var(--vscode-focusBorder);
 }
 
 .command-item:focus-visible {
