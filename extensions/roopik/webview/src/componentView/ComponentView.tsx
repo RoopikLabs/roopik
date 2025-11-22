@@ -517,26 +517,38 @@ function App() {
 		return () => window.removeEventListener('resize', handleResize);
 	}, [focusedSandboxId, sandboxes]);
 
-	// Bottom Action Bar handlers
+	// Bottom Action Bar handlers - Mutually exclusive modes
 	const handleSelectMode = () => {
-		setIsSelectMode(!isSelectMode);
-		setIsInspectMode(false);
-		setIsRectangleMode(false);
-		console.log('[BottomActionBar] Select mode:', !isSelectMode);
+		const newState = !isSelectMode;
+		setIsSelectMode(newState);
+		// Only deactivate other modes when activating this mode
+		if (newState) {
+			setIsInspectMode(false);
+			setIsRectangleMode(false);
+		}
+		console.log('[BottomActionBar] Select mode:', newState);
 	};
 
 	const handleInspectMode = () => {
-		setIsInspectMode(!isInspectMode);
-		setIsSelectMode(false);
-		setIsRectangleMode(false);
-		console.log('[BottomActionBar] Inspect mode:', !isInspectMode);
+		const newState = !isInspectMode;
+		setIsInspectMode(newState);
+		// Only deactivate other modes when activating this mode
+		if (newState) {
+			setIsSelectMode(false);
+			setIsRectangleMode(false);
+		}
+		console.log('[BottomActionBar] Inspect mode:', newState);
 	};
 
 	const handleRectangleSelection = () => {
-		setIsRectangleMode(!isRectangleMode);
-		setIsSelectMode(false);
-		setIsInspectMode(false);
-		console.log('[BottomActionBar] Rectangle mode:', !isRectangleMode);
+		const newState = !isRectangleMode;
+		setIsRectangleMode(newState);
+		// Only deactivate other modes when activating this mode
+		if (newState) {
+			setIsSelectMode(false);
+			setIsInspectMode(false);
+		}
+		console.log('[BottomActionBar] Rectangle mode:', newState);
 	};
 
 	const handleAIChat = () => {

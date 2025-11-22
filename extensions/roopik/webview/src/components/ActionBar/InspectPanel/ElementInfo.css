@@ -1,0 +1,123 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* Element Info Section */
+.element-info-section {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.element-info-title {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+	padding: 8px 0 4px 0;
+	border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+/* Single Row Layout */
+.element-info-row {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 12px;
+	align-items: center;
+	padding: 4px 0;
+}
+
+/* Source File */
+.element-source {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.element-filename {
+	font-size: 11px;
+	color: var(--vscode-foreground);
+	font-family: var(--vscode-editor-font-family), 'Consolas', 'Monaco', monospace;
+}
+
+.element-open-btn {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border: none;
+	border-radius: 4px;
+	padding: 2px 6px;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: background 0.15s ease;
+}
+
+.element-open-btn:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.element-open-btn:active {
+	transform: scale(0.95);
+}
+
+/* Component/Tag Name */
+.element-name {
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--vscode-editor-foreground);
+}
+
+/* CSS Classes */
+.element-classes {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding-top: 6px;
+}
+
+.element-classes-label {
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+	flex-shrink: 0;
+	padding-top: 2px;
+}
+
+.element-classes-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	flex: 1;
+}
+
+.element-class-badge {
+	display: inline-block;
+	font-size: 10px;
+	font-family: var(--vscode-editor-font-family), 'Consolas', 'Monaco', monospace;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+	padding: 2px 6px;
+	border-radius: 3px;
+	font-weight: 500;
+}
+
+/* Parent Tree */
+.element-tree {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-top: 4px;
+}
+
+.element-tree-label {
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+
+.element-tree-path {
+	font-size: 11px;
+	font-family: var(--vscode-editor-font-family), 'Consolas', 'Monaco', monospace;
+	color: var(--vscode-foreground);
+}

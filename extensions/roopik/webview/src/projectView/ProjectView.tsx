@@ -219,6 +219,25 @@ function ProjectView() {
 		}
 	}, [isInspectMode, isLoading]);
 
+	// Keyboard shortcuts for inspect mode
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			// Only handle shortcuts when edit mode is active
+			if (!highlightMode) return;
+
+			// Press 'I' to toggle inspect mode
+			if (e.key === 'i' || e.key === 'I') {
+				if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+					e.preventDefault();
+					setIsInspectMode(prev => !prev);
+				}
+			}
+		};
+
+		window.addEventListener('keydown', handleKeyDown);
+		return () => window.removeEventListener('keydown', handleKeyDown);
+	}, [highlightMode]);
+
 	// Navigation handlers
 	const handleBack = () => {
 		if (canGoBack && iframeRef.current) {
@@ -401,24 +420,45 @@ function ProjectView() {
 				/>
 			</div>
 
-			{/* Bottom Action Bar */}
-			{highlightMode && (
-				<BottomActionBar
-					isSelectMode={isSelectMode}
-					isInspectMode={isInspectMode}
-					isRectangleMode={isRectangleMode}
-					inspectedElement={inspectedElement}
-					onSelectMode={() => setIsSelectMode(!isSelectMode)}
-					onInspectMode={() => setIsInspectMode(!isInspectMode)}
-					onRectangleSelection={() => setIsRectangleMode(!isRectangleMode)}
-					onOpenInEditor={(file, line) => {
-						// Send message to VS Code extension to open file
-						vscode.postMessage({
-							type: 'click-to-source',
-							file: file,
-							line: line,
-							column: 1
-						});
+		{/* Bottom Action Bar */}
+		{highlightMode && (
+			<BottomActionBar
+				isSelectMode={isSelectMode}
+				isInspectMode={isInspectMode}
+				isRectangleMode={isRectangleMode}
+				inspectedElement={inspectedElement}
+				onSelectMode={() => {
+					const newState = !isSelectMode;
+					setIsSelectMode(newState);
+					if (newState) {
+						setIsInspectMode(false);
+						setIsRectangleMode(false);
+					}
+				}}
+				onInspectMode={() => {
+					const newState = !isInspectMode;
+					setIsInspectMode(newState);
+					if (newState) {
+						setIsSelectMode(false);
+						setIsRectangleMode(false);
+					}
+				}}
+				onRectangleSelection={() => {
+					const newState = !isRectangleMode;
+					setIsRectangleMode(newState);
+					if (newState) {
+						setIsSelectMode(false);
+						setIsInspectMode(false);
+					}
+				}}
+				onOpenInEditor={(file, line) => {
+					// Send message to VS Code extension to open file
+					vscode.postMessage({
+						type: 'click-to-source',
+						file: file,
+						line: line,
+						column: 1
+					});
 					}}
 				/>
 			)}

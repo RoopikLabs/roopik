@@ -21,6 +21,7 @@ export interface InspectedElement {
 	className: string;
 	id: string;
 	textContent: string;
+	parentContext?: string;
 }
 
 export function createInspectOverlayScript(): string {

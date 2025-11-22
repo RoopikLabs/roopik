@@ -158,17 +158,19 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 	}
 
 	// Inspect Mode Implementation
+	let inspectHoverTimeout = null;
+
 	function createInspectOverlay() {
 		if (inspectOverlay) return;
 		inspectOverlay = document.createElement('div');
-		inspectOverlay.style.cssText = 'position:absolute;pointer-events:none;border:2px solid #007acc;background:rgba(0,122,204,0.1);z-index:2147483646;box-sizing:border-box;transition:all 0.1s ease;';
+		inspectOverlay.style.cssText = 'position:absolute;pointer-events:none;border:2px solid #007acc;background:rgba(0,122,204,0.1);z-index:2147483646;box-sizing:border-box;transition:all 0.1s ease;display:none;';
 		document.body.appendChild(inspectOverlay);
 	}
 
 	function createInspectTooltip() {
 		if (inspectTooltip) return;
 		inspectTooltip = document.createElement('div');
-		inspectTooltip.style.cssText = 'position:absolute;pointer-events:none;background:rgba(0,0,0,0.9);color:white;padding:8px 12px;border-radius:4px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:12px;z-index:2147483647;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+		inspectTooltip.style.cssText = 'position:absolute;pointer-events:none;background:rgba(0,0,0,0.9);color:white;padding:8px 12px;border-radius:4px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:12px;z-index:2147483647;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:none;';
 		document.body.appendChild(inspectTooltip);
 	}
 
@@ -178,13 +180,19 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 		document.body.style.cursor = 'crosshair';
 		document.addEventListener('mousemove', handleInspectMouseMove, true);
 		document.addEventListener('click', handleInspectClick, true);
-		console.log('[Roopik Inspect] Mode enabled');
+		document.addEventListener('keydown', handleInspectKeyboard, true);
+		console.log('[Roopik Inspect] 🔍 Mode enabled (Press Esc to exit)');
 	}
 
 	function disableInspectMode() {
 		document.body.style.cursor = '';
 		document.removeEventListener('mousemove', handleInspectMouseMove, true);
 		document.removeEventListener('click', handleInspectClick, true);
+		document.removeEventListener('keydown', handleInspectKeyboard, true);
+		if (inspectHoverTimeout) {
+			clearTimeout(inspectHoverTimeout);
+			inspectHoverTimeout = null;
+		}
 		if (inspectOverlay) inspectOverlay.style.display = 'none';
 		if (inspectTooltip) inspectTooltip.style.display = 'none';
 		currentInspectElement = null;
@@ -208,14 +216,116 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 		const source = findSourceInfo(element);
 		const componentName = source ? source.componentName : element.tagName;
 		const fileName = source ? source.fileName.split('/').pop() : 'Unknown';
-		const line = source ? source.lineNumber : 0;
 
-		inspectTooltip.textContent = componentName + ' · ' + fileName + ':' + line;
+		inspectTooltip.textContent = componentName + ' · ' + fileName;
 		inspectTooltip.style.display = 'block';
 
 		const tooltipTop = rect.top + window.scrollY - 30;
 		inspectTooltip.style.top = (tooltipTop > 10 ? tooltipTop : rect.bottom + window.scrollY + 5) + 'px';
 		inspectTooltip.style.left = (rect.left + window.scrollX) + 'px';
+	}
+
+	function handleInspectKeyboard(e) {
+		// Press Escape to exit inspect mode
+		if (e.key === 'Escape' && inspectMode) {
+			e.preventDefault();
+			e.stopPropagation();
+			window.parent.postMessage({ type: 'roopik-toggle-inspect', enabled: false }, '*');
+		}
+	}
+
+	function extractComputedStyles(element) {
+		const computed = window.getComputedStyle(element);
+		const styles = {};
+
+		// Layout & Box Model
+		if (computed.display && computed.display !== 'inline') styles.display = computed.display;
+		if (computed.position && computed.position !== 'static') styles.position = computed.position;
+		if (computed.width) styles.width = computed.width;
+		if (computed.height) styles.height = computed.height;
+		if (computed.minWidth && computed.minWidth !== '0px') styles.minWidth = computed.minWidth;
+		if (computed.minHeight && computed.minHeight !== '0px') styles.minHeight = computed.minHeight;
+		if (computed.maxWidth && computed.maxWidth !== 'none') styles.maxWidth = computed.maxWidth;
+		if (computed.maxHeight && computed.maxHeight !== 'none') styles.maxHeight = computed.maxHeight;
+
+		// Spacing
+		if (computed.padding && computed.padding !== '0px') styles.padding = computed.padding;
+		if (computed.margin && computed.margin !== '0px') styles.margin = computed.margin;
+
+		// Flexbox
+		if (computed.display && computed.display.includes('flex')) {
+			if (computed.flexDirection && computed.flexDirection !== 'row') styles.flexDirection = computed.flexDirection;
+			if (computed.justifyContent && computed.justifyContent !== 'normal') styles.justifyContent = computed.justifyContent;
+			if (computed.alignItems && computed.alignItems !== 'normal') styles.alignItems = computed.alignItems;
+			if (computed.gap && computed.gap !== '0px') styles.gap = computed.gap;
+		}
+
+		// Grid
+		if (computed.display && computed.display.includes('grid')) {
+			if (computed.gridTemplateColumns && computed.gridTemplateColumns !== 'none') styles.gridTemplateColumns = computed.gridTemplateColumns;
+			if (computed.gridTemplateRows && computed.gridTemplateRows !== 'none') styles.gridTemplateRows = computed.gridTemplateRows;
+			if (computed.gap && computed.gap !== '0px') styles.gap = computed.gap;
+		}
+
+		// Colors
+		if (computed.color) styles.color = computed.color;
+
+		// Background - handle both solid colors and gradients
+		const bgColor = computed.backgroundColor;
+		const bgImage = computed.backgroundImage;
+
+		if (bgImage && bgImage !== 'none') {
+			styles.backgroundImage = bgImage;
+		}
+		if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)') {
+			styles.backgroundColor = bgColor;
+		}
+		if (computed.backgroundSize && computed.backgroundSize !== 'auto') styles.backgroundSize = computed.backgroundSize;
+		if (computed.backgroundPosition && computed.backgroundPosition !== '0% 0%') styles.backgroundPosition = computed.backgroundPosition;
+		if (computed.backgroundRepeat && computed.backgroundRepeat !== 'repeat') styles.backgroundRepeat = computed.backgroundRepeat;
+
+		// Border
+		if (computed.border && computed.border !== '0px none rgb(0, 0, 0)') {
+			styles.border = computed.border;
+		} else {
+			if (computed.borderWidth && computed.borderWidth !== '0px') styles.borderWidth = computed.borderWidth;
+			if (computed.borderStyle && computed.borderStyle !== 'none') styles.borderStyle = computed.borderStyle;
+			if (computed.borderColor) styles.borderColor = computed.borderColor;
+		}
+		if (computed.borderRadius && computed.borderRadius !== '0px') styles.borderRadius = computed.borderRadius;
+
+		// Typography
+		if (computed.fontSize) styles.fontSize = computed.fontSize;
+		if (computed.fontWeight && computed.fontWeight !== '400') styles.fontWeight = computed.fontWeight;
+		if (computed.fontFamily) styles.fontFamily = computed.fontFamily;
+		if (computed.lineHeight && computed.lineHeight !== 'normal') styles.lineHeight = computed.lineHeight;
+		if (computed.textAlign && computed.textAlign !== 'start') styles.textAlign = computed.textAlign;
+		if (computed.textTransform && computed.textTransform !== 'none') styles.textTransform = computed.textTransform;
+		if (computed.letterSpacing && computed.letterSpacing !== 'normal') styles.letterSpacing = computed.letterSpacing;
+
+		// Effects
+		if (computed.opacity && computed.opacity !== '1') styles.opacity = computed.opacity;
+		if (computed.boxShadow && computed.boxShadow !== 'none') styles.boxShadow = computed.boxShadow;
+		if (computed.textShadow && computed.textShadow !== 'none') styles.textShadow = computed.textShadow;
+		if (computed.transform && computed.transform !== 'none') styles.transform = computed.transform;
+		if (computed.filter && computed.filter !== 'none') styles.filter = computed.filter;
+
+		// Animation
+		if (computed.animation && computed.animation !== 'none') styles.animation = computed.animation;
+		if (computed.transition && computed.transition !== 'all 0s ease 0s') styles.transition = computed.transition;
+
+		// Overflow
+		if (computed.overflow && computed.overflow !== 'visible') styles.overflow = computed.overflow;
+		if (computed.overflowX && computed.overflowX !== 'visible') styles.overflowX = computed.overflowX;
+		if (computed.overflowY && computed.overflowY !== 'visible') styles.overflowY = computed.overflowY;
+
+		// Z-index
+		if (computed.zIndex && computed.zIndex !== 'auto') styles.zIndex = computed.zIndex;
+
+		// Cursor
+		if (computed.cursor && computed.cursor !== 'auto') styles.cursor = computed.cursor;
+
+		return styles;
 	}
 
 	function handleInspectClick(e) {
@@ -225,7 +335,7 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 
 		const source = findSourceInfo(currentInspectElement);
 		if (source) {
-			const computed = window.getComputedStyle(currentInspectElement);
+			const styles = extractComputedStyles(currentInspectElement);
 			window.parent.postMessage({
 				type: 'roopik-inspect-element',
 				element: {
@@ -236,24 +346,15 @@ const ROOPIK_INJECT_SCRIPT_SOURCE = `
 					endLine: source.endLine,
 					endColumn: source.endColumn,
 					props: {},
-					computedStyles: {
-						display: computed.display,
-						width: computed.width,
-						height: computed.height,
-						padding: computed.padding,
-						margin: computed.margin,
-						color: computed.color,
-						backgroundColor: computed.backgroundColor,
-						fontSize: computed.fontSize,
-						fontWeight: computed.fontWeight
-					},
+					computedStyles: styles,
 					tagName: currentInspectElement.tagName,
 					className: currentInspectElement.className,
 					id: currentInspectElement.id,
-					textContent: currentInspectElement.textContent ? currentInspectElement.textContent.substring(0, 50) : ''
+					textContent: currentInspectElement.textContent ? currentInspectElement.textContent.substring(0, 50) : '',
+					parentContext: source.parentContext
 				}
 			}, '*');
-			console.log('[Roopik Inspect] Sent element data');
+			console.log('[Roopik Inspect] Sent element data with', Object.keys(styles).length, 'styles');
 		}
 	}
 

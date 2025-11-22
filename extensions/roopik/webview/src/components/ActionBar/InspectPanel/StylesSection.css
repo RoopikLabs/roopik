@@ -1,0 +1,66 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.styles-section {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.styles-section-title {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+	padding: 8px 0 4px 0;
+	border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.styles-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.style-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 4px 8px;
+	background: var(--vscode-editor-background);
+	border-radius: 4px;
+	font-size: 11px;
+	gap: 12px;
+}
+
+.style-property {
+	color: var(--vscode-symbolIcon-propertyForeground, var(--vscode-foreground));
+	font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+	font-weight: 500;
+	flex-shrink: 0;
+	min-width: 120px;
+}
+
+.style-value {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: 1;
+	min-width: 0;
+}
+
+.style-text {
+	color: var(--vscode-symbolIcon-stringForeground, var(--vscode-foreground));
+	font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+	word-break: break-word;
+}
+
+.style-color-swatch {
+	width: 16px;
+	height: 16px;
+	border-radius: 3px;
+	border: 1px solid var(--vscode-panel-border);
+	flex-shrink: 0;
+	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
