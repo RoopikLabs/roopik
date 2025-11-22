@@ -10,6 +10,7 @@ Track of all VS Code core files we've modified (for upstream conflict handling).
 | `build/hygiene.mjs:19-32` | Added Roopik copyright header check | Allow Roopik copyright alongside Microsoft |
 | `build/hygiene.mjs:114-136` | Modified copyright validation logic | Check for either Microsoft or Roopik header |
 | `eslint.config.js:2185-2205` | Added roopik extension header override | Allow Roopik copyright in extensions/roopik/ |
+| `build/lib/electron.ts:199` | Changed `winIcon` from relative to absolute path: `path.join(root, 'resources/win32/code.ico')` | Fix icon embedding - relative path doesn't resolve correctly during Electron build, causing Task Manager to show old icon |
 
 ## Branding (Text/Metadata)
 

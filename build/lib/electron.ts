@@ -196,7 +196,7 @@ export const config = {
 	darwinForceDarkModeSupport: true,
 	darwinCredits: darwinCreditsTemplate ? Buffer.from(darwinCreditsTemplate({ commit: commit, date: new Date().toISOString() })) : undefined,
 	linuxExecutableName: product.applicationName,
-	winIcon: 'resources/win32/code.ico',
+	winIcon: path.join(root, 'resources/win32/code.ico'),
 	token: process.env['GITHUB_TOKEN'],
 	repo: product.electronRepository || undefined,
 	validateChecksum: true,
