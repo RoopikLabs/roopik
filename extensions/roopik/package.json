@@ -75,30 +75,16 @@
           "type": "webview"
         }
       ]
-    },
-    "menus": {
-      "view/title": [
-        {
-          "command": "roopik.openCanvas",
-          "when": "view == roopik.dashboard",
-          "group": "navigation"
-        },
-        {
-          "command": "roopik.openProjectPreview",
-          "when": "view == roopik.dashboard",
-          "group": "navigation"
-        }
-      ]
     }
   },
   "scripts": {
     "compile": "tsc -p ./ && node scripts/copyAssets.js",
     "watch": "tsc -watch -p ./",
-    "build": "npm run compile && npm run build --prefix webview-ui",
+    "build": "npm run compile && npm run build:webview",
     "build:extension": "npm run compile",
-    "build:webview": "npm run build --prefix webview-ui",
+    "build:webview": "npm run build --prefix webview",
     "watch:all": "npm-run-all -p watch watch:webview",
-    "watch:webview": "npm run dev --prefix webview-ui"
+    "watch:webview": "npm run dev --prefix webview"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

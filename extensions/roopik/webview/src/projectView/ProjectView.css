@@ -1,0 +1,357 @@
+.project-view {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	overflow: hidden;
+}
+
+/* Browser Chrome (Top Bar) - Modern Glassmorphism */
+.browser-chrome {
+	background: rgba(255, 255, 255, 0.05);
+	backdrop-filter: blur(20px);
+	-webkit-backdrop-filter: blur(20px);
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	height: 40px;
+	/* Explicit height for perfect centering */
+	padding: 0 16px;
+	/* No vertical padding, use flex centering */
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	/* Ensure items start from left */
+	gap: 12px;
+	flex-shrink: 0;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.browser-controls {
+	display: flex;
+	gap: 4px;
+}
+
+.control-btn {
+	background: transparent;
+	color: var(--vscode-foreground);
+	border: none;
+	padding: 6px;
+	cursor: pointer;
+	font-size: 18px;
+	transition: all 0.2s ease;
+	min-width: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	filter: drop-shadow(0 0 0 transparent);
+}
+
+.control-btn.home-icon {
+	font-size: 20px;
+}
+
+.control-btn svg {
+	width: 20px;
+	height: 20px;
+	fill: currentColor;
+}
+
+.control-btn:hover:not(:disabled) {
+	filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+	transform: translateY(-1px);
+}
+
+.control-btn:active:not(:disabled) {
+	filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+	transform: translateY(0);
+}
+
+.control-btn:disabled {
+	opacity: 0.3;
+	cursor: not-allowed;
+}
+
+.address-bar {
+	flex: 1;
+	background: rgba(255, 255, 255, 0.08);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	color: var(--vscode-foreground);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	padding: 4px 12px;
+	font-size: 13px;
+	border-radius: 12px;
+	font-family: var(--vscode-editor-font-family);
+	transition: all 0.3s ease;
+	box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.address-bar:focus {
+	outline: none;
+	border-color: rgba(100, 150, 255, 0.5);
+	background: rgba(255, 255, 255, 0.12);
+	box-shadow: 0 0 0 3px rgba(100, 150, 255, 0.1),
+		inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Edit Toggle - Modern with Pen Icon */
+.highlight-toggle {
+	background: rgba(120, 120, 120, 0.2);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	color: var(--vscode-foreground);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	padding: 4px 12px;
+	cursor: pointer;
+	font-size: 13px;
+	border-radius: 10px;
+	transition: all 0.3s ease;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-weight: 500;
+	position: relative;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+	min-height: 28px;
+}
+
+.highlight-toggle svg {
+	width: 14px;
+	height: 14px;
+	fill: currentColor;
+	transition: all 0.3s ease;
+}
+
+.highlight-toggle:hover {
+	background: rgba(150, 150, 150, 0.25);
+	border-color: rgba(255, 255, 255, 0.25);
+	transform: translateY(-1px);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.highlight-toggle.active {
+	background: rgba(76, 175, 80, 0.2);
+	border-color: rgba(76, 175, 80, 0.4);
+	color: #4CAF50;
+}
+
+.highlight-toggle.active svg {
+	filter: drop-shadow(0 0 4px rgba(76, 175, 80, 0.6));
+	animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+
+	0%,
+	100% {
+		box-shadow: 0 0 8px rgba(76, 175, 80, 0.6);
+	}
+
+	50% {
+		box-shadow: 0 0 16px rgba(76, 175, 80, 0.8);
+	}
+}
+
+/* Stop Server Button - Modern Glassmorphic with Glow */
+.stop-server-btn {
+	background: rgba(231, 76, 60, 0.15);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	color: #e74c3c;
+	border: 1px solid rgba(231, 76, 60, 0.3);
+	padding: 4px 12px;
+	cursor: pointer;
+	font-size: 13px;
+	border-radius: 10px;
+	transition: all 0.3s ease;
+	font-weight: 500;
+	position: relative;
+	overflow: hidden;
+	box-shadow: 0 2px 8px rgba(231, 76, 60, 0.2);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 28px;
+}
+
+.stop-server-btn::before {
+	content: '';
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 0;
+	height: 0;
+	border-radius: 50%;
+	background: rgba(255, 255, 255, 0.3);
+	transform: translate(-50%, -50%);
+	transition: width 0.6s, height 0.6s;
+}
+
+.stop-server-btn:hover {
+	background: rgba(231, 76, 60, 0.25);
+	border-color: rgba(231, 76, 60, 0.5);
+	color: #ff5544;
+	transform: translateY(-1px);
+	box-shadow: 0 4px 16px rgba(231, 76, 60, 0.4),
+		0 0 20px rgba(231, 76, 60, 0.2);
+}
+
+.stop-server-btn:hover::before {
+	width: 300px;
+	height: 300px;
+}
+
+.stop-server-btn:active {
+	transform: translateY(0);
+	box-shadow: 0 2px 8px rgba(231, 76, 60, 0.3);
+}
+
+/* Preview Container */
+.preview-container {
+	flex: 1;
+	position: relative;
+	overflow: hidden;
+	isolation: isolate;
+	padding: 0 10px;
+	/* Left and Right padding only */
+	background: transparent;
+}
+
+/* Glass Shine Effect */
+.preview-container::after {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: linear-gradient(120deg,
+			transparent 30%,
+			rgba(255, 255, 255, 0.05) 40%,
+			rgba(255, 255, 255, 0.01) 50%,
+			transparent 50%);
+	pointer-events: none;
+	z-index: 10;
+	opacity: 0.7;
+}
+
+.preview-frame {
+	width: 100%;
+	height: 100%;
+	border: none;
+	background: white;
+	box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+	/* Deep shadow for depth */
+}
+
+/* Loading State */
+.loading {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	text-align: center;
+	color: var(--vscode-descriptionForeground);
+}
+
+/* Debug Mode Notification - Glassmorphism */
+.debug-notification {
+	position: fixed;
+	top: 90px;
+	right: 30px;
+	background: rgba(255, 248, 240, 0.75);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	color: #2c3e50;
+	padding: 14px 18px;
+	border-radius: 12px;
+	border: 2px solid transparent;
+	box-shadow:
+		0 8px 32px rgba(0, 0, 0, 0.1),
+		0 0 0 1px rgba(255, 255, 255, 0.1) inset,
+		0 2px 8px rgba(255, 235, 205, 0.4);
+	display: none;
+	align-items: center;
+	gap: 12px;
+	font-size: 13px;
+	font-weight: 500;
+	z-index: 10000;
+	animation: slideDown 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+	max-width: 300px;
+}
+
+.debug-notification.show {
+	display: flex;
+}
+
+/* Animated flowing border - Black & White gradient */
+.debug-notification::before {
+	content: '';
+	position: absolute;
+	inset: -2px;
+	border-radius: 12px;
+	padding: 2px;
+	background: linear-gradient(90deg,
+			#000000,
+			#ffffff,
+			#000000,
+			#ffffff,
+			#000000);
+	background-size: 300% 100%;
+	-webkit-mask: linear-gradient(#fff 0 0) content-box,
+		linear-gradient(#fff 0 0);
+	-webkit-mask-composite: xor;
+	mask: linear-gradient(#fff 0 0) content-box,
+		linear-gradient(#fff 0 0);
+	mask-composite: exclude;
+	pointer-events: none;
+	animation: flowBorder 3s linear infinite;
+}
+
+.debug-notification-close {
+	background: rgba(0, 0, 0, 0.05);
+	border: none;
+	color: #34495e;
+	font-size: 16px;
+	cursor: pointer;
+	padding: 0;
+	width: 22px;
+	height: 22px;
+	border-radius: 6px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0.6;
+	transition: all 0.2s ease;
+	flex-shrink: 0;
+}
+
+.debug-notification-close:hover {
+	opacity: 1;
+	background: rgba(0, 0, 0, 0.1);
+	transform: scale(1.1);
+}
+
+@keyframes slideDown {
+	0% {
+		transform: translateY(-100px);
+		opacity: 0;
+	}
+
+	60% {
+		transform: translateY(4px);
+	}
+
+	100% {
+		transform: translateY(0);
+		opacity: 1;
+	}
+}
+
+@keyframes flowBorder {
+	0% {
+		background-position: 0% 0%;
+	}
+
+	100% {
+		background-position: 300% 0%;
+	}
+}

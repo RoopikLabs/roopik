@@ -1,0 +1,490 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ========================================
+   Bottom Action Bar - Floating Centered Design
+   ======================================== */
+
+.bottom-action-bar {
+	position: fixed;
+	bottom: 40px;
+	/* More margin from bottom to avoid status bar */
+	left: 50%;
+	transform: translateX(-50%);
+	height: 56px;
+	background: var(--vscode-editorWidget-background);
+	/* Theme-aware background */
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 28px;
+	/* Fully rounded pill shape */
+	z-index: 1000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+	padding: 0 8px;
+}
+
+.action-bar-container {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	/* Increased spacing between sections */
+}
+
+/* ========================================
+   Section Layouts - Simplified for centered design
+   ======================================== */
+
+.action-bar-section {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	/* Increased spacing between icons */
+}
+
+/* View mode toggle container */
+.view-mode-toggle {
+	display: flex;
+	align-items: center;
+	gap: 0px;
+	/* No gap - buttons are connected */
+	background: var(--vscode-input-background);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 8px;
+	padding: 2px;
+}
+
+.view-mode-toggle .action-btn {
+	border-radius: 6px;
+}
+
+.view-mode-toggle .action-btn.active {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+.view-mode-toggle .action-btn.active:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+/* ========================================
+   Action Buttons - Icon Only with Tooltips
+   ======================================== */
+
+.action-btn {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 40px;
+	height: 40px;
+	padding: 0;
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 8px;
+	color: var(--vscode-foreground);
+	cursor: pointer;
+	transition: all 0.15s ease;
+	user-select: none;
+}
+
+.action-btn:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.action-btn:active {
+	transform: scale(0.95);
+}
+
+.action-btn.active {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+.action-btn.active:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+/* Contextual buttons (fade in) */
+.action-btn.contextual {
+	animation: fadeInSlide 0.2s ease;
+}
+
+@keyframes fadeInSlide {
+	from {
+		opacity: 0;
+		transform: scale(0.8);
+	}
+
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+/* Tooltip on hover */
+.action-btn::after {
+	content: attr(title);
+	position: absolute;
+	bottom: calc(100% + 8px);
+	left: 50%;
+	transform: translateX(-50%);
+	padding: 6px 12px;
+	background: var(--vscode-editorHoverWidget-background);
+	border: 1px solid var(--vscode-editorHoverWidget-border);
+	border-radius: 4px;
+	color: var(--vscode-editorHoverWidget-foreground);
+	font-size: 12px;
+	font-weight: 500;
+	white-space: nowrap;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.2s ease;
+	z-index: 10000;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.action-btn:hover::after {
+	opacity: 1;
+}
+
+/* ========================================
+   AI Chat Overlay (Just above bottom bar)
+   ======================================== */
+
+.ai-chat-overlay {
+	position: fixed;
+	bottom: 112px;
+	/* Just above bottom bar (40px + 56px + 16px gap) */
+	left: 50%;
+	transform: translateX(-50%);
+	width: 70%;
+	/* Reduced width */
+	max-width: 600px;
+	z-index: 999;
+	animation: slideUpFade 0.25s ease;
+}
+
+@keyframes slideUpFade {
+	from {
+		opacity: 0;
+		transform: translateX(-50%) translateY(20px);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateX(-50%) translateY(0);
+	}
+}
+
+.ai-chat-input-container-overlay {
+	position: relative;
+	width: 100%;
+	display: flex;
+	align-items: center;
+	background: var(--vscode-editorWidget-background);
+	/* Theme-aware background */
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 28px;
+	height: 56px;
+	padding: 0 0 0 20px;
+	/* Padding for text on left, button touches right edge */
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+
+.ai-chat-input-overlay {
+	flex: 1;
+	height: 100%;
+	padding: 0 12px;
+	background: transparent;
+	border: none;
+	color: var(--vscode-input-foreground);
+	font-size: 15px;
+	font-family: var(--vscode-font-family);
+	outline: none;
+}
+
+.ai-chat-input-overlay::placeholder {
+	color: var(--vscode-input-placeholderForeground);
+}
+
+.ai-chat-send-overlay {
+	flex-shrink: 0;
+	/* Don't shrink */
+	margin-left: auto;
+	/* Push to right edge */
+	margin-right: 6px;
+	/* Small gap to keep border visible */
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 44px;
+	height: 44px;
+	padding: 0;
+	background: var(--vscode-button-background);
+	border: 1px solid transparent;
+	border-radius: 22px;
+	color: var(--vscode-button-foreground);
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.ai-chat-send-overlay:hover {
+	background: var(--vscode-button-hoverBackground);
+	transform: scale(1.05);
+}
+
+.ai-chat-send-overlay:active {
+	transform: scale(0.95);
+}
+
+/* Command suggestions dropdown - appears ABOVE input */
+.command-suggestions {
+	position: absolute;
+	bottom: calc(100% + 8px);
+	/* Appear ABOVE input */
+	left: 0;
+	min-width: 200px;
+	max-width: fit-content;
+	background: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 8px;
+	box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+	max-height: 240px;
+	overflow-y: auto;
+	animation: slideUpAppear 0.15s ease;
+	padding: 4px;
+}
+
+@keyframes slideUpAppear {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.command-item {
+	display: flex;
+	align-items: center;
+	padding: 8px 12px;
+	cursor: pointer;
+	transition: background 0.1s ease;
+	border-radius: 4px;
+	margin-bottom: 2px;
+	color: var(--vscode-foreground);
+}
+
+.command-item:last-child {
+	margin-bottom: 0;
+}
+
+.command-item:hover,
+.command-item.selected {
+	background: var(--vscode-list-hoverBackground);
+	color: var(--vscode-list-hoverForeground);
+}
+
+.command-name {
+	font-size: 13px;
+	font-weight: 400;
+	color: var(--vscode-descriptionForeground);
+	white-space: nowrap;
+}
+
+.keyboard-shortcut {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 24px;
+	height: 20px;
+	padding: 0 6px;
+	background: var(--vscode-keybindingLabel-background);
+	color: var(--vscode-keybindingLabel-foreground);
+	border: 1px solid var(--vscode-keybindingLabel-border);
+	border-radius: 3px;
+	font-size: 11px;
+	font-weight: 600;
+	font-family: var(--vscode-font-family);
+}
+
+/* ========================================
+   Divider
+   ======================================== */
+
+.action-bar-divider {
+	width: 1px;
+	height: 24px;
+	background: var(--vscode-widget-border);
+	margin: 0 4px;
+	opacity: 0.5;
+}
+
+/* ========================================
+   Properties Panel (Popup overlay - similar to AI chat)
+   ======================================== */
+
+.actions-panel {
+	position: fixed;
+	bottom: 112px;
+	/* Just above bottom bar (same as AI chat) */
+	left: 50%;
+	/* Center horizontally */
+	transform: translateX(-50%);
+	/* Center alignment */
+	min-width: 320px;
+	max-width: 500px;
+	width: 70%;
+	/* Responsive width like AI chat */
+	min-height: 200px;
+	max-height: 60vh;
+	background: var(--vscode-editorWidget-background);
+	/* Theme-aware background */
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 16px;
+	/* More rounded for modern look */
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+	z-index: 999;
+	animation: slideUpFadeCenter 0.25s ease;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+@keyframes slideUpFadeCenter {
+	from {
+		opacity: 0;
+		transform: translateX(-50%) translateY(20px);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateX(-50%) translateY(0);
+	}
+}
+
+.actions-panel-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	height: 40px;
+	padding: 0 12px;
+	border-bottom: 1px solid var(--vscode-widget-border);
+	flex-shrink: 0;
+	background: var(--vscode-editorWidget-headerBackground, var(--vscode-editorWidget-background));
+}
+
+.actions-panel-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.actions-panel-close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	background: transparent;
+	border: none;
+	border-radius: 4px;
+	color: var(--vscode-foreground);
+	cursor: pointer;
+	transition: background 0.15s ease;
+}
+
+.actions-panel-close:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.actions-panel-content {
+	flex: 1;
+	padding: 12px;
+	overflow-y: auto;
+}
+
+.actions-panel-placeholder {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	gap: 12px;
+	text-align: center;
+	color: var(--vscode-descriptionForeground);
+}
+
+.actions-panel-placeholder p {
+	font-size: 12px;
+	max-width: 200px;
+	line-height: 1.5;
+	margin: 0;
+}
+
+/* ========================================
+   Responsive Adjustments
+   ======================================== */
+
+@media (max-width: 768px) {
+	.bottom-action-bar {
+		bottom: 32px;
+		height: 48px;
+		padding: 0 6px;
+	}
+
+	.action-btn {
+		width: 36px;
+		height: 36px;
+	}
+
+	.action-bar-container {
+		gap: 2px;
+	}
+
+	.actions-panel {
+		width: 100%;
+	}
+
+	.ai-chat-overlay {
+		bottom: 96px;
+		/* Adjusted for mobile */
+		width: 95%;
+	}
+}
+
+/* ========================================
+   Keyboard Focus States
+   ======================================== */
+
+.action-btn:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+	border-radius: 8px;
+}
+
+.ai-chat-input-overlay:focus-visible {
+	outline: none;
+}
+
+.ai-chat-input-container-overlay:focus-within {
+	border-color: var(--vscode-focusBorder);
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 0 0 2px var(--vscode-focusBorder);
+}
+
+.command-item:focus-visible {
+	outline: 2px solid var(--vscode-focusBorder);
+	outline-offset: -2px;
+}

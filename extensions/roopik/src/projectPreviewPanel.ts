@@ -5,9 +5,8 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as fs from 'fs';
 import { openFileAtLine, getWorkspaceRoot } from './utils/editorControl';
-import { ViteServerManager } from './devServer/viteServerManager';
+import { ViteServerManager } from './projectRunner/viteServerManager';
 import { StyleContextGatherer } from './styleContextGatherer';
 import { ConfigManager } from './config';
 import { Logger } from './logger';
@@ -30,6 +29,7 @@ export class ProjectPreviewPanel {
 	private _serverManager: ViteServerManager | undefined;
 	private _logger: ReturnType<typeof Logger.prototype.createScoped>;
 	private _iframeLogger: ReturnType<typeof Logger.prototype.createScoped>;
+	private readonly _extensionUri: vscode.Uri;
 
 	/**
 	 * Create or show project preview panel
@@ -51,7 +51,10 @@ export class ProjectPreviewPanel {
 			{
 				enableScripts: true,
 				retainContextWhenHidden: true,
-				localResourceRoots: [extensionUri]
+				localResourceRoots: [
+					extensionUri,
+					vscode.Uri.joinPath(extensionUri, 'webview', 'build')
+				]
 			}
 		);
 
@@ -71,6 +74,7 @@ export class ProjectPreviewPanel {
 		projectRoot: string
 	) {
 		this._panel = panel;
+		this._extensionUri = extensionUri;
 		this._serverManager = ViteServerManager.getInstance(projectRoot, extensionUri.fsPath);
 
 		// Initialize loggers
@@ -154,7 +158,8 @@ export class ProjectPreviewPanel {
 	 */
 	private async startDevServer() {
 		try {
-			this._panel.webview.html = this._getLoadingHtml();
+			// Show initial loading state (React app handles this via window.INITIAL_LOADING)
+			this._update();
 
 			const url = await this._serverManager!.start();
 			this._viteServerUrl = url;
@@ -164,56 +169,6 @@ export class ProjectPreviewPanel {
 		} catch (error: any) {
 			vscode.window.showErrorMessage(`Failed to start dev server: ${error.message}`);
 		}
-	}
-
-	/**
-	 * Get loading HTML
-	 */
-	private _getLoadingHtml(): string {
-		return `<!DOCTYPE html>
-<html>
-<head>
-	<meta charset="UTF-8">
-	<title>Starting Server...</title>
-	<style>
-		body {
-			font-family: var(--vscode-font-family);
-			background: var(--vscode-editor-background);
-			color: var(--vscode-editor-foreground);
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			height: 100vh;
-			margin: 0;
-		}
-		.loader {
-			text-align: center;
-		}
-		.spinner {
-			border: 4px solid rgba(255, 255, 255, 0.1);
-			border-top: 4px solid var(--vscode-button-background);
-			border-radius: 50%;
-			width: 40px;
-			height: 40px;
-			animation: spin 1s linear infinite;
-			margin: 0 auto 20px;
-		}
-		@keyframes spin {
-			0% { transform: rotate(0deg); }
-			100% { transform: rotate(360deg); }
-		}
-	</style>
-</head>
-<body>
-	<div class="loader">
-		<div class="spinner"></div>
-		<p>Starting dev server...</p>
-		<p style="font-size: 12px; opacity: 0.7; margin-top: 10px;">
-			Installing dependencies if needed
-		</p>
-	</div>
-</body>
-</html>`;
 	}
 
 	/**
@@ -323,32 +278,57 @@ export class ProjectPreviewPanel {
 	 * Generate HTML for webview with browser-like UI
 	 * Loads from external template file for easier maintenance
 	 */
-	private _getHtmlForWebview(_webview: vscode.Webview): string {
-		// Origin-based authentication - no tokens needed!
-		// The server checks if requests come from vscode-webview:// origin
+	private _getHtmlForWebview(webview: vscode.Webview): string {
+		// Get resource URIs
+		const scriptUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this._extensionUri, 'webview', 'build', 'assets', 'projectView.js')
+		);
+		const styleUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this._extensionUri, 'webview', 'build', 'assets', 'projectView.css')
+		);
+		const sharedStyleUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this._extensionUri, 'webview', 'build', 'assets', 'BottomActionBar.css')
+		);
 
-		try {
-			// Read template file
-			const templatePath = path.join(__dirname, 'projectPreviewTemplate.html');
-			let html = fs.readFileSync(templatePath, 'utf8');
+		// CSP
+		const csp = `
+			default-src 'none';
+			style-src ${webview.cspSource} 'unsafe-inline';
+			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval';
+			font-src ${webview.cspSource};
+			img-src ${webview.cspSource} data:;
+			connect-src ${webview.cspSource};
+			frame-src ${webview.cspSource} http://localhost:* http://127.0.0.1:* data: blob:;
+		`;
 
-			// Replace placeholders
-			html = html.replace(/__VITE_SERVER_URL__/g, this._viteServerUrl || 'Loading...');
-			html = html.replace(/__LOADING_DISPLAY__/g, this._viteServerUrl ? 'none' : 'block');
-			html = html.replace(/__IFRAME_DISPLAY__/g, this._viteServerUrl ? 'block' : 'none');
-
-			return html;
-		} catch (error) {
-			this._logger.error('Failed to load preview template', error);
-			// Fallback to minimal HTML
-			return `<!DOCTYPE html>
-<html>
-<head><title>Roopik Preview</title></head>
+		return `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta http-equiv="Content-Security-Policy" content="${csp.replace(/\s+/g, ' ').trim()}">
+	<style>
+		body {
+			padding: 0;
+			margin: 0;
+			overflow: hidden;
+			background-color: var(--vscode-editor-background);
+			color: var(--vscode-foreground);
+		}
+	</style>
+	<link href="${styleUri}" rel="stylesheet">
+	<link href="${sharedStyleUri}" rel="stylesheet">
+	<title>Roopik Preview</title>
+</head>
 <body>
-	<p>Error loading preview template. Please check the extension installation.</p>
+	<div id="root"></div>
+	<script>
+		window.VITE_SERVER_URL = ${this._viteServerUrl ? JSON.stringify(this._viteServerUrl) : 'undefined'};
+		window.INITIAL_LOADING = ${!this._viteServerUrl};
+	</script>
+	<script type="module" src="${scriptUri}"></script>
 </body>
 </html>`;
-		}
 	}
 
 	public dispose() {
