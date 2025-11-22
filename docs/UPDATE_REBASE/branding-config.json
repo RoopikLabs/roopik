@@ -23,6 +23,7 @@
       "name": "Roopik Labs"
     },
     "repository": {
+      "type": "git",
       "url": "https://github.com/RoopikLabs/roopik.git"
     },
     "bugs": {
@@ -136,6 +137,24 @@
         "required": true,
         "sizes": "scalable",
         "format": "svg"
+      }
+    ],
+    "extensions": [
+      {
+        "source": "extensions/github-authentication/media/favicon.ico",
+        "target": "roopik-favicon.ico",
+        "description": "GitHub authentication extension favicon",
+        "required": false,
+        "sizes": "16x16 or 32x32",
+        "format": "ico"
+      },
+      {
+        "source": "extensions/microsoft-authentication/media/favicon.ico",
+        "target": "roopik-favicon.ico",
+        "description": "Microsoft authentication extension favicon",
+        "required": false,
+        "sizes": "16x16 or 32x32",
+        "format": "ico"
       }
     ]
   },
