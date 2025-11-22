@@ -1,7 +1,7 @@
 {
   "name": "roopik",
   "displayName": "Roopik",
-  "description": "AI-native canvas-first IDE for frontend development",
+  "description": "AI-Native Canvas-First IDE",
   "version": "0.1.0",
   "publisher": "roopik",
   "engines": {
