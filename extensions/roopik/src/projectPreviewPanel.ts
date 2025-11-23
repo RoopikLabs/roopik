@@ -10,6 +10,7 @@ import { ViteServerManager } from './projectRunner/viteServerManager';
 import { StyleContextGatherer } from './styleContextGatherer';
 import { ConfigManager } from './config';
 import { Logger } from './logger';
+import type { ExtensionMessage, ExtensionClickToSourceMessage } from './types/previewMessages';
 
 /**
  * Mode 2: Project Preview Panel
@@ -90,7 +91,7 @@ export class ProjectPreviewPanel {
 
 		// Handle messages from webview
 		this._panel.webview.onDidReceiveMessage(
-			async (message) => {
+			async (message: ExtensionMessage) => {
 				switch (message.type) {
 					case 'iframe-log': {
 						// Relay iframe console logs to Logger
@@ -174,7 +175,7 @@ export class ProjectPreviewPanel {
 	/**
 	 * Handle click-to-source message from webview
 	 */
-	private async _handleClickToSource(message: any) {
+	private async _handleClickToSource(message: ExtensionClickToSourceMessage) {
 		const { file, line, column, endLine, endColumn, componentName, parentContext } = message;
 
 		this._logger.info('========================================');

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { BottomActionBar } from '../components/BottomActionBar';
 import type { InspectedElement } from '../utils/inspectOverlay';
+import { setupMessageBridge, sendToIframe, sendToExtension } from '../utils/messageBridge';
+import type { IframeToWebviewMessage } from '../utils/messageTypes';
 import './ProjectView.css';
 
 // VS Code API
@@ -62,37 +64,20 @@ function ProjectView() {
 
 	// Send debug mode state to iframe
 	const sendDebugModeToIframe = (enabled: boolean) => {
-		try {
-			iframeRef.current?.contentWindow?.postMessage({
-				type: 'roopik-toggle-debug',
-				enabled: enabled
-			}, '*');
-			console.log('[Roopik] Sent debug mode to iframe:', enabled);
-		} catch (error) {
-			console.error('[Roopik] Failed to send message to iframe:', error);
-		}
+		sendToIframe(iframeRef.current, {
+			type: 'roopik-toggle-debug',
+			enabled: enabled
+		});
+		console.log('[Roopik] Sent debug mode to iframe:', enabled);
 	};
 
 	// Send inspect mode state to iframe
 	const sendInspectModeToIframe = (enabled: boolean) => {
-		try {
-			const iframe = iframeRef.current;
-			if (!iframe || !iframe.contentWindow) {
-				console.log('[Roopik] ❌ Cannot send message - iframe not ready');
-				return;
-			}
-
-			const message = {
-				type: 'roopik-toggle-inspect',
-				enabled: enabled
-			};
-
-			console.log('[Roopik] 📤 Sending inspect mode message:', message);
-			iframe.contentWindow.postMessage(message, '*');
-			console.log('[Roopik] ✅ Sent inspect mode to iframe:', enabled);
-		} catch (error) {
-			console.error('[Roopik] ❌ Failed to send message to iframe:', error);
-		}
+		sendToIframe(iframeRef.current, {
+			type: 'roopik-toggle-inspect',
+			enabled: enabled
+		});
+		console.log('[Roopik] ✅ Sent inspect mode to iframe:', enabled);
 	};
 
 	// Note: Inspect script is injected by Vite plugin, not by webview
@@ -109,21 +94,17 @@ function ProjectView() {
 		}
 
 		// Send handshake
-		try {
-			iframeRef.current.contentWindow?.postMessage({
-				type: 'ROOPIK_HANDSHAKE_SYN',
-				secret: 'ROOPIK_IDE_HANDSHAKE_v1'
-			}, '*');
-			console.log('[Roopik] Sent authentication handshake to iframe');
+		sendToIframe(iframeRef.current, {
+			type: 'ROOPIK_HANDSHAKE_SYN',
+			secret: 'ROOPIK_IDE_HANDSHAKE_v1'
+		});
+		console.log('[Roopik] Sent authentication handshake to iframe');
 
-			iframeRef.current.contentWindow?.postMessage({
-				type: 'roopik-init-url',
-				url: iframeRef.current.src
-			}, '*');
-			console.log('[Roopik] Sent initial URL to iframe:', iframeRef.current.src);
-		} catch (error) {
-			console.error('[Roopik] Failed to send handshake:', error);
-		}
+		sendToIframe(iframeRef.current, {
+			type: 'roopik-init-url',
+			url: iframeRef.current.src
+		});
+		console.log('[Roopik] Sent initial URL to iframe:', iframeRef.current.src);
 
 		// Update address bar and history
 		const currentSrc = iframeRef.current.src;
@@ -142,40 +123,12 @@ function ProjectView() {
 		}
 	};
 
-	// Listen for messages from iframe
+	// Setup message bridge: automatically forwards iframe messages to extension
+	// Local messages (navigation, inspect) are handled in the callback
 	useEffect(() => {
-		const handleMessage = (event: MessageEvent) => {
-			const message = event.data;
-
+		const cleanup = setupMessageBridge(vscode, (message: IframeToWebviewMessage) => {
+			// Handle messages that need webview-side processing
 			switch (message.type) {
-				case 'roopik-log':
-					vscode.postMessage({
-						type: 'iframe-log',
-						level: message.level,
-						args: message.args
-					});
-					break;
-
-				case 'roopik-click-to-source':
-					vscode.postMessage({
-						type: 'click-to-source',
-						file: message.file,
-						line: message.line,
-						column: message.column,
-						endLine: message.endLine,
-						endColumn: message.endColumn,
-						componentName: message.componentName,
-						parentContext: message.parentContext
-					});
-					break;
-
-				case 'roopik-title-change':
-					vscode.postMessage({
-						type: 'update-title',
-						title: message.title
-					});
-					break;
-
 				case 'roopik-navigate':
 					if (isRefreshing) {
 						console.log('[Roopik Webview] Ignoring navigation during refresh:', message.url);
@@ -202,11 +155,10 @@ function ProjectView() {
 					setInspectedElement(message.element);
 					break;
 			}
-		};
+		});
 
-		window.addEventListener('message', handleMessage);
-		return () => window.removeEventListener('message', handleMessage);
-	}, [highlightMode, isRefreshing, navigationHistory, currentHistoryIndex]);
+		return cleanup;
+	}, [isRefreshing, navigationHistory, currentHistoryIndex]);
 
 	// Inspect script is already in the iframe via Vite plugin injection
 	// No need to inject from webview side
@@ -309,7 +261,7 @@ function ProjectView() {
 			hideDebugNotification();
 		}
 
-		vscode.postMessage({
+		sendToExtension(vscode, {
 			type: 'toggle-highlight-mode',
 			enabled: newMode
 		});
@@ -318,7 +270,7 @@ function ProjectView() {
 	};
 
 	const handleStopServer = () => {
-		vscode.postMessage({ type: 'stop-server' });
+		sendToExtension(vscode, { type: 'stop-server' });
 	};
 
 	return (
@@ -465,7 +417,7 @@ function ProjectView() {
 				}}
 				onOpenInEditor={(file, line) => {
 					// Send message to VS Code extension to open file
-					vscode.postMessage({
+					sendToExtension(vscode, {
 						type: 'click-to-source',
 						file: file,
 						line: line,
