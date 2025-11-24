@@ -1,0 +1,160 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+.roopik-welcome {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 100%;
+	overflow: auto;
+	background-color: var(--vscode-editor-background);
+}
+
+.welcome-container {
+	max-width: 800px;
+	padding: 40px;
+	text-align: center;
+}
+
+.welcome-header {
+	margin-bottom: 48px;
+}
+
+.welcome-logo {
+	font-size: 64px;
+	margin-bottom: 16px;
+}
+
+.welcome-title {
+	font-size: 32px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+	margin-bottom: 8px;
+}
+
+.welcome-subtitle {
+	font-size: 16px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.welcome-actions {
+	display: flex;
+	gap: 16px;
+	justify-content: center;
+	margin-bottom: 48px;
+}
+
+.action-button {
+	flex: 1;
+	max-width: 280px;
+	padding: 20px 24px;
+	border: 1px solid var(--vscode-button-border);
+	border-radius: 6px;
+	background-color: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	cursor: pointer;
+	transition: background-color 0.15s ease, border-color 0.15s ease;
+	text-align: left;
+}
+
+.action-button:hover {
+	background-color: var(--vscode-button-secondaryHoverBackground);
+	border-color: var(--vscode-focusBorder);
+}
+
+.action-label {
+	font-size: 15px;
+	font-weight: 600;
+	margin-bottom: 6px;
+	color: var(--vscode-button-secondaryForeground);
+}
+
+.action-description {
+	font-size: 13px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.welcome-section {
+	margin-bottom: 40px;
+}
+
+.section-title {
+	font-size: 18px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+	margin-bottom: 20px;
+	text-align: left;
+}
+
+.tips-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.tip-item {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 16px;
+	background-color: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 6px;
+	text-align: left;
+}
+
+.tip-icon {
+	font-size: 24px;
+	flex-shrink: 0;
+}
+
+.tip-content {
+	flex: 1;
+}
+
+.tip-title {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+	margin-bottom: 4px;
+}
+
+.tip-description {
+	font-size: 13px;
+	color: var(--vscode-descriptionForeground);
+	line-height: 1.5;
+}
+
+.welcome-footer {
+	padding-top: 24px;
+	border-top: 1px solid var(--vscode-widget-border);
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	align-items: center;
+}
+
+.checkbox-container {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.checkbox-label {
+	font-size: 13px;
+	color: var(--vscode-foreground);
+	cursor: pointer;
+	user-select: none;
+}
+
+.checkbox-label:hover {
+	color: var(--vscode-textLink-activeForeground);
+}
+
+.shortcut-hint {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}

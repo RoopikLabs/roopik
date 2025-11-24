@@ -17,61 +17,62 @@
   "contributes": {
     "commands": [
       {
-        "command": "roopik.openCanvas",
-        "title": "Roopik: Dashboard",
+        "comment": "LEGACY EXTENSION COMMANDS - Migrating to core",
+        "command": "roopik.extension.openCanvas",
+        "title": "Roopik Extension: Dashboard",
         "icon": "$(dashboard)"
       },
       {
-        "command": "roopik.newCanvas",
-        "title": "Roopik: New Canvas"
+        "command": "roopik.extension.newCanvas",
+        "title": "Roopik Extension: New Canvas"
       },
       {
-        "command": "roopik.showCanvases",
-        "title": "Roopik: Show Open Canvases"
+        "command": "roopik.extension.showCanvases",
+        "title": "Roopik Extension: Show Open Canvases"
       },
       {
-        "command": "roopik.closeAllCanvases",
-        "title": "Roopik: Close All Canvases"
+        "command": "roopik.extension.closeAllCanvases",
+        "title": "Roopik Extension: Close All Canvases"
       },
       {
-        "command": "roopik.deleteCanvas",
-        "title": "Roopik: Delete Canvas",
+        "command": "roopik.extension.deleteCanvas",
+        "title": "Roopik Extension: Delete Canvas",
         "enablement": "false"
       },
       {
-        "command": "roopik.renameCanvas",
-        "title": "Roopik: Rename Canvas",
+        "command": "roopik.extension.renameCanvas",
+        "title": "Roopik Extension: Rename Canvas",
         "enablement": "false"
       },
       {
-        "command": "roopik.exportCanvas",
-        "title": "Roopik: Export Canvas",
+        "command": "roopik.extension.exportCanvas",
+        "title": "Roopik Extension: Export Canvas",
         "enablement": "false"
       },
       {
-        "command": "roopik.importCanvas",
-        "title": "Roopik: Import Canvas"
+        "command": "roopik.extension.importCanvas",
+        "title": "Roopik Extension: Import Canvas"
       },
       {
-        "command": "roopik.openProjectPreview",
-        "title": "Roopik: Open Project Preview",
-        "category": "Roopik"
+        "command": "roopik.extension.openProjectPreview",
+        "title": "Roopik Extension: Open Project Preview",
+        "category": "Roopik Extension"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "roopik",
-          "title": "Roopik",
+          "id": "roopik-extension",
+          "title": "Roopik Extension",
           "icon": "resources/roopik-icon.svg"
         }
       ]
     },
     "views": {
-      "roopik": [
+      "roopik-extension": [
         {
-          "id": "roopik.dashboard",
-          "name": "Dashboard",
+          "id": "roopik.extension.dashboard",
+          "name": "Extension Dashboard",
           "type": "webview"
         }
       ]
