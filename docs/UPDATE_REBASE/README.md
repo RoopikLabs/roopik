@@ -53,6 +53,20 @@ This directory contains tools and documentation for maintaining Roopik branding 
    git commit -m "chore: apply Roopik branding after rebase"
    ```
 
+### Preferred Sync Flow (avoids merge conflicts)
+
+1. **Keep a clean upstream clone** (e.g. `vscode_initi_diff_reference`). After pulling Microsoft/vscode, run `node docs/UPDATE_REBASE/apply-branding.js` there so branding stays correct in the reference copy.
+2. **Copy Roopik code manually** into the reference clone:
+   - Copy `extensions/roopik/`
+   - Copy any custom core folders (e.g. `src/vs/workbench/contrib/roopik/`)
+3. **Build/test once** in the reference clone (`npm install`, `npm run watch-extensions`, etc.) to ensure it compiles.
+4. **Sync back to your main repo with `robocopy`** in two passes:
+   - Pass 1 (copy only): `/E` + `/XD extensions\roopik node_modules out .build .claude .config .vscode .git .github` – brings in new files/updates but keeps destination extras.
+   - Pass 2 (cleanup): `/MIR` + the same `/XD …` list – removes files deleted upstream while protecting your custom folders.
+5. **Review + commit** in your main repo.
+
+This flow keeps Microsoft changes separate, minimizes merge conflicts, and ensures `extensions/roopik` (and other custom code) never gets wiped during mirroring.
+
 ---
 
 ## 📖 Script Usage

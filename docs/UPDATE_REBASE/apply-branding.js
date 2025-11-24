@@ -122,21 +122,6 @@ function ensureDirectory(dirPath) {
 	return false;
 }
 
-function deleteDirectory(dirPath) {
-	try {
-		if (fileExists(dirPath)) {
-			if (!DRY_RUN) {
-				fs.rmSync(dirPath, { recursive: true, force: true });
-			}
-			return true;
-		}
-		return false;
-	} catch (err) {
-		error(`Cannot delete directory ${dirPath}: ${err.message}`);
-		return false;
-	}
-}
-
 // Initialize branding directory structure
 function initializeBrandingStructure(config) {
 	log('\n' + '='.repeat(60), 'bright');
@@ -631,7 +616,7 @@ const roopikCopyrightHeaderLines = [
 
 	const newFunction = `const copyrights = es.through(function (file: VinylFileWithLines) {
 		const lines = file.__lines;
-
+		
 		// ROOPIK: Check if file matches either Microsoft or Roopik copyright header
 		let hasMicrosoftCopyright = true;
 		let hasRoopikCopyright = true;
@@ -643,14 +628,14 @@ const roopikCopyrightHeaderLines = [
 				hasRoopikCopyright = false;
 			}
 		}
-
+		
 		if (!hasMicrosoftCopyright && !hasRoopikCopyright) {
 			console.error(file.relative + ': Missing or bad copyright statement');
 			errorCount++;
 		}
 		this.emit('data', file);
 	});`;
-
+	
 	// Check if already updated
 	if (content.includes('// ROOPIK: Check if file matches either Microsoft or Roopik copyright header')) {
 		if (!needsUpdate) {
@@ -745,55 +730,6 @@ function clearMailmap() {
 		error('.mailmap - Failed to clear');
 		return { updated: false, errors: 1 };
 	}
-}
-
-// Delete cli/target/ directory
-function deleteCliTarget() {
-	const dirPath = path.join(ROOT_DIR, 'cli/target');
-
-	if (!fileExists(dirPath)) {
-		success('cli/target/ - Already deleted or not present');
-		return { updated: false, errors: 0 };
-	}
-
-	if (deleteDirectory(dirPath)) {
-		success('cli/target/ - Deleted');
-		return { updated: true, errors: 0 };
-	} else {
-		error('cli/target/ - Failed to delete');
-		return { updated: false, errors: 1 };
-	}
-}
-
-// Replace documentation files with #ROOPIK
-function replaceDocFiles() {
-	const files = ['CONTRIBUTING.md', 'README.md', 'SECURITY.md', 'LICENSE.md'];
-	let totalChanges = 0;
-	let totalErrors = 0;
-
-	for (const fileName of files) {
-		const filePath = path.join(ROOT_DIR, fileName);
-
-		// Check if already has #ROOPIK
-		if (fileExists(filePath)) {
-			const content = readFile(filePath);
-			if (content && content.trim() === '#ROOPIK') {
-				success(`${fileName} - Already replaced`);
-				continue;
-			}
-		}
-
-		// Write #ROOPIK to file
-		if (writeFile(filePath, '#ROOPIK\n')) {
-			success(`${fileName} - Replaced with #ROOPIK`);
-			totalChanges++;
-		} else {
-			error(`${fileName} - Failed to replace`);
-			totalErrors++;
-		}
-	}
-
-	return { changes: totalChanges, errors: totalErrors };
 }
 
 // Apply server manifest updates
@@ -1016,16 +952,6 @@ function main() {
 		totalChanges++;
 	}
 	totalErrors += mailmapResult.errors;
-
-	const cliTargetResult = deleteCliTarget();
-	if (cliTargetResult.updated) {
-		totalChanges++;
-	}
-	totalErrors += cliTargetResult.errors;
-
-	const docFilesResult = replaceDocFiles();
-	totalChanges += docFilesResult.changes;
-	totalErrors += docFilesResult.errors;
 
 	// Process icon replacements
 	if (!SKIP_ICONS) {

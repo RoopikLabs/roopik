@@ -30,9 +30,9 @@ CLAUDE.md
 COPILOT-INSTRUCTIONS.md
 .cursorrules
 .claude/*
+/branding
 
 # Roopik Canvas State (user-specific, not committed)
 .roopik/canvas-*.json
 .roopik/ai-contexts/*.json
 .roopik/session.json
-/branding
