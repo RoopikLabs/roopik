@@ -130,6 +130,7 @@ export function hygiene(some, runEslint = true) {
 		if (!hasMicrosoftCopyright && !hasRoopikCopyright) {
 			console.error(file.relative + ': Missing or bad copyright statement');
 			errorCount++;
+			break;
 		}
 
 		this.emit('data', file);

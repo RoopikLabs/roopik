@@ -122,6 +122,21 @@ function ensureDirectory(dirPath) {
 	return false;
 }
 
+function deleteDirectory(dirPath) {
+	try {
+		if (fileExists(dirPath)) {
+			if (!DRY_RUN) {
+				fs.rmSync(dirPath, { recursive: true, force: true });
+			}
+			return true;
+		}
+		return false;
+	} catch (err) {
+		error(`Cannot delete directory ${dirPath}: ${err.message}`);
+		return false;
+	}
+}
+
 // Initialize branding directory structure
 function initializeBrandingStructure(config) {
 	log('\n' + '='.repeat(60), 'bright');
@@ -283,7 +298,15 @@ function updateProductJson(config) {
 
 		// Check and update each field
 		for (const [key, value] of Object.entries(productConfig)) {
-			if (product[key] !== value) {
+			// Handle arrays - deep compare
+			if (Array.isArray(value) && Array.isArray(product[key])) {
+				const arraysEqual = value.length === product[key].length &&
+					value.every((item, index) => item === product[key][index]);
+				if (!arraysEqual) {
+					product[key] = value;
+					needsUpdate = true;
+				}
+			} else if (product[key] !== value) {
 				product[key] = value;
 				needsUpdate = true;
 			}
@@ -419,6 +442,354 @@ function applyTextReplacements(config) {
 			}
 		} else {
 			success(`${replacement.file} - Already correct`);
+		}
+	}
+
+	return { changes: totalChanges, errors: totalErrors };
+}
+
+// Apply eslint.config.js updates
+function updateEslintConfig() {
+	const filePath = path.join(ROOT_DIR, 'eslint.config.js');
+
+	if (!fileExists(filePath)) {
+		warning('eslint.config.js not found (skipping)');
+		return { updated: false, errors: 0 };
+	}
+
+	const content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	const overrideBlock = `// ROOPIK: Override header rule for roopik extension
+{
+	files: ['extensions/roopik/**/*.{ts,tsx,js,jsx}'],
+	plugins: { header: pluginHeader },
+	rules: {
+		'header/header': [2, 'block', [
+			'---------------------------------------------------------------------------------------------',
+			' *  Copyright (c) Roopik. All rights reserved.',
+			' *  Licensed under the MIT License. See License.txt in the project root for license information.',
+			' *--------------------------------------------------------------------------------------------'
+		]]
+	}
+},
+`;
+
+	// Check if override block already exists
+	if (content.includes('// ROOPIK: Override header rule for roopik extension')) {
+		success('eslint.config.js - Override block already exists');
+		return { updated: false, errors: 0 };
+	}
+
+	// Find the end of the export array/object
+	// Look for closing bracket before export statement or at end
+	let updatedContent = content.trimEnd();
+
+	// Find the last closing bracket/brace that's part of the export
+	// Usually eslint.config.js exports an array, so we need to add before the closing ]
+	const lastBracketIndex = updatedContent.lastIndexOf(']');
+	const lastBraceIndex = updatedContent.lastIndexOf('}');
+	const lastIndex = Math.max(lastBracketIndex, lastBraceIndex);
+
+	if (lastIndex > 0) {
+		// Insert the override block before the closing bracket
+		const before = updatedContent.substring(0, lastIndex);
+		const after = updatedContent.substring(lastIndex);
+
+		// Add comma if needed
+		const needsComma = !before.trimEnd().endsWith(',') && !before.trimEnd().endsWith('[') && !before.trimEnd().endsWith('{');
+		updatedContent = before + (needsComma ? ',' : '') + '\n\n' + overrideBlock + '\n' + after;
+	} else {
+		// Fallback: just append at the end
+		updatedContent = updatedContent.replace(/[,;]\s*$/, '') + '\n\n' + overrideBlock;
+	}
+
+	if (writeFile(filePath, updatedContent)) {
+		success('eslint.config.js - Added roopik extension override block');
+		return { updated: true, errors: 0 };
+	} else {
+		error('eslint.config.js - Failed to update');
+		return { updated: false, errors: 1 };
+	}
+}
+
+// Apply build/gulpfile.extensions.mjs updates
+function updateGulpfileExtensions() {
+	const filePath = path.join(ROOT_DIR, 'build/gulpfile.extensions.mjs');
+
+	if (!fileExists(filePath)) {
+		warning('build/gulpfile.extensions.mjs not found (skipping)');
+		return { updated: false, errors: 0 };
+	}
+
+	const content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	const roopikLine = "\t'extensions/roopik/tsconfig.json', // ROOPIK: Our canvas-first IDE extension";
+
+	// Check if roopik extension already exists
+	if (content.includes("'extensions/roopik/tsconfig.json'")) {
+		success('build/gulpfile.extensions.mjs - Roopik extension already registered');
+		return { updated: false, errors: 0 };
+	}
+
+	// Find the compilations array
+	const compilationsMatch = content.match(/const compilations = \[([\s\S]*?)\];/);
+	if (!compilationsMatch) {
+		warning('build/gulpfile.extensions.mjs - Could not find compilations array');
+		return { updated: false, errors: 0 };
+	}
+
+	// Find the opening bracket position
+	const arrayStartIndex = content.indexOf('const compilations = [');
+	if (arrayStartIndex === -1) {
+		warning('build/gulpfile.extensions.mjs - Could not find compilations array start');
+		return { updated: false, errors: 0 };
+	}
+
+	// Find the first entry after the opening bracket
+	const afterBracket = content.substring(arrayStartIndex + 'const compilations = ['.length);
+	const firstEntryMatch = afterBracket.match(/^\s*['"]([^'"]+)['"]/);
+
+	let updatedContent;
+	if (firstEntryMatch) {
+		// Insert before the first entry
+		const insertIndex = arrayStartIndex + 'const compilations = ['.length;
+		updatedContent = content.substring(0, insertIndex) +
+			'\n' + roopikLine + ',' +
+			content.substring(insertIndex);
+	} else {
+		// No entries yet, just add after opening bracket
+		const insertIndex = arrayStartIndex + 'const compilations = ['.length;
+		updatedContent = content.substring(0, insertIndex) +
+			'\n' + roopikLine +
+			content.substring(insertIndex);
+	}
+
+	if (writeFile(filePath, updatedContent)) {
+		success('build/gulpfile.extensions.mjs - Added roopik extension registration');
+		return { updated: true, errors: 0 };
+	} else {
+		error('build/gulpfile.extensions.mjs - Failed to update');
+		return { updated: false, errors: 1 };
+	}
+}
+
+// Apply build/hygiene.mjs or hygiene.ts updates
+function updateHygieneMjs() {
+	// Check for both .mjs and .ts versions
+	const mjsPath = path.join(ROOT_DIR, 'build/hygiene.mjs');
+	const tsPath = path.join(ROOT_DIR, 'build/hygiene.ts');
+
+	let filePath;
+	if (fileExists(mjsPath)) {
+		filePath = mjsPath;
+	} else if (fileExists(tsPath)) {
+		filePath = tsPath;
+	} else {
+		warning('build/hygiene.mjs or build/hygiene.ts not found (skipping)');
+		return { updated: false, errors: 0 };
+	}
+
+	let content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	let needsUpdate = false;
+
+	// Step 1: Add roopikCopyrightHeaderLines constant after imports
+	const roopikConstant = `// ROOPIK: Allow both Microsoft and Roopik copyright headers
+const roopikCopyrightHeaderLines = [
+	'/*---------------------------------------------------------------------------------------------',
+	' *  Copyright (c) Roopik. All rights reserved.',
+	' *  Licensed under the MIT License. See License.txt in the project root for license information.',
+	' *--------------------------------------------------------------------------------------------*/',
+];
+`;
+
+	if (!content.includes('const roopikCopyrightHeaderLines = [')) {
+		// Find where to insert - after copyrightHeaderLines constant
+		const copyrightHeaderMatch = content.match(/(const copyrightHeaderLines = \[[\s\S]*?\];)/);
+		if (copyrightHeaderMatch) {
+			const insertIndex = copyrightHeaderMatch.index + copyrightHeaderMatch[0].length;
+			content = content.substring(0, insertIndex) + '\n' + roopikConstant + content.substring(insertIndex);
+			needsUpdate = true;
+		} else {
+			const fileName = path.basename(filePath);
+			warning(`build/${fileName} - Could not find copyrightHeaderLines constant`);
+		}
+	}
+
+	// Step 2: Replace the copyrights function
+	// Match function with optional TypeScript type annotation
+	const oldFunctionPattern = /const copyrights = es\.through\(function\s*\([^)]*\)\s*\{[\s\S]*?this\.emit\('data', file\);\s*\}\);/;
+
+	const newFunction = `const copyrights = es.through(function (file: VinylFileWithLines) {
+		const lines = file.__lines;
+
+		// ROOPIK: Check if file matches either Microsoft or Roopik copyright header
+		let hasMicrosoftCopyright = true;
+		let hasRoopikCopyright = true;
+		for (let i = 0; i < copyrightHeaderLines.length; i++) {
+			if (lines[i] !== copyrightHeaderLines[i]) {
+				hasMicrosoftCopyright = false;
+			}
+			if (lines[i] !== roopikCopyrightHeaderLines[i]) {
+				hasRoopikCopyright = false;
+			}
+		}
+
+		if (!hasMicrosoftCopyright && !hasRoopikCopyright) {
+			console.error(file.relative + ': Missing or bad copyright statement');
+			errorCount++;
+		}
+		this.emit('data', file);
+	});`;
+
+	// Check if already updated
+	if (content.includes('// ROOPIK: Check if file matches either Microsoft or Roopik copyright header')) {
+		if (!needsUpdate) {
+			const fileName = path.basename(filePath);
+			success(`build/${fileName} - Already updated`);
+			return { updated: false, errors: 0 };
+		}
+	} else {
+		// Replace the function
+		if (oldFunctionPattern.test(content)) {
+			content = content.replace(oldFunctionPattern, newFunction);
+			needsUpdate = true;
+		} else {
+			const fileName = path.basename(filePath);
+			warning(`build/${fileName} - Could not find copyrights function to replace`);
+		}
+	}
+
+	if (needsUpdate) {
+		if (writeFile(filePath, content)) {
+			const fileName = path.basename(filePath);
+			success(`build/${fileName} - Added Roopik copyright support`);
+			return { updated: true, errors: 0 };
+		} else {
+			const fileName = path.basename(filePath);
+			error(`build/${fileName} - Failed to update`);
+			return { updated: false, errors: 1 };
+		}
+	}
+
+	return { updated: false, errors: 0 };
+}
+
+// Apply .mention-bot updates
+function updateMentionBot() {
+	const filePath = path.join(ROOT_DIR, '.mention-bot');
+
+	if (!fileExists(filePath)) {
+		warning('.mention-bot not found (skipping)');
+		return { updated: false, errors: 0 };
+	}
+
+	let content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	// Check if already updated
+	if (content.includes('"requiredOrgs": ["RoopikLabs"]')) {
+		success('.mention-bot - Already updated');
+		return { updated: false, errors: 0 };
+	}
+
+	// Replace Microsoft with RoopikLabs
+	const updated = content.replace(/"requiredOrgs":\s*\["Microsoft"\]/, '"requiredOrgs": ["RoopikLabs"]');
+
+	if (updated === content) {
+		warning('.mention-bot - Could not find requiredOrgs field to update');
+		return { updated: false, errors: 0 };
+	}
+
+	if (writeFile(filePath, updated)) {
+		success('.mention-bot - Updated requiredOrgs to RoopikLabs');
+		return { updated: true, errors: 0 };
+	} else {
+		error('.mention-bot - Failed to update');
+		return { updated: false, errors: 1 };
+	}
+}
+
+// Clear .mailmap file
+function clearMailmap() {
+	const filePath = path.join(ROOT_DIR, '.mailmap');
+
+	if (!fileExists(filePath)) {
+		warning('.mailmap not found (skipping)');
+		return { updated: false, errors: 0 };
+	}
+
+	// Check if already empty
+	const content = readFile(filePath);
+	if (!content || content.trim() === '') {
+		success('.mailmap - Already cleared');
+		return { updated: false, errors: 0 };
+	}
+
+	// Clear the file
+	if (writeFile(filePath, '')) {
+		success('.mailmap - Cleared');
+		return { updated: true, errors: 0 };
+	} else {
+		error('.mailmap - Failed to clear');
+		return { updated: false, errors: 1 };
+	}
+}
+
+// Delete cli/target/ directory
+function deleteCliTarget() {
+	const dirPath = path.join(ROOT_DIR, 'cli/target');
+
+	if (!fileExists(dirPath)) {
+		success('cli/target/ - Already deleted or not present');
+		return { updated: false, errors: 0 };
+	}
+
+	if (deleteDirectory(dirPath)) {
+		success('cli/target/ - Deleted');
+		return { updated: true, errors: 0 };
+	} else {
+		error('cli/target/ - Failed to delete');
+		return { updated: false, errors: 1 };
+	}
+}
+
+// Replace documentation files with #ROOPIK
+function replaceDocFiles() {
+	const files = ['CONTRIBUTING.md', 'README.md', 'SECURITY.md', 'LICENSE.md'];
+	let totalChanges = 0;
+	let totalErrors = 0;
+
+	for (const fileName of files) {
+		const filePath = path.join(ROOT_DIR, fileName);
+
+		// Check if already has #ROOPIK
+		if (fileExists(filePath)) {
+			const content = readFile(filePath);
+			if (content && content.trim() === '#ROOPIK') {
+				success(`${fileName} - Already replaced`);
+				continue;
+			}
+		}
+
+		// Write #ROOPIK to file
+		if (writeFile(filePath, '#ROOPIK\n')) {
+			success(`${fileName} - Replaced with #ROOPIK`);
+			totalChanges++;
+		} else {
+			error(`${fileName} - Failed to replace`);
+			totalErrors++;
 		}
 	}
 
@@ -615,6 +986,46 @@ function main() {
 	const textResult = applyTextReplacements(config);
 	totalChanges += textResult.changes;
 	totalErrors += textResult.errors;
+
+	const eslintResult = updateEslintConfig();
+	if (eslintResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += eslintResult.errors;
+
+	const gulpfileResult = updateGulpfileExtensions();
+	if (gulpfileResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += gulpfileResult.errors;
+
+	const hygieneResult = updateHygieneMjs();
+	if (hygieneResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += hygieneResult.errors;
+
+	const mentionBotResult = updateMentionBot();
+	if (mentionBotResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += mentionBotResult.errors;
+
+	const mailmapResult = clearMailmap();
+	if (mailmapResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += mailmapResult.errors;
+
+	const cliTargetResult = deleteCliTarget();
+	if (cliTargetResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += cliTargetResult.errors;
+
+	const docFilesResult = replaceDocFiles();
+	totalChanges += docFilesResult.changes;
+	totalErrors += docFilesResult.errors;
 
 	// Process icon replacements
 	if (!SKIP_ICONS) {

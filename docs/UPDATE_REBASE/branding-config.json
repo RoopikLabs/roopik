@@ -11,10 +11,23 @@
     "win32DirName": "Roopik",
     "win32NameVersion": "Roopik",
     "win32RegValueName": "Roopik",
+    "win32MutexName": "roopik",
+    "win32AppUserModelId": "Roopik",
+    "win32ShellNameShort": "Ro&opik",
+    "win32TunnelServiceMutex": "roopik-tunnelservice",
+    "win32TunnelMutex": "roopik-tunnel",
     "darwinBundleIdentifier": "com.roopik.code",
     "linuxIconName": "roopik-editor",
     "urlProtocol": "roopik",
-    "reportIssueUrl": "https://github.com/RoopikLabs/roopik/issues/new"
+    "serverApplicationName": "roopik-server",
+    "serverDataFolderName": ".roopik-server",
+    "tunnelApplicationName": "roopik-tunnel",
+    "reportIssueUrl": "https://github.com/RoopikLabs/roopik/issues/new",
+    "linkProtectionTrustedDomains": [
+      "https://roopik.com",
+      "https://www.roopik.com",
+      "https://github.com/RoopikLabs/roopik"
+    ]
   },
 
   "package": {
