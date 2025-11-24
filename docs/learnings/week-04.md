@@ -320,13 +320,96 @@ npm run watch
 
 ---
 
+## Recent Implementations
+
+### **Welcome Screen with Auto-Restore**
+
+**What we did:**
+- Created `RoopikWelcomeEditor` (EditorPane) with checkbox to toggle "show on startup"
+- Implemented `RoopikWelcomeInput` (EditorInput) as singleton
+- Added `RoopikWelcomeInputSerializer` for editor persistence
+
+**Key fix - Serialization:**
+- Problem: Welcome screen closed on refresh (even when left open)
+- Solution: Register serializer with `EditorFactory` registry
+- VSCode now saves/restores welcome screen state across reloads
+
+**Code:**
+```typescript
+// welcomeInput.ts
+export class RoopikWelcomeInputSerializer implements IEditorSerializer {
+	deserialize(): EditorInput {
+		return RoopikWelcomeInput.getInstance(); // Singleton pattern
+	}
+}
+
+// roopik.contribution.ts
+Registry.as<IEditorFactoryRegistry>(EditorExtensions.EditorFactory)
+	.registerEditorSerializer(RoopikWelcomeInput.ID, RoopikWelcomeInputSerializer);
+```
+
+**Important:** `STORAGE_KEY` must be `public static` (not private) for cross-file access.
+
+---
+
+### **Activity Bar & Tree View**
+
+**What we did:**
+- Created `RoopikDashboardView extends ViewPane` (dashboard with canvases/projects)
+- Created `RoopikViewPaneContainer extends ViewPaneContainer` (activity bar container)
+- Registered view container with paintcan icon, keyboard shortcut (Ctrl+Shift+R)
+
+**Critical fix - ViewPane constructor:**
+- Problem: TypeScript error about wrong parameter order
+- Solution: ViewPane does NOT take `ITelemetryService` (ViewPaneContainer does)
+- Correct order: options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, **hoverService**
+
+**Code:**
+```typescript
+// RoopikDashboardView extends ViewPane (no telemetry)
+constructor(
+	@IHoverService hoverService: IHoverService, // Last parameter
+) {
+	super(..., hoverService); // No telemetryService
+}
+
+// RoopikViewPaneContainer extends ViewPaneContainer (has telemetry)
+constructor(
+	@ITelemetryService telemetryService: ITelemetryService,
+) {
+	super(..., telemetryService, ...); // Needs telemetry
+}
+```
+
+**Remember:** Always check base class constructor signature when extending VSCode classes!
+
+---
+
+### **Enterprise Logger Service**
+
+**What we did:**
+- Created `RoopikLogger` wrapper around VSCode's `ILogService`
+- Methods: `info()`, `warn()`, `error()`, `debug()`, `trace()`
+- Performance tracking: `time()`, `timeAsync()`
+- Prefix all logs with `[Roopik]`
+- Enable/disable logging
+
+**Usage:**
+```typescript
+const logger = new RoopikLogger(accessor.get(ILogService));
+logger.info('Core integration working! 🎨');
+await logger.timeAsync('Canvas load', async () => { /* ... */ });
+```
+
+**Why:** Clean, structured logging; future-proof for error reporting.
+
+---
+
 ## Next Steps (Week 05 Preview)
 
-- [ ] Welcome screen (first visual feature)
-- [ ] Activity bar icon
-- [ ] Tree view (canvases, projects)
 - [ ] Canvas editor (Mode 1)
 - [ ] Browser preview (Mode 2)
+- [ ] Inspect mode integration
 
 ---
 

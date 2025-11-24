@@ -8,7 +8,7 @@ import { registerAction2, Action2 } from '../../../../platform/actions/common/ac
 import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { EditorPaneDescriptor, IEditorPaneRegistry } from '../../../browser/editor.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
-import { EditorExtensions } from '../../../common/editor.js';
+import { EditorExtensions, IEditorFactoryRegistry } from '../../../common/editor.js';
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { IStorageService, StorageScope } from '../../../../platform/storage/common/storage.js';
@@ -17,7 +17,10 @@ import { IWorkbenchLayoutService } from '../../../services/layout/browser/layout
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { RoopikWelcomeEditor } from './welcomeEditor.js';
-import { RoopikWelcomeInput } from './welcomeInput.js';
+import { RoopikWelcomeInput, RoopikWelcomeInputSerializer } from './welcomeInput.js';
+import { RoopikViewsContribution } from './roopikViewPane.js';
+import { RoopikLogger } from '../common/roopikLogger.js';
+import { ILoggerService } from '../../../../platform/log/common/log.js';
 
 /**
  * Roopik Design IDE - Main Contribution
@@ -40,7 +43,12 @@ registerAction2(class extends Action2 {
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
-		console.log('[Roopik] Core integration working! 🎨');
+		const loggerService = accessor.get(ILoggerService);
+		const logger = RoopikLogger.create(loggerService);
+
+		// Automatically logs to both Developer Console and Output Panel
+		logger.info('[Roopik] Core integration working! 🎨');
+
 		return Promise.resolve();
 	}
 });
@@ -53,6 +61,12 @@ Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane
 		'Roopik Welcome'
 	),
 	[new SyncDescriptor(RoopikWelcomeInput)]
+);
+
+// Register Welcome Screen Serializer (for restore on reload)
+Registry.as<IEditorFactoryRegistry>(EditorExtensions.EditorFactory).registerEditorSerializer(
+	RoopikWelcomeInput.ID,
+	RoopikWelcomeInputSerializer
 );
 
 // Open Welcome Screen
@@ -84,8 +98,11 @@ registerAction2(class extends Action2 {
 		});
 	}
 
-	async run(): Promise<void> {
-		console.log('[Roopik] Canvas - Coming soon');
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const loggerService = accessor.get(ILoggerService);
+		const logger = RoopikLogger.create(loggerService);
+		logger.debug('[Roopik] Canvas command invoked');
+		logger.info('[Roopik] Canvas - Coming soon');
 	}
 });
 
@@ -100,8 +117,11 @@ registerAction2(class extends Action2 {
 		});
 	}
 
-	async run(): Promise<void> {
-		console.log('[Roopik] Project Preview - Coming soon');
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const loggerService = accessor.get(ILoggerService);
+		const logger = RoopikLogger.create(loggerService);
+		logger.debug('[Roopik] Project Preview command invoked');
+		logger.info('[Roopik] Project Preview - Coming soon');
 	}
 });
 
@@ -124,6 +144,8 @@ class RoopikStartupContribution extends Disposable implements IWorkbenchContribu
 
 		const showOnStartup = this.storageService.getBoolean(RoopikWelcomeEditor.STORAGE_KEY, StorageScope.PROFILE, true);
 
+		// Open welcome screen on fresh startup only (not on reload)
+		// VSCode automatically restores editors on reload, so welcome screen will restore if it was open
 		if (showOnStartup && this.lifecycleService.startupKind !== StartupKind.ReloadedWindow) {
 			if (!this.editorService.activeEditor || this.layoutService.openedDefaultEditors) {
 				const welcomeInput = RoopikWelcomeInput.getInstance();
@@ -135,4 +157,5 @@ class RoopikStartupContribution extends Disposable implements IWorkbenchContribu
 
 registerWorkbenchContribution2(RoopikStartupContribution.ID, RoopikStartupContribution, WorkbenchPhase.AfterRestored);
 
-console.log('[Roopik] Contribution loaded ✓');
+// Register Roopik views (Activity Bar)
+registerWorkbenchContribution2(RoopikViewsContribution.ID, RoopikViewsContribution, WorkbenchPhase.BlockStartup);

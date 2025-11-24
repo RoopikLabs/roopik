@@ -7,9 +7,12 @@ import { EditorInput } from '../../../common/editor/editorInput.js';
 import { URI } from '../../../../base/common/uri.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
 import { Codicon } from '../../../../base/common/codicons.js';
+import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+import { IEditorSerializer } from '../../../common/editor.js';
 
 export class RoopikWelcomeInput extends EditorInput {
 	static readonly ID = 'roopik.welcomeInput';
+	static readonly RESOURCE = URI.parse('roopik://welcome');
 
 	private static _instance: RoopikWelcomeInput | undefined;
 
@@ -29,7 +32,7 @@ export class RoopikWelcomeInput extends EditorInput {
 	}
 
 	override get resource(): URI {
-		return URI.parse('roopik://welcome');
+		return RoopikWelcomeInput.RESOURCE;
 	}
 
 	override getName(): string {
@@ -46,5 +49,23 @@ export class RoopikWelcomeInput extends EditorInput {
 
 	override matches(other: EditorInput): boolean {
 		return other instanceof RoopikWelcomeInput;
+	}
+}
+
+/**
+ * Serializer for RoopikWelcomeInput
+ * Enables VSCode to restore welcome screen on reload
+ */
+export class RoopikWelcomeInputSerializer implements IEditorSerializer {
+	canSerialize(editorInput: EditorInput): boolean {
+		return editorInput instanceof RoopikWelcomeInput;
+	}
+
+	serialize(editorInput: EditorInput): string {
+		return '';
+	}
+
+	deserialize(instantiationService: IInstantiationService): EditorInput {
+		return RoopikWelcomeInput.getInstance();
 	}
 }
