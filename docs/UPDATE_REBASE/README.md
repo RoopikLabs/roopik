@@ -65,6 +65,13 @@ This directory contains tools and documentation for maintaining Roopik branding 
    - Pass 2 (cleanup): `/MIR` + the same `/XD …` list – removes files deleted upstream while protecting your custom folders.
 5. **Review + commit** in your main repo.
 
+
+robocopy "C:\Users\Humblebee\Documents\GitHub\vscode_initi_diff_reference" "C:\Users\Humblebee\Documents\GitHub\roopik" /E /XD node_modules out .build .claude .config .vscode .git .github
+
+robocopy "C:\Users\Humblebee\Documents\GitHub\vscode_initi_diff_reference" ^
+         "C:\Users\Humblebee\Documents\GitHub\roopik" /MIR ^
+         /XD extensions\roopik docs node_modules out .build .claude .config .vscode .git .github
+
 This flow keeps Microsoft changes separate, minimizes merge conflicts, and ensures `extensions/roopik` (and other custom code) never gets wiped during mirroring.
 
 ---
