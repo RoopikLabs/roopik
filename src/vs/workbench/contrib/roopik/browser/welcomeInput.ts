@@ -50,6 +50,14 @@ export class RoopikWelcomeInput extends EditorInput {
 	override matches(other: EditorInput): boolean {
 		return other instanceof RoopikWelcomeInput;
 	}
+
+	override dispose(): void {
+		// Clear singleton reference so a fresh instance is created next time
+		if (RoopikWelcomeInput._instance === this) {
+			RoopikWelcomeInput._instance = undefined;
+		}
+		super.dispose();
+	}
 }
 
 /**

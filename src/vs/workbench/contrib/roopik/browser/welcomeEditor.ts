@@ -77,6 +77,13 @@ export class RoopikWelcomeEditor extends EditorPane {
 			'roopik.openProjectPreview'
 		);
 
+		this.createActionButton(
+			actions,
+			'Browser Preview V2 (Beta)',
+			'Preview with embedded DevTools & CDP',
+			'roopik.openProjectPreviewV2'
+		);
+
 		// Getting started
 		const gettingStarted = append(container, $('.welcome-section'));
 		const sectionTitle = append(gettingStarted, $('.section-title'));

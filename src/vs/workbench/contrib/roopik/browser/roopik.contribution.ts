@@ -23,6 +23,8 @@ import { RoopikLogger } from '../common/roopikLogger.js';
 import { ILoggerService } from '../../../../platform/log/common/log.js';
 import { ProjectModeEditor } from './projectMode/projectModeEditor.js';
 import { ProjectModeInput, ProjectModeInputSerializer } from './projectMode/projectModeInput.js';
+import { ProjectModeV2Editor } from './projectModeV2/projectModeV2Editor.js';
+import { ProjectModeV2Input } from './projectModeV2/projectModeV2Input.js';
 
 /**
  * Roopik Design IDE - Main Contribution
@@ -87,6 +89,16 @@ Registry.as<IEditorFactoryRegistry>(EditorExtensions.EditorFactory).registerEdit
 	ProjectModeInputSerializer
 );
 
+// Register Project Mode V2 Editor (Mode 2: Browser Preview with embedded DevTools)
+Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
+	EditorPaneDescriptor.create(
+		ProjectModeV2Editor,
+		ProjectModeV2Editor.ID,
+		'Browser Preview V2'
+	),
+	[new SyncDescriptor(ProjectModeV2Input)]
+);
+
 // Open Welcome Screen
 registerAction2(class extends Action2 {
 	constructor() {
@@ -101,7 +113,8 @@ registerAction2(class extends Action2 {
 	async run(accessor: ServicesAccessor): Promise<void> {
 		const editorService = accessor.get(IEditorService);
 		const welcomeInput = RoopikWelcomeInput.getInstance();
-		await editorService.openEditor(welcomeInput);
+		// Open in new tab and focus on it
+		await editorService.openEditor(welcomeInput, { pinned: true });
 	}
 });
 
@@ -143,9 +156,34 @@ registerAction2(class extends Action2 {
 		logger.debug('[Roopik] Project Preview command invoked');
 		logger.info('[Roopik] Opening Project Preview editor');
 
-		// Open Project Preview editor
+		// Open Project Preview editor in new tab and focus on it
 		const input = new ProjectModeInput('http://localhost:3000');
-		await editorService.openEditor(input);
+		await editorService.openEditor(input, { pinned: true });
+	}
+});
+
+// Open Project Preview V2 (Mode 2 with embedded DevTools)
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'roopik.openProjectPreviewV2',
+			title: localize2('roopik.openProjectPreviewV2', 'Open Browser Preview V2 (Beta)'),
+			category: localize2('roopik.category', 'Roopik'),
+			f1: true
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const loggerService = accessor.get(ILoggerService);
+		const editorService = accessor.get(IEditorService);
+		const logger = RoopikLogger.create(loggerService);
+
+		logger.debug('[Roopik] Project Preview V2 command invoked');
+		logger.info('[Roopik] Opening Browser Preview V2 with embedded DevTools');
+
+		// Open Project Preview V2 editor in new tab and focus on it
+		const input = new ProjectModeV2Input('about:blank');
+		await editorService.openEditor(input, { pinned: true });
 	}
 });
 

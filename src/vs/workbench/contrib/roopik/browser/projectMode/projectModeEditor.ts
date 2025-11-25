@@ -36,7 +36,7 @@ export class ProjectModeEditor extends EditorPane {
 	private controlBar: BrowserControlBar | undefined;
 	private webviewElement: Electron.WebviewTag | undefined;
 	private logger: ILogger;
-	private currentUrl: string = 'about:blank';
+	private _currentUrl: string = 'about:blank'; // Track current URL for future use
 	private currentZoomFactor: number = 1.0;
 
 	constructor(
@@ -146,7 +146,7 @@ export class ProjectModeEditor extends EditorPane {
 
 		// URL changed (navigation)
 		this.webviewElement.addEventListener('did-navigate', (event: any) => {
-			this.currentUrl = event.url;
+			this._currentUrl = event.url;
 			// Update address bar
 			if (this.controlBar) {
 				this.controlBar.setUrl(event.url);
@@ -174,7 +174,8 @@ export class ProjectModeEditor extends EditorPane {
 			url = 'https://' + url;
 		}
 
-		this.currentUrl = url;
+		this._currentUrl = url;
+		this.logger.debug(`[Roopik] Navigating to: ${this._currentUrl}`);
 
 		try {
 			// Load URL in webview

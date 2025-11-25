@@ -123,6 +123,11 @@ import { IWebContentExtractorService } from '../../platform/webContentExtractor/
 import { NativeWebContentExtractorService } from '../../platform/webContentExtractor/electron-main/webContentExtractorService.js';
 import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetry.js';
 
+// ProjectModeV2 - Browser Preview with embedded DevTools
+import { BrowserViewServiceV2 } from '../../workbench/contrib/roopik/electron-main/projectModeV2/browserViewServiceV2.js';
+import { ProjectModeV2Channel } from '../../workbench/contrib/roopik/electron-main/projectModeV2/projectModeV2Channel.js';
+import { PROJECT_MODE_V2_CHANNEL } from '../../workbench/contrib/roopik/common/projectModeV2/ipc.js';
+
 /**
  * The main VS Code application. There will only ever be one instance,
  * even if the user starts many instances (e.g. from the command line).
@@ -389,8 +394,15 @@ export class CodeApplication extends Disposable {
 				this.auxiliaryWindowsMainService?.registerWindow(contents);
 			}
 
-			// Block any in-page navigation
+			// Block any in-page navigation (except for ProjectModeV2 browser views)
 			contents.on('will-navigate', event => {
+				// Allow navigation for ProjectModeV2 managed browser views
+				const webContentsId = contents.id;
+				if (BrowserViewServiceV2.isManagedWebContents(webContentsId)) {
+					this.logService.trace(`[ProjectModeV2] Allowing navigation for managed browser view ${webContentsId}`);
+					return; // Allow navigation
+				}
+
 				this.logService.error('webContents#will-navigate: Prevented webcontent navigation');
 
 				event.preventDefault();
@@ -1217,6 +1229,11 @@ export class CodeApplication extends Disposable {
 		// Utility Process Worker
 		const utilityProcessWorkerChannel = ProxyChannel.fromService(accessor.get(IUtilityProcessWorkerMainService), disposables);
 		mainProcessElectronServer.registerChannel(ipcUtilityProcessWorkerChannelName, utilityProcessWorkerChannel);
+
+		// ProjectModeV2 - Browser Preview with embedded DevTools and CDP
+		const projectModeV2Service = new BrowserViewServiceV2();
+		const projectModeV2Channel = new ProjectModeV2Channel(projectModeV2Service);
+		mainProcessElectronServer.registerChannel(PROJECT_MODE_V2_CHANNEL, projectModeV2Channel);
 	}
 
 	private async openFirstWindow(accessor: ServicesAccessor, initialProtocolUrls: IInitialProtocolUrls | undefined): Promise<ICodeWindow[]> {

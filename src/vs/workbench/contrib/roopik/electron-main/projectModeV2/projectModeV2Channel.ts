@@ -1,0 +1,87 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+import { IServerChannel } from '../../../../../base/parts/ipc/common/ipc.js';
+import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
+
+/**
+ * IPC Channel for ProjectModeV2
+ *
+ * Routes calls from renderer process to main process BrowserViewServiceV2.
+ */
+export class ProjectModeV2Channel implements IServerChannel {
+	constructor(private service: IProjectModeV2Service) { }
+
+	listen(_: unknown, _event: string): never {
+		throw new Error('No events available');
+	}
+
+	call(_: unknown, command: string, arg?: any): Promise<any> {
+		switch (command) {
+			// Browser View Lifecycle
+			case 'createBrowserView':
+				return this.service.createBrowserView(arg);
+			case 'destroyBrowserView':
+				return this.service.destroyBrowserView(arg);
+			case 'setBrowserBounds':
+				return this.service.setBrowserBounds(arg.browserViewId, arg.bounds);
+			case 'setBrowserVisible':
+				return this.service.setBrowserVisible(arg.browserViewId, arg.visible);
+
+			// Navigation
+			case 'navigate':
+				return this.service.navigate(arg.browserViewId, arg.url);
+			case 'goBack':
+				return this.service.goBack(arg);
+			case 'goForward':
+				return this.service.goForward(arg);
+			case 'reload':
+				return this.service.reload(arg.browserViewId, arg.ignoreCache);
+			case 'stop':
+				return this.service.stop(arg);
+			case 'getNavigationState':
+				return this.service.getNavigationState(arg);
+
+			// DevTools
+			case 'openDevTools':
+				return this.service.openDevTools(arg.browserViewId, arg.bounds);
+			case 'closeDevTools':
+				return this.service.closeDevTools(arg);
+			case 'setDevToolsBounds':
+				return this.service.setDevToolsBounds(arg.browserViewId, arg.bounds);
+			case 'isDevToolsOpen':
+				return this.service.isDevToolsOpen(arg);
+
+			// CDP
+			case 'attachDebugger':
+				return this.service.attachDebugger(arg.browserViewId, arg.protocolVersion);
+			case 'detachDebugger':
+				return this.service.detachDebugger(arg);
+			case 'enableCDPDomains':
+				return this.service.enableCDPDomains(arg.browserViewId, arg.domains);
+			case 'sendCDPCommand':
+				return this.service.sendCDPCommand(arg.browserViewId, arg.method, arg.params);
+
+			// Device Emulation
+			case 'setDeviceEmulation':
+				return this.service.setDeviceEmulation(arg.browserViewId, arg.device);
+			case 'clearDeviceEmulation':
+				return this.service.clearDeviceEmulation(arg);
+
+			// Utilities
+			case 'takeScreenshot':
+				return this.service.takeScreenshot(arg);
+			case 'executeScript':
+				return this.service.executeScript(arg.browserViewId, arg.script);
+			case 'getPageHTML':
+				return this.service.getPageHTML(arg);
+			case 'getDebuggingUrl':
+				return this.service.getDebuggingUrl(arg);
+
+			default:
+				throw new Error(`[ProjectModeV2Channel] Unknown command: ${command}`);
+		}
+	}
+}
