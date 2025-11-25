@@ -234,28 +234,32 @@ export class ProjectModeV2Editor extends EditorPane {
 
 	/**
 	 * Hide placeholder when URL is loaded
-	 * Also shows the WebContentsView by updating bounds
+	 * Shows the WebContentsView using native visibility API
 	 */
 	private hidePlaceholder(): void {
 		if (this.placeholderElement) {
 			this.placeholderElement.style.display = 'none';
 		}
-		// Show the browser view by updating bounds
-		this.updateViewBounds();
+		// Show the browser view using native visibility API (like Cursor)
+		if (this.browserViewId) {
+			this.browserService.setBrowserVisible(this.browserViewId, true);
+			// Update bounds after making visible
+			this.updateViewBounds();
+		}
 	}
 
 	/**
 	 * Show placeholder when no URL is loaded
-	 * Also hides the WebContentsView (set bounds to 0) so placeholder is visible
+	 * Hides the WebContentsView using native visibility API so placeholder is visible
 	 */
 	private showPlaceholder(): void {
 		if (this.placeholderElement) {
 			this.placeholderElement.style.display = 'flex';
 		}
-		// Hide the browser view so placeholder is visible
-		// WebContentsView renders ON TOP of DOM, so we must hide it
+		// Hide the browser view using native visibility API (like Cursor)
+		// This properly hides the native view without destroying state
 		if (this.browserViewId) {
-			this.browserService.setBrowserBounds(this.browserViewId, { x: 0, y: 0, width: 0, height: 0 });
+			this.browserService.setBrowserVisible(this.browserViewId, false);
 		}
 	}
 
@@ -421,14 +425,13 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	/**
-	 * Hide views (set bounds to 0)
+	 * Hide views using native visibility API
+	 * Preserves browser state (doesn't destroy)
 	 */
 	private hideViews(): void {
 		if (this.browserViewId) {
-			this.browserService.setBrowserBounds(this.browserViewId, { x: 0, y: 0, width: 0, height: 0 });
-			if (this.devtoolsVisible) {
-				this.browserService.setDevToolsBounds(this.browserViewId, { x: 0, y: 0, width: 0, height: 0 });
-			}
+			this.browserService.setBrowserVisible(this.browserViewId, false);
+			// Note: DevTools visibility is handled separately when embedded
 		}
 	}
 
@@ -452,8 +455,12 @@ export class ProjectModeV2Editor extends EditorPane {
 			url = 'https://' + url;
 		}
 
+		// Track if we're loading a real URL (for tab switch behavior)
+		const isRealUrl = url !== 'about:blank';
+
 		// Hide placeholder when navigating to a real URL
-		if (url !== 'about:blank') {
+		if (isRealUrl) {
+			this.hasLoadedUrl = true;
 			this.hidePlaceholder();
 		}
 
@@ -490,6 +497,7 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	private goHome(): void {
+		this.hasLoadedUrl = false;
 		this.showPlaceholder();
 		this.navigate('about:blank');
 	}
@@ -626,11 +634,24 @@ export class ProjectModeV2Editor extends EditorPane {
 		super.setVisible(visible);
 
 		if (visible) {
-			// Update bounds when becoming visible
-			setTimeout(() => this.updateViewBounds(), 0);
+			// Tab switched back to browser
+			if (this.hasLoadedUrl) {
+				// User had a URL loaded - restore browser view visibility
+				if (this.browserViewId) {
+					this.browserService.setBrowserVisible(this.browserViewId, true);
+				}
+				// Update bounds after making visible
+				setTimeout(() => this.updateViewBounds(), 0);
+			} else {
+				// No URL loaded - show placeholder (browser stays hidden)
+				this.showPlaceholder();
+			}
 		} else {
-			// Hide views when becoming invisible
-			this.hideViews();
+			// Tab switched away - just hide the view, don't destroy
+			// Use native visibility API to preserve browser state (like Cursor)
+			if (this.browserViewId) {
+				this.browserService.setBrowserVisible(this.browserViewId, false);
+			}
 		}
 	}
 
