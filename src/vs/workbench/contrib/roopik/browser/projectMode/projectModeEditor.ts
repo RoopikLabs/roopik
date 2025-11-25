@@ -48,16 +48,13 @@ export class ProjectModeEditor extends EditorPane {
 	) {
 		super(ProjectModeEditor.ID, group, telemetryService, themeService, storageService);
 		this.logger = RoopikLogger.create(loggerService);
-		this.logger.info('[Roopik] ProjectModeEditor constructor');
 	}
 
 	override async setInput(input: EditorInput, options: IEditorOptions | undefined, context: IEditorOpenContext, token: CancellationToken): Promise<void> {
 		await super.setInput(input, options, context, token);
-		this.logger.info('[Roopik] ProjectModeEditor setInput');
 	}
 
 	protected createEditor(parent: HTMLElement): void {
-		this.logger.info('[Roopik] ProjectModeEditor createEditor');
 
 		// Main container
 		this.container = document.createElement('div');
@@ -107,35 +104,26 @@ export class ProjectModeEditor extends EditorPane {
 			return;
 		}
 
-		this.logger.info('[Roopik] Creating webview element...');
-
 		// Create webview tag
 		this.webviewElement = document.createElement('webview') as Electron.WebviewTag;
 		this.webviewElement.style.flex = '1';
 		this.webviewElement.style.width = '100%';
 		this.webviewElement.style.height = '100%';
-		this.webviewElement.style.border = '1px solid red'; // Debug: make it visible
 
 		// Enable necessary webview features
 		this.webviewElement.setAttribute('disablewebsecurity', 'true'); // Allow loading any URL
 		this.webviewElement.setAttribute('allowpopups', 'true');
-
-		this.logger.info('[Roopik] Webview element created, type:', typeof this.webviewElement);
-		this.logger.info('[Roopik] Webview tagName:', this.webviewElement.tagName);
+		this.webviewElement.setAttribute('partition', 'persist:roopik'); // Allow localhost and persist session
 
 		// Setup webview event listeners
 		this.setupWebviewListeners();
 
 		this.container.appendChild(this.webviewElement);
-		this.logger.info('[Roopik] Webview appended to container');
 
 		// Load initial URL after a short delay to ensure webview is ready
 		setTimeout(() => {
-			this.logger.info('[Roopik] Loading initial URL...');
 			this.navigate('about:blank');
 		}, 100);
-
-		this.logger.info('[Roopik] Webview created');
 	}
 
 	/**
@@ -146,20 +134,19 @@ export class ProjectModeEditor extends EditorPane {
 			return;
 		}
 
-		// Page loaded
-		this.webviewElement.addEventListener('did-finish-load', () => {
-			this.logger.info('[Roopik] Webview loaded:', this.currentUrl);
-		});
-
 		// Page failed to load
 		this.webviewElement.addEventListener('did-fail-load', (event: any) => {
-			this.logger.error('[Roopik] Webview load failed:', event.errorDescription);
+			this.logger.error('[Roopik] Webview load failed:', {
+				url: event.validatedURL,
+				errorCode: event.errorCode,
+				errorDescription: event.errorDescription,
+				isMainFrame: event.isMainFrame
+			});
 		});
 
 		// URL changed (navigation)
 		this.webviewElement.addEventListener('did-navigate', (event: any) => {
 			this.currentUrl = event.url;
-			this.logger.info('[Roopik] Navigated to:', event.url);
 			// Update address bar
 			if (this.controlBar) {
 				this.controlBar.setUrl(event.url);
@@ -168,7 +155,6 @@ export class ProjectModeEditor extends EditorPane {
 
 		// New window requested
 		this.webviewElement.addEventListener('new-window', (event: any) => {
-			this.logger.info('[Roopik] New window requested:', event.url);
 			// Open in same webview
 			this.navigate(event.url);
 		});
@@ -189,15 +175,10 @@ export class ProjectModeEditor extends EditorPane {
 		}
 
 		this.currentUrl = url;
-		this.logger.info(`[Roopik] Navigating to: ${url}`);
-		this.logger.info(`[Roopik] Webview element exists:`, !!this.webviewElement);
-		this.logger.info(`[Roopik] Webview src property exists:`, 'src' in this.webviewElement);
 
 		try {
 			// Load URL in webview
 			this.webviewElement.src = url;
-			this.logger.info(`[Roopik] Set webview src to: ${url}`);
-			this.logger.info(`[Roopik] Webview src is now: ${this.webviewElement.src}`);
 		} catch (error) {
 			this.logger.error(`[Roopik] Failed to set webview src:`, error);
 		}
@@ -215,7 +196,6 @@ export class ProjectModeEditor extends EditorPane {
 	private navigateBack(): void {
 		if (this.webviewElement && this.webviewElement.canGoBack()) {
 			this.webviewElement.goBack();
-			this.logger.debug('[Roopik] Navigate back');
 		}
 	}
 
@@ -225,7 +205,6 @@ export class ProjectModeEditor extends EditorPane {
 	private navigateForward(): void {
 		if (this.webviewElement && this.webviewElement.canGoForward()) {
 			this.webviewElement.goForward();
-			this.logger.debug('[Roopik] Navigate forward');
 		}
 	}
 
@@ -234,7 +213,6 @@ export class ProjectModeEditor extends EditorPane {
 	 */
 	private navigateHome(): void {
 		this.navigate('about:blank');
-		this.logger.debug('[Roopik] Navigate home');
 	}
 
 	/**
@@ -246,7 +224,6 @@ export class ProjectModeEditor extends EditorPane {
 			const currentSrc = this.webviewElement.src;
 			if (currentSrc) {
 				this.webviewElement.src = currentSrc;
-				this.logger.debug('[Roopik] Refresh:', currentSrc);
 			}
 		}
 	}
@@ -257,7 +234,6 @@ export class ProjectModeEditor extends EditorPane {
 	private stop(): void {
 		if (this.webviewElement) {
 			this.webviewElement.stop();
-			this.logger.debug('[Roopik] Stop loading');
 		}
 	}
 
@@ -267,7 +243,6 @@ export class ProjectModeEditor extends EditorPane {
 	private openDevTools(): void {
 		if (this.webviewElement) {
 			this.webviewElement.openDevTools();
-			this.logger.info('[Roopik] DevTools opened');
 		}
 	}
 
@@ -283,7 +258,6 @@ export class ProjectModeEditor extends EditorPane {
 				const url = new URL(currentSrc);
 				url.searchParams.set('_roopikReload', Date.now().toString());
 				this.webviewElement.src = url.toString();
-				this.logger.debug('[Roopik] Hard reload');
 			}
 		}
 	}
@@ -292,7 +266,6 @@ export class ProjectModeEditor extends EditorPane {
 	 * Toggle inspect element mode
 	 */
 	private toggleInspect(): void {
-		this.logger.debug('[Roopik] Toggle inspect (open DevTools and enable inspect mode)');
 		this.openDevTools();
 		// TODO: Programmatically trigger inspect mode in DevTools if possible
 	}
@@ -316,7 +289,6 @@ export class ProjectModeEditor extends EditorPane {
 
 			// Copy to clipboard
 			await navigator.clipboard.writeText(html);
-			this.logger.info('[Roopik] Copied element HTML to clipboard');
 		} catch (error) {
 			this.logger.error('[Roopik] Failed to copy element:', error);
 		}
@@ -326,7 +298,6 @@ export class ProjectModeEditor extends EditorPane {
 	 * Take screenshot
 	 */
 	private async takeScreenshot(): Promise<void> {
-		this.logger.info('[Roopik] Screenshot requested (not implemented yet)');
 		// TODO: Implement screenshot using webview.capturePage()
 	}
 
@@ -337,7 +308,6 @@ export class ProjectModeEditor extends EditorPane {
 		if (this.webviewElement) {
 			this.currentZoomFactor = Math.min(this.currentZoomFactor + 0.1, 3.0); // Max 300%
 			this.webviewElement.setZoomFactor(this.currentZoomFactor);
-			this.logger.info('[Roopik] Zoom in:', this.currentZoomFactor);
 		}
 	}
 
@@ -348,7 +318,6 @@ export class ProjectModeEditor extends EditorPane {
 		if (this.webviewElement) {
 			this.currentZoomFactor = Math.max(this.currentZoomFactor - 0.1, 0.5); // Min 50%
 			this.webviewElement.setZoomFactor(this.currentZoomFactor);
-			this.logger.info('[Roopik] Zoom out:', this.currentZoomFactor);
 		}
 	}
 
@@ -359,7 +328,6 @@ export class ProjectModeEditor extends EditorPane {
 		if (this.webviewElement) {
 			this.currentZoomFactor = 1.0;
 			this.webviewElement.setZoomFactor(this.currentZoomFactor);
-			this.logger.info('[Roopik] Zoom reset');
 		}
 	}
 
@@ -412,7 +380,6 @@ export class ProjectModeEditor extends EditorPane {
 	}
 
 	override clearInput(): void {
-		this.logger.info('[Roopik] ProjectModeEditor clearInput');
 		super.clearInput();
 	}
 
@@ -424,6 +391,5 @@ export class ProjectModeEditor extends EditorPane {
 
 	layout(dimension: Dimension): void {
 		// Webview auto-resizes with CSS flex
-		this.logger.trace('[Roopik] Layout:', dimension);
 	}
 }
