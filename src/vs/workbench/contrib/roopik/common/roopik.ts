@@ -43,3 +43,19 @@ export interface IStyleService {
 	getCSSSource(selector: string): Promise<any>;
 	updateStyle(selector: string, styles: Record<string, any>): Promise<void>;
 }
+
+// BrowserView Service - Manages Electron BrowserView for project preview (Mode 2)
+export const IBrowserViewService = createDecorator<IBrowserViewService>('roopikBrowserViewService');
+
+export interface IBrowserViewService {
+	readonly _serviceBrand: undefined;
+
+	// BrowserView operations
+	createBrowserView(containerId: string): Promise<void>;
+	destroyBrowserView(containerId: string): Promise<void>;
+	navigateToUrl(containerId: string, url: string): Promise<void>;
+	goBack(containerId: string): Promise<void>;
+	goForward(containerId: string): Promise<void>;
+	reload(containerId: string): Promise<void>;
+	openDevTools(containerId: string): Promise<void>;
+}

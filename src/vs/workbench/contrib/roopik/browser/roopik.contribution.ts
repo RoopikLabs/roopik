@@ -21,6 +21,8 @@ import { RoopikWelcomeInput, RoopikWelcomeInputSerializer } from './welcomeInput
 import { RoopikViewsContribution } from './roopikViewPane.js';
 import { RoopikLogger } from '../common/roopikLogger.js';
 import { ILoggerService } from '../../../../platform/log/common/log.js';
+import { ProjectModeEditor } from './projectMode/projectModeEditor.js';
+import { ProjectModeInput, ProjectModeInputSerializer } from './projectMode/projectModeInput.js';
 
 /**
  * Roopik Design IDE - Main Contribution
@@ -67,6 +69,22 @@ Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane
 Registry.as<IEditorFactoryRegistry>(EditorExtensions.EditorFactory).registerEditorSerializer(
 	RoopikWelcomeInput.ID,
 	RoopikWelcomeInputSerializer
+);
+
+// Register Project Mode Editor (Mode 2: Browser Preview)
+Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
+	EditorPaneDescriptor.create(
+		ProjectModeEditor,
+		ProjectModeEditor.ID,
+		'Project Preview'
+	),
+	[new SyncDescriptor(ProjectModeInput)]
+);
+
+// Register Project Mode Serializer (for restore on reload)
+Registry.as<IEditorFactoryRegistry>(EditorExtensions.EditorFactory).registerEditorSerializer(
+	ProjectModeInput.ID,
+	ProjectModeInputSerializer
 );
 
 // Open Welcome Screen
@@ -119,9 +137,15 @@ registerAction2(class extends Action2 {
 
 	async run(accessor: ServicesAccessor): Promise<void> {
 		const loggerService = accessor.get(ILoggerService);
+		const editorService = accessor.get(IEditorService);
 		const logger = RoopikLogger.create(loggerService);
+
 		logger.debug('[Roopik] Project Preview command invoked');
-		logger.info('[Roopik] Project Preview - Coming soon');
+		logger.info('[Roopik] Opening Project Preview editor');
+
+		// Open Project Preview editor
+		const input = new ProjectModeInput('http://localhost:3000');
+		await editorService.openEditor(input);
 	}
 });
 
