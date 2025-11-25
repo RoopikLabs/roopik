@@ -612,21 +612,60 @@ export class ProjectModeV2Editor extends EditorPane {
 		if (input instanceof ProjectModeV2Input) {
 			const initialUrl = input.url;
 
-			if (this.controlBar) {
-				this.controlBar.setUrl(initialUrl);
-			}
-
 			// Initialize browser view if not already done
 			if (!this.browserViewId) {
 				this.logger.info(`[ProjectModeV2] #${this.instanceId} setInput: initializing browser view...`);
-				await this.initializeBrowserView();
-			}
 
-			// Navigate only if we have a real URL (not about:blank)
-			// Don't auto-navigate on initial load - user must enter URL or we pass one
-			if (this.browserViewId && initialUrl && initialUrl !== 'about:blank') {
-				await this.navigate(initialUrl);
+				// Set URL bar to initial URL for first load
+				if (this.controlBar) {
+					this.controlBar.setUrl(initialUrl);
+				}
+
+				await this.initializeBrowserView();
+
+				// Navigate only on first initialization if we have a real URL
+				if (this.browserViewId && initialUrl && initialUrl !== 'about:blank') {
+					await this.navigate(initialUrl);
+				}
+			} else {
+				// Browser view already exists (tab switch back)
+				// Just restore visibility - NO re-navigation needed!
+				this.logger.info(`[ProjectModeV2] #${this.instanceId} setInput: restoring existing browser view (viewId=${this.browserViewId})`);
+
+				// Restore URL bar from CURRENT browser URL, not the stale input URL
+				// This ensures URL bar shows where the user actually navigated to
+				this.syncUrlBarFromBrowser();
+
+				if (this.hasLoadedUrl) {
+					// Restore browser visibility
+					this.browserService.setBrowserVisible(this.browserViewId, true);
+					this.hidePlaceholder();
+					setTimeout(() => this.updateViewBounds(), 0);
+				} else {
+					// Show placeholder if no URL was loaded
+					this.showPlaceholder();
+				}
 			}
+		}
+	}
+
+	/**
+	 * Sync URL bar from current browser URL
+	 * Called on tab switch back to restore correct URL
+	 */
+	private async syncUrlBarFromBrowser(): Promise<void> {
+		if (!this.browserViewId || !this.controlBar) {
+			return;
+		}
+
+		try {
+			const state = await this.browserService.getNavigationState(this.browserViewId);
+			if (state.url && state.url !== 'about:blank') {
+				this.controlBar.setUrl(state.url);
+				this.logger.info(`[ProjectModeV2] #${this.instanceId} URL bar synced to: ${state.url}`);
+			}
+		} catch (error) {
+			this.logger.warn('[ProjectModeV2] Failed to sync URL bar:', error);
 		}
 	}
 
@@ -658,19 +697,17 @@ export class ProjectModeV2Editor extends EditorPane {
 	override clearInput(): void {
 		super.clearInput();
 
-		// Stop navigation polling
-		this.stopNavigationPolling();
+		// IMPORTANT: Do NOT destroy browser view here!
+		// clearInput() is called on tab switch (not just close).
+		// Destroying here causes the reload issue.
+		// Browser view is destroyed in dispose() which is called on actual tab close.
 
-		// Destroy browser view on tab close
+		// Just hide the view to preserve state (like Cursor does)
 		if (this.browserViewId) {
-			this.browserService.destroyBrowserView(this.browserViewId)
-				.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy browser view:', err));
-			this.browserViewId = undefined;
+			this.browserService.setBrowserVisible(this.browserViewId, false);
 		}
 
-		// Reset initialization flags for potential reuse
-		this.isInitializing = false;
-		this.initializationPromise = undefined;
+		this.logger.info(`[ProjectModeV2] #${this.instanceId} clearInput: browser view preserved (viewId=${this.browserViewId})`);
 	}
 
 	override focus(): void {
@@ -683,6 +720,8 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	override dispose(): void {
+		this.logger.info(`[ProjectModeV2] #${this.instanceId} dispose: destroying browser view (viewId=${this.browserViewId})`);
+
 		// Stop navigation polling
 		this.stopNavigationPolling();
 
@@ -693,7 +732,8 @@ export class ProjectModeV2Editor extends EditorPane {
 		// Hide views immediately
 		this.hideViews();
 
-		// Destroy browser view
+		// Destroy browser view - this is the ONLY place we destroy
+		// (clearInput just hides, dispose actually destroys)
 		if (this.browserViewId) {
 			this.browserService.destroyBrowserView(this.browserViewId)
 				.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy browser view in dispose:', err));

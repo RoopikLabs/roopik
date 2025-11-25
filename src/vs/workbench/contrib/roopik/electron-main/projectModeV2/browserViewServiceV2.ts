@@ -3,7 +3,7 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { BrowserWindow, WebContentsView } from 'electron';
+import { BrowserWindow, WebContentsView, session } from 'electron';
 import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
 import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains } from '../../common/projectModeV2/types.js';
 
@@ -54,14 +54,19 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			throw new Error(`Window ${windowId} not found`);
 		}
 
-		// Create browser WebContentsView
+		// Create a dedicated session for browser preview
+		// This allows localhost connections and bypasses default restrictions
+		const browserSession = session.fromPartition('persist:roopik-browser', { cache: true });
+
+		// Create browser WebContentsView with custom session
 		const browserView = new WebContentsView({
 			webPreferences: {
 				nodeIntegration: false,
 				contextIsolation: true,
-				sandbox: true,
+				sandbox: false, // Disable sandbox to allow localhost connections
 				webSecurity: false, // Allow loading any URL including localhost
-				allowRunningInsecureContent: true
+				allowRunningInsecureContent: true,
+				session: browserSession
 			}
 		});
 

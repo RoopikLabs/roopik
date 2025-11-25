@@ -30,7 +30,15 @@ export class ProjectModeV2Input extends EditorInput {
 	}
 
 	override get resource(): URI | undefined {
-		return URI.parse(`roopik-browser-v2://${this._url}`);
+		// Create a valid URI for VSCode's internal model
+		// We encode the actual URL as the path to avoid invalid URI issues
+		// e.g., http://localhost:5173/ becomes roopik-browser-v2://browser/http%3A%2F%2Flocalhost%3A5173%2F
+		try {
+			const encodedUrl = encodeURIComponent(this._url);
+			return URI.parse(`roopik-browser-v2://browser/${encodedUrl}`);
+		} catch {
+			return URI.parse('roopik-browser-v2://browser/blank');
+		}
 	}
 
 	override getName(): string {
