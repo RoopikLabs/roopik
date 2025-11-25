@@ -36,6 +36,10 @@ import type { ViewBounds, DevicePreset } from '../../common/projectModeV2/types.
 export class ProjectModeV2Editor extends EditorPane {
 	static readonly ID = 'roopik.projectModeV2Editor';
 
+	// Instance counter for debugging
+	private static instanceCounter = 0;
+	private readonly instanceId: number;
+
 	private container: HTMLElement | undefined;
 	private controlBar: BrowserControlBarV2 | undefined;
 	private browserContainer: HTMLElement | undefined;
@@ -49,14 +53,21 @@ export class ProjectModeV2Editor extends EditorPane {
 	private browserViewId: number | undefined;
 	private devtoolsVisible: boolean = false;
 
+	// Initialization state to prevent double init
+	private isInitializing: boolean = false;
+
 	// ResizeObserver for automatic bounds updates
 	private resizeObserver: ResizeObserver | undefined;
 
-	// Current URL tracking
-	private currentUrl: string = 'about:blank';
+	// Navigation state polling to sync URL bar
+	private navigationPollInterval: ReturnType<typeof setInterval> | undefined;
 
 	// Current device emulation
 	private _currentDevice: DevicePreset | undefined;
+
+	// Track if a real URL has been loaded (not about:blank)
+	// Used to decide whether to show placeholder on tab switch
+	private hasLoadedUrl: boolean = false;
 
 	constructor(
 		group: IEditorGroup,
@@ -68,8 +79,10 @@ export class ProjectModeV2Editor extends EditorPane {
 		@INativeHostService private readonly nativeHostService: INativeHostService
 	) {
 		super(ProjectModeV2Editor.ID, group, telemetryService, themeService, storageService);
+		this.instanceId = ++ProjectModeV2Editor.instanceCounter;
 		this.logger = RoopikLogger.create(loggerService);
 		this.browserService = new ProjectModeV2ServiceBridge(mainProcessService.getChannel(PROJECT_MODE_V2_CHANNEL));
+		this.logger.info(`[ProjectModeV2] Editor instance #${this.instanceId} created`);
 	}
 
 	protected createEditor(parent: HTMLElement): void {
@@ -130,6 +143,9 @@ export class ProjectModeV2Editor extends EditorPane {
 		this.browserContainer.style.width = '100%';
 		contentContainer.appendChild(this.browserContainer);
 
+		// Placeholder shown when no URL is loaded (WebContentsView renders on top of this)
+		this.createPlaceholder();
+
 		// DevTools container (bottom area, initially hidden)
 		this.devtoolsContainer = document.createElement('div');
 		this.devtoolsContainer.style.display = 'none';
@@ -146,52 +162,217 @@ export class ProjectModeV2Editor extends EditorPane {
 		this.resizeObserver.observe(this.browserContainer);
 		this.resizeObserver.observe(this.devtoolsContainer);
 
-		this.logger.info('[ProjectModeV2] Editor created');
+		this.logger.info(`[ProjectModeV2] Editor #${this.instanceId} DOM created`);
 
-		// Initialize browser view
-		this.initializeBrowserView();
+		// NOTE: Browser view initialization is handled by setInput()
+		// This ensures only ONE initialization happens per editor lifecycle
+	}
+
+	// Promise for initialization - used to wait if already initializing
+	private initializationPromise: Promise<void> | undefined;
+
+	// Placeholder element shown when no URL is loaded
+	private placeholderElement: HTMLElement | undefined;
+
+	/**
+	 * Create placeholder shown when no URL is loaded
+	 */
+	private createPlaceholder(): void {
+		if (!this.browserContainer) {
+			return;
+		}
+
+		this.placeholderElement = document.createElement('div');
+		this.placeholderElement.style.cssText = `
+			position: absolute;
+			top: 0;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			color: var(--vscode-descriptionForeground);
+			font-family: var(--vscode-font-family);
+			font-size: 14px;
+			gap: 16px;
+			z-index: 1;
+		`;
+
+		// Icon
+		const icon = document.createElement('div');
+		icon.style.cssText = `
+			font-size: 48px;
+			opacity: 0.5;
+		`;
+		icon.textContent = '🌐';
+		this.placeholderElement.appendChild(icon);
+
+		// Title
+		const title = document.createElement('div');
+		title.style.cssText = `
+			font-size: 16px;
+			font-weight: 500;
+			color: var(--vscode-foreground);
+		`;
+		title.textContent = 'Browser Preview';
+		this.placeholderElement.appendChild(title);
+
+		// Description
+		const description = document.createElement('div');
+		description.style.cssText = `
+			opacity: 0.7;
+			text-align: center;
+			max-width: 300px;
+		`;
+		description.textContent = 'Enter a URL in the address bar above to start browsing';
+		this.placeholderElement.appendChild(description);
+
+		this.browserContainer.appendChild(this.placeholderElement);
+	}
+
+	/**
+	 * Hide placeholder when URL is loaded
+	 * Also shows the WebContentsView by updating bounds
+	 */
+	private hidePlaceholder(): void {
+		if (this.placeholderElement) {
+			this.placeholderElement.style.display = 'none';
+		}
+		// Show the browser view by updating bounds
+		this.updateViewBounds();
+	}
+
+	/**
+	 * Show placeholder when no URL is loaded
+	 * Also hides the WebContentsView (set bounds to 0) so placeholder is visible
+	 */
+	private showPlaceholder(): void {
+		if (this.placeholderElement) {
+			this.placeholderElement.style.display = 'flex';
+		}
+		// Hide the browser view so placeholder is visible
+		// WebContentsView renders ON TOP of DOM, so we must hide it
+		if (this.browserViewId) {
+			this.browserService.setBrowserBounds(this.browserViewId, { x: 0, y: 0, width: 0, height: 0 });
+		}
 	}
 
 	/**
 	 * Initialize browser WebContentsView
+	 * Note: This only creates the view, navigation is handled by setInput()
 	 */
-	private async initializeBrowserView(): Promise<void> {
-		this.logger.info('[ProjectModeV2] Initializing browser view...');
+	private initializeBrowserView(): Promise<void> {
+		// If already initialized, skip
+		if (this.browserViewId) {
+			this.logger.info(`[ProjectModeV2] #${this.instanceId} Browser view already initialized (viewId=${this.browserViewId}), skipping...`);
+			return Promise.resolve();
+		}
 
+		// If already initializing, wait for that to complete instead of starting a new one
+		// CRITICAL: Check isInitializing FIRST (sync flag set before promise created)
+		if (this.isInitializing) {
+			this.logger.info(`[ProjectModeV2] #${this.instanceId} Already initializing, waiting... (hasPromise=${!!this.initializationPromise})`);
+			// Return existing promise if available, otherwise resolve immediately
+			return this.initializationPromise || Promise.resolve();
+		}
+
+		// Mark as initializing SYNCHRONOUSLY before ANY async work
+		this.isInitializing = true;
+		this.logger.info(`[ProjectModeV2] #${this.instanceId} Starting browser view initialization...`);
+
+		// Create and store the promise SYNCHRONOUSLY so other callers can wait for it
+		this.initializationPromise = this.doInitializeBrowserView();
+		return this.initializationPromise;
+	}
+
+	/**
+	 * Actual initialization logic
+	 */
+	private async doInitializeBrowserView(): Promise<void> {
 		try {
 			const windowId = await this.nativeHostService.windowId;
-			this.logger.info(`[ProjectModeV2] Got window ID: ${windowId}`);
+			this.logger.info(`[ProjectModeV2] #${this.instanceId} Got window ID: ${windowId}`);
 
 			const result = await this.browserService.createBrowserView(windowId);
 			this.browserViewId = result.browserViewId;
 
-			this.logger.info(`[ProjectModeV2] Browser view created successfully: ${this.browserViewId}`);
+			this.logger.info(`[ProjectModeV2] #${this.instanceId} Browser view created: viewId=${this.browserViewId}`);
 
-			// Update bounds after creation
-			this.updateViewBounds();
+			// Show placeholder initially (hides WebContentsView until user navigates)
+			// This must happen BEFORE updateViewBounds to prevent flicker
+			this.showPlaceholder();
 
-			// Enable CDP domains for debugging
-			try {
-				await this.browserService.enableCDPDomains(this.browserViewId, {
-					network: true,
-					dom: true,
-					css: true,
-					runtime: true,
-					page: true
-				});
+			// Start navigation state polling to sync URL bar
+			this.startNavigationPolling();
+
+			// Enable CDP domains for debugging (don't await - do it in background)
+			this.browserService.enableCDPDomains(this.browserViewId, {
+				network: true,
+				dom: true,
+				css: true,
+				runtime: true,
+				page: true
+			}).then(() => {
 				this.logger.info('[ProjectModeV2] CDP domains enabled');
-			} catch (cdpError) {
+			}).catch((cdpError) => {
 				this.logger.warn('[ProjectModeV2] Failed to enable CDP domains (non-fatal):', cdpError);
-			}
+			});
 
-			// Navigate to initial URL
-			if (this.currentUrl !== 'about:blank') {
-				this.logger.info(`[ProjectModeV2] Navigating to initial URL: ${this.currentUrl}`);
-				await this.navigate(this.currentUrl);
-			}
+			// Note: Navigation is handled by setInput(), not here
+			// This prevents double navigation when reopening tabs
 		} catch (error) {
 			this.logger.error('[ProjectModeV2] Failed to initialize browser view:', error);
 			this.browserViewId = undefined;
+		} finally {
+			this.isInitializing = false;
+		}
+	}
+
+	/**
+	 * Start polling for navigation state changes
+	 * This keeps the URL bar in sync with the actual browser URL
+	 */
+	private startNavigationPolling(): void {
+		// Clear any existing interval
+		this.stopNavigationPolling();
+
+		// Track last known URL to avoid unnecessary updates
+		let lastKnownUrl = '';
+
+		// Poll every 500ms for navigation changes
+		this.navigationPollInterval = setInterval(async () => {
+			if (!this.browserViewId) {
+				return;
+			}
+
+			try {
+				const state = await this.browserService.getNavigationState(this.browserViewId);
+
+				// Update URL bar if URL changed
+				if (state.url && state.url !== lastKnownUrl && state.url !== 'about:blank') {
+					lastKnownUrl = state.url;
+					if (this.controlBar) {
+						this.controlBar.setUrl(state.url);
+					}
+				}
+
+				// Update back/forward button states if control bar supports it
+				// (can be added later)
+			} catch {
+				// Ignore errors - browser view might be destroyed
+			}
+		}, 500);
+	}
+
+	/**
+	 * Stop navigation state polling
+	 */
+	private stopNavigationPolling(): void {
+		if (this.navigationPollInterval) {
+			clearInterval(this.navigationPollInterval);
+			this.navigationPollInterval = undefined;
 		}
 	}
 
@@ -271,14 +452,17 @@ export class ProjectModeV2Editor extends EditorPane {
 			url = 'https://' + url;
 		}
 
-		this.currentUrl = url;
+		// Hide placeholder when navigating to a real URL
+		if (url !== 'about:blank') {
+			this.hidePlaceholder();
+		}
+
 		this.logger.info(`[ProjectModeV2] Navigating to: ${url} (browserViewId: ${this.browserViewId})`);
 
 		try {
 			await this.browserService.navigate(this.browserViewId, url);
-			this.logger.info(`[ProjectModeV2] Navigation request sent successfully`);
 
-			// Update control bar
+			// Update control bar immediately (polling will keep it in sync after redirects)
 			if (this.controlBar) {
 				this.controlBar.setUrl(url);
 			}
@@ -306,6 +490,7 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	private goHome(): void {
+		this.showPlaceholder();
 		this.navigate('about:blank');
 	}
 
@@ -414,30 +599,25 @@ export class ProjectModeV2Editor extends EditorPane {
 	// ============================================
 
 	override async setInput(input: EditorInput, options: IEditorOptions | undefined, context: IEditorOpenContext, token: CancellationToken): Promise<void> {
-		this.logger.info(`[ProjectModeV2] setInput called, current browserViewId: ${this.browserViewId}`);
 		await super.setInput(input, options, context, token);
 
 		if (input instanceof ProjectModeV2Input) {
-			this.currentUrl = input.url;
-			this.logger.info(`[ProjectModeV2] Input URL: ${input.url}`);
+			const initialUrl = input.url;
 
 			if (this.controlBar) {
-				this.controlBar.setUrl(input.url);
+				this.controlBar.setUrl(initialUrl);
 			}
 
-			// Re-create browser view if it was destroyed (e.g., tab was closed and reopened)
+			// Initialize browser view if not already done
 			if (!this.browserViewId) {
-				this.logger.info('[ProjectModeV2] Browser view not found, re-initializing...');
+				this.logger.info(`[ProjectModeV2] #${this.instanceId} setInput: initializing browser view...`);
 				await this.initializeBrowserView();
-				this.logger.info(`[ProjectModeV2] After re-init, browserViewId: ${this.browserViewId}`);
 			}
 
-			// Navigate if we have a URL
-			if (this.browserViewId && input.url !== 'about:blank') {
-				this.logger.info(`[ProjectModeV2] Triggering navigation to: ${input.url}`);
-				await this.navigate(input.url);
-			} else if (!this.browserViewId) {
-				this.logger.error('[ProjectModeV2] Cannot navigate: browserViewId is still undefined after init!');
+			// Navigate only if we have a real URL (not about:blank)
+			// Don't auto-navigate on initial load - user must enter URL or we pass one
+			if (this.browserViewId && initialUrl && initialUrl !== 'about:blank') {
+				await this.navigate(initialUrl);
 			}
 		}
 	}
@@ -457,12 +637,19 @@ export class ProjectModeV2Editor extends EditorPane {
 	override clearInput(): void {
 		super.clearInput();
 
+		// Stop navigation polling
+		this.stopNavigationPolling();
+
 		// Destroy browser view on tab close
 		if (this.browserViewId) {
 			this.browserService.destroyBrowserView(this.browserViewId)
 				.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy browser view:', err));
 			this.browserViewId = undefined;
 		}
+
+		// Reset initialization flags for potential reuse
+		this.isInitializing = false;
+		this.initializationPromise = undefined;
 	}
 
 	override focus(): void {
@@ -475,6 +662,9 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	override dispose(): void {
+		// Stop navigation polling
+		this.stopNavigationPolling();
+
 		// Cleanup ResizeObserver
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = undefined;
