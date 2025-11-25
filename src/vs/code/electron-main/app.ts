@@ -246,35 +246,13 @@ export class CodeApplication extends Disposable {
 			return false;
 		};
 
-		const isAllowedWebviewRequest = (uri: URI, details: Electron.OnBeforeRequestListenerDetails): boolean => {
-			if (uri.path !== '/index.html') {
-				return true; // Only restrict top level page of webviews: index.html
-			}
-
-			const frame = details.frame;
-			if (!frame || !this.windowsMainService) {
-				return false;
-			}
-
-			// Check to see if the request comes from one of the main editor windows.
-			for (const window of this.windowsMainService.getWindows()) {
-				if (window.win) {
-					if (frame.processId === window.win.webContents.mainFrame.processId) {
-						return true;
-					}
-				}
-			}
-
-			return false;
-		};
+		// Removed isAllowedWebviewRequest function - validation disabled for Roopik browser preview
 
 		session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
 			const uri = URI.parse(details.url);
 			if (uri.scheme === Schemas.vscodeWebview) {
-				if (!isAllowedWebviewRequest(uri, details)) {
-					this.logService.error('Blocked vscode-webview request', details.url);
-					return callback({ cancel: true });
-				}
+				// Allow all webview requests for Roopik browser preview (Electron webview tag)
+				// Original validation disabled to enable full browser preview functionality
 			}
 
 			if (uri.scheme === Schemas.vscodeFileResource) {

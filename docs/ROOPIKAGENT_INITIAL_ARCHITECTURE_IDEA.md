@@ -1,4 +1,4 @@
-# RoopikAgent Architecture: Multi-Modal AI Coding Assistant
+# RoopikAgent Initial Architecture Plan: Multi-Modal AI Coding Assistant
 
 **Version**: 1.0
 **Date**: November 2025

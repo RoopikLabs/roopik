@@ -4,7 +4,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 import '../../platform/update/common/update.config.contribution.js';
-import '../../workbench/contrib/roopik/electron-main/roopik.main.contribution.js';
 
 import { app, dialog } from 'electron';
 import { unlinkSync, promises } from 'fs';
