@@ -81,6 +81,13 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		// Setup event listeners
 		this.setupBrowserEvents(browserView);
 
+		// =========================================================================
+		// CRITICAL: THE SAFETY LEASH
+		// Auto-destroy views when parent window reloads or closes
+		// This is the KEY fix for ghost browser views!
+		// =========================================================================
+		this.attachSafetyLeash(window, browserViewId);
+
 		console.log(`[ProjectModeV2] Created browser view ${browserViewId} with debugging port ${debuggingPort}`);
 
 		return { browserViewId, debuggingPort };
@@ -164,10 +171,23 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	// ============================================
 
 	async navigate(browserViewId: number, url: string): Promise<void> {
+		console.log(`[ProjectModeV2] navigate() called: browserViewId=${browserViewId}, url=${url}`);
+
 		const browserView = this.browserViews.get(browserViewId);
-		if (browserView && !browserView.webContents.isDestroyed()) {
-			await browserView.webContents.loadURL(url);
+		if (!browserView) {
+			console.error(`[ProjectModeV2] navigate() FAILED: browserView not found for ID ${browserViewId}`);
+			console.log(`[ProjectModeV2] Current browserViews keys:`, Array.from(this.browserViews.keys()));
+			return;
 		}
+
+		if (browserView.webContents.isDestroyed()) {
+			console.error(`[ProjectModeV2] navigate() FAILED: webContents is destroyed for ID ${browserViewId}`);
+			return;
+		}
+
+		console.log(`[ProjectModeV2] Loading URL: ${url}`);
+		await browserView.webContents.loadURL(url);
+		console.log(`[ProjectModeV2] URL loaded successfully: ${url}`);
 	}
 
 	async goBack(browserViewId: number): Promise<void> {
@@ -486,6 +506,133 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	// ============================================
 	// Private Helpers
 	// ============================================
+
+	/**
+	 * CRITICAL: THE SAFETY LEASH
+	 *
+	 * This is the KEY fix for ghost browser views!
+	 *
+	 * In Electron, the Main Process (where WebContentsView lives) and the Renderer Process
+	 * (the VS Code window) are completely separate. When you reload the IDE (Renderer),
+	 * the IDE dies and comes back. But the Main Process NEVER stops running - it has no idea
+	 * the IDE "died", so it keeps holding onto that browser view.
+	 *
+	 * The fix: Attach listeners to the parent window that auto-destroy views on reload/close.
+	 *
+	 * KEY EVENT: 'did-start-loading' fires the MILLISECOND you press "Reload Window",
+	 * BEFORE the new UI is ready, giving us a clean visual wipe.
+	 */
+	private attachSafetyLeash(window: BrowserWindow, browserViewId: number): void {
+		// Define a cleanup function that triggers automatically
+		const autoDestruct = () => {
+			console.log(`[ProjectModeV2] SAFETY LEASH TRIGGERED - Auto-destroying browser view ${browserViewId}`);
+			// Fire and forget - we don't await because the window is dying
+			this.destroyBrowserViewSync(browserViewId);
+		};
+
+		// 1. MOST IMPORTANT: 'did-start-loading' fires immediately when IDE reloads (Ctrl+R / Reload Window)
+		//    This is the event that fires the MILLISECOND you press reload!
+		window.webContents.once('did-start-loading', () => {
+			console.log(`[ProjectModeV2] Window did-start-loading -> triggering safety leash`);
+			autoDestruct();
+		});
+
+		// 2. If the IDE window is closed entirely
+		window.once('closed', () => {
+			console.log(`[ProjectModeV2] Window closed -> triggering safety leash`);
+			autoDestruct();
+		});
+
+		// 3. If the renderer process crashes or is killed
+		window.webContents.once('render-process-gone', (_event, details) => {
+			console.log(`[ProjectModeV2] Renderer process gone (${details.reason}) -> triggering safety leash`);
+			autoDestruct();
+		});
+
+		// 4. If webContents is destroyed
+		window.webContents.once('destroyed', () => {
+			console.log(`[ProjectModeV2] WebContents destroyed -> triggering safety leash`);
+			autoDestruct();
+		});
+
+		console.log(`[ProjectModeV2] Safety leash attached for browser view ${browserViewId}`);
+	}
+
+	/**
+	 * Synchronous destroy - used by safety leash during window lifecycle events
+	 * Must be robust and never throw - the window is dying anyway
+	 */
+	private destroyBrowserViewSync(browserViewId: number): void {
+		console.log(`[ProjectModeV2] Sync destroying browser view ${browserViewId}`);
+
+		const browserView = this.browserViews.get(browserViewId);
+		const devtoolsView = this.devtoolsViews.get(browserViewId);
+		const window = this.browserWindows.get(browserViewId);
+
+		// Close DevTools first
+		if (browserView && !browserView.webContents.isDestroyed()) {
+			try {
+				browserView.webContents.closeDevTools();
+			} catch (e) {
+				// Ignore - window might be dead
+			}
+		}
+
+		// Remove and destroy DevTools view
+		if (devtoolsView) {
+			if (window && !window.isDestroyed() && window.contentView) {
+				try {
+					window.contentView.removeChildView(devtoolsView);
+				} catch (e) {
+					// Ignore
+				}
+			}
+			if (!devtoolsView.webContents.isDestroyed()) {
+				try {
+					devtoolsView.webContents.close();
+				} catch (e) {
+					// Ignore
+				}
+			}
+			this.devtoolsViews.delete(browserViewId);
+		}
+
+		// Detach debugger
+		if (browserView && !browserView.webContents.isDestroyed() && this.debuggerAttached.get(browserViewId)) {
+			try {
+				browserView.webContents.debugger.detach();
+			} catch (e) {
+				// Ignore
+			}
+		}
+
+		// Remove and destroy browser view
+		if (browserView) {
+			if (window && !window.isDestroyed() && window.contentView) {
+				try {
+					window.contentView.removeChildView(browserView);
+				} catch (e) {
+					// Ignore
+				}
+			}
+			if (!browserView.webContents.isDestroyed()) {
+				try {
+					browserView.webContents.stop();
+					browserView.webContents.close();
+				} catch (e) {
+					// Ignore
+				}
+			}
+		}
+
+		// Cleanup all maps
+		this.browserViews.delete(browserViewId);
+		this.browserWindows.delete(browserViewId);
+		this.debuggerAttached.delete(browserViewId);
+		BrowserViewServiceV2.managedWebContentsIds.delete(browserViewId);
+
+		console.log(`[ProjectModeV2] Browser view ${browserViewId} sync destroyed`);
+	}
 
 	private setupBrowserEvents(browserView: WebContentsView): void {
 		const webContents = browserView.webContents;

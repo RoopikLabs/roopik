@@ -156,31 +156,42 @@ export class ProjectModeV2Editor extends EditorPane {
 	 * Initialize browser WebContentsView
 	 */
 	private async initializeBrowserView(): Promise<void> {
+		this.logger.info('[ProjectModeV2] Initializing browser view...');
+
 		try {
 			const windowId = await this.nativeHostService.windowId;
+			this.logger.info(`[ProjectModeV2] Got window ID: ${windowId}`);
+
 			const result = await this.browserService.createBrowserView(windowId);
 			this.browserViewId = result.browserViewId;
 
-			this.logger.info(`[ProjectModeV2] Browser view created: ${this.browserViewId}`);
+			this.logger.info(`[ProjectModeV2] Browser view created successfully: ${this.browserViewId}`);
 
 			// Update bounds after creation
 			this.updateViewBounds();
 
 			// Enable CDP domains for debugging
-			await this.browserService.enableCDPDomains(this.browserViewId, {
-				network: true,
-				dom: true,
-				css: true,
-				runtime: true,
-				page: true
-			});
+			try {
+				await this.browserService.enableCDPDomains(this.browserViewId, {
+					network: true,
+					dom: true,
+					css: true,
+					runtime: true,
+					page: true
+				});
+				this.logger.info('[ProjectModeV2] CDP domains enabled');
+			} catch (cdpError) {
+				this.logger.warn('[ProjectModeV2] Failed to enable CDP domains (non-fatal):', cdpError);
+			}
 
 			// Navigate to initial URL
 			if (this.currentUrl !== 'about:blank') {
+				this.logger.info(`[ProjectModeV2] Navigating to initial URL: ${this.currentUrl}`);
 				await this.navigate(this.currentUrl);
 			}
 		} catch (error) {
 			this.logger.error('[ProjectModeV2] Failed to initialize browser view:', error);
+			this.browserViewId = undefined;
 		}
 	}
 
@@ -245,7 +256,13 @@ export class ProjectModeV2Editor extends EditorPane {
 	// ============================================
 
 	private async navigate(url: string): Promise<void> {
-		if (!url || !this.browserViewId) {
+		if (!url) {
+			this.logger.warn('[ProjectModeV2] Navigation aborted: No URL provided');
+			return;
+		}
+
+		if (!this.browserViewId) {
+			this.logger.error('[ProjectModeV2] Navigation aborted: No browser view ID! Browser view may not be initialized.');
 			return;
 		}
 
@@ -255,10 +272,11 @@ export class ProjectModeV2Editor extends EditorPane {
 		}
 
 		this.currentUrl = url;
-		this.logger.debug(`[ProjectModeV2] Navigating to: ${url}`);
+		this.logger.info(`[ProjectModeV2] Navigating to: ${url} (browserViewId: ${this.browserViewId})`);
 
 		try {
 			await this.browserService.navigate(this.browserViewId, url);
+			this.logger.info(`[ProjectModeV2] Navigation request sent successfully`);
 
 			// Update control bar
 			if (this.controlBar) {
@@ -271,7 +289,7 @@ export class ProjectModeV2Editor extends EditorPane {
 				input.setUrl(url);
 			}
 		} catch (error) {
-			this.logger.error('[ProjectModeV2] Navigation failed:', error);
+			this.logger.error(`[ProjectModeV2] Navigation failed for URL "${url}":`, error);
 		}
 	}
 
@@ -396,15 +414,30 @@ export class ProjectModeV2Editor extends EditorPane {
 	// ============================================
 
 	override async setInput(input: EditorInput, options: IEditorOptions | undefined, context: IEditorOpenContext, token: CancellationToken): Promise<void> {
+		this.logger.info(`[ProjectModeV2] setInput called, current browserViewId: ${this.browserViewId}`);
 		await super.setInput(input, options, context, token);
 
 		if (input instanceof ProjectModeV2Input) {
 			this.currentUrl = input.url;
+			this.logger.info(`[ProjectModeV2] Input URL: ${input.url}`);
+
 			if (this.controlBar) {
 				this.controlBar.setUrl(input.url);
 			}
+
+			// Re-create browser view if it was destroyed (e.g., tab was closed and reopened)
+			if (!this.browserViewId) {
+				this.logger.info('[ProjectModeV2] Browser view not found, re-initializing...');
+				await this.initializeBrowserView();
+				this.logger.info(`[ProjectModeV2] After re-init, browserViewId: ${this.browserViewId}`);
+			}
+
+			// Navigate if we have a URL
 			if (this.browserViewId && input.url !== 'about:blank') {
+				this.logger.info(`[ProjectModeV2] Triggering navigation to: ${input.url}`);
 				await this.navigate(input.url);
+			} else if (!this.browserViewId) {
+				this.logger.error('[ProjectModeV2] Cannot navigate: browserViewId is still undefined after init!');
 			}
 		}
 	}
