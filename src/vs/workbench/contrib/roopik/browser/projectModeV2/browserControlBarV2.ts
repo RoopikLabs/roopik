@@ -47,6 +47,8 @@ export class BrowserControlBarV2 extends Disposable {
 	private container: HTMLElement;
 	private urlInput: HTMLInputElement;
 	private progressBar: HTMLElement;
+	private progressContainer?: HTMLElement;
+	private loadingAnimation?: number;
 	private backButton?: HTMLButtonElement;
 	private forwardButton?: HTMLButtonElement;
 	private deviceButton?: HTMLButtonElement;
@@ -100,6 +102,9 @@ export class BrowserControlBarV2 extends Disposable {
 
 		progressContainer.appendChild(progressBar);
 		parent.appendChild(progressContainer);
+
+		// Store reference to container for indeterminate animation
+		this.progressContainer = progressContainer;
 
 		return progressBar;
 	}
@@ -493,7 +498,13 @@ export class BrowserControlBarV2 extends Disposable {
 	}
 
 	setUrl(url: string): void {
-		this.urlInput.value = url;
+		// Show empty input with placeholder for blank URLs
+		// This shows the hint "Enter URL (e.g., http://localhost:3000)" instead of "about:blank"
+		if (!url || url === 'about:blank') {
+			this.urlInput.value = '';
+		} else {
+			this.urlInput.value = url;
+		}
 	}
 
 	focus(): void {
@@ -518,17 +529,71 @@ export class BrowserControlBarV2 extends Disposable {
 	}
 
 	showLoading(): void {
+		// Stop any existing animation
+		if (this.loadingAnimation) {
+			cancelAnimationFrame(this.loadingAnimation);
+			this.loadingAnimation = undefined;
+		}
+
+		// Use indeterminate animation (like Chrome's loading bar)
+		this.progressBar.style.transition = 'none';
 		this.progressBar.style.width = '30%';
+
+		let position = 0;
+		let width = 30;
+		let growing = true;
+
+		const animate = () => {
+			// Animate position and width
+			if (growing) {
+				position += 0.5;
+				width = Math.min(50, width + 0.2);
+				if (position > 50) {
+					growing = false;
+				}
+			} else {
+				position += 0.8;
+				width = Math.max(20, width - 0.3);
+				if (position > 100) {
+					position = -30;
+					width = 30;
+					growing = true;
+				}
+			}
+
+			this.progressBar.style.marginLeft = `${position}%`;
+			this.progressBar.style.width = `${width}%`;
+
+			this.loadingAnimation = requestAnimationFrame(animate);
+		};
+
+		this.loadingAnimation = requestAnimationFrame(animate);
 	}
 
 	hideLoading(): void {
+		// Stop animation
+		if (this.loadingAnimation) {
+			cancelAnimationFrame(this.loadingAnimation);
+			this.loadingAnimation = undefined;
+		}
+
+		// Reset margin and animate to 100%
+		this.progressBar.style.marginLeft = '0';
+		this.progressBar.style.transition = 'width 0.3s ease';
 		this.progressBar.style.width = '100%';
+
 		setTimeout(() => {
+			this.progressBar.style.transition = 'none';
 			this.progressBar.style.width = '0%';
 		}, 300);
 	}
 
 	override dispose(): void {
+		// Stop any loading animation
+		if (this.loadingAnimation) {
+			cancelAnimationFrame(this.loadingAnimation);
+			this.loadingAnimation = undefined;
+		}
 		super.dispose();
 		this.container.remove();
 	}

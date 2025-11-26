@@ -336,16 +336,19 @@ export class ProjectModeV2Editor extends EditorPane {
 
 	/**
 	 * Start polling for navigation state changes
-	 * This keeps the URL bar in sync with the actual browser URL
+	 * This keeps the URL bar, tab title, and placeholder state in sync with the browser
 	 */
 	private startNavigationPolling(): void {
 		// Clear any existing interval
 		this.stopNavigationPolling();
 
-		// Track last known URL to avoid unnecessary updates
+		// Track last known values to avoid unnecessary updates
 		let lastKnownUrl = '';
+		let lastKnownTitle = '';
+		let lastErrorUrl = ''; // Track which URL we showed error for
+		let wasLoading = false; // Track loading state for progress bar
 
-		// Poll every 500ms for navigation changes
+		// Poll every 300ms for navigation changes (faster for better responsiveness)
 		this.navigationPollInterval = setInterval(async () => {
 			if (!this.browserViewId) {
 				return;
@@ -353,21 +356,122 @@ export class ProjectModeV2Editor extends EditorPane {
 
 			try {
 				const state = await this.browserService.getNavigationState(this.browserViewId);
+				const currentUrl = state.url || '';
+				const currentTitle = state.title || '';
+				const isRealUrl = currentUrl && currentUrl !== 'about:blank';
 
-				// Update URL bar if URL changed
-				if (state.url && state.url !== lastKnownUrl && state.url !== 'about:blank') {
-					lastKnownUrl = state.url;
+				// Update loading progress bar
+				if (state.isLoading && !wasLoading) {
+					// Started loading
+					wasLoading = true;
 					if (this.controlBar) {
-						this.controlBar.setUrl(state.url);
+						this.controlBar.showLoading();
+					}
+				} else if (!state.isLoading && wasLoading) {
+					// Finished loading
+					wasLoading = false;
+					if (this.controlBar) {
+						this.controlBar.hideLoading();
 					}
 				}
 
-				// Update back/forward button states if control bar supports it
-				// (can be added later)
+				// Check for navigation errors first
+				if (state.lastError && state.lastError.validatedURL !== lastErrorUrl) {
+					lastErrorUrl = state.lastError.validatedURL;
+					this.logger.info(`[ProjectModeV2] Navigation error detected: ${state.lastError.errorDescription} (${state.lastError.errorCode})`);
+
+					// Hide loading bar on error
+					if (this.controlBar) {
+						this.controlBar.hideLoading();
+					}
+					wasLoading = false;
+
+					// Show error on placeholder
+					const errorMessage = this.getNavigationErrorMessageFromCode(
+						state.lastError.errorCode,
+						state.lastError.errorDescription,
+						state.lastError.validatedURL
+					);
+					this.showNavigationError(errorMessage);
+				}
+
+				// Check if URL changed
+				if (currentUrl !== lastKnownUrl) {
+					lastKnownUrl = currentUrl;
+
+					// Update URL bar
+					if (this.controlBar) {
+						this.controlBar.setUrl(currentUrl);
+					}
+
+					// Update placeholder visibility based on URL
+					// This handles back/forward navigation correctly
+					if (isRealUrl) {
+						// Navigated to a real URL - hide placeholder, show browser
+						if (!this.hasLoadedUrl) {
+							this.hasLoadedUrl = true;
+							this.hidePlaceholder();
+						}
+					} else {
+						// Navigated to about:blank - show placeholder, hide browser
+						if (this.hasLoadedUrl) {
+							this.hasLoadedUrl = false;
+							this.showPlaceholder();
+						}
+					}
+				}
+
+				// Update tab title when page title changes
+				if (currentTitle !== lastKnownTitle) {
+					lastKnownTitle = currentTitle;
+					const input = this.input as ProjectModeV2Input;
+					if (input && currentTitle) {
+						input.setPageTitle(currentTitle);
+					}
+				}
+
+				// Update back/forward button states
+				if (this.controlBar) {
+					this.controlBar.updateNavigationState(state.canGoBack, state.canGoForward);
+				}
 			} catch {
 				// Ignore errors - browser view might be destroyed
 			}
-		}, 500);
+		}, 300);
+	}
+
+	/**
+	 * Get user-friendly error message from error code
+	 */
+	private getNavigationErrorMessageFromCode(errorCode: number, errorDescription: string, url: string): string {
+		const host = this.extractHost(url);
+
+		switch (errorCode) {
+			case -102: // ERR_CONNECTION_REFUSED
+				return `Cannot connect to ${host}. Is the server running?`;
+			case -105: // ERR_NAME_NOT_RESOLVED
+				return `Cannot find "${host}". Check the URL and try again.`;
+			case -106: // ERR_INTERNET_DISCONNECTED
+				return 'No internet connection. Check your network settings.';
+			case -7: // ERR_TIMED_OUT
+				return `Connection timed out. "${host}" took too long to respond.`;
+			case -200: // ERR_CERT_COMMON_NAME_INVALID
+				return `Certificate error for "${host}". The site's certificate is invalid.`;
+			case -201: // ERR_CERT_DATE_INVALID
+				return `Certificate expired for "${host}".`;
+			case -202: // ERR_CERT_AUTHORITY_INVALID
+				return `Untrusted certificate for "${host}".`;
+			case -118: // ERR_CONNECTION_TIMED_OUT
+				return `Connection to "${host}" timed out.`;
+			case -137: // ERR_NAME_RESOLUTION_FAILED
+				return `DNS lookup failed for "${host}".`;
+			default:
+				// Use error description if available
+				if (errorDescription) {
+					return `${errorDescription} for "${host}"`;
+				}
+				return `Failed to load "${host}" (error ${errorCode})`;
+		}
 	}
 
 	/**
@@ -450,18 +554,32 @@ export class ProjectModeV2Editor extends EditorPane {
 			return;
 		}
 
+		// Validate URL - reject gibberish like "null", "undefined", single characters, etc.
+		const trimmedUrl = url.trim();
+		if (this.isInvalidUrl(trimmedUrl)) {
+			this.logger.warn(`[ProjectModeV2] Navigation aborted: Invalid URL "${trimmedUrl}"`);
+			this.showNavigationError(`Invalid URL: "${trimmedUrl}"`);
+			return;
+		}
+
 		// Ensure URL has protocol
-		if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('about:')) {
-			url = 'https://' + url;
+		if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://') && !trimmedUrl.startsWith('about:')) {
+			url = 'https://' + trimmedUrl;
+		} else {
+			url = trimmedUrl;
 		}
 
 		// Track if we're loading a real URL (for tab switch behavior)
 		const isRealUrl = url !== 'about:blank';
 
-		// Hide placeholder when navigating to a real URL
+		// Update placeholder visibility immediately for instant feedback
+		// (polling will also handle this, but immediate update feels snappier)
 		if (isRealUrl) {
 			this.hasLoadedUrl = true;
 			this.hidePlaceholder();
+		} else {
+			this.hasLoadedUrl = false;
+			this.showPlaceholder();
 		}
 
 		this.logger.info(`[ProjectModeV2] Navigating to: ${url} (browserViewId: ${this.browserViewId})`);
@@ -481,6 +599,57 @@ export class ProjectModeV2Editor extends EditorPane {
 			}
 		} catch (error) {
 			this.logger.error(`[ProjectModeV2] Navigation failed for URL "${url}":`, error);
+
+			// Show user-friendly error message
+			const errorMessage = this.getNavigationErrorMessage(error, url);
+			this.showNavigationError(errorMessage);
+		}
+	}
+
+	/**
+	 * Get user-friendly error message for navigation failure
+	 */
+	private getNavigationErrorMessage(error: unknown, url: string): string {
+		const errorStr = String(error).toLowerCase();
+
+		// Connection refused (server not running)
+		if (errorStr.includes('err_connection_refused') || errorStr.includes('-102')) {
+			return `Cannot connect to ${this.extractHost(url)}. Is the server running?`;
+		}
+
+		// DNS resolution failed
+		if (errorStr.includes('err_name_not_resolved') || errorStr.includes('-105')) {
+			return `Cannot find "${this.extractHost(url)}". Check the URL and try again.`;
+		}
+
+		// Network disconnected
+		if (errorStr.includes('err_internet_disconnected') || errorStr.includes('-106')) {
+			return 'No internet connection. Check your network settings.';
+		}
+
+		// Timeout
+		if (errorStr.includes('err_timed_out') || errorStr.includes('-7')) {
+			return `Connection timed out. "${this.extractHost(url)}" took too long to respond.`;
+		}
+
+		// Invalid URL
+		if (errorStr.includes('err_invalid_url')) {
+			return `Invalid URL: "${url}"`;
+		}
+
+		// Generic error with URL
+		return `Failed to load "${this.extractHost(url)}"`;
+	}
+
+	/**
+	 * Extract hostname from URL for error messages
+	 */
+	private extractHost(url: string): string {
+		try {
+			const urlObj = new URL(url);
+			return urlObj.hostname || url;
+		} catch {
+			return url;
 		}
 	}
 
@@ -497,8 +666,8 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	private goHome(): void {
-		this.hasLoadedUrl = false;
-		this.showPlaceholder();
+		// Just navigate to about:blank - the navigation polling will
+		// detect the URL change and show the placeholder automatically
 		this.navigate('about:blank');
 	}
 
@@ -666,6 +835,53 @@ export class ProjectModeV2Editor extends EditorPane {
 			}
 		} catch (error) {
 			this.logger.warn('[ProjectModeV2] Failed to sync URL bar:', error);
+		}
+	}
+
+	/**
+	 * Check if URL is invalid/gibberish
+	 * Returns true for URLs that are obviously empty - let browser handle other validation
+	 */
+	private isInvalidUrl(url: string): boolean {
+		// Empty or whitespace only
+		if (!url || url.length === 0) {
+			return true;
+		}
+
+		// Let browser handle everything else - it will return proper errors
+		// for invalid URLs like ERR_NAME_NOT_RESOLVED, ERR_INVALID_URL, etc.
+		return false;
+	}
+
+	/**
+	 * Show navigation error message on placeholder
+	 */
+	private showNavigationError(message: string): void {
+		// Show placeholder with error message
+		this.hasLoadedUrl = false;
+		this.showPlaceholder();
+
+		// Update placeholder to show error
+		if (this.placeholderElement) {
+			const title = this.placeholderElement.querySelector('div:nth-child(2)') as HTMLElement;
+			const description = this.placeholderElement.querySelector('div:nth-child(3)') as HTMLElement;
+
+			if (title) {
+				title.textContent = 'Navigation Failed';
+			}
+			if (description) {
+				description.textContent = message;
+			}
+
+			// Reset to normal state after 3 seconds
+			setTimeout(() => {
+				if (title) {
+					title.textContent = 'Browser Preview';
+				}
+				if (description) {
+					description.textContent = 'Enter a URL in the address bar above to start browsing';
+				}
+			}, 3000);
 		}
 	}
 

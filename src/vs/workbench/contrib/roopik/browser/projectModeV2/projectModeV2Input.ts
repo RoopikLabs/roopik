@@ -7,6 +7,7 @@ import { EditorInput } from '../../../../common/editor/editorInput.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { Codicon } from '../../../../../base/common/codicons.js';
 import { registerIcon } from '../../../../../platform/theme/common/iconRegistry.js';
+import { truncate } from '../../../../../base/common/strings.js';
 
 const projectModeV2Icon = registerIcon('roopik-project-mode-v2', Codicon.globe, 'Icon for Project Mode V2 (Browser Preview with DevTools)');
 
@@ -19,6 +20,7 @@ export class ProjectModeV2Input extends EditorInput {
 	static readonly ID = 'roopik.projectModeV2Input';
 
 	private _url: string;
+	private _pageTitle: string = '';
 
 	constructor(url: string = 'about:blank') {
 		super();
@@ -41,15 +43,26 @@ export class ProjectModeV2Input extends EditorInput {
 		}
 	}
 
+	// Max length for tab title - keep short for consistent tab width
+	// Using 15 to account for variable character widths (spaces are narrow)
+	private static readonly TAB_TITLE_MAX_LENGTH = 15;
+
 	override getName(): string {
+		// Use page title if available (set by editor from browser)
+		if (this._pageTitle) {
+			// Use VSCode's truncate function for consistent behavior
+			return truncate(this._pageTitle, ProjectModeV2Input.TAB_TITLE_MAX_LENGTH);
+		}
+
+		// Fallback to hostname or default
 		if (this._url === 'about:blank') {
-			return 'Browser Preview V2';
+			return 'Browser Preview';
 		}
 		try {
 			const url = new URL(this._url);
-			return url.hostname || 'Browser Preview V2';
+			return url.hostname || 'Browser Preview';
 		} catch {
-			return 'Browser Preview V2';
+			return 'Browser Preview';
 		}
 	}
 
@@ -66,6 +79,21 @@ export class ProjectModeV2Input extends EditorInput {
 			this._url = url;
 			this._onDidChangeLabel.fire();
 		}
+	}
+
+	/**
+	 * Set page title (from browser's document.title)
+	 * This is what shows in the tab
+	 */
+	setPageTitle(title: string): void {
+		if (this._pageTitle !== title) {
+			this._pageTitle = title;
+			this._onDidChangeLabel.fire();
+		}
+	}
+
+	get pageTitle(): string {
+		return this._pageTitle;
 	}
 
 	override matches(other: EditorInput): boolean {

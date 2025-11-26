@@ -5,7 +5,7 @@
 
 import { BrowserWindow, WebContentsView, session } from 'electron';
 import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains } from '../../common/projectModeV2/types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError } from '../../common/projectModeV2/types.js';
 
 /**
  * Browser View Service V2
@@ -40,6 +40,9 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 
 	// CDP debugger state
 	private debuggerAttached = new Map<number, boolean>();
+
+	// Navigation errors - track last error per browser view
+	private lastNavigationErrors = new Map<number, NavigationError>();
 
 	// Remote debugging port counter
 	private debuggingPortCounter = 9222;
@@ -172,6 +175,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			this.browserViews.delete(browserViewId);
 			this.browserWindows.delete(browserViewId);
 			this.debuggerAttached.delete(browserViewId);
+			this.lastNavigationErrors.delete(browserViewId);
 
 			// Remove from static set
 			BrowserViewServiceV2.managedWebContentsIds.delete(browserViewId);
@@ -268,13 +272,36 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		}
 
 		const webContents = browserView.webContents;
+		const lastError = this.lastNavigationErrors.get(browserViewId);
+
 		return {
 			canGoBack: webContents.canGoBack(),
 			canGoForward: webContents.canGoForward(),
 			url: webContents.getURL(),
 			title: webContents.getTitle(),
-			isLoading: webContents.isLoading()
+			isLoading: webContents.isLoading(),
+			lastError
 		};
+	}
+
+	/**
+	 * Clear navigation error for a browser view
+	 * Called when navigation succeeds
+	 */
+	private clearNavigationError(browserViewId: number): void {
+		this.lastNavigationErrors.delete(browserViewId);
+	}
+
+	/**
+	 * Set navigation error for a browser view
+	 * Called when navigation fails
+	 */
+	private setNavigationError(browserViewId: number, errorCode: number, errorDescription: string, validatedURL: string): void {
+		this.lastNavigationErrors.set(browserViewId, {
+			errorCode,
+			errorDescription,
+			validatedURL
+		});
 	}
 
 	// ============================================
@@ -662,6 +689,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		this.browserViews.delete(browserViewId);
 		this.browserWindows.delete(browserViewId);
 		this.debuggerAttached.delete(browserViewId);
+		this.lastNavigationErrors.delete(browserViewId);
 		BrowserViewServiceV2.managedWebContentsIds.delete(browserViewId);
 
 		console.log(`[ProjectModeV2] Browser view ${browserViewId} sync destroyed`);
@@ -669,16 +697,35 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 
 	private setupBrowserEvents(browserView: WebContentsView): void {
 		const webContents = browserView.webContents;
+		const browserViewId = webContents.id;
+
+		// Error codes that are expected/normal and should NOT be logged as errors:
+		// -3: ERR_ABORTED - Normal navigation cancellation (user navigated away, pressed stop, or new navigation started)
+		const IGNORED_ERROR_CODES = new Set([-3]);
 
 		// Standard load failure
 		webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+			// Skip expected/normal errors
+			if (IGNORED_ERROR_CODES.has(errorCode)) {
+				console.log(`[ProjectModeV2] Load cancelled (normal): ${validatedURL} (${errorCode})`);
+				return;
+			}
 			console.error(`[ProjectModeV2] Load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
+			// Track error so renderer can display it
+			this.setNavigationError(browserViewId, errorCode, errorDescription, validatedURL);
 		});
 
 		// Provisional load failure - catches CONNECTION_REFUSED, NAME_NOT_RESOLVED etc.
 		// This fires BEFORE did-fail-load for certain connection errors
 		webContents.on('did-fail-provisional-load', (_event, errorCode, errorDescription, validatedURL) => {
+			// Skip expected/normal errors
+			if (IGNORED_ERROR_CODES.has(errorCode)) {
+				console.log(`[ProjectModeV2] Provisional load cancelled (normal): ${validatedURL} (${errorCode})`);
+				return;
+			}
 			console.error(`[ProjectModeV2] Provisional load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
+			// Track error so renderer can display it
+			this.setNavigationError(browserViewId, errorCode, errorDescription, validatedURL);
 			// Common error codes:
 			// -102: CONNECTION_REFUSED (server not running)
 			// -105: NAME_NOT_RESOLVED (DNS issue)
@@ -696,6 +743,8 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 
 		webContents.on('did-navigate', (_event, url) => {
 			console.log(`[ProjectModeV2] Navigated to: ${url}`);
+			// Clear any previous error on successful navigation
+			this.clearNavigationError(browserViewId);
 		});
 
 		webContents.on('page-title-updated', (_event, title) => {
@@ -709,6 +758,8 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 
 		webContents.on('did-finish-load', () => {
 			console.log(`[ProjectModeV2] Finished loading`);
+			// Clear any previous error on successful load
+			this.clearNavigationError(browserViewId);
 		});
 
 		// NOTE: New window requests (Ctrl+Click, target="_blank", window.open, etc.)

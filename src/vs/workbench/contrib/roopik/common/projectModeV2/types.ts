@@ -26,6 +26,15 @@ export interface ViewBounds {
 }
 
 /**
+ * Navigation error info
+ */
+export interface NavigationError {
+	errorCode: number;
+	errorDescription: string;
+	validatedURL: string;
+}
+
+/**
  * Browser navigation state
  */
 export interface NavigationState {
@@ -34,6 +43,8 @@ export interface NavigationState {
 	url: string;
 	title: string;
 	isLoading: boolean;
+	/** Last navigation error (cleared on successful navigation) */
+	lastError?: NavigationError;
 }
 
 /**
