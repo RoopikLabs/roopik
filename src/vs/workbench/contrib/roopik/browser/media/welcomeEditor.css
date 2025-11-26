@@ -1,0 +1,369 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+.roopik-welcome {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	width: 100%;
+	height: 100%;
+	overflow-y: auto;
+	overflow-x: hidden;
+	background-color: var(--vscode-editor-background);
+}
+
+.welcome-container {
+	display: flex;
+	flex-direction: column;
+	gap: 32px;
+	width: 100%;
+	max-width: 1080px;
+	margin: 0 auto;
+	padding: 40px 56px 80px;
+	box-sizing: border-box;
+}
+
+.welcome-hero {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+	gap: 32px;
+	padding: 32px;
+	background-color: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 12px;
+	box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
+}
+
+.hero-content {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+}
+
+.hero-badge {
+	align-self: flex-start;
+	padding: 4px 12px;
+	border-radius: 999px;
+	background-color: var(--vscode-badge-background, rgba(0, 122, 204, 0.2));
+	color: var(--vscode-badge-foreground, var(--vscode-foreground));
+	font-size: 12px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.welcome-title-row {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	flex-wrap: wrap;
+	margin-top: 4px;
+}
+
+.welcome-logo {
+	width: 56px;
+	height: 56px;
+	border-radius: 12px;
+	object-fit: contain;
+	background-color: rgba(255, 255, 255, 0.04);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.welcome-title {
+	font-size: 36px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+	margin: 0;
+}
+
+.welcome-subtitle {
+	font-size: 16px;
+	color: var(--vscode-descriptionForeground);
+	margin: 0;
+}
+
+.hero-description {
+	font-size: 14px;
+	line-height: 1.6;
+	color: var(--vscode-descriptionForeground);
+	word-break: break-word;
+}
+
+.hero-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	width: 100%;
+	gap: 12px;
+	margin-top: 12px;
+	align-items: stretch;
+}
+
+.hero-button {
+	flex: 1 1 200px;
+	min-width: 160px;
+	max-width: 320px;
+	padding: 12px 16px;
+	border-radius: 6px;
+	border: 1px solid var(--vscode-button-border);
+	background-color: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+	cursor: pointer;
+	text-align: center;
+	font-weight: 600;
+	transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.hero-button.primary {
+	background: linear-gradient(135deg, #6e8efb, #4b6cb7);
+	color: #fff;
+	border-color: transparent;
+}
+
+.hero-button:hover {
+	transform: translateY(-1px);
+	background-color: var(--vscode-button-secondaryHoverBackground);
+	border-color: var(--vscode-focusBorder);
+}
+
+.hero-button.primary:hover {
+	filter: brightness(1.05);
+}
+
+.hero-showcase {
+	position: relative;
+	padding: 28px;
+	border-radius: 10px;
+	background: radial-gradient(circle at top, rgba(110, 142, 251, 0.35), transparent 70%), var(--vscode-editor-background);
+	border: 1px dashed var(--vscode-widget-border);
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-height: 220px;
+	overflow: hidden;
+}
+
+.hero-showcase::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	background-image: linear-gradient(120deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, 0.03) 50%, rgba(255, 255, 255, 0.03) 75%, transparent 75%, transparent);
+	background-size: 28px 28px;
+	pointer-events: none;
+}
+
+.showcase-label {
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--vscode-textLink-activeForeground);
+}
+
+.showcase-highlight {
+	font-size: 15px;
+	line-height: 1.6;
+	color: var(--vscode-foreground);
+}
+
+.welcome-section {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.section-title {
+	font-size: 18px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+	margin: 0;
+}
+
+.quick-start-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 16px;
+}
+
+.quick-card {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 18px;
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 8px;
+	background-color: var(--vscode-editorWidget-background);
+	cursor: pointer;
+	transition: border-color 0.2s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.quick-card:hover {
+	border-color: var(--vscode-focusBorder);
+	transform: translateY(-2px);
+	box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+}
+
+.quick-card-icon {
+	font-size: 26px;
+	line-height: 1;
+}
+
+.quick-card-title {
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.quick-card-description {
+	font-size: 13px;
+	color: var(--vscode-descriptionForeground);
+	line-height: 1.5;
+	flex: 1;
+}
+
+.quick-card-link {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--vscode-textLink-activeForeground);
+}
+
+.tips-list {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+	gap: 16px;
+}
+
+.tip-item {
+	display: flex;
+	gap: 12px;
+	padding: 16px;
+	border-radius: 8px;
+	border: 1px solid var(--vscode-widget-border);
+	background-color: var(--vscode-editorWidget-background);
+}
+
+.tip-content {
+	flex: 1;
+}
+
+.tip-icon {
+	font-size: 24px;
+	line-height: 1;
+}
+
+.tip-title {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+	margin-bottom: 4px;
+}
+
+.tip-description {
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--vscode-descriptionForeground);
+}
+
+.welcome-footer {
+	position: sticky;
+	bottom: 0;
+	width: 100%;
+	box-sizing: border-box;
+	background-color: var(--vscode-editor-background);
+	border-top: 1px solid var(--vscode-widget-border);
+	box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.18);
+	padding: 12px 24px;
+	display: flex;
+	justify-content: center;
+	z-index: 5;
+}
+
+.checkbox-container {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	width: 100%;
+	max-width: 1080px;
+	justify-content: center;
+}
+
+.checkbox-label {
+	font-size: 13px;
+	color: var(--vscode-foreground);
+	cursor: pointer;
+	user-select: none;
+}
+
+.checkbox-label:hover {
+	color: var(--vscode-textLink-activeForeground);
+}
+
+.toggle-pill {
+	position: relative;
+	width: 48px;
+	height: 26px;
+	cursor: pointer;
+}
+
+.toggle-pill-input {
+	opacity: 0;
+	width: 0;
+	height: 0;
+}
+
+.toggle-pill-slider {
+	position: absolute;
+	cursor: pointer;
+	inset: 0;
+	border-radius: 999px;
+	background-color: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border);
+	transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.toggle-pill-slider::after {
+	content: '';
+	position: absolute;
+	height: 18px;
+	width: 18px;
+	left: 3px;
+	top: 3px;
+	border-radius: 50%;
+	background-color: var(--vscode-foreground);
+	transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.toggle-pill-input:checked + .toggle-pill-slider {
+	background: var(--vscode-focusBorder);
+	border-color: var(--vscode-focusBorder);
+}
+
+.toggle-pill-input:checked + .toggle-pill-slider::after {
+	transform: translateX(20px);
+	background-color: #fff;
+}
+
+@media (max-width: 700px) {
+	.welcome-container {
+		padding: 32px 24px 64px;
+	}
+
+	.hero-actions {
+		flex-direction: column;
+	}
+
+	.hero-button {
+		max-width: none;
+		width: 100%;
+	}
+
+	.quick-card {
+		padding: 16px;
+	}
+
+	.checkbox-container {
+		justify-content: center;
+	}
+}

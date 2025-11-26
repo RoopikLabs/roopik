@@ -36,16 +36,16 @@ export class ActivityBarViewProvider implements vscode.WebviewViewProvider {
 		webviewView.webview.onDidReceiveMessage(message => {
 			switch (message.command) {
 				case 'openDashboard':
-					vscode.commands.executeCommand('roopik.openCanvas');
+					vscode.commands.executeCommand('roopik.extension.openCanvas');
 					break;
 				case 'newCanvas':
-					vscode.commands.executeCommand('roopik.newCanvas');
+					vscode.commands.executeCommand('roopik.extension.newCanvas');
 					break;
 				case 'showCanvases':
-					vscode.commands.executeCommand('roopik.showCanvases');
+					vscode.commands.executeCommand('roopik.extension.showCanvases');
 					break;
 				case 'openProject':
-					vscode.commands.executeCommand('roopik.openProjectPreview');
+					vscode.commands.executeCommand('roopik.extension.openProjectPreview');
 					break;
 			}
 		});

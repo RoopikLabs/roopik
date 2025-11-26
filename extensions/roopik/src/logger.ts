@@ -67,8 +67,8 @@ export class Logger {
 
 	private constructor(config: LoggerConfig) {
 		this.config = config;
-		this.outputChannel = vscode.window.createOutputChannel('Roopik');
-		this.debugChannel = vscode.window.createOutputChannel('Roopik Debug');
+		this.outputChannel = vscode.window.createOutputChannel('Roopik Extension');
+		this.debugChannel = vscode.window.createOutputChannel('Roopik Extension Debug');
 
 		// Ensure log directory exists
 		if (config.enableFileLogging) {

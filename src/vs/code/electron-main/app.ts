@@ -123,6 +123,11 @@ import { IWebContentExtractorService } from '../../platform/webContentExtractor/
 import { NativeWebContentExtractorService } from '../../platform/webContentExtractor/electron-main/webContentExtractorService.js';
 import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetry.js';
 
+// ProjectModeV2 - Browser Preview with embedded DevTools
+import { BrowserViewServiceV2 } from '../../workbench/contrib/roopik/electron-main/projectModeV2/browserViewServiceV2.js';
+import { ProjectModeV2Channel } from '../../workbench/contrib/roopik/electron-main/projectModeV2/projectModeV2Channel.js';
+import { PROJECT_MODE_V2_CHANNEL } from '../../workbench/contrib/roopik/common/projectModeV2/ipc.js';
+
 /**
  * The main VS Code application. There will only ever be one instance,
  * even if the user starts many instances (e.g. from the command line).
@@ -246,35 +251,13 @@ export class CodeApplication extends Disposable {
 			return false;
 		};
 
-		const isAllowedWebviewRequest = (uri: URI, details: Electron.OnBeforeRequestListenerDetails): boolean => {
-			if (uri.path !== '/index.html') {
-				return true; // Only restrict top level page of webviews: index.html
-			}
-
-			const frame = details.frame;
-			if (!frame || !this.windowsMainService) {
-				return false;
-			}
-
-			// Check to see if the request comes from one of the main editor windows.
-			for (const window of this.windowsMainService.getWindows()) {
-				if (window.win) {
-					if (frame.processId === window.win.webContents.mainFrame.processId) {
-						return true;
-					}
-				}
-			}
-
-			return false;
-		};
+		// Removed isAllowedWebviewRequest function - validation disabled for Roopik browser preview
 
 		session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
 			const uri = URI.parse(details.url);
 			if (uri.scheme === Schemas.vscodeWebview) {
-				if (!isAllowedWebviewRequest(uri, details)) {
-					this.logService.error('Blocked vscode-webview request', details.url);
-					return callback({ cancel: true });
-				}
+				// Allow all webview requests for Roopik browser preview (Electron webview tag)
+				// Original validation disabled to enable full browser preview functionality
 			}
 
 			if (uri.scheme === Schemas.vscodeFileResource) {
@@ -411,18 +394,36 @@ export class CodeApplication extends Disposable {
 				this.auxiliaryWindowsMainService?.registerWindow(contents);
 			}
 
-			// Block any in-page navigation
+			// Block any in-page navigation (except for ProjectModeV2 browser views)
 			contents.on('will-navigate', event => {
+				// Allow navigation for ProjectModeV2 managed browser views
+				const webContentsId = contents.id;
+				if (BrowserViewServiceV2.isManagedWebContents(webContentsId)) {
+					this.logService.trace(`[ProjectModeV2] Allowing navigation for managed browser view ${webContentsId}`);
+					return; // Allow navigation
+				}
+
 				this.logService.error('webContents#will-navigate: Prevented webcontent navigation');
 
 				event.preventDefault();
 			});
 
 			// All Windows: only allow about:blank auxiliary windows to open
-			// For all other URLs, delegate to the OS.
+			// For all other URLs, delegate to the OS (except for ProjectModeV2 browser views)
 			contents.setWindowOpenHandler(details => {
 
-				// about:blank windows can open as window witho our default options
+				// ProjectModeV2 browser views: redirect to same view instead of opening new window
+				// This handles Ctrl+Click, middle-click, target="_blank", etc.
+				const webContentsId = contents.id;
+				if (BrowserViewServiceV2.isManagedWebContents(webContentsId)) {
+					this.logService.info(`[ProjectModeV2] new-window requested: ${details.url} (disposition: ${details.disposition})`);
+					this.logService.info(`[ProjectModeV2] Redirecting new window to current view: ${details.url}`);
+					// Load URL in the same view
+					contents.loadURL(details.url);
+					return { action: 'deny' };
+				}
+
+				// about:blank windows can open as window with our default options
 				if (details.url === 'about:blank') {
 					this.logService.trace('[aux window] webContents#setWindowOpenHandler: Allowing auxiliary window to open on about:blank');
 
@@ -1239,6 +1240,11 @@ export class CodeApplication extends Disposable {
 		// Utility Process Worker
 		const utilityProcessWorkerChannel = ProxyChannel.fromService(accessor.get(IUtilityProcessWorkerMainService), disposables);
 		mainProcessElectronServer.registerChannel(ipcUtilityProcessWorkerChannelName, utilityProcessWorkerChannel);
+
+		// ProjectModeV2 - Browser Preview with embedded DevTools and CDP
+		const projectModeV2Service = new BrowserViewServiceV2();
+		const projectModeV2Channel = new ProjectModeV2Channel(projectModeV2Service);
+		mainProcessElectronServer.registerChannel(PROJECT_MODE_V2_CHANNEL, projectModeV2Channel);
 	}
 
 	private async openFirstWindow(accessor: ServicesAccessor, initialProtocolUrls: IInitialProtocolUrls | undefined): Promise<ICodeWindow[]> {

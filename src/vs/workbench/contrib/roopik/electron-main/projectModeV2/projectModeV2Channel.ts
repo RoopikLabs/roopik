@@ -1,0 +1,120 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+import { Event } from '../../../../../base/common/event.js';
+import { IServerChannel } from '../../../../../base/parts/ipc/common/ipc.js';
+import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
+
+/**
+ * IPC Channel for ProjectModeV2
+ *
+ * Routes calls from renderer process to main process BrowserViewServiceV2.
+ */
+export class ProjectModeV2Channel implements IServerChannel {
+	constructor(private service: IProjectModeV2Service) { }
+
+	listen(_: unknown, event: string): Event<any> {
+		switch (event) {
+			case 'onDevToolsClosed':
+				return this.service.onDevToolsClosed;
+			case 'onNavigationStateChanged':
+				return this.service.onNavigationStateChanged;
+			case 'onBrowserListChanged':
+				return this.service.onBrowserListChanged;
+			default:
+				throw new Error(`[ProjectModeV2Channel] Unknown event: ${event}`);
+		}
+	}
+
+	call(_: unknown, command: string, arg?: any): Promise<any> {
+		switch (command) {
+			// Browser View Lifecycle
+			case 'createBrowserView':
+				return this.service.createBrowserView(arg);
+			case 'destroyBrowserView':
+				return this.service.destroyBrowserView(arg);
+			case 'setBrowserBounds':
+				return this.service.setBrowserBounds(arg.browserViewId, arg.bounds);
+			case 'setBrowserVisible':
+				return this.service.setBrowserVisible(arg.browserViewId, arg.visible);
+
+			// Browser Instance Management
+			case 'getBrowserList':
+				return this.service.getBrowserList();
+			case 'getBrowserCount':
+				return this.service.getBrowserCount();
+			case 'getMaxBrowserCount':
+				return this.service.getMaxBrowserCount();
+			case 'canCreateBrowser':
+				return this.service.canCreateBrowser();
+
+			// Navigation
+			case 'navigate':
+				return this.service.navigate(arg.browserViewId, arg.url);
+			case 'goBack':
+				return this.service.goBack(arg);
+			case 'goForward':
+				return this.service.goForward(arg);
+			case 'reload':
+				return this.service.reload(arg.browserViewId, arg.ignoreCache);
+			case 'stop':
+				return this.service.stop(arg);
+			case 'getNavigationState':
+				return this.service.getNavigationState(arg);
+
+			// DevTools
+			case 'openDevTools':
+				console.log(`[ProjectModeV2Channel] openDevTools called with arg=`, JSON.stringify(arg));
+				return this.service.openDevTools(arg.browserViewId, arg.options);
+			case 'closeDevTools':
+				return this.service.closeDevTools(arg);
+			case 'setDevToolsBounds':
+				return this.service.setDevToolsBounds(arg.browserViewId, arg.bounds);
+			case 'isDevToolsOpen':
+				return this.service.isDevToolsOpen(arg);
+
+			// CDP
+			case 'attachDebugger':
+				return this.service.attachDebugger(arg.browserViewId, arg.protocolVersion);
+			case 'detachDebugger':
+				return this.service.detachDebugger(arg);
+			case 'enableCDPDomains':
+				return this.service.enableCDPDomains(arg.browserViewId, arg.domains);
+			case 'sendCDPCommand':
+				return this.service.sendCDPCommand(arg.browserViewId, arg.method, arg.params);
+
+			// Device Emulation
+			case 'setDeviceEmulation':
+				return this.service.setDeviceEmulation(arg.browserViewId, arg.device);
+			case 'clearDeviceEmulation':
+				return this.service.clearDeviceEmulation(arg);
+
+			// Utilities
+			case 'takeScreenshot':
+				return this.service.takeScreenshot(arg);
+			case 'executeScript':
+				return this.service.executeScript(arg.browserViewId, arg.script);
+			case 'getPageHTML':
+				return this.service.getPageHTML(arg);
+			case 'getDebuggingUrl':
+				return this.service.getDebuggingUrl(arg);
+
+			// Overlay View
+			case 'createOverlayView':
+				return this.service.createOverlayView(arg.browserViewId, arg.bounds, arg.htmlContent);
+			case 'setOverlayBounds':
+				return this.service.setOverlayBounds(arg.overlayViewId, arg.bounds);
+			case 'setOverlayContent':
+				return this.service.setOverlayContent(arg.overlayViewId, arg.htmlContent);
+			case 'setOverlayVisible':
+				return this.service.setOverlayVisible(arg.overlayViewId, arg.visible);
+			case 'destroyOverlayView':
+				return this.service.destroyOverlayView(arg);
+
+			default:
+				throw new Error(`[ProjectModeV2Channel] Unknown command: ${command}`);
+		}
+	}
+}

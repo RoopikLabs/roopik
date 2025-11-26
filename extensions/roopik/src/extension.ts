@@ -80,12 +80,12 @@ export function activate(context: vscode.ExtensionContext) {
 	}, 1000); // 1 second delay
 
 	// Command 1: Open Dashboard (replaces old "Open Canvas")
-	const openCanvasCommand = vscode.commands.registerCommand('roopik.openCanvas', () => {
+	const openCanvasCommand = vscode.commands.registerCommand('roopik.extension.openCanvas', () => {
 		DashboardPanel.createOrShow(context.extensionUri, workspaceRoot);
 	});
 
 	// Command 2: Create new canvas (prompt for name)
-	const newCanvasCommand = vscode.commands.registerCommand('roopik.newCanvas', async () => {
+	const newCanvasCommand = vscode.commands.registerCommand('roopik.extension.newCanvas', async () => {
 		const canvasName = await vscode.window.showInputBox({
 			prompt: 'Enter canvas name (e.g., Login, Onboarding, Dashboard)',
 			placeHolder: 'Canvas name',
@@ -112,13 +112,13 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	// Command 3: Close all canvases
-	const closeAllCanvasesCommand = vscode.commands.registerCommand('roopik.closeAllCanvases', () => {
+	const closeAllCanvasesCommand = vscode.commands.registerCommand('roopik.extension.closeAllCanvases', () => {
 		CanvasPanel.closeAll();
 		vscode.window.showInformationMessage('All Roopik canvases closed.');
 	});
 
 	// Command 4: Show open canvases
-	const showCanvasesCommand = vscode.commands.registerCommand('roopik.showCanvases', () => {
+	const showCanvasesCommand = vscode.commands.registerCommand('roopik.extension.showCanvases', () => {
 		const canvasIds = CanvasPanel.getOpenCanvasIds();
 
 		if (canvasIds.length === 0) {
@@ -136,7 +136,7 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	// Command 5: Delete canvas
-	const deleteCanvasCommand = vscode.commands.registerCommand('roopik.deleteCanvas', async (canvasId: string) => {
+	const deleteCanvasCommand = vscode.commands.registerCommand('roopik.extension.deleteCanvas', async (canvasId: string) => {
 		const confirmation = await vscode.window.showWarningMessage(
 			`Delete canvas "${canvasId}"? This cannot be undone.`,
 			{ modal: true },
@@ -154,7 +154,7 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	// Command 6: Rename canvas
-	const renameCanvasCommand = vscode.commands.registerCommand('roopik.renameCanvas', async (canvasId: string, currentName: string) => {
+	const renameCanvasCommand = vscode.commands.registerCommand('roopik.extension.renameCanvas', async (canvasId: string, currentName: string) => {
 		const newName = await vscode.window.showInputBox({
 			prompt: 'Enter new canvas name',
 			value: currentName,
@@ -180,7 +180,7 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	// Command 7: Export canvas
-	const exportCanvasCommand = vscode.commands.registerCommand('roopik.exportCanvas', async (canvasId: string) => {
+	const exportCanvasCommand = vscode.commands.registerCommand('roopik.extension.exportCanvas', async (canvasId: string) => {
 		const exportPath = await CanvasPanel.exportCanvas(canvasId, workspaceRoot);
 		if (exportPath) {
 			vscode.window.showInformationMessage(`Canvas exported to ${exportPath}`);
@@ -190,7 +190,7 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	// Command 8: Import canvas
-	const importCanvasCommand = vscode.commands.registerCommand('roopik.importCanvas', async () => {
+	const importCanvasCommand = vscode.commands.registerCommand('roopik.extension.importCanvas', async () => {
 		const importedId = await CanvasPanel.importCanvas(workspaceRoot, context.extensionUri);
 		if (importedId) {
 			vscode.window.showInformationMessage(`Canvas "${importedId}" imported successfully.`);
@@ -198,7 +198,7 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	// Command 9: Open Project Preview (Mode 2)
-	const openProjectPreviewCommand = vscode.commands.registerCommand('roopik.openProjectPreview', async () => {
+	const openProjectPreviewCommand = vscode.commands.registerCommand('roopik.extension.openProjectPreview', async () => {
 		// Ask user to select project directory
 		const projectUri = await vscode.window.showOpenDialog({
 			canSelectFiles: false,
@@ -226,7 +226,7 @@ export function activate(context: vscode.ExtensionContext) {
 				'Cancel'
 			);
 			if (retry === 'Try Again') {
-				vscode.commands.executeCommand('roopik.openProjectPreview');
+				vscode.commands.executeCommand('roopik.extension.openProjectPreview');
 			}
 			return;
 		}
@@ -238,7 +238,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register Activity Bar view provider
 	const activityBarViewProvider = new ActivityBarViewProvider();
 	const dashboardViewProvider = vscode.window.registerWebviewViewProvider(
-		'roopik.dashboard',
+		'roopik.extension.dashboard',
 		activityBarViewProvider
 	);
 
