@@ -53,6 +53,9 @@ export class RoopikWelcomeEditor extends EditorPane {
 		const heroBadge = append(heroContent, $('.hero-badge'));
 		heroBadge.textContent = 'Design-first workspace';
 		const titleRow = append(heroContent, $('.welcome-title-row'));
+		const title = append(titleRow, $('.welcome-title'));
+		title.textContent = 'ROOPIK';
+
 		const logo = $('img', {
 			class: 'welcome-logo',
 			src: FileAccess.asBrowserUri('vs/workbench/contrib/roopik/browser/media/roopik-logo.png').toString(true),
@@ -60,9 +63,6 @@ export class RoopikWelcomeEditor extends EditorPane {
 			draggable: 'false'
 		});
 		append(titleRow, logo);
-
-		const title = append(titleRow, $('.welcome-title'));
-		title.textContent = 'ROOPIK';
 
 		const subtitle = append(heroContent, $('.welcome-subtitle'));
 		subtitle.textContent = 'Visual canvas + Chromium DevTools + AI copilots';

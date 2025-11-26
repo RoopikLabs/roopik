@@ -36,7 +36,7 @@ import { generateFloatingToolbarHtml, FloatingToolbarState } from './floatingToo
  * TODO: In the future, this will be a user setting preference.
  * For now, we default to 'attached' mode for the Device Toolbar feature.
  */
-const DEVTOOLS_MODE: DevToolsMode = 'attached';
+const DEVTOOLS_MODE: DevToolsMode = 'attached'; // 'attached' or 'detached'
 
 /**
  * Project Mode V2 Editor
@@ -623,11 +623,6 @@ export class ProjectModeV2Editor extends EditorPane {
 		const currentUrl = event.url || '';
 		const currentTitle = event.title || '';
 		const isRealUrl = currentUrl && currentUrl !== 'about:blank';
-
-		// DEBUG: Log loading state changes
-		if (event.isLoading !== this.wasLoading) {
-			this.logger.info(`[ProjectModeV2] Loading state changed: ${this.wasLoading} -> ${event.isLoading}`);
-		}
 
 		// Update loading progress bar
 		// IMPORTANT: Always respect the isLoading value from the event

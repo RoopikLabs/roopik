@@ -543,24 +543,37 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		const mode = this.devtoolsModes.get(browserViewId);
 
 		// Close DevTools on browser webContents (works for both modes)
+		// Graceful check - browser may already be destroyed
 		if (browserView && !browserView.webContents.isDestroyed()) {
-			browserView.webContents.closeDevTools();
+			try {
+				browserView.webContents.closeDevTools();
+			} catch (e) {
+				console.error('[ProjectModeV2] Error closing devtools on browser:', e);
+			}
 		}
 
-		// In detached mode, we also need to cleanup our WebContentsView
-		if (mode === 'detached' && devtoolsView) {
+		// ALWAYS cleanup detached DevTools WebContentsView if it exists
+		// Don't rely on mode - the view existing is enough to know we need to clean it up
+		// This fixes the bug where DevTools remained visible after browser tab closed
+		if (devtoolsView) {
 			// Remove from window
 			if (window && !window.isDestroyed() && window.contentView) {
 				try {
 					window.contentView.removeChildView(devtoolsView);
 				} catch (e) {
+					// Graceful - view may already be removed
 					console.error('[ProjectModeV2] Error removing devtools view:', e);
 				}
 			}
 
 			// Destroy devtools webContents
 			if (!devtoolsView.webContents.isDestroyed()) {
-				devtoolsView.webContents.close();
+				try {
+					devtoolsView.webContents.close();
+				} catch (e) {
+					// Graceful - webContents may already be destroyed
+					console.error('[ProjectModeV2] Error closing devtools webContents:', e);
+				}
 			}
 
 			this.devtoolsViews.delete(browserViewId);
