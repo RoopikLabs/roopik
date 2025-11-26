@@ -358,6 +358,63 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	/**
+	 * Show max browser limit reached placeholder
+	 * Called when user tries to open more browsers than allowed
+	 * This is a PERMANENT state - the editor will not create a browser
+	 */
+	private showMaxBrowserLimitPlaceholder(): void {
+		if (!this.placeholderElement) {
+			return;
+		}
+
+		// Clear existing content (CSP-safe, no innerHTML)
+		while (this.placeholderElement.firstChild) {
+			this.placeholderElement.removeChild(this.placeholderElement.firstChild);
+		}
+
+		// Warning icon
+		const icon = document.createElement('div');
+		icon.style.fontSize = '48px';
+		icon.style.opacity = '0.7';
+		icon.textContent = '⚠️';
+		this.placeholderElement.appendChild(icon);
+
+		// Title
+		const title = document.createElement('div');
+		title.style.fontSize = '16px';
+		title.style.fontWeight = '500';
+		title.style.color = 'var(--vscode-foreground)';
+		title.style.marginTop = '8px';
+		title.textContent = 'Browser Limit Reached';
+		this.placeholderElement.appendChild(title);
+
+		// Description
+		const description = document.createElement('div');
+		description.style.opacity = '0.7';
+		description.style.textAlign = 'center';
+		description.style.maxWidth = '300px';
+		description.style.marginTop = '8px';
+		description.textContent = 'Maximum of 2 browser instances allowed. Please close an existing browser tab to open a new one.';
+		this.placeholderElement.appendChild(description);
+
+		// Hint
+		const hint = document.createElement('div');
+		hint.style.opacity = '0.5';
+		hint.style.fontSize = '12px';
+		hint.style.marginTop = '16px';
+		hint.textContent = 'Close this tab to free up resources';
+		this.placeholderElement.appendChild(hint);
+
+		// Show the placeholder
+		this.placeholderElement.style.display = 'flex';
+
+		// Hide control bar since browser won't work
+		if (this.controlBar) {
+			this.controlBar.setDisabled(true);
+		}
+	}
+
+	/**
 	 * Setup DevTools resize functionality
 	 * Allows users to drag the resize handle to change DevTools height
 	 */
@@ -475,6 +532,18 @@ export class ProjectModeV2Editor extends EditorPane {
 	 */
 	private async doInitializeBrowserView(): Promise<void> {
 		try {
+			// =========================================================
+			// CHECK MAX BROWSER LIMIT BEFORE CREATING
+			// This prevents resource-heavy browser instances from being created
+			// when the limit is reached. Instead, show a friendly message.
+			// =========================================================
+			const canCreate = await this.browserService.canCreateBrowser();
+			if (!canCreate) {
+				this.logger.warn(`[ProjectModeV2] #${this.instanceId} Max browser limit reached - not creating browser view`);
+				this.showMaxBrowserLimitPlaceholder();
+				return;
+			}
+
 			const windowId = await this.nativeHostService.windowId;
 			this.logger.info(`[ProjectModeV2] #${this.instanceId} Got window ID: ${windowId}`);
 
@@ -545,17 +614,11 @@ export class ProjectModeV2Editor extends EditorPane {
 	 * Event fires on: did-navigate, did-start-loading, did-finish-load, page-title-updated
 	 */
 	private handleNavigationStateChanged(event: NavigationStateChangedEvent): void {
-		// Debug: Log all incoming events to verify IPC is working
-		this.logger.info(`[ProjectModeV2] Navigation event: eventBrowserViewId=${event.browserViewId}, myBrowserViewId=${this.browserViewId}`);
-
 		// CRITICAL: Filter by browserViewId for multi-browser support!
 		// Each browser instance only handles events for its own view
 		if (event.browserViewId !== this.browserViewId) {
-			this.logger.info(`[ProjectModeV2] Ignoring event (not for this browser)`);
 			return;
 		}
-
-		this.logger.info(`[ProjectModeV2] Processing event: url="${event.url}", title="${event.title}", isLoading=${event.isLoading}`);
 
 		const currentUrl = event.url || '';
 		const currentTitle = event.title || '';
@@ -630,7 +693,6 @@ export class ProjectModeV2Editor extends EditorPane {
 				// Always update title, even if empty (to clear stale titles)
 				// setPageTitle handles empty titles gracefully
 				input.setPageTitle(currentTitle);
-				this.logger.info(`[ProjectModeV2] Tab title updated: "${currentTitle}"`);
 			}
 		}
 
@@ -1240,17 +1302,27 @@ export class ProjectModeV2Editor extends EditorPane {
 	override clearInput(): void {
 		super.clearInput();
 
-		// IMPORTANT: Do NOT destroy browser view here!
-		// clearInput() is called on tab switch (not just close).
-		// Destroying here causes the reload issue.
-		// Browser view is destroyed in dispose() which is called on actual tab close.
-
-		// Just hide the view to preserve state (like Cursor does)
+		// IMPORTANT: Destroy browser view here!
+		// VSCode reuses editor instances, so dispose() may never be called.
+		// We must destroy the browser when the tab is closed to free resources.
+		// A new browser will be created in setInput() when the tab is reopened.
 		if (this.browserViewId) {
-			this.browserService.setBrowserVisible(this.browserViewId, false);
+			this.logger.info(`[ProjectModeV2] #${this.instanceId} clearInput: destroying browser view (viewId=${this.browserViewId})`);
+			this.browserService.destroyBrowserView(this.browserViewId)
+				.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy browser view in clearInput:', err));
+			this.browserViewId = undefined;
 		}
 
-		this.logger.info(`[ProjectModeV2] #${this.instanceId} clearInput: browser view preserved (viewId=${this.browserViewId})`);
+		// Reset state for potential editor reuse
+		this.hasLoadedUrl = false;
+		this.lastKnownUrl = '';
+		this.lastKnownTitle = '';
+		this.initializationPromise = undefined;
+		this.isInitializing = false;
+
+		// Destroy floating toolbar
+		this.destroyFloatingToolbar()
+			.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy floating toolbar in clearInput:', err));
 	}
 
 	override focus(): void {

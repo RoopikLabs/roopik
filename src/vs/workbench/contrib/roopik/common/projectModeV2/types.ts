@@ -153,3 +153,32 @@ export interface NavigationStateChangedEvent {
 	/** Navigation error if any (cleared on successful navigation) */
 	lastError?: NavigationError;
 }
+
+// ============================================
+// Browser Instance Management
+// ============================================
+
+/**
+ * Information about a browser instance
+ * Used for multi-browser management and welcome screen
+ */
+export interface BrowserInstanceInfo {
+	browserViewId: number;
+	windowId: number;
+	url: string;
+	title: string;
+	createdAt: number;
+}
+
+/**
+ * Event payload when browser list changes
+ * Fired on: createBrowserView, destroyBrowserView
+ */
+export interface BrowserListChangedEvent {
+	/** Current list of all browser instances */
+	browsers: BrowserInstanceInfo[];
+	/** Total count of browsers */
+	count: number;
+	/** Maximum allowed browsers */
+	maxCount: number;
+}

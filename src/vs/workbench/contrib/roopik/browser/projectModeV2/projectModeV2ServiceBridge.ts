@@ -6,7 +6,7 @@
 import { Event } from '../../../../../base/common/event.js';
 import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, BrowserInstanceInfo, BrowserListChangedEvent } from '../../common/projectModeV2/types.js';
 
 /**
  * ProjectModeV2 Service Bridge
@@ -31,10 +31,17 @@ export class ProjectModeV2ServiceBridge implements IProjectModeV2Service {
 	 */
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent>;
 
+	/**
+	 * Event fired when browser list changes (create, destroy)
+	 * Used for multi-browser management UI
+	 */
+	readonly onBrowserListChanged: Event<BrowserListChangedEvent>;
+
 	constructor(private channel: IChannel) {
 		// Subscribe to events from main process
 		this.onDevToolsClosed = this.channel.listen<DevToolsClosedEvent>('onDevToolsClosed');
 		this.onNavigationStateChanged = this.channel.listen<NavigationStateChangedEvent>('onNavigationStateChanged');
+		this.onBrowserListChanged = this.channel.listen<BrowserListChangedEvent>('onBrowserListChanged');
 	}
 
 	// ============================================
@@ -55,6 +62,26 @@ export class ProjectModeV2ServiceBridge implements IProjectModeV2Service {
 
 	async setBrowserVisible(browserViewId: number, visible: boolean): Promise<void> {
 		return this.channel.call('setBrowserVisible', { browserViewId, visible });
+	}
+
+	// ============================================
+	// Browser Instance Management
+	// ============================================
+
+	async getBrowserList(): Promise<BrowserInstanceInfo[]> {
+		return this.channel.call('getBrowserList');
+	}
+
+	async getBrowserCount(): Promise<number> {
+		return this.channel.call('getBrowserCount');
+	}
+
+	async getMaxBrowserCount(): Promise<number> {
+		return this.channel.call('getMaxBrowserCount');
+	}
+
+	async canCreateBrowser(): Promise<boolean> {
+		return this.channel.call('canCreateBrowser');
 	}
 
 	// ============================================

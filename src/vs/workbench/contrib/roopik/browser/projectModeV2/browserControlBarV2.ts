@@ -566,6 +566,15 @@ export class BrowserControlBarV2 extends Disposable {
 		}, 300);
 	}
 
+	/**
+	 * Disable the entire control bar (used when max browser limit is reached)
+	 */
+	setDisabled(disabled: boolean): void {
+		this.container.style.opacity = disabled ? '0.5' : '1';
+		this.container.style.pointerEvents = disabled ? 'none' : 'auto';
+		this.urlInput.disabled = disabled;
+	}
+
 	override dispose(): void {
 		// Stop any loading animation
 		if (this.loadingAnimation) {

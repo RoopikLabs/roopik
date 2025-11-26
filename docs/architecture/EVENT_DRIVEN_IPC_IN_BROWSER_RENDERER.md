@@ -478,6 +478,64 @@ this._register(this.browserService.onNavigationStateChanged((event) => {
 
 ---
 
+### Browser List Changed Event (IMPLEMENTED ✅)
+
+Tracks all browser instances for multi-browser management:
+- Browser created (`createBrowserView`)
+- Browser destroyed (`destroyBrowserView`)
+- List of all active browsers with their URL, title, creation time
+- Maximum browser count limit (configurable, default: 2)
+
+```typescript
+// types.ts - Types for browser management
+interface BrowserInstanceInfo {
+    browserViewId: number;
+    windowId: number;
+    url: string;
+    title: string;
+    createdAt: number;
+}
+
+interface BrowserListChangedEvent {
+    browsers: BrowserInstanceInfo[];
+    count: number;
+    maxCount: number;
+}
+
+// Service interface - methods + event
+getBrowserList(): Promise<BrowserInstanceInfo[]>;
+getBrowserCount(): Promise<number>;
+getMaxBrowserCount(): Promise<number>;
+canCreateBrowser(): Promise<boolean>;
+readonly onBrowserListChanged: Event<BrowserListChangedEvent>;
+
+// Main process - fires on browser lifecycle
+async createBrowserView(windowId: number): Promise<BrowserViewResult> {
+    // ... create browser ...
+    this.fireBrowserListChanged();  // Notify subscribers
+    return { browserViewId, debuggingPort };
+}
+
+async destroyBrowserView(browserViewId: number): Promise<void> {
+    // ... destroy browser ...
+    this.fireBrowserListChanged();  // Notify subscribers
+}
+
+// Renderer - react to browser list changes
+this._register(this.browserService.onBrowserListChanged((event) => {
+    this.welcomeScreen.updateBrowserList(event.browsers);
+    this.welcomeScreen.setCanCreateBrowser(event.count < event.maxCount);
+}));
+```
+
+**Use Cases:**
+- Welcome screen showing list of open browsers to select
+- Creating new browser from welcome screen
+- Limiting max browsers for resource management (e.g., max 2)
+- AI agents can query available browsers
+
+---
+
 ## Future Applications
 
 This pattern can be used for many more features:

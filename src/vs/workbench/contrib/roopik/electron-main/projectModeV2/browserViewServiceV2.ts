@@ -6,7 +6,7 @@
 import { BrowserWindow, WebContentsView, session } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsMode, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsMode, DevToolsClosedEvent, NavigationStateChangedEvent, BrowserInstanceInfo, BrowserListChangedEvent } from '../../common/projectModeV2/types.js';
 
 /**
  * Browser View Service V2
@@ -29,6 +29,16 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 
 	private readonly _onNavigationStateChanged = new Emitter<NavigationStateChangedEvent>();
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent> = this._onNavigationStateChanged.event;
+
+	private readonly _onBrowserListChanged = new Emitter<BrowserListChangedEvent>();
+	readonly onBrowserListChanged: Event<BrowserListChangedEvent> = this._onBrowserListChanged.event;
+
+	// Maximum allowed browser instances (resource management)
+	// Can be changed later via settings
+	private static readonly MAX_BROWSER_COUNT = 2;
+
+	// Track creation time per browser for sorting
+	private browserCreatedAt = new Map<number, number>();
 
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
@@ -141,6 +151,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		// Store references
 		this.browserViews.set(browserViewId, browserView);
 		this.browserWindows.set(browserViewId, window);
+		this.browserCreatedAt.set(browserViewId, Date.now());
 
 		// Add to static set for navigation whitelist
 		BrowserViewServiceV2.managedWebContentsIds.add(browserViewId);
@@ -159,6 +170,9 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		this.attachSafetyLeash(window, browserViewId);
 
 		console.log(`[ProjectModeV2] Created browser view ${browserViewId} with debugging port ${debuggingPort}`);
+
+		// Fire browser list changed event
+		this.fireBrowserListChanged();
 
 		return { browserViewId, debuggingPort };
 	}
@@ -213,12 +227,16 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			this.browserWindows.delete(browserViewId);
 			this.debuggerAttached.delete(browserViewId);
 			this.lastNavigationErrors.delete(browserViewId);
+			this.browserCreatedAt.delete(browserViewId);
 
 			// Remove from static set
 			BrowserViewServiceV2.managedWebContentsIds.delete(browserViewId);
 		}
 
 		console.log(`[ProjectModeV2] Browser view ${browserViewId} destroyed`);
+
+		// Fire browser list changed event
+		this.fireBrowserListChanged();
 	}
 
 	async setBrowserBounds(browserViewId: number, bounds: ViewBounds): Promise<void> {
@@ -238,6 +256,59 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		if (browserView) {
 			browserView.setVisible(visible);
 		}
+	}
+
+	// ============================================
+	// Browser Instance Management
+	// ============================================
+
+	async getBrowserList(): Promise<BrowserInstanceInfo[]> {
+		const browsers: BrowserInstanceInfo[] = [];
+
+		for (const [browserViewId, browserView] of this.browserViews) {
+			if (browserView.webContents.isDestroyed()) {
+				continue;
+			}
+
+			const windowId = this.browserWindows.get(browserViewId)?.id ?? -1;
+			const webContents = browserView.webContents;
+
+			browsers.push({
+				browserViewId,
+				windowId,
+				url: webContents.getURL(),
+				title: webContents.getTitle() || 'Browser Preview',
+				createdAt: this.browserCreatedAt.get(browserViewId) ?? Date.now()
+			});
+		}
+
+		// Sort by creation time (oldest first)
+		return browsers.sort((a, b) => a.createdAt - b.createdAt);
+	}
+
+	async getBrowserCount(): Promise<number> {
+		return this.browserViews.size;
+	}
+
+	async getMaxBrowserCount(): Promise<number> {
+		return BrowserViewServiceV2.MAX_BROWSER_COUNT;
+	}
+
+	async canCreateBrowser(): Promise<boolean> {
+		return this.browserViews.size < BrowserViewServiceV2.MAX_BROWSER_COUNT;
+	}
+
+	/**
+	 * Fire browser list changed event
+	 * Called when browser is created or destroyed
+	 */
+	private async fireBrowserListChanged(): Promise<void> {
+		const browsers = await this.getBrowserList();
+		this._onBrowserListChanged.fire({
+			browsers,
+			count: browsers.length,
+			maxCount: BrowserViewServiceV2.MAX_BROWSER_COUNT
+		});
 	}
 
 	// ============================================
@@ -354,7 +425,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		const webContents = browserView.webContents;
 		const lastError = this.lastNavigationErrors.get(browserViewId);
 
-		const eventData = {
+		this._onNavigationStateChanged.fire({
 			browserViewId,
 			url: webContents.getURL(),
 			title: webContents.getTitle(),
@@ -362,10 +433,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			canGoBack: webContents.navigationHistory.canGoBack(),
 			canGoForward: webContents.navigationHistory.canGoForward(),
 			lastError
-		};
-
-		console.log(`[ProjectModeV2] FIRING navigation event:`, JSON.stringify(eventData));
-		this._onNavigationStateChanged.fire(eventData);
+		});
 	}
 
 	// ============================================
@@ -887,9 +955,20 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		});
 
 		webContents.on('did-finish-load', () => {
-			console.log(`[ProjectModeV2] Finished loading`);
+			console.log(`[ProjectModeV2] Finished loading (main frame)`);
 			// Clear any previous error on successful load
 			this.clearNavigationError(browserViewId);
+			// Fire event to notify renderer (isLoading = false)
+			this.fireNavigationStateChanged(browserViewId);
+		});
+
+		// CRITICAL: did-stop-loading is more reliable than did-finish-load for complex pages
+		// did-finish-load only fires when main frame finishes, but sites like Google/Facebook
+		// use service workers, streaming connections, and lazy loading that may keep did-finish-load
+		// from firing or cause it to fire prematurely
+		// did-stop-loading fires when ALL loading stops (like the browser spinner stopping)
+		webContents.on('did-stop-loading', () => {
+			console.log(`[ProjectModeV2] Stopped loading (all activity)`);
 			// Fire event to notify renderer (isLoading = false)
 			this.fireNavigationStateChanged(browserViewId);
 		});
