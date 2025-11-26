@@ -16,6 +16,7 @@ These documents cover challenges faced while implementing the Browser Preview V2
 | Ghost browser views on IDE reload | RESOLVED | [Ghost Process](./BROWSER_VIEW_GHOST_PROCESS.md) |
 | Double browser view creation | RESOLVED | [Double Initialization](./BROWSER_VIEW_DOUBLE_INITIALIZATION.md) |
 | Placeholder hidden by native view | RESOLVED | [Visibility](./WEBCONTENTSVIEW_VISIBILITY.md) |
+| Localhost/dev server not loading | RESOLVED | [Localhost Loading](./LOCALHOST_LOADING.md) |
 
 ---
 
@@ -40,6 +41,11 @@ These documents cover challenges faced while implementing the Browser Preview V2
 **Issue**: WebContentsView renders above all DOM elements, hiding placeholder.
 **Solution**: Use native `setVisible()` API instead of CSS.
 **File**: [WEBCONTENTSVIEW_VISIBILITY.md](./WEBCONTENTSVIEW_VISIBILITY.md)
+
+### The Localhost Loading Problem
+**Issue**: `http://localhost:5173` shows white screen with no errors (silent failure).
+**Solution**: Configure session with proxy bypass, certificate verification, and permission handlers.
+**File**: [LOCALHOST_LOADING.md](./LOCALHOST_LOADING.md)
 
 ---
 
@@ -99,6 +105,26 @@ controlBar.setUrl(input.url);  // Original URL, not current!
 // DO: Get current state from browser
 const state = await browserService.getNavigationState(viewId);
 controlBar.setUrl(state.url);  // Actual current URL
+```
+
+### 5. Localhost Session Pattern
+```typescript
+// Configure session BEFORE creating browser view
+const browserSession = session.fromPartition('persist:roopik-browser');
+
+// Bypass proxy for localhost
+await browserSession.setProxy({
+    mode: 'direct',
+    proxyBypassRules: 'localhost;127.0.0.1;[::1];*.local'
+});
+
+// Trust all certificates (dev servers use self-signed)
+browserSession.setCertificateVerifyProc((_request, callback) => callback(0));
+
+// Auto-grant permissions
+browserSession.setPermissionRequestHandler((_, permission, callback) => {
+    callback(['media', 'clipboard-read', 'clipboard-write'].includes(permission));
+});
 ```
 
 ---

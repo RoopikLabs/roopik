@@ -54,9 +54,37 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			throw new Error(`Window ${windowId} not found`);
 		}
 
-		// Create a dedicated session for browser preview
-		// This allows localhost connections and bypasses default restrictions
+		// =========================================================
+		// Configure Session for Localhost Support
+		// =========================================================
 		const browserSession = session.fromPartition('persist:roopik-browser', { cache: true });
+
+		// A. Bypass Proxy for Localhost
+		// Electron often tries to route localhost through system proxies. Force direct connection.
+		console.log('[ProjectModeV2] Setting up proxy bypass for localhost...');
+		await browserSession.setProxy({
+			mode: 'direct', // Use direct connection, bypass system proxy entirely
+			proxyBypassRules: 'localhost;127.0.0.1;[::1];*.local'
+		});
+
+		// B. Disable Certificate Verification (Trust Self-Signed Certs)
+		// React/Vite/Next.js dev servers often use self-signed certs. Electron blocks them silently.
+		console.log('[ProjectModeV2] Setting up certificate verify proc...');
+		browserSession.setCertificateVerifyProc((_request, callback) => {
+			// Return 0 to indicate verification success (trust all certs for dev)
+			callback(0);
+		});
+
+		// C. Auto-Grant Permissions for Dev
+		// Local dev servers often request permissions causing invisible prompts.
+		browserSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+			const allowedPermissions = ['media', 'geolocation', 'notifications', 'clipboard-read', 'clipboard-write', 'midi', 'pointerLock', 'fullscreen'];
+			callback(allowedPermissions.includes(permission));
+		});
+
+		// =========================================================
+		// End of Session Configuration
+		// =========================================================
 
 		// Create browser WebContentsView with custom session
 		const browserView = new WebContentsView({
@@ -642,8 +670,28 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	private setupBrowserEvents(browserView: WebContentsView): void {
 		const webContents = browserView.webContents;
 
+		// Standard load failure
 		webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
 			console.error(`[ProjectModeV2] Load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
+		});
+
+		// Provisional load failure - catches CONNECTION_REFUSED, NAME_NOT_RESOLVED etc.
+		// This fires BEFORE did-fail-load for certain connection errors
+		webContents.on('did-fail-provisional-load', (_event, errorCode, errorDescription, validatedURL) => {
+			console.error(`[ProjectModeV2] Provisional load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
+			// Common error codes:
+			// -102: CONNECTION_REFUSED (server not running)
+			// -105: NAME_NOT_RESOLVED (DNS issue)
+			// -106: INTERNET_DISCONNECTED
+			// -7: TIMED_OUT
+		});
+
+		// Certificate errors - catch and allow for dev servers
+		webContents.on('certificate-error', (event, url, error, _certificate, callback) => {
+			console.log(`[ProjectModeV2] Certificate error for ${url}: ${error} - Allowing anyway for dev`);
+			// Prevent default "Your connection is not private" page
+			event.preventDefault();
+			callback(true); // Trust the certificate
 		});
 
 		webContents.on('did-navigate', (_event, url) => {
@@ -652,6 +700,15 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 
 		webContents.on('page-title-updated', (_event, title) => {
 			console.log(`[ProjectModeV2] Title updated: ${title}`);
+		});
+
+		// Log when page starts/finishes loading
+		webContents.on('did-start-loading', () => {
+			console.log(`[ProjectModeV2] Started loading...`);
+		});
+
+		webContents.on('did-finish-load', () => {
+			console.log(`[ProjectModeV2] Finished loading`);
 		});
 
 		// Handle new window requests
