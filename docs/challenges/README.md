@@ -19,6 +19,12 @@ These documents cover challenges faced while implementing the Browser Preview V2
 | Localhost/dev server not loading | RESOLVED | [Localhost Loading](./LOCALHOST_LOADING.md) |
 | UI overlays hidden behind browser | RESOLVED | [Overlay UI](./OVERLAY_UI_ON_WEBCONTENTSVIEW.md) |
 
+### Implementation Guides
+
+| Feature | Document |
+|---------|----------|
+| Chrome DevTools Integration | [DevTools Implementation](./DEVTOOLS_IMPLEMENTATION.md) |
+
 ---
 
 ## Quick Reference
