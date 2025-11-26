@@ -415,8 +415,15 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	/**
 	 * Fire navigation state changed event
 	 * Called on navigation events to notify renderer without polling
+	 *
+	 * @param browserViewId - The browser view ID
+	 * @param isLoadingOverride - Optional explicit loading state. When provided, this value
+	 *                            is used instead of querying webContents.isLoading().
+	 *                            This is CRITICAL for did-stop-loading event because
+	 *                            webContents.isLoading() can sometimes still return true
+	 *                            due to timing issues on certain sites like Google/Facebook.
 	 */
-	private fireNavigationStateChanged(browserViewId: number): void {
+	private fireNavigationStateChanged(browserViewId: number, isLoadingOverride?: boolean): void {
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView || browserView.webContents.isDestroyed()) {
 			return;
@@ -425,11 +432,14 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		const webContents = browserView.webContents;
 		const lastError = this.lastNavigationErrors.get(browserViewId);
 
+		// Use override if provided, otherwise query webContents
+		const isLoading = isLoadingOverride !== undefined ? isLoadingOverride : webContents.isLoading();
+
 		this._onNavigationStateChanged.fire({
 			browserViewId,
 			url: webContents.getURL(),
 			title: webContents.getTitle(),
-			isLoading: webContents.isLoading(),
+			isLoading,
 			canGoBack: webContents.navigationHistory.canGoBack(),
 			canGoForward: webContents.navigationHistory.canGoForward(),
 			lastError
@@ -950,16 +960,17 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		// Log when page starts/finishes loading
 		webContents.on('did-start-loading', () => {
 			console.log(`[ProjectModeV2] Started loading...`);
-			// Fire event to notify renderer (isLoading = true)
-			this.fireNavigationStateChanged(browserViewId);
+			// Fire event with EXPLICIT isLoading = true
+			this.fireNavigationStateChanged(browserViewId, true);
 		});
 
 		webContents.on('did-finish-load', () => {
 			console.log(`[ProjectModeV2] Finished loading (main frame)`);
 			// Clear any previous error on successful load
 			this.clearNavigationError(browserViewId);
-			// Fire event to notify renderer (isLoading = false)
-			this.fireNavigationStateChanged(browserViewId);
+			// Fire event with EXPLICIT isLoading = false
+			// Note: did-stop-loading is more reliable, but we also handle it here for faster feedback
+			this.fireNavigationStateChanged(browserViewId, false);
 		});
 
 		// CRITICAL: did-stop-loading is more reliable than did-finish-load for complex pages
@@ -969,8 +980,10 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		// did-stop-loading fires when ALL loading stops (like the browser spinner stopping)
 		webContents.on('did-stop-loading', () => {
 			console.log(`[ProjectModeV2] Stopped loading (all activity)`);
-			// Fire event to notify renderer (isLoading = false)
-			this.fireNavigationStateChanged(browserViewId);
+			// Fire event with EXPLICIT isLoading = false
+			// CRITICAL: We pass false explicitly because webContents.isLoading() can sometimes
+			// still return true due to timing issues on sites like Google/Facebook
+			this.fireNavigationStateChanged(browserViewId, false);
 		});
 
 		// NOTE: New window requests (Ctrl+Click, target="_blank", window.open, etc.)

@@ -611,7 +611,7 @@ export class ProjectModeV2Editor extends EditorPane {
 	/**
 	 * Handle navigation state changed event from main process
 	 * This replaces polling - much more efficient!
-	 * Event fires on: did-navigate, did-start-loading, did-finish-load, page-title-updated
+	 * Event fires on: did-navigate, did-start-loading, did-finish-load, page-title-updated, did-stop-loading
 	 */
 	private handleNavigationStateChanged(event: NavigationStateChangedEvent): void {
 		// CRITICAL: Filter by browserViewId for multi-browser support!
@@ -624,19 +624,25 @@ export class ProjectModeV2Editor extends EditorPane {
 		const currentTitle = event.title || '';
 		const isRealUrl = currentUrl && currentUrl !== 'about:blank';
 
+		// DEBUG: Log loading state changes
+		if (event.isLoading !== this.wasLoading) {
+			this.logger.info(`[ProjectModeV2] Loading state changed: ${this.wasLoading} -> ${event.isLoading}`);
+		}
+
 		// Update loading progress bar
-		if (event.isLoading && !this.wasLoading) {
-			// Started loading
-			this.wasLoading = true;
-			if (this.controlBar) {
-				this.controlBar.showLoading();
+		// IMPORTANT: Always respect the isLoading value from the event
+		// The main process sends explicit true/false values for loading events
+		if (event.isLoading) {
+			// Currently loading - show loading bar
+			if (!this.wasLoading) {
+				this.wasLoading = true;
+				this.controlBar?.showLoading();
 			}
-		} else if (!event.isLoading && this.wasLoading) {
-			// Finished loading
+		} else {
+			// Not loading - ALWAYS hide loading bar
+			// This is critical because did-stop-loading sends isLoading=false explicitly
 			this.wasLoading = false;
-			if (this.controlBar) {
-				this.controlBar.hideLoading();
-			}
+			this.controlBar?.hideLoading();
 		}
 
 		// Check for navigation errors
