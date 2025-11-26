@@ -117,3 +117,32 @@ const copyrights = es.through(function (file) {
 	}
 },
 ```
+
+---
+
+## CORE Migration (workbench/contrib)
+
+**Migration Date:** Core migration from extension to `workbench/contrib/roopik/`
+
+Files modified outside of `workbench/contrib/roopik/` to integrate Roopik into VS Code core:
+
+| File | Change | PR Reference |
+|------|--------|--------------|
+| `src/vs/workbench/workbench.common.main.ts` | Added roopik contribution import:<br>`// Roopik Design IDE`<br>`import './contrib/roopik/browser/roopik.contribution.js';` | [PR #15](https://github.com/RoopikLabs/roopik/pull/15/files) |
+| `src/vs/code/electron-main/app.ts` | Multiple changes (see detailed section below) | [PR #15](https://github.com/RoopikLabs/roopik/pull/15/files) |
+| `src/vs/platform/windows/electron-main/windows.ts` | Added `webviewTag: true` in `webPreferences`:<br>`// Enable webview tag for Roopik browser preview`<br>`webviewTag: true,` | [PR #15](https://github.com/RoopikLabs/roopik/pull/15/files) |
+
+**Note:** See [PR #15](https://github.com/RoopikLabs/roopik/pull/15/files) for full diff.
+
+### `src/vs/code/electron-main/app.ts` - Detailed Changes
+
+**PR Reference:** [PR #15](https://github.com/RoopikLabs/roopik/pull/15/files)
+
+| Line(s) | Change | Details |
+|---------|--------|---------|
+| **~126-131** | Added imports for ProjectModeV2 | Added imports:<br>`// ProjectModeV2 - Browser Preview with embedded DevTools`<br>`import { BrowserViewServiceV2 } from '../../workbench/contrib/roopik/electron-main/projectModeV2/browserViewServiceV2.js';`<br>`import { ProjectModeV2Channel } from '../../workbench/contrib/roopik/electron-main/projectModeV2/projectModeV2Channel.js';`<br>`import { PROJECT_MODE_V2_CHANNEL } from '../../workbench/contrib/roopik/common/projectModeV2/ipc.js';` |
+| **~254** | Removed webview request validation function | Removed `isAllowedWebviewRequest` function. Added comment:<br>`// Removed isAllowedWebviewRequest function - validation disabled for Roopik browser preview` |
+| **~259-260** | Disabled webview request validation | In `session.defaultSession.webRequest.onBeforeRequest` handler, removed validation check. Added comments:<br>`// Allow all webview requests for Roopik browser preview (Electron webview tag)`<br>`// Original validation disabled to enable full browser preview functionality` |
+| **~397-405** | Modified navigation handler | Updated `contents.on('will-navigate')` handler:<br>- Changed comment to: `// Block any in-page navigation (except for ProjectModeV2 browser views)`<br>- Added check: `if (BrowserViewServiceV2.isManagedWebContents(webContentsId)) { return; }`<br>- Allows navigation for ProjectModeV2 managed browser views |
+| **~415-425** | Modified window open handler | Updated `contents.setWindowOpenHandler()` handler:<br>- Changed comment to: `// For all other URLs, delegate to the OS (except for ProjectModeV2 browser views)`<br>- Added logic to redirect new window requests (Ctrl+Click, `target="_blank"`, etc.) to the same view for ProjectModeV2 browser views<br>- Prevents new windows from opening for ProjectModeV2 managed views |
+| **~1243-1247** | Registered ProjectModeV2 IPC channel | Added IPC channel registration:<br>`// ProjectModeV2 - Browser Preview with embedded DevTools and CDP`<br>`const projectModeV2Service = new BrowserViewServiceV2();`<br>`const projectModeV2Channel = new ProjectModeV2Channel(projectModeV2Service);`<br>`mainProcessElectronServer.registerChannel(PROJECT_MODE_V2_CHANNEL, projectModeV2Channel);` |
