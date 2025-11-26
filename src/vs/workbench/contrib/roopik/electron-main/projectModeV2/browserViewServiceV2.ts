@@ -711,11 +711,20 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			console.log(`[ProjectModeV2] Finished loading`);
 		});
 
-		// Handle new window requests
-		webContents.setWindowOpenHandler(({ url }) => {
-			// Load in same view instead of opening new window
-			webContents.loadURL(url);
-			return { action: 'deny' };
+		// NOTE: New window requests (Ctrl+Click, target="_blank", window.open, etc.)
+		// are handled in app.ts via the global setWindowOpenHandler.
+		// It checks isManagedWebContents() and redirects to the same view.
+		// This keeps all new-window logic centralized in app.ts.
+
+		// Fallback: Handle any windows that somehow bypass the app.ts handler
+		webContents.on('did-create-window', (newWindow) => {
+			// This fires if a new window was somehow created (shouldn't happen)
+			const url = newWindow.webContents.getURL();
+			console.log(`[ProjectModeV2] did-create-window (unexpected): ${url} - redirecting and closing`);
+			if (url && url !== 'about:blank') {
+				webContents.loadURL(url);
+			}
+			newWindow.close();
 		});
 	}
 }

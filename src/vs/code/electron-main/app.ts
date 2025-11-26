@@ -409,10 +409,21 @@ export class CodeApplication extends Disposable {
 			});
 
 			// All Windows: only allow about:blank auxiliary windows to open
-			// For all other URLs, delegate to the OS.
+			// For all other URLs, delegate to the OS (except for ProjectModeV2 browser views)
 			contents.setWindowOpenHandler(details => {
 
-				// about:blank windows can open as window witho our default options
+				// ProjectModeV2 browser views: redirect to same view instead of opening new window
+				// This handles Ctrl+Click, middle-click, target="_blank", etc.
+				const webContentsId = contents.id;
+				if (BrowserViewServiceV2.isManagedWebContents(webContentsId)) {
+					this.logService.info(`[ProjectModeV2] new-window requested: ${details.url} (disposition: ${details.disposition})`);
+					this.logService.info(`[ProjectModeV2] Redirecting new window to current view: ${details.url}`);
+					// Load URL in the same view
+					contents.loadURL(details.url);
+					return { action: 'deny' };
+				}
+
+				// about:blank windows can open as window with our default options
 				if (details.url === 'about:blank') {
 					this.logService.trace('[aux window] webContents#setWindowOpenHandler: Allowing auxiliary window to open on about:blank');
 
