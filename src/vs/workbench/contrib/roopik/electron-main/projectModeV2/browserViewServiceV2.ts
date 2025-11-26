@@ -97,11 +97,13 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		const browserView = new WebContentsView({
 			webPreferences: {
 				nodeIntegration: false,
-				contextIsolation: true,
-				sandbox: false, // Disable sandbox to allow localhost connections
-				webSecurity: false, // Allow loading any URL including localhost
-				allowRunningInsecureContent: true,
-				session: browserSession
+				contextIsolation: true, // Keep this TRUE
+				sandbox: false,
+				webSecurity: false,
+				// ADD THIS: This allows executeJavaScript to use internal Electron APIs
+				// safely without exposing them to the raw internet.
+				nodeIntegrationInSubFrames: false,
+				preload: undefined // Ensure you aren't blocking it via preload
 			}
 		});
 
@@ -117,6 +119,9 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 
 		// Add to static set for navigation whitelist
 		BrowserViewServiceV2.managedWebContentsIds.add(browserViewId);
+
+		// Setup zoom handlers (keyboard + touchpad pinch)
+		this.setupZoomHandlers(browserView);
 
 		// Setup event listeners
 		this.setupBrowserEvents(browserView);
@@ -788,6 +793,53 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			newWindow.close();
 		});
 	}
+
+	// ============================================
+	// Zoom Handling (Native Browser Feel)
+	// ============================================
+
+	private setupZoomHandlers(browserView: WebContentsView): void {
+		const wc = browserView.webContents;
+
+		// Enable pinch-to-zoom (touchpad gesture zoom)
+		// Parameters: minimum zoom factor, maximum zoom factor
+		wc.setVisualZoomLevelLimits(1, 5);
+		console.log('[ProjectModeV2] Zoom handlers setup - visual zoom limits set (1-5)');
+
+		// Listen for ALL key events to debug
+		wc.on('before-input-event', (event, input) => {
+			// Log ALL Ctrl/Cmd key presses for debugging
+			if (input.control || input.meta) {
+				console.log(`[ProjectModeV2] before-input-event: type=${input.type} key=${input.key} code=${input.code} ctrl=${input.control} meta=${input.meta}`);
+			}
+
+			if (input.type !== 'keyDown') return;
+
+			// Handle zoom keyboard shortcuts
+			if (input.control || input.meta) {
+				const currentZoom = wc.getZoomLevel();
+
+				if (input.code === 'Equal' || input.code === 'NumpadAdd' || input.key === '+' || input.key === '=') {
+					const newZoom = currentZoom + 0.5;
+					wc.setZoomLevel(newZoom);
+					console.log(`[ProjectModeV2] ZOOM IN: ${currentZoom} -> ${newZoom}`);
+					event.preventDefault();
+				}
+				else if (input.code === 'Minus' || input.code === 'NumpadSubtract' || input.key === '-') {
+					const newZoom = currentZoom - 0.5;
+					wc.setZoomLevel(newZoom);
+					console.log(`[ProjectModeV2] ZOOM OUT: ${currentZoom} -> ${newZoom}`);
+					event.preventDefault();
+				}
+				else if (input.code === 'Digit0' || input.code === 'Numpad0' || input.key === '0') {
+					wc.setZoomLevel(0);
+					console.log(`[ProjectModeV2] ZOOM RESET: ${currentZoom} -> 0`);
+					event.preventDefault();
+				}
+			}
+		});
+	}
+
 
 	// ============================================
 	// Overlay View (for floating toolbar, menus)
