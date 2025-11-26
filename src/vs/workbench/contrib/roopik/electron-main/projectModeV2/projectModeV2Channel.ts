@@ -3,6 +3,7 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
+import { Event } from '../../../../../base/common/event.js';
 import { IServerChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
 
@@ -14,8 +15,15 @@ import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
 export class ProjectModeV2Channel implements IServerChannel {
 	constructor(private service: IProjectModeV2Service) { }
 
-	listen(_: unknown, _event: string): never {
-		throw new Error('No events available');
+	listen(_: unknown, event: string): Event<any> {
+		switch (event) {
+			case 'onDevToolsClosed':
+				return this.service.onDevToolsClosed;
+			case 'onNavigationStateChanged':
+				return this.service.onNavigationStateChanged;
+			default:
+				throw new Error(`[ProjectModeV2Channel] Unknown event: ${event}`);
+		}
 	}
 
 	call(_: unknown, command: string, arg?: any): Promise<any> {
@@ -46,7 +54,8 @@ export class ProjectModeV2Channel implements IServerChannel {
 
 			// DevTools
 			case 'openDevTools':
-				return this.service.openDevTools(arg.browserViewId, arg.bounds);
+				console.log(`[ProjectModeV2Channel] openDevTools called with arg=`, JSON.stringify(arg));
+				return this.service.openDevTools(arg.browserViewId, arg.options);
 			case 'closeDevTools':
 				return this.service.closeDevTools(arg);
 			case 'setDevToolsBounds':

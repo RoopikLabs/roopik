@@ -3,8 +3,9 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
+import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains } from './types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from './types.js';
 
 export const IProjectModeV2Service = createDecorator<IProjectModeV2Service>('projectModeV2Service');
 
@@ -21,6 +22,23 @@ export const PROJECT_MODE_V2_CHANNEL = 'roopikProjectModeV2';
  */
 export interface IProjectModeV2Service {
 	readonly _serviceBrand: undefined;
+
+	// ============================================
+	// Events
+	// ============================================
+
+	/**
+	 * Fired when DevTools is closed externally (via built-in X button)
+	 * Allows renderer to sync its state without polling
+	 */
+	readonly onDevToolsClosed: Event<DevToolsClosedEvent>;
+
+	/**
+	 * Fired when navigation state changes (URL, title, loading, back/forward)
+	 * Replaces polling for navigation state updates - much more efficient!
+	 * Fires on: did-navigate, did-start-loading, did-finish-load, page-title-updated
+	 */
+	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent>;
 
 	// ============================================
 	// Browser View Lifecycle
@@ -88,11 +106,16 @@ export interface IProjectModeV2Service {
 	// ============================================
 
 	/**
-	 * Open DevTools in embedded view
-	 * CRITICAL: Creates FRESH WebContentsView on-demand
-	 * Must be called immediately before setDevToolsWebContents
+	 * Open DevTools
+	 *
+	 * Supports two modes:
+	 * - 'attached': DevTools docked inside browser window (has Device Toolbar, close button)
+	 * - 'detached': DevTools in separate WebContentsView (full layout control, no Device Toolbar)
+	 *
+	 * @param browserViewId - The browser view to attach DevTools to
+	 * @param options - DevTools configuration (mode and bounds for detached mode)
 	 */
-	openDevTools(browserViewId: number, bounds: ViewBounds): Promise<DevToolsViewResult>;
+	openDevTools(browserViewId: number, options: DevToolsOptions): Promise<DevToolsViewResult>;
 
 	/**
 	 * Close and destroy DevTools view

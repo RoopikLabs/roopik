@@ -13,9 +13,7 @@ import { IEditorOpenContext } from '../../../common/editor.js';
 import { EditorInput } from '../../../common/editor/editorInput.js';
 import { $, append, clearNode, addDisposableListener } from '../../../../base/browser/dom.js';
 import { IEditorGroup } from '../../../services/editor/common/editorGroupsService.js';
-import { Toggle } from '../../../../base/browser/ui/toggle/toggle.js';
-import { Codicon } from '../../../../base/common/codicons.js';
-import { defaultToggleStyles } from '../../../../platform/theme/browser/defaultStyles.js';
+import { FileAccess } from '../../../../base/common/network.js';
 import './media/welcomeEditor.css';
 
 export class RoopikWelcomeEditor extends EditorPane {
@@ -49,106 +47,128 @@ export class RoopikWelcomeEditor extends EditorPane {
 
 		const container = append(this.rootElement, $('.welcome-container'));
 
-		// Header
-		const header = append(container, $('.welcome-header'));
-		const logo = append(header, $('.welcome-logo'));
-		logo.textContent = '🎨';
+		const hero = append(container, $('.welcome-hero'));
+		const heroContent = append(hero, $('.hero-content'));
 
-		const title = append(header, $('.welcome-title'));
-		title.textContent = 'Roopik';
+		const heroBadge = append(heroContent, $('.hero-badge'));
+		heroBadge.textContent = 'Design-first workspace';
+		const titleRow = append(heroContent, $('.welcome-title-row'));
+		const logo = $('img', {
+			class: 'welcome-logo',
+			src: FileAccess.asBrowserUri('vs/workbench/contrib/roopik/browser/media/roopik-logo.png').toString(true),
+			alt: 'Roopik logo',
+			draggable: 'false'
+		});
+		append(titleRow, logo);
 
-		const subtitle = append(header, $('.welcome-subtitle'));
-		subtitle.textContent = 'Design-First IDE with AI';
+		const title = append(titleRow, $('.welcome-title'));
+		title.textContent = 'ROOPIK';
 
-		// Actions
-		const actions = append(container, $('.welcome-actions'));
+		const subtitle = append(heroContent, $('.welcome-subtitle'));
+		subtitle.textContent = 'Visual canvas + Chromium DevTools + AI copilots';
 
-		this.createActionButton(
-			actions,
-			'New Canvas',
-			'Create a new component canvas',
-			'roopik.openCanvas'
-		);
+		const heroDescription = append(heroContent, $('.hero-description'));
+		heroDescription.textContent = 'Start designing components, preview production-ready UI, and collaborate with AI agents—all inside a single workspace.';
 
-		this.createActionButton(
-			actions,
-			'Open Project Preview',
-			'Preview your project in browser',
-			'roopik.openProjectPreview'
-		);
+		const heroActions = append(heroContent, $('.hero-actions'));
+		this.createHeroButton(heroActions, 'New Canvas', 'roopik.openCanvas', true);
+		this.createHeroButton(heroActions, 'Open Project Preview', 'roopik.openProjectPreview');
+		this.createHeroButton(heroActions, 'Browser Preview V2 (Beta)', 'roopik.openProjectPreviewV2');
 
-		this.createActionButton(
-			actions,
-			'Browser Preview V2 (Beta)',
-			'Preview with embedded DevTools & CDP',
-			'roopik.openProjectPreviewV2'
-		);
+		const heroShowcase = append(hero, $('.hero-showcase'));
+		const showcaseLabel = append(heroShowcase, $('.showcase-label'));
+		showcaseLabel.textContent = 'Live preview + DevTools';
+		const showcaseHighlight = append(heroShowcase, $('.showcase-highlight'));
+		showcaseHighlight.textContent = 'Preview, inspect, and edit with zero context switching.';
 
-		// Getting started
-		const gettingStarted = append(container, $('.welcome-section'));
-		const sectionTitle = append(gettingStarted, $('.section-title'));
-		sectionTitle.textContent = 'Getting Started';
+		// Quick start grid
+		const quickStartSection = append(container, $('.welcome-section'));
+		const quickStartTitle = append(quickStartSection, $('.section-title'));
+		quickStartTitle.textContent = 'Quick start';
 
-		const tips = append(gettingStarted, $('.tips-list'));
+		const quickStartGrid = append(quickStartSection, $('.quick-start-grid'));
+		const quickStartCards = [
+			{ icon: '🎨', titleText: 'Canvas Mode', description: 'Infinite canvas for component-first workflows.', commandId: 'roopik.openCanvas' },
+			{ icon: '🌐', titleText: 'Browser Preview', description: 'Full Chromium preview with click-to-source.', commandId: 'roopik.openProjectPreview' },
+			{ icon: '🧪', titleText: 'Preview V2 (Beta)', description: 'Embedded DevTools + CDP integration.', commandId: 'roopik.openProjectPreviewV2' },
+			{ icon: '⚡', titleText: 'Command Palette', description: 'Run any Roopik command instantly.', commandId: 'workbench.action.showCommands' }
+		];
 
-		this.createTip(tips, '📦', 'Mode 1: Canvas', 'Build components visually on an infinite canvas');
-		this.createTip(tips, '🌐', 'Mode 2: Browser Preview', 'Preview projects with real Chromium DevTools');
-		this.createTip(tips, '🔍', 'Inspect Mode', 'Click elements to see styles, jump to source (HTML + CSS)');
-		this.createTip(tips, '🤖', 'AI Integration', 'Every feature is callable by AI agents');
+		for (const card of quickStartCards) {
+			this.createQuickStartCard(quickStartGrid, card.icon, card.titleText, card.description, card.commandId);
+		}
 
-		// Footer with checkbox
-		const footer = append(container, $('.welcome-footer'));
+		// Highlights / tips
+		const highlightsSection = append(container, $('.welcome-section'));
+		const highlightsTitle = append(highlightsSection, $('.section-title'));
+		highlightsTitle.textContent = 'Highlights';
 
+		const highlightsList = append(highlightsSection, $('.tips-list'));
+		const highlights = [
+			{ icon: '🔍', titleText: 'Inspect Mode', description: 'Jump from DOM nodes to source and styles instantly.' },
+			{ icon: '🤖', titleText: 'AI Automation', description: 'Coordinate multi-agent workflows across canvas + preview.' },
+			{ icon: '🧭', titleText: 'Project Modes', description: 'Switch between Canvas, Browser, and DevTools views seamlessly.' },
+			{ icon: '🔁', titleText: 'Live Sync', description: 'Hot reload Vite projects without leaving Roopik.' }
+		];
+
+		for (const item of highlights) {
+			this.createTip(highlightsList, item.icon, item.titleText, item.description);
+		}
+
+		// Footer with checkbox (sticky bar)
+		const footer = append(this.rootElement, $('.welcome-footer'));
 		const checkboxContainer = append(footer, $('.checkbox-container'));
 
-		const showOnStartupCheckbox = new Toggle({
-			icon: Codicon.check,
-			actionClassName: 'roopik-checkbox',
-			isChecked: this.storageService.getBoolean(RoopikWelcomeEditor.STORAGE_KEY, StorageScope.PROFILE, true),
-			title: 'Show welcome screen on startup',
-			...defaultToggleStyles
-		});
-		showOnStartupCheckbox.domNode.id = 'roopikShowOnStartup';
+		const toggleWrapper = $('label', { class: 'toggle-pill' });
+		const showOnStartupCheckbox = $('input', {
+			type: 'checkbox',
+			id: 'roopikShowOnStartup',
+			class: 'toggle-pill-input'
+		}) as HTMLInputElement;
+		showOnStartupCheckbox.checked = this.storageService.getBoolean(RoopikWelcomeEditor.STORAGE_KEY, StorageScope.PROFILE, true);
+		append(toggleWrapper, showOnStartupCheckbox);
+		append(toggleWrapper, $('.toggle-pill-slider'));
+		append(checkboxContainer, toggleWrapper);
 
 		const checkboxLabel = $('label.checkbox-label', { for: 'roopikShowOnStartup' }, 'Show welcome screen on startup');
-
-		this._register(showOnStartupCheckbox);
-		this._register(showOnStartupCheckbox.onChange(() => {
-			this.storageService.store(
-				RoopikWelcomeEditor.STORAGE_KEY,
-				showOnStartupCheckbox.checked,
-				StorageScope.PROFILE,
-				StorageTarget.USER
-			);
-		}));
-
-		this._register(addDisposableListener(checkboxLabel, 'click', () => {
-			showOnStartupCheckbox.checked = !showOnStartupCheckbox.checked;
-			this.storageService.store(
-				RoopikWelcomeEditor.STORAGE_KEY,
-				showOnStartupCheckbox.checked,
-				StorageScope.PROFILE,
-				StorageTarget.USER
-			);
-		}));
-
-		append(checkboxContainer, showOnStartupCheckbox.domNode);
 		append(checkboxContainer, checkboxLabel);
 
-		const shortcutHint = append(footer, $('.shortcut-hint'));
-		shortcutHint.textContent = 'Press F1 to see all Roopik commands';
+		this._register(addDisposableListener(showOnStartupCheckbox, 'change', () => {
+			this.storageService.store(
+				RoopikWelcomeEditor.STORAGE_KEY,
+				showOnStartupCheckbox.checked,
+				StorageScope.PROFILE,
+				StorageTarget.USER
+			);
+		}));
 	}
 
-	private createActionButton(parent: HTMLElement, label: string, description: string, commandId: string): void {
-		const button = append(parent, $('.action-button'));
+	private createHeroButton(parent: HTMLElement, label: string, commandId: string, primary = false): void {
+		const button = append(parent, primary ? $('.hero-button.primary') : $('.hero-button'));
+		button.textContent = label;
+		button.onclick = () => this.commandService.executeCommand(commandId);
+	}
 
-		const labelEl = append(button, $('.action-label'));
-		labelEl.textContent = label;
+	private createQuickStartCard(parent: HTMLElement, icon: string, title: string, description: string, commandId: string): void {
+		const card = append(parent, $('.quick-card'));
 
-		const descEl = append(button, $('.action-description'));
-		descEl.textContent = description;
+		const cardIcon = append(card, $('.quick-card-icon'));
+		cardIcon.textContent = icon;
 
-		button.onclick = () => {
+		const cardTitle = append(card, $('.quick-card-title'));
+		cardTitle.textContent = title;
+
+		const cardDescription = append(card, $('.quick-card-description'));
+		cardDescription.textContent = description;
+
+		const link = append(card, $('.quick-card-link'));
+		link.textContent = 'Run command';
+
+		card.onclick = () => {
+			this.commandService.executeCommand(commandId);
+		};
+		link.onclick = (event) => {
+			event.stopPropagation();
 			this.commandService.executeCommand(commandId);
 		};
 	}

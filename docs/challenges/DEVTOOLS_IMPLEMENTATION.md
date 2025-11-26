@@ -404,3 +404,345 @@ Chrome DevTools renders in the WebContentsView!
 - [Overlay UI](./OVERLAY_UI_ON_WEBCONTENTSVIEW.md)
 - [Electron WebContentsView API](https://www.electronjs.org/docs/latest/api/web-contents-view)
 - [Electron setDevToolsWebContents](https://www.electronjs.org/docs/latest/api/web-contents#contentssetdevtoolswebcontentsdevtoolswebcontents)
+
+---
+---
+
+# DevTools Attached Mode (Docked)
+
+> **UPDATE November 2025**: We discovered a much simpler and more feature-rich approach - using Electron's built-in docked DevTools mode instead of managing a separate WebContentsView.
+
+**Status**: IMPLEMENTED (Default Mode)
+**Date**: November 2025
+
+---
+
+## The Problem with Detached Mode
+
+While the detached mode (documented above) works, it has significant limitations:
+
+1. **No Device Toolbar** - The responsive design toggle button is NOT available
+2. **No Close Button** - Users can't close DevTools from within the panel itself
+3. **Manual Resize Handling** - We had to implement custom drag handles for resizing
+4. **Complex Bounds Management** - Required tracking and updating bounds on every resize
+5. **More Code to Maintain** - Custom WebContentsView lifecycle management
+
+### Why Device Toolbar is Missing in Detached Mode
+
+After research, we discovered this is a **Chromium/Electron limitation**:
+
+> In `detach` mode, DevTools has no connection to the browser window dimensions. The Device Toolbar toggle requires knowing the viewport size to emulate devices - but in detached mode, DevTools doesn't know where or how big the browser is.
+
+This is why Cursor IDE has the Device Toolbar and close button - they use **docked/attached mode**!
+
+---
+
+## The Solution: Attached (Docked) Mode
+
+Instead of creating a separate WebContentsView and managing it ourselves, we let Electron handle everything by using `openDevTools({ mode: 'bottom' })`.
+
+### Key Advantages
+
+| Feature | Detached Mode | Attached Mode |
+|---------|--------------|---------------|
+| **Device Toolbar** | ❌ Not available | ✅ Full responsive design tools |
+| **Close Button** | ❌ Must implement | ✅ Built-in (X button in DevTools) |
+| **Resize Handle** | ❌ Must implement | ✅ Built-in drag handle |
+| **Bounds Management** | ❌ Manual tracking | ✅ Electron handles automatically |
+| **Code Complexity** | High | Low |
+| **Device Emulation UI** | ❌ No visual picker | ✅ Full device dropdown |
+
+### What You Get with Attached Mode
+
+1. **Device Toolbar Toggle** - Click the device icon in DevTools to toggle responsive mode
+2. **Device Presets** - iPhone, iPad, Pixel, Galaxy, and custom dimensions
+3. **Built-in Close Button** - X button in the DevTools header
+4. **Native Resize** - Drag the border between browser and DevTools
+5. **Dock Position Options** - Bottom, Left, Right (via DevTools menu)
+
+---
+
+## Implementation
+
+### Type Definitions
+
+**File**: `src/vs/workbench/contrib/roopik/common/projectModeV2/types.ts`
+
+```typescript
+/**
+ * DevTools mode configuration
+ *
+ * - 'attached': DevTools is docked inside the BrowserWindow (bottom).
+ *   This gives access to Device Toolbar toggle and close button.
+ *   DevTools shares the browser window space.
+ *
+ * - 'detached': DevTools is rendered in a separate WebContentsView.
+ *   We have full control over positioning and sizing.
+ *   Device Toolbar toggle is NOT available in this mode.
+ */
+export type DevToolsMode = 'attached' | 'detached';
+
+/**
+ * DevTools open options
+ */
+export interface DevToolsOptions {
+    /**
+     * Mode for DevTools rendering
+     * - 'attached': Docked inside browser window (has device toolbar, close button)
+     * - 'detached': Separate WebContentsView (full control over layout)
+     * @default 'attached'
+     */
+    mode: DevToolsMode;
+
+    /**
+     * Bounds for the DevTools view (only used in 'detached' mode)
+     * In 'attached' mode, Electron manages the DevTools position
+     */
+    bounds?: ViewBounds;
+}
+```
+
+### Configuration Flag
+
+**File**: `src/vs/workbench/contrib/roopik/browser/projectModeV2/projectModeV2Editor.ts`
+
+```typescript
+/**
+ * DevTools mode configuration flag
+ *
+ * - 'attached': DevTools docked inside browser window (has Device Toolbar toggle, close button)
+ *   Electron manages the DevTools layout. Resize handle is NOT needed.
+ *
+ * - 'detached': DevTools in separate WebContentsView (full layout control, no Device Toolbar)
+ *   We control the DevTools position and size. Resize handle IS needed.
+ *
+ * TODO: In the future, this will be a user setting preference.
+ * For now, we default to 'attached' mode for the Device Toolbar feature.
+ */
+const DEVTOOLS_MODE: DevToolsMode = 'attached';
+```
+
+### Toggle Handler (Renderer Process)
+
+**File**: `projectModeV2Editor.ts`
+
+```typescript
+private async toggleDevTools(): Promise<void> {
+    if (!this.browserViewId) {
+        return;
+    }
+
+    if (this.devtoolsVisible) {
+        // CLOSE DevTools
+        await this.browserService.closeDevTools(this.browserViewId);
+
+        // In detached mode, hide our custom container and resize handle
+        if (DEVTOOLS_MODE === 'detached' && this.devtoolsContainer) {
+            this.devtoolsContainer.style.display = 'none';
+            if (this.devtoolsResizeHandle) {
+                this.devtoolsResizeHandle.style.display = 'none';
+            }
+        }
+
+        this.devtoolsVisible = false;
+    } else {
+        // OPEN DevTools
+        if (DEVTOOLS_MODE === 'attached') {
+            // ATTACHED MODE: Electron manages DevTools layout
+            // DevTools will dock at bottom of browser window
+            // Device Toolbar toggle and close button will be available!
+            await this.browserService.openDevTools(this.browserViewId, {
+                mode: 'attached'
+            });
+            this.devtoolsVisible = true;
+        } else {
+            // DETACHED MODE: We manage DevTools layout
+            // (Original implementation - see above documentation)
+            // ...
+        }
+    }
+}
+```
+
+**Key Insight**: In attached mode, we don't need to:
+- Show/hide DOM containers
+- Calculate bounds
+- Manage resize handles
+- Update bounds on window resize
+
+Electron handles ALL of this automatically!
+
+### IPC Layer
+
+**File**: `projectModeV2ServiceBridge.ts`
+
+```typescript
+async openDevTools(browserViewId: number, options: DevToolsOptions): Promise<DevToolsViewResult> {
+    return this.channel.call('openDevTools', { browserViewId, options });
+}
+```
+
+**File**: `projectModeV2Channel.ts`
+
+```typescript
+case 'openDevTools':
+    return this.service.openDevTools(arg.browserViewId, arg.options);
+```
+
+### Main Process Handler
+
+**File**: `browserViewServiceV2.ts`
+
+```typescript
+async openDevTools(browserViewId: number, options: DevToolsOptions): Promise<DevToolsViewResult> {
+    const browserView = this.browserViews.get(browserViewId);
+    const window = this.browserWindows.get(browserViewId);
+
+    if (!browserView || !window) {
+        throw new Error(`Browser view ${browserViewId} not found`);
+    }
+
+    // Validate options
+    if (!options || !options.mode) {
+        throw new Error(`DevTools options are required`);
+    }
+
+    // Close existing DevTools if any
+    await this.closeDevTools(browserViewId);
+
+    // Store the mode for this browser view
+    this.devtoolsModes.set(browserViewId, options.mode);
+
+    if (options.mode === 'attached') {
+        // =========================================================
+        // ATTACHED MODE: DevTools docked inside browser window
+        // Device Toolbar toggle and close button are available!
+        // =========================================================
+
+        // Open DevTools docked at bottom of the browser window
+        // This gives us the Device Toolbar toggle and close button
+        browserView.webContents.openDevTools({ mode: 'bottom' });
+
+        // In attached mode, we don't create a separate view - Electron manages it
+        // Return -1 as devtoolsViewId to indicate attached mode
+        return { devtoolsViewId: -1 };
+    } else {
+        // DETACHED MODE: (Original implementation)
+        // Creates separate WebContentsView with setDevToolsWebContents()
+        // ...
+    }
+}
+```
+
+---
+
+## Data Flow: Attached Mode
+
+```
+User clicks DevTools button
+        │
+        ▼
+browserControlBarV2.ts: onDevTools callback
+        │
+        ▼
+projectModeV2Editor.ts: toggleDevTools()
+        │
+        └── if (DEVTOOLS_MODE === 'attached')
+                │
+                ▼
+projectModeV2ServiceBridge.ts: openDevTools(browserViewId, { mode: 'attached' })
+        │
+        ▼ (IPC Channel)
+        │
+projectModeV2Channel.ts: routes to service
+        │
+        ▼
+browserViewServiceV2.ts: openDevTools()
+        │
+        └── browserView.webContents.openDevTools({ mode: 'bottom' })
+                │
+                ▼
+Electron docks DevTools at bottom with:
+  ✅ Device Toolbar toggle
+  ✅ Close button
+  ✅ Native resize handle
+  ✅ Automatic bounds management
+```
+
+---
+
+## Electron DevTools Mode Options
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| `'left'` | Docked to left side | Side-by-side layout |
+| `'right'` | Docked to right side | Code inspection focus |
+| `'bottom'` | Docked to bottom | **Our default** - best for responsive design |
+| `'undocked'` | Separate window | Multi-monitor setups |
+| `'detach'` | Required for `setDevToolsWebContents()` | Custom container (no Device Toolbar) |
+
+We use `'bottom'` because:
+1. Most familiar layout for web developers
+2. Best for responsive design testing (width is preserved)
+3. Matches Chrome/Firefox default behavior
+
+---
+
+## Closing DevTools in Attached Mode
+
+```typescript
+async closeDevTools(browserViewId: number): Promise<void> {
+    const browserView = this.browserViews.get(browserViewId);
+    const mode = this.devtoolsModes.get(browserViewId);
+
+    // Close DevTools on browser webContents (works for both modes)
+    if (browserView && !browserView.webContents.isDestroyed()) {
+        browserView.webContents.closeDevTools();
+    }
+
+    // In detached mode, we also need to cleanup our WebContentsView
+    if (mode === 'detached') {
+        // ... cleanup WebContentsView
+    }
+
+    // Clear mode tracking
+    this.devtoolsModes.delete(browserViewId);
+}
+```
+
+In attached mode, closing is simple - just call `closeDevTools()` on the webContents. Electron handles all cleanup.
+
+---
+
+## Future: User Preference Setting
+
+Currently, the mode is controlled by a constant:
+
+```typescript
+const DEVTOOLS_MODE: DevToolsMode = 'attached';
+```
+
+In the future, this will become a user setting:
+
+```json
+{
+    "roopik.devtools.mode": "attached" | "detached"
+}
+```
+
+This allows power users who need custom DevTools layout to use detached mode, while most users benefit from the simpler attached mode with Device Toolbar.
+
+---
+
+## Summary: Why Attached Mode is Better
+
+| Aspect | Before (Detached) | After (Attached) |
+|--------|-------------------|------------------|
+| **Lines of Code** | ~100+ for resize handling | ~10 lines |
+| **Device Toolbar** | ❌ Missing | ✅ Available |
+| **Close Button** | ❌ Missing | ✅ Built-in |
+| **Resize** | Custom drag handle | Native Electron |
+| **Bounds Tracking** | Manual ResizeObserver | Automatic |
+| **User Experience** | Functional but limited | Full Chrome DevTools experience |
+
+**The attached mode gives users the complete Chrome DevTools experience they expect, with responsive design tools, device emulation, and native controls - all with simpler code!**

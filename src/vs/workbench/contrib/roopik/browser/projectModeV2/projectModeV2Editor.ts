@@ -21,8 +21,22 @@ import { INativeHostService } from '../../../../../platform/native/common/native
 import { ProjectModeV2ServiceBridge } from './projectModeV2ServiceBridge.js';
 import { PROJECT_MODE_V2_CHANNEL } from '../../common/projectModeV2/ipc.js';
 import { BrowserControlBarV2, IBrowserControlBarV2Config, IBrowserControlBarV2Callbacks } from './browserControlBarV2.js';
-import type { ViewBounds, DevicePreset } from '../../common/projectModeV2/types.js';
+import type { ViewBounds, DevicePreset, DevToolsMode, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
 import { generateFloatingToolbarHtml, FloatingToolbarState } from './floatingToolbarHtml.js';
+
+/**
+ * DevTools mode configuration flag
+ *
+ * - 'attached': DevTools docked inside browser window (has Device Toolbar toggle, close button)
+ *   Electron manages the DevTools layout. Resize handle is NOT needed.
+ *
+ * - 'detached': DevTools in separate WebContentsView (full layout control, no Device Toolbar)
+ *   We control the DevTools position and size. Resize handle IS needed.
+ *
+ * TODO: In the future, this will be a user setting preference.
+ * For now, we default to 'attached' mode for the Device Toolbar feature.
+ */
+const DEVTOOLS_MODE: DevToolsMode = 'attached';
 
 /**
  * Project Mode V2 Editor
@@ -60,9 +74,6 @@ export class ProjectModeV2Editor extends EditorPane {
 
 	// ResizeObserver for automatic bounds updates
 	private resizeObserver: ResizeObserver | undefined;
-
-	// Navigation state polling to sync URL bar
-	private navigationPollInterval: ReturnType<typeof setInterval> | undefined;
 
 	// Current device emulation
 	private _currentDevice: DevicePreset | undefined;
@@ -472,12 +483,32 @@ export class ProjectModeV2Editor extends EditorPane {
 
 			this.logger.info(`[ProjectModeV2] #${this.instanceId} Browser view created: viewId=${this.browserViewId}`);
 
+			// Subscribe to DevTools closed event (handles user closing via X button)
+			// This is event-driven, not polling - much more efficient!
+			this._register(this.browserService.onDevToolsClosed((event) => {
+				if (event.browserViewId === this.browserViewId && this.devtoolsVisible) {
+					this.devtoolsVisible = false;
+					this.logger.info('[ProjectModeV2] DevTools closed externally (via X button) - state synced');
+
+					// In detached mode, also hide our containers
+					if (DEVTOOLS_MODE === 'detached' && this.devtoolsContainer) {
+						this.devtoolsContainer.style.display = 'none';
+						if (this.devtoolsResizeHandle) {
+							this.devtoolsResizeHandle.style.display = 'none';
+						}
+					}
+				}
+			}));
+
+			// Subscribe to navigation state changed event (replaces polling!)
+			// This is event-driven - fires on URL change, title change, loading state change
+			this._register(this.browserService.onNavigationStateChanged((event) => {
+				this.handleNavigationStateChanged(event);
+			}));
+
 			// Show placeholder initially (hides WebContentsView until user navigates)
 			// This must happen BEFORE updateViewBounds to prevent flicker
 			this.showPlaceholder();
-
-			// Start navigation state polling to sync URL bar
-			this.startNavigationPolling();
 
 			// Enable CDP domains for debugging (don't await - do it in background)
 			this.browserService.enableCDPDomains(this.browserViewId, {
@@ -502,110 +533,111 @@ export class ProjectModeV2Editor extends EditorPane {
 		}
 	}
 
+	// Track last known values to avoid unnecessary updates (for event-driven navigation)
+	private lastKnownUrl = '';
+	private lastKnownTitle = '';
+	private lastErrorUrl = ''; // Track which URL we showed error for
+	private wasLoading = false; // Track loading state for progress bar
+
 	/**
-	 * Start polling for navigation state changes
-	 * This keeps the URL bar, tab title, and placeholder state in sync with the browser
+	 * Handle navigation state changed event from main process
+	 * This replaces polling - much more efficient!
+	 * Event fires on: did-navigate, did-start-loading, did-finish-load, page-title-updated
 	 */
-	private startNavigationPolling(): void {
-		// Clear any existing interval
-		this.stopNavigationPolling();
+	private handleNavigationStateChanged(event: NavigationStateChangedEvent): void {
+		// Debug: Log all incoming events to verify IPC is working
+		this.logger.info(`[ProjectModeV2] Navigation event: eventBrowserViewId=${event.browserViewId}, myBrowserViewId=${this.browserViewId}`);
 
-		// Track last known values to avoid unnecessary updates
-		let lastKnownUrl = '';
-		let lastKnownTitle = '';
-		let lastErrorUrl = ''; // Track which URL we showed error for
-		let wasLoading = false; // Track loading state for progress bar
+		// CRITICAL: Filter by browserViewId for multi-browser support!
+		// Each browser instance only handles events for its own view
+		if (event.browserViewId !== this.browserViewId) {
+			this.logger.info(`[ProjectModeV2] Ignoring event (not for this browser)`);
+			return;
+		}
 
-		// Poll every 300ms for navigation changes (faster for better responsiveness)
-		this.navigationPollInterval = setInterval(async () => {
-			if (!this.browserViewId) {
-				return;
+		this.logger.info(`[ProjectModeV2] Processing event: url="${event.url}", title="${event.title}", isLoading=${event.isLoading}`);
+
+		const currentUrl = event.url || '';
+		const currentTitle = event.title || '';
+		const isRealUrl = currentUrl && currentUrl !== 'about:blank';
+
+		// Update loading progress bar
+		if (event.isLoading && !this.wasLoading) {
+			// Started loading
+			this.wasLoading = true;
+			if (this.controlBar) {
+				this.controlBar.showLoading();
+			}
+		} else if (!event.isLoading && this.wasLoading) {
+			// Finished loading
+			this.wasLoading = false;
+			if (this.controlBar) {
+				this.controlBar.hideLoading();
+			}
+		}
+
+		// Check for navigation errors
+		if (event.lastError && event.lastError.validatedURL !== this.lastErrorUrl) {
+			this.lastErrorUrl = event.lastError.validatedURL;
+			this.logger.info(`[ProjectModeV2] Navigation error detected: ${event.lastError.errorDescription} (${event.lastError.errorCode})`);
+
+			// Hide loading bar on error
+			if (this.controlBar) {
+				this.controlBar.hideLoading();
+			}
+			this.wasLoading = false;
+
+			// Show error on placeholder
+			const errorMessage = this.getNavigationErrorMessageFromCode(
+				event.lastError.errorCode,
+				event.lastError.errorDescription,
+				event.lastError.validatedURL
+			);
+			this.showNavigationError(errorMessage);
+		}
+
+		// Check if URL changed
+		if (currentUrl !== this.lastKnownUrl) {
+			this.lastKnownUrl = currentUrl;
+
+			// Update URL bar
+			if (this.controlBar) {
+				this.controlBar.setUrl(currentUrl);
 			}
 
-			try {
-				const state = await this.browserService.getNavigationState(this.browserViewId);
-				const currentUrl = state.url || '';
-				const currentTitle = state.title || '';
-				const isRealUrl = currentUrl && currentUrl !== 'about:blank';
-
-				// Update loading progress bar
-				if (state.isLoading && !wasLoading) {
-					// Started loading
-					wasLoading = true;
-					if (this.controlBar) {
-						this.controlBar.showLoading();
-					}
-				} else if (!state.isLoading && wasLoading) {
-					// Finished loading
-					wasLoading = false;
-					if (this.controlBar) {
-						this.controlBar.hideLoading();
-					}
+			// Update placeholder visibility based on URL
+			// This handles back/forward navigation correctly
+			if (isRealUrl) {
+				// Navigated to a real URL - hide placeholder, show browser
+				if (!this.hasLoadedUrl) {
+					this.hasLoadedUrl = true;
+					this.hidePlaceholder();
 				}
-
-				// Check for navigation errors first
-				if (state.lastError && state.lastError.validatedURL !== lastErrorUrl) {
-					lastErrorUrl = state.lastError.validatedURL;
-					this.logger.info(`[ProjectModeV2] Navigation error detected: ${state.lastError.errorDescription} (${state.lastError.errorCode})`);
-
-					// Hide loading bar on error
-					if (this.controlBar) {
-						this.controlBar.hideLoading();
-					}
-					wasLoading = false;
-
-					// Show error on placeholder
-					const errorMessage = this.getNavigationErrorMessageFromCode(
-						state.lastError.errorCode,
-						state.lastError.errorDescription,
-						state.lastError.validatedURL
-					);
-					this.showNavigationError(errorMessage);
+			} else {
+				// Navigated to about:blank - show placeholder, hide browser
+				if (this.hasLoadedUrl) {
+					this.hasLoadedUrl = false;
+					this.showPlaceholder();
 				}
-
-				// Check if URL changed
-				if (currentUrl !== lastKnownUrl) {
-					lastKnownUrl = currentUrl;
-
-					// Update URL bar
-					if (this.controlBar) {
-						this.controlBar.setUrl(currentUrl);
-					}
-
-					// Update placeholder visibility based on URL
-					// This handles back/forward navigation correctly
-					if (isRealUrl) {
-						// Navigated to a real URL - hide placeholder, show browser
-						if (!this.hasLoadedUrl) {
-							this.hasLoadedUrl = true;
-							this.hidePlaceholder();
-						}
-					} else {
-						// Navigated to about:blank - show placeholder, hide browser
-						if (this.hasLoadedUrl) {
-							this.hasLoadedUrl = false;
-							this.showPlaceholder();
-						}
-					}
-				}
-
-				// Update tab title when page title changes
-				if (currentTitle !== lastKnownTitle) {
-					lastKnownTitle = currentTitle;
-					const input = this.input as ProjectModeV2Input;
-					if (input && currentTitle) {
-						input.setPageTitle(currentTitle);
-					}
-				}
-
-				// Update back/forward button states
-				if (this.controlBar) {
-					this.controlBar.updateNavigationState(state.canGoBack, state.canGoForward);
-				}
-			} catch {
-				// Ignore errors - browser view might be destroyed
 			}
-		}, 300);
+		}
+
+		// Update tab title when page title changes
+		if (currentTitle !== this.lastKnownTitle) {
+			this.lastKnownTitle = currentTitle;
+			const input = this.input as ProjectModeV2Input;
+			if (input) {
+				// Always update title, even if empty (to clear stale titles)
+				// setPageTitle handles empty titles gracefully
+				input.setPageTitle(currentTitle);
+				this.logger.info(`[ProjectModeV2] Tab title updated: "${currentTitle}"`);
+			}
+		}
+
+		// Update back/forward button states
+		if (this.controlBar) {
+			this.controlBar.updateNavigationState(event.canGoBack, event.canGoForward);
+		}
 	}
 
 	/**
@@ -639,16 +671,6 @@ export class ProjectModeV2Editor extends EditorPane {
 					return `${errorDescription} for "${host}"`;
 				}
 				return `Failed to load "${host}" (error ${errorCode})`;
-		}
-	}
-
-	/**
-	 * Stop navigation state polling
-	 */
-	private stopNavigationPolling(): void {
-		if (this.navigationPollInterval) {
-			clearInterval(this.navigationPollInterval);
-			this.navigationPollInterval = undefined;
 		}
 	}
 
@@ -862,45 +884,75 @@ export class ProjectModeV2Editor extends EditorPane {
 	// ============================================
 
 	private async toggleDevTools(): Promise<void> {
-		if (!this.browserViewId || !this.devtoolsContainer) {
+		if (!this.browserViewId) {
+			this.logger.warn('[ProjectModeV2] toggleDevTools: No browser view ID!');
 			return;
 		}
 
+		this.logger.info(`[ProjectModeV2] toggleDevTools called, devtoolsVisible=${this.devtoolsVisible}, mode=${DEVTOOLS_MODE}`);
+
 		if (this.devtoolsVisible) {
-			// Close DevTools
+			// =========================================================
+			// CLOSE DevTools
+			// =========================================================
 			await this.browserService.closeDevTools(this.browserViewId);
-			this.devtoolsContainer.style.display = 'none';
-			// Hide resize handle
-			if (this.devtoolsResizeHandle) {
-				this.devtoolsResizeHandle.style.display = 'none';
+
+			// In detached mode, hide our custom container and resize handle
+			if (DEVTOOLS_MODE === 'detached' && this.devtoolsContainer) {
+				this.devtoolsContainer.style.display = 'none';
+				if (this.devtoolsResizeHandle) {
+					this.devtoolsResizeHandle.style.display = 'none';
+				}
 			}
+
 			this.devtoolsVisible = false;
-			this.logger.info('[ProjectModeV2] DevTools closed');
+			this.logger.info(`[ProjectModeV2] DevTools closed (mode: ${DEVTOOLS_MODE})`);
 		} else {
-			// Show resize handle first
-			if (this.devtoolsResizeHandle) {
-				this.devtoolsResizeHandle.style.display = 'block';
+			// =========================================================
+			// OPEN DevTools
+			// =========================================================
+			if (DEVTOOLS_MODE === 'attached') {
+				// ATTACHED MODE: Electron manages DevTools layout
+				// DevTools will dock at bottom of browser window
+				// Device Toolbar toggle and close button will be available!
+				const options = { mode: 'attached' as const };
+				this.logger.info(`[ProjectModeV2] Opening DevTools with options: ${JSON.stringify(options)}`);
+				await this.browserService.openDevTools(this.browserViewId, options);
+				this.devtoolsVisible = true;
+				this.logger.info('[ProjectModeV2] DevTools opened (mode: attached - Device Toolbar available!)');
+			} else {
+				// DETACHED MODE: We manage DevTools layout
+				// Show resize handle and container
+				if (!this.devtoolsContainer) {
+					return;
+				}
+
+				if (this.devtoolsResizeHandle) {
+					this.devtoolsResizeHandle.style.display = 'block';
+				}
+				this.devtoolsContainer.style.display = 'block';
+
+				// Get container bounds (need slight delay for layout to update)
+				await new Promise(resolve => requestAnimationFrame(resolve));
+				const rect = this.devtoolsContainer.getBoundingClientRect();
+				const bounds: ViewBounds = {
+					x: Math.floor(rect.left),
+					y: Math.floor(rect.top),
+					width: Math.floor(rect.width),
+					height: Math.floor(rect.height)
+				};
+
+				// Open DevTools with our custom bounds
+				await this.browserService.openDevTools(this.browserViewId, {
+					mode: 'detached',
+					bounds
+				});
+				this.devtoolsVisible = true;
+				this.logger.info('[ProjectModeV2] DevTools opened (mode: detached)');
+
+				// Update bounds after layout settles
+				setTimeout(() => this.updateViewBounds(), 100);
 			}
-			// Show container
-			this.devtoolsContainer.style.display = 'block';
-
-			// Get container bounds (need slight delay for layout to update)
-			await new Promise(resolve => requestAnimationFrame(resolve));
-			const rect = this.devtoolsContainer.getBoundingClientRect();
-			const bounds: ViewBounds = {
-				x: Math.floor(rect.left),
-				y: Math.floor(rect.top),
-				width: Math.floor(rect.width),
-				height: Math.floor(rect.height)
-			};
-
-			// Open DevTools (creates fresh WebContentsView ON-DEMAND)
-			await this.browserService.openDevTools(this.browserViewId, bounds);
-			this.devtoolsVisible = true;
-			this.logger.info('[ProjectModeV2] DevTools opened');
-
-			// Update bounds after layout settles
-			setTimeout(() => this.updateViewBounds(), 100);
 		}
 	}
 
@@ -1214,9 +1266,6 @@ export class ProjectModeV2Editor extends EditorPane {
 
 	override dispose(): void {
 		this.logger.info(`[ProjectModeV2] #${this.instanceId} dispose: destroying browser view (viewId=${this.browserViewId})`);
-
-		// Stop navigation polling
-		this.stopNavigationPolling();
 
 		// Cleanup ResizeObserver
 		this.resizeObserver?.disconnect();

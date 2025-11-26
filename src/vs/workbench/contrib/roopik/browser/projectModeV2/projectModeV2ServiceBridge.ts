@@ -3,9 +3,10 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
+import { Event } from '../../../../../base/common/event.js';
 import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains } from '../../common/projectModeV2/types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
 
 /**
  * ProjectModeV2 Service Bridge
@@ -15,7 +16,26 @@ import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, N
 export class ProjectModeV2ServiceBridge implements IProjectModeV2Service {
 	readonly _serviceBrand: undefined;
 
-	constructor(private channel: IChannel) { }
+	// ============================================
+	// Events
+	// ============================================
+
+	/**
+	 * Event fired when DevTools is closed externally (via built-in X button)
+	 */
+	readonly onDevToolsClosed: Event<DevToolsClosedEvent>;
+
+	/**
+	 * Event fired when navigation state changes (URL, title, loading, back/forward)
+	 * Replaces polling for navigation state updates
+	 */
+	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent>;
+
+	constructor(private channel: IChannel) {
+		// Subscribe to events from main process
+		this.onDevToolsClosed = this.channel.listen<DevToolsClosedEvent>('onDevToolsClosed');
+		this.onNavigationStateChanged = this.channel.listen<NavigationStateChangedEvent>('onNavigationStateChanged');
+	}
 
 	// ============================================
 	// Browser View Lifecycle
@@ -69,8 +89,8 @@ export class ProjectModeV2ServiceBridge implements IProjectModeV2Service {
 	// DevTools
 	// ============================================
 
-	async openDevTools(browserViewId: number, bounds: ViewBounds): Promise<DevToolsViewResult> {
-		return this.channel.call('openDevTools', { browserViewId, bounds });
+	async openDevTools(browserViewId: number, options: DevToolsOptions): Promise<DevToolsViewResult> {
+		return this.channel.call('openDevTools', { browserViewId, options });
 	}
 
 	async closeDevTools(browserViewId: number): Promise<void> {

@@ -4,8 +4,9 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { BrowserWindow, WebContentsView, session } from 'electron';
+import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError } from '../../common/projectModeV2/types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsMode, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
 
 /**
  * Browser View Service V2
@@ -18,6 +19,16 @@ import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, N
  */
 export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	readonly _serviceBrand: undefined;
+
+	// ============================================
+	// Events
+	// ============================================
+
+	private readonly _onDevToolsClosed = new Emitter<DevToolsClosedEvent>();
+	readonly onDevToolsClosed: Event<DevToolsClosedEvent> = this._onDevToolsClosed.event;
+
+	private readonly _onNavigationStateChanged = new Emitter<NavigationStateChangedEvent>();
+	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent> = this._onNavigationStateChanged.event;
 
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
@@ -39,7 +50,11 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	private browserWindows = new Map<number, BrowserWindow>();
 
 	// DevTools views (ON-DEMAND, not pre-created)
+	// Only populated in 'detached' mode - in 'attached' mode, Electron manages DevTools
 	private devtoolsViews = new Map<number, WebContentsView>();
+
+	// Track DevTools mode per browser view
+	private devtoolsModes = new Map<number, DevToolsMode>();
 
 	// Overlay views (for floating toolbar, menus)
 	// Maps overlayViewId -> { view, parentBrowserViewId }
@@ -326,12 +341,43 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		});
 	}
 
+	/**
+	 * Fire navigation state changed event
+	 * Called on navigation events to notify renderer without polling
+	 */
+	private fireNavigationStateChanged(browserViewId: number): void {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			return;
+		}
+
+		const webContents = browserView.webContents;
+		const lastError = this.lastNavigationErrors.get(browserViewId);
+
+		const eventData = {
+			browserViewId,
+			url: webContents.getURL(),
+			title: webContents.getTitle(),
+			isLoading: webContents.isLoading(),
+			canGoBack: webContents.navigationHistory.canGoBack(),
+			canGoForward: webContents.navigationHistory.canGoForward(),
+			lastError
+		};
+
+		console.log(`[ProjectModeV2] FIRING navigation event:`, JSON.stringify(eventData));
+		this._onNavigationStateChanged.fire(eventData);
+	}
+
 	// ============================================
 	// DevTools (ON-DEMAND creation)
-	// CRITICAL: Create fresh WebContentsView each time
+	// Supports two modes:
+	// - 'attached': Docked inside browser window (Device Toolbar available)
+	// - 'detached': Separate WebContentsView (full layout control)
 	// ============================================
 
-	async openDevTools(browserViewId: number, bounds: ViewBounds): Promise<DevToolsViewResult> {
+	async openDevTools(browserViewId: number, options: DevToolsOptions): Promise<DevToolsViewResult> {
+		console.log(`[ProjectModeV2] openDevTools called with browserViewId=${browserViewId}, options=`, JSON.stringify(options));
+
 		const browserView = this.browserViews.get(browserViewId);
 		const window = this.browserWindows.get(browserViewId);
 
@@ -339,54 +385,92 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			throw new Error(`Browser view ${browserViewId} not found`);
 		}
 
+		// Validate options - must have mode
+		if (!options || !options.mode) {
+			console.error(`[ProjectModeV2] openDevTools error: options or options.mode is undefined. Received:`, options);
+			throw new Error(`DevTools options are required. Received: ${JSON.stringify(options)}`);
+		}
+
 		// Close existing DevTools if any
 		await this.closeDevTools(browserViewId);
 
-		// CRITICAL: Create FRESH WebContentsView for DevTools
-		// Per Electron docs: "The devToolsWebContents must not have done any navigation"
-		const devtoolsView = new WebContentsView({
-			webPreferences: {
-				nodeIntegration: false,
-				contextIsolation: true
+		// Store the mode for this browser view
+		this.devtoolsModes.set(browserViewId, options.mode);
+
+		if (options.mode === 'attached') {
+			// =========================================================
+			// ATTACHED MODE: DevTools docked inside browser window
+			// Device Toolbar toggle and close button are available!
+			// =========================================================
+			console.log(`[ProjectModeV2] Opening DevTools in ATTACHED mode for browser ${browserViewId}`);
+
+			// Open DevTools docked at bottom of the browser window
+			// This gives us the Device Toolbar toggle and close button
+			browserView.webContents.openDevTools({ mode: 'bottom' });
+
+			// In attached mode, we don't create a separate view - Electron manages it
+			// Return -1 as devtoolsViewId to indicate attached mode
+			return { devtoolsViewId: -1 };
+		} else {
+			// =========================================================
+			// DETACHED MODE: DevTools in separate WebContentsView
+			// Full layout control, but NO Device Toolbar toggle
+			// =========================================================
+			console.log(`[ProjectModeV2] Opening DevTools in DETACHED mode for browser ${browserViewId}`);
+
+			if (!options.bounds) {
+				throw new Error('Bounds are required for detached DevTools mode');
 			}
-		});
 
-		// Add to window BEFORE calling setDevToolsWebContents
-		window.contentView.addChildView(devtoolsView);
+			// CRITICAL: Create FRESH WebContentsView for DevTools
+			// Per Electron docs: "The devToolsWebContents must not have done any navigation"
+			const devtoolsView = new WebContentsView({
+				webPreferences: {
+					nodeIntegration: false,
+					contextIsolation: true
+				}
+			});
 
-		// Set bounds
-		devtoolsView.setBounds({
-			x: Math.round(bounds.x),
-			y: Math.round(bounds.y),
-			width: Math.round(bounds.width),
-			height: Math.round(bounds.height)
-		});
+			// Add to window BEFORE calling setDevToolsWebContents
+			window.contentView.addChildView(devtoolsView);
 
-		// CRITICAL: Call setDevToolsWebContents IMMEDIATELY after creation
-		// The devtools WebContents must be fresh/unused
-		browserView.webContents.setDevToolsWebContents(devtoolsView.webContents);
+			// Set bounds
+			devtoolsView.setBounds({
+				x: Math.round(options.bounds.x),
+				y: Math.round(options.bounds.y),
+				width: Math.round(options.bounds.width),
+				height: Math.round(options.bounds.height)
+			});
 
-		// Open DevTools with detach mode (required for setDevToolsWebContents)
-		browserView.webContents.openDevTools({ mode: 'detach' });
+			// CRITICAL: Call setDevToolsWebContents IMMEDIATELY after creation
+			// The devtools WebContents must be fresh/unused
+			browserView.webContents.setDevToolsWebContents(devtoolsView.webContents);
 
-		const devtoolsViewId = devtoolsView.webContents.id;
-		this.devtoolsViews.set(browserViewId, devtoolsView);
+			// Open DevTools with detach mode (required for setDevToolsWebContents)
+			browserView.webContents.openDevTools({ mode: 'detach' });
 
-		console.log(`[ProjectModeV2] Opened DevTools ${devtoolsViewId} for browser ${browserViewId}`);
+			const devtoolsViewId = devtoolsView.webContents.id;
+			this.devtoolsViews.set(browserViewId, devtoolsView);
 
-		return { devtoolsViewId };
+			console.log(`[ProjectModeV2] Opened DevTools ${devtoolsViewId} for browser ${browserViewId} (detached)`);
+
+			return { devtoolsViewId };
+		}
 	}
 
 	async closeDevTools(browserViewId: number): Promise<void> {
 		const browserView = this.browserViews.get(browserViewId);
 		const devtoolsView = this.devtoolsViews.get(browserViewId);
 		const window = this.browserWindows.get(browserViewId);
+		const mode = this.devtoolsModes.get(browserViewId);
 
+		// Close DevTools on browser webContents (works for both modes)
 		if (browserView && !browserView.webContents.isDestroyed()) {
 			browserView.webContents.closeDevTools();
 		}
 
-		if (devtoolsView) {
+		// In detached mode, we also need to cleanup our WebContentsView
+		if (mode === 'detached' && devtoolsView) {
 			// Remove from window
 			if (window && !window.isDestroyed() && window.contentView) {
 				try {
@@ -402,8 +486,12 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			}
 
 			this.devtoolsViews.delete(browserViewId);
-			console.log(`[ProjectModeV2] Closed DevTools for browser ${browserViewId}`);
 		}
+
+		// Clear mode tracking
+		this.devtoolsModes.delete(browserViewId);
+
+		console.log(`[ProjectModeV2] Closed DevTools for browser ${browserViewId} (mode: ${mode || 'unknown'})`);
 	}
 
 	async setDevToolsBounds(browserViewId: number, bounds: ViewBounds): Promise<void> {
@@ -738,6 +826,8 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			console.error(`[ProjectModeV2] Load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
 			// Track error so renderer can display it
 			this.setNavigationError(browserViewId, errorCode, errorDescription, validatedURL);
+			// Fire event to notify renderer
+			this.fireNavigationStateChanged(browserViewId);
 		});
 
 		// Provisional load failure - catches CONNECTION_REFUSED, NAME_NOT_RESOLVED etc.
@@ -751,6 +841,8 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			console.error(`[ProjectModeV2] Provisional load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
 			// Track error so renderer can display it
 			this.setNavigationError(browserViewId, errorCode, errorDescription, validatedURL);
+			// Fire event to notify renderer
+			this.fireNavigationStateChanged(browserViewId);
 			// Common error codes:
 			// -102: CONNECTION_REFUSED (server not running)
 			// -105: NAME_NOT_RESOLVED (DNS issue)
@@ -770,21 +862,36 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			console.log(`[ProjectModeV2] Navigated to: ${url}`);
 			// Clear any previous error on successful navigation
 			this.clearNavigationError(browserViewId);
+			// Fire event to notify renderer (URL changed)
+			this.fireNavigationStateChanged(browserViewId);
+		});
+
+		// Also handle in-page navigation (hash changes, History API)
+		webContents.on('did-navigate-in-page', (_event, url) => {
+			console.log(`[ProjectModeV2] In-page navigation to: ${url}`);
+			// Fire event to notify renderer (URL changed)
+			this.fireNavigationStateChanged(browserViewId);
 		});
 
 		webContents.on('page-title-updated', (_event, title) => {
 			console.log(`[ProjectModeV2] Title updated: ${title}`);
+			// Fire event to notify renderer (title changed)
+			this.fireNavigationStateChanged(browserViewId);
 		});
 
 		// Log when page starts/finishes loading
 		webContents.on('did-start-loading', () => {
 			console.log(`[ProjectModeV2] Started loading...`);
+			// Fire event to notify renderer (isLoading = true)
+			this.fireNavigationStateChanged(browserViewId);
 		});
 
 		webContents.on('did-finish-load', () => {
 			console.log(`[ProjectModeV2] Finished loading`);
 			// Clear any previous error on successful load
 			this.clearNavigationError(browserViewId);
+			// Fire event to notify renderer (isLoading = false)
+			this.fireNavigationStateChanged(browserViewId);
 		});
 
 		// NOTE: New window requests (Ctrl+Click, target="_blank", window.open, etc.)
@@ -801,6 +908,16 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 				webContents.loadURL(url);
 			}
 			newWindow.close();
+		});
+
+		// DevTools closed event - fires when user closes via built-in X button
+		// This allows renderer to sync its state without polling
+		webContents.on('devtools-closed', () => {
+			console.log(`[ProjectModeV2] DevTools closed externally for browser ${browserViewId}`);
+			// Fire event to notify renderer
+			this._onDevToolsClosed.fire({ browserViewId });
+			// Cleanup our mode tracking
+			this.devtoolsModes.delete(browserViewId);
 		});
 	}
 
