@@ -53,7 +53,6 @@ export class BrowserControlBarV2 extends Disposable {
 	private deviceButton?: HTMLButtonElement;
 	private deviceMenu?: HTMLElement;
 	private isDeviceMenuVisible: boolean = false;
-	private _currentDevice: DevicePreset | undefined;
 	private overflowMenu?: HTMLElement;
 	private isOverflowVisible: boolean = false;
 
@@ -123,10 +122,21 @@ export class BrowserControlBarV2 extends Disposable {
 		// Stop button
 		this.createIconButton(Codicon.chromeClose, 'Stop loading', () => this.callbacks.onStop());
 
-		// Overflow menu for optional features
-		const hasOptionalFeatures = this.config.showDevTools || this.config.showHardReload || this.config.showScreenshot;
-		if (hasOptionalFeatures) {
-			this.createSeparator();
+		// Separator before action buttons
+		this.createSeparator();
+
+		// DevTools button (direct in main bar)
+		if (this.config.showDevTools && this.callbacks.onDevTools) {
+			this.createIconButton(Codicon.terminal, 'Toggle DevTools', () => this.callbacks.onDevTools!());
+		}
+
+		// Screenshot button (direct in main bar)
+		if (this.config.showScreenshot && this.callbacks.onScreenshot) {
+			this.createIconButton(Codicon.deviceCamera, 'Take Screenshot', () => this.callbacks.onScreenshot!());
+		}
+
+		// Overflow menu for Hard Reload only
+		if (this.config.showHardReload) {
 			this.createOverflowButton();
 		}
 	}
@@ -176,39 +186,37 @@ export class BrowserControlBarV2 extends Disposable {
 	}
 
 	private createDeviceSelector(): void {
-		// Device button with current device indicator
+		// Device button - compact with just icon and arrow
 		this.deviceButton = document.createElement('button');
 		this.deviceButton.title = 'Device emulation';
-		this.deviceButton.style.padding = '4px 8px';
+		this.deviceButton.style.padding = '4px';
 		this.deviceButton.style.cursor = 'pointer';
-		this.deviceButton.style.border = '1px solid var(--vscode-input-border)';
-		this.deviceButton.style.backgroundColor = 'var(--vscode-input-background)';
+		this.deviceButton.style.border = 'none';
+		this.deviceButton.style.backgroundColor = 'transparent';
 		this.deviceButton.style.borderRadius = '2px';
 		this.deviceButton.style.display = 'flex';
 		this.deviceButton.style.alignItems = 'center';
-		this.deviceButton.style.gap = '4px';
+		this.deviceButton.style.gap = '2px';
 		this.deviceButton.style.color = 'var(--vscode-foreground)';
-		this.deviceButton.style.fontSize = '12px';
-		this.deviceButton.style.minWidth = '100px';
 
 		// Device icon
 		const iconElement = document.createElement('span');
 		iconElement.className = ThemeIcon.asClassName(Codicon.deviceMobile);
-		iconElement.style.fontSize = '14px';
+		iconElement.style.fontSize = '16px';
 		this.deviceButton.appendChild(iconElement);
-
-		// Device name
-		const nameElement = document.createElement('span');
-		nameElement.textContent = 'Responsive';
-		nameElement.style.flex = '1';
-		nameElement.style.textAlign = 'left';
-		this.deviceButton.appendChild(nameElement);
 
 		// Dropdown arrow
 		const arrowElement = document.createElement('span');
 		arrowElement.className = ThemeIcon.asClassName(Codicon.chevronDown);
-		arrowElement.style.fontSize = '12px';
+		arrowElement.style.fontSize = '10px';
 		this.deviceButton.appendChild(arrowElement);
+
+		this.deviceButton.onmouseenter = () => {
+			this.deviceButton!.style.backgroundColor = 'var(--vscode-toolbar-hoverBackground)';
+		};
+		this.deviceButton.onmouseleave = () => {
+			this.deviceButton!.style.backgroundColor = 'transparent';
+		};
 
 		this.deviceButton.onclick = (e) => {
 			e.stopPropagation();
@@ -241,11 +249,8 @@ export class BrowserControlBarV2 extends Disposable {
 
 		// "Responsive" option (no emulation)
 		menu.appendChild(this.createDeviceMenuItem('Responsive', Codicon.screenNormal, () => {
-			this._currentDevice = undefined;
-			this.updateDeviceButtonLabel('Responsive');
 			this.callbacks.onDeviceSelect?.(undefined);
 			this.hideDeviceMenu();
-			console.log('[BrowserControlBarV2] Device cleared:', this._currentDevice);
 		}));
 
 		// Add separator
@@ -275,8 +280,6 @@ export class BrowserControlBarV2 extends Disposable {
 					`${device.name} (${device.width}×${device.height})`,
 					icon,
 					() => {
-						this._currentDevice = device;
-						this.updateDeviceButtonLabel(device.name);
 						this.callbacks.onDeviceSelect?.(device);
 						this.hideDeviceMenu();
 					}
@@ -319,14 +322,6 @@ export class BrowserControlBarV2 extends Disposable {
 		return item;
 	}
 
-	private updateDeviceButtonLabel(name: string): void {
-		if (this.deviceButton) {
-			const nameElement = this.deviceButton.querySelector('span:nth-child(2)') as HTMLElement;
-			if (nameElement) {
-				nameElement.textContent = name.length > 12 ? name.substring(0, 12) + '...' : name;
-			}
-		}
-	}
 
 	private toggleDeviceMenu(): void {
 		if (this.isDeviceMenuVisible) {
@@ -380,23 +375,10 @@ export class BrowserControlBarV2 extends Disposable {
 		menu.style.display = 'none';
 		menu.style.minWidth = '180px';
 
-		if (this.config.showDevTools && this.callbacks.onDevTools) {
-			menu.appendChild(this.createMenuItem('Toggle DevTools', Codicon.terminal, () => {
-				this.callbacks.onDevTools!();
-				this.hideOverflowMenu();
-			}));
-		}
-
+		// Only Hard Reload in overflow menu
 		if (this.config.showHardReload && this.callbacks.onHardReload) {
 			menu.appendChild(this.createMenuItem('Hard Reload', Codicon.debugRestart, () => {
 				this.callbacks.onHardReload!();
-				this.hideOverflowMenu();
-			}));
-		}
-
-		if (this.config.showScreenshot && this.callbacks.onScreenshot) {
-			menu.appendChild(this.createMenuItem('Take Screenshot', Codicon.deviceCamera, () => {
-				this.callbacks.onScreenshot!();
 				this.hideOverflowMenu();
 			}));
 		}

@@ -23,6 +23,9 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	// This is used by app.ts to allow navigation for our browser views
 	private static managedWebContentsIds = new Set<number>();
 
+	// Track if session has been configured (only configure ONCE)
+	private static sessionConfigured = false;
+
 	/**
 	 * Check if a webContents ID is managed by ProjectModeV2
 	 * Called by app.ts to allow navigation for our browser views
@@ -62,32 +65,37 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		}
 
 		// =========================================================
-		// Configure Session for Localhost Support
+		// Configure Session for Localhost Support (ONCE only)
 		// =========================================================
 		const browserSession = session.fromPartition('persist:roopik-browser', { cache: true });
 
-		// A. Bypass Proxy for Localhost
-		// Electron often tries to route localhost through system proxies. Force direct connection.
-		console.log('[ProjectModeV2] Setting up proxy bypass for localhost...');
-		await browserSession.setProxy({
-			mode: 'direct', // Use direct connection, bypass system proxy entirely
-			proxyBypassRules: 'localhost;127.0.0.1;[::1];*.local'
-		});
+		if (!BrowserViewServiceV2.sessionConfigured) {
+			BrowserViewServiceV2.sessionConfigured = true;
+			console.log('[ProjectModeV2] Configuring browser session (one-time setup)...');
 
-		// B. Disable Certificate Verification (Trust Self-Signed Certs)
-		// React/Vite/Next.js dev servers often use self-signed certs. Electron blocks them silently.
-		console.log('[ProjectModeV2] Setting up certificate verify proc...');
-		browserSession.setCertificateVerifyProc((_request, callback) => {
-			// Return 0 to indicate verification success (trust all certs for dev)
-			callback(0);
-		});
+			// A. Bypass Proxy for Localhost
+			// Electron often tries to route localhost through system proxies. Force direct connection.
+			await browserSession.setProxy({
+				mode: 'direct', // Use direct connection, bypass system proxy entirely
+				proxyBypassRules: 'localhost;127.0.0.1;[::1];*.local'
+			});
 
-		// C. Auto-Grant Permissions for Dev
-		// Local dev servers often request permissions causing invisible prompts.
-		browserSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-			const allowedPermissions = ['media', 'geolocation', 'notifications', 'clipboard-read', 'clipboard-write', 'midi', 'pointerLock', 'fullscreen'];
-			callback(allowedPermissions.includes(permission));
-		});
+			// B. Disable Certificate Verification (Trust Self-Signed Certs)
+			// React/Vite/Next.js dev servers often use self-signed certs. Electron blocks them silently.
+			browserSession.setCertificateVerifyProc((_request, callback) => {
+				// Return 0 to indicate verification success (trust all certs for dev)
+				callback(0);
+			});
+
+			// C. Auto-Grant Permissions for Dev
+			// Local dev servers often request permissions causing invisible prompts.
+			browserSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+				const allowedPermissions = ['media', 'geolocation', 'notifications', 'clipboard-read', 'clipboard-write', 'midi', 'pointerLock', 'fullscreen'];
+				callback(allowedPermissions.includes(permission));
+			});
+
+			console.log('[ProjectModeV2] Browser session configured successfully');
+		}
 
 		// =========================================================
 		// End of Session Configuration
@@ -97,15 +105,17 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		const browserView = new WebContentsView({
 			webPreferences: {
 				nodeIntegration: false,
-				contextIsolation: true, // Keep this TRUE
+				contextIsolation: true,
 				sandbox: false,
 				webSecurity: false,
-				// ADD THIS: This allows executeJavaScript to use internal Electron APIs
-				// safely without exposing them to the raw internet.
-				nodeIntegrationInSubFrames: false,
-				preload: undefined // Ensure you aren't blocking it via preload
+				allowRunningInsecureContent: true,
+				session: browserSession // CRITICAL: Use our configured session for localhost support
 			}
 		});
+
+		// Debug: Verify session is correctly assigned
+		const actualSession = browserView.webContents.session;
+		console.log(`[ProjectModeV2] Session check: expected=roopik-browser, actual partition=${actualSession.storagePath?.includes('roopik-browser') ? 'correct' : 'WRONG!'}`);
 
 		// Add to window
 		window.contentView.addChildView(browserView);
@@ -241,15 +251,15 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 
 	async goBack(browserViewId: number): Promise<void> {
 		const browserView = this.browserViews.get(browserViewId);
-		if (browserView && browserView.webContents.canGoBack()) {
-			browserView.webContents.goBack();
+		if (browserView && browserView.webContents.navigationHistory.canGoBack()) {
+			browserView.webContents.navigationHistory.goBack();
 		}
 	}
 
 	async goForward(browserViewId: number): Promise<void> {
 		const browserView = this.browserViews.get(browserViewId);
-		if (browserView && browserView.webContents.canGoForward()) {
-			browserView.webContents.goForward();
+		if (browserView && browserView.webContents.navigationHistory.canGoForward()) {
+			browserView.webContents.navigationHistory.goForward();
 		}
 	}
 
@@ -287,8 +297,8 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		const lastError = this.lastNavigationErrors.get(browserViewId);
 
 		return {
-			canGoBack: webContents.canGoBack(),
-			canGoForward: webContents.canGoForward(),
+			canGoBack: webContents.navigationHistory.canGoBack(),
+			canGoForward: webContents.navigationHistory.canGoForward(),
 			url: webContents.getURL(),
 			title: webContents.getTitle(),
 			isLoading: webContents.isLoading(),
@@ -803,39 +813,27 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 
 		// Enable pinch-to-zoom (touchpad gesture zoom)
 		// Parameters: minimum zoom factor, maximum zoom factor
-		wc.setVisualZoomLevelLimits(1, 5);
-		console.log('[ProjectModeV2] Zoom handlers setup - visual zoom limits set (1-5)');
+		// 0.25 = 25% minimum, 5 = 500% maximum
+		wc.setVisualZoomLevelLimits(0.25, 5);
 
-		// Listen for ALL key events to debug
+		// Handle keyboard zoom shortcuts (Ctrl++, Ctrl+-, Ctrl+0)
 		wc.on('before-input-event', (event, input) => {
-			// Log ALL Ctrl/Cmd key presses for debugging
-			if (input.control || input.meta) {
-				console.log(`[ProjectModeV2] before-input-event: type=${input.type} key=${input.key} code=${input.code} ctrl=${input.control} meta=${input.meta}`);
-			}
-
 			if (input.type !== 'keyDown') return;
+			if (!input.control && !input.meta) return;
 
-			// Handle zoom keyboard shortcuts
-			if (input.control || input.meta) {
-				const currentZoom = wc.getZoomLevel();
+			const currentZoom = wc.getZoomLevel();
 
-				if (input.code === 'Equal' || input.code === 'NumpadAdd' || input.key === '+' || input.key === '=') {
-					const newZoom = currentZoom + 0.5;
-					wc.setZoomLevel(newZoom);
-					console.log(`[ProjectModeV2] ZOOM IN: ${currentZoom} -> ${newZoom}`);
-					event.preventDefault();
-				}
-				else if (input.code === 'Minus' || input.code === 'NumpadSubtract' || input.key === '-') {
-					const newZoom = currentZoom - 0.5;
-					wc.setZoomLevel(newZoom);
-					console.log(`[ProjectModeV2] ZOOM OUT: ${currentZoom} -> ${newZoom}`);
-					event.preventDefault();
-				}
-				else if (input.code === 'Digit0' || input.code === 'Numpad0' || input.key === '0') {
-					wc.setZoomLevel(0);
-					console.log(`[ProjectModeV2] ZOOM RESET: ${currentZoom} -> 0`);
-					event.preventDefault();
-				}
+			if (input.code === 'Equal' || input.code === 'NumpadAdd' || input.key === '+' || input.key === '=') {
+				wc.setZoomLevel(currentZoom + 0.5);
+				event.preventDefault();
+			}
+			else if (input.code === 'Minus' || input.code === 'NumpadSubtract' || input.key === '-') {
+				wc.setZoomLevel(currentZoom - 0.5);
+				event.preventDefault();
+			}
+			else if (input.code === 'Digit0' || input.code === 'Numpad0' || input.key === '0') {
+				wc.setZoomLevel(0);
+				event.preventDefault();
 			}
 		});
 	}

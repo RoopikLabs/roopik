@@ -164,11 +164,14 @@ export class ProjectModeV2Editor extends EditorPane {
 		contentContainer.appendChild(this.devtoolsContainer);
 
 		// Setup ResizeObserver for automatic bounds updates
+		// Observe container, browserContainer, and devtoolsContainer to catch all resize events
+		// This is critical for split screen scenarios where parent resizes
 		this.resizeObserver = new ResizeObserver(() => {
 			this.updateViewBounds();
 			// Also update floating toolbar bounds on resize
 			this.updateFloatingToolbarBounds();
 		});
+		this.resizeObserver.observe(this.container); // Parent container for split resize
 		this.resizeObserver.observe(this.browserContainer);
 		this.resizeObserver.observe(this.devtoolsContainer);
 
@@ -253,12 +256,46 @@ export class ProjectModeV2Editor extends EditorPane {
 		// Show the browser view using native visibility API (like Cursor)
 		if (this.browserViewId) {
 			this.browserService.setBrowserVisible(this.browserViewId, true);
-			// Update bounds after making visible
-			this.updateViewBounds();
+			// Update bounds with robust timing to ensure CSS layout is complete
+			this.updateBoundsWithRetry();
 
 			// Show floating toolbar when URL is loaded
 			this.createFloatingToolbar();
 		}
+	}
+
+	/**
+	 * Update bounds with retry mechanism to handle CSS layout timing
+	 * Uses requestAnimationFrame + multiple delays to ensure bounds are correct
+	 */
+	private updateBoundsWithRetry(): void {
+		// Immediate update (may get wrong bounds if layout not complete)
+		this.updateViewBounds();
+		this.updateFloatingToolbarBounds();
+
+		// Use requestAnimationFrame to wait for next paint
+		requestAnimationFrame(() => {
+			this.updateViewBounds();
+			this.updateFloatingToolbarBounds();
+
+			// Additional delayed updates to catch late layout changes
+			// This handles split screen and other complex layout scenarios
+			setTimeout(() => {
+				this.updateViewBounds();
+				this.updateFloatingToolbarBounds();
+			}, 50);
+
+			setTimeout(() => {
+				this.updateViewBounds();
+				this.updateFloatingToolbarBounds();
+			}, 150);
+
+			// Final update after layout should definitely be stable
+			setTimeout(() => {
+				this.updateViewBounds();
+				this.updateFloatingToolbarBounds();
+			}, 300);
+		});
 	}
 
 	/**
@@ -920,7 +957,7 @@ export class ProjectModeV2Editor extends EditorPane {
 					// Restore browser visibility
 					this.browserService.setBrowserVisible(this.browserViewId, true);
 					this.hidePlaceholder();
-					setTimeout(() => this.updateViewBounds(), 0);
+					// Note: hidePlaceholder() already calls updateBoundsWithRetry()
 				} else {
 					// Show placeholder if no URL was loaded
 					this.showPlaceholder();
@@ -1006,8 +1043,8 @@ export class ProjectModeV2Editor extends EditorPane {
 				if (this.browserViewId) {
 					this.browserService.setBrowserVisible(this.browserViewId, true);
 				}
-				// Update bounds after making visible
-				setTimeout(() => this.updateViewBounds(), 0);
+				// Update bounds with retry to ensure correct sizing
+				this.updateBoundsWithRetry();
 				// Show floating toolbar
 				this.setFloatingToolbarVisible(true);
 			} else {
@@ -1047,7 +1084,9 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	layout(dimension: Dimension): void {
-		// Bounds will auto-update via ResizeObserver
+		// VSCode calls this when editor pane is resized (including split screen)
+		// Use the retry mechanism to ensure bounds are correctly updated
+		this.updateBoundsWithRetry();
 	}
 
 	override dispose(): void {
