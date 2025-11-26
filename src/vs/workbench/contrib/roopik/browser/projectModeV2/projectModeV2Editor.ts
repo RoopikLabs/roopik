@@ -43,6 +43,7 @@ export class ProjectModeV2Editor extends EditorPane {
 
 	private container: HTMLElement | undefined;
 	private controlBar: BrowserControlBarV2 | undefined;
+	private contentContainer: HTMLElement | undefined;
 	private browserContainer: HTMLElement | undefined;
 	private devtoolsContainer: HTMLElement | undefined;
 	private logger: ILogger;
@@ -76,6 +77,12 @@ export class ProjectModeV2Editor extends EditorPane {
 		activeMode: 'none',
 		isExpanded: false
 	};
+
+	// DevTools resize handle
+	private devtoolsResizeHandle: HTMLElement | undefined;
+	private isResizingDevTools: boolean = false;
+	private devtoolsMinHeight: number = 100; // Minimum DevTools height in pixels
+	private devtoolsMaxHeightRatio: number = 0.8; // Max 80% of content area
 
 	constructor(
 		group: IEditorGroup,
@@ -129,16 +136,16 @@ export class ProjectModeV2Editor extends EditorPane {
 		this.controlBar = this._register(new BrowserControlBarV2(this.container, config, callbacks));
 
 		// Content container (browser + devtools)
-		const contentContainer = document.createElement('div');
-		contentContainer.style.flex = '1 1 auto';
-		contentContainer.style.display = 'flex';
-		contentContainer.style.flexDirection = 'column';
-		contentContainer.style.position = 'relative';
-		contentContainer.style.overflow = 'hidden';
-		contentContainer.style.minHeight = '0';
-		contentContainer.style.height = 'calc(100% - 2px)'; // Prevent terminal overlap
-		contentContainer.style.width = '100%';
-		this.container.appendChild(contentContainer);
+		this.contentContainer = document.createElement('div');
+		this.contentContainer.style.flex = '1 1 auto';
+		this.contentContainer.style.display = 'flex';
+		this.contentContainer.style.flexDirection = 'column';
+		this.contentContainer.style.position = 'relative';
+		this.contentContainer.style.overflow = 'hidden';
+		this.contentContainer.style.minHeight = '0';
+		this.contentContainer.style.height = 'calc(100% - 2px)'; // Prevent terminal overlap
+		this.contentContainer.style.width = '100%';
+		this.container.appendChild(this.contentContainer);
 
 		// Browser container (top area)
 		this.browserContainer = document.createElement('div');
@@ -149,19 +156,41 @@ export class ProjectModeV2Editor extends EditorPane {
 		this.browserContainer.style.position = 'relative';
 		this.browserContainer.style.minHeight = '0';
 		this.browserContainer.style.width = '100%';
-		contentContainer.appendChild(this.browserContainer);
+		this.contentContainer.appendChild(this.browserContainer);
 
 		// Placeholder shown when no URL is loaded (WebContentsView renders on top of this)
 		this.createPlaceholder();
 
+		// DevTools resize handle (between browser and devtools, initially hidden)
+		this.devtoolsResizeHandle = document.createElement('div');
+		this.devtoolsResizeHandle.style.display = 'none';
+		this.devtoolsResizeHandle.style.height = '4px';
+		this.devtoolsResizeHandle.style.width = '100%';
+		this.devtoolsResizeHandle.style.cursor = 'ns-resize';
+		this.devtoolsResizeHandle.style.backgroundColor = 'var(--vscode-panel-border)';
+		this.devtoolsResizeHandle.style.position = 'relative';
+		this.devtoolsResizeHandle.style.zIndex = '10';
+		this.devtoolsResizeHandle.style.flexShrink = '0';
+		// Hover effect
+		this.devtoolsResizeHandle.addEventListener('mouseenter', () => {
+			this.devtoolsResizeHandle!.style.backgroundColor = 'var(--vscode-focusBorder)';
+		});
+		this.devtoolsResizeHandle.addEventListener('mouseleave', () => {
+			if (!this.isResizingDevTools) {
+				this.devtoolsResizeHandle!.style.backgroundColor = 'var(--vscode-panel-border)';
+			}
+		});
+		this.setupDevToolsResize();
+		this.contentContainer.appendChild(this.devtoolsResizeHandle);
+
 		// DevTools container (bottom area, initially hidden)
 		this.devtoolsContainer = document.createElement('div');
 		this.devtoolsContainer.style.display = 'none';
-		this.devtoolsContainer.style.height = '40%';
+		this.devtoolsContainer.style.height = '300px'; // Fixed initial height (px instead of %)
 		this.devtoolsContainer.style.backgroundColor = '#242424';
 		this.devtoolsContainer.style.position = 'relative';
-		this.devtoolsContainer.style.borderTop = '1px solid var(--vscode-panel-border)';
-		contentContainer.appendChild(this.devtoolsContainer);
+		this.devtoolsContainer.style.flexShrink = '0';
+		this.contentContainer.appendChild(this.devtoolsContainer);
 
 		// Setup ResizeObserver for automatic bounds updates
 		// Observe container, browserContainer, and devtoolsContainer to catch all resize events
@@ -315,6 +344,91 @@ export class ProjectModeV2Editor extends EditorPane {
 		if (this.floatingToolbarViewId) {
 			this.setFloatingToolbarVisible(false);
 		}
+	}
+
+	/**
+	 * Setup DevTools resize functionality
+	 * Allows users to drag the resize handle to change DevTools height
+	 */
+	private setupDevToolsResize(): void {
+		if (!this.devtoolsResizeHandle) {
+			return;
+		}
+
+		let startY = 0;
+		let startHeight = 0;
+
+		const onMouseMove = (e: MouseEvent) => {
+			if (!this.isResizingDevTools || !this.devtoolsContainer || !this.contentContainer) {
+				return;
+			}
+
+			// Calculate new height (moving up = more height, moving down = less height)
+			const deltaY = startY - e.clientY;
+			let newHeight = startHeight + deltaY;
+
+			// Get content container height for max calculation
+			const contentRect = this.contentContainer.getBoundingClientRect();
+			const maxHeight = contentRect.height * this.devtoolsMaxHeightRatio;
+
+			// Clamp to min/max
+			newHeight = Math.max(this.devtoolsMinHeight, Math.min(newHeight, maxHeight));
+
+			// Apply new height
+			this.devtoolsContainer.style.height = `${newHeight}px`;
+
+			// Update WebContentsView bounds in real-time for smooth resize
+			this.updateViewBounds();
+		};
+
+		const onMouseUp = () => {
+			if (!this.isResizingDevTools) {
+				return;
+			}
+
+			this.isResizingDevTools = false;
+
+			// Reset handle color
+			if (this.devtoolsResizeHandle) {
+				this.devtoolsResizeHandle.style.backgroundColor = 'var(--vscode-panel-border)';
+			}
+
+			// Remove document listeners
+			document.removeEventListener('mousemove', onMouseMove);
+			document.removeEventListener('mouseup', onMouseUp);
+
+			// Remove selection prevention
+			document.body.style.userSelect = '';
+			document.body.style.cursor = '';
+
+			// Final bounds update
+			this.updateViewBounds();
+			this.logger.info('[ProjectModeV2] DevTools resize completed');
+		};
+
+		this.devtoolsResizeHandle.addEventListener('mousedown', (e: MouseEvent) => {
+			if (!this.devtoolsContainer) {
+				return;
+			}
+
+			this.isResizingDevTools = true;
+			startY = e.clientY;
+			startHeight = this.devtoolsContainer.getBoundingClientRect().height;
+
+			// Highlight handle during resize
+			this.devtoolsResizeHandle!.style.backgroundColor = 'var(--vscode-focusBorder)';
+
+			// Prevent text selection during drag
+			document.body.style.userSelect = 'none';
+			document.body.style.cursor = 'ns-resize';
+
+			// Add document-level listeners
+			document.addEventListener('mousemove', onMouseMove);
+			document.addEventListener('mouseup', onMouseUp);
+
+			e.preventDefault();
+			this.logger.info('[ProjectModeV2] DevTools resize started');
+		});
 	}
 
 	/**
@@ -756,13 +870,22 @@ export class ProjectModeV2Editor extends EditorPane {
 			// Close DevTools
 			await this.browserService.closeDevTools(this.browserViewId);
 			this.devtoolsContainer.style.display = 'none';
+			// Hide resize handle
+			if (this.devtoolsResizeHandle) {
+				this.devtoolsResizeHandle.style.display = 'none';
+			}
 			this.devtoolsVisible = false;
 			this.logger.info('[ProjectModeV2] DevTools closed');
 		} else {
-			// Show container first
+			// Show resize handle first
+			if (this.devtoolsResizeHandle) {
+				this.devtoolsResizeHandle.style.display = 'block';
+			}
+			// Show container
 			this.devtoolsContainer.style.display = 'block';
 
-			// Get container bounds
+			// Get container bounds (need slight delay for layout to update)
+			await new Promise(resolve => requestAnimationFrame(resolve));
 			const rect = this.devtoolsContainer.getBoundingClientRect();
 			const bounds: ViewBounds = {
 				x: Math.floor(rect.left),
