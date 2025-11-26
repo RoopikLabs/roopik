@@ -47,7 +47,6 @@ export class BrowserControlBarV2 extends Disposable {
 	private container: HTMLElement;
 	private urlInput: HTMLInputElement;
 	private progressBar: HTMLElement;
-	private progressContainer?: HTMLElement;
 	private loadingAnimation?: number;
 	private backButton?: HTMLButtonElement;
 	private forwardButton?: HTMLButtonElement;
@@ -102,9 +101,6 @@ export class BrowserControlBarV2 extends Disposable {
 
 		progressContainer.appendChild(progressBar);
 		parent.appendChild(progressContainer);
-
-		// Store reference to container for indeterminate animation
-		this.progressContainer = progressContainer;
 
 		return progressBar;
 	}

@@ -38,6 +38,10 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	// DevTools views (ON-DEMAND, not pre-created)
 	private devtoolsViews = new Map<number, WebContentsView>();
 
+	// Overlay views (for floating toolbar, menus)
+	// Maps overlayViewId -> { view, parentBrowserViewId }
+	private overlayViews = new Map<number, { view: WebContentsView; parentBrowserViewId: number }>();
+
 	// CDP debugger state
 	private debuggerAttached = new Map<number, boolean>();
 
@@ -132,7 +136,10 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	async destroyBrowserView(browserViewId: number): Promise<void> {
 		console.log(`[ProjectModeV2] Destroying browser view ${browserViewId}`);
 
-		// First close DevTools if open
+		// First destroy any overlay views
+		this.destroyOverlaysForBrowser(browserViewId);
+
+		// Close DevTools if open
 		await this.closeDevTools(browserViewId);
 
 		// Detach debugger if attached
@@ -625,6 +632,9 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	private destroyBrowserViewSync(browserViewId: number): void {
 		console.log(`[ProjectModeV2] Sync destroying browser view ${browserViewId}`);
 
+		// Destroy overlay views first
+		this.destroyOverlaysForBrowser(browserViewId);
+
 		const browserView = this.browserViews.get(browserViewId);
 		const devtoolsView = this.devtoolsViews.get(browserViewId);
 		const window = this.browserWindows.get(browserViewId);
@@ -777,5 +787,148 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			}
 			newWindow.close();
 		});
+	}
+
+	// ============================================
+	// Overlay View (for floating toolbar, menus)
+	// Creates WebContentsView that renders ON TOP of browser view
+	// ============================================
+
+	async createOverlayView(browserViewId: number, bounds: ViewBounds, htmlContent: string): Promise<number> {
+		const window = this.browserWindows.get(browserViewId);
+		if (!window || window.isDestroyed()) {
+			throw new Error(`Window for browser view ${browserViewId} not found`);
+		}
+
+		// Create overlay WebContentsView with transparent background
+		const overlayView = new WebContentsView({
+			webPreferences: {
+				nodeIntegration: false,
+				contextIsolation: true,
+				// Allow inline scripts for our HTML content
+				webSecurity: true
+			}
+		});
+
+		// Set bounds
+		overlayView.setBounds({
+			x: Math.round(bounds.x),
+			y: Math.round(bounds.y),
+			width: Math.round(bounds.width),
+			height: Math.round(bounds.height)
+		});
+
+		// Make background transparent so we only see the UI elements
+		overlayView.setBackgroundColor('#00000000');
+
+		// Add to window - this automatically puts it on top of existing views
+		// (later additions are on top)
+		window.contentView.addChildView(overlayView);
+
+		// Load HTML content as data URL
+		const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`;
+		await overlayView.webContents.loadURL(dataUrl);
+
+		const overlayViewId = overlayView.webContents.id;
+
+		// Store reference
+		this.overlayViews.set(overlayViewId, {
+			view: overlayView,
+			parentBrowserViewId: browserViewId
+		});
+
+		console.log(`[ProjectModeV2] Created overlay view ${overlayViewId} for browser ${browserViewId}`);
+
+		return overlayViewId;
+	}
+
+	async setOverlayBounds(overlayViewId: number, bounds: ViewBounds): Promise<void> {
+		const overlayData = this.overlayViews.get(overlayViewId);
+		if (overlayData) {
+			overlayData.view.setBounds({
+				x: Math.round(bounds.x),
+				y: Math.round(bounds.y),
+				width: Math.round(bounds.width),
+				height: Math.round(bounds.height)
+			});
+		}
+	}
+
+	async setOverlayContent(overlayViewId: number, htmlContent: string): Promise<void> {
+		const overlayData = this.overlayViews.get(overlayViewId);
+		if (overlayData && !overlayData.view.webContents.isDestroyed()) {
+			const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`;
+			await overlayData.view.webContents.loadURL(dataUrl);
+		}
+	}
+
+	async setOverlayVisible(overlayViewId: number, visible: boolean): Promise<void> {
+		const overlayData = this.overlayViews.get(overlayViewId);
+		if (overlayData) {
+			overlayData.view.setVisible(visible);
+
+			// If making visible, ensure it's on top by re-adding to parent
+			if (visible) {
+				const window = this.browserWindows.get(overlayData.parentBrowserViewId);
+				if (window && !window.isDestroyed() && window.contentView) {
+					// Remove and re-add to bring to top
+					try {
+						window.contentView.removeChildView(overlayData.view);
+						window.contentView.addChildView(overlayData.view);
+					} catch (e) {
+						console.error('[ProjectModeV2] Error bringing overlay to top:', e);
+					}
+				}
+			}
+		}
+	}
+
+	async destroyOverlayView(overlayViewId: number): Promise<void> {
+		const overlayData = this.overlayViews.get(overlayViewId);
+		if (!overlayData) {
+			return;
+		}
+
+		const { view, parentBrowserViewId } = overlayData;
+		const window = this.browserWindows.get(parentBrowserViewId);
+
+		// Remove from window
+		if (window && !window.isDestroyed() && window.contentView) {
+			try {
+				window.contentView.removeChildView(view);
+			} catch (e) {
+				console.error('[ProjectModeV2] Error removing overlay view:', e);
+			}
+		}
+
+		// Destroy webContents
+		if (!view.webContents.isDestroyed()) {
+			try {
+				view.webContents.close();
+			} catch (e) {
+				console.error('[ProjectModeV2] Error closing overlay webContents:', e);
+			}
+		}
+
+		this.overlayViews.delete(overlayViewId);
+		console.log(`[ProjectModeV2] Destroyed overlay view ${overlayViewId}`);
+	}
+
+	/**
+	 * Destroy all overlays for a browser view
+	 * Called when browser view is destroyed
+	 */
+	private destroyOverlaysForBrowser(browserViewId: number): void {
+		const overlaysToDestroy: number[] = [];
+
+		for (const [overlayViewId, overlayData] of this.overlayViews) {
+			if (overlayData.parentBrowserViewId === browserViewId) {
+				overlaysToDestroy.push(overlayViewId);
+			}
+		}
+
+		for (const overlayViewId of overlaysToDestroy) {
+			this.destroyOverlayView(overlayViewId);
+		}
 	}
 }

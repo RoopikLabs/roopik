@@ -17,6 +17,7 @@ These documents cover challenges faced while implementing the Browser Preview V2
 | Double browser view creation | RESOLVED | [Double Initialization](./BROWSER_VIEW_DOUBLE_INITIALIZATION.md) |
 | Placeholder hidden by native view | RESOLVED | [Visibility](./WEBCONTENTSVIEW_VISIBILITY.md) |
 | Localhost/dev server not loading | RESOLVED | [Localhost Loading](./LOCALHOST_LOADING.md) |
+| UI overlays hidden behind browser | RESOLVED | [Overlay UI](./OVERLAY_UI_ON_WEBCONTENTSVIEW.md) |
 
 ---
 
@@ -46,6 +47,11 @@ These documents cover challenges faced while implementing the Browser Preview V2
 **Issue**: `http://localhost:5173` shows white screen with no errors (silent failure).
 **Solution**: Configure session with proxy bypass, certificate verification, and permission handlers.
 **File**: [LOCALHOST_LOADING.md](./LOCALHOST_LOADING.md)
+
+### The Overlay UI Problem
+**Issue**: Floating toolbars, dropdown menus, and overlays hidden behind WebContentsView.
+**Solution**: Stacking Strategy - create additional WebContentsView layers with transparent backgrounds.
+**File**: [OVERLAY_UI_ON_WEBCONTENTSVIEW.md](./OVERLAY_UI_ON_WEBCONTENTSVIEW.md)
 
 ---
 
@@ -125,6 +131,30 @@ browserSession.setCertificateVerifyProc((_request, callback) => callback(0));
 browserSession.setPermissionRequestHandler((_, permission, callback) => {
     callback(['media', 'clipboard-read', 'clipboard-write'].includes(permission));
 });
+```
+
+### 6. Stacking Strategy Pattern (Overlay UI)
+```typescript
+// Problem: DOM elements CANNOT appear above WebContentsView
+// Solution: Stack multiple WebContentsViews
+
+// Browser view (bottom layer)
+window.contentView.addChildView(browserView);
+
+// Overlay view with transparent background (top layer)
+const overlayView = new WebContentsView({ /* ... */ });
+overlayView.setBackgroundColor('#00000000');  // Transparent!
+window.contentView.addChildView(overlayView);  // Added later = on top
+
+// Load HTML with transparent background
+const html = `<html><body style="background:transparent">
+    <div class="floating-toolbar">...</div>
+</body></html>`;
+overlayView.webContents.loadURL(`data:text/html,${encodeURIComponent(html)}`);
+
+// Bring to top when showing
+window.contentView.removeChildView(overlayView);
+window.contentView.addChildView(overlayView);  // Re-add = topmost
 ```
 
 ---

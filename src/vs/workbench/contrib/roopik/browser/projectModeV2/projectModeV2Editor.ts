@@ -22,6 +22,7 @@ import { ProjectModeV2ServiceBridge } from './projectModeV2ServiceBridge.js';
 import { PROJECT_MODE_V2_CHANNEL } from '../../common/projectModeV2/ipc.js';
 import { BrowserControlBarV2, IBrowserControlBarV2Config, IBrowserControlBarV2Callbacks } from './browserControlBarV2.js';
 import type { ViewBounds, DevicePreset } from '../../common/projectModeV2/types.js';
+import { generateFloatingToolbarHtml, FloatingToolbarState } from './floatingToolbarHtml.js';
 
 /**
  * Project Mode V2 Editor
@@ -68,6 +69,13 @@ export class ProjectModeV2Editor extends EditorPane {
 	// Track if a real URL has been loaded (not about:blank)
 	// Used to decide whether to show placeholder on tab switch
 	private hasLoadedUrl: boolean = false;
+
+	// Floating toolbar overlay
+	private floatingToolbarViewId: number | undefined;
+	private floatingToolbarState: FloatingToolbarState = {
+		activeMode: 'none',
+		isExpanded: false
+	};
 
 	constructor(
 		group: IEditorGroup,
@@ -158,6 +166,8 @@ export class ProjectModeV2Editor extends EditorPane {
 		// Setup ResizeObserver for automatic bounds updates
 		this.resizeObserver = new ResizeObserver(() => {
 			this.updateViewBounds();
+			// Also update floating toolbar bounds on resize
+			this.updateFloatingToolbarBounds();
 		});
 		this.resizeObserver.observe(this.browserContainer);
 		this.resizeObserver.observe(this.devtoolsContainer);
@@ -245,6 +255,9 @@ export class ProjectModeV2Editor extends EditorPane {
 			this.browserService.setBrowserVisible(this.browserViewId, true);
 			// Update bounds after making visible
 			this.updateViewBounds();
+
+			// Show floating toolbar when URL is loaded
+			this.createFloatingToolbar();
 		}
 	}
 
@@ -260,6 +273,10 @@ export class ProjectModeV2Editor extends EditorPane {
 		// This properly hides the native view without destroying state
 		if (this.browserViewId) {
 			this.browserService.setBrowserVisible(this.browserViewId, false);
+		}
+		// Hide floating toolbar when placeholder is shown
+		if (this.floatingToolbarViewId) {
+			this.setFloatingToolbarVisible(false);
 		}
 	}
 
@@ -728,6 +745,100 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	// ============================================
+	// Floating Toolbar (Overlay)
+	// ============================================
+
+	/**
+	 * Create floating toolbar overlay
+	 * This creates a WebContentsView that renders ON TOP of the browser view
+	 */
+	private async createFloatingToolbar(): Promise<void> {
+		if (!this.browserViewId || !this.browserContainer) {
+			return;
+		}
+
+		// Don't create if already exists
+		if (this.floatingToolbarViewId) {
+			return;
+		}
+
+		try {
+			// Calculate toolbar bounds - bottom center of browser container
+			const browserRect = this.browserContainer.getBoundingClientRect();
+			const toolbarWidth = 280;
+			const toolbarHeight = 60;
+
+			const bounds: ViewBounds = {
+				x: Math.floor(browserRect.left + (browserRect.width - toolbarWidth) / 2),
+				y: Math.floor(browserRect.bottom - toolbarHeight - 16), // 16px from bottom
+				width: toolbarWidth,
+				height: toolbarHeight
+			};
+
+			// Generate HTML content
+			const htmlContent = generateFloatingToolbarHtml(this.floatingToolbarState);
+
+			// Create overlay view
+			this.floatingToolbarViewId = await this.browserService.createOverlayView(
+				this.browserViewId,
+				bounds,
+				htmlContent
+			);
+
+			this.logger.info(`[ProjectModeV2] Floating toolbar created: overlayId=${this.floatingToolbarViewId}`);
+		} catch (error) {
+			this.logger.error('[ProjectModeV2] Failed to create floating toolbar:', error);
+		}
+	}
+
+	/**
+	 * Update floating toolbar bounds when browser container resizes
+	 */
+	private async updateFloatingToolbarBounds(): Promise<void> {
+		if (!this.floatingToolbarViewId || !this.browserContainer) {
+			return;
+		}
+
+		const browserRect = this.browserContainer.getBoundingClientRect();
+		const toolbarWidth = 280;
+		const toolbarHeight = 60;
+
+		const bounds: ViewBounds = {
+			x: Math.floor(browserRect.left + (browserRect.width - toolbarWidth) / 2),
+			y: Math.floor(browserRect.bottom - toolbarHeight - 16),
+			width: toolbarWidth,
+			height: toolbarHeight
+		};
+
+		await this.browserService.setOverlayBounds(this.floatingToolbarViewId, bounds);
+	}
+
+	/**
+	 * Show/hide floating toolbar
+	 */
+	private async setFloatingToolbarVisible(visible: boolean): Promise<void> {
+		if (!this.floatingToolbarViewId) {
+			if (visible) {
+				// Create toolbar if it doesn't exist and we want to show it
+				await this.createFloatingToolbar();
+			}
+			return;
+		}
+
+		await this.browserService.setOverlayVisible(this.floatingToolbarViewId, visible);
+	}
+
+	/**
+	 * Destroy floating toolbar
+	 */
+	private async destroyFloatingToolbar(): Promise<void> {
+		if (this.floatingToolbarViewId) {
+			await this.browserService.destroyOverlayView(this.floatingToolbarViewId);
+			this.floatingToolbarViewId = undefined;
+		}
+	}
+
+	// ============================================
 	// Device Emulation
 	// ============================================
 
@@ -897,6 +1008,8 @@ export class ProjectModeV2Editor extends EditorPane {
 				}
 				// Update bounds after making visible
 				setTimeout(() => this.updateViewBounds(), 0);
+				// Show floating toolbar
+				this.setFloatingToolbarVisible(true);
 			} else {
 				// No URL loaded - show placeholder (browser stays hidden)
 				this.showPlaceholder();
@@ -907,6 +1020,8 @@ export class ProjectModeV2Editor extends EditorPane {
 			if (this.browserViewId) {
 				this.browserService.setBrowserVisible(this.browserViewId, false);
 			}
+			// Hide floating toolbar
+			this.setFloatingToolbarVisible(false);
 		}
 	}
 
@@ -947,6 +1062,10 @@ export class ProjectModeV2Editor extends EditorPane {
 
 		// Hide views immediately
 		this.hideViews();
+
+		// Destroy floating toolbar
+		this.destroyFloatingToolbar()
+			.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy floating toolbar:', err));
 
 		// Destroy browser view - this is the ONLY place we destroy
 		// (clearInput just hides, dispose actually destroys)

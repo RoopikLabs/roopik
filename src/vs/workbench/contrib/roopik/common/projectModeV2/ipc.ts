@@ -170,4 +170,39 @@ export interface IProjectModeV2Service {
 	 * Get debugging WebSocket URL for MCP connection
 	 */
 	getDebuggingUrl(browserViewId: number): Promise<string>;
+
+	// ============================================
+	// Overlay View (for floating toolbar, menus)
+	// CRITICAL: Creates WebContentsView that renders ON TOP of browser
+	// ============================================
+
+	/**
+	 * Create overlay view for floating UI elements (toolbar, menus)
+	 * This creates a transparent WebContentsView positioned above the browser
+	 * @param browserViewId - Parent browser view ID
+	 * @param bounds - Position and size of overlay
+	 * @param htmlContent - HTML content to render in overlay
+	 * @returns Overlay view ID
+	 */
+	createOverlayView(browserViewId: number, bounds: ViewBounds, htmlContent: string): Promise<number>;
+
+	/**
+	 * Update overlay view bounds
+	 */
+	setOverlayBounds(overlayViewId: number, bounds: ViewBounds): Promise<void>;
+
+	/**
+	 * Update overlay HTML content
+	 */
+	setOverlayContent(overlayViewId: number, htmlContent: string): Promise<void>;
+
+	/**
+	 * Show/hide overlay view
+	 */
+	setOverlayVisible(overlayViewId: number, visible: boolean): Promise<void>;
+
+	/**
+	 * Destroy overlay view
+	 */
+	destroyOverlayView(overlayViewId: number): Promise<void>;
 }

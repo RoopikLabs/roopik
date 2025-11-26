@@ -136,4 +136,28 @@ export class ProjectModeV2ServiceBridge implements IProjectModeV2Service {
 	async getDebuggingUrl(browserViewId: number): Promise<string> {
 		return this.channel.call('getDebuggingUrl', browserViewId);
 	}
+
+	// ============================================
+	// Overlay View
+	// ============================================
+
+	async createOverlayView(browserViewId: number, bounds: ViewBounds, htmlContent: string): Promise<number> {
+		return this.channel.call('createOverlayView', { browserViewId, bounds, htmlContent });
+	}
+
+	async setOverlayBounds(overlayViewId: number, bounds: ViewBounds): Promise<void> {
+		return this.channel.call('setOverlayBounds', { overlayViewId, bounds });
+	}
+
+	async setOverlayContent(overlayViewId: number, htmlContent: string): Promise<void> {
+		return this.channel.call('setOverlayContent', { overlayViewId, htmlContent });
+	}
+
+	async setOverlayVisible(overlayViewId: number, visible: boolean): Promise<void> {
+		return this.channel.call('setOverlayVisible', { overlayViewId, visible });
+	}
+
+	async destroyOverlayView(overlayViewId: number): Promise<void> {
+		return this.channel.call('destroyOverlayView', overlayViewId);
+	}
 }
