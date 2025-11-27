@@ -96,9 +96,9 @@ export class ProjectModeV2Editor extends EditorPane {
 	private devtoolsMinHeight: number = 100; // Minimum DevTools height in pixels
 	private devtoolsMaxHeightRatio: number = 0.8; // Max 80% of content area
 
-	// Track if we've registered the input dispose listener (to avoid duplicate registrations)
-	// setInput() is called on EVERY tab switch, not just once!
-	private inputDisposeListenerRegistered: boolean = false;
+	// Track WHICH input we've registered the dispose listener for
+	// setInput() is called on EVERY tab switch, and may pass a different input instance!
+	private registeredInputForDispose: ProjectModeV2Input | undefined;
 
 	constructor(
 		group: IEditorGroup,
@@ -1246,9 +1246,14 @@ export class ProjectModeV2Editor extends EditorPane {
 
 			// CRITICAL: Listen for input disposal - this means the TAB is truly closed
 			// (not just hidden for tab switching). When input is disposed, destroy the browser!
-			// NOTE: Only register ONCE! setInput() is called on every tab switch, not just once.
-			if (!this.inputDisposeListenerRegistered) {
-				this.inputDisposeListenerRegistered = true;
+			// NOTE: Only register if we haven't registered for THIS SPECIFIC input instance.
+			// setInput() may be called with different input instances on tab switch!
+			if (this.registeredInputForDispose !== input) {
+				// DEBUG: Log when input changes (should be rare with our matches() fix)
+				if (this.registeredInputForDispose) {
+					this.logger.warn(`[ProjectModeV2] #${this.instanceId} ⚠️ INPUT CHANGED! Old input replaced with new one`);
+				}
+				this.registeredInputForDispose = input;
 				this._register(input.onWillDispose(() => {
 					this.logger.info(`[ProjectModeV2] #${this.instanceId} 🚨 INPUT DISPOSED - Tab closed! Destroying browser (viewId=${this.browserViewId})`);
 					this.destroyBrowserNow();
