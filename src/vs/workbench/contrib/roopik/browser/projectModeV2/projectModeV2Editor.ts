@@ -23,6 +23,7 @@ import { PROJECT_MODE_V2_CHANNEL } from '../../common/projectModeV2/ipc.js';
 import { BrowserControlBarV2, IBrowserControlBarV2Config, IBrowserControlBarV2Callbacks } from './browserControlBarV2.js';
 import type { ViewBounds, DevicePreset, DevToolsMode, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
 import { generateFloatingToolbarHtml, FloatingToolbarState } from './floatingToolbarHtml.js';
+import { IRoopikEventService } from '../../common/events/index.js';
 
 /**
  * DevTools mode configuration flag
@@ -102,13 +103,60 @@ export class ProjectModeV2Editor extends EditorPane {
 		@IStorageService storageService: IStorageService,
 		@ILoggerService loggerService: ILoggerService,
 		@IMainProcessService mainProcessService: IMainProcessService,
-		@INativeHostService private readonly nativeHostService: INativeHostService
+		@INativeHostService private readonly nativeHostService: INativeHostService,
+		@IRoopikEventService private readonly eventService: IRoopikEventService
 	) {
 		super(ProjectModeV2Editor.ID, group, telemetryService, themeService, storageService);
 		this.instanceId = ++ProjectModeV2Editor.instanceCounter;
 		this.logger = RoopikLogger.create(loggerService);
 		this.browserService = new ProjectModeV2ServiceBridge(mainProcessService.getChannel(PROJECT_MODE_V2_CHANNEL));
 		this.logger.info(`[ProjectModeV2] Editor instance #${this.instanceId} created`);
+
+		// Setup event subscriptions for UI updates
+		this.setupEventSubscriptions();
+	}
+
+	/**
+	 * Subscribe to events from the central event bus for UI updates
+	 * This demonstrates the event-driven architecture where:
+	 * 1. IPC event comes from main process
+	 * 2. We publish to EventService (📤 PUBLISH)
+	 * 3. Subscribers receive and update UI (📥 RECEIVED)
+	 */
+	private setupEventSubscriptions(): void {
+		// Subscribe to navigation events - update URL bar
+		this._register(this.eventService.onBrowserNavigated((event) => {
+			this.logger.info(`[ProjectModeV2] 📥 RECEIVED browser.navigated via EventService (url=${event.url})`);
+
+			// Update URL bar
+			if (this.controlBar) {
+				this.controlBar.setUrl(event.url);
+			}
+
+			// Update placeholder visibility based on URL
+			const isRealUrl = event.url && event.url !== 'about:blank';
+			if (isRealUrl) {
+				if (!this.hasLoadedUrl) {
+					this.hasLoadedUrl = true;
+					this.hidePlaceholder();
+				}
+			} else {
+				if (this.hasLoadedUrl) {
+					this.hasLoadedUrl = false;
+					this.showPlaceholder();
+				}
+			}
+		}));
+
+		// Subscribe to title change events - update tab title
+		this._register(this.eventService.onBrowserTitleChanged((event) => {
+			this.logger.info(`[ProjectModeV2] 📥 RECEIVED browser.titleChanged via EventService (title="${event.title}")`);
+
+			const input = this.input as ProjectModeV2Input;
+			if (input) {
+				input.setPageTitle(event.title);
+			}
+		}));
 	}
 
 	protected createEditor(parent: HTMLElement): void {
@@ -552,6 +600,14 @@ export class ProjectModeV2Editor extends EditorPane {
 
 			this.logger.info(`[ProjectModeV2] #${this.instanceId} Browser view created: viewId=${this.browserViewId}`);
 
+			// Publish browser created event to central event bus
+			this.eventService.publish('browser.created', {
+				browserViewId: this.browserViewId,
+				windowId,
+				url: 'about:blank',
+				title: 'Browser Preview'
+			});
+
 			// Subscribe to DevTools closed event (handles user closing via X button)
 			// This is event-driven, not polling - much more efficient!
 			this._register(this.browserService.onDevToolsClosed((event) => {
@@ -573,6 +629,22 @@ export class ProjectModeV2Editor extends EditorPane {
 			// This is event-driven - fires on URL change, title change, loading state change
 			this._register(this.browserService.onNavigationStateChanged((event) => {
 				this.handleNavigationStateChanged(event);
+			}));
+
+			// Subscribe to browser list changed event and forward to central event bus
+			// This allows Welcome Screen and other UI to react to browser changes
+			this._register(this.browserService.onBrowserListChanged((event) => {
+				this.eventService.publish('browser.listChanged', {
+					browsers: event.browsers.map(b => ({
+						browserViewId: b.browserViewId,
+						windowId: b.windowId,
+						url: b.url,
+						title: b.title,
+						createdAt: b.createdAt
+					})),
+					count: event.count,
+					maxCount: event.maxCount
+				});
 			}));
 
 			// Show placeholder initially (hides WebContentsView until user navigates)
@@ -632,10 +704,21 @@ export class ProjectModeV2Editor extends EditorPane {
 			if (!this.wasLoading) {
 				this.wasLoading = true;
 				this.controlBar?.showLoading();
+
+				// Publish loading started event
+				this.eventService.publish('browser.loadingStarted', {
+					browserViewId: event.browserViewId
+				});
 			}
 		} else {
 			// Not loading - ALWAYS hide loading bar
 			// This is critical because did-stop-loading sends isLoading=false explicitly
+			if (this.wasLoading) {
+				// Publish loading finished event
+				this.eventService.publish('browser.loadingFinished', {
+					browserViewId: event.browserViewId
+				});
+			}
 			this.wasLoading = false;
 			this.controlBar?.hideLoading();
 		}
@@ -664,37 +747,28 @@ export class ProjectModeV2Editor extends EditorPane {
 		if (currentUrl !== this.lastKnownUrl) {
 			this.lastKnownUrl = currentUrl;
 
-			// Update URL bar
-			if (this.controlBar) {
-				this.controlBar.setUrl(currentUrl);
-			}
+			// Publish navigation event to central event bus (title is sent separately via titleChanged)
+			this.logger.info(`[ProjectModeV2] 📤 PUBLISH browser.navigated via EventService (url=${currentUrl})`);
+			this.eventService.publish('browser.navigated', {
+				browserViewId: event.browserViewId,
+				url: currentUrl
+			});
 
-			// Update placeholder visibility based on URL
-			// This handles back/forward navigation correctly
-			if (isRealUrl) {
-				// Navigated to a real URL - hide placeholder, show browser
-				if (!this.hasLoadedUrl) {
-					this.hasLoadedUrl = true;
-					this.hidePlaceholder();
-				}
-			} else {
-				// Navigated to about:blank - show placeholder, hide browser
-				if (this.hasLoadedUrl) {
-					this.hasLoadedUrl = false;
-					this.showPlaceholder();
-				}
-			}
+			// UI updates now happen via event subscription (see setupEventSubscriptions)
 		}
 
 		// Update tab title when page title changes
 		if (currentTitle !== this.lastKnownTitle) {
 			this.lastKnownTitle = currentTitle;
-			const input = this.input as ProjectModeV2Input;
-			if (input) {
-				// Always update title, even if empty (to clear stale titles)
-				// setPageTitle handles empty titles gracefully
-				input.setPageTitle(currentTitle);
-			}
+
+			// Publish title changed event to central event bus
+			this.logger.info(`[ProjectModeV2] 📤 PUBLISH browser.titleChanged via EventService (title="${currentTitle}")`);
+			this.eventService.publish('browser.titleChanged', {
+				browserViewId: event.browserViewId,
+				title: currentTitle
+			});
+
+			// UI updates now happen via event subscription (see setupEventSubscriptions)
 		}
 
 		// Update back/forward button states
@@ -1303,27 +1377,21 @@ export class ProjectModeV2Editor extends EditorPane {
 	override clearInput(): void {
 		super.clearInput();
 
-		// IMPORTANT: Destroy browser view here!
-		// VSCode reuses editor instances, so dispose() may never be called.
-		// We must destroy the browser when the tab is closed to free resources.
-		// A new browser will be created in setInput() when the tab is reopened.
+		// IMPORTANT: Only HIDE the browser view here, don't destroy it!
+		// clearInput() is called when switching tabs - we want to preserve the browser state.
+		// The browser should only be destroyed in dispose() when the editor is actually closed.
 		if (this.browserViewId) {
-			this.logger.info(`[ProjectModeV2] #${this.instanceId} clearInput: destroying browser view (viewId=${this.browserViewId})`);
-			this.browserService.destroyBrowserView(this.browserViewId)
-				.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy browser view in clearInput:', err));
-			this.browserViewId = undefined;
+			this.logger.info(`[ProjectModeV2] #${this.instanceId} clearInput: hiding browser view (viewId=${this.browserViewId}) - preserving state`);
+			this.browserService.setBrowserVisible(this.browserViewId, false);
 		}
 
-		// Reset state for potential editor reuse
-		this.hasLoadedUrl = false;
-		this.lastKnownUrl = '';
-		this.lastKnownTitle = '';
-		this.initializationPromise = undefined;
-		this.isInitializing = false;
+		// Hide floating toolbar but don't destroy
+		if (this.floatingToolbarViewId) {
+			this.setFloatingToolbarVisible(false);
+		}
 
-		// Destroy floating toolbar
-		this.destroyFloatingToolbar()
-			.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy floating toolbar in clearInput:', err));
+		// Note: We do NOT reset hasLoadedUrl, lastKnownUrl, lastKnownTitle etc.
+		// because the browser is still alive and will be shown again in setInput()
 	}
 
 	override focus(): void {
@@ -1354,7 +1422,14 @@ export class ProjectModeV2Editor extends EditorPane {
 		// Destroy browser view - this is the ONLY place we destroy
 		// (clearInput just hides, dispose actually destroys)
 		if (this.browserViewId) {
-			this.browserService.destroyBrowserView(this.browserViewId)
+			const destroyedBrowserViewId = this.browserViewId;
+
+			// Publish browser destroyed event to central event bus
+			this.eventService.publish('browser.destroyed', {
+				browserViewId: destroyedBrowserViewId
+			});
+
+			this.browserService.destroyBrowserView(destroyedBrowserViewId)
 				.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy browser view in dispose:', err));
 			this.browserViewId = undefined;
 		}

@@ -25,6 +25,9 @@ import { ProjectModeEditor } from './projectMode/projectModeEditor.js';
 import { ProjectModeInput, ProjectModeInputSerializer } from './projectMode/projectModeInput.js';
 import { ProjectModeV2Editor } from './projectModeV2/projectModeV2Editor.js';
 import { ProjectModeV2Input } from './projectModeV2/projectModeV2Input.js';
+import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+import { IRoopikEventService, RoopikEventService } from '../common/events/index.js';
+import { IRoopikSettingsService, RoopikSettingsService } from '../common/settings/index.js';
 
 /**
  * Roopik Design IDE - Main Contribution
@@ -112,9 +115,28 @@ registerAction2(class extends Action2 {
 
 	async run(accessor: ServicesAccessor): Promise<void> {
 		const editorService = accessor.get(IEditorService);
-		const welcomeInput = RoopikWelcomeInput.getInstance();
+		const welcomeInput = RoopikWelcomeInput.getInstance('welcome');
 		// Open in new tab and focus on it
 		await editorService.openEditor(welcomeInput, { pinned: true });
+	}
+});
+
+// Open Settings (Preferences)
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'roopik.openSettings',
+			title: localize2('roopik.openSettings', 'Settings'),
+			category: localize2('roopik.category', 'Roopik'),
+			f1: true
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const editorService = accessor.get(IEditorService);
+		const settingsInput = RoopikWelcomeInput.getInstance('settings');
+		// Open in new tab and focus on it
+		await editorService.openEditor(settingsInput, { pinned: true });
 	}
 });
 
@@ -210,7 +232,7 @@ class RoopikStartupContribution extends Disposable implements IWorkbenchContribu
 		// VSCode automatically restores editors on reload, so welcome screen will restore if it was open
 		if (showOnStartup && this.lifecycleService.startupKind !== StartupKind.ReloadedWindow) {
 			if (!this.editorService.activeEditor || this.layoutService.openedDefaultEditors) {
-				const welcomeInput = RoopikWelcomeInput.getInstance();
+				const welcomeInput = RoopikWelcomeInput.getInstance('welcome');
 				await this.editorService.openEditor(welcomeInput);
 			}
 		}
@@ -221,3 +243,13 @@ registerWorkbenchContribution2(RoopikStartupContribution.ID, RoopikStartupContri
 
 // Register Roopik views (Activity Bar)
 registerWorkbenchContribution2(RoopikViewsContribution.ID, RoopikViewsContribution, WorkbenchPhase.BlockStartup);
+
+// ============================================================================
+// Service Registration
+// ============================================================================
+
+// Register Event Service (central pub/sub for all Roopik events)
+registerSingleton(IRoopikEventService, RoopikEventService, InstantiationType.Delayed);
+
+// Register Settings Service (persistence + configuration management)
+registerSingleton(IRoopikSettingsService, RoopikSettingsService, InstantiationType.Delayed);
