@@ -901,6 +901,11 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		webContents.on('did-stop-loading', () => {
 			// Fire event with EXPLICIT isLoading = false
 			this.fireNavigationStateChanged(browserViewId, false);
+
+			// CRITICAL: Set visual zoom limits AFTER page loads (per Electron docs)
+			// This enables pinch-to-zoom on touchpads
+			// Must be called after content is loaded for visual zoom to work properly
+			webContents.setVisualZoomLevelLimits(1, 5);
 		});
 
 		// NOTE: New window requests (Ctrl+Click, target="_blank", window.open, etc.)
@@ -933,10 +938,9 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	private setupZoomHandlers(browserView: WebContentsView): void {
 		const wc = browserView.webContents;
 
-		// Enable pinch-to-zoom (touchpad gesture zoom)
-		// Parameters: minimum zoom factor, maximum zoom factor
-		// 0.25 = 25% minimum, 5 = 500% maximum
-		wc.setVisualZoomLevelLimits(0.25, 5);
+		// NOTE: setVisualZoomLevelLimits is called in did-stop-loading event
+		// (after page loads) per Electron documentation requirements
+		// This ensures visual zoom works properly with pinch gestures
 
 		// Handle keyboard zoom shortcuts (Ctrl++, Ctrl+-, Ctrl+0)
 		wc.on('before-input-event', (event, input) => {
