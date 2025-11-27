@@ -3,10 +3,11 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { BrowserWindow, WebContentsView, session } from 'electron';
+import { BrowserWindow, WebContentsView, session, app } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
 import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsMode, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
+import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
 
 /**
  * Browser View Service V2
@@ -107,6 +108,11 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 				const allowedPermissions = ['media', 'geolocation', 'notifications', 'clipboard-read', 'clipboard-write', 'midi', 'pointerLock', 'fullscreen'];
 				callback(allowedPermissions.includes(permission));
 			});
+
+			// D. Load DevTools Extensions (React DevTools, Vue DevTools, etc.)
+			// Extensions are loaded from resources/devtools-extensions/
+			// User can add new extensions by extracting CRX files and updating manifest.json
+			this.loadDevToolsExtensionsAsync(browserSession);
 		}
 
 		// =========================================================
@@ -657,6 +663,37 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		return browserView.webContents.debugger.isAttached()
 			? `ws://127.0.0.1:9222/devtools/page/${browserViewId}`
 			: '';
+	}
+
+	// ============================================
+	// DevTools Extensions
+	// ============================================
+
+	/**
+	 * Load DevTools extensions asynchronously (fire-and-forget)
+	 * Called once during session initialization
+	 */
+	private loadDevToolsExtensionsAsync(browserSession: Electron.Session): void {
+		// Get app path - this is where resources/ folder is located
+		const appPath = app.getAppPath();
+
+		// Load extensions asynchronously - don't block browser creation
+		const loader = DevToolsExtensionLoader.getInstance(appPath);
+		loader.loadExtensions(browserSession)
+			.then(results => {
+				const loaded = results.filter(r => r.success);
+				const failed = results.filter(r => !r.success);
+
+				if (loaded.length > 0) {
+					console.log(`[ProjectModeV2] Loaded ${loaded.length} DevTools extension(s): ${loaded.map(r => r.name).join(', ')}`);
+				}
+				if (failed.length > 0) {
+					console.warn(`[ProjectModeV2] Failed to load ${failed.length} extension(s): ${failed.map(r => `${r.name} (${r.error})`).join(', ')}`);
+				}
+			})
+			.catch(e => {
+				console.error('[ProjectModeV2] Error loading DevTools extensions:', e);
+			});
 	}
 
 	// ============================================
