@@ -17,7 +17,6 @@ import {
 	BrowserTitleChangedEvent,
 	BrowserLoadingStartedEvent,
 	BrowserLoadingFinishedEvent,
-	BrowserListChangedEvent,
 	CanvasCreatedEvent,
 	CanvasDestroyedEvent,
 	CanvasRenamedEvent,
@@ -91,7 +90,6 @@ export interface IRoopikEventService {
 	readonly onBrowserTitleChanged: Event<BrowserTitleChangedEvent>;
 	readonly onBrowserLoadingStarted: Event<BrowserLoadingStartedEvent>;
 	readonly onBrowserLoadingFinished: Event<BrowserLoadingFinishedEvent>;
-	readonly onBrowserListChanged: Event<BrowserListChangedEvent>;
 
 	// Canvas events
 	readonly onCanvasCreated: Event<CanvasCreatedEvent>;
@@ -133,7 +131,6 @@ export class RoopikEventService extends Disposable implements IRoopikEventServic
 	private readonly _onBrowserTitleChanged = this._register(new Emitter<BrowserTitleChangedEvent>());
 	private readonly _onBrowserLoadingStarted = this._register(new Emitter<BrowserLoadingStartedEvent>());
 	private readonly _onBrowserLoadingFinished = this._register(new Emitter<BrowserLoadingFinishedEvent>());
-	private readonly _onBrowserListChanged = this._register(new Emitter<BrowserListChangedEvent>());
 
 	// Canvas
 	private readonly _onCanvasCreated = this._register(new Emitter<CanvasCreatedEvent>());
@@ -170,7 +167,6 @@ export class RoopikEventService extends Disposable implements IRoopikEventServic
 	readonly onBrowserTitleChanged = this._onBrowserTitleChanged.event;
 	readonly onBrowserLoadingStarted = this._onBrowserLoadingStarted.event;
 	readonly onBrowserLoadingFinished = this._onBrowserLoadingFinished.event;
-	readonly onBrowserListChanged = this._onBrowserListChanged.event;
 
 	// Canvas
 	readonly onCanvasCreated = this._onCanvasCreated.event;
@@ -208,7 +204,6 @@ export class RoopikEventService extends Disposable implements IRoopikEventServic
 		this.emitterMap.set('browser.titleChanged', this._onBrowserTitleChanged);
 		this.emitterMap.set('browser.loadingStarted', this._onBrowserLoadingStarted);
 		this.emitterMap.set('browser.loadingFinished', this._onBrowserLoadingFinished);
-		this.emitterMap.set('browser.listChanged', this._onBrowserListChanged);
 
 		// Canvas
 		this.emitterMap.set('canvas.created', this._onCanvasCreated);
@@ -323,11 +318,7 @@ export class RoopikEventService extends Disposable implements IRoopikEventServic
 				const browserViewId = obj['browserViewId'];
 				const url = obj['url'];
 				const title = obj['title'];
-				const count = obj['count'];
 
-				if (count !== undefined) {
-					return `(count=${count})`;
-				}
 				if (browserViewId !== undefined) {
 					let result = `(viewId=${browserViewId}`;
 					if (url) {

@@ -25,7 +25,6 @@ export {
 	BrowserTitleChangedEvent,
 	BrowserLoadingStartedEvent,
 	BrowserLoadingFinishedEvent,
-	BrowserListChangedEvent,
 
 	// Canvas events
 	CanvasCreatedEvent,
@@ -49,6 +48,5 @@ export {
 	AgentErrorEvent,
 
 	// Supporting types
-	BrowserInfo,
 	CanvasInfo
 } from './roopikEventTypes.js';

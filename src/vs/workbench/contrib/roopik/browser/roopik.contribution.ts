@@ -184,7 +184,7 @@ registerAction2(class extends Action2 {
 	}
 });
 
-// Open Project Preview V2 (Mode 2 with embedded DevTools)
+// Open Project Preview V2 (Mode 2 with embedded DevTools) - SINGLETON
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
@@ -196,15 +196,11 @@ registerAction2(class extends Action2 {
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
-		const loggerService = accessor.get(ILoggerService);
 		const editorService = accessor.get(IEditorService);
-		const logger = RoopikLogger.create(loggerService);
 
-		logger.debug('[Roopik] Project Preview V2 command invoked');
-		logger.info('[Roopik] Opening Browser Preview V2 with embedded DevTools');
-
-		// Open Project Preview V2 editor in new tab and focus on it
-		const input = new ProjectModeV2Input('about:blank');
+		// SINGLETON: Get the one and only browser instance
+		// If tab already exists, this will focus it
+		const input = ProjectModeV2Input.getInstance();
 		await editorService.openEditor(input, { pinned: true });
 	}
 });

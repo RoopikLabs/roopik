@@ -14,7 +14,6 @@ import { EditorInput } from '../../../common/editor/editorInput.js';
 import { $, append, clearNode, addDisposableListener } from '../../../../base/browser/dom.js';
 import { IEditorGroup } from '../../../services/editor/common/editorGroupsService.js';
 import { FileAccess } from '../../../../base/common/network.js';
-import { IRoopikEventService, BrowserListChangedEvent } from '../common/events/index.js';
 import { IRoopikSettingsService } from '../common/settings/index.js';
 import { RoopikWelcomeInput, WelcomeViewMode } from './welcomeInput.js';
 import './media/welcomeEditor.css';
@@ -25,14 +24,8 @@ export class RoopikWelcomeEditor extends EditorPane {
 
 	private rootElement: HTMLElement | undefined;
 
-	// Browser list section element for live updates
-	private browserListContainer: HTMLElement | undefined;
-
 	// Current view mode (welcome screen or settings)
 	private currentView: WelcomeViewMode = 'welcome';
-
-	// Current browser list data
-	private currentBrowsers: BrowserListChangedEvent['browsers'] = [];
 
 	constructor(
 		group: IEditorGroup,
@@ -40,16 +33,9 @@ export class RoopikWelcomeEditor extends EditorPane {
 		@IThemeService themeService: IThemeService,
 		@IStorageService private readonly storageService: IStorageService,
 		@ICommandService private readonly commandService: ICommandService,
-		@IRoopikEventService private readonly eventService: IRoopikEventService,
 		@IRoopikSettingsService private readonly settingsService: IRoopikSettingsService
 	) {
 		super(RoopikWelcomeEditor.ID, group, telemetryService, themeService, storageService);
-
-		// Subscribe to browser list changes for live updates
-		this._register(this.eventService.onBrowserListChanged((event) => {
-			this.currentBrowsers = event.browsers;
-			this.updateBrowserListUI();
-		}));
 	}
 
 	protected createEditor(parent: HTMLElement): void {
@@ -126,13 +112,6 @@ export class RoopikWelcomeEditor extends EditorPane {
 		for (const card of quickStartCards) {
 			this.createQuickStartCard(quickStartGrid, card.icon, card.titleText, card.description, card.commandId);
 		}
-
-		// Active Browsers section (live-updated via events)
-		const browserSection = append(container, $('.welcome-section'));
-		const browserTitle = append(browserSection, $('.section-title'));
-		browserTitle.textContent = 'Active Browsers';
-		this.browserListContainer = append(browserSection, $('.browser-list'));
-		this.updateBrowserListUI();
 
 		// Highlights / tips
 		const highlightsSection = append(container, $('.welcome-section'));
@@ -401,46 +380,6 @@ export class RoopikWelcomeEditor extends EditorPane {
 
 	override layout(): void {
 		// Responsive layout handled by CSS
-	}
-
-	/**
-	 * Update the browser list UI with current browser data
-	 * Called when browser.listChanged event is received
-	 */
-	private updateBrowserListUI(): void {
-		if (!this.browserListContainer) {
-			return;
-		}
-
-		// Clear existing content
-		clearNode(this.browserListContainer);
-
-		if (this.currentBrowsers.length === 0) {
-			// Show empty state
-			const emptyState = append(this.browserListContainer, $('.browser-list-empty'));
-			emptyState.textContent = 'No active browsers. Click "Browser Preview V2 (Beta)" to open one.';
-			return;
-		}
-
-		// Create a card for each browser
-		for (const browser of this.currentBrowsers) {
-			const browserCard = append(this.browserListContainer, $('.browser-card'));
-
-			const browserIcon = append(browserCard, $('.browser-card-icon'));
-			browserIcon.textContent = '🌐';
-
-			const browserInfo = append(browserCard, $('.browser-card-info'));
-
-			const browserTitleEl = append(browserInfo, $('.browser-card-title'));
-			browserTitleEl.textContent = browser.title || 'Untitled';
-
-			const browserUrlEl = append(browserInfo, $('.browser-card-url'));
-			browserUrlEl.textContent = browser.url || 'about:blank';
-
-			// Make card clickable to focus that browser (future feature)
-			browserCard.style.cursor = 'pointer';
-			browserCard.title = `Browser ${browser.browserViewId}`;
-		}
 	}
 
 	// ============================================================================

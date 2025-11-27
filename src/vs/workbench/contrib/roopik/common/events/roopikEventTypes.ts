@@ -26,7 +26,6 @@ export type RoopikEventTopic =
 	| 'browser.titleChanged'
 	| 'browser.loadingStarted'
 	| 'browser.loadingFinished'
-	| 'browser.listChanged'
 
 	// Canvas events (future)
 	| 'canvas.created'
@@ -104,12 +103,6 @@ export interface BrowserLoadingFinishedEvent extends RoopikBaseEvent {
 	url?: string;
 	/** Optional success flag */
 	success?: boolean;
-}
-
-export interface BrowserListChangedEvent extends RoopikBaseEvent {
-	browsers: BrowserInfo[];
-	count: number;
-	maxCount: number;
 }
 
 // ============================================
@@ -207,14 +200,6 @@ export interface AgentErrorEvent extends RoopikBaseEvent {
 // Supporting Types
 // ============================================
 
-export interface BrowserInfo {
-	browserViewId: number;
-	windowId: number;
-	url: string;
-	title: string;
-	createdAt: number;
-}
-
 export interface CanvasInfo {
 	canvasId: string;
 	name: string;
@@ -239,7 +224,6 @@ export interface RoopikEventMap {
 	'browser.titleChanged': BrowserTitleChangedEvent;
 	'browser.loadingStarted': BrowserLoadingStartedEvent;
 	'browser.loadingFinished': BrowserLoadingFinishedEvent;
-	'browser.listChanged': BrowserListChangedEvent;
 
 	// Canvas
 	'canvas.created': CanvasCreatedEvent;
