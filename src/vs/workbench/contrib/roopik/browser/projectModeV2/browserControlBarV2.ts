@@ -413,7 +413,16 @@ export class BrowserControlBarV2 extends Disposable {
 
 		input.onkeydown = (e) => {
 			if (e.key === 'Enter') {
-				this.callbacks.onNavigate(input.value);
+				let url = input.value.trim();
+
+				// Ctrl+Enter: Auto-append .com (like Chrome/Firefox)
+				if (e.ctrlKey && url && !url.includes('.') && !url.includes(':')) {
+					// Only add .com if it's a simple word without dots or protocol
+					url = `www.${url}.com`;
+					input.value = url;
+				}
+
+				this.callbacks.onNavigate(url);
 			}
 		};
 
@@ -563,6 +572,9 @@ export class BrowserControlBarV2 extends Disposable {
 			this.bookmarkOverlay.style.display = 'flex';
 			this.isBookmarkOverlayVisible = true;
 
+			// Start auto-hide timer (3 seconds) - will be cancelled if mouse enters overlay
+			this.startBookmarkAutoHideTimer();
+
 			// Add click-outside listener to close overlay (like overflow menu does)
 			this.bookmarkClickOutsideHandler = (e: MouseEvent) => {
 				const target = e.target as Node;
@@ -606,6 +618,12 @@ export class BrowserControlBarV2 extends Disposable {
 	 * Hide the bookmark overlay
 	 */
 	private hideBookmarkOverlay(): void {
+		// Clear any pending hide timeout
+		if (this.bookmarkHideTimeout) {
+			clearTimeout(this.bookmarkHideTimeout);
+			this.bookmarkHideTimeout = undefined;
+		}
+
 		if (this.bookmarkOverlay) {
 			this.bookmarkOverlay.style.display = 'none';
 			this.isBookmarkOverlayVisible = false;
@@ -617,6 +635,22 @@ export class BrowserControlBarV2 extends Disposable {
 			document.removeEventListener('click', this.bookmarkClickOutsideHandler);
 			this.bookmarkClickOutsideHandler = undefined;
 		}
+	}
+
+	/**
+	 * Start auto-hide timer for bookmark overlay (3 seconds)
+	 * Called when overlay is shown and when mouse leaves overlay
+	 */
+	private startBookmarkAutoHideTimer(): void {
+		// Clear any existing timeout first
+		if (this.bookmarkHideTimeout) {
+			clearTimeout(this.bookmarkHideTimeout);
+		}
+
+		// Auto-hide after 3 seconds if mouse is not over the overlay
+		this.bookmarkHideTimeout = window.setTimeout(() => {
+			this.hideBookmarkOverlay();
+		}, 3000);
 	}
 
 	/**
@@ -651,8 +685,9 @@ export class BrowserControlBarV2 extends Disposable {
 		this.bookmarkOverlay.style.scrollbarWidth = 'none'; // Firefox
 		(this.bookmarkOverlay.style as unknown as Record<string, string>)['-ms-overflow-style'] = 'none'; // IE
 
-		// Mouse events to keep overlay visible
+		// Mouse events to keep overlay visible while hovering
 		this.bookmarkOverlay.onmouseenter = () => {
+			// Cancel any pending hide timeout when mouse enters
 			if (this.bookmarkHideTimeout) {
 				clearTimeout(this.bookmarkHideTimeout);
 				this.bookmarkHideTimeout = undefined;
@@ -660,9 +695,8 @@ export class BrowserControlBarV2 extends Disposable {
 		};
 
 		this.bookmarkOverlay.onmouseleave = () => {
-			this.bookmarkHideTimeout = window.setTimeout(() => {
-				this.hideBookmarkOverlay();
-			}, 200);
+			// Start 3-second auto-hide timer when mouse leaves
+			this.startBookmarkAutoHideTimer();
 		};
 
 		document.body.appendChild(this.bookmarkOverlay);

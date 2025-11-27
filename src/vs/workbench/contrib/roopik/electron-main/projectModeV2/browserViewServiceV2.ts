@@ -271,6 +271,15 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		const browserView = this.browserViews.get(browserViewId);
 		if (browserView && !browserView.webContents.isDestroyed()) {
 			if (ignoreCache) {
+				// TRUE Hard Reload: Clear session cache completely, then reload
+				// This is equivalent to Chrome's "Empty Cache and Hard Reload"
+				const browserSession = browserView.webContents.session;
+				try {
+					await browserSession.clearCache();
+					console.log('[ProjectModeV2] Cache cleared for hard reload');
+				} catch (e) {
+					console.error('[ProjectModeV2] Failed to clear cache:', e);
+				}
 				browserView.webContents.reloadIgnoringCache();
 			} else {
 				browserView.webContents.reload();
