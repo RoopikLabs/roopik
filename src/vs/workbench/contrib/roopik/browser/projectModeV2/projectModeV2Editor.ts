@@ -110,6 +110,12 @@ export class ProjectModeV2Editor extends EditorPane {
 	// Bookmarks (workspace-scoped storage)
 	private bookmarks: BrowserBookmark[] = [];
 
+	// Inspect element mode state
+	private isInspectModeActive: boolean = false;
+
+	// Edit mode state (controls floating toolbar visibility)
+	private isEditModeActive: boolean = false;
+
 	constructor(
 		group: IEditorGroup,
 		@ITelemetryService telemetryService: ITelemetryService,
@@ -437,7 +443,8 @@ export class ProjectModeV2Editor extends EditorPane {
 			showScreenshot: true,
 			showHardReload: true,
 			showCopyUrl: true,
-			showBookmarks: true
+			showBookmarks: true,
+			showEditMode: true
 		};
 
 		// Browser control bar callbacks
@@ -458,7 +465,9 @@ export class ProjectModeV2Editor extends EditorPane {
 			onBookmarkRemove: (url: string) => this.removeBookmark(url),
 			onBookmarkClick: (url: string) => this.navigateToBookmark(url),
 			getBookmarks: () => this.getBookmarks(),
-			isBookmarked: (url: string) => this.isBookmarked(url)
+			isBookmarked: (url: string) => this.isBookmarked(url),
+			// Edit Mode callback
+			onEditModeToggle: (enabled: boolean) => this.toggleEditModeToolbar(enabled)
 		};
 
 		this.controlBar = this._register(new BrowserControlBarV2(this.container, config, callbacks));
@@ -614,8 +623,11 @@ export class ProjectModeV2Editor extends EditorPane {
 			// Update bounds with robust timing to ensure CSS layout is complete
 			this.updateBoundsWithRetry();
 
-			// Show floating toolbar when URL is loaded
-			this.createFloatingToolbar();
+			// Floating toolbar is now controlled by Edit Mode button (default hidden)
+			// Only show if edit mode is already active
+			if (this.isEditModeActive) {
+				this.createFloatingToolbar();
+			}
 		}
 	}
 
@@ -914,6 +926,14 @@ export class ProjectModeV2Editor extends EditorPane {
 		// Check if URL changed
 		if (currentUrl !== this.lastKnownUrl) {
 			this.lastKnownUrl = currentUrl;
+
+			// Reset inspect mode on navigation (script is injected per-page)
+			// The injected script won't survive page navigation anyway,
+			// but we need to sync the state
+			if (this.isInspectModeActive) {
+				this.isInspectModeActive = false;
+				this.logger.info('[ProjectModeV2] Inspect Mode reset due to navigation');
+			}
 
 			// Publish navigation event to central event bus (title is sent separately via titleChanged)
 			this.eventService.publish('browser.navigated', {
@@ -1350,18 +1370,233 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	// ============================================
+	// Edit Mode (Floating Toolbar Toggle)
+	// ============================================
+
+	/**
+	 * Toggle Edit Mode - shows/hides the floating bottom action bar
+	 * Called from the Edit Mode button in the address bar
+	 */
+	private async toggleEditModeToolbar(enabled: boolean): Promise<void> {
+		this.isEditModeActive = enabled;
+
+		if (enabled) {
+			// Show floating toolbar
+			if (!this.floatingToolbarViewId) {
+				await this.createFloatingToolbar();
+			}
+			await this.setFloatingToolbarVisible(true);
+			this.logger.info('[ProjectModeV2] Edit Mode ENABLED - floating toolbar shown');
+		} else {
+			// Hide floating toolbar
+			await this.setFloatingToolbarVisible(false);
+			this.logger.info('[ProjectModeV2] Edit Mode DISABLED - floating toolbar hidden');
+		}
+	}
+
+	// ============================================
 	// Inspect Mode
 	// ============================================
 
 	/**
-	 * Toggle Inspect Mode (placeholder - feature coming later)
-	 * Will enable element inspection overlay for component data extraction
+	 * Toggle Inspect Element Mode
+	 *
+	 * When enabled:
+	 * - Elements are highlighted on hover with an outline
+	 * - Clicking an element copies its full outerHTML to clipboard and auto-exits
+	 * - Press ESC to exit without copying
+	 *
+	 * This is accessible via API for automation (Playwright, agents, etc.)
 	 */
-	private toggleInspectMode(): void {
-		// TODO: Implement inspect mode functionality
-		// This will inject scripts into the browser to enable hover inspection
-		// and extract component data for the properties panel
-		this.logger.info('[ProjectModeV2] Inspect Mode toggled (not yet implemented)');
+	private async toggleInspectMode(): Promise<void> {
+		if (!this.browserViewId) {
+			this.logger.warn('[ProjectModeV2] Cannot toggle inspect mode: no browser view');
+			return;
+		}
+
+		// Check actual state in browser (not our cached state)
+		// This handles cases where script exited via ESC or copy
+		const isActiveInBrowser = await this.isInspectModeActiveInBrowser();
+
+		if (isActiveInBrowser) {
+			// Currently active, disable it
+			await this.disableInspectMode();
+		} else {
+			// Not active, enable it
+			await this.enableInspectMode();
+		}
+	}
+
+	/**
+	 * Check if inspect mode is actually active in the browser
+	 * (The script may have exited via ESC or copy)
+	 */
+	private async isInspectModeActiveInBrowser(): Promise<boolean> {
+		if (!this.browserViewId) {
+			return false;
+		}
+
+		try {
+			return await this.browserService.executeScript(
+				this.browserViewId,
+				'typeof window.__roopikInspectCleanup === "function"'
+			);
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Enable Inspect Element Mode
+	 * Injects script into browser to highlight elements and capture clicks
+	 */
+	private async enableInspectMode(): Promise<void> {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		this.logger.info('[ProjectModeV2] Inspect Mode ENABLED');
+		this.isInspectModeActive = true;
+
+		// Inject the inspect mode script
+		const inspectScript = this.getInspectModeScript();
+
+		try {
+			await this.browserService.executeScript(this.browserViewId, inspectScript);
+
+			// Show notification
+			this.notificationService.notify({
+				severity: Severity.Info,
+				message: 'Inspect Mode: Click element to copy HTML.',
+				sticky: false
+			});
+		} catch (error) {
+			this.logger.error('[ProjectModeV2] Failed to enable inspect mode:', error);
+			this.isInspectModeActive = false;
+		}
+	}
+
+	/**
+	 * Disable Inspect Element Mode
+	 * Removes the injected script from the browser
+	 */
+	private async disableInspectMode(): Promise<void> {
+		this.isInspectModeActive = false;
+
+		if (!this.browserViewId) {
+			return;
+		}
+
+		this.logger.info('[ProjectModeV2] Inspect Mode DISABLED');
+
+		// Inject cleanup script (safe to call even if already cleaned up)
+		const cleanupScript = `
+			(function() {
+				if (window.__roopikInspectCleanup) {
+					window.__roopikInspectCleanup();
+				}
+			})();
+		`;
+
+		try {
+			await this.browserService.executeScript(this.browserViewId, cleanupScript);
+		} catch (error) {
+			this.logger.error('[ProjectModeV2] Failed to disable inspect mode:', error);
+		}
+	}
+
+	/**
+	 * Generate the inspect mode JavaScript to inject into the browser
+	 * This script:
+	 * - Creates a highlight overlay that follows the hovered element
+	 * - Captures clicks and copies element's outerHTML to clipboard
+	 * - Shows a toast notification when element is copied
+	 * - Sends messages to parent for state sync
+	 * - Listens for ESC key to exit inspect mode
+	 */
+	private getInspectModeScript(): string {
+		return INSPECT_MODE_SCRIPT;
+	}
+
+	/**
+	 * Get the last inspected element's HTML
+	 * API for programmatic access (agents, automation tools like Playwright)
+	 *
+	 * @returns The outerHTML of the last clicked element, or null if none
+	 */
+	public async getLastInspectedElementHtml(): Promise<string | null> {
+		if (!this.browserViewId) {
+			return null;
+		}
+
+		try {
+			return await this.browserService.executeScript(
+				this.browserViewId,
+				'window.__roopikLastInspectedHtml || null'
+			);
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * Check if inspect mode is currently active
+	 * API for programmatic access
+	 */
+	public isInspectModeEnabled(): boolean {
+		return this.isInspectModeActive;
+	}
+
+	/**
+	 * Enable inspect mode programmatically
+	 * API for agents and automation tools
+	 */
+	public async startInspectMode(): Promise<void> {
+		if (!this.isInspectModeActive) {
+			await this.toggleInspectMode();
+		}
+	}
+
+	/**
+	 * Disable inspect mode programmatically
+	 * API for agents and automation tools
+	 */
+	public async stopInspectMode(): Promise<void> {
+		if (this.isInspectModeActive) {
+			await this.toggleInspectMode();
+		}
+	}
+
+	/**
+	 * Inspect and copy element at specific coordinates
+	 * API for agents to programmatically inspect without user interaction
+	 *
+	 * @param x - X coordinate in viewport
+	 * @param y - Y coordinate in viewport
+	 * @returns The outerHTML of the element at those coordinates
+	 */
+	public async inspectElementAt(x: number, y: number): Promise<string | null> {
+		if (!this.browserViewId) {
+			return null;
+		}
+
+		try {
+			const html = await this.browserService.executeScript(
+				this.browserViewId,
+				`
+					(function() {
+						const el = document.elementFromPoint(${x}, ${y});
+						if (el) {
+							return el.outerHTML;
+						}
+						return null;
+					})();
+				`
+			);
+			return html;
+		} catch {
+			return null;
+		}
 	}
 
 	// ============================================
@@ -1683,3 +1918,290 @@ export class ProjectModeV2Editor extends EditorPane {
 		super.dispose();
 	}
 }
+
+// ============================================
+// Inspect Mode Script (injected into browser)
+// ============================================
+
+/**
+ * JavaScript to inject into the browser for element inspection.
+ * Features:
+ * - Highlight overlay follows hovered element
+ * - Label shows tag name, id, and classes (no dimensions)
+ * - Click copies outerHTML to clipboard
+ * - Toast notification confirms copy
+ * - ESC key exits inspect mode
+ * - Messages sent to parent for state sync
+ */
+const INSPECT_MODE_SCRIPT = `
+(function() {
+	// Cleanup any existing inspect mode
+	if (window.__roopikInspectCleanup) {
+		window.__roopikInspectCleanup();
+	}
+
+	// ========== Create UI Elements ==========
+
+	// Highlight overlay
+	const overlay = document.createElement('div');
+	overlay.id = '__roopik_inspect_overlay';
+	overlay.style.cssText = [
+		'position: fixed',
+		'pointer-events: none',
+		'z-index: 2147483647',
+		'border: 2px solid #007acc',
+		'background-color: rgba(0, 122, 204, 0.1)',
+		'transition: all 0.05s ease-out',
+		'display: none'
+	].join(';');
+	document.body.appendChild(overlay);
+
+	// Element label (tag info)
+	const label = document.createElement('div');
+	label.id = '__roopik_inspect_label';
+	label.style.cssText = [
+		'position: fixed',
+		'pointer-events: none',
+		'z-index: 2147483647',
+		'background-color: #007acc',
+		'color: white',
+		'font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
+		'font-size: 11px',
+		'padding: 2px 6px',
+		'border-radius: 2px',
+		'white-space: nowrap',
+		'display: none'
+	].join(';');
+	document.body.appendChild(label);
+
+	// Toast notification container (appears from top)
+	const toast = document.createElement('div');
+	toast.id = '__roopik_inspect_toast';
+	toast.style.cssText = [
+		'position: fixed',
+		'top: 20px',
+		'left: 50%',
+		'transform: translateX(-50%) translateY(-100px)',
+		'background-color: #1e1e1e',
+		'color: #ffffff',
+		'font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
+		'font-size: 13px',
+		'padding: 10px 20px',
+		'border-radius: 6px',
+		'box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)',
+		'z-index: 2147483647',
+		'opacity: 0',
+		'transition: transform 0.3s ease, opacity 0.3s ease',
+		'pointer-events: none'
+	].join(';');
+	document.body.appendChild(toast);
+
+	let currentElement = null;
+	let toastTimeout = null;
+
+	// ========== Helper Functions ==========
+
+	// Get element description for label (tag name only)
+	function getElementDescription(el) {
+		return el.tagName.toLowerCase();
+	}
+
+	// Show toast notification
+	function showToast(message) {
+		if (toastTimeout) {
+			clearTimeout(toastTimeout);
+		}
+		toast.textContent = message;
+		toast.style.opacity = '1';
+		toast.style.transform = 'translateX(-50%) translateY(0)';
+
+		toastTimeout = setTimeout(function() {
+			toast.style.opacity = '0';
+			toast.style.transform = 'translateX(-50%) translateY(-100px)';
+		}, 2000);
+	}
+
+	// Copy text to clipboard (with fallback)
+	function copyToClipboard(text) {
+		return new Promise(function(resolve, reject) {
+			// Try modern clipboard API first
+			if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+				navigator.clipboard.writeText(text)
+					.then(resolve)
+					.catch(function() {
+						// Fall back to execCommand
+						fallbackCopy(text, resolve, reject);
+					});
+			} else {
+				fallbackCopy(text, resolve, reject);
+			}
+		});
+	}
+
+	function fallbackCopy(text, resolve, reject) {
+		try {
+			const textarea = document.createElement('textarea');
+			textarea.value = text;
+			textarea.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
+			document.body.appendChild(textarea);
+			textarea.focus();
+			textarea.select();
+			const success = document.execCommand('copy');
+			document.body.removeChild(textarea);
+			if (success) {
+				resolve();
+			} else {
+				reject(new Error('execCommand failed'));
+			}
+		} catch (err) {
+			reject(err);
+		}
+	}
+
+	// Update overlay position
+	function updateOverlay(el) {
+		if (!el || el === document.body || el === document.documentElement) {
+			overlay.style.display = 'none';
+			label.style.display = 'none';
+			return;
+		}
+
+		const rect = el.getBoundingClientRect();
+		overlay.style.display = 'block';
+		overlay.style.top = rect.top + 'px';
+		overlay.style.left = rect.left + 'px';
+		overlay.style.width = rect.width + 'px';
+		overlay.style.height = rect.height + 'px';
+
+		// Position label above element, or below if not enough space
+		label.style.display = 'block';
+		label.textContent = getElementDescription(el);
+		const labelHeight = 20;
+		if (rect.top > labelHeight + 4) {
+			label.style.top = (rect.top - labelHeight - 4) + 'px';
+		} else {
+			label.style.top = (rect.bottom + 4) + 'px';
+		}
+		label.style.left = Math.max(0, rect.left) + 'px';
+	}
+
+	// Flash overlay green to indicate success
+	function flashSuccess() {
+		overlay.style.backgroundColor = 'rgba(0, 200, 0, 0.3)';
+		overlay.style.borderColor = '#00c800';
+		setTimeout(function() {
+			overlay.style.backgroundColor = 'rgba(0, 122, 204, 0.1)';
+			overlay.style.borderColor = '#007acc';
+		}, 200);
+	}
+
+	// Future use: send info back to Roopik (e.g., copied HTML to AI chat)
+	function notifyParent(type, data) {
+		window.postMessage({
+			source: 'roopik-inspect',
+			type: type,
+			data: data
+		}, '*');
+	}
+
+	// ========== Event Handlers ==========
+
+	function onMouseMove(e) {
+		// Ignore our own UI elements
+		const el = document.elementFromPoint(e.clientX, e.clientY);
+		if (el && el.id && el.id.startsWith('__roopik_inspect')) {
+			return;
+		}
+		if (el && el !== overlay && el !== label && el !== toast && el !== currentElement) {
+			currentElement = el;
+			updateOverlay(el);
+		}
+	}
+
+	function onClick(e) {
+		e.preventDefault();
+		e.stopPropagation();
+		e.stopImmediatePropagation();
+
+		if (currentElement && !(currentElement.id && currentElement.id.startsWith('__roopik_inspect'))) {
+			const html = currentElement.outerHTML;
+
+			// Store for API access
+			window.__roopikLastInspectedHtml = html;
+
+			// Copy to clipboard, then auto-exit inspect mode
+			copyToClipboard(html)
+				.then(function() {
+					flashSuccess();
+					showToast('✓ Element copied');
+					notifyParent('element-copied', { html: html });
+
+					// Auto-exit inspect mode after successful copy (with small delay for visual feedback)
+					setTimeout(function() {
+						cleanup();
+						notifyParent('inspect-mode-exited', {});
+					}, 300);
+				})
+				.catch(function(err) {
+					console.error('[Roopik Inspect] Copy failed:', err);
+					showToast('✗ Copy failed');
+					notifyParent('copy-failed', { error: err.message });
+					// Don't exit on failure - let user try again
+				});
+		}
+
+		return false;
+	}
+
+	function onKeyDown(e) {
+		if (e.key === 'Escape') {
+			cleanup();
+			notifyParent('inspect-mode-exited', {});
+		}
+	}
+
+	function onScroll() {
+		if (currentElement) {
+			updateOverlay(currentElement);
+		}
+	}
+
+	// ========== Cleanup ==========
+
+	function cleanup() {
+		document.removeEventListener('mousemove', onMouseMove, true);
+		document.removeEventListener('click', onClick, true);
+		document.removeEventListener('keydown', onKeyDown, true);
+		document.removeEventListener('scroll', onScroll, true);
+		window.removeEventListener('resize', onScroll);
+
+		if (toastTimeout) {
+			clearTimeout(toastTimeout);
+		}
+
+		if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+		if (label.parentNode) label.parentNode.removeChild(label);
+		if (toast.parentNode) toast.parentNode.removeChild(toast);
+
+		currentElement = null;
+		delete window.__roopikInspectCleanup;
+	}
+
+	// Store cleanup function
+	window.__roopikInspectCleanup = cleanup;
+
+	// ========== Initialize ==========
+
+	// Add event listeners (capture phase to intercept before page handlers)
+	document.addEventListener('mousemove', onMouseMove, true);
+	document.addEventListener('click', onClick, true);
+	document.addEventListener('keydown', onKeyDown, true);
+	document.addEventListener('scroll', onScroll, true);
+	window.addEventListener('resize', onScroll);
+
+	// Notify parent that inspect mode started
+	notifyParent('inspect-mode-started', {});
+
+	return 'Inspect mode enabled';
+})();
+`;
