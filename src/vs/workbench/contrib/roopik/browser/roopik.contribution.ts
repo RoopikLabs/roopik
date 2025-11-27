@@ -10,7 +10,8 @@ import { EditorPaneDescriptor, IEditorPaneRegistry } from '../../../browser/edit
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { EditorExtensions, IEditorFactoryRegistry } from '../../../common/editor.js';
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
-import { IEditorService } from '../../../services/editor/common/editorService.js';
+import { IEditorService, SIDE_GROUP } from '../../../services/editor/common/editorService.js';
+import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 import { IStorageService, StorageScope } from '../../../../platform/storage/common/storage.js';
 import { ILifecycleService, LifecyclePhase, StartupKind } from '../../../services/lifecycle/common/lifecycle.js';
 import { IWorkbenchLayoutService } from '../../../services/layout/browser/layoutService.js';
@@ -185,6 +186,7 @@ registerAction2(class extends Action2 {
 });
 
 // Open Project Preview V2 (Mode 2 with embedded DevTools) - SINGLETON
+// Opens in RIGHT split by default to avoid blocking left-side menu items
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
@@ -197,11 +199,39 @@ registerAction2(class extends Action2 {
 
 	async run(accessor: ServicesAccessor): Promise<void> {
 		const editorService = accessor.get(IEditorService);
+		const notificationService = accessor.get(INotificationService);
+		const storageService = accessor.get(IStorageService);
 
 		// SINGLETON: Get the one and only browser instance
-		// If tab already exists, this will focus it
 		const input = ProjectModeV2Input.getInstance();
-		await editorService.openEditor(input, { pinned: true });
+
+		// Check if browser editor is already open in any group
+		const existingEditor = editorService.editors.find(
+			editor => editor instanceof ProjectModeV2Input
+		);
+
+		if (existingEditor) {
+			// Focus existing editor instead of opening duplicate
+			await editorService.openEditor(existingEditor, { pinned: true });
+			return;
+		}
+
+		// Open in RIGHT split (SIDE_GROUP) by default
+		// This avoids blocking left-side menu items (File, Edit, View, etc.)
+		await editorService.openEditor(input, { pinned: true }, SIDE_GROUP);
+
+		// Show hint notification (only once per session)
+		const hintKey = 'roopik.browserRightSideHintShown';
+		const hintShown = storageService.getBoolean(hintKey, StorageScope.PROFILE, false);
+
+		if (!hintShown) {
+			notificationService.notify({
+				severity: Severity.Info,
+				message: 'Tip: Keep browser on the right side to avoid blocking menu items.',
+				sticky: false
+			});
+			storageService.store(hintKey, true, StorageScope.PROFILE, 0 /* StorageTarget.USER */);
+		}
 	}
 });
 

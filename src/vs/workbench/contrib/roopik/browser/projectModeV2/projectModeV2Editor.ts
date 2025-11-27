@@ -163,6 +163,155 @@ export class ProjectModeV2Editor extends EditorPane {
 		}));
 	}
 
+	/**
+	 * Setup detection for menus and command palette to pause browser
+	 *
+	 * Problem: WebContentsView (native Chromium) renders ON TOP of VSCode's HTML menus.
+	 * Solution: When menus/command palette open, hide browser and show "Browsing Paused" overlay.
+	 *
+	 * This is the same approach used by Cursor IDE.
+	 *
+	 * Currently handled:
+	 * - Command Palette (Ctrl+Shift+P) via IQuickInputService
+	 * - Context menus (right-click) via IContextMenuService
+	 *
+	 * TODO: Native menu bar (File, Edit, View...) needs main process IPC
+	 * The native Electron menu doesn't fire events in the renderer process.
+	 * To fix this, we need to:
+	 * 1. Add menu-will-show/menu-will-close event handlers in main process Menubar class
+	 * 2. Create IPC channel to notify renderer when menu opens/closes
+	 * 3. Subscribe to those events here
+	 */
+	private setupBrowserPauseDetection(): void {
+		// 1. Command Palette detection via IQuickInputService
+		this._register(this.quickInputService.onShow(() => {
+			this.pauseBrowser();
+		}));
+
+		this._register(this.quickInputService.onHide(() => {
+			this.resumeBrowser();
+		}));
+
+		// 2. Context menu (right-click) detection via IContextMenuService
+		this._register(this.contextMenuService.onDidShowContextMenu(() => {
+			this.pauseBrowser();
+		}));
+
+		this._register(this.contextMenuService.onDidHideContextMenu(() => {
+			this.resumeBrowser();
+		}));
+	}
+
+	/**
+	 * Pause browser - hide WebContentsView and show "Browsing Paused" overlay
+	 * Called when menus or command palette open
+	 */
+	private pauseBrowser(): void {
+		if (this.isBrowserPaused || !this.browserViewId || !this.hasLoadedUrl) {
+			return;
+		}
+
+		this.isBrowserPaused = true;
+
+		// Hide the browser WebContentsView
+		this.browserService.setBrowserVisible(this.browserViewId, false);
+
+		// Hide floating toolbar too
+		if (this.floatingToolbarViewId) {
+			this.setFloatingToolbarVisible(false);
+		}
+
+		// Show the paused overlay
+		this.showPausedOverlay();
+	}
+
+	/**
+	 * Resume browser - show WebContentsView and hide overlay
+	 * Called when menus or command palette close
+	 */
+	private resumeBrowser(): void {
+		if (!this.isBrowserPaused || !this.browserViewId) {
+			return;
+		}
+
+		this.isBrowserPaused = false;
+
+		// Hide the paused overlay
+		this.hidePausedOverlay();
+
+		// Show the browser WebContentsView (only if we have a URL loaded)
+		if (this.hasLoadedUrl && this.isVisible()) {
+			this.browserService.setBrowserVisible(this.browserViewId, true);
+
+			// Show floating toolbar
+			if (this.floatingToolbarViewId) {
+				this.setFloatingToolbarVisible(true);
+			}
+		}
+	}
+
+	/**
+	 * Show "Browsing Paused" overlay
+	 */
+	private showPausedOverlay(): void {
+		if (!this.browserContainer) {
+			return;
+		}
+
+		// Create overlay if it doesn't exist
+		if (!this.pausedOverlay) {
+			this.pausedOverlay = document.createElement('div');
+			this.pausedOverlay.style.cssText = `
+				position: absolute;
+				top: 0;
+				left: 0;
+				right: 0;
+				bottom: 0;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				background-color: var(--vscode-editor-background);
+				color: var(--vscode-descriptionForeground);
+				font-family: var(--vscode-font-family);
+				font-size: 14px;
+				gap: 12px;
+				z-index: 100;
+			`;
+
+			// Pause icon
+			const icon = document.createElement('div');
+			icon.style.cssText = `
+				font-size: 32px;
+				opacity: 0.6;
+			`;
+			icon.textContent = '⏸';
+			this.pausedOverlay.appendChild(icon);
+
+			// Text
+			const text = document.createElement('div');
+			text.style.cssText = `
+				font-size: 14px;
+				opacity: 0.8;
+			`;
+			text.textContent = 'Browsing paused';
+			this.pausedOverlay.appendChild(text);
+
+			this.browserContainer.appendChild(this.pausedOverlay);
+		}
+
+		this.pausedOverlay.style.display = 'flex';
+	}
+
+	/**
+	 * Hide "Browsing Paused" overlay
+	 */
+	private hidePausedOverlay(): void {
+		if (this.pausedOverlay) {
+			this.pausedOverlay.style.display = 'none';
+		}
+	}
+
 	protected createEditor(parent: HTMLElement): void {
 		// Main container
 		this.container = document.createElement('div');
