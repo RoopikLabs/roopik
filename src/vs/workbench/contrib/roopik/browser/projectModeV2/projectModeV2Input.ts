@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { EditorInput } from '../../../../common/editor/editorInput.js';
+import { EditorInputCapabilities } from '../../../../common/editor.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { Codicon } from '../../../../../base/common/codicons.js';
 import { registerIcon } from '../../../../../platform/theme/common/iconRegistry.js';
@@ -34,6 +35,15 @@ export class ProjectModeV2Input extends EditorInput {
 
 	override get typeId(): string {
 		return ProjectModeV2Input.ID;
+	}
+
+	/**
+	 * Singleton capability prevents this editor from being split.
+	 * Users can create multiple independent browser tabs from the Welcome Screen,
+	 * but cannot duplicate an existing browser tab via split mode.
+	 */
+	override get capabilities(): EditorInputCapabilities {
+		return EditorInputCapabilities.Singleton;
 	}
 
 	override get resource(): URI | undefined {
