@@ -24,6 +24,8 @@ import { BrowserControlBarV2, IBrowserControlBarV2Config, IBrowserControlBarV2Ca
 import type { ViewBounds, DevToolsMode, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
 import { generateFloatingToolbarHtml, FloatingToolbarState } from './floatingToolbarHtml.js';
 import { IRoopikEventService } from '../../common/events/index.js';
+import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
+import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js';
 
 /**
  * DevTools mode configuration flag
@@ -83,6 +85,10 @@ export class ProjectModeV2Editor extends EditorPane {
 		isExpanded: false
 	};
 
+	// "Browsing Paused" overlay - shown when menus/command palette are open
+	private pausedOverlay: HTMLElement | undefined;
+	private isBrowserPaused: boolean = false;
+
 	// DevTools resize handle
 	private devtoolsResizeHandle: HTMLElement | undefined;
 	private isResizingDevTools: boolean = false;
@@ -101,7 +107,9 @@ export class ProjectModeV2Editor extends EditorPane {
 		@ILoggerService loggerService: ILoggerService,
 		@IMainProcessService mainProcessService: IMainProcessService,
 		@INativeHostService private readonly nativeHostService: INativeHostService,
-		@IRoopikEventService private readonly eventService: IRoopikEventService
+		@IRoopikEventService private readonly eventService: IRoopikEventService,
+		@IQuickInputService private readonly quickInputService: IQuickInputService,
+		@IContextMenuService private readonly contextMenuService: IContextMenuService
 	) {
 		super(ProjectModeV2Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = RoopikLogger.create(loggerService);
@@ -109,6 +117,9 @@ export class ProjectModeV2Editor extends EditorPane {
 
 		// Setup event subscriptions for UI updates
 		this.setupEventSubscriptions();
+
+		// Setup menu/command palette pause detection
+		this.setupBrowserPauseDetection();
 	}
 
 	/**
