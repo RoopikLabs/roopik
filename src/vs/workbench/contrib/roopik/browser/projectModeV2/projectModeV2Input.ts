@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { EditorInput } from '../../../../common/editor/editorInput.js';
+import { EditorInputCapabilities } from '../../../../common/editor.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { Codicon } from '../../../../../base/common/codicons.js';
 import { registerIcon } from '../../../../../platform/theme/common/iconRegistry.js';
@@ -12,45 +13,68 @@ import { truncate } from '../../../../../base/common/strings.js';
 const projectModeV2Icon = registerIcon('roopik-project-mode-v2', Codicon.globe, 'Icon for Project Mode V2 (Browser Preview with DevTools)');
 
 /**
- * Project Mode V2 Editor Input
+ * Project Mode V2 Editor Input - TRUE SINGLETON
  *
- * Represents a browser preview session with embedded DevTools.
+ * Only ONE browser preview can exist at a time.
+ * Clicking "Open Browser Preview" again will focus the existing one.
  */
 export class ProjectModeV2Input extends EditorInput {
 	static readonly ID = 'roopik.projectModeV2Input';
+	static readonly RESOURCE = URI.parse('roopik-browser-v2://browser/singleton');
 
-	private _url: string;
+	// TRUE SINGLETON - only one instance ever
+	private static _instance: ProjectModeV2Input | undefined;
+
+	private _url: string = 'about:blank';
 	private _pageTitle: string = '';
 
-	constructor(url: string = 'about:blank') {
+	/**
+	 * Get the singleton browser instance.
+	 * Creates it if it doesn't exist.
+	 * ALWAYS use this method - never call constructor directly.
+	 */
+	static getInstance(): ProjectModeV2Input {
+		if (!ProjectModeV2Input._instance) {
+			ProjectModeV2Input._instance = new ProjectModeV2Input();
+		}
+		return ProjectModeV2Input._instance;
+	}
+
+	/**
+	 * Constructor - DO NOT call directly!
+	 * Use getInstance() instead.
+	 * Public constructor required for VSCode's SyncDescriptor registration.
+	 */
+	constructor() {
 		super();
-		this._url = url;
+		// Enforce singleton: if instance exists, return it
+		if (ProjectModeV2Input._instance) {
+			return ProjectModeV2Input._instance;
+		}
+		ProjectModeV2Input._instance = this;
 	}
 
 	override get typeId(): string {
 		return ProjectModeV2Input.ID;
 	}
 
-	override get resource(): URI | undefined {
-		// Create a valid URI for VSCode's internal model
-		// We encode the actual URL as the path to avoid invalid URI issues
-		// e.g., http://localhost:5173/ becomes roopik-browser-v2://browser/http%3A%2F%2Flocalhost%3A5173%2F
-		try {
-			const encodedUrl = encodeURIComponent(this._url);
-			return URI.parse(`roopik-browser-v2://browser/${encodedUrl}`);
-		} catch {
-			return URI.parse('roopik-browser-v2://browser/blank');
-		}
+	/**
+	 * Singleton capability prevents this editor from being split.
+	 */
+	override get capabilities(): EditorInputCapabilities {
+		return EditorInputCapabilities.Singleton;
 	}
 
-	// Max length for tab title - keep short for consistent tab width
-	// Using 15 to account for variable character widths (spaces are narrow)
+	override get resource(): URI {
+		return ProjectModeV2Input.RESOURCE;
+	}
+
+	// Max length for tab title
 	private static readonly TAB_TITLE_MAX_LENGTH = 15;
 
 	override getName(): string {
-		// Use page title if available (set by editor from browser)
+		// Use page title if available
 		if (this._pageTitle) {
-			// Use VSCode's truncate function for consistent behavior
 			return truncate(this._pageTitle, ProjectModeV2Input.TAB_TITLE_MAX_LENGTH);
 		}
 
@@ -83,7 +107,6 @@ export class ProjectModeV2Input extends EditorInput {
 
 	/**
 	 * Set page title (from browser's document.title)
-	 * This is what shows in the tab
 	 */
 	setPageTitle(title: string): void {
 		if (this._pageTitle !== title) {
@@ -97,6 +120,15 @@ export class ProjectModeV2Input extends EditorInput {
 	}
 
 	override matches(other: EditorInput): boolean {
+		// Always match if it's a ProjectModeV2Input - there's only one!
 		return other instanceof ProjectModeV2Input;
+	}
+
+	override dispose(): void {
+		// Clear singleton reference so a fresh instance is created next time
+		if (ProjectModeV2Input._instance === this) {
+			ProjectModeV2Input._instance = undefined;
+		}
+		super.dispose();
 	}
 }

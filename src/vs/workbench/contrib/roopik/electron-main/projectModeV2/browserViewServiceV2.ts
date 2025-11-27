@@ -3,10 +3,11 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { BrowserWindow, WebContentsView, session } from 'electron';
+import { BrowserWindow, WebContentsView, session, app } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsMode, DevToolsClosedEvent, NavigationStateChangedEvent, BrowserInstanceInfo, BrowserListChangedEvent } from '../../common/projectModeV2/types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsMode, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
+import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
 
 /**
  * Browser View Service V2
@@ -29,16 +30,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 
 	private readonly _onNavigationStateChanged = new Emitter<NavigationStateChangedEvent>();
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent> = this._onNavigationStateChanged.event;
-
-	private readonly _onBrowserListChanged = new Emitter<BrowserListChangedEvent>();
-	readonly onBrowserListChanged: Event<BrowserListChangedEvent> = this._onBrowserListChanged.event;
-
-	// Maximum allowed browser instances (resource management)
-	// Can be changed later via settings
-	private static readonly MAX_BROWSER_COUNT = 2;
-
-	// Track creation time per browser for sorting
-	private browserCreatedAt = new Map<number, number>();
 
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
@@ -96,7 +87,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 
 		if (!BrowserViewServiceV2.sessionConfigured) {
 			BrowserViewServiceV2.sessionConfigured = true;
-			console.log('[ProjectModeV2] Configuring browser session (one-time setup)...');
 
 			// A. Bypass Proxy for Localhost
 			// Electron often tries to route localhost through system proxies. Force direct connection.
@@ -119,7 +109,10 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 				callback(allowedPermissions.includes(permission));
 			});
 
-			console.log('[ProjectModeV2] Browser session configured successfully');
+			// D. Load DevTools Extensions (React DevTools, Vue DevTools, etc.)
+			// Extensions are loaded from resources/devtools-extensions/
+			// User can add new extensions by extracting CRX files and updating manifest.json
+			this.loadDevToolsExtensionsAsync(browserSession);
 		}
 
 		// =========================================================
@@ -138,10 +131,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			}
 		});
 
-		// Debug: Verify session is correctly assigned
-		const actualSession = browserView.webContents.session;
-		console.log(`[ProjectModeV2] Session check: expected=roopik-browser, actual partition=${actualSession.storagePath?.includes('roopik-browser') ? 'correct' : 'WRONG!'}`);
-
 		// Add to window
 		window.contentView.addChildView(browserView);
 
@@ -151,7 +140,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		// Store references
 		this.browserViews.set(browserViewId, browserView);
 		this.browserWindows.set(browserViewId, window);
-		this.browserCreatedAt.set(browserViewId, Date.now());
 
 		// Add to static set for navigation whitelist
 		BrowserViewServiceV2.managedWebContentsIds.add(browserViewId);
@@ -169,16 +157,10 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		// =========================================================================
 		this.attachSafetyLeash(window, browserViewId);
 
-		console.log(`[ProjectModeV2] Created browser view ${browserViewId} with debugging port ${debuggingPort}`);
-
-		// Fire browser list changed event
-		this.fireBrowserListChanged();
-
 		return { browserViewId, debuggingPort };
 	}
 
 	async destroyBrowserView(browserViewId: number): Promise<void> {
-		console.log(`[ProjectModeV2] Destroying browser view ${browserViewId}`);
 
 		// First destroy any overlay views
 		this.destroyOverlaysForBrowser(browserViewId);
@@ -227,16 +209,10 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			this.browserWindows.delete(browserViewId);
 			this.debuggerAttached.delete(browserViewId);
 			this.lastNavigationErrors.delete(browserViewId);
-			this.browserCreatedAt.delete(browserViewId);
 
 			// Remove from static set
 			BrowserViewServiceV2.managedWebContentsIds.delete(browserViewId);
 		}
-
-		console.log(`[ProjectModeV2] Browser view ${browserViewId} destroyed`);
-
-		// Fire browser list changed event
-		this.fireBrowserListChanged();
 	}
 
 	async setBrowserBounds(browserViewId: number, bounds: ViewBounds): Promise<void> {
@@ -259,69 +235,13 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	}
 
 	// ============================================
-	// Browser Instance Management
-	// ============================================
-
-	async getBrowserList(): Promise<BrowserInstanceInfo[]> {
-		const browsers: BrowserInstanceInfo[] = [];
-
-		for (const [browserViewId, browserView] of this.browserViews) {
-			if (browserView.webContents.isDestroyed()) {
-				continue;
-			}
-
-			const windowId = this.browserWindows.get(browserViewId)?.id ?? -1;
-			const webContents = browserView.webContents;
-
-			browsers.push({
-				browserViewId,
-				windowId,
-				url: webContents.getURL(),
-				title: webContents.getTitle() || 'Browser Preview',
-				createdAt: this.browserCreatedAt.get(browserViewId) ?? Date.now()
-			});
-		}
-
-		// Sort by creation time (oldest first)
-		return browsers.sort((a, b) => a.createdAt - b.createdAt);
-	}
-
-	async getBrowserCount(): Promise<number> {
-		return this.browserViews.size;
-	}
-
-	async getMaxBrowserCount(): Promise<number> {
-		return BrowserViewServiceV2.MAX_BROWSER_COUNT;
-	}
-
-	async canCreateBrowser(): Promise<boolean> {
-		return this.browserViews.size < BrowserViewServiceV2.MAX_BROWSER_COUNT;
-	}
-
-	/**
-	 * Fire browser list changed event
-	 * Called when browser is created or destroyed
-	 */
-	private async fireBrowserListChanged(): Promise<void> {
-		const browsers = await this.getBrowserList();
-		this._onBrowserListChanged.fire({
-			browsers,
-			count: browsers.length,
-			maxCount: BrowserViewServiceV2.MAX_BROWSER_COUNT
-		});
-	}
-
-	// ============================================
 	// Navigation
 	// ============================================
 
 	async navigate(browserViewId: number, url: string): Promise<void> {
-		console.log(`[ProjectModeV2] navigate() called: browserViewId=${browserViewId}, url=${url}`);
-
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView) {
 			console.error(`[ProjectModeV2] navigate() FAILED: browserView not found for ID ${browserViewId}`);
-			console.log(`[ProjectModeV2] Current browserViews keys:`, Array.from(this.browserViews.keys()));
 			return;
 		}
 
@@ -330,9 +250,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			return;
 		}
 
-		console.log(`[ProjectModeV2] Loading URL: ${url}`);
 		await browserView.webContents.loadURL(url);
-		console.log(`[ProjectModeV2] URL loaded successfully: ${url}`);
 	}
 
 	async goBack(browserViewId: number): Promise<void> {
@@ -353,6 +271,15 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		const browserView = this.browserViews.get(browserViewId);
 		if (browserView && !browserView.webContents.isDestroyed()) {
 			if (ignoreCache) {
+				// TRUE Hard Reload: Clear session cache completely, then reload
+				// This is equivalent to Chrome's "Empty Cache and Hard Reload"
+				const browserSession = browserView.webContents.session;
+				try {
+					await browserSession.clearCache();
+					console.log('[ProjectModeV2] Cache cleared for hard reload');
+				} catch (e) {
+					console.error('[ProjectModeV2] Failed to clear cache:', e);
+				}
 				browserView.webContents.reloadIgnoringCache();
 			} else {
 				browserView.webContents.reload();
@@ -454,8 +381,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	// ============================================
 
 	async openDevTools(browserViewId: number, options: DevToolsOptions): Promise<DevToolsViewResult> {
-		console.log(`[ProjectModeV2] openDevTools called with browserViewId=${browserViewId}, options=`, JSON.stringify(options));
-
 		const browserView = this.browserViews.get(browserViewId);
 		const window = this.browserWindows.get(browserViewId);
 
@@ -480,7 +405,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			// ATTACHED MODE: DevTools docked inside browser window
 			// Device Toolbar toggle and close button are available!
 			// =========================================================
-			console.log(`[ProjectModeV2] Opening DevTools in ATTACHED mode for browser ${browserViewId}`);
 
 			// Open DevTools docked at bottom of the browser window
 			// This gives us the Device Toolbar toggle and close button
@@ -494,7 +418,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			// DETACHED MODE: DevTools in separate WebContentsView
 			// Full layout control, but NO Device Toolbar toggle
 			// =========================================================
-			console.log(`[ProjectModeV2] Opening DevTools in DETACHED mode for browser ${browserViewId}`);
 
 			if (!options.bounds) {
 				throw new Error('Bounds are required for detached DevTools mode');
@@ -530,8 +453,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			const devtoolsViewId = devtoolsView.webContents.id;
 			this.devtoolsViews.set(browserViewId, devtoolsView);
 
-			console.log(`[ProjectModeV2] Opened DevTools ${devtoolsViewId} for browser ${browserViewId} (detached)`);
-
 			return { devtoolsViewId };
 		}
 	}
@@ -540,7 +461,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		const browserView = this.browserViews.get(browserViewId);
 		const devtoolsView = this.devtoolsViews.get(browserViewId);
 		const window = this.browserWindows.get(browserViewId);
-		const mode = this.devtoolsModes.get(browserViewId);
 
 		// Close DevTools on browser webContents (works for both modes)
 		// Graceful check - browser may already be destroyed
@@ -581,8 +501,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 
 		// Clear mode tracking
 		this.devtoolsModes.delete(browserViewId);
-
-		console.log(`[ProjectModeV2] Closed DevTools for browser ${browserViewId} (mode: ${mode || 'unknown'})`);
 	}
 
 	async setDevToolsBounds(browserViewId: number, bounds: ViewBounds): Promise<void> {
@@ -619,7 +537,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			try {
 				browserView.webContents.debugger.attach(protocolVersion);
 				this.debuggerAttached.set(browserViewId, true);
-				console.log(`[ProjectModeV2] CDP debugger attached to ${browserViewId}`);
 			} catch (e) {
 				console.error('[ProjectModeV2] Failed to attach debugger:', e);
 				throw e;
@@ -633,7 +550,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			try {
 				browserView.webContents.debugger.detach();
 				this.debuggerAttached.set(browserViewId, false);
-				console.log(`[ProjectModeV2] CDP debugger detached from ${browserViewId}`);
 			} catch (e) {
 				console.error('[ProjectModeV2] Failed to detach debugger:', e);
 			}
@@ -671,8 +587,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		if (domains.page) {
 			await debugger_.sendCommand('Page.enable');
 		}
-
-		console.log(`[ProjectModeV2] CDP domains enabled for ${browserViewId}:`, domains);
 	}
 
 	async sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any> {
@@ -693,8 +607,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	// ============================================
 
 	async setDeviceEmulation(browserViewId: number, device: DevicePreset): Promise<void> {
-		console.log(`[ProjectModeV2] Setting device emulation for ${browserViewId}:`, device.name);
-
 		await this.sendCDPCommand(browserViewId, 'Emulation.setDeviceMetricsOverride', {
 			width: device.width,
 			height: device.height,
@@ -717,8 +629,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	}
 
 	async clearDeviceEmulation(browserViewId: number): Promise<void> {
-		console.log(`[ProjectModeV2] Clearing device emulation for ${browserViewId}`);
-
 		await this.sendCDPCommand(browserViewId, 'Emulation.clearDeviceMetricsOverride');
 		await this.sendCDPCommand(browserViewId, 'Emulation.setTouchEmulationEnabled', {
 			enabled: false
@@ -765,6 +675,37 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	}
 
 	// ============================================
+	// DevTools Extensions
+	// ============================================
+
+	/**
+	 * Load DevTools extensions asynchronously (fire-and-forget)
+	 * Called once during session initialization
+	 */
+	private loadDevToolsExtensionsAsync(browserSession: Electron.Session): void {
+		// Get app path - this is where resources/ folder is located
+		const appPath = app.getAppPath();
+
+		// Load extensions asynchronously - don't block browser creation
+		const loader = DevToolsExtensionLoader.getInstance(appPath);
+		loader.loadExtensions(browserSession)
+			.then(results => {
+				const loaded = results.filter(r => r.success);
+				const failed = results.filter(r => !r.success);
+
+				if (loaded.length > 0) {
+					console.log(`[ProjectModeV2] Loaded ${loaded.length} DevTools extension(s): ${loaded.map(r => r.name).join(', ')}`);
+				}
+				if (failed.length > 0) {
+					console.warn(`[ProjectModeV2] Failed to load ${failed.length} extension(s): ${failed.map(r => `${r.name} (${r.error})`).join(', ')}`);
+				}
+			})
+			.catch(e => {
+				console.error('[ProjectModeV2] Error loading DevTools extensions:', e);
+			});
+	}
+
+	// ============================================
 	// Private Helpers
 	// ============================================
 
@@ -786,37 +727,21 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	private attachSafetyLeash(window: BrowserWindow, browserViewId: number): void {
 		// Define a cleanup function that triggers automatically
 		const autoDestruct = () => {
-			console.log(`[ProjectModeV2] SAFETY LEASH TRIGGERED - Auto-destroying browser view ${browserViewId}`);
 			// Fire and forget - we don't await because the window is dying
 			this.destroyBrowserViewSync(browserViewId);
 		};
 
 		// 1. MOST IMPORTANT: 'did-start-loading' fires immediately when IDE reloads (Ctrl+R / Reload Window)
-		//    This is the event that fires the MILLISECOND you press reload!
-		window.webContents.once('did-start-loading', () => {
-			console.log(`[ProjectModeV2] Window did-start-loading -> triggering safety leash`);
-			autoDestruct();
-		});
+		window.webContents.once('did-start-loading', autoDestruct);
 
 		// 2. If the IDE window is closed entirely
-		window.once('closed', () => {
-			console.log(`[ProjectModeV2] Window closed -> triggering safety leash`);
-			autoDestruct();
-		});
+		window.once('closed', autoDestruct);
 
 		// 3. If the renderer process crashes or is killed
-		window.webContents.once('render-process-gone', (_event, details) => {
-			console.log(`[ProjectModeV2] Renderer process gone (${details.reason}) -> triggering safety leash`);
-			autoDestruct();
-		});
+		window.webContents.once('render-process-gone', autoDestruct);
 
 		// 4. If webContents is destroyed
-		window.webContents.once('destroyed', () => {
-			console.log(`[ProjectModeV2] WebContents destroyed -> triggering safety leash`);
-			autoDestruct();
-		});
-
-		console.log(`[ProjectModeV2] Safety leash attached for browser view ${browserViewId}`);
+		window.webContents.once('destroyed', autoDestruct);
 	}
 
 	/**
@@ -824,8 +749,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	 * Must be robust and never throw - the window is dying anyway
 	 */
 	private destroyBrowserViewSync(browserViewId: number): void {
-		console.log(`[ProjectModeV2] Sync destroying browser view ${browserViewId}`);
-
 		// Destroy overlay views first
 		this.destroyOverlaysForBrowser(browserViewId);
 
@@ -895,8 +818,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		this.debuggerAttached.delete(browserViewId);
 		this.lastNavigationErrors.delete(browserViewId);
 		BrowserViewServiceV2.managedWebContentsIds.delete(browserViewId);
-
-		console.log(`[ProjectModeV2] Browser view ${browserViewId} sync destroyed`);
 	}
 
 	private setupBrowserEvents(browserView: WebContentsView): void {
@@ -911,7 +832,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
 			// Skip expected/normal errors
 			if (IGNORED_ERROR_CODES.has(errorCode)) {
-				console.log(`[ProjectModeV2] Load cancelled (normal): ${validatedURL} (${errorCode})`);
 				return;
 			}
 			console.error(`[ProjectModeV2] Load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
@@ -926,7 +846,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		webContents.on('did-fail-provisional-load', (_event, errorCode, errorDescription, validatedURL) => {
 			// Skip expected/normal errors
 			if (IGNORED_ERROR_CODES.has(errorCode)) {
-				console.log(`[ProjectModeV2] Provisional load cancelled (normal): ${validatedURL} (${errorCode})`);
 				return;
 			}
 			console.error(`[ProjectModeV2] Provisional load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
@@ -942,15 +861,13 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		});
 
 		// Certificate errors - catch and allow for dev servers
-		webContents.on('certificate-error', (event, url, error, _certificate, callback) => {
-			console.log(`[ProjectModeV2] Certificate error for ${url}: ${error} - Allowing anyway for dev`);
+		webContents.on('certificate-error', (event, _url, _error, _certificate, callback) => {
 			// Prevent default "Your connection is not private" page
 			event.preventDefault();
 			callback(true); // Trust the certificate
 		});
 
-		webContents.on('did-navigate', (_event, url) => {
-			console.log(`[ProjectModeV2] Navigated to: ${url}`);
+		webContents.on('did-navigate', () => {
 			// Clear any previous error on successful navigation
 			this.clearNavigationError(browserViewId);
 			// Fire event to notify renderer (URL changed)
@@ -958,44 +875,31 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		});
 
 		// Also handle in-page navigation (hash changes, History API)
-		webContents.on('did-navigate-in-page', (_event, url) => {
-			console.log(`[ProjectModeV2] In-page navigation to: ${url}`);
+		webContents.on('did-navigate-in-page', () => {
 			// Fire event to notify renderer (URL changed)
 			this.fireNavigationStateChanged(browserViewId);
 		});
 
-		webContents.on('page-title-updated', (_event, title) => {
-			console.log(`[ProjectModeV2] Title updated: ${title}`);
+		webContents.on('page-title-updated', () => {
 			// Fire event to notify renderer (title changed)
 			this.fireNavigationStateChanged(browserViewId);
 		});
 
-		// Log when page starts/finishes loading
 		webContents.on('did-start-loading', () => {
-			console.log(`[ProjectModeV2] Started loading...`);
 			// Fire event with EXPLICIT isLoading = true
 			this.fireNavigationStateChanged(browserViewId, true);
 		});
 
 		webContents.on('did-finish-load', () => {
-			console.log(`[ProjectModeV2] Finished loading (main frame)`);
 			// Clear any previous error on successful load
 			this.clearNavigationError(browserViewId);
 			// Fire event with EXPLICIT isLoading = false
-			// Note: did-stop-loading is more reliable, but we also handle it here for faster feedback
 			this.fireNavigationStateChanged(browserViewId, false);
 		});
 
-		// CRITICAL: did-stop-loading is more reliable than did-finish-load for complex pages
-		// did-finish-load only fires when main frame finishes, but sites like Google/Facebook
-		// use service workers, streaming connections, and lazy loading that may keep did-finish-load
-		// from firing or cause it to fire prematurely
-		// did-stop-loading fires when ALL loading stops (like the browser spinner stopping)
+		// did-stop-loading is more reliable than did-finish-load for complex pages
 		webContents.on('did-stop-loading', () => {
-			console.log(`[ProjectModeV2] Stopped loading (all activity)`);
 			// Fire event with EXPLICIT isLoading = false
-			// CRITICAL: We pass false explicitly because webContents.isLoading() can sometimes
-			// still return true due to timing issues on sites like Google/Facebook
 			this.fireNavigationStateChanged(browserViewId, false);
 		});
 
@@ -1006,9 +910,8 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 
 		// Fallback: Handle any windows that somehow bypass the app.ts handler
 		webContents.on('did-create-window', (newWindow) => {
-			// This fires if a new window was somehow created (shouldn't happen)
+			// Redirect to same view and close the new window
 			const url = newWindow.webContents.getURL();
-			console.log(`[ProjectModeV2] did-create-window (unexpected): ${url} - redirecting and closing`);
 			if (url && url !== 'about:blank') {
 				webContents.loadURL(url);
 			}
@@ -1018,10 +921,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		// DevTools closed event - fires when user closes via built-in X button
 		// This allows renderer to sync its state without polling
 		webContents.on('devtools-closed', () => {
-			console.log(`[ProjectModeV2] DevTools closed externally for browser ${browserViewId}`);
-			// Fire event to notify renderer
 			this._onDevToolsClosed.fire({ browserViewId });
-			// Cleanup our mode tracking
 			this.devtoolsModes.delete(browserViewId);
 		});
 	}
@@ -1109,8 +1009,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			parentBrowserViewId: browserViewId
 		});
 
-		console.log(`[ProjectModeV2] Created overlay view ${overlayViewId} for browser ${browserViewId}`);
-
 		return overlayViewId;
 	}
 
@@ -1183,7 +1081,6 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		}
 
 		this.overlayViews.delete(overlayViewId);
-		console.log(`[ProjectModeV2] Destroyed overlay view ${overlayViewId}`);
 	}
 
 	/**

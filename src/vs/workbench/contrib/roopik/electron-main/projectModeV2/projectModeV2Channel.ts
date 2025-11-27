@@ -21,8 +21,6 @@ export class ProjectModeV2Channel implements IServerChannel {
 				return this.service.onDevToolsClosed;
 			case 'onNavigationStateChanged':
 				return this.service.onNavigationStateChanged;
-			case 'onBrowserListChanged':
-				return this.service.onBrowserListChanged;
 			default:
 				throw new Error(`[ProjectModeV2Channel] Unknown event: ${event}`);
 		}
@@ -40,16 +38,6 @@ export class ProjectModeV2Channel implements IServerChannel {
 			case 'setBrowserVisible':
 				return this.service.setBrowserVisible(arg.browserViewId, arg.visible);
 
-			// Browser Instance Management
-			case 'getBrowserList':
-				return this.service.getBrowserList();
-			case 'getBrowserCount':
-				return this.service.getBrowserCount();
-			case 'getMaxBrowserCount':
-				return this.service.getMaxBrowserCount();
-			case 'canCreateBrowser':
-				return this.service.canCreateBrowser();
-
 			// Navigation
 			case 'navigate':
 				return this.service.navigate(arg.browserViewId, arg.url);
@@ -66,7 +54,6 @@ export class ProjectModeV2Channel implements IServerChannel {
 
 			// DevTools
 			case 'openDevTools':
-				console.log(`[ProjectModeV2Channel] openDevTools called with arg=`, JSON.stringify(arg));
 				return this.service.openDevTools(arg.browserViewId, arg.options);
 			case 'closeDevTools':
 				return this.service.closeDevTools(arg);

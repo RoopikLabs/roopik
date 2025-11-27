@@ -10,7 +10,8 @@ import { EditorPaneDescriptor, IEditorPaneRegistry } from '../../../browser/edit
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { EditorExtensions, IEditorFactoryRegistry } from '../../../common/editor.js';
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
-import { IEditorService } from '../../../services/editor/common/editorService.js';
+import { IEditorService, SIDE_GROUP } from '../../../services/editor/common/editorService.js';
+import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 import { IStorageService, StorageScope } from '../../../../platform/storage/common/storage.js';
 import { ILifecycleService, LifecyclePhase, StartupKind } from '../../../services/lifecycle/common/lifecycle.js';
 import { IWorkbenchLayoutService } from '../../../services/layout/browser/layoutService.js';
@@ -25,6 +26,9 @@ import { ProjectModeEditor } from './projectMode/projectModeEditor.js';
 import { ProjectModeInput, ProjectModeInputSerializer } from './projectMode/projectModeInput.js';
 import { ProjectModeV2Editor } from './projectModeV2/projectModeV2Editor.js';
 import { ProjectModeV2Input } from './projectModeV2/projectModeV2Input.js';
+import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+import { IRoopikEventService, RoopikEventService } from '../common/events/index.js';
+import { IRoopikSettingsService, RoopikSettingsService } from '../common/settings/index.js';
 
 /**
  * Roopik Design IDE - Main Contribution
@@ -112,9 +116,28 @@ registerAction2(class extends Action2 {
 
 	async run(accessor: ServicesAccessor): Promise<void> {
 		const editorService = accessor.get(IEditorService);
-		const welcomeInput = RoopikWelcomeInput.getInstance();
+		const welcomeInput = RoopikWelcomeInput.getInstance('welcome');
 		// Open in new tab and focus on it
 		await editorService.openEditor(welcomeInput, { pinned: true });
+	}
+});
+
+// Open Settings (Preferences)
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'roopik.openSettings',
+			title: localize2('roopik.openSettings', 'Settings'),
+			category: localize2('roopik.category', 'Roopik'),
+			f1: true
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		const editorService = accessor.get(IEditorService);
+		const settingsInput = RoopikWelcomeInput.getInstance('settings');
+		// Open in new tab and focus on it
+		await editorService.openEditor(settingsInput, { pinned: true });
 	}
 });
 
@@ -162,7 +185,8 @@ registerAction2(class extends Action2 {
 	}
 });
 
-// Open Project Preview V2 (Mode 2 with embedded DevTools)
+// Open Project Preview V2 (Mode 2 with embedded DevTools) - SINGLETON
+// Opens in RIGHT split by default to avoid blocking left-side menu items
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
@@ -174,16 +198,42 @@ registerAction2(class extends Action2 {
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
-		const loggerService = accessor.get(ILoggerService);
 		const editorService = accessor.get(IEditorService);
-		const logger = RoopikLogger.create(loggerService);
+		const notificationService = accessor.get(INotificationService);
+		const storageService = accessor.get(IStorageService);
 
-		logger.debug('[Roopik] Project Preview V2 command invoked');
-		logger.info('[Roopik] Opening Browser Preview V2 with embedded DevTools');
+		// SINGLETON: Get the one and only browser instance
+		const input = ProjectModeV2Input.getInstance();
 
-		// Open Project Preview V2 editor in new tab and focus on it
-		const input = new ProjectModeV2Input('about:blank');
-		await editorService.openEditor(input, { pinned: true });
+		// Check if browser editor is already open in any group
+		// Use the singleton input directly since it's the same instance
+		const visibleEditors = editorService.visibleEditorPanes;
+		const existingPane = visibleEditors.find(
+			pane => pane.input instanceof ProjectModeV2Input
+		);
+
+		if (existingPane) {
+			// Focus existing editor in its current group (don't create new split)
+			await editorService.openEditor(input, { pinned: true }, existingPane.group);
+			return;
+		}
+
+		// Open in RIGHT split (SIDE_GROUP) by default
+		// This avoids blocking left-side menu items (File, Edit, View, etc.)
+		await editorService.openEditor(input, { pinned: true }, SIDE_GROUP);
+
+		// Show hint notification (once per installation)
+		const hintKey = 'roopik.browserRightSideHintShown.v2';
+		const hintShown = storageService.getBoolean(hintKey, StorageScope.APPLICATION, false);
+
+		if (!hintShown) {
+			notificationService.notify({
+				severity: Severity.Info,
+				message: 'Tip: Keep browser on the right side to avoid blocking menu items.',
+				sticky: false
+			});
+			storageService.store(hintKey, true, StorageScope.APPLICATION, 0 /* StorageTarget.USER */);
+		}
 	}
 });
 
@@ -210,7 +260,7 @@ class RoopikStartupContribution extends Disposable implements IWorkbenchContribu
 		// VSCode automatically restores editors on reload, so welcome screen will restore if it was open
 		if (showOnStartup && this.lifecycleService.startupKind !== StartupKind.ReloadedWindow) {
 			if (!this.editorService.activeEditor || this.layoutService.openedDefaultEditors) {
-				const welcomeInput = RoopikWelcomeInput.getInstance();
+				const welcomeInput = RoopikWelcomeInput.getInstance('welcome');
 				await this.editorService.openEditor(welcomeInput);
 			}
 		}
@@ -221,3 +271,13 @@ registerWorkbenchContribution2(RoopikStartupContribution.ID, RoopikStartupContri
 
 // Register Roopik views (Activity Bar)
 registerWorkbenchContribution2(RoopikViewsContribution.ID, RoopikViewsContribution, WorkbenchPhase.BlockStartup);
+
+// ============================================================================
+// Service Registration
+// ============================================================================
+
+// Register Event Service (central pub/sub for all Roopik events)
+registerSingleton(IRoopikEventService, RoopikEventService, InstantiationType.Delayed);
+
+// Register Settings Service (persistence + configuration management)
+registerSingleton(IRoopikSettingsService, RoopikSettingsService, InstantiationType.Delayed);

@@ -12,6 +12,28 @@
 	overflow-y: auto;
 	overflow-x: hidden;
 	background-color: var(--vscode-editor-background);
+	scrollbar-width: thin;
+	scrollbar-color: var(--vscode-scrollbarSlider-background, rgba(255, 255, 255, 0.25)) transparent;
+}
+
+.roopik-welcome::-webkit-scrollbar {
+	width: 10px;
+}
+
+.roopik-welcome::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.roopik-welcome::-webkit-scrollbar-thumb {
+	background-color: var(--vscode-scrollbarSlider-background, rgba(0, 0, 0, 0.3));
+	border-radius: 999px;
+	border: 2px solid transparent;
+	background-clip: padding-box;
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.roopik-welcome::-webkit-scrollbar-thumb:hover {
+	background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(0, 0, 0, 0.45));
 }
 
 .welcome-container {
@@ -271,10 +293,10 @@
 	bottom: 0;
 	width: 100%;
 	box-sizing: border-box;
-	background-color: var(--vscode-editor-background);
-	border-top: 1px solid var(--vscode-widget-border);
-	box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.18);
-	padding: 12px 24px;
+	padding: 24px 16px;
+	background: transparent;
+	border-top: none;
+	box-shadow: none;
 	display: flex;
 	justify-content: center;
 	z-index: 5;
@@ -283,15 +305,22 @@
 .checkbox-container {
 	display: flex;
 	align-items: center;
-	gap: 14px;
-	width: 100%;
-	max-width: 1080px;
+	gap: 12px;
+	width: auto;
+	max-width: 520px;
+	padding: 8px 20px;
+	border-radius: 999px;
+	background-color: rgba(20, 20, 20, 0.65);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
 	justify-content: center;
 }
 
 .checkbox-label {
 	font-size: 13px;
-	color: var(--vscode-foreground);
+	color: #fff;
+	font-weight: 500;
+	margin-right: 12px;
 	cursor: pointer;
 	user-select: none;
 }
@@ -336,8 +365,9 @@
 }
 
 .toggle-pill-input:checked + .toggle-pill-slider {
-	background: var(--vscode-focusBorder);
-	border-color: var(--vscode-focusBorder);
+	background: linear-gradient(135deg, #6fd3ff, #6a7bff);
+	border-color: transparent;
+	box-shadow: 0 6px 14px rgba(111, 130, 255, 0.4);
 }
 
 .toggle-pill-input:checked + .toggle-pill-slider::after {
@@ -365,5 +395,339 @@
 
 	.checkbox-container {
 		justify-content: center;
+	}
+}
+
+/* ============================================
+   Settings Icon Button (in footer)
+   ============================================ */
+
+.settings-icon-button {
+	margin-left: 32px;
+	width: 32px;
+	height: 32px;
+	border-radius: 6px;
+	border: 1px solid var(--vscode-widget-border);
+	background-color: var(--vscode-editorWidget-background);
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.2s ease;
+}
+
+.settings-icon-button:hover {
+	background-color: var(--vscode-list-hoverBackground);
+	border-color: var(--vscode-focusBorder);
+	color: var(--vscode-foreground);
+}
+
+.settings-icon-button:hover .codicon {
+	transform: rotate(30deg);
+}
+
+.settings-icon-button .codicon {
+	font-size: 16px;
+	transition: transform 0.3s ease;
+}
+
+/* ============================================
+   Inline Settings View (replaces modal)
+   ============================================ */
+
+.settings-view-container {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+}
+
+.settings-back-header {
+	display: flex;
+	align-items: center;
+	padding: 12px 24px;
+	background-color: var(--vscode-editor-background);
+	border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.settings-back-button {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 12px;
+	border-radius: 6px;
+	border: none;
+	background-color: transparent;
+	color: var(--vscode-textLink-foreground);
+	cursor: pointer;
+	font-size: 13px;
+	font-weight: 500;
+	transition: all 0.15s ease;
+}
+
+.settings-back-button:hover {
+	background-color: var(--vscode-list-hoverBackground);
+	color: var(--vscode-textLink-activeForeground);
+}
+
+.settings-back-button .codicon {
+	font-size: 14px;
+}
+
+.settings-back-text {
+	/* Inherit from button */
+}
+
+.settings-view-content {
+	flex: 1;
+	overflow-y: auto;
+	padding: 32px 56px 80px;
+	max-width: 800px;
+	margin: 0 auto;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.settings-view-header {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-bottom: 32px;
+	padding-bottom: 24px;
+	border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.settings-header-icon {
+	font-size: 32px;
+	color: var(--vscode-textLink-activeForeground);
+	margin-bottom: 8px;
+}
+
+.settings-view-title {
+	font-size: 28px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+	margin: 0;
+}
+
+.settings-view-description {
+	font-size: 14px;
+	color: var(--vscode-descriptionForeground);
+	line-height: 1.5;
+}
+
+.settings-view-body {
+	display: flex;
+	flex-direction: column;
+	gap: 32px;
+}
+
+@media (max-width: 700px) {
+	.settings-view-content {
+		padding: 24px 24px 64px;
+	}
+
+	.settings-view-title {
+		font-size: 22px;
+	}
+}
+
+/* ============================================
+   Settings Sections
+   ============================================ */
+
+.settings-section {
+	margin-bottom: 28px;
+}
+
+.settings-section:last-child {
+	margin-bottom: 0;
+}
+
+.settings-section-title {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--vscode-textLink-activeForeground);
+	margin-bottom: 12px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.settings-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 14px 0;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.settings-item:last-child {
+	border-bottom: none;
+}
+
+.settings-item-label {
+	flex: 1;
+	min-width: 0;
+}
+
+.settings-item-name {
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+	margin-bottom: 2px;
+}
+
+.settings-item-desc {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	line-height: 1.4;
+}
+
+.settings-item-control {
+	flex-shrink: 0;
+}
+
+/* ============================================
+   Toggle Switch
+   ============================================ */
+
+.settings-toggle {
+	position: relative;
+	width: 44px;
+	height: 24px;
+	background-color: var(--vscode-input-background);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 12px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.settings-toggle:hover {
+	border-color: var(--vscode-focusBorder);
+}
+
+.settings-toggle.active {
+	background: linear-gradient(135deg, #6e8efb, #4b6cb7);
+	border-color: transparent;
+}
+
+.settings-toggle-slider {
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 18px;
+	height: 18px;
+	background-color: var(--vscode-foreground);
+	border-radius: 50%;
+	transition: all 0.2s ease;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.settings-toggle.active .settings-toggle-slider {
+	left: 22px;
+	background-color: #fff;
+}
+
+/* ============================================
+   Text Input
+   ============================================ */
+
+.settings-text-input {
+	width: 200px;
+	padding: 8px 12px;
+	font-size: 13px;
+	background-color: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 6px;
+	transition: border-color 0.15s ease;
+}
+
+.settings-text-input:focus {
+	outline: none;
+	border-color: var(--vscode-focusBorder);
+}
+
+.settings-text-input::placeholder {
+	color: var(--vscode-input-placeholderForeground);
+}
+
+/* ============================================
+   Number Input
+   ============================================ */
+
+.settings-number-input {
+	width: 80px;
+	padding: 8px 12px;
+	font-size: 13px;
+	text-align: center;
+	background-color: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 6px;
+	transition: border-color 0.15s ease;
+}
+
+.settings-number-input:focus {
+	outline: none;
+	border-color: var(--vscode-focusBorder);
+}
+
+/* Hide spinner buttons in number inputs */
+.settings-number-input::-webkit-outer-spin-button,
+.settings-number-input::-webkit-inner-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+
+/* ============================================
+   Select Dropdown
+   ============================================ */
+
+.settings-select {
+	width: 200px;
+	padding: 8px 32px 8px 12px;
+	font-size: 13px;
+	background-color: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 6px;
+	cursor: pointer;
+	transition: border-color 0.15s ease;
+	appearance: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='%23888'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 12px center;
+}
+
+.settings-select:focus {
+	outline: none;
+	border-color: var(--vscode-focusBorder);
+}
+
+.settings-select option {
+	background-color: var(--vscode-dropdown-background);
+	color: var(--vscode-dropdown-foreground);
+}
+
+/* ============================================
+   Settings View Responsive
+   ============================================ */
+
+@media (max-width: 700px) {
+	.settings-item {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 10px;
+	}
+
+	.settings-text-input,
+	.settings-select {
+		width: 100%;
 	}
 }

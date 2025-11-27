@@ -6,7 +6,7 @@
 import { EditorPane } from '../../../../browser/parts/editor/editorPane.js';
 import { ITelemetryService } from '../../../../../platform/telemetry/common/telemetry.js';
 import { IThemeService } from '../../../../../platform/theme/common/themeService.js';
-import { IStorageService } from '../../../../../platform/storage/common/storage.js';
+import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
 import { ProjectModeV2Input } from './projectModeV2Input.js';
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { Dimension } from '../../../../../base/browser/dom.js';
@@ -20,9 +20,14 @@ import { IMainProcessService } from '../../../../../platform/ipc/common/mainProc
 import { INativeHostService } from '../../../../../platform/native/common/native.js';
 import { ProjectModeV2ServiceBridge } from './projectModeV2ServiceBridge.js';
 import { PROJECT_MODE_V2_CHANNEL } from '../../common/projectModeV2/ipc.js';
-import { BrowserControlBarV2, IBrowserControlBarV2Config, IBrowserControlBarV2Callbacks } from './browserControlBarV2.js';
-import type { ViewBounds, DevicePreset, DevToolsMode, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
+import { BrowserControlBarV2, IBrowserControlBarV2Config, IBrowserControlBarV2Callbacks, BrowserBookmark } from './browserControlBarV2.js';
+import type { ViewBounds, DevToolsMode, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
 import { generateFloatingToolbarHtml, FloatingToolbarState } from './floatingToolbarHtml.js';
+import { IRoopikEventService } from '../../common/events/index.js';
+import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
+import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js';
+import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
+import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
 
 /**
  * DevTools mode configuration flag
@@ -39,21 +44,23 @@ import { generateFloatingToolbarHtml, FloatingToolbarState } from './floatingToo
 const DEVTOOLS_MODE: DevToolsMode = 'attached'; // 'attached' or 'detached'
 
 /**
+ * Storage key for browser bookmarks (workspace-scoped)
+ * Each project has its own set of bookmarks
+ */
+const BOOKMARKS_STORAGE_KEY = 'roopik.browser.bookmarks';
+
+/**
  * Project Mode V2 Editor
  *
  * Browser Preview with embedded DevTools using WebContentsView.
  * Features:
  * - Real Chromium browser via WebContentsView
- * - Embedded DevTools (ON-DEMAND creation)
- * - Device emulation via CDP
+ * - Embedded DevTools (ON-DEMAND creation) with Device Toolbar
  * - CDP integration for AI agents (MCP compatible)
  */
 export class ProjectModeV2Editor extends EditorPane {
 	static readonly ID = 'roopik.projectModeV2Editor';
 
-	// Instance counter for debugging
-	private static instanceCounter = 0;
-	private readonly instanceId: number;
 
 	private container: HTMLElement | undefined;
 	private controlBar: BrowserControlBarV2 | undefined;
@@ -75,9 +82,6 @@ export class ProjectModeV2Editor extends EditorPane {
 	// ResizeObserver for automatic bounds updates
 	private resizeObserver: ResizeObserver | undefined;
 
-	// Current device emulation
-	private _currentDevice: DevicePreset | undefined;
-
 	// Track if a real URL has been loaded (not about:blank)
 	// Used to decide whether to show placeholder on tab switch
 	private hasLoadedUrl: boolean = false;
@@ -89,26 +93,330 @@ export class ProjectModeV2Editor extends EditorPane {
 		isExpanded: false
 	};
 
+	// "Browsing Paused" overlay - shown when menus/command palette are open
+	private pausedOverlay: HTMLElement | undefined;
+	private isBrowserPaused: boolean = false;
+
 	// DevTools resize handle
 	private devtoolsResizeHandle: HTMLElement | undefined;
 	private isResizingDevTools: boolean = false;
 	private devtoolsMinHeight: number = 100; // Minimum DevTools height in pixels
 	private devtoolsMaxHeightRatio: number = 0.8; // Max 80% of content area
 
+	// Track WHICH input we've registered the dispose listener for
+	// setInput() is called on EVERY tab switch, and may pass a different input instance!
+	private registeredInputForDispose: ProjectModeV2Input | undefined;
+
+	// Bookmarks (workspace-scoped storage)
+	private bookmarks: BrowserBookmark[] = [];
+
 	constructor(
 		group: IEditorGroup,
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IThemeService themeService: IThemeService,
-		@IStorageService storageService: IStorageService,
+		@IStorageService private readonly storageService: IStorageService,
 		@ILoggerService loggerService: ILoggerService,
 		@IMainProcessService mainProcessService: IMainProcessService,
-		@INativeHostService private readonly nativeHostService: INativeHostService
+		@INativeHostService private readonly nativeHostService: INativeHostService,
+		@IRoopikEventService private readonly eventService: IRoopikEventService,
+		@IQuickInputService private readonly quickInputService: IQuickInputService,
+		@IContextMenuService private readonly contextMenuService: IContextMenuService,
+		@INotificationService private readonly notificationService: INotificationService,
+		@IClipboardService private readonly clipboardService: IClipboardService
 	) {
 		super(ProjectModeV2Editor.ID, group, telemetryService, themeService, storageService);
-		this.instanceId = ++ProjectModeV2Editor.instanceCounter;
 		this.logger = RoopikLogger.create(loggerService);
 		this.browserService = new ProjectModeV2ServiceBridge(mainProcessService.getChannel(PROJECT_MODE_V2_CHANNEL));
-		this.logger.info(`[ProjectModeV2] Editor instance #${this.instanceId} created`);
+
+		// Load bookmarks from workspace storage
+		this.loadBookmarks();
+
+		// Setup event subscriptions for UI updates
+		this.setupEventSubscriptions();
+
+		// Setup menu/command palette pause detection
+		this.setupBrowserPauseDetection();
+	}
+
+	// ============================================
+	// Bookmarks (Workspace Storage)
+	// ============================================
+
+	/**
+	 * Load bookmarks from workspace storage
+	 */
+	private loadBookmarks(): void {
+		try {
+			const stored = this.storageService.get(BOOKMARKS_STORAGE_KEY, StorageScope.WORKSPACE);
+			if (stored) {
+				this.bookmarks = JSON.parse(stored) as BrowserBookmark[];
+				this.logger.debug(`[ProjectModeV2] Loaded ${this.bookmarks.length} bookmarks from workspace storage`);
+			}
+		} catch (error) {
+			this.logger.warn('[ProjectModeV2] Failed to load bookmarks:', error);
+			this.bookmarks = [];
+		}
+	}
+
+	/**
+	 * Save bookmarks to workspace storage
+	 */
+	private saveBookmarks(): void {
+		try {
+			this.storageService.store(
+				BOOKMARKS_STORAGE_KEY,
+				JSON.stringify(this.bookmarks),
+				StorageScope.WORKSPACE,
+				StorageTarget.USER
+			);
+			this.logger.debug(`[ProjectModeV2] Saved ${this.bookmarks.length} bookmarks to workspace storage`);
+		} catch (error) {
+			this.logger.error('[ProjectModeV2] Failed to save bookmarks:', error);
+		}
+	}
+
+	/**
+	 * Add a bookmark
+	 */
+	private addBookmark(bookmark: BrowserBookmark): void {
+		// Don't add duplicates
+		if (this.isBookmarked(bookmark.url)) {
+			return;
+		}
+		this.bookmarks.push(bookmark);
+		this.saveBookmarks();
+		this.notificationService.notify({
+			severity: Severity.Info,
+			message: `Bookmarked: ${bookmark.title}`,
+			sticky: false
+		});
+	}
+
+	/**
+	 * Remove a bookmark by URL
+	 */
+	private removeBookmark(url: string): void {
+		const index = this.bookmarks.findIndex(b => b.url === url);
+		if (index !== -1) {
+			const removed = this.bookmarks.splice(index, 1)[0];
+			this.saveBookmarks();
+			this.notificationService.notify({
+				severity: Severity.Info,
+				message: `Removed bookmark: ${removed.title}`,
+				sticky: false
+			});
+		}
+	}
+
+	/**
+	 * Check if a URL is bookmarked
+	 */
+	private isBookmarked(url: string): boolean {
+		return this.bookmarks.some(b => b.url === url);
+	}
+
+	/**
+	 * Get all bookmarks
+	 */
+	private getBookmarks(): BrowserBookmark[] {
+		return [...this.bookmarks];
+	}
+
+	/**
+	 * Navigate to a bookmarked URL
+	 */
+	private navigateToBookmark(url: string): void {
+		this.navigate(url);
+	}
+
+	/**
+	 * Subscribe to events from the central event bus for UI updates
+	 * This demonstrates the event-driven architecture where:
+	 * 1. IPC event comes from main process
+	 * 2. We publish to EventService (📤 PUBLISH)
+	 * 3. Subscribers receive and update UI (📥 RECEIVED)
+	 */
+	private setupEventSubscriptions(): void {
+		// Subscribe to navigation events - update URL bar
+		this._register(this.eventService.onBrowserNavigated((event) => {
+
+			// Update URL bar
+			if (this.controlBar) {
+				this.controlBar.setUrl(event.url);
+			}
+
+			// Update placeholder visibility based on URL
+			const isRealUrl = event.url && event.url !== 'about:blank';
+			if (isRealUrl) {
+				if (!this.hasLoadedUrl) {
+					this.hasLoadedUrl = true;
+					this.hidePlaceholder();
+				}
+			} else {
+				if (this.hasLoadedUrl) {
+					this.hasLoadedUrl = false;
+					this.showPlaceholder();
+				}
+			}
+		}));
+
+		// Subscribe to title change events - update tab title
+		this._register(this.eventService.onBrowserTitleChanged((event) => {
+
+			const input = this.input as ProjectModeV2Input;
+			if (input) {
+				input.setPageTitle(event.title);
+			}
+		}));
+	}
+
+	/**
+	 * Setup detection for menus and command palette to pause browser
+	 *
+	 * Problem: WebContentsView (native Chromium) renders ON TOP of VSCode's HTML menus.
+	 * Solution: When menus/command palette open, hide browser and show "Browsing Paused" overlay.
+	 *
+	 * This is the same approach used by Cursor IDE.
+	 *
+	 * Currently handled:
+	 * - Command Palette (Ctrl+Shift+P) via IQuickInputService
+	 * - Context menus (right-click) via IContextMenuService
+	 *
+	 * TODO: Native menu bar (File, Edit, View...) needs main process IPC
+	 * The native Electron menu doesn't fire events in the renderer process.
+	 * To fix this, we need to:
+	 * 1. Add menu-will-show/menu-will-close event handlers in main process Menubar class
+	 * 2. Create IPC channel to notify renderer when menu opens/closes
+	 * 3. Subscribe to those events here
+	 */
+	private setupBrowserPauseDetection(): void {
+		// 1. Command Palette detection via IQuickInputService
+		this._register(this.quickInputService.onShow(() => {
+			this.pauseBrowser();
+		}));
+
+		this._register(this.quickInputService.onHide(() => {
+			this.resumeBrowser();
+		}));
+
+		// 2. Context menu (right-click) detection via IContextMenuService
+		this._register(this.contextMenuService.onDidShowContextMenu(() => {
+			this.pauseBrowser();
+		}));
+
+		this._register(this.contextMenuService.onDidHideContextMenu(() => {
+			this.resumeBrowser();
+		}));
+	}
+
+	/**
+	 * Pause browser - hide WebContentsView and show "Browsing Paused" overlay
+	 * Called when menus or command palette open
+	 */
+	private pauseBrowser(): void {
+		if (this.isBrowserPaused || !this.browserViewId || !this.hasLoadedUrl) {
+			return;
+		}
+
+		this.isBrowserPaused = true;
+
+		// Hide the browser WebContentsView
+		this.browserService.setBrowserVisible(this.browserViewId, false);
+
+		// Hide floating toolbar too
+		if (this.floatingToolbarViewId) {
+			this.setFloatingToolbarVisible(false);
+		}
+
+		// Show the paused overlay
+		this.showPausedOverlay();
+	}
+
+	/**
+	 * Resume browser - show WebContentsView and hide overlay
+	 * Called when menus or command palette close
+	 */
+	private resumeBrowser(): void {
+		if (!this.isBrowserPaused || !this.browserViewId) {
+			return;
+		}
+
+		this.isBrowserPaused = false;
+
+		// Hide the paused overlay
+		this.hidePausedOverlay();
+
+		// Show the browser WebContentsView (only if we have a URL loaded)
+		if (this.hasLoadedUrl && this.isVisible()) {
+			this.browserService.setBrowserVisible(this.browserViewId, true);
+
+			// Show floating toolbar
+			if (this.floatingToolbarViewId) {
+				this.setFloatingToolbarVisible(true);
+			}
+		}
+	}
+
+	/**
+	 * Show "Browsing Paused" overlay
+	 */
+	private showPausedOverlay(): void {
+		if (!this.browserContainer) {
+			return;
+		}
+
+		// Create overlay if it doesn't exist
+		if (!this.pausedOverlay) {
+			this.pausedOverlay = document.createElement('div');
+			this.pausedOverlay.style.cssText = `
+				position: absolute;
+				top: 0;
+				left: 0;
+				right: 0;
+				bottom: 0;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				background-color: var(--vscode-editor-background);
+				color: var(--vscode-descriptionForeground);
+				font-family: var(--vscode-font-family);
+				font-size: 14px;
+				gap: 12px;
+				z-index: 100;
+			`;
+
+			// Pause icon
+			const icon = document.createElement('div');
+			icon.style.cssText = `
+				font-size: 32px;
+				opacity: 0.6;
+			`;
+			icon.textContent = '⏸';
+			this.pausedOverlay.appendChild(icon);
+
+			// Text
+			const text = document.createElement('div');
+			text.style.cssText = `
+				font-size: 14px;
+				opacity: 0.8;
+			`;
+			text.textContent = 'Browsing paused';
+			this.pausedOverlay.appendChild(text);
+
+			this.browserContainer.appendChild(this.pausedOverlay);
+		}
+
+		this.pausedOverlay.style.display = 'flex';
+	}
+
+	/**
+	 * Hide "Browsing Paused" overlay
+	 */
+	private hidePausedOverlay(): void {
+		if (this.pausedOverlay) {
+			this.pausedOverlay.style.display = 'none';
+		}
 	}
 
 	protected createEditor(parent: HTMLElement): void {
@@ -125,9 +433,11 @@ export class ProjectModeV2Editor extends EditorPane {
 		// Browser control bar configuration
 		const config: IBrowserControlBarV2Config = {
 			showDevTools: true,
-			showDeviceSelector: true,
+			showInspectMode: true,
 			showScreenshot: true,
-			showHardReload: true
+			showHardReload: true,
+			showCopyUrl: true,
+			showBookmarks: true
 		};
 
 		// Browser control bar callbacks
@@ -137,11 +447,18 @@ export class ProjectModeV2Editor extends EditorPane {
 			onForward: () => this.goForward(),
 			onHome: () => this.goHome(),
 			onRefresh: () => this.refresh(),
-			onStop: () => this.stop(),
+			onStopDevServer: () => this.stopDevServer(),
+			onInspectMode: () => this.toggleInspectMode(),
 			onDevTools: () => this.toggleDevTools(),
-			onDeviceSelect: (device: DevicePreset | undefined) => this.setDeviceEmulation(device),
 			onHardReload: () => this.hardReload(),
-			onScreenshot: () => this.takeScreenshot()
+			onScreenshot: () => this.takeScreenshot(),
+			onCopyUrl: () => this.copyCurrentUrl(),
+			// Bookmark callbacks
+			onBookmarkAdd: (bookmark: BrowserBookmark) => this.addBookmark(bookmark),
+			onBookmarkRemove: (url: string) => this.removeBookmark(url),
+			onBookmarkClick: (url: string) => this.navigateToBookmark(url),
+			getBookmarks: () => this.getBookmarks(),
+			isBookmarked: (url: string) => this.isBookmarked(url)
 		};
 
 		this.controlBar = this._register(new BrowserControlBarV2(this.container, config, callbacks));
@@ -214,8 +531,6 @@ export class ProjectModeV2Editor extends EditorPane {
 		this.resizeObserver.observe(this.container); // Parent container for split resize
 		this.resizeObserver.observe(this.browserContainer);
 		this.resizeObserver.observe(this.devtoolsContainer);
-
-		this.logger.info(`[ProjectModeV2] Editor #${this.instanceId} DOM created`);
 
 		// NOTE: Browser view initialization is handled by setInput()
 		// This ensures only ONE initialization happens per editor lifecycle
@@ -358,63 +673,6 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	/**
-	 * Show max browser limit reached placeholder
-	 * Called when user tries to open more browsers than allowed
-	 * This is a PERMANENT state - the editor will not create a browser
-	 */
-	private showMaxBrowserLimitPlaceholder(): void {
-		if (!this.placeholderElement) {
-			return;
-		}
-
-		// Clear existing content (CSP-safe, no innerHTML)
-		while (this.placeholderElement.firstChild) {
-			this.placeholderElement.removeChild(this.placeholderElement.firstChild);
-		}
-
-		// Warning icon
-		const icon = document.createElement('div');
-		icon.style.fontSize = '48px';
-		icon.style.opacity = '0.7';
-		icon.textContent = '⚠️';
-		this.placeholderElement.appendChild(icon);
-
-		// Title
-		const title = document.createElement('div');
-		title.style.fontSize = '16px';
-		title.style.fontWeight = '500';
-		title.style.color = 'var(--vscode-foreground)';
-		title.style.marginTop = '8px';
-		title.textContent = 'Browser Limit Reached';
-		this.placeholderElement.appendChild(title);
-
-		// Description
-		const description = document.createElement('div');
-		description.style.opacity = '0.7';
-		description.style.textAlign = 'center';
-		description.style.maxWidth = '300px';
-		description.style.marginTop = '8px';
-		description.textContent = 'Maximum of 2 browser instances allowed. Please close an existing browser tab to open a new one.';
-		this.placeholderElement.appendChild(description);
-
-		// Hint
-		const hint = document.createElement('div');
-		hint.style.opacity = '0.5';
-		hint.style.fontSize = '12px';
-		hint.style.marginTop = '16px';
-		hint.textContent = 'Close this tab to free up resources';
-		this.placeholderElement.appendChild(hint);
-
-		// Show the placeholder
-		this.placeholderElement.style.display = 'flex';
-
-		// Hide control bar since browser won't work
-		if (this.controlBar) {
-			this.controlBar.setDisabled(true);
-		}
-	}
-
-	/**
 	 * Setup DevTools resize functionality
 	 * Allows users to drag the resize handle to change DevTools height
 	 */
@@ -471,7 +729,6 @@ export class ProjectModeV2Editor extends EditorPane {
 
 			// Final bounds update
 			this.updateViewBounds();
-			this.logger.info('[ProjectModeV2] DevTools resize completed');
 		};
 
 		this.devtoolsResizeHandle.addEventListener('mousedown', (e: MouseEvent) => {
@@ -495,7 +752,6 @@ export class ProjectModeV2Editor extends EditorPane {
 			document.addEventListener('mouseup', onMouseUp);
 
 			e.preventDefault();
-			this.logger.info('[ProjectModeV2] DevTools resize started');
 		});
 	}
 
@@ -506,21 +762,18 @@ export class ProjectModeV2Editor extends EditorPane {
 	private initializeBrowserView(): Promise<void> {
 		// If already initialized, skip
 		if (this.browserViewId) {
-			this.logger.info(`[ProjectModeV2] #${this.instanceId} Browser view already initialized (viewId=${this.browserViewId}), skipping...`);
 			return Promise.resolve();
 		}
 
 		// If already initializing, wait for that to complete instead of starting a new one
 		// CRITICAL: Check isInitializing FIRST (sync flag set before promise created)
 		if (this.isInitializing) {
-			this.logger.info(`[ProjectModeV2] #${this.instanceId} Already initializing, waiting... (hasPromise=${!!this.initializationPromise})`);
 			// Return existing promise if available, otherwise resolve immediately
 			return this.initializationPromise || Promise.resolve();
 		}
 
 		// Mark as initializing SYNCHRONOUSLY before ANY async work
 		this.isInitializing = true;
-		this.logger.info(`[ProjectModeV2] #${this.instanceId} Starting browser view initialization...`);
 
 		// Create and store the promise SYNCHRONOUSLY so other callers can wait for it
 		this.initializationPromise = this.doInitializeBrowserView();
@@ -532,32 +785,23 @@ export class ProjectModeV2Editor extends EditorPane {
 	 */
 	private async doInitializeBrowserView(): Promise<void> {
 		try {
-			// =========================================================
-			// CHECK MAX BROWSER LIMIT BEFORE CREATING
-			// This prevents resource-heavy browser instances from being created
-			// when the limit is reached. Instead, show a friendly message.
-			// =========================================================
-			const canCreate = await this.browserService.canCreateBrowser();
-			if (!canCreate) {
-				this.logger.warn(`[ProjectModeV2] #${this.instanceId} Max browser limit reached - not creating browser view`);
-				this.showMaxBrowserLimitPlaceholder();
-				return;
-			}
-
 			const windowId = await this.nativeHostService.windowId;
-			this.logger.info(`[ProjectModeV2] #${this.instanceId} Got window ID: ${windowId}`);
-
 			const result = await this.browserService.createBrowserView(windowId);
 			this.browserViewId = result.browserViewId;
 
-			this.logger.info(`[ProjectModeV2] #${this.instanceId} Browser view created: viewId=${this.browserViewId}`);
+			// Publish browser created event to central event bus
+			this.eventService.publish('browser.created', {
+				browserViewId: this.browserViewId,
+				windowId,
+				url: 'about:blank',
+				title: 'Browser Preview'
+			});
 
 			// Subscribe to DevTools closed event (handles user closing via X button)
 			// This is event-driven, not polling - much more efficient!
 			this._register(this.browserService.onDevToolsClosed((event) => {
 				if (event.browserViewId === this.browserViewId && this.devtoolsVisible) {
 					this.devtoolsVisible = false;
-					this.logger.info('[ProjectModeV2] DevTools closed externally (via X button) - state synced');
 
 					// In detached mode, also hide our containers
 					if (DEVTOOLS_MODE === 'detached' && this.devtoolsContainer) {
@@ -586,8 +830,6 @@ export class ProjectModeV2Editor extends EditorPane {
 				css: true,
 				runtime: true,
 				page: true
-			}).then(() => {
-				this.logger.info('[ProjectModeV2] CDP domains enabled');
 			}).catch((cdpError) => {
 				this.logger.warn('[ProjectModeV2] Failed to enable CDP domains (non-fatal):', cdpError);
 			});
@@ -622,7 +864,6 @@ export class ProjectModeV2Editor extends EditorPane {
 
 		const currentUrl = event.url || '';
 		const currentTitle = event.title || '';
-		const isRealUrl = currentUrl && currentUrl !== 'about:blank';
 
 		// Update loading progress bar
 		// IMPORTANT: Always respect the isLoading value from the event
@@ -632,10 +873,21 @@ export class ProjectModeV2Editor extends EditorPane {
 			if (!this.wasLoading) {
 				this.wasLoading = true;
 				this.controlBar?.showLoading();
+
+				// Publish loading started event
+				this.eventService.publish('browser.loadingStarted', {
+					browserViewId: event.browserViewId
+				});
 			}
 		} else {
 			// Not loading - ALWAYS hide loading bar
 			// This is critical because did-stop-loading sends isLoading=false explicitly
+			if (this.wasLoading) {
+				// Publish loading finished event
+				this.eventService.publish('browser.loadingFinished', {
+					browserViewId: event.browserViewId
+				});
+			}
 			this.wasLoading = false;
 			this.controlBar?.hideLoading();
 		}
@@ -643,7 +895,6 @@ export class ProjectModeV2Editor extends EditorPane {
 		// Check for navigation errors
 		if (event.lastError && event.lastError.validatedURL !== this.lastErrorUrl) {
 			this.lastErrorUrl = event.lastError.validatedURL;
-			this.logger.info(`[ProjectModeV2] Navigation error detected: ${event.lastError.errorDescription} (${event.lastError.errorCode})`);
 
 			// Hide loading bar on error
 			if (this.controlBar) {
@@ -664,37 +915,26 @@ export class ProjectModeV2Editor extends EditorPane {
 		if (currentUrl !== this.lastKnownUrl) {
 			this.lastKnownUrl = currentUrl;
 
-			// Update URL bar
-			if (this.controlBar) {
-				this.controlBar.setUrl(currentUrl);
-			}
+			// Publish navigation event to central event bus (title is sent separately via titleChanged)
+			this.eventService.publish('browser.navigated', {
+				browserViewId: event.browserViewId,
+				url: currentUrl
+			});
 
-			// Update placeholder visibility based on URL
-			// This handles back/forward navigation correctly
-			if (isRealUrl) {
-				// Navigated to a real URL - hide placeholder, show browser
-				if (!this.hasLoadedUrl) {
-					this.hasLoadedUrl = true;
-					this.hidePlaceholder();
-				}
-			} else {
-				// Navigated to about:blank - show placeholder, hide browser
-				if (this.hasLoadedUrl) {
-					this.hasLoadedUrl = false;
-					this.showPlaceholder();
-				}
-			}
+			// UI updates now happen via event subscription (see setupEventSubscriptions)
 		}
 
 		// Update tab title when page title changes
 		if (currentTitle !== this.lastKnownTitle) {
 			this.lastKnownTitle = currentTitle;
-			const input = this.input as ProjectModeV2Input;
-			if (input) {
-				// Always update title, even if empty (to clear stale titles)
-				// setPageTitle handles empty titles gracefully
-				input.setPageTitle(currentTitle);
-			}
+
+			// Publish title changed event to central event bus
+			this.eventService.publish('browser.titleChanged', {
+				browserViewId: event.browserViewId,
+				title: currentTitle
+			});
+
+			// UI updates now happen via event subscription (see setupEventSubscriptions)
 		}
 
 		// Update back/forward button states
@@ -807,16 +1047,20 @@ export class ProjectModeV2Editor extends EditorPane {
 			return;
 		}
 
-		// Validate URL - reject gibberish like "null", "undefined", single characters, etc.
 		const trimmedUrl = url.trim();
-		if (this.isInvalidUrl(trimmedUrl)) {
-			this.logger.warn(`[ProjectModeV2] Navigation aborted: Invalid URL "${trimmedUrl}"`);
-			this.showNavigationError(`Invalid URL: "${trimmedUrl}"`);
+		if (!trimmedUrl) {
 			return;
 		}
 
-		// Ensure URL has protocol
-		if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://') && !trimmedUrl.startsWith('about:')) {
+		// Check if input looks like a URL or a search query
+		// Like Chrome: if it's not a valid URL pattern, search Google instead
+		if (this.isSearchQuery(trimmedUrl)) {
+			// Convert search query to Google search URL
+			const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(trimmedUrl)}`;
+			this.logger.info(`[ProjectModeV2] Searching Google for: "${trimmedUrl}"`);
+			url = searchUrl;
+		} else if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://') && !trimmedUrl.startsWith('about:')) {
+			// Looks like a URL without protocol - add https://
 			url = 'https://' + trimmedUrl;
 		} else {
 			url = trimmedUrl;
@@ -834,8 +1078,6 @@ export class ProjectModeV2Editor extends EditorPane {
 			this.hasLoadedUrl = false;
 			this.showPlaceholder();
 		}
-
-		this.logger.info(`[ProjectModeV2] Navigating to: ${url} (browserViewId: ${this.browserViewId})`);
 
 		try {
 			await this.browserService.navigate(this.browserViewId, url);
@@ -936,10 +1178,14 @@ export class ProjectModeV2Editor extends EditorPane {
 		}
 	}
 
-	private async stop(): Promise<void> {
-		if (this.browserViewId) {
-			await this.browserService.stop(this.browserViewId);
-		}
+	/**
+	 * Stop Dev Server (placeholder - feature coming later)
+	 * Will stop the Vite/dev server when implemented
+	 */
+	private stopDevServer(): void {
+		// TODO: Implement dev server stop functionality
+		// This will integrate with ViteServerService when available
+		this.logger.info('[ProjectModeV2] Stop Dev Server clicked (not yet implemented)');
 	}
 
 	// ============================================
@@ -948,11 +1194,8 @@ export class ProjectModeV2Editor extends EditorPane {
 
 	private async toggleDevTools(): Promise<void> {
 		if (!this.browserViewId) {
-			this.logger.warn('[ProjectModeV2] toggleDevTools: No browser view ID!');
 			return;
 		}
-
-		this.logger.info(`[ProjectModeV2] toggleDevTools called, devtoolsVisible=${this.devtoolsVisible}, mode=${DEVTOOLS_MODE}`);
 
 		if (this.devtoolsVisible) {
 			// =========================================================
@@ -969,7 +1212,6 @@ export class ProjectModeV2Editor extends EditorPane {
 			}
 
 			this.devtoolsVisible = false;
-			this.logger.info(`[ProjectModeV2] DevTools closed (mode: ${DEVTOOLS_MODE})`);
 		} else {
 			// =========================================================
 			// OPEN DevTools
@@ -978,11 +1220,8 @@ export class ProjectModeV2Editor extends EditorPane {
 				// ATTACHED MODE: Electron manages DevTools layout
 				// DevTools will dock at bottom of browser window
 				// Device Toolbar toggle and close button will be available!
-				const options = { mode: 'attached' as const };
-				this.logger.info(`[ProjectModeV2] Opening DevTools with options: ${JSON.stringify(options)}`);
-				await this.browserService.openDevTools(this.browserViewId, options);
+				await this.browserService.openDevTools(this.browserViewId, { mode: 'attached' as const });
 				this.devtoolsVisible = true;
-				this.logger.info('[ProjectModeV2] DevTools opened (mode: attached - Device Toolbar available!)');
 			} else {
 				// DETACHED MODE: We manage DevTools layout
 				// Show resize handle and container
@@ -1011,7 +1250,6 @@ export class ProjectModeV2Editor extends EditorPane {
 					bounds
 				});
 				this.devtoolsVisible = true;
-				this.logger.info('[ProjectModeV2] DevTools opened (mode: detached)');
 
 				// Update bounds after layout settles
 				setTimeout(() => this.updateViewBounds(), 100);
@@ -1059,8 +1297,6 @@ export class ProjectModeV2Editor extends EditorPane {
 				bounds,
 				htmlContent
 			);
-
-			this.logger.info(`[ProjectModeV2] Floating toolbar created: overlayId=${this.floatingToolbarViewId}`);
 		} catch (error) {
 			this.logger.error('[ProjectModeV2] Failed to create floating toolbar:', error);
 		}
@@ -1114,28 +1350,69 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	// ============================================
-	// Device Emulation
+	// Inspect Mode
 	// ============================================
 
-	private async setDeviceEmulation(device: DevicePreset | undefined): Promise<void> {
-		if (!this.browserViewId) {
-			return;
-		}
-
-		if (device) {
-			this._currentDevice = device;
-			await this.browserService.setDeviceEmulation(this.browserViewId, device);
-			this.logger.info(`[ProjectModeV2] Device emulation set: ${this._currentDevice.name}`);
-		} else {
-			this._currentDevice = undefined;
-			await this.browserService.clearDeviceEmulation(this.browserViewId);
-			this.logger.info(`[ProjectModeV2] Device emulation cleared, current: ${this._currentDevice}`);
-		}
+	/**
+	 * Toggle Inspect Mode (placeholder - feature coming later)
+	 * Will enable element inspection overlay for component data extraction
+	 */
+	private toggleInspectMode(): void {
+		// TODO: Implement inspect mode functionality
+		// This will inject scripts into the browser to enable hover inspection
+		// and extract component data for the properties panel
+		this.logger.info('[ProjectModeV2] Inspect Mode toggled (not yet implemented)');
 	}
 
 	// ============================================
 	// Utilities
 	// ============================================
+
+	/**
+	 * Get current URL (for programmatic/agent access)
+	 * Does NOT copy to clipboard - just returns the URL string
+	 *
+	 * @returns Current browser URL, or empty string if no URL loaded
+	 */
+	public getCurrentUrl(): string {
+		return this.controlBar?.getUrl() || '';
+	}
+
+	/**
+	 * Copy current URL to clipboard (for UI button clicks)
+	 * Only call this from UI interactions, not from agent code
+	 */
+	private async copyCurrentUrl(): Promise<void> {
+		const url = this.getCurrentUrl();
+		if (!url || url === 'about:blank') {
+			this.notificationService.notify({
+				severity: Severity.Warning,
+				message: 'No URL to copy. Navigate to a page first.',
+				sticky: false
+			});
+			return;
+		}
+
+		try {
+			// Use VSCode's clipboard service (works reliably in Electron)
+			await this.clipboardService.writeText(url);
+			this.logger.info(`[ProjectModeV2] URL copied to clipboard: ${url}`);
+
+			// Show success notification
+			this.notificationService.notify({
+				severity: Severity.Info,
+				message: `URL copied: ${url}`,
+				sticky: false
+			});
+		} catch (error) {
+			this.logger.error('[ProjectModeV2] Failed to copy URL to clipboard:', error);
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: 'Failed to copy URL to clipboard',
+				sticky: false
+			});
+		}
+	}
 
 	private async takeScreenshot(): Promise<void> {
 		if (!this.browserViewId) {
@@ -1150,8 +1427,6 @@ export class ProjectModeV2Editor extends EditorPane {
 			link.download = `screenshot-${Date.now()}.png`;
 			link.href = dataUrl;
 			link.click();
-
-			this.logger.info('[ProjectModeV2] Screenshot taken');
 		} catch (error) {
 			this.logger.error('[ProjectModeV2] Screenshot failed:', error);
 		}
@@ -1167,10 +1442,19 @@ export class ProjectModeV2Editor extends EditorPane {
 		if (input instanceof ProjectModeV2Input) {
 			const initialUrl = input.url;
 
+			// CRITICAL: Listen for input disposal - this means the TAB is truly closed
+			// (not just hidden for tab switching). When input is disposed, destroy the browser!
+			// NOTE: Only register if we haven't registered for THIS SPECIFIC input instance.
+			// setInput() may be called with different input instances on tab switch!
+			if (this.registeredInputForDispose !== input) {
+				this.registeredInputForDispose = input;
+				this._register(input.onWillDispose(() => {
+					this.destroyBrowserNow();
+				}));
+			}
+
 			// Initialize browser view if not already done
 			if (!this.browserViewId) {
-				this.logger.info(`[ProjectModeV2] #${this.instanceId} setInput: initializing browser view...`);
-
 				// Set URL bar to initial URL for first load
 				if (this.controlBar) {
 					this.controlBar.setUrl(initialUrl);
@@ -1185,7 +1469,6 @@ export class ProjectModeV2Editor extends EditorPane {
 			} else {
 				// Browser view already exists (tab switch back)
 				// Just restore visibility - NO re-navigation needed!
-				this.logger.info(`[ProjectModeV2] #${this.instanceId} setInput: restoring existing browser view (viewId=${this.browserViewId})`);
 
 				// Restore URL bar from CURRENT browser URL, not the stale input URL
 				// This ensures URL bar shows where the user actually navigated to
@@ -1217,7 +1500,6 @@ export class ProjectModeV2Editor extends EditorPane {
 			const state = await this.browserService.getNavigationState(this.browserViewId);
 			if (state.url && state.url !== 'about:blank') {
 				this.controlBar.setUrl(state.url);
-				this.logger.info(`[ProjectModeV2] #${this.instanceId} URL bar synced to: ${state.url}`);
 			}
 		} catch (error) {
 			this.logger.warn('[ProjectModeV2] Failed to sync URL bar:', error);
@@ -1225,18 +1507,46 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	/**
-	 * Check if URL is invalid/gibberish
-	 * Returns true for URLs that are obviously empty - let browser handle other validation
+	 * Check if input looks like a search query rather than a URL
+	 * Like Chrome's omnibox behavior:
+	 * - Contains spaces → search query
+	 * - No dots and no protocol → search query
+	 * - Single word that's not a valid TLD pattern → search query
+	 *
+	 * @returns true if input should be treated as a search query
 	 */
-	private isInvalidUrl(url: string): boolean {
-		// Empty or whitespace only
-		if (!url || url.length === 0) {
+	private isSearchQuery(input: string): boolean {
+		// Already has a protocol - it's a URL
+		if (input.startsWith('http://') || input.startsWith('https://') || input.startsWith('about:')) {
+			return false;
+		}
+
+		// Contains spaces - definitely a search query
+		// (URLs cannot have unencoded spaces)
+		if (input.includes(' ')) {
 			return true;
 		}
 
-		// Let browser handle everything else - it will return proper errors
-		// for invalid URLs like ERR_NAME_NOT_RESOLVED, ERR_INVALID_URL, etc.
-		return false;
+		// Check if it looks like a domain (has a dot and valid TLD-like pattern)
+		// Examples that ARE URLs: google.com, localhost:3000, 192.168.1.1
+		// Examples that ARE searches: "hello", "what is react", "fix bug"
+		const domainPattern = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/;
+		const localhostPattern = /^localhost(:\d+)?(\/.*)?$/;
+		const ipPattern = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?(\/.*)?$/;
+		const portPattern = /^[a-zA-Z0-9.-]+(:\d+)(\/.*)?$/; // domain:port
+
+		// If it matches any URL-like pattern, it's not a search
+		if (domainPattern.test(input) ||
+			localhostPattern.test(input) ||
+			ipPattern.test(input) ||
+			portPattern.test(input)) {
+			return false;
+		}
+
+		// Single word without dots - could be a search or a simple hostname
+		// Treat as search (like Chrome does for most single words)
+		// Exception: "localhost" is handled above
+		return true;
 	}
 
 	/**
@@ -1303,27 +1613,20 @@ export class ProjectModeV2Editor extends EditorPane {
 	override clearInput(): void {
 		super.clearInput();
 
-		// IMPORTANT: Destroy browser view here!
-		// VSCode reuses editor instances, so dispose() may never be called.
-		// We must destroy the browser when the tab is closed to free resources.
-		// A new browser will be created in setInput() when the tab is reopened.
+		// IMPORTANT: Only HIDE the browser view here, don't destroy it!
+		// clearInput() is called when switching tabs - we want to preserve the browser state.
+		// The browser should only be destroyed in dispose() when the editor is actually closed.
 		if (this.browserViewId) {
-			this.logger.info(`[ProjectModeV2] #${this.instanceId} clearInput: destroying browser view (viewId=${this.browserViewId})`);
-			this.browserService.destroyBrowserView(this.browserViewId)
-				.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy browser view in clearInput:', err));
-			this.browserViewId = undefined;
+			this.browserService.setBrowserVisible(this.browserViewId, false);
 		}
 
-		// Reset state for potential editor reuse
-		this.hasLoadedUrl = false;
-		this.lastKnownUrl = '';
-		this.lastKnownTitle = '';
-		this.initializationPromise = undefined;
-		this.isInitializing = false;
+		// Hide floating toolbar but don't destroy
+		if (this.floatingToolbarViewId) {
+			this.setFloatingToolbarVisible(false);
+		}
 
-		// Destroy floating toolbar
-		this.destroyFloatingToolbar()
-			.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy floating toolbar in clearInput:', err));
+		// Note: We do NOT reset hasLoadedUrl, lastKnownUrl, lastKnownTitle etc.
+		// because the browser is still alive and will be shown again in setInput()
 	}
 
 	override focus(): void {
@@ -1331,18 +1634,23 @@ export class ProjectModeV2Editor extends EditorPane {
 		this.browserContainer?.focus();
 	}
 
-	layout(dimension: Dimension): void {
+	layout(_dimension: Dimension): void {
 		// VSCode calls this when editor pane is resized (including split screen)
 		// Use the retry mechanism to ensure bounds are correctly updated
 		this.updateBoundsWithRetry();
 	}
 
-	override dispose(): void {
-		this.logger.info(`[ProjectModeV2] #${this.instanceId} dispose: destroying browser view (viewId=${this.browserViewId})`);
+	/**
+	 * Destroy browser view immediately
+	 * Called when EditorInput is disposed (tab truly closed)
+	 */
+	private destroyBrowserNow(): void {
+		if (!this.browserViewId) {
+			return;
+		}
 
-		// Cleanup ResizeObserver
-		this.resizeObserver?.disconnect();
-		this.resizeObserver = undefined;
+		const destroyedBrowserViewId = this.browserViewId;
+		this.browserViewId = undefined; // Clear immediately to prevent double destruction
 
 		// Hide views immediately
 		this.hideViews();
@@ -1351,12 +1659,25 @@ export class ProjectModeV2Editor extends EditorPane {
 		this.destroyFloatingToolbar()
 			.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy floating toolbar:', err));
 
-		// Destroy browser view - this is the ONLY place we destroy
-		// (clearInput just hides, dispose actually destroys)
+		// Publish browser destroyed event to central event bus
+		this.eventService.publish('browser.destroyed', {
+			browserViewId: destroyedBrowserViewId
+		});
+
+		// Destroy the browser view in main process
+		this.browserService.destroyBrowserView(destroyedBrowserViewId)
+			.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy browser view:', err));
+	}
+
+	override dispose(): void {
+		// Cleanup ResizeObserver
+		this.resizeObserver?.disconnect();
+		this.resizeObserver = undefined;
+
+		// Destroy browser if not already destroyed by input disposal
+		// (destroyBrowserNow may have already been called via onWillDispose)
 		if (this.browserViewId) {
-			this.browserService.destroyBrowserView(this.browserViewId)
-				.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy browser view in dispose:', err));
-			this.browserViewId = undefined;
+			this.destroyBrowserNow();
 		}
 
 		super.dispose();

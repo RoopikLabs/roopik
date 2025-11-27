@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, BrowserInstanceInfo, BrowserListChangedEvent } from './types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from './types.js';
 
 export const IProjectModeV2Service = createDecorator<IProjectModeV2Service>('projectModeV2Service');
 
@@ -40,12 +40,6 @@ export interface IProjectModeV2Service {
 	 */
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent>;
 
-	/**
-	 * Fired when browser list changes (create, destroy)
-	 * Used for multi-browser management UI (welcome screen, browser selector)
-	 */
-	readonly onBrowserListChanged: Event<BrowserListChangedEvent>;
-
 	// ============================================
 	// Browser View Lifecycle
 	// ============================================
@@ -72,31 +66,6 @@ export interface IProjectModeV2Service {
 	 * Set browser view visibility
 	 */
 	setBrowserVisible(browserViewId: number, visible: boolean): Promise<void>;
-
-	// ============================================
-	// Browser Instance Management
-	// ============================================
-
-	/**
-	 * Get list of all active browser instances
-	 * Used for welcome screen browser selector
-	 */
-	getBrowserList(): Promise<BrowserInstanceInfo[]>;
-
-	/**
-	 * Get current browser count
-	 */
-	getBrowserCount(): Promise<number>;
-
-	/**
-	 * Get maximum allowed browser count
-	 */
-	getMaxBrowserCount(): Promise<number>;
-
-	/**
-	 * Check if can create a new browser (under max limit)
-	 */
-	canCreateBrowser(): Promise<boolean>;
 
 	// ============================================
 	// Navigation
