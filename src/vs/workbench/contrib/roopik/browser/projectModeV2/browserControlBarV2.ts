@@ -147,7 +147,18 @@ export class BrowserControlBarV2 extends Disposable {
 		// Create and append the dropdown menu to document body (fixed positioning)
 		this.overflowMenu = this.createOverflowMenu();
 		document.body.appendChild(this.overflowMenu);
+
+		// Close menu on window resize/move (fixes monitor switching issue)
+		window.addEventListener('resize', this.handleWindowChange);
+		window.addEventListener('scroll', this.handleWindowChange, true);
 	}
+
+	private handleWindowChange = (): void => {
+		// Close menu when window moves/resizes to avoid stale positioning
+		if (this.isOverflowVisible) {
+			this.hideOverflowMenu();
+		}
+	};
 
 	private createOverflowMenu(): HTMLElement {
 		const menu = document.createElement('div');
@@ -481,6 +492,9 @@ export class BrowserControlBarV2 extends Disposable {
 		if (this.overflowMenu && this.overflowMenu.parentElement) {
 			this.overflowMenu.remove();
 		}
+		// Clean up window event listeners
+		window.removeEventListener('resize', this.handleWindowChange);
+		window.removeEventListener('scroll', this.handleWindowChange, true);
 		super.dispose();
 		this.container.remove();
 	}
