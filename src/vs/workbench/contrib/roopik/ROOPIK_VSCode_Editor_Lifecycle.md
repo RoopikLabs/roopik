@@ -771,5 +771,193 @@ class MyEditor extends EditorPane {
 
 ---
 
+## Part 9: EditorInputCapabilities & Preventing Split Duplication
+
+### The Split Mode Problem
+
+When you "split" a tab in VSCode (drag to side, or Ctrl+\):
+
+```
+BEFORE SPLIT:                    AFTER SPLIT:
+┌────────────────────────┐       ┌───────────┬───────────┐
+│                        │       │           │           │
+│     EditorPane A       │  ───► │ EditorPane│ EditorPane│
+│     (Input X)          │       │     A     │     B     │
+│                        │       │ (Input X) │ (Input X) │
+└────────────────────────┘       └───────────┴───────────┘
+```
+
+**Problem:** Two EditorPanes now share the SAME EditorInput!
+
+For browser tabs, this causes:
+- Two browser views trying to use same state
+- Title changes affect both tabs
+- Close one → other becomes broken
+- Resource conflicts
+
+### EditorInputCapabilities
+
+VSCode provides `EditorInputCapabilities` to control editor behavior:
+
+```typescript
+enum EditorInputCapabilities {
+    None = 0,                  // No special capabilities
+    Readonly = 1 << 0,         // Read-only content
+    Untitled = 1 << 1,         // No saved location
+    RequiresTrust = 1 << 2,    // Needs workspace trust
+    Singleton = 1 << 3,        // Cannot be split! ⬅️
+    // ... more capabilities
+}
+```
+
+### The Singleton Solution
+
+Add `Singleton` capability to prevent split duplication:
+
+```typescript
+import { EditorInputCapabilities } from '../../../../common/editor.js';
+
+class ProjectModeV2Input extends EditorInput {
+
+    /**
+     * Singleton capability prevents this editor from being split.
+     * Users can create multiple independent browser tabs from the Welcome Screen,
+     * but cannot duplicate an existing browser tab via split mode.
+     */
+    override get capabilities(): EditorInputCapabilities {
+        return EditorInputCapabilities.Singleton;
+    }
+}
+```
+
+### What Happens Now?
+
+**Before (without Singleton):**
+```
+User drags tab to split
+        │
+        ▼
+┌───────────────────────────────────┐
+│ VSCode creates new EditorPane     │
+│ SHARES the same EditorInput       │
+│ Two views = PROBLEMS              │
+└───────────────────────────────────┘
+```
+
+**After (with Singleton):**
+```
+User drags tab to split
+        │
+        ▼
+┌───────────────────────────────────┐
+│ VSCode MOVES the tab instead      │
+│ Single EditorPane, Single Input   │
+│ No duplication = SAFE             │
+└───────────────────────────────────┘
+```
+
+### How to Allow Multiple Independent Tabs
+
+Singleton prevents DUPLICATION, not CREATION.
+
+Users can still have multiple browser tabs by creating NEW instances:
+
+```typescript
+// Welcome Screen - Create new independent browser tab
+const newBrowserInput = new ProjectModeV2Input('http://localhost:5173');
+await editorService.openEditor(newBrowserInput);
+
+// Each instance has unique instanceId
+// No shared state, completely independent
+```
+
+```
+CREATE NEW (allowed):              SPLIT (blocked):
+┌──────────────────────┐           ┌───────────────────────┐
+│  New ProjectModeV2   │           │  Existing Browser Tab │
+│       Input          │           │                       │
+│  (instanceId: 1)     │           │  Can't split this!    │
+└──────────┬───────────┘           │  Singleton prevents   │
+           │                       │  duplication          │
+           ▼                       └───────────────────────┘
+┌──────────────────────┐
+│  New ProjectModeV2   │
+│       Input          │
+│  (instanceId: 2)     │  ← Completely independent!
+└──────────────────────┘
+```
+
+### Combining Capabilities
+
+You can combine multiple capabilities using bitwise OR:
+
+```typescript
+override get capabilities(): EditorInputCapabilities {
+    return EditorInputCapabilities.Singleton | EditorInputCapabilities.Readonly;
+}
+```
+
+### Available Capabilities
+
+| Capability | Meaning | Use Case |
+|-----------|---------|----------|
+| `None` | Default behavior | Normal editors |
+| `Readonly` | Cannot be edited | Preview tabs |
+| `Untitled` | No save location | New unsaved files |
+| `RequiresTrust` | Needs trust | External code |
+| `Singleton` | Cannot split | Browser views, unique resources |
+| `Scratchpad` | Temporary | Quick notes |
+| `CanDropIntoEditor` | Accept drops | Drag-drop targets |
+
+### Our Implementation
+
+```typescript
+// projectModeV2Input.ts
+export class ProjectModeV2Input extends EditorInput {
+    static readonly ID = 'roopik.projectModeV2Input';
+
+    // Unique instance tracking
+    private static instanceCounter = 0;
+    private readonly instanceId: number;
+
+    constructor(url: string = 'about:blank') {
+        super();
+        this._url = url;
+        this.instanceId = ++ProjectModeV2Input.instanceCounter;
+    }
+
+    override get typeId(): string {
+        return ProjectModeV2Input.ID;
+    }
+
+    /**
+     * Singleton capability prevents this editor from being split.
+     * Users can create multiple independent browser tabs from the Welcome Screen,
+     * but cannot duplicate an existing browser tab via split mode.
+     */
+    override get capabilities(): EditorInputCapabilities {
+        return EditorInputCapabilities.Singleton;
+    }
+
+    // Each instance matches only itself (by instanceId)
+    override matches(other: EditorInput): boolean {
+        if (other instanceof ProjectModeV2Input) {
+            return this.instanceId === other.instanceId;
+        }
+        return false;
+    }
+}
+```
+
+### Checklist for Singleton Editors
+
+- [ ] Import `EditorInputCapabilities` from `'../../../../common/editor.js'`
+- [ ] Override `get capabilities()` to return `EditorInputCapabilities.Singleton`
+- [ ] Ensure unique `instanceId` for each input instance
+- [ ] Implement `matches()` using `instanceId` comparison
+- [ ] Provide a way to CREATE new instances (Welcome Screen, command, etc.)
+
+---
+
 *Last updated: November 2025*
 *Related: [ROOPIK_Services_EVENT_DRIVEN_ARCHITECTURE.md](./ROOPIK_Services_EVENT_DRIVEN_ARCHITECTURE.md)*
