@@ -26,6 +26,8 @@ import { generateFloatingToolbarHtml, FloatingToolbarState } from './floatingToo
 import { IRoopikEventService } from '../../common/events/index.js';
 import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
 import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js';
+import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
+import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
 
 /**
  * DevTools mode configuration flag
@@ -109,7 +111,9 @@ export class ProjectModeV2Editor extends EditorPane {
 		@INativeHostService private readonly nativeHostService: INativeHostService,
 		@IRoopikEventService private readonly eventService: IRoopikEventService,
 		@IQuickInputService private readonly quickInputService: IQuickInputService,
-		@IContextMenuService private readonly contextMenuService: IContextMenuService
+		@IContextMenuService private readonly contextMenuService: IContextMenuService,
+		@INotificationService private readonly notificationService: INotificationService,
+		@IClipboardService private readonly clipboardService: IClipboardService
 	) {
 		super(ProjectModeV2Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = RoopikLogger.create(loggerService);
@@ -1251,18 +1255,48 @@ export class ProjectModeV2Editor extends EditorPane {
 	// ============================================
 
 	/**
-	 * Copy current URL to clipboard
-	 * Useful for agents to programmatically grab the current page URL
+	 * Get current URL (for programmatic/agent access)
+	 * Does NOT copy to clipboard - just returns the URL string
+	 *
+	 * @returns Current browser URL, or empty string if no URL loaded
+	 */
+	public getCurrentUrl(): string {
+		return this.controlBar?.getUrl() || '';
+	}
+
+	/**
+	 * Copy current URL to clipboard (for UI button clicks)
+	 * Only call this from UI interactions, not from agent code
 	 */
 	private async copyCurrentUrl(): Promise<void> {
-		const url = this.controlBar?.getUrl() || '';
-		if (url && url !== 'about:blank') {
-			try {
-				await navigator.clipboard.writeText(url);
-				this.logger.info(`[ProjectModeV2] URL copied to clipboard: ${url}`);
-			} catch (error) {
-				this.logger.error('[ProjectModeV2] Failed to copy URL to clipboard:', error);
-			}
+		const url = this.getCurrentUrl();
+		if (!url || url === 'about:blank') {
+			this.notificationService.notify({
+				severity: Severity.Warning,
+				message: 'No URL to copy. Navigate to a page first.',
+				sticky: false
+			});
+			return;
+		}
+
+		try {
+			// Use VSCode's clipboard service (works reliably in Electron)
+			await this.clipboardService.writeText(url);
+			this.logger.info(`[ProjectModeV2] URL copied to clipboard: ${url}`);
+
+			// Show success notification
+			this.notificationService.notify({
+				severity: Severity.Info,
+				message: `URL copied: ${url}`,
+				sticky: false
+			});
+		} catch (error) {
+			this.logger.error('[ProjectModeV2] Failed to copy URL to clipboard:', error);
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: 'Failed to copy URL to clipboard',
+				sticky: false
+			});
 		}
 	}
 
