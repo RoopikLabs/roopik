@@ -206,13 +206,15 @@ registerAction2(class extends Action2 {
 		const input = ProjectModeV2Input.getInstance();
 
 		// Check if browser editor is already open in any group
-		const existingEditor = editorService.editors.find(
-			editor => editor instanceof ProjectModeV2Input
+		// Use the singleton input directly since it's the same instance
+		const visibleEditors = editorService.visibleEditorPanes;
+		const existingPane = visibleEditors.find(
+			pane => pane.input instanceof ProjectModeV2Input
 		);
 
-		if (existingEditor) {
-			// Focus existing editor instead of opening duplicate
-			await editorService.openEditor(existingEditor, { pinned: true });
+		if (existingPane) {
+			// Focus existing editor in its current group (don't create new split)
+			await editorService.openEditor(input, { pinned: true }, existingPane.group);
 			return;
 		}
 
@@ -220,9 +222,9 @@ registerAction2(class extends Action2 {
 		// This avoids blocking left-side menu items (File, Edit, View, etc.)
 		await editorService.openEditor(input, { pinned: true }, SIDE_GROUP);
 
-		// Show hint notification (only once per session)
-		const hintKey = 'roopik.browserRightSideHintShown';
-		const hintShown = storageService.getBoolean(hintKey, StorageScope.PROFILE, false);
+		// Show hint notification (once per installation)
+		const hintKey = 'roopik.browserRightSideHintShown.v2';
+		const hintShown = storageService.getBoolean(hintKey, StorageScope.APPLICATION, false);
 
 		if (!hintShown) {
 			notificationService.notify({
@@ -230,7 +232,7 @@ registerAction2(class extends Action2 {
 				message: 'Tip: Keep browser on the right side to avoid blocking menu items.',
 				sticky: false
 			});
-			storageService.store(hintKey, true, StorageScope.PROFILE, 0 /* StorageTarget.USER */);
+			storageService.store(hintKey, true, StorageScope.APPLICATION, 0 /* StorageTarget.USER */);
 		}
 	}
 });

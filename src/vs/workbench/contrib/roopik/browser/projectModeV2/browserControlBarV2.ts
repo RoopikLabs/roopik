@@ -255,14 +255,16 @@ export class BrowserControlBarV2 extends Disposable {
 			// Calculate position based on ellipsis button location
 			const buttonRect = this.ellipsisButton.getBoundingClientRect();
 
-			// First show menu to measure its height
+			// Show menu to measure dimensions
 			this.overflowMenu.style.visibility = 'hidden';
 			this.overflowMenu.style.display = 'block';
 			const menuHeight = this.overflowMenu.offsetHeight;
 
-			// Position menu ABOVE the button, aligned to right edge
-			this.overflowMenu.style.top = `${buttonRect.top - menuHeight - 4}px`;
-			this.overflowMenu.style.right = `${window.innerWidth - buttonRect.right}px`;
+			// Position menu with BOTTOM aligned to button's BOTTOM, shifted LEFT to not cover ellipsis
+			// This keeps menu visible - not blocked by Windows title bar above
+			// Menu's last item is at same level as the control bar icons
+			this.overflowMenu.style.top = `${buttonRect.top - menuHeight + buttonRect.height}px`;
+			this.overflowMenu.style.right = `${window.innerWidth - buttonRect.left + 4}px`;
 			this.overflowMenu.style.visibility = 'visible';
 			this.isOverflowVisible = true;
 
