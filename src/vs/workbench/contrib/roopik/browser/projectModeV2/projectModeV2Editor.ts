@@ -21,7 +21,7 @@ import { INativeHostService } from '../../../../../platform/native/common/native
 import { ProjectModeV2ServiceBridge } from './projectModeV2ServiceBridge.js';
 import { PROJECT_MODE_V2_CHANNEL } from '../../common/projectModeV2/ipc.js';
 import { BrowserControlBarV2, IBrowserControlBarV2Config, IBrowserControlBarV2Callbacks } from './browserControlBarV2.js';
-import type { ViewBounds, DevicePreset, DevToolsMode, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
+import type { ViewBounds, DevToolsMode, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
 import { generateFloatingToolbarHtml, FloatingToolbarState } from './floatingToolbarHtml.js';
 import { IRoopikEventService } from '../../common/events/index.js';
 
@@ -45,8 +45,7 @@ const DEVTOOLS_MODE: DevToolsMode = 'attached'; // 'attached' or 'detached'
  * Browser Preview with embedded DevTools using WebContentsView.
  * Features:
  * - Real Chromium browser via WebContentsView
- * - Embedded DevTools (ON-DEMAND creation)
- * - Device emulation via CDP
+ * - Embedded DevTools (ON-DEMAND creation) with Device Toolbar
  * - CDP integration for AI agents (MCP compatible)
  */
 export class ProjectModeV2Editor extends EditorPane {
@@ -167,9 +166,10 @@ export class ProjectModeV2Editor extends EditorPane {
 		// Browser control bar configuration
 		const config: IBrowserControlBarV2Config = {
 			showDevTools: true,
-			showDeviceSelector: true,
+			showInspectMode: true,
 			showScreenshot: true,
-			showHardReload: true
+			showHardReload: true,
+			showCopyUrl: true
 		};
 
 		// Browser control bar callbacks
@@ -179,11 +179,12 @@ export class ProjectModeV2Editor extends EditorPane {
 			onForward: () => this.goForward(),
 			onHome: () => this.goHome(),
 			onRefresh: () => this.refresh(),
-			onStop: () => this.stop(),
+			onStopDevServer: () => this.stopDevServer(),
+			onInspectMode: () => this.toggleInspectMode(),
 			onDevTools: () => this.toggleDevTools(),
-			onDeviceSelect: (device: DevicePreset | undefined) => this.setDeviceEmulation(device),
 			onHardReload: () => this.hardReload(),
-			onScreenshot: () => this.takeScreenshot()
+			onScreenshot: () => this.takeScreenshot(),
+			onCopyUrl: () => this.copyCurrentUrl()
 		};
 
 		this.controlBar = this._register(new BrowserControlBarV2(this.container, config, callbacks));
@@ -899,10 +900,14 @@ export class ProjectModeV2Editor extends EditorPane {
 		}
 	}
 
-	private async stop(): Promise<void> {
-		if (this.browserViewId) {
-			await this.browserService.stop(this.browserViewId);
-		}
+	/**
+	 * Stop Dev Server (placeholder - feature coming later)
+	 * Will stop the Vite/dev server when implemented
+	 */
+	private stopDevServer(): void {
+		// TODO: Implement dev server stop functionality
+		// This will integrate with ViteServerService when available
+		this.logger.info('[ProjectModeV2] Stop Dev Server clicked (not yet implemented)');
 	}
 
 	// ============================================
@@ -1067,24 +1072,39 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	// ============================================
-	// Device Emulation
+	// Inspect Mode
 	// ============================================
 
-	private async setDeviceEmulation(device: DevicePreset | undefined): Promise<void> {
-		if (!this.browserViewId) {
-			return;
-		}
-
-		if (device) {
-			await this.browserService.setDeviceEmulation(this.browserViewId, device);
-		} else {
-			await this.browserService.clearDeviceEmulation(this.browserViewId);
-		}
+	/**
+	 * Toggle Inspect Mode (placeholder - feature coming later)
+	 * Will enable element inspection overlay for component data extraction
+	 */
+	private toggleInspectMode(): void {
+		// TODO: Implement inspect mode functionality
+		// This will inject scripts into the browser to enable hover inspection
+		// and extract component data for the properties panel
+		this.logger.info('[ProjectModeV2] Inspect Mode toggled (not yet implemented)');
 	}
 
 	// ============================================
 	// Utilities
 	// ============================================
+
+	/**
+	 * Copy current URL to clipboard
+	 * Useful for agents to programmatically grab the current page URL
+	 */
+	private async copyCurrentUrl(): Promise<void> {
+		const url = this.controlBar?.getUrl() || '';
+		if (url && url !== 'about:blank') {
+			try {
+				await navigator.clipboard.writeText(url);
+				this.logger.info(`[ProjectModeV2] URL copied to clipboard: ${url}`);
+			} catch (error) {
+				this.logger.error('[ProjectModeV2] Failed to copy URL to clipboard:', error);
+			}
+		}
+	}
 
 	private async takeScreenshot(): Promise<void> {
 		if (!this.browserViewId) {
@@ -1278,7 +1298,7 @@ export class ProjectModeV2Editor extends EditorPane {
 		this.browserContainer?.focus();
 	}
 
-	layout(dimension: Dimension): void {
+	layout(_dimension: Dimension): void {
 		// VSCode calls this when editor pane is resized (including split screen)
 		// Use the retry mechanism to ensure bounds are correctly updated
 		this.updateBoundsWithRetry();

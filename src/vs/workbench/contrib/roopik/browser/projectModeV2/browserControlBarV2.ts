@@ -6,17 +6,16 @@
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { Codicon } from '../../../../../base/common/codicons.js';
 import { ThemeIcon } from '../../../../../base/common/themables.js';
-import type { DevicePreset } from '../../common/projectModeV2/types.js';
-import { getDevicePresetsByCategory } from '../../common/projectModeV2/devicePresets.js';
 
 /**
  * Browser Control Bar V2 Configuration
  */
 export interface IBrowserControlBarV2Config {
 	showDevTools?: boolean;
-	showDeviceSelector?: boolean;
+	showInspectMode?: boolean;
 	showScreenshot?: boolean;
 	showHardReload?: boolean;
+	showCopyUrl?: boolean;
 }
 
 /**
@@ -29,19 +28,20 @@ export interface IBrowserControlBarV2Callbacks {
 	onForward: () => void;
 	onHome: () => void;
 	onRefresh: () => void;
-	onStop: () => void;
+	onStopDevServer: () => void; // Placeholder for future dev server stop feature
 
 	// Features
 	onDevTools?: () => void;
-	onDeviceSelect?: (device: DevicePreset | undefined) => void;
+	onInspectMode?: () => void;
 	onHardReload?: () => void;
 	onScreenshot?: () => void;
+	onCopyUrl?: () => void;
 }
 
 /**
  * Browser Control Bar V2
  *
- * Enhanced control bar with device selector for responsive testing.
+ * Control bar for browser preview with navigation and utility buttons.
  */
 export class BrowserControlBarV2 extends Disposable {
 	private container: HTMLElement;
@@ -50,9 +50,6 @@ export class BrowserControlBarV2 extends Disposable {
 	private loadingAnimation?: number;
 	private backButton?: HTMLButtonElement;
 	private forwardButton?: HTMLButtonElement;
-	private deviceButton?: HTMLButtonElement;
-	private deviceMenu?: HTMLElement;
-	private isDeviceMenuVisible: boolean = false;
 	private overflowMenu?: HTMLElement;
 	private isOverflowVisible: boolean = false;
 
@@ -114,30 +111,147 @@ export class BrowserControlBarV2 extends Disposable {
 		// URL input
 		this.container.appendChild(this.urlInput);
 
-		// Device selector (if enabled)
-		if (this.config.showDeviceSelector) {
-			this.createDeviceSelector();
-		}
-
-		// Stop button
-		this.createIconButton(Codicon.chromeClose, 'Stop loading', () => this.callbacks.onStop());
+		// Stop Dev Server button (placeholder - feature coming later)
+		this.createIconButton(Codicon.debugStop, 'Stop Dev Server', () => this.callbacks.onStopDevServer());
 
 		// Separator before action buttons
 		this.createSeparator();
 
-		// DevTools button (direct in main bar)
+		// Inspect Mode button (for element inspection)
+		if (this.config.showInspectMode && this.callbacks.onInspectMode) {
+			this.createIconButton(Codicon.inspect, 'Inspect Mode', () => this.callbacks.onInspectMode!());
+		}
+
+		// DevTools button
 		if (this.config.showDevTools && this.callbacks.onDevTools) {
 			this.createIconButton(Codicon.terminal, 'Toggle DevTools', () => this.callbacks.onDevTools!());
 		}
 
-		// Screenshot button (direct in main bar)
+		// Screenshot button
 		if (this.config.showScreenshot && this.callbacks.onScreenshot) {
 			this.createIconButton(Codicon.deviceCamera, 'Take Screenshot', () => this.callbacks.onScreenshot!());
 		}
 
-		// Overflow menu for Hard Reload only
-		if (this.config.showHardReload) {
+		// Overflow menu for Hard Reload and Copy URL
+		if (this.config.showHardReload || this.config.showCopyUrl) {
 			this.createOverflowButton();
+		}
+	}
+
+	private ellipsisButton?: HTMLButtonElement;
+
+	private createOverflowButton(): void {
+		// Create the ellipsis button (appended to container by createIconButton)
+		this.ellipsisButton = this.createIconButton(Codicon.ellipsis, 'More options', () => this.toggleOverflowMenu());
+
+		// Create and append the dropdown menu to document body (fixed positioning)
+		this.overflowMenu = this.createOverflowMenu();
+		document.body.appendChild(this.overflowMenu);
+	}
+
+	private createOverflowMenu(): HTMLElement {
+		const menu = document.createElement('div');
+		// Use FIXED positioning to escape any overflow:hidden containers
+		menu.style.position = 'fixed';
+		// Use dropdown background (same as VSCode context menus)
+		menu.style.backgroundColor = 'var(--vscode-dropdown-background, var(--vscode-editorWidget-background, #252526))';
+		menu.style.border = '1px solid var(--vscode-dropdown-border, var(--vscode-editorWidget-border, #454545))';
+		menu.style.borderRadius = '4px';
+		menu.style.boxShadow = '0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36))';
+		menu.style.zIndex = '10000';
+		menu.style.display = 'none';
+		menu.style.minWidth = '180px';
+
+		// Hard Reload option
+		if (this.config.showHardReload && this.callbacks.onHardReload) {
+			menu.appendChild(this.createMenuItem('Hard Reload', Codicon.debugRestart, () => {
+				this.callbacks.onHardReload!();
+				this.hideOverflowMenu();
+			}));
+		}
+
+		// Copy URL option (useful for agents to grab current URL programmatically)
+		if (this.config.showCopyUrl && this.callbacks.onCopyUrl) {
+			menu.appendChild(this.createMenuItem('Copy URL', Codicon.link, () => {
+				this.callbacks.onCopyUrl!();
+				this.hideOverflowMenu();
+			}));
+		}
+
+		return menu;
+	}
+
+	private createMenuItem(label: string, icon: ThemeIcon, onClick: () => void): HTMLElement {
+		const item = document.createElement('div');
+		item.style.display = 'flex';
+		item.style.alignItems = 'center';
+		item.style.padding = '8px 12px';
+		item.style.cursor = 'pointer';
+		item.style.gap = '8px';
+		item.style.color = 'var(--vscode-dropdown-foreground, var(--vscode-foreground, #cccccc))';
+
+		const iconEl = document.createElement('span');
+		iconEl.className = ThemeIcon.asClassName(icon);
+		iconEl.style.fontSize = '16px';
+		item.appendChild(iconEl);
+
+		const labelEl = document.createElement('span');
+		labelEl.textContent = label;
+		labelEl.style.fontSize = '13px';
+		item.appendChild(labelEl);
+
+		item.onmouseenter = () => {
+			item.style.backgroundColor = 'var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.1))';
+		};
+		item.onmouseleave = () => {
+			item.style.backgroundColor = 'transparent';
+		};
+
+		item.onclick = (e) => {
+			e.stopPropagation();
+			onClick();
+		};
+		return item;
+	}
+
+	private toggleOverflowMenu(): void {
+		if (this.isOverflowVisible) {
+			this.hideOverflowMenu();
+		} else {
+			this.showOverflowMenu();
+		}
+	}
+
+	private showOverflowMenu(): void {
+		if (this.overflowMenu && this.ellipsisButton) {
+			// Calculate position based on ellipsis button location
+			const buttonRect = this.ellipsisButton.getBoundingClientRect();
+
+			// First show menu to measure its height
+			this.overflowMenu.style.visibility = 'hidden';
+			this.overflowMenu.style.display = 'block';
+			const menuHeight = this.overflowMenu.offsetHeight;
+
+			// Position menu ABOVE the button, aligned to right edge
+			this.overflowMenu.style.top = `${buttonRect.top - menuHeight - 4}px`;
+			this.overflowMenu.style.right = `${window.innerWidth - buttonRect.right}px`;
+			this.overflowMenu.style.visibility = 'visible';
+			this.isOverflowVisible = true;
+
+			const closeOnClickOutside = (e: MouseEvent) => {
+				if (this.overflowMenu && !this.overflowMenu.contains(e.target as Node)) {
+					this.hideOverflowMenu();
+					document.removeEventListener('click', closeOnClickOutside);
+				}
+			};
+			setTimeout(() => document.addEventListener('click', closeOnClickOutside), 0);
+		}
+	}
+
+	private hideOverflowMenu(): void {
+		if (this.overflowMenu) {
+			this.overflowMenu.style.display = 'none';
+			this.isOverflowVisible = false;
 		}
 	}
 
@@ -183,269 +297,6 @@ export class BrowserControlBarV2 extends Disposable {
 		separator.style.backgroundColor = 'var(--vscode-panel-border)';
 		separator.style.margin = '0 4px';
 		this.container.appendChild(separator);
-	}
-
-	private createDeviceSelector(): void {
-		// Device button - compact with just icon and arrow
-		this.deviceButton = document.createElement('button');
-		this.deviceButton.title = 'Device emulation';
-		this.deviceButton.style.padding = '4px';
-		this.deviceButton.style.cursor = 'pointer';
-		this.deviceButton.style.border = 'none';
-		this.deviceButton.style.backgroundColor = 'transparent';
-		this.deviceButton.style.borderRadius = '2px';
-		this.deviceButton.style.display = 'flex';
-		this.deviceButton.style.alignItems = 'center';
-		this.deviceButton.style.gap = '2px';
-		this.deviceButton.style.color = 'var(--vscode-foreground)';
-
-		// Device icon
-		const iconElement = document.createElement('span');
-		iconElement.className = ThemeIcon.asClassName(Codicon.deviceMobile);
-		iconElement.style.fontSize = '16px';
-		this.deviceButton.appendChild(iconElement);
-
-		// Dropdown arrow
-		const arrowElement = document.createElement('span');
-		arrowElement.className = ThemeIcon.asClassName(Codicon.chevronDown);
-		arrowElement.style.fontSize = '10px';
-		this.deviceButton.appendChild(arrowElement);
-
-		this.deviceButton.onmouseenter = () => {
-			this.deviceButton!.style.backgroundColor = 'var(--vscode-toolbar-hoverBackground)';
-		};
-		this.deviceButton.onmouseleave = () => {
-			this.deviceButton!.style.backgroundColor = 'transparent';
-		};
-
-		this.deviceButton.onclick = (e) => {
-			e.stopPropagation();
-			this.toggleDeviceMenu();
-		};
-
-		this.container.appendChild(this.deviceButton);
-
-		// Create device menu
-		this.deviceMenu = this.createDeviceMenu();
-		this.container.appendChild(this.deviceMenu);
-	}
-
-	private createDeviceMenu(): HTMLElement {
-		const menu = document.createElement('div');
-		menu.style.position = 'absolute';
-		menu.style.top = '100%';
-		menu.style.left = '50%';
-		menu.style.transform = 'translateX(-50%)';
-		menu.style.marginTop = '4px';
-		menu.style.backgroundColor = 'var(--vscode-menu-background)';
-		menu.style.border = '1px solid var(--vscode-menu-border)';
-		menu.style.borderRadius = '4px';
-		menu.style.boxShadow = '0 2px 8px var(--vscode-widget-shadow)';
-		menu.style.zIndex = '1001';
-		menu.style.display = 'none';
-		menu.style.minWidth = '220px';
-		menu.style.maxHeight = '400px';
-		menu.style.overflowY = 'auto';
-
-		// "Responsive" option (no emulation)
-		menu.appendChild(this.createDeviceMenuItem('Responsive', Codicon.screenNormal, () => {
-			this.callbacks.onDeviceSelect?.(undefined);
-			this.hideDeviceMenu();
-		}));
-
-		// Add separator
-		const separator = document.createElement('div');
-		separator.style.height = '1px';
-		separator.style.backgroundColor = 'var(--vscode-menu-separatorBackground)';
-		separator.style.margin = '4px 0';
-		menu.appendChild(separator);
-
-		// Add devices by category
-		const categories = getDevicePresetsByCategory();
-		for (const [category, devices] of Object.entries(categories)) {
-			// Category header
-			const header = document.createElement('div');
-			header.style.padding = '4px 12px';
-			header.style.fontSize = '11px';
-			header.style.fontWeight = 'bold';
-			header.style.color = 'var(--vscode-descriptionForeground)';
-			header.style.textTransform = 'uppercase';
-			header.textContent = category;
-			menu.appendChild(header);
-
-			// Devices in category
-			for (const device of devices) {
-				const icon = device.mobile ? Codicon.deviceMobile : Codicon.screenNormal;
-				menu.appendChild(this.createDeviceMenuItem(
-					`${device.name} (${device.width}×${device.height})`,
-					icon,
-					() => {
-						this.callbacks.onDeviceSelect?.(device);
-						this.hideDeviceMenu();
-					}
-				));
-			}
-		}
-
-		return menu;
-	}
-
-	private createDeviceMenuItem(label: string, icon: ThemeIcon, onClick: () => void): HTMLElement {
-		const item = document.createElement('div');
-		item.style.display = 'flex';
-		item.style.alignItems = 'center';
-		item.style.padding = '6px 12px';
-		item.style.cursor = 'pointer';
-		item.style.gap = '8px';
-		item.style.color = 'var(--vscode-menu-foreground)';
-		item.style.fontSize = '13px';
-
-		const iconEl = document.createElement('span');
-		iconEl.className = ThemeIcon.asClassName(icon);
-		iconEl.style.fontSize = '14px';
-		item.appendChild(iconEl);
-
-		const labelEl = document.createElement('span');
-		labelEl.textContent = label;
-		item.appendChild(labelEl);
-
-		item.onmouseenter = () => {
-			item.style.backgroundColor = 'var(--vscode-menu-selectionBackground)';
-			item.style.color = 'var(--vscode-menu-selectionForeground)';
-		};
-		item.onmouseleave = () => {
-			item.style.backgroundColor = 'transparent';
-			item.style.color = 'var(--vscode-menu-foreground)';
-		};
-
-		item.onclick = onClick;
-		return item;
-	}
-
-
-	private toggleDeviceMenu(): void {
-		if (this.isDeviceMenuVisible) {
-			this.hideDeviceMenu();
-		} else {
-			this.showDeviceMenu();
-		}
-	}
-
-	private showDeviceMenu(): void {
-		if (this.deviceMenu) {
-			this.deviceMenu.style.display = 'block';
-			this.isDeviceMenuVisible = true;
-
-			const closeOnClickOutside = (e: MouseEvent) => {
-				if (this.deviceMenu && !this.deviceMenu.contains(e.target as Node) &&
-					this.deviceButton && !this.deviceButton.contains(e.target as Node)) {
-					this.hideDeviceMenu();
-					document.removeEventListener('click', closeOnClickOutside);
-				}
-			};
-			setTimeout(() => document.addEventListener('click', closeOnClickOutside), 0);
-		}
-	}
-
-	private hideDeviceMenu(): void {
-		if (this.deviceMenu) {
-			this.deviceMenu.style.display = 'none';
-			this.isDeviceMenuVisible = false;
-		}
-	}
-
-	private createOverflowButton(): void {
-		this.createIconButton(Codicon.ellipsis, 'More options', () => this.toggleOverflowMenu());
-
-		this.overflowMenu = this.createOverflowMenu();
-		this.container.appendChild(this.overflowMenu);
-	}
-
-	private createOverflowMenu(): HTMLElement {
-		const menu = document.createElement('div');
-		menu.style.position = 'absolute';
-		menu.style.top = '100%';
-		menu.style.right = '8px';
-		menu.style.marginTop = '4px';
-		menu.style.backgroundColor = 'var(--vscode-menu-background)';
-		menu.style.border = '1px solid var(--vscode-menu-border)';
-		menu.style.borderRadius = '4px';
-		menu.style.boxShadow = '0 2px 8px var(--vscode-widget-shadow)';
-		menu.style.zIndex = '1001';
-		menu.style.display = 'none';
-		menu.style.minWidth = '180px';
-
-		// Only Hard Reload in overflow menu
-		if (this.config.showHardReload && this.callbacks.onHardReload) {
-			menu.appendChild(this.createMenuItem('Hard Reload', Codicon.debugRestart, () => {
-				this.callbacks.onHardReload!();
-				this.hideOverflowMenu();
-			}));
-		}
-
-		return menu;
-	}
-
-	private createMenuItem(label: string, icon: ThemeIcon, onClick: () => void): HTMLElement {
-		const item = document.createElement('div');
-		item.style.display = 'flex';
-		item.style.alignItems = 'center';
-		item.style.padding = '8px 12px';
-		item.style.cursor = 'pointer';
-		item.style.gap = '8px';
-		item.style.color = 'var(--vscode-menu-foreground)';
-
-		const iconEl = document.createElement('span');
-		iconEl.className = ThemeIcon.asClassName(icon);
-		iconEl.style.fontSize = '16px';
-		item.appendChild(iconEl);
-
-		const labelEl = document.createElement('span');
-		labelEl.textContent = label;
-		labelEl.style.fontSize = '13px';
-		item.appendChild(labelEl);
-
-		item.onmouseenter = () => {
-			item.style.backgroundColor = 'var(--vscode-menu-selectionBackground)';
-			item.style.color = 'var(--vscode-menu-selectionForeground)';
-		};
-		item.onmouseleave = () => {
-			item.style.backgroundColor = 'transparent';
-			item.style.color = 'var(--vscode-menu-foreground)';
-		};
-
-		item.onclick = onClick;
-		return item;
-	}
-
-	private toggleOverflowMenu(): void {
-		if (this.isOverflowVisible) {
-			this.hideOverflowMenu();
-		} else {
-			this.showOverflowMenu();
-		}
-	}
-
-	private showOverflowMenu(): void {
-		if (this.overflowMenu) {
-			this.overflowMenu.style.display = 'block';
-			this.isOverflowVisible = true;
-
-			const closeOnClickOutside = (e: MouseEvent) => {
-				if (this.overflowMenu && !this.overflowMenu.contains(e.target as Node)) {
-					this.hideOverflowMenu();
-					document.removeEventListener('click', closeOnClickOutside);
-				}
-			};
-			setTimeout(() => document.addEventListener('click', closeOnClickOutside), 0);
-		}
-	}
-
-	private hideOverflowMenu(): void {
-		if (this.overflowMenu) {
-			this.overflowMenu.style.display = 'none';
-			this.isOverflowVisible = false;
-		}
 	}
 
 	private createUrlInput(): HTMLInputElement {
@@ -580,6 +431,10 @@ export class BrowserControlBarV2 extends Disposable {
 		if (this.loadingAnimation) {
 			cancelAnimationFrame(this.loadingAnimation);
 			this.loadingAnimation = undefined;
+		}
+		// Remove overflow menu from body
+		if (this.overflowMenu && this.overflowMenu.parentElement) {
+			this.overflowMenu.remove();
 		}
 		super.dispose();
 		this.container.remove();
