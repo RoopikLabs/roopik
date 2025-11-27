@@ -937,16 +937,20 @@ export class ProjectModeV2Editor extends EditorPane {
 			return;
 		}
 
-		// Validate URL - reject gibberish like "null", "undefined", single characters, etc.
 		const trimmedUrl = url.trim();
-		if (this.isInvalidUrl(trimmedUrl)) {
-			this.logger.warn(`[ProjectModeV2] Navigation aborted: Invalid URL "${trimmedUrl}"`);
-			this.showNavigationError(`Invalid URL: "${trimmedUrl}"`);
+		if (!trimmedUrl) {
 			return;
 		}
 
-		// Ensure URL has protocol
-		if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://') && !trimmedUrl.startsWith('about:')) {
+		// Check if input looks like a URL or a search query
+		// Like Chrome: if it's not a valid URL pattern, search Google instead
+		if (this.isSearchQuery(trimmedUrl)) {
+			// Convert search query to Google search URL
+			const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(trimmedUrl)}`;
+			this.logger.info(`[ProjectModeV2] Searching Google for: "${trimmedUrl}"`);
+			url = searchUrl;
+		} else if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://') && !trimmedUrl.startsWith('about:')) {
+			// Looks like a URL without protocol - add https://
 			url = 'https://' + trimmedUrl;
 		} else {
 			url = trimmedUrl;
@@ -1393,18 +1397,46 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	/**
-	 * Check if URL is invalid/gibberish
-	 * Returns true for URLs that are obviously empty - let browser handle other validation
+	 * Check if input looks like a search query rather than a URL
+	 * Like Chrome's omnibox behavior:
+	 * - Contains spaces → search query
+	 * - No dots and no protocol → search query
+	 * - Single word that's not a valid TLD pattern → search query
+	 *
+	 * @returns true if input should be treated as a search query
 	 */
-	private isInvalidUrl(url: string): boolean {
-		// Empty or whitespace only
-		if (!url || url.length === 0) {
+	private isSearchQuery(input: string): boolean {
+		// Already has a protocol - it's a URL
+		if (input.startsWith('http://') || input.startsWith('https://') || input.startsWith('about:')) {
+			return false;
+		}
+
+		// Contains spaces - definitely a search query
+		// (URLs cannot have unencoded spaces)
+		if (input.includes(' ')) {
 			return true;
 		}
 
-		// Let browser handle everything else - it will return proper errors
-		// for invalid URLs like ERR_NAME_NOT_RESOLVED, ERR_INVALID_URL, etc.
-		return false;
+		// Check if it looks like a domain (has a dot and valid TLD-like pattern)
+		// Examples that ARE URLs: google.com, localhost:3000, 192.168.1.1
+		// Examples that ARE searches: "hello", "what is react", "fix bug"
+		const domainPattern = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/;
+		const localhostPattern = /^localhost(:\d+)?(\/.*)?$/;
+		const ipPattern = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?(\/.*)?$/;
+		const portPattern = /^[a-zA-Z0-9.-]+(:\d+)(\/.*)?$/; // domain:port
+
+		// If it matches any URL-like pattern, it's not a search
+		if (domainPattern.test(input) ||
+			localhostPattern.test(input) ||
+			ipPattern.test(input) ||
+			portPattern.test(input)) {
+			return false;
+		}
+
+		// Single word without dots - could be a search or a simple hostname
+		// Treat as search (like Chrome does for most single words)
+		// Exception: "localhost" is handled above
+		return true;
 	}
 
 	/**
