@@ -4,11 +4,11 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { EditorInput } from '../../../common/editor/editorInput.js';
+import { EditorInputCapabilities, IEditorSerializer } from '../../../common/editor.js';
 import { URI } from '../../../../base/common/uri.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
 import { Codicon } from '../../../../base/common/codicons.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
-import { IEditorSerializer } from '../../../common/editor.js';
 
 export type WelcomeViewMode = 'welcome' | 'settings';
 
@@ -46,6 +46,14 @@ export class RoopikWelcomeInput extends EditorInput {
 
 	override get typeId(): string {
 		return RoopikWelcomeInput.ID;
+	}
+
+	/**
+	 * Singleton capability prevents this editor from being split.
+	 * Only one Welcome screen and one Settings screen can exist at a time.
+	 */
+	override get capabilities(): EditorInputCapabilities {
+		return EditorInputCapabilities.Singleton;
 	}
 
 	override get resource(): URI {
