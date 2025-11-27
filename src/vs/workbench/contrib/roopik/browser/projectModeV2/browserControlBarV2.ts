@@ -153,11 +153,17 @@ export class BrowserControlBarV2 extends Disposable {
 		const menu = document.createElement('div');
 		// Use FIXED positioning to escape any overflow:hidden containers
 		menu.style.position = 'fixed';
-		// Use dropdown background (same as VSCode context menus)
-		menu.style.backgroundColor = 'var(--vscode-dropdown-background, var(--vscode-editorWidget-background, #252526))';
-		menu.style.border = '1px solid var(--vscode-dropdown-border, var(--vscode-editorWidget-border, #454545))';
+
+		// Get theme colors from the container (which has VSCode theming applied)
+		const computedStyle = getComputedStyle(this.container);
+		const menuBg = computedStyle.getPropertyValue('--vscode-menu-background').trim() || '#252526';
+		const menuBorder = computedStyle.getPropertyValue('--vscode-menu-border').trim() || '#454545';
+		const widgetShadow = computedStyle.getPropertyValue('--vscode-widget-shadow').trim() || 'rgba(0, 0, 0, 0.36)';
+
+		menu.style.backgroundColor = menuBg;
+		menu.style.border = `1px solid ${menuBorder}`;
 		menu.style.borderRadius = '4px';
-		menu.style.boxShadow = '0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36))';
+		menu.style.boxShadow = `0 2px 8px ${widgetShadow}`;
 		menu.style.zIndex = '10000';
 		menu.style.display = 'none';
 		menu.style.minWidth = '180px';
@@ -182,13 +188,19 @@ export class BrowserControlBarV2 extends Disposable {
 	}
 
 	private createMenuItem(label: string, icon: ThemeIcon, onClick: () => void): HTMLElement {
+		// Get theme colors from container
+		const computedStyle = getComputedStyle(this.container);
+		const menuFg = computedStyle.getPropertyValue('--vscode-menu-foreground').trim() || '#cccccc';
+		const menuSelectionBg = computedStyle.getPropertyValue('--vscode-menu-selectionBackground').trim() || '#04395e';
+		const menuSelectionFg = computedStyle.getPropertyValue('--vscode-menu-selectionForeground').trim() || '#ffffff';
+
 		const item = document.createElement('div');
 		item.style.display = 'flex';
 		item.style.alignItems = 'center';
 		item.style.padding = '8px 12px';
 		item.style.cursor = 'pointer';
 		item.style.gap = '8px';
-		item.style.color = 'var(--vscode-dropdown-foreground, var(--vscode-foreground, #cccccc))';
+		item.style.color = menuFg;
 
 		const iconEl = document.createElement('span');
 		iconEl.className = ThemeIcon.asClassName(icon);
@@ -201,10 +213,12 @@ export class BrowserControlBarV2 extends Disposable {
 		item.appendChild(labelEl);
 
 		item.onmouseenter = () => {
-			item.style.backgroundColor = 'var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.1))';
+			item.style.backgroundColor = menuSelectionBg;
+			item.style.color = menuSelectionFg;
 		};
 		item.onmouseleave = () => {
 			item.style.backgroundColor = 'transparent';
+			item.style.color = menuFg;
 		};
 
 		item.onclick = (e) => {
@@ -224,6 +238,9 @@ export class BrowserControlBarV2 extends Disposable {
 
 	private showOverflowMenu(): void {
 		if (this.overflowMenu && this.ellipsisButton) {
+			// Update theme colors NOW (in case theme changed since menu was created)
+			this.updateMenuThemeColors();
+
 			// Calculate position based on ellipsis button location
 			const buttonRect = this.ellipsisButton.getBoundingClientRect();
 
@@ -253,6 +270,34 @@ export class BrowserControlBarV2 extends Disposable {
 			this.overflowMenu.style.display = 'none';
 			this.isOverflowVisible = false;
 		}
+	}
+
+	/**
+	 * Update menu theme colors dynamically
+	 * Called when showing menu to pick up current theme
+	 */
+	private updateMenuThemeColors(): void {
+		if (!this.overflowMenu) {
+			return;
+		}
+
+		// Read current theme colors from container
+		const computedStyle = getComputedStyle(this.container);
+		const menuBg = computedStyle.getPropertyValue('--vscode-menu-background').trim() || '#252526';
+		const menuBorder = computedStyle.getPropertyValue('--vscode-menu-border').trim() || '#454545';
+		const widgetShadow = computedStyle.getPropertyValue('--vscode-widget-shadow').trim() || 'rgba(0, 0, 0, 0.36)';
+		const menuFg = computedStyle.getPropertyValue('--vscode-menu-foreground').trim() || '#cccccc';
+
+		// Update menu container
+		this.overflowMenu.style.backgroundColor = menuBg;
+		this.overflowMenu.style.border = `1px solid ${menuBorder}`;
+		this.overflowMenu.style.boxShadow = `0 2px 8px ${widgetShadow}`;
+
+		// Update all menu items
+		const items = this.overflowMenu.querySelectorAll('div');
+		items.forEach(item => {
+			item.style.color = menuFg;
+		});
 	}
 
 	private createIconButton(icon: ThemeIcon, tooltip: string, onClick: () => void): HTMLButtonElement {
