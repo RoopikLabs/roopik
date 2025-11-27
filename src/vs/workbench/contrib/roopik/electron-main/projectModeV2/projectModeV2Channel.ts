@@ -99,6 +99,8 @@ export class ProjectModeV2Channel implements IServerChannel {
 				return this.service.setOverlayVisible(arg.overlayViewId, arg.visible);
 			case 'destroyOverlayView':
 				return this.service.destroyOverlayView(arg);
+			case 'executeScriptOnOverlay':
+				return this.service.executeScriptOnOverlay(arg.overlayViewId, arg.script);
 
 			default:
 				throw new Error(`[ProjectModeV2Channel] Unknown command: ${command}`);

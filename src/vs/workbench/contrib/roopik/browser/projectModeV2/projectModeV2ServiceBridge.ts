@@ -180,4 +180,8 @@ export class ProjectModeV2ServiceBridge implements IProjectModeV2Service {
 	async destroyOverlayView(overlayViewId: number): Promise<void> {
 		return this.channel.call('destroyOverlayView', overlayViewId);
 	}
+
+	async executeScriptOnOverlay(overlayViewId: number, script: string): Promise<any> {
+		return this.channel.call('executeScriptOnOverlay', { overlayViewId, script });
+	}
 }

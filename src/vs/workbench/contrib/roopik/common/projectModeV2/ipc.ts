@@ -228,4 +228,10 @@ export interface IProjectModeV2Service {
 	 * Destroy overlay view
 	 */
 	destroyOverlayView(overlayViewId: number): Promise<void>;
+
+	/**
+	 * Execute JavaScript in overlay view
+	 * Used for getting/setting state in floating toolbar
+	 */
+	executeScriptOnOverlay(overlayViewId: number, script: string): Promise<any>;
 }

@@ -1084,6 +1084,19 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	}
 
 	/**
+	 * Execute JavaScript in an overlay view
+	 * Used for getting/setting state in the floating toolbar
+	 */
+	async executeScriptOnOverlay(overlayViewId: number, script: string): Promise<any> {
+		const overlayData = this.overlayViews.get(overlayViewId);
+		if (!overlayData || overlayData.view.webContents.isDestroyed()) {
+			throw new Error(`Overlay view ${overlayViewId} not found`);
+		}
+
+		return overlayData.view.webContents.executeJavaScript(script);
+	}
+
+	/**
 	 * Destroy all overlays for a browser view
 	 * Called when browser view is destroyed
 	 */

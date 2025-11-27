@@ -90,8 +90,11 @@ export class ProjectModeV2Editor extends EditorPane {
 	private floatingToolbarViewId: number | undefined;
 	private floatingToolbarState: FloatingToolbarState = {
 		activeMode: 'none',
-		isExpanded: false
+		isExpanded: false,
+		position: 'bottom',
+		isDragging: false
 	};
+	private toolbarActionPollInterval: ReturnType<typeof setInterval> | undefined;
 
 	// "Browsing Paused" overlay - shown when menus/command palette are open
 	private pausedOverlay: HTMLElement | undefined;
@@ -1296,17 +1299,8 @@ export class ProjectModeV2Editor extends EditorPane {
 		}
 
 		try {
-			// Calculate toolbar bounds - bottom center of browser container
-			const browserRect = this.browserContainer.getBoundingClientRect();
-			const toolbarWidth = 280;
-			const toolbarHeight = 60;
-
-			const bounds: ViewBounds = {
-				x: Math.floor(browserRect.left + (browserRect.width - toolbarWidth) / 2),
-				y: Math.floor(browserRect.bottom - toolbarHeight - 16), // 16px from bottom
-				width: toolbarWidth,
-				height: toolbarHeight
-			};
+			// Calculate toolbar bounds based on current position
+			const bounds = this.calculateToolbarBounds();
 
 			// Generate HTML content
 			const htmlContent = generateFloatingToolbarHtml(this.floatingToolbarState);
@@ -1317,9 +1311,130 @@ export class ProjectModeV2Editor extends EditorPane {
 				bounds,
 				htmlContent
 			);
+
+			// Start polling for toolbar actions (position changes, button clicks)
+			this.startToolbarActionPolling();
 		} catch (error) {
 			this.logger.error('[ProjectModeV2] Failed to create floating toolbar:', error);
 		}
+	}
+
+	/**
+	 * Start polling for toolbar actions from the overlay
+	 * The overlay sets window.__roopikToolbarAction when user interacts
+	 */
+	private startToolbarActionPolling(): void {
+		// Clear any existing interval
+		this.stopToolbarActionPolling();
+
+		// Poll every 100ms for responsive feel
+		this.toolbarActionPollInterval = setInterval(() => {
+			this.checkToolbarAction();
+		}, 100);
+	}
+
+	/**
+	 * Stop polling for toolbar actions
+	 */
+	private stopToolbarActionPolling(): void {
+		if (this.toolbarActionPollInterval) {
+			clearInterval(this.toolbarActionPollInterval);
+			this.toolbarActionPollInterval = undefined;
+		}
+	}
+
+	/**
+	 * Check for pending toolbar action and handle it
+	 */
+	private async checkToolbarAction(): Promise<void> {
+		if (!this.floatingToolbarViewId) {
+			return;
+		}
+
+		try {
+			// Execute script in the overlay to get and clear the action
+			const action = await this.browserService.executeScriptOnOverlay(
+				this.floatingToolbarViewId,
+				`
+				(function() {
+					const action = window.__roopikToolbarAction;
+					if (action) {
+						window.__roopikToolbarAction = null;
+						return action;
+					}
+					return null;
+				})();
+				`
+			);
+
+			if (action) {
+				await this.handleToolbarAction(action);
+			}
+		} catch {
+			// Ignore errors (overlay might not be ready yet)
+		}
+	}
+
+	/**
+	 * Handle toolbar action from the overlay
+	 */
+	private async handleToolbarAction(action: { type: string; data?: any }): Promise<void> {
+		switch (action.type) {
+			case 'positionChanged':
+				// User dragged toolbar to new edge
+				if (action.data?.position) {
+					await this.updateToolbarPosition(action.data.position);
+				}
+				break;
+
+			case 'setMode':
+				// User clicked Select or Inspect mode button
+				if (action.data?.mode === 'inspect') {
+					await this.toggleInspectMode();
+				}
+				// TODO: Handle 'select' mode when implemented
+				break;
+
+			case 'screenshot':
+				await this.takeScreenshot();
+				break;
+
+			case 'editCss':
+				// TODO: Implement CSS editing
+				this.logger.info('[ProjectModeV2] Edit CSS clicked (not yet implemented)');
+				break;
+
+			case 'dragModeEnabled':
+				this.logger.info('[ProjectModeV2] Drag mode enabled');
+				break;
+
+			default:
+				this.logger.debug(`[ProjectModeV2] Unknown toolbar action: ${action.type}`);
+		}
+	}
+
+	/**
+	 * Calculate toolbar overlay bounds
+	 *
+	 * IMPORTANT: The overlay must cover the FULL browser area, not just the toolbar size.
+	 * This is because dropdown menus and snap indicators need to render outside the toolbar.
+	 * The toolbar itself is positioned via CSS within this larger overlay.
+	 */
+	private calculateToolbarBounds(): ViewBounds {
+		if (!this.browserContainer) {
+			return { x: 0, y: 0, width: 400, height: 400 };
+		}
+
+		const browserRect = this.browserContainer.getBoundingClientRect();
+
+		// Overlay covers the FULL browser container area
+		// The toolbar positions itself within via CSS (position: fixed relative to overlay)
+		return {
+			x: Math.floor(browserRect.left),
+			y: Math.floor(browserRect.top),
+			width: Math.floor(browserRect.width),
+			height: Math.floor(browserRect.height)
+		};
 	}
 
 	/**
@@ -1330,18 +1445,30 @@ export class ProjectModeV2Editor extends EditorPane {
 			return;
 		}
 
-		const browserRect = this.browserContainer.getBoundingClientRect();
-		const toolbarWidth = 280;
-		const toolbarHeight = 60;
-
-		const bounds: ViewBounds = {
-			x: Math.floor(browserRect.left + (browserRect.width - toolbarWidth) / 2),
-			y: Math.floor(browserRect.bottom - toolbarHeight - 16),
-			width: toolbarWidth,
-			height: toolbarHeight
-		};
-
+		const bounds = this.calculateToolbarBounds();
 		await this.browserService.setOverlayBounds(this.floatingToolbarViewId, bounds);
+	}
+
+	/**
+	 * Update toolbar position (called when user drags toolbar to new edge)
+	 * Updates state and recalculates bounds
+	 */
+	private async updateToolbarPosition(position: 'top' | 'bottom' | 'left' | 'right'): Promise<void> {
+		this.floatingToolbarState.position = position;
+
+		if (!this.floatingToolbarViewId || !this.browserViewId) {
+			return;
+		}
+
+		// Update bounds to new position
+		const bounds = this.calculateToolbarBounds();
+		await this.browserService.setOverlayBounds(this.floatingToolbarViewId, bounds);
+
+		// Regenerate HTML with new position class for CSS layout
+		const htmlContent = generateFloatingToolbarHtml(this.floatingToolbarState);
+		await this.browserService.setOverlayContent(this.floatingToolbarViewId, htmlContent);
+
+		this.logger.info(`[ProjectModeV2] Toolbar position changed to: ${position}`);
 	}
 
 	/**
@@ -1363,6 +1490,9 @@ export class ProjectModeV2Editor extends EditorPane {
 	 * Destroy floating toolbar
 	 */
 	private async destroyFloatingToolbar(): Promise<void> {
+		// Stop polling for actions
+		this.stopToolbarActionPolling();
+
 		if (this.floatingToolbarViewId) {
 			await this.browserService.destroyOverlayView(this.floatingToolbarViewId);
 			this.floatingToolbarViewId = undefined;
