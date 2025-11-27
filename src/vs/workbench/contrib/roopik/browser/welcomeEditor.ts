@@ -145,7 +145,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 		append(toggleWrapper, $('.toggle-pill-slider'));
 		append(checkboxContainer, toggleWrapper);
 
-		const checkboxLabel = $('label.checkbox-label', { for: 'roopikShowOnStartup' }, 'Show welcome screen on startup');
+		const checkboxLabel = $('label.checkbox-label', { for: 'roopikShowOnStartup' }, 'Show on startup');
 		append(checkboxContainer, checkboxLabel);
 
 		// Settings button in footer (right side)

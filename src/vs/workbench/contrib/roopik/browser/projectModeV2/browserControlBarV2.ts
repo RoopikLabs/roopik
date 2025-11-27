@@ -8,6 +8,15 @@ import { Codicon } from '../../../../../base/common/codicons.js';
 import { ThemeIcon } from '../../../../../base/common/themables.js';
 
 /**
+ * Bookmark entry
+ */
+export interface BrowserBookmark {
+	url: string;
+	title: string;
+	favicon?: string; // Base64 or URL
+}
+
+/**
  * Browser Control Bar V2 Configuration
  */
 export interface IBrowserControlBarV2Config {
@@ -16,6 +25,7 @@ export interface IBrowserControlBarV2Config {
 	showScreenshot?: boolean;
 	showHardReload?: boolean;
 	showCopyUrl?: boolean;
+	showBookmarks?: boolean;
 }
 
 /**
@@ -36,6 +46,13 @@ export interface IBrowserControlBarV2Callbacks {
 	onHardReload?: () => void;
 	onScreenshot?: () => void;
 	onCopyUrl?: () => void;
+
+	// Bookmarks
+	onBookmarkAdd?: (bookmark: BrowserBookmark) => void;
+	onBookmarkRemove?: (url: string) => void;
+	onBookmarkClick?: (url: string) => void;
+	getBookmarks?: () => BrowserBookmark[];
+	isBookmarked?: (url: string) => boolean;
 }
 
 /**
@@ -46,12 +63,19 @@ export interface IBrowserControlBarV2Callbacks {
 export class BrowserControlBarV2 extends Disposable {
 	private container: HTMLElement;
 	private urlInput: HTMLInputElement;
+	private urlInputWrapper: HTMLElement | undefined;
 	private progressBar: HTMLElement;
 	private loadingAnimation?: number;
 	private backButton?: HTMLButtonElement;
 	private forwardButton?: HTMLButtonElement;
 	private overflowMenu?: HTMLElement;
 	private isOverflowVisible: boolean = false;
+
+	// Bookmark UI elements
+	private bookmarkStar: HTMLElement | undefined;
+	private bookmarkOverlay: HTMLElement | undefined;
+	private isBookmarkOverlayVisible: boolean = false;
+	private bookmarkHideTimeout: number | undefined;
 
 	constructor(
 		parent: HTMLElement,
@@ -108,8 +132,17 @@ export class BrowserControlBarV2 extends Disposable {
 		this.createIconButton(Codicon.refresh, 'Refresh', () => this.callbacks.onRefresh());
 		this.createIconButton(Codicon.home, 'Home', () => this.callbacks.onHome());
 
-		// URL input
-		this.container.appendChild(this.urlInput);
+		// URL input (with bookmark star if enabled)
+		if (this.urlInputWrapper) {
+			this.container.appendChild(this.urlInputWrapper);
+		} else {
+			this.container.appendChild(this.urlInput);
+		}
+
+		// Create bookmark star AFTER urlInput is assigned and appended
+		if (this.config.showBookmarks) {
+			this.createBookmarkStar();
+		}
 
 		// Stop Dev Server button (placeholder - feature coming later)
 		this.createIconButton(Codicon.debugStop, 'Stop Dev Server', () => this.callbacks.onStopDevServer());
@@ -358,16 +391,25 @@ export class BrowserControlBarV2 extends Disposable {
 	}
 
 	private createUrlInput(): HTMLInputElement {
+		// Create wrapper for URL input + bookmark star
+		this.urlInputWrapper = document.createElement('div');
+		this.urlInputWrapper.style.flex = '1';
+		this.urlInputWrapper.style.position = 'relative';
+		this.urlInputWrapper.style.display = 'flex';
+		this.urlInputWrapper.style.alignItems = 'center';
+
 		const input = document.createElement('input');
 		input.type = 'text';
 		input.placeholder = 'Enter URL (e.g., http://localhost:3000)';
-		input.style.flex = '1';
+		input.style.width = '100%';
 		input.style.padding = '6px 12px';
+		input.style.paddingRight = this.config.showBookmarks ? '32px' : '12px'; // Space for star
 		input.style.border = '1px solid var(--vscode-input-border)';
 		input.style.backgroundColor = 'var(--vscode-input-background)';
 		input.style.color = 'var(--vscode-input-foreground)';
 		input.style.borderRadius = '2px';
 		input.style.fontSize = '13px';
+		input.style.boxSizing = 'border-box';
 
 		input.onkeydown = (e) => {
 			if (e.key === 'Enter') {
@@ -375,7 +417,462 @@ export class BrowserControlBarV2 extends Disposable {
 			}
 		};
 
+		this.urlInputWrapper.appendChild(input);
+
+		// Note: Bookmark star is created AFTER urlInput is assigned
+		// See render() method which calls createBookmarkStar() after this returns
+
 		return input;
+	}
+
+	/**
+	 * Create the bookmark star icon inside the URL input
+	 */
+	private createBookmarkStar(): void {
+		if (!this.urlInputWrapper) {
+			return;
+		}
+
+		this.bookmarkStar = document.createElement('div');
+		this.bookmarkStar.style.position = 'absolute';
+		this.bookmarkStar.style.right = '8px';
+		this.bookmarkStar.style.top = '50%';
+		this.bookmarkStar.style.transform = 'translateY(-50%)';
+		this.bookmarkStar.style.cursor = 'pointer';
+		this.bookmarkStar.style.display = 'flex';
+		this.bookmarkStar.style.alignItems = 'center';
+		this.bookmarkStar.style.justifyContent = 'center';
+		this.bookmarkStar.style.width = '20px';
+		this.bookmarkStar.style.height = '20px';
+		this.bookmarkStar.style.borderRadius = '2px';
+		this.bookmarkStar.style.color = 'var(--vscode-input-foreground)';
+		this.bookmarkStar.style.opacity = '0.6';
+		this.bookmarkStar.title = 'Add/remove bookmark';
+
+		const starIcon = document.createElement('span');
+		starIcon.className = ThemeIcon.asClassName(Codicon.star);
+		starIcon.style.fontSize = '14px';
+		this.bookmarkStar.appendChild(starIcon);
+
+		// Hover effect
+		this.bookmarkStar.onmouseenter = () => {
+			this.bookmarkStar!.style.opacity = '1';
+			this.bookmarkStar!.style.backgroundColor = 'var(--vscode-toolbar-hoverBackground)';
+			// Show bookmark overlay
+			this.showBookmarkOverlay();
+		};
+
+		this.bookmarkStar.onmouseleave = () => {
+			// Delay hiding to allow moving to overlay
+			this.bookmarkHideTimeout = window.setTimeout(() => {
+				if (!this.isBookmarkOverlayVisible) {
+					this.updateBookmarkStarState();
+				}
+			}, 100);
+		};
+
+		// Click to toggle bookmark
+		this.bookmarkStar.onclick = (e) => {
+			e.stopPropagation();
+			this.toggleBookmark();
+		};
+
+		this.urlInputWrapper.appendChild(this.bookmarkStar);
+		this.updateBookmarkStarState();
+	}
+
+	/**
+	 * Update bookmark star appearance based on current URL
+	 */
+	private updateBookmarkStarState(): void {
+		if (!this.bookmarkStar || !this.urlInput) {
+			return;
+		}
+
+		const url = this.getUrl();
+		const isBookmarked = url && this.callbacks.isBookmarked?.(url);
+		const starIcon = this.bookmarkStar.querySelector('span');
+
+		if (starIcon) {
+			// Use filled star if bookmarked, outline if not
+			starIcon.className = ThemeIcon.asClassName(isBookmarked ? Codicon.starFull : Codicon.star);
+			this.bookmarkStar.style.color = isBookmarked
+				? 'var(--vscode-inputValidation-warningBorder, #cca700)'
+				: 'var(--vscode-input-foreground)';
+			this.bookmarkStar.style.opacity = isBookmarked ? '1' : '0.6';
+			this.bookmarkStar.style.backgroundColor = 'transparent';
+		}
+	}
+
+	/**
+	 * Toggle bookmark for current URL
+	 */
+	private toggleBookmark(): void {
+		const url = this.getUrl();
+		if (!url) {
+			return;
+		}
+
+		const isBookmarked = this.callbacks.isBookmarked?.(url);
+		if (isBookmarked) {
+			this.callbacks.onBookmarkRemove?.(url);
+		} else {
+			// Extract title from URL (domain + path)
+			let title = url;
+			try {
+				const urlObj = new URL(url);
+				title = urlObj.hostname + (urlObj.pathname !== '/' ? urlObj.pathname : '');
+			} catch {
+				// Use URL as-is
+			}
+			this.callbacks.onBookmarkAdd?.({ url, title });
+		}
+
+		this.updateBookmarkStarState();
+		this.updateBookmarkOverlayContent();
+	}
+
+	// Store reference to click outside handler so we can remove it
+	private bookmarkClickOutsideHandler: ((e: MouseEvent) => void) | undefined;
+
+	/**
+	 * Show the bookmark overlay on hover
+	 */
+	private showBookmarkOverlay(): void {
+		if (this.bookmarkHideTimeout) {
+			clearTimeout(this.bookmarkHideTimeout);
+			this.bookmarkHideTimeout = undefined;
+		}
+
+		if (!this.urlInputWrapper) {
+			return;
+		}
+
+		// Create overlay if doesn't exist
+		if (!this.bookmarkOverlay) {
+			this.createBookmarkOverlay();
+		}
+
+		// Update theme colors NOW (in case theme changed since overlay was created)
+		this.updateBookmarkOverlayThemeColors();
+
+		this.updateBookmarkOverlayContent();
+		this.positionBookmarkOverlay();
+
+		if (this.bookmarkOverlay) {
+			this.bookmarkOverlay.style.display = 'flex';
+			this.isBookmarkOverlayVisible = true;
+
+			// Add click-outside listener to close overlay (like overflow menu does)
+			this.bookmarkClickOutsideHandler = (e: MouseEvent) => {
+				const target = e.target as Node;
+				// Close if click is outside overlay AND outside bookmark star
+				if (this.bookmarkOverlay && !this.bookmarkOverlay.contains(target) &&
+					this.bookmarkStar && !this.bookmarkStar.contains(target)) {
+					this.hideBookmarkOverlay();
+				}
+			};
+			// Use setTimeout to avoid immediate trigger from the current click
+			setTimeout(() => {
+				if (this.bookmarkClickOutsideHandler) {
+					document.addEventListener('click', this.bookmarkClickOutsideHandler);
+				}
+			}, 0);
+		}
+	}
+
+	/**
+	 * Update bookmark overlay theme colors dynamically
+	 * Called when showing overlay to pick up current theme
+	 */
+	private updateBookmarkOverlayThemeColors(): void {
+		if (!this.bookmarkOverlay) {
+			return;
+		}
+
+		// Read current theme colors from container
+		const computedStyle = getComputedStyle(this.container);
+		const menuBg = computedStyle.getPropertyValue('--vscode-menu-background').trim() || '#252526';
+		const menuBorder = computedStyle.getPropertyValue('--vscode-menu-border').trim() || '#454545';
+		const widgetShadow = computedStyle.getPropertyValue('--vscode-widget-shadow').trim() || 'rgba(0, 0, 0, 0.36)';
+
+		// Update overlay container
+		this.bookmarkOverlay.style.backgroundColor = menuBg;
+		this.bookmarkOverlay.style.border = `1px solid ${menuBorder}`;
+		this.bookmarkOverlay.style.boxShadow = `0 2px 8px ${widgetShadow}`;
+	}
+
+	/**
+	 * Hide the bookmark overlay
+	 */
+	private hideBookmarkOverlay(): void {
+		if (this.bookmarkOverlay) {
+			this.bookmarkOverlay.style.display = 'none';
+			this.isBookmarkOverlayVisible = false;
+			this.updateBookmarkStarState();
+		}
+
+		// Remove click-outside listener
+		if (this.bookmarkClickOutsideHandler) {
+			document.removeEventListener('click', this.bookmarkClickOutsideHandler);
+			this.bookmarkClickOutsideHandler = undefined;
+		}
+	}
+
+	/**
+	 * Create the translucent bookmark overlay
+	 */
+	private createBookmarkOverlay(): void {
+		this.bookmarkOverlay = document.createElement('div');
+		this.bookmarkOverlay.style.position = 'fixed';
+		this.bookmarkOverlay.style.display = 'none';
+		this.bookmarkOverlay.style.flexDirection = 'row';
+		this.bookmarkOverlay.style.alignItems = 'center';
+		this.bookmarkOverlay.style.gap = '4px';
+		this.bookmarkOverlay.style.padding = '6px 8px';
+
+		// Get theme colors from the container (like overflow menu does)
+		const computedStyle = getComputedStyle(this.container);
+		const menuBg = computedStyle.getPropertyValue('--vscode-menu-background').trim() || '#252526';
+		const menuBorder = computedStyle.getPropertyValue('--vscode-menu-border').trim() || '#454545';
+		const widgetShadow = computedStyle.getPropertyValue('--vscode-widget-shadow').trim() || 'rgba(0, 0, 0, 0.36)';
+
+		this.bookmarkOverlay.style.backgroundColor = menuBg;
+		this.bookmarkOverlay.style.border = `1px solid ${menuBorder}`;
+		this.bookmarkOverlay.style.borderRadius = '4px';
+		this.bookmarkOverlay.style.boxShadow = `0 2px 8px ${widgetShadow}`;
+		this.bookmarkOverlay.style.zIndex = '10001';
+		this.bookmarkOverlay.style.maxWidth = '90%';
+		this.bookmarkOverlay.style.overflowX = 'auto';
+		this.bookmarkOverlay.style.overflowY = 'hidden';
+		this.bookmarkOverlay.style.whiteSpace = 'nowrap';
+
+		// Hide scrollbar but allow scrolling
+		this.bookmarkOverlay.style.scrollbarWidth = 'none'; // Firefox
+		(this.bookmarkOverlay.style as unknown as Record<string, string>)['-ms-overflow-style'] = 'none'; // IE
+
+		// Mouse events to keep overlay visible
+		this.bookmarkOverlay.onmouseenter = () => {
+			if (this.bookmarkHideTimeout) {
+				clearTimeout(this.bookmarkHideTimeout);
+				this.bookmarkHideTimeout = undefined;
+			}
+		};
+
+		this.bookmarkOverlay.onmouseleave = () => {
+			this.bookmarkHideTimeout = window.setTimeout(() => {
+				this.hideBookmarkOverlay();
+			}, 200);
+		};
+
+		document.body.appendChild(this.bookmarkOverlay);
+	}
+
+	/**
+	 * Position the bookmark overlay above the URL input
+	 * Similar to overflow menu positioning (above, not covering)
+	 */
+	private positionBookmarkOverlay(): void {
+		if (!this.bookmarkOverlay || !this.urlInputWrapper) {
+			return;
+		}
+
+		const inputRect = this.urlInputWrapper.getBoundingClientRect();
+
+		// Show overlay to measure its height
+		this.bookmarkOverlay.style.visibility = 'hidden';
+		this.bookmarkOverlay.style.display = 'flex';
+		const overlayHeight = this.bookmarkOverlay.offsetHeight;
+
+		// Position ABOVE the URL input (with 4px gap), aligned left
+		this.bookmarkOverlay.style.top = `${inputRect.top - overlayHeight - 4}px`;
+		this.bookmarkOverlay.style.left = `${inputRect.left}px`;
+		this.bookmarkOverlay.style.maxWidth = `${inputRect.width}px`;
+		this.bookmarkOverlay.style.visibility = 'visible';
+	}
+
+	/**
+	 * Update the content of the bookmark overlay
+	 */
+	private updateBookmarkOverlayContent(): void {
+		if (!this.bookmarkOverlay) {
+			return;
+		}
+
+		// Clear existing content (use DOM manipulation, not innerHTML due to CSP)
+		while (this.bookmarkOverlay.firstChild) {
+			this.bookmarkOverlay.removeChild(this.bookmarkOverlay.firstChild);
+		}
+
+		// Get theme colors from container (like overflow menu does)
+		const computedStyle = getComputedStyle(this.container);
+		const menuFg = computedStyle.getPropertyValue('--vscode-menu-foreground').trim() || '#cccccc';
+
+		const bookmarks = this.callbacks.getBookmarks?.() || [];
+
+		if (bookmarks.length === 0) {
+			// Show hint when no bookmarks
+			const hint = document.createElement('span');
+			hint.textContent = '☆ Click star to add bookmark';
+			hint.style.color = menuFg;
+			hint.style.opacity = '0.7';
+			hint.style.fontSize = '12px';
+			hint.style.padding = '0 8px';
+			this.bookmarkOverlay.appendChild(hint);
+		} else {
+			// Left scroll button (if needed)
+			const leftBtn = this.createScrollButton('left');
+			this.bookmarkOverlay.appendChild(leftBtn);
+
+			// Bookmark items container
+			const bookmarksContainer = document.createElement('div');
+			bookmarksContainer.style.display = 'flex';
+			bookmarksContainer.style.flexDirection = 'row';
+			bookmarksContainer.style.gap = '4px';
+			bookmarksContainer.style.overflowX = 'auto';
+			bookmarksContainer.style.flex = '1';
+			bookmarksContainer.style.scrollbarWidth = 'none';
+
+			for (const bookmark of bookmarks) {
+				const item = this.createBookmarkItem(bookmark);
+				bookmarksContainer.appendChild(item);
+			}
+
+			this.bookmarkOverlay.appendChild(bookmarksContainer);
+
+			// Right scroll button (if needed)
+			const rightBtn = this.createScrollButton('right');
+			this.bookmarkOverlay.appendChild(rightBtn);
+
+			// Wire up scroll buttons
+			leftBtn.onclick = () => {
+				bookmarksContainer.scrollBy({ left: -100, behavior: 'smooth' });
+			};
+			rightBtn.onclick = () => {
+				bookmarksContainer.scrollBy({ left: 100, behavior: 'smooth' });
+			};
+
+			// Show/hide scroll buttons based on scroll position
+			const updateScrollButtons = () => {
+				leftBtn.style.opacity = bookmarksContainer.scrollLeft > 0 ? '1' : '0.3';
+				rightBtn.style.opacity =
+					bookmarksContainer.scrollLeft < bookmarksContainer.scrollWidth - bookmarksContainer.clientWidth - 1
+						? '1' : '0.3';
+			};
+			bookmarksContainer.onscroll = updateScrollButtons;
+			setTimeout(updateScrollButtons, 0);
+		}
+	}
+
+	/**
+	 * Create a scroll button for the bookmark overlay
+	 */
+	private createScrollButton(direction: 'left' | 'right'): HTMLElement {
+		// Get theme colors from container (like overflow menu does)
+		const computedStyle = getComputedStyle(this.container);
+		const menuFg = computedStyle.getPropertyValue('--vscode-menu-foreground').trim() || '#cccccc';
+		const menuSelectionBg = computedStyle.getPropertyValue('--vscode-menu-selectionBackground').trim() || '#04395e';
+
+		const btn = document.createElement('div');
+		btn.style.display = 'flex';
+		btn.style.alignItems = 'center';
+		btn.style.justifyContent = 'center';
+		btn.style.width = '20px';
+		btn.style.height = '20px';
+		btn.style.cursor = 'pointer';
+		btn.style.borderRadius = '2px';
+		btn.style.flexShrink = '0';
+		btn.style.color = menuFg;
+		btn.style.opacity = '0.3';
+
+		const icon = document.createElement('span');
+		icon.className = ThemeIcon.asClassName(direction === 'left' ? Codicon.chevronLeft : Codicon.chevronRight);
+		icon.style.fontSize = '14px';
+		btn.appendChild(icon);
+
+		btn.onmouseenter = () => {
+			btn.style.backgroundColor = menuSelectionBg;
+		};
+		btn.onmouseleave = () => {
+			btn.style.backgroundColor = 'transparent';
+		};
+
+		return btn;
+	}
+
+	/**
+	 * Create a single bookmark item chip
+	 */
+	private createBookmarkItem(bookmark: BrowserBookmark): HTMLElement {
+		// Get theme colors from container (like overflow menu does)
+		const computedStyle = getComputedStyle(this.container);
+		const menuFg = computedStyle.getPropertyValue('--vscode-menu-foreground').trim() || '#cccccc';
+		const menuSelectionBg = computedStyle.getPropertyValue('--vscode-menu-selectionBackground').trim() || '#04395e';
+		const menuSelectionFg = computedStyle.getPropertyValue('--vscode-menu-selectionForeground').trim() || '#ffffff';
+		const menuSeparatorBg = computedStyle.getPropertyValue('--vscode-menu-separatorBackground').trim() || '#454545';
+
+		const item = document.createElement('div');
+		item.style.display = 'flex';
+		item.style.alignItems = 'center';
+		item.style.gap = '4px';
+		item.style.padding = '4px 8px';
+		item.style.backgroundColor = menuSeparatorBg;
+		item.style.borderRadius = '4px';
+		item.style.cursor = 'pointer';
+		item.style.flexShrink = '0';
+		item.style.maxWidth = '150px';
+		item.style.color = menuFg;
+		item.title = bookmark.url;
+
+		// Favicon or default icon
+		const icon = document.createElement('span');
+		icon.className = ThemeIcon.asClassName(Codicon.globe);
+		icon.style.fontSize = '12px';
+		icon.style.color = menuFg;
+		icon.style.opacity = '0.7';
+		item.appendChild(icon);
+
+		// Title (truncated)
+		const title = document.createElement('span');
+		title.textContent = bookmark.title;
+		title.style.fontSize = '11px';
+		title.style.color = menuFg;
+		title.style.overflow = 'hidden';
+		title.style.textOverflow = 'ellipsis';
+		title.style.whiteSpace = 'nowrap';
+		item.appendChild(title);
+
+		// Hover effect
+		item.onmouseenter = () => {
+			item.style.backgroundColor = menuSelectionBg;
+			item.style.color = menuSelectionFg;
+			icon.style.color = menuSelectionFg;
+			title.style.color = menuSelectionFg;
+		};
+		item.onmouseleave = () => {
+			item.style.backgroundColor = menuSeparatorBg;
+			item.style.color = menuFg;
+			icon.style.color = menuFg;
+			title.style.color = menuFg;
+		};
+
+		// Click to navigate
+		item.onclick = (e) => {
+			e.stopPropagation();
+			this.callbacks.onBookmarkClick?.(bookmark.url);
+			this.hideBookmarkOverlay();
+		};
+
+		// Right-click to remove
+		item.oncontextmenu = (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			this.callbacks.onBookmarkRemove?.(bookmark.url);
+			this.updateBookmarkOverlayContent();
+			this.updateBookmarkStarState();
+		};
+
+		return item;
 	}
 
 	// Public API
@@ -392,6 +889,8 @@ export class BrowserControlBarV2 extends Disposable {
 		} else {
 			this.urlInput.value = url;
 		}
+		// Update bookmark star state when URL changes
+		this.updateBookmarkStarState();
 	}
 
 	focus(): void {
@@ -490,9 +989,23 @@ export class BrowserControlBarV2 extends Disposable {
 			cancelAnimationFrame(this.loadingAnimation);
 			this.loadingAnimation = undefined;
 		}
+		// Clear bookmark hide timeout
+		if (this.bookmarkHideTimeout) {
+			clearTimeout(this.bookmarkHideTimeout);
+			this.bookmarkHideTimeout = undefined;
+		}
+		// Remove bookmark click-outside handler
+		if (this.bookmarkClickOutsideHandler) {
+			document.removeEventListener('click', this.bookmarkClickOutsideHandler);
+			this.bookmarkClickOutsideHandler = undefined;
+		}
 		// Remove overflow menu from body
 		if (this.overflowMenu && this.overflowMenu.parentElement) {
 			this.overflowMenu.remove();
+		}
+		// Remove bookmark overlay from body
+		if (this.bookmarkOverlay && this.bookmarkOverlay.parentElement) {
+			this.bookmarkOverlay.remove();
 		}
 		// Clean up window event listeners
 		window.removeEventListener('resize', this.handleWindowChange);

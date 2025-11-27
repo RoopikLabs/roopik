@@ -6,7 +6,7 @@
 import { EditorPane } from '../../../../browser/parts/editor/editorPane.js';
 import { ITelemetryService } from '../../../../../platform/telemetry/common/telemetry.js';
 import { IThemeService } from '../../../../../platform/theme/common/themeService.js';
-import { IStorageService } from '../../../../../platform/storage/common/storage.js';
+import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
 import { ProjectModeV2Input } from './projectModeV2Input.js';
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { Dimension } from '../../../../../base/browser/dom.js';
@@ -20,7 +20,7 @@ import { IMainProcessService } from '../../../../../platform/ipc/common/mainProc
 import { INativeHostService } from '../../../../../platform/native/common/native.js';
 import { ProjectModeV2ServiceBridge } from './projectModeV2ServiceBridge.js';
 import { PROJECT_MODE_V2_CHANNEL } from '../../common/projectModeV2/ipc.js';
-import { BrowserControlBarV2, IBrowserControlBarV2Config, IBrowserControlBarV2Callbacks } from './browserControlBarV2.js';
+import { BrowserControlBarV2, IBrowserControlBarV2Config, IBrowserControlBarV2Callbacks, BrowserBookmark } from './browserControlBarV2.js';
 import type { ViewBounds, DevToolsMode, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
 import { generateFloatingToolbarHtml, FloatingToolbarState } from './floatingToolbarHtml.js';
 import { IRoopikEventService } from '../../common/events/index.js';
@@ -42,6 +42,12 @@ import { IClipboardService } from '../../../../../platform/clipboard/common/clip
  * For now, we default to 'attached' mode for the Device Toolbar feature.
  */
 const DEVTOOLS_MODE: DevToolsMode = 'attached'; // 'attached' or 'detached'
+
+/**
+ * Storage key for browser bookmarks (workspace-scoped)
+ * Each project has its own set of bookmarks
+ */
+const BOOKMARKS_STORAGE_KEY = 'roopik.browser.bookmarks';
 
 /**
  * Project Mode V2 Editor
@@ -101,11 +107,14 @@ export class ProjectModeV2Editor extends EditorPane {
 	// setInput() is called on EVERY tab switch, and may pass a different input instance!
 	private registeredInputForDispose: ProjectModeV2Input | undefined;
 
+	// Bookmarks (workspace-scoped storage)
+	private bookmarks: BrowserBookmark[] = [];
+
 	constructor(
 		group: IEditorGroup,
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IThemeService themeService: IThemeService,
-		@IStorageService storageService: IStorageService,
+		@IStorageService private readonly storageService: IStorageService,
 		@ILoggerService loggerService: ILoggerService,
 		@IMainProcessService mainProcessService: IMainProcessService,
 		@INativeHostService private readonly nativeHostService: INativeHostService,
@@ -119,11 +128,105 @@ export class ProjectModeV2Editor extends EditorPane {
 		this.logger = RoopikLogger.create(loggerService);
 		this.browserService = new ProjectModeV2ServiceBridge(mainProcessService.getChannel(PROJECT_MODE_V2_CHANNEL));
 
+		// Load bookmarks from workspace storage
+		this.loadBookmarks();
+
 		// Setup event subscriptions for UI updates
 		this.setupEventSubscriptions();
 
 		// Setup menu/command palette pause detection
 		this.setupBrowserPauseDetection();
+	}
+
+	// ============================================
+	// Bookmarks (Workspace Storage)
+	// ============================================
+
+	/**
+	 * Load bookmarks from workspace storage
+	 */
+	private loadBookmarks(): void {
+		try {
+			const stored = this.storageService.get(BOOKMARKS_STORAGE_KEY, StorageScope.WORKSPACE);
+			if (stored) {
+				this.bookmarks = JSON.parse(stored) as BrowserBookmark[];
+				this.logger.debug(`[ProjectModeV2] Loaded ${this.bookmarks.length} bookmarks from workspace storage`);
+			}
+		} catch (error) {
+			this.logger.warn('[ProjectModeV2] Failed to load bookmarks:', error);
+			this.bookmarks = [];
+		}
+	}
+
+	/**
+	 * Save bookmarks to workspace storage
+	 */
+	private saveBookmarks(): void {
+		try {
+			this.storageService.store(
+				BOOKMARKS_STORAGE_KEY,
+				JSON.stringify(this.bookmarks),
+				StorageScope.WORKSPACE,
+				StorageTarget.USER
+			);
+			this.logger.debug(`[ProjectModeV2] Saved ${this.bookmarks.length} bookmarks to workspace storage`);
+		} catch (error) {
+			this.logger.error('[ProjectModeV2] Failed to save bookmarks:', error);
+		}
+	}
+
+	/**
+	 * Add a bookmark
+	 */
+	private addBookmark(bookmark: BrowserBookmark): void {
+		// Don't add duplicates
+		if (this.isBookmarked(bookmark.url)) {
+			return;
+		}
+		this.bookmarks.push(bookmark);
+		this.saveBookmarks();
+		this.notificationService.notify({
+			severity: Severity.Info,
+			message: `Bookmarked: ${bookmark.title}`,
+			sticky: false
+		});
+	}
+
+	/**
+	 * Remove a bookmark by URL
+	 */
+	private removeBookmark(url: string): void {
+		const index = this.bookmarks.findIndex(b => b.url === url);
+		if (index !== -1) {
+			const removed = this.bookmarks.splice(index, 1)[0];
+			this.saveBookmarks();
+			this.notificationService.notify({
+				severity: Severity.Info,
+				message: `Removed bookmark: ${removed.title}`,
+				sticky: false
+			});
+		}
+	}
+
+	/**
+	 * Check if a URL is bookmarked
+	 */
+	private isBookmarked(url: string): boolean {
+		return this.bookmarks.some(b => b.url === url);
+	}
+
+	/**
+	 * Get all bookmarks
+	 */
+	private getBookmarks(): BrowserBookmark[] {
+		return [...this.bookmarks];
+	}
+
+	/**
+	 * Navigate to a bookmarked URL
+	 */
+	private navigateToBookmark(url: string): void {
+		this.navigate(url);
 	}
 
 	/**
@@ -333,7 +436,8 @@ export class ProjectModeV2Editor extends EditorPane {
 			showInspectMode: true,
 			showScreenshot: true,
 			showHardReload: true,
-			showCopyUrl: true
+			showCopyUrl: true,
+			showBookmarks: true
 		};
 
 		// Browser control bar callbacks
@@ -348,7 +452,13 @@ export class ProjectModeV2Editor extends EditorPane {
 			onDevTools: () => this.toggleDevTools(),
 			onHardReload: () => this.hardReload(),
 			onScreenshot: () => this.takeScreenshot(),
-			onCopyUrl: () => this.copyCurrentUrl()
+			onCopyUrl: () => this.copyCurrentUrl(),
+			// Bookmark callbacks
+			onBookmarkAdd: (bookmark: BrowserBookmark) => this.addBookmark(bookmark),
+			onBookmarkRemove: (url: string) => this.removeBookmark(url),
+			onBookmarkClick: (url: string) => this.navigateToBookmark(url),
+			getBookmarks: () => this.getBookmarks(),
+			isBookmarked: (url: string) => this.isBookmarked(url)
 		};
 
 		this.controlBar = this._register(new BrowserControlBarV2(this.container, config, callbacks));
