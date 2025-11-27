@@ -96,6 +96,10 @@ export class ProjectModeV2Editor extends EditorPane {
 	private devtoolsMinHeight: number = 100; // Minimum DevTools height in pixels
 	private devtoolsMaxHeightRatio: number = 0.8; // Max 80% of content area
 
+	// Track if we've registered the input dispose listener (to avoid duplicate registrations)
+	// setInput() is called on EVERY tab switch, not just once!
+	private inputDisposeListenerRegistered: boolean = false;
+
 	constructor(
 		group: IEditorGroup,
 		@ITelemetryService telemetryService: ITelemetryService,
@@ -694,7 +698,6 @@ export class ProjectModeV2Editor extends EditorPane {
 
 		const currentUrl = event.url || '';
 		const currentTitle = event.title || '';
-		const isRealUrl = currentUrl && currentUrl !== 'about:blank';
 
 		// Update loading progress bar
 		// IMPORTANT: Always respect the isLoading value from the event
@@ -1241,6 +1244,17 @@ export class ProjectModeV2Editor extends EditorPane {
 		if (input instanceof ProjectModeV2Input) {
 			const initialUrl = input.url;
 
+			// CRITICAL: Listen for input disposal - this means the TAB is truly closed
+			// (not just hidden for tab switching). When input is disposed, destroy the browser!
+			// NOTE: Only register ONCE! setInput() is called on every tab switch, not just once.
+			if (!this.inputDisposeListenerRegistered) {
+				this.inputDisposeListenerRegistered = true;
+				this._register(input.onWillDispose(() => {
+					this.logger.info(`[ProjectModeV2] #${this.instanceId} 🚨 INPUT DISPOSED - Tab closed! Destroying browser (viewId=${this.browserViewId})`);
+					this.destroyBrowserNow();
+				}));
+			}
+
 			// Initialize browser view if not already done
 			if (!this.browserViewId) {
 				this.logger.info(`[ProjectModeV2] #${this.instanceId} setInput: initializing browser view...`);
@@ -1381,7 +1395,7 @@ export class ProjectModeV2Editor extends EditorPane {
 		// clearInput() is called when switching tabs - we want to preserve the browser state.
 		// The browser should only be destroyed in dispose() when the editor is actually closed.
 		if (this.browserViewId) {
-			this.logger.info(`[ProjectModeV2] #${this.instanceId} clearInput: hiding browser view (viewId=${this.browserViewId}) - preserving state`);
+			this.logger.info(`[ProjectModeV2] #${this.instanceId} 👁️ clearInput: HIDING browser view (viewId=${this.browserViewId}) - NOT destroying, waiting for dispose()`);
 			this.browserService.setBrowserVisible(this.browserViewId, false);
 		}
 
@@ -1405,12 +1419,18 @@ export class ProjectModeV2Editor extends EditorPane {
 		this.updateBoundsWithRetry();
 	}
 
-	override dispose(): void {
-		this.logger.info(`[ProjectModeV2] #${this.instanceId} dispose: destroying browser view (viewId=${this.browserViewId})`);
+	/**
+	 * Destroy browser view immediately
+	 * Called when EditorInput is disposed (tab truly closed)
+	 */
+	private destroyBrowserNow(): void {
+		if (!this.browserViewId) {
+			this.logger.info(`[ProjectModeV2] #${this.instanceId} destroyBrowserNow: no browser to destroy`);
+			return;
+		}
 
-		// Cleanup ResizeObserver
-		this.resizeObserver?.disconnect();
-		this.resizeObserver = undefined;
+		const destroyedBrowserViewId = this.browserViewId;
+		this.browserViewId = undefined; // Clear immediately to prevent double destruction
 
 		// Hide views immediately
 		this.hideViews();
@@ -1419,19 +1439,31 @@ export class ProjectModeV2Editor extends EditorPane {
 		this.destroyFloatingToolbar()
 			.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy floating toolbar:', err));
 
-		// Destroy browser view - this is the ONLY place we destroy
-		// (clearInput just hides, dispose actually destroys)
+		// Publish browser destroyed event to central event bus
+		this.logger.info(`[ProjectModeV2] 📤 PUBLISH browser.destroyed via EventService (viewId=${destroyedBrowserViewId})`);
+		this.eventService.publish('browser.destroyed', {
+			browserViewId: destroyedBrowserViewId
+		});
+
+		// Destroy the browser view in main process
+		this.logger.info(`[ProjectModeV2] 🔥 Calling destroyBrowserView for viewId=${destroyedBrowserViewId}`);
+		this.browserService.destroyBrowserView(destroyedBrowserViewId)
+			.then(() => this.logger.info(`[ProjectModeV2] ✅ Browser view ${destroyedBrowserViewId} destroyed successfully`))
+			.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy browser view:', err));
+	}
+
+	override dispose(): void {
+		this.logger.info(`[ProjectModeV2] #${this.instanceId} 🗑️ DISPOSE called (viewId=${this.browserViewId})`);
+
+		// Cleanup ResizeObserver
+		this.resizeObserver?.disconnect();
+		this.resizeObserver = undefined;
+
+		// Destroy browser if not already destroyed by input disposal
+		// (destroyBrowserNow may have already been called via onWillDispose)
 		if (this.browserViewId) {
-			const destroyedBrowserViewId = this.browserViewId;
-
-			// Publish browser destroyed event to central event bus
-			this.eventService.publish('browser.destroyed', {
-				browserViewId: destroyedBrowserViewId
-			});
-
-			this.browserService.destroyBrowserView(destroyedBrowserViewId)
-				.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy browser view in dispose:', err));
-			this.browserViewId = undefined;
+			this.logger.info(`[ProjectModeV2] #${this.instanceId} dispose: browser still exists, destroying now`);
+			this.destroyBrowserNow();
 		}
 
 		super.dispose();

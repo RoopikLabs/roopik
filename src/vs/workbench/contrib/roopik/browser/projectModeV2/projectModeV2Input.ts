@@ -19,12 +19,17 @@ const projectModeV2Icon = registerIcon('roopik-project-mode-v2', Codicon.globe, 
 export class ProjectModeV2Input extends EditorInput {
 	static readonly ID = 'roopik.projectModeV2Input';
 
+	// Unique instance ID to differentiate browser tabs
+	private static instanceCounter = 0;
+	private readonly instanceId: number;
+
 	private _url: string;
 	private _pageTitle: string = '';
 
 	constructor(url: string = 'about:blank') {
 		super();
 		this._url = url;
+		this.instanceId = ++ProjectModeV2Input.instanceCounter;
 	}
 
 	override get typeId(): string {
@@ -97,6 +102,11 @@ export class ProjectModeV2Input extends EditorInput {
 	}
 
 	override matches(other: EditorInput): boolean {
-		return other instanceof ProjectModeV2Input;
+		// Only match if it's the exact same instance
+		// This ensures each browser tab is treated as unique and properly disposed when closed
+		if (other instanceof ProjectModeV2Input) {
+			return this.instanceId === other.instanceId;
+		}
+		return false;
 	}
 }
