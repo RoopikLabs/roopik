@@ -28,6 +28,8 @@ import { EditorTabInput } from './projectMode/editorTabInput.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { IRoopikEventService, RoopikEventService } from '../common/events/index.js';
 import { IRoopikSettingsService, RoopikSettingsService } from '../common/settings/index.js';
+import { CanvasEditor } from './canvas/canvasEditor.js';
+import { CanvasInput } from './canvas/canvasInput.js';
 
 /**
  * Roopik Design IDE - Main Contribution
@@ -86,6 +88,16 @@ Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane
 	[new SyncDescriptor(EditorTabInput)]
 );
 
+// Register Canvas Editor (Mode 1: Component Canvas)
+Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
+	EditorPaneDescriptor.create(
+		CanvasEditor,
+		CanvasEditor.ID,
+		'Component Canvas'
+	),
+	[new SyncDescriptor(CanvasInput)]
+);
+
 // Open Welcome Screen
 registerAction2(class extends Action2 {
 	constructor() {
@@ -124,22 +136,25 @@ registerAction2(class extends Action2 {
 	}
 });
 
-// Open Canvas (Mode 1)
+// Open Canvas (Mode 1: Component Canvas)
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
 			id: 'roopik.openCanvas',
-			title: localize2('roopik.openCanvas', 'Open Canvas'),
+			title: localize2('roopik.openCanvas', 'Open Component Canvas'),
 			category: localize2('roopik.category', 'Roopik'),
 			f1: true
 		});
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
-		const loggerService = accessor.get(ILoggerService);
-		const logger = RoopikLogger.create(loggerService);
-		logger.debug('[Roopik] Canvas command invoked');
-		logger.info('[Roopik] Canvas - Coming soon');
+		const editorService = accessor.get(IEditorService);
+
+		// Get or create default canvas
+		const canvasInput = CanvasInput.getInstance('default', 'Component Canvas');
+
+		// Open canvas editor
+		await editorService.openEditor(canvasInput, { pinned: true });
 	}
 });
 
