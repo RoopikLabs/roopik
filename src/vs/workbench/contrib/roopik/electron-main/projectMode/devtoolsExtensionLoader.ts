@@ -224,7 +224,7 @@ export class DevToolsExtensionLoader {
 export async function loadDevToolsExtensions(appPath: string): Promise<ExtensionLoadResult[]> {
 	const loader = DevToolsExtensionLoader.getInstance(appPath);
 
-	// Get the Roopik browser session (same partition used by BrowserViewServiceV2)
+	// Get the Roopik browser session (same partition used by BrowserViewService)
 	const browserSession = session.fromPartition('persist:roopik-browser', { cache: true });
 
 	return loader.loadExtensions(browserSession);

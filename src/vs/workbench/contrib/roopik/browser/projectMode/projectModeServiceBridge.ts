@@ -5,15 +5,15 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
-import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
+import type { IProjectModeService } from '../../common/projectMode/ipc.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OverlayMessageEvent } from '../../common/projectMode/types.js';
 
 /**
- * ProjectModeV2 Service Bridge
+ * ProjectMode Service Bridge
  *
  * Renderer-side proxy that communicates with main process via IPC.
  */
-export class ProjectModeV2ServiceBridge implements IProjectModeV2Service {
+export class ProjectModeServiceBridge implements IProjectModeService {
 	readonly _serviceBrand: undefined;
 
 	// ============================================
@@ -31,10 +31,16 @@ export class ProjectModeV2ServiceBridge implements IProjectModeV2Service {
 	 */
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent>;
 
+	/**
+	 * Event fired when an overlay view sends a message via console.log bridge
+	 */
+	readonly onOverlayMessage: Event<OverlayMessageEvent>;
+
 	constructor(private channel: IChannel) {
 		// Subscribe to events from main process
 		this.onDevToolsClosed = this.channel.listen<DevToolsClosedEvent>('onDevToolsClosed');
 		this.onNavigationStateChanged = this.channel.listen<NavigationStateChangedEvent>('onNavigationStateChanged');
+		this.onOverlayMessage = this.channel.listen<OverlayMessageEvent>('onOverlayMessage');
 	}
 
 	// ============================================

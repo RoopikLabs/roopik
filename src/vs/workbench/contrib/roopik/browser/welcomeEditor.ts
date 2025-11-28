@@ -88,7 +88,6 @@ export class RoopikWelcomeEditor extends EditorPane {
 		const heroActions = append(heroContent, $('.hero-actions'));
 		this.createHeroButton(heroActions, 'New Canvas', 'roopik.openCanvas', true);
 		this.createHeroButton(heroActions, 'Open Project Preview', 'roopik.openProjectPreview');
-		this.createHeroButton(heroActions, 'Browser Preview V2 (Beta)', 'roopik.openProjectPreviewV2');
 
 		const heroShowcase = append(hero, $('.hero-showcase'));
 		const showcaseLabel = append(heroShowcase, $('.showcase-label'));
@@ -104,8 +103,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 		const quickStartGrid = append(quickStartSection, $('.quick-start-grid'));
 		const quickStartCards = [
 			{ icon: '🎨', titleText: 'Canvas Mode', description: 'Infinite canvas for component-first workflows.', commandId: 'roopik.openCanvas' },
-			{ icon: '🌐', titleText: 'Browser Preview', description: 'Full Chromium preview with click-to-source.', commandId: 'roopik.openProjectPreview' },
-			{ icon: '🧪', titleText: 'Preview V2 (Beta)', description: 'Embedded DevTools + CDP integration.', commandId: 'roopik.openProjectPreviewV2' },
+			{ icon: '🧪', titleText: 'Browser Preview', description: 'Project Preview with Enriched context.', commandId: 'roopik.openProjectPreview' },
 			{ icon: '⚡', titleText: 'Command Palette', description: 'Run any Roopik command instantly.', commandId: 'workbench.action.showCommands' }
 		];
 

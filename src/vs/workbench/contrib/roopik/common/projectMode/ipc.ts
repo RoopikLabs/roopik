@@ -5,22 +5,22 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from './types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OverlayMessageEvent } from './types.js';
 
-export const IProjectModeV2Service = createDecorator<IProjectModeV2Service>('projectModeV2Service');
+export const IProjectModeService = createDecorator<IProjectModeService>('projectModeService');
 
 /**
- * IPC Channel name for ProjectModeV2
+ * IPC Channel name for ProjectMode
  */
-export const PROJECT_MODE_V2_CHANNEL = 'roopikProjectModeV2';
+export const PROJECT_MODE_CHANNEL = 'roopikProjectMode';
 
 /**
- * ProjectModeV2 Service Interface
+ * ProjectMode Service Interface
  *
  * Manages WebContentsView lifecycle with proper cleanup,
  * ON-DEMAND DevTools creation, and CDP integration.
  */
-export interface IProjectModeV2Service {
+export interface IProjectModeService {
 	readonly _serviceBrand: undefined;
 
 	// ============================================
@@ -39,6 +39,12 @@ export interface IProjectModeV2Service {
 	 * Fires on: did-navigate, did-start-loading, did-finish-load, page-title-updated
 	 */
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent>;
+
+	/**
+	 * Fired when an overlay view sends a message via console.log bridge
+	 * Messages are sent as console.log('ROOPIK_MSG:' + JSON.stringify(payload))
+	 */
+	readonly onOverlayMessage: Event<OverlayMessageEvent>;
 
 	// ============================================
 	// Browser View Lifecycle

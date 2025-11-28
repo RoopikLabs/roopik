@@ -5,12 +5,12 @@
 
 import { BrowserWindow, WebContentsView, session, app } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
-import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsMode, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
+import type { IProjectModeService } from '../../common/projectMode/ipc.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsMode, DevToolsClosedEvent, NavigationStateChangedEvent, OverlayMessageEvent } from '../../common/projectMode/types.js';
 import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
 
 /**
- * Browser View Service V2
+ * Browser View Service
  *
  * Main process service managing WebContentsView lifecycle with:
  * - Proper destruction to avoid ghost processes
@@ -18,7 +18,7 @@ import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
  * - CDP debugger integration
  * - Device emulation via CDP
  */
-export class BrowserViewServiceV2 implements IProjectModeV2Service {
+export class BrowserViewService implements IProjectModeService {
 	readonly _serviceBrand: undefined;
 
 	// ============================================
@@ -31,6 +31,9 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	private readonly _onNavigationStateChanged = new Emitter<NavigationStateChangedEvent>();
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent> = this._onNavigationStateChanged.event;
 
+	private readonly _onOverlayMessage = new Emitter<OverlayMessageEvent>();
+	readonly onOverlayMessage: Event<OverlayMessageEvent> = this._onOverlayMessage.event;
+
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
 	private static managedWebContentsIds = new Set<number>();
@@ -39,11 +42,11 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	private static sessionConfigured = false;
 
 	/**
-	 * Check if a webContents ID is managed by ProjectModeV2
+	 * Check if a webContents ID is managed by ProjectMode
 	 * Called by app.ts to allow navigation for our browser views
 	 */
 	static isManagedWebContents(webContentsId: number): boolean {
-		return BrowserViewServiceV2.managedWebContentsIds.has(webContentsId);
+		return BrowserViewService.managedWebContentsIds.has(webContentsId);
 	}
 
 	// Browser views storage
@@ -85,8 +88,8 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		// =========================================================
 		const browserSession = session.fromPartition('persist:roopik-browser', { cache: true });
 
-		if (!BrowserViewServiceV2.sessionConfigured) {
-			BrowserViewServiceV2.sessionConfigured = true;
+		if (!BrowserViewService.sessionConfigured) {
+			BrowserViewService.sessionConfigured = true;
 
 			// A. Bypass Proxy for Localhost
 			// Electron often tries to route localhost through system proxies. Force direct connection.
@@ -142,7 +145,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		this.browserWindows.set(browserViewId, window);
 
 		// Add to static set for navigation whitelist
-		BrowserViewServiceV2.managedWebContentsIds.add(browserViewId);
+		BrowserViewService.managedWebContentsIds.add(browserViewId);
 
 		// Setup zoom handlers (keyboard + touchpad pinch)
 		this.setupZoomHandlers(browserView);
@@ -184,7 +187,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 				try {
 					window.contentView.removeChildView(browserView);
 				} catch (e) {
-					console.error('[ProjectModeV2] Error removing browser view from window:', e);
+					console.error('[ProjectMode] Error removing browser view from window:', e);
 				}
 			}
 
@@ -200,7 +203,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 					// Close the webContents (this is the correct method per Electron docs)
 					webContents.close();
 				} catch (e) {
-					console.error('[ProjectModeV2] Error closing browser webContents:', e);
+					console.error('[ProjectMode] Error closing browser webContents:', e);
 				}
 			}
 
@@ -211,7 +214,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			this.lastNavigationErrors.delete(browserViewId);
 
 			// Remove from static set
-			BrowserViewServiceV2.managedWebContentsIds.delete(browserViewId);
+			BrowserViewService.managedWebContentsIds.delete(browserViewId);
 		}
 	}
 
@@ -241,12 +244,12 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	async navigate(browserViewId: number, url: string): Promise<void> {
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView) {
-			console.error(`[ProjectModeV2] navigate() FAILED: browserView not found for ID ${browserViewId}`);
+			console.error(`[ProjectMode] navigate() FAILED: browserView not found for ID ${browserViewId}`);
 			return;
 		}
 
 		if (browserView.webContents.isDestroyed()) {
-			console.error(`[ProjectModeV2] navigate() FAILED: webContents is destroyed for ID ${browserViewId}`);
+			console.error(`[ProjectMode] navigate() FAILED: webContents is destroyed for ID ${browserViewId}`);
 			return;
 		}
 
@@ -276,9 +279,9 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 				const browserSession = browserView.webContents.session;
 				try {
 					await browserSession.clearCache();
-					console.log('[ProjectModeV2] Cache cleared for hard reload');
+					console.log('[ProjectMode] Cache cleared for hard reload');
 				} catch (e) {
-					console.error('[ProjectModeV2] Failed to clear cache:', e);
+					console.error('[ProjectMode] Failed to clear cache:', e);
 				}
 				browserView.webContents.reloadIgnoringCache();
 			} else {
@@ -390,7 +393,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 
 		// Validate options - must have mode
 		if (!options || !options.mode) {
-			console.error(`[ProjectModeV2] openDevTools error: options or options.mode is undefined. Received:`, options);
+			console.error(`[ProjectMode] openDevTools error: options or options.mode is undefined. Received:`, options);
 			throw new Error(`DevTools options are required. Received: ${JSON.stringify(options)}`);
 		}
 
@@ -468,7 +471,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			try {
 				browserView.webContents.closeDevTools();
 			} catch (e) {
-				console.error('[ProjectModeV2] Error closing devtools on browser:', e);
+				console.error('[ProjectMode] Error closing devtools on browser:', e);
 			}
 		}
 
@@ -482,7 +485,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 					window.contentView.removeChildView(devtoolsView);
 				} catch (e) {
 					// Graceful - view may already be removed
-					console.error('[ProjectModeV2] Error removing devtools view:', e);
+					console.error('[ProjectMode] Error removing devtools view:', e);
 				}
 			}
 
@@ -492,7 +495,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 					devtoolsView.webContents.close();
 				} catch (e) {
 					// Graceful - webContents may already be destroyed
-					console.error('[ProjectModeV2] Error closing devtools webContents:', e);
+					console.error('[ProjectMode] Error closing devtools webContents:', e);
 				}
 			}
 
@@ -538,7 +541,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 				browserView.webContents.debugger.attach(protocolVersion);
 				this.debuggerAttached.set(browserViewId, true);
 			} catch (e) {
-				console.error('[ProjectModeV2] Failed to attach debugger:', e);
+				console.error('[ProjectMode] Failed to attach debugger:', e);
 				throw e;
 			}
 		}
@@ -551,7 +554,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 				browserView.webContents.debugger.detach();
 				this.debuggerAttached.set(browserViewId, false);
 			} catch (e) {
-				console.error('[ProjectModeV2] Failed to detach debugger:', e);
+				console.error('[ProjectMode] Failed to detach debugger:', e);
 			}
 		}
 	}
@@ -694,14 +697,14 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 				const failed = results.filter(r => !r.success);
 
 				if (loaded.length > 0) {
-					console.log(`[ProjectModeV2] Loaded ${loaded.length} DevTools extension(s): ${loaded.map(r => r.name).join(', ')}`);
+					console.log(`[ProjectMode] Loaded ${loaded.length} DevTools extension(s): ${loaded.map(r => r.name).join(', ')}`);
 				}
 				if (failed.length > 0) {
-					console.warn(`[ProjectModeV2] Failed to load ${failed.length} extension(s): ${failed.map(r => `${r.name} (${r.error})`).join(', ')}`);
+					console.warn(`[ProjectMode] Failed to load ${failed.length} extension(s): ${failed.map(r => `${r.name} (${r.error})`).join(', ')}`);
 				}
 			})
 			.catch(e => {
-				console.error('[ProjectModeV2] Error loading DevTools extensions:', e);
+				console.error('[ProjectMode] Error loading DevTools extensions:', e);
 			});
 	}
 
@@ -817,7 +820,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		this.browserWindows.delete(browserViewId);
 		this.debuggerAttached.delete(browserViewId);
 		this.lastNavigationErrors.delete(browserViewId);
-		BrowserViewServiceV2.managedWebContentsIds.delete(browserViewId);
+		BrowserViewService.managedWebContentsIds.delete(browserViewId);
 	}
 
 	private setupBrowserEvents(browserView: WebContentsView): void {
@@ -834,7 +837,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			if (IGNORED_ERROR_CODES.has(errorCode)) {
 				return;
 			}
-			console.error(`[ProjectModeV2] Load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
+			console.error(`[ProjectMode] Load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
 			// Track error so renderer can display it
 			this.setNavigationError(browserViewId, errorCode, errorDescription, validatedURL);
 			// Fire event to notify renderer
@@ -848,7 +851,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			if (IGNORED_ERROR_CODES.has(errorCode)) {
 				return;
 			}
-			console.error(`[ProjectModeV2] Provisional load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
+			console.error(`[ProjectMode] Provisional load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
 			// Track error so renderer can display it
 			this.setNavigationError(browserViewId, errorCode, errorDescription, validatedURL);
 			// Fire event to notify renderer
@@ -1013,6 +1016,23 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			parentBrowserViewId: browserViewId
 		});
 
+		// Listen for console messages from the overlay
+		// Messages with 'ROOPIK_MSG:' prefix are routed to the renderer
+		overlayView.webContents.on('console-message', (_event, _level, message) => {
+			if (message.startsWith('ROOPIK_MSG:')) {
+				try {
+					const payload = JSON.parse(message.substring('ROOPIK_MSG:'.length));
+					this._onOverlayMessage.fire({
+						overlayViewId,
+						browserViewId,
+						message: payload
+					});
+				} catch (e) {
+					console.error('[ProjectMode] Failed to parse overlay message:', e);
+				}
+			}
+		});
+
 		return overlayViewId;
 	}
 
@@ -1050,7 +1070,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 						window.contentView.removeChildView(overlayData.view);
 						window.contentView.addChildView(overlayData.view);
 					} catch (e) {
-						console.error('[ProjectModeV2] Error bringing overlay to top:', e);
+						console.error('[ProjectMode] Error bringing overlay to top:', e);
 					}
 				}
 			}
@@ -1071,7 +1091,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			try {
 				window.contentView.removeChildView(view);
 			} catch (e) {
-				console.error('[ProjectModeV2] Error removing overlay view:', e);
+				console.error('[ProjectMode] Error removing overlay view:', e);
 			}
 		}
 
@@ -1080,7 +1100,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			try {
 				view.webContents.close();
 			} catch (e) {
-				console.error('[ProjectModeV2] Error closing overlay webContents:', e);
+				console.error('[ProjectMode] Error closing overlay webContents:', e);
 			}
 		}
 

@@ -5,15 +5,15 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { IServerChannel } from '../../../../../base/parts/ipc/common/ipc.js';
-import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
+import type { IProjectModeService } from '../../common/projectMode/ipc.js';
 
 /**
- * IPC Channel for ProjectModeV2
+ * IPC Channel for ProjectMode
  *
- * Routes calls from renderer process to main process BrowserViewServiceV2.
+ * Routes calls from renderer process to main process BrowserViewService.
  */
-export class ProjectModeV2Channel implements IServerChannel {
-	constructor(private service: IProjectModeV2Service) { }
+export class ProjectModeChannel implements IServerChannel {
+	constructor(private service: IProjectModeService) { }
 
 	listen(_: unknown, event: string): Event<any> {
 		switch (event) {
@@ -21,8 +21,10 @@ export class ProjectModeV2Channel implements IServerChannel {
 				return this.service.onDevToolsClosed;
 			case 'onNavigationStateChanged':
 				return this.service.onNavigationStateChanged;
+			case 'onOverlayMessage':
+				return this.service.onOverlayMessage;
 			default:
-				throw new Error(`[ProjectModeV2Channel] Unknown event: ${event}`);
+				throw new Error(`[ProjectModeChannel] Unknown event: ${event}`);
 		}
 	}
 
@@ -103,7 +105,7 @@ export class ProjectModeV2Channel implements IServerChannel {
 				return this.service.executeScriptOnOverlay(arg.overlayViewId, arg.script);
 
 			default:
-				throw new Error(`[ProjectModeV2Channel] Unknown command: ${command}`);
+				throw new Error(`[ProjectModeChannel] Unknown command: ${command}`);
 		}
 	}
 }

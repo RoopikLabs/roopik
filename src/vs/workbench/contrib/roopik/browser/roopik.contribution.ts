@@ -21,11 +21,10 @@ import { RoopikWelcomeEditor } from './welcomeEditor.js';
 import { RoopikWelcomeInput, RoopikWelcomeInputSerializer } from './welcomeInput.js';
 import { RoopikViewsContribution } from './roopikViewPane.js';
 import { RoopikLogger } from '../common/roopikLogger.js';
+import { IOutputService } from '../../../services/output/common/output.js';
 import { ILoggerService } from '../../../../platform/log/common/log.js';
 import { ProjectModeEditor } from './projectMode/projectModeEditor.js';
-import { ProjectModeInput, ProjectModeInputSerializer } from './projectMode/projectModeInput.js';
-import { ProjectModeV2Editor } from './projectModeV2/projectModeV2Editor.js';
-import { ProjectModeV2Input } from './projectModeV2/projectModeV2Input.js';
+import { ProjectModeInput } from './projectMode/projectModeInput.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { IRoopikEventService, RoopikEventService } from '../common/events/index.js';
 import { IRoopikSettingsService, RoopikSettingsService } from '../common/settings/index.js';
@@ -82,25 +81,9 @@ Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane
 	EditorPaneDescriptor.create(
 		ProjectModeEditor,
 		ProjectModeEditor.ID,
-		'Project Preview'
+		'Browser Preview'
 	),
 	[new SyncDescriptor(ProjectModeInput)]
-);
-
-// Register Project Mode Serializer (for restore on reload)
-Registry.as<IEditorFactoryRegistry>(EditorExtensions.EditorFactory).registerEditorSerializer(
-	ProjectModeInput.ID,
-	ProjectModeInputSerializer
-);
-
-// Register Project Mode V2 Editor (Mode 2: Browser Preview with embedded DevTools)
-Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
-	EditorPaneDescriptor.create(
-		ProjectModeV2Editor,
-		ProjectModeV2Editor.ID,
-		'Browser Preview V2'
-	),
-	[new SyncDescriptor(ProjectModeV2Input)]
 );
 
 // Open Welcome Screen
@@ -160,38 +143,14 @@ registerAction2(class extends Action2 {
 	}
 });
 
-// Open Project Preview (Mode 2)
-registerAction2(class extends Action2 {
-	constructor() {
-		super({
-			id: 'roopik.openProjectPreview',
-			title: localize2('roopik.openProjectPreview', 'Open Project Preview'),
-			category: localize2('roopik.category', 'Roopik'),
-			f1: true
-		});
-	}
 
-	async run(accessor: ServicesAccessor): Promise<void> {
-		const loggerService = accessor.get(ILoggerService);
-		const editorService = accessor.get(IEditorService);
-		const logger = RoopikLogger.create(loggerService);
-
-		logger.debug('[Roopik] Project Preview command invoked');
-		logger.info('[Roopik] Opening Project Preview editor');
-
-		// Open Project Preview editor in new tab and focus on it
-		const input = new ProjectModeInput('http://localhost:3000');
-		await editorService.openEditor(input, { pinned: true });
-	}
-});
-
-// Open Project Preview V2 (Mode 2 with embedded DevTools) - SINGLETON
+// Open Browser Project Preview (Mode 2 with embedded DevTools) - SINGLETON
 // Opens in RIGHT split by default to avoid blocking left-side menu items
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
-			id: 'roopik.openProjectPreviewV2',
-			title: localize2('roopik.openProjectPreviewV2', 'Open Browser Preview V2 (Beta)'),
+			id: 'roopik.openProjectPreview',
+			title: localize2('roopik.openProjectPreview', 'Open Browser Preview'),
 			category: localize2('roopik.category', 'Roopik'),
 			f1: true
 		});
@@ -203,13 +162,13 @@ registerAction2(class extends Action2 {
 		const storageService = accessor.get(IStorageService);
 
 		// SINGLETON: Get the one and only browser instance
-		const input = ProjectModeV2Input.getInstance();
+		const input = ProjectModeInput.getInstance();
 
 		// Check if browser editor is already open in any group
 		// Use the singleton input directly since it's the same instance
 		const visibleEditors = editorService.visibleEditorPanes;
 		const existingPane = visibleEditors.find(
-			pane => pane.input instanceof ProjectModeV2Input
+			pane => pane.input instanceof ProjectModeInput
 		);
 
 		if (existingPane) {
@@ -223,7 +182,7 @@ registerAction2(class extends Action2 {
 		await editorService.openEditor(input, { pinned: true }, SIDE_GROUP);
 
 		// Show hint notification (once per installation)
-		const hintKey = 'roopik.browserRightSideHintShown.v2';
+		const hintKey = 'roopik.browserRightSideHintShown';
 		const hintShown = storageService.getBoolean(hintKey, StorageScope.APPLICATION, false);
 
 		if (!hintShown) {
@@ -237,7 +196,7 @@ registerAction2(class extends Action2 {
 	}
 });
 
-// Startup contribution to open welcome screen
+// Startup contribution to open welcome screen and clear output
 class RoopikStartupContribution extends Disposable implements IWorkbenchContribution {
 	static readonly ID = 'roopik.startupContribution';
 
@@ -245,10 +204,34 @@ class RoopikStartupContribution extends Disposable implements IWorkbenchContribu
 		@IEditorService private readonly editorService: IEditorService,
 		@IStorageService private readonly storageService: IStorageService,
 		@ILifecycleService private readonly lifecycleService: ILifecycleService,
-		@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService
+		@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,
+		@IOutputService private readonly outputService: IOutputService
 	) {
 		super();
+		this.clearOutputOnStartup();
 		this.openWelcomeOnStartup();
+	}
+
+	/**
+	 * Clear Roopik output channel on fresh startup (not on reload)
+	 * This prevents old logs from previous sessions from cluttering the output
+	 */
+	private clearOutputOnStartup(): void {
+		// Only clear on fresh startup, not on window reload
+		if (this.lifecycleService.startupKind === StartupKind.ReloadedWindow) {
+			return;
+		}
+
+		// Wait for output service to be ready
+		this.lifecycleService.when(LifecyclePhase.Restored).then(() => {
+			// Small delay to ensure output channels are fully initialized
+			setTimeout(() => {
+				const roopikChannel = this.outputService.getChannel(RoopikLogger.LOGGER_ID);
+				if (roopikChannel) {
+					roopikChannel.clear();
+				}
+			}, 100);
+		});
 	}
 
 	private async openWelcomeOnStartup(): Promise<void> {
