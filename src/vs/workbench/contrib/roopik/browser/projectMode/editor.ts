@@ -21,7 +21,7 @@ import { INativeHostService } from '../../../../../platform/native/common/native
 import { ServiceBridge } from './serviceBridge.js';
 import { PROJECT_MODE_CHANNEL } from '../../common/projectMode/ipc.js';
 import { BrowserControlBar, IBrowserControlBarConfig, IBrowserControlBarCallbacks } from './components/browserControlBar.js';
-import type { ViewBounds, DevToolsMode, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
 import { IRoopikEventService } from '../../common/events/index.js';
 import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
 import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js';
@@ -32,20 +32,6 @@ import { InspectMode } from './features/inspectMode.js';
 import { Bookmarks } from './features/bookmarks.js';
 import { BrowserPause } from './features/browserPause.js';
 import { ActionBar } from './features/actionBar.js';
-
-/**
- * DevTools mode configuration flag
- *
- * - 'attached': DevTools docked inside browser window (has Device Toolbar toggle, close button)
- *   Electron manages the DevTools layout. Resize handle is NOT needed.
- *
- * - 'detached': DevTools in separate WebContentsView (full layout control, no Device Toolbar)
- *   We control the DevTools position and size. Resize handle IS needed.
- *
- * TODO: In the future, this will be a user setting preference.
- * For now, we default to 'attached' mode for the Device Toolbar feature.
- */
-const DEVTOOLS_MODE: DevToolsMode = 'attached'; // 'attached' or 'detached'
 
 /**
  * Project Mode Editor
@@ -64,7 +50,6 @@ export class Editor extends EditorPane {
 	private controlBar: BrowserControlBar | undefined;
 	private contentContainer: HTMLElement | undefined;
 	private browserContainer: HTMLElement | undefined;
-	private devtoolsContainer: HTMLElement | undefined;
 	private logger: ILogger;
 
 	// Service bridge to main process
@@ -84,11 +69,6 @@ export class Editor extends EditorPane {
 	// Used to decide whether to show placeholder on tab switch
 	private hasLoadedUrl: boolean = false;
 
-	// DevTools resize handle
-	private devtoolsResizeHandle: HTMLElement | undefined;
-	private isResizingDevTools: boolean = false;
-	private devtoolsMinHeight: number = 100; // Minimum DevTools height in pixels
-	private devtoolsMaxHeightRatio: number = 0.8; // Max 80% of content area
 
 	// Track WHICH input we've registered the dispose listener for
 	// setInput() is called on EVERY tab switch, and may pass a different input instance!
@@ -298,39 +278,8 @@ export class Editor extends EditorPane {
 		// Placeholder shown when no URL is loaded (WebContentsView renders on top of this)
 		this.createPlaceholder();
 
-		// DevTools resize handle (between browser and devtools, initially hidden)
-		this.devtoolsResizeHandle = document.createElement('div');
-		this.devtoolsResizeHandle.style.display = 'none';
-		this.devtoolsResizeHandle.style.height = '4px';
-		this.devtoolsResizeHandle.style.width = '100%';
-		this.devtoolsResizeHandle.style.cursor = 'ns-resize';
-		this.devtoolsResizeHandle.style.backgroundColor = 'var(--vscode-panel-border)';
-		this.devtoolsResizeHandle.style.position = 'relative';
-		this.devtoolsResizeHandle.style.zIndex = '10';
-		this.devtoolsResizeHandle.style.flexShrink = '0';
-		// Hover effect
-		this.devtoolsResizeHandle.addEventListener('mouseenter', () => {
-			this.devtoolsResizeHandle!.style.backgroundColor = 'var(--vscode-focusBorder)';
-		});
-		this.devtoolsResizeHandle.addEventListener('mouseleave', () => {
-			if (!this.isResizingDevTools) {
-				this.devtoolsResizeHandle!.style.backgroundColor = 'var(--vscode-panel-border)';
-			}
-		});
-		this.setupDevToolsResize();
-		this.contentContainer.appendChild(this.devtoolsResizeHandle);
-
-		// DevTools container (bottom area, initially hidden)
-		this.devtoolsContainer = document.createElement('div');
-		this.devtoolsContainer.style.display = 'none';
-		this.devtoolsContainer.style.height = '300px'; // Fixed initial height (px instead of %)
-		this.devtoolsContainer.style.backgroundColor = '#242424';
-		this.devtoolsContainer.style.position = 'relative';
-		this.devtoolsContainer.style.flexShrink = '0';
-		this.contentContainer.appendChild(this.devtoolsContainer);
-
 		// Setup ResizeObserver for automatic bounds updates
-		// Observe container, browserContainer, and devtoolsContainer to catch all resize events
+		// Observe container and browserContainer to catch all resize events
 		// This is critical for split screen scenarios where parent resizes
 		this.resizeObserver = new ResizeObserver(() => {
 			this.updateViewBounds();
@@ -339,7 +288,6 @@ export class Editor extends EditorPane {
 		});
 		this.resizeObserver.observe(this.container); // Parent container for split resize
 		this.resizeObserver.observe(this.browserContainer);
-		this.resizeObserver.observe(this.devtoolsContainer);
 
 		// NOTE: Browser view initialization is handled by setInput()
 		// This ensures only ONE initialization happens per editor lifecycle
@@ -475,89 +423,6 @@ export class Editor extends EditorPane {
 	}
 
 	/**
-	 * Setup DevTools resize functionality
-	 * Allows users to drag the resize handle to change DevTools height
-	 */
-	private setupDevToolsResize(): void {
-		if (!this.devtoolsResizeHandle) {
-			return;
-		}
-
-		let startY = 0;
-		let startHeight = 0;
-
-		const onMouseMove = (e: MouseEvent) => {
-			if (!this.isResizingDevTools || !this.devtoolsContainer || !this.contentContainer) {
-				return;
-			}
-
-			// Calculate new height (moving up = more height, moving down = less height)
-			const deltaY = startY - e.clientY;
-			let newHeight = startHeight + deltaY;
-
-			// Get content container height for max calculation
-			const contentRect = this.contentContainer.getBoundingClientRect();
-			const maxHeight = contentRect.height * this.devtoolsMaxHeightRatio;
-
-			// Clamp to min/max
-			newHeight = Math.max(this.devtoolsMinHeight, Math.min(newHeight, maxHeight));
-
-			// Apply new height
-			this.devtoolsContainer.style.height = `${newHeight}px`;
-
-			// Update WebContentsView bounds in real-time for smooth resize
-			this.updateViewBounds();
-		};
-
-		const onMouseUp = () => {
-			if (!this.isResizingDevTools) {
-				return;
-			}
-
-			this.isResizingDevTools = false;
-
-			// Reset handle color
-			if (this.devtoolsResizeHandle) {
-				this.devtoolsResizeHandle.style.backgroundColor = 'var(--vscode-panel-border)';
-			}
-
-			// Remove document listeners
-			document.removeEventListener('mousemove', onMouseMove);
-			document.removeEventListener('mouseup', onMouseUp);
-
-			// Remove selection prevention
-			document.body.style.userSelect = '';
-			document.body.style.cursor = '';
-
-			// Final bounds update
-			this.updateViewBounds();
-		};
-
-		this.devtoolsResizeHandle.addEventListener('mousedown', (e: MouseEvent) => {
-			if (!this.devtoolsContainer) {
-				return;
-			}
-
-			this.isResizingDevTools = true;
-			startY = e.clientY;
-			startHeight = this.devtoolsContainer.getBoundingClientRect().height;
-
-			// Highlight handle during resize
-			this.devtoolsResizeHandle!.style.backgroundColor = 'var(--vscode-focusBorder)';
-
-			// Prevent text selection during drag
-			document.body.style.userSelect = 'none';
-			document.body.style.cursor = 'ns-resize';
-
-			// Add document-level listeners
-			document.addEventListener('mousemove', onMouseMove);
-			document.addEventListener('mouseup', onMouseUp);
-
-			e.preventDefault();
-		});
-	}
-
-	/**
 	 * Initialize browser WebContentsView
 	 * Note: This only creates the view, navigation is handled by setInput()
 	 */
@@ -604,14 +469,6 @@ export class Editor extends EditorPane {
 			this._register(this.browserService.onDevToolsClosed((event) => {
 				if (event.browserViewId === this.browserViewId && this.devtoolsVisible) {
 					this.devtoolsVisible = false;
-
-					// In detached mode, also hide our containers
-					if (DEVTOOLS_MODE === 'detached' && this.devtoolsContainer) {
-						this.devtoolsContainer.style.display = 'none';
-						if (this.devtoolsResizeHandle) {
-							this.devtoolsResizeHandle.style.display = 'none';
-						}
-					}
 				}
 			}));
 
@@ -808,19 +665,7 @@ export class Editor extends EditorPane {
 		};
 		this.browserService.setBrowserBounds(this.browserViewId, browserBounds);
 
-		// Update DevTools bounds if visible
-		if (this.devtoolsVisible && this.devtoolsContainer) {
-			const devtoolsRect = this.devtoolsContainer.getBoundingClientRect();
-			if (devtoolsRect.width > 0 && devtoolsRect.height > 0) {
-				const devtoolsBounds: ViewBounds = {
-					x: Math.floor(devtoolsRect.left),
-					y: Math.floor(devtoolsRect.top),
-					width: Math.floor(devtoolsRect.width),
-					height: Math.floor(devtoolsRect.height)
-				};
-				this.browserService.setDevToolsBounds(this.browserViewId, devtoolsBounds);
-			}
-		}
+		// Note: In attached mode, Electron manages DevTools layout automatically
 	}
 
 	/**
@@ -1000,62 +845,15 @@ export class Editor extends EditorPane {
 		}
 
 		if (this.devtoolsVisible) {
-			// =========================================================
-			// CLOSE DevTools
-			// =========================================================
+			// Close DevTools
 			await this.browserService.closeDevTools(this.browserViewId);
-
-			// In detached mode, hide our custom container and resize handle
-			if (DEVTOOLS_MODE === 'detached' && this.devtoolsContainer) {
-				this.devtoolsContainer.style.display = 'none';
-				if (this.devtoolsResizeHandle) {
-					this.devtoolsResizeHandle.style.display = 'none';
-				}
-			}
-
 			this.devtoolsVisible = false;
 		} else {
-			// =========================================================
-			// OPEN DevTools
-			// =========================================================
-			if (DEVTOOLS_MODE === 'attached') {
-				// ATTACHED MODE: Electron manages DevTools layout
-				// DevTools will dock at bottom of browser window
-				// Device Toolbar toggle and close button will be available!
-				await this.browserService.openDevTools(this.browserViewId, { mode: 'attached' as const });
-				this.devtoolsVisible = true;
-			} else {
-				// DETACHED MODE: We manage DevTools layout
-				// Show resize handle and container
-				if (!this.devtoolsContainer) {
-					return;
-				}
-
-				if (this.devtoolsResizeHandle) {
-					this.devtoolsResizeHandle.style.display = 'block';
-				}
-				this.devtoolsContainer.style.display = 'block';
-
-				// Get container bounds (need slight delay for layout to update)
-				await new Promise(resolve => requestAnimationFrame(resolve));
-				const rect = this.devtoolsContainer.getBoundingClientRect();
-				const bounds: ViewBounds = {
-					x: Math.floor(rect.left),
-					y: Math.floor(rect.top),
-					width: Math.floor(rect.width),
-					height: Math.floor(rect.height)
-				};
-
-				// Open DevTools with our custom bounds
-				await this.browserService.openDevTools(this.browserViewId, {
-					mode: 'detached',
-					bounds
-				});
-				this.devtoolsVisible = true;
-
-				// Update bounds after layout settles
-				setTimeout(() => this.updateViewBounds(), 100);
-			}
+			// Open DevTools in attached mode (docked at bottom)
+			// Electron manages the layout. Device Toolbar toggle and close button are available.
+			// Users can detach from DevTools settings menu if needed.
+			await this.browserService.openDevTools(this.browserViewId, {});
+			this.devtoolsVisible = true;
 		}
 	}
 

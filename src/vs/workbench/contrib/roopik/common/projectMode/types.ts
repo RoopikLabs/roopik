@@ -99,35 +99,15 @@ export interface DevToolsViewResult {
 }
 
 /**
- * DevTools mode configuration
- *
- * - 'attached': DevTools is docked inside the BrowserWindow (bottom).
- *   This gives access to Device Toolbar toggle and close button.
- *   DevTools shares the browser window space.
- *
- * - 'detached': DevTools is rendered in a separate WebContentsView.
- *   We have full control over positioning and sizing.
- *   Device Toolbar toggle is NOT available in this mode.
- */
-export type DevToolsMode = 'attached' | 'detached';
-
-/**
  * DevTools open options
+ *
+ * DevTools is always opened in 'attached' mode (docked inside browser window).
+ * This gives access to Device Toolbar toggle and close button.
+ * Users can detach DevTools manually from DevTools settings if needed.
  */
 export interface DevToolsOptions {
-	/**
-	 * Mode for DevTools rendering
-	 * - 'attached': Docked inside browser window (has device toolbar, close button)
-	 * - 'detached': Separate WebContentsView (full control over layout)
-	 * @default 'attached'
-	 */
-	mode: DevToolsMode;
-
-	/**
-	 * Bounds for the DevTools view (only used in 'detached' mode)
-	 * In 'attached' mode, Electron manages the DevTools position
-	 */
-	bounds?: ViewBounds;
+	// Currently no options needed - DevTools always opens in attached mode
+	// This interface is kept for future extensibility (e.g., initial panel selection)
 }
 
 /**

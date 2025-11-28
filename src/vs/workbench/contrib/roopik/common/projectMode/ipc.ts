@@ -103,18 +103,17 @@ export interface IProjectModeService {
 	getNavigationState(browserViewId: number): Promise<NavigationState>;
 
 	// ============================================
-	// DevTools (ON-DEMAND creation)
+	// DevTools (Attached Mode)
 	// ============================================
 
 	/**
-	 * Open DevTools
+	 * Open DevTools (docked at bottom of browser window)
 	 *
-	 * Supports two modes:
-	 * - 'attached': DevTools docked inside browser window (has Device Toolbar, close button)
-	 * - 'detached': DevTools in separate WebContentsView (full layout control, no Device Toolbar)
+	 * DevTools opens in attached mode with Device Toolbar and close button available.
+	 * Users can detach from DevTools settings menu if they want a separate window.
 	 *
 	 * @param browserViewId - The browser view to attach DevTools to
-	 * @param options - DevTools configuration (mode and bounds for detached mode)
+	 * @param options - DevTools configuration (reserved for future options)
 	 */
 	openDevTools(browserViewId: number, options: DevToolsOptions): Promise<DevToolsViewResult>;
 

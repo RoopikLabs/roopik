@@ -111,23 +111,6 @@ export class RoopikWelcomeEditor extends EditorPane {
 			this.createQuickStartCard(quickStartGrid, card.icon, card.titleText, card.description, card.commandId);
 		}
 
-		// Highlights / tips
-		const highlightsSection = append(container, $('.welcome-section'));
-		const highlightsTitle = append(highlightsSection, $('.section-title'));
-		highlightsTitle.textContent = 'Highlights';
-
-		const highlightsList = append(highlightsSection, $('.tips-list'));
-		const highlights = [
-			{ icon: '🔍', titleText: 'Inspect Mode', description: 'Jump from DOM nodes to source and styles instantly.' },
-			{ icon: '🤖', titleText: 'AI Automation', description: 'Coordinate multi-agent workflows across canvas + preview.' },
-			{ icon: '🧭', titleText: 'Project Modes', description: 'Switch between Canvas, Browser, and DevTools views seamlessly.' },
-			{ icon: '🔁', titleText: 'Live Sync', description: 'Hot reload Vite projects without leaving Roopik.' }
-		];
-
-		for (const item of highlights) {
-			this.createTip(highlightsList, item.icon, item.titleText, item.description);
-		}
-
 		// Footer with checkbox (sticky bar)
 		const footer = append(this.rootElement, $('.welcome-footer'));
 		const checkboxContainer = append(footer, $('.checkbox-container'));
@@ -190,8 +173,6 @@ export class RoopikWelcomeEditor extends EditorPane {
 
 		// Settings header
 		const header = append(settingsWrapper, $('.settings-view-header'));
-		const headerIcon = append(header, $('span.codicon.codicon-settings-gear.settings-header-icon'));
-		headerIcon.setAttribute('aria-hidden', 'true');
 		const headerTitle = append(header, $('.settings-view-title'));
 		headerTitle.textContent = 'Roopik Settings';
 		const headerDesc = append(header, $('.settings-view-description'));
@@ -208,18 +189,6 @@ export class RoopikWelcomeEditor extends EditorPane {
 				type: 'text',
 				path: 'browser.defaultUrl',
 				value: this.settingsService.get('browser.defaultUrl')
-			},
-			{
-				label: 'DevTools Mode',
-				description: 'How DevTools should be displayed',
-				type: 'select',
-				path: 'browser.devToolsMode',
-				value: this.settingsService.get('browser.devToolsMode'),
-				options: [
-					{ value: 'embedded', label: 'Embedded (Side Panel)' },
-					{ value: 'detached', label: 'Detached (Separate Window)' },
-					{ value: 'hidden', label: 'Hidden' }
-				]
 			},
 			{
 				label: 'Auto-refresh on Save',
@@ -339,21 +308,6 @@ export class RoopikWelcomeEditor extends EditorPane {
 			event.stopPropagation();
 			this.commandService.executeCommand(commandId);
 		};
-	}
-
-	private createTip(parent: HTMLElement, icon: string, title: string, description: string): void {
-		const tip = append(parent, $('.tip-item'));
-
-		const iconEl = append(tip, $('.tip-icon'));
-		iconEl.textContent = icon;
-
-		const content = append(tip, $('.tip-content'));
-
-		const titleEl = append(content, $('.tip-title'));
-		titleEl.textContent = title;
-
-		const descEl = append(content, $('.tip-description'));
-		descEl.textContent = description;
 	}
 
 	override async setInput(input: EditorInput, options: undefined, context: IEditorOpenContext, token: CancellationToken): Promise<void> {
