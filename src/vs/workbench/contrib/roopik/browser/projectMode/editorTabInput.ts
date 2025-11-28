@@ -10,21 +10,26 @@ import { Codicon } from '../../../../../base/common/codicons.js';
 import { registerIcon } from '../../../../../platform/theme/common/iconRegistry.js';
 import { truncate } from '../../../../../base/common/strings.js';
 
-const projectModeIcon = registerIcon('roopik-project-mode', Codicon.globe, 'Icon for Project Mode (Browser Preview with DevTools)');
+const browserTabIcon = registerIcon('roopik-browser-tab', Codicon.globe, 'Icon for Browser Preview tab');
 
 /**
- * Project Mode Editor Input - TRUE SINGLETON
+ * Editor Tab Input - Defines the browser preview tab identity
  *
- * Only ONE browser preview can exist at a time.
- * Clicking "Open Browser Preview" again will focus the existing one.
+ * This is a TRUE SINGLETON - only ONE browser preview tab can exist at a time.
+ * Clicking "Open Browser Preview" again will focus the existing tab.
+ *
+ * Responsibilities:
+ * - Tab icon and title
+ * - URL and page title state
+ * - Singleton enforcement
  */
-export class ProjectModeInput extends EditorInput {
-	static readonly ID = 'roopik.projectModeInput';
+export class EditorTabInput extends EditorInput {
+	static readonly ID = 'roopik.editorTabInput';
 	static readonly RESOURCE = URI.parse('roopik-browser://browser/singleton');
 
 	// TRUE SINGLETON - only one instance ever
-	private static _welcomeInstance: ProjectModeInput | undefined;
-	private static _settingsInstance: ProjectModeInput | undefined;
+	private static _welcomeInstance: EditorTabInput | undefined;
+	private static _settingsInstance: EditorTabInput | undefined;
 
 	private _url: string = 'about:blank';
 	private _pageTitle: string = '';
@@ -34,17 +39,17 @@ export class ProjectModeInput extends EditorInput {
 	 * Creates it if it doesn't exist.
 	 * ALWAYS use this method - never call constructor directly.
 	 */
-	static getInstance(viewMode: 'welcome' | 'settings' = 'welcome'): ProjectModeInput {
+	static getInstance(viewMode: 'welcome' | 'settings' = 'welcome'): EditorTabInput {
 		if (viewMode === 'settings') {
-			if (!ProjectModeInput._settingsInstance) {
-				ProjectModeInput._settingsInstance = new ProjectModeInput();
+			if (!EditorTabInput._settingsInstance) {
+				EditorTabInput._settingsInstance = new EditorTabInput();
 			}
-			return ProjectModeInput._settingsInstance;
+			return EditorTabInput._settingsInstance;
 		}
-		if (!ProjectModeInput._welcomeInstance) {
-			ProjectModeInput._welcomeInstance = new ProjectModeInput();
+		if (!EditorTabInput._welcomeInstance) {
+			EditorTabInput._welcomeInstance = new EditorTabInput();
 		}
-		return ProjectModeInput._welcomeInstance;
+		return EditorTabInput._welcomeInstance;
 	}
 
 	/**
@@ -55,14 +60,14 @@ export class ProjectModeInput extends EditorInput {
 	constructor() {
 		super();
 		// Enforce singleton: if instance exists, return it
-		if (ProjectModeInput._welcomeInstance) {
-			return ProjectModeInput._welcomeInstance;
+		if (EditorTabInput._welcomeInstance) {
+			return EditorTabInput._welcomeInstance;
 		}
-		ProjectModeInput._welcomeInstance = this;
+		EditorTabInput._welcomeInstance = this;
 	}
 
 	override get typeId(): string {
-		return ProjectModeInput.ID;
+		return EditorTabInput.ID;
 	}
 
 	/**
@@ -73,7 +78,7 @@ export class ProjectModeInput extends EditorInput {
 	}
 
 	override get resource(): URI {
-		return ProjectModeInput.RESOURCE;
+		return EditorTabInput.RESOURCE;
 	}
 
 	// Max length for tab title
@@ -82,7 +87,7 @@ export class ProjectModeInput extends EditorInput {
 	override getName(): string {
 		// Use page title if available
 		if (this._pageTitle) {
-			return truncate(this._pageTitle, ProjectModeInput.TAB_TITLE_MAX_LENGTH);
+			return truncate(this._pageTitle, EditorTabInput.TAB_TITLE_MAX_LENGTH);
 		}
 
 		// Fallback to hostname or default
@@ -98,7 +103,7 @@ export class ProjectModeInput extends EditorInput {
 	}
 
 	override getIcon() {
-		return projectModeIcon;
+		return browserTabIcon;
 	}
 
 	get url(): string {
@@ -127,17 +132,17 @@ export class ProjectModeInput extends EditorInput {
 	}
 
 	override matches(other: EditorInput): boolean {
-		// Always match if it's a ProjectModeInput - there's only one!
-		return other instanceof ProjectModeInput;
+		// Always match if it's a EditorTabInput - there's only one!
+		return other instanceof EditorTabInput;
 	}
 
 	override dispose(): void {
 		// Clear singleton reference so a fresh instance is created next time
-		if (ProjectModeInput._welcomeInstance === this) {
-			ProjectModeInput._welcomeInstance = undefined;
+		if (EditorTabInput._welcomeInstance === this) {
+			EditorTabInput._welcomeInstance = undefined;
 		}
-		if (ProjectModeInput._settingsInstance === this) {
-			ProjectModeInput._settingsInstance = undefined;
+		if (EditorTabInput._settingsInstance === this) {
+			EditorTabInput._settingsInstance = undefined;
 		}
 		super.dispose();
 	}

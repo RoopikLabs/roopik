@@ -6,8 +6,8 @@
 import { EditorPane } from '../../../../browser/parts/editor/editorPane.js';
 import { ITelemetryService } from '../../../../../platform/telemetry/common/telemetry.js';
 import { IThemeService } from '../../../../../platform/theme/common/themeService.js';
-import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
-import { ProjectModeInput } from './projectModeInput.js';
+import { IStorageService } from '../../../../../platform/storage/common/storage.js';
+import { EditorTabInput } from './editorTabInput.js';
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { Dimension } from '../../../../../base/browser/dom.js';
 import { IEditorOpenContext } from '../../../../common/editor.js';
@@ -18,16 +18,21 @@ import { EditorInput } from '../../../../common/editor/editorInput.js';
 import { IEditorOptions } from '../../../../../platform/editor/common/editor.js';
 import { IMainProcessService } from '../../../../../platform/ipc/common/mainProcessService.js';
 import { INativeHostService } from '../../../../../platform/native/common/native.js';
-import { ProjectModeServiceBridge } from './projectModeServiceBridge.js';
+import { ServiceBridge } from './serviceBridge.js';
 import { PROJECT_MODE_CHANNEL } from '../../common/projectMode/ipc.js';
-import { BrowserControlBar, IBrowserControlBarConfig, IBrowserControlBarCallbacks, BrowserBookmark } from './browserControlBar.js';
+import { BrowserControlBar, IBrowserControlBarConfig, IBrowserControlBarCallbacks } from './components/browserControlBar.js';
 import type { ViewBounds, DevToolsMode, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
-import { generateBottomActionBarHtml, getActionBarOverlayBounds, ActionBarMode, BottomActionBarState } from './bottomActionBarHtml.js';
+import { ActionBarMode } from './components/bottomActionBar.js';
 import { IRoopikEventService } from '../../common/events/index.js';
 import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
 import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
+// Features (extracted to features/ folder)
+import { InspectMode } from './features/inspectMode.js';
+import { Bookmarks } from './features/bookmarks.js';
+import { BrowserPause } from './features/browserPause.js';
+import { ActionBar } from './features/actionBar.js';
 
 /**
  * DevTools mode configuration flag
@@ -44,12 +49,6 @@ import { IClipboardService } from '../../../../../platform/clipboard/common/clip
 const DEVTOOLS_MODE: DevToolsMode = 'attached'; // 'attached' or 'detached'
 
 /**
- * Storage key for browser bookmarks (workspace-scoped)
- * Each project has its own set of bookmarks
- */
-const BOOKMARKS_STORAGE_KEY = 'roopik.browser.bookmarks';
-
-/**
  * Project Mode Editor
  *
  * Browser Preview with embedded DevTools using WebContentsView.
@@ -58,7 +57,7 @@ const BOOKMARKS_STORAGE_KEY = 'roopik.browser.bookmarks';
  * - Embedded DevTools (ON-DEMAND creation) with Device Toolbar
  * - CDP integration for AI agents (MCP compatible)
  */
-export class ProjectModeEditor extends EditorPane {
+export class Editor extends EditorPane {
 	static readonly ID = 'roopik.projectModeEditor';
 
 
@@ -70,7 +69,7 @@ export class ProjectModeEditor extends EditorPane {
 	private logger: ILogger;
 
 	// Service bridge to main process
-	private browserService: ProjectModeServiceBridge;
+	private browserService: ServiceBridge;
 
 	// View IDs
 	private browserViewId: number | undefined;
@@ -86,17 +85,6 @@ export class ProjectModeEditor extends EditorPane {
 	// Used to decide whether to show placeholder on tab switch
 	private hasLoadedUrl: boolean = false;
 
-	// Bottom Action Bar
-	private bottomActionBarViewId: number | undefined;
-	private bottomActionBarState: BottomActionBarState = {
-		activeMode: 'select',
-		position: 'bottom'
-	};
-
-	// "Browsing Paused" overlay - shown when menus/command palette are open
-	private pausedOverlay: HTMLElement | undefined;
-	private isBrowserPaused: boolean = false;
-
 	// DevTools resize handle
 	private devtoolsResizeHandle: HTMLElement | undefined;
 	private isResizingDevTools: boolean = false;
@@ -105,13 +93,13 @@ export class ProjectModeEditor extends EditorPane {
 
 	// Track WHICH input we've registered the dispose listener for
 	// setInput() is called on EVERY tab switch, and may pass a different input instance!
-	private registeredInputForDispose: ProjectModeInput | undefined;
+	private registeredInputForDispose: EditorTabInput | undefined;
 
-	// Bookmarks (workspace-scoped storage)
-	private bookmarks: BrowserBookmark[] = [];
-
-	// Inspect element mode state
-	private isInspectModeActive: boolean = false;
+	// Features (extracted to features/ folder)
+	private inspectMode!: InspectMode;
+	private bookmarks!: Bookmarks;
+	private browserPause!: BrowserPause;
+	private actionBar!: ActionBar;
 
 	constructor(
 		group: IEditorGroup,
@@ -127,109 +115,21 @@ export class ProjectModeEditor extends EditorPane {
 		@INotificationService private readonly notificationService: INotificationService,
 		@IClipboardService private readonly clipboardService: IClipboardService
 	) {
-		super(ProjectModeEditor.ID, group, telemetryService, themeService, storageService);
+		super(Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = RoopikLogger.create(loggerService);
-		this.browserService = new ProjectModeServiceBridge(mainProcessService.getChannel(PROJECT_MODE_CHANNEL));
+		this.browserService = new ServiceBridge(mainProcessService.getChannel(PROJECT_MODE_CHANNEL));
 
-		// Load bookmarks from workspace storage
-		this.loadBookmarks();
+		// Initialize features (extracted to features/ folder)
+		this.inspectMode = new InspectMode(this.browserService, this.logger, this.notificationService);
+		this.bookmarks = new Bookmarks(this.storageService, this.notificationService, this.logger);
+		this.browserPause = new BrowserPause(this.browserService);
+		this.actionBar = new ActionBar(this.browserService, this.logger);
 
 		// Setup event subscriptions for UI updates
 		this.setupEventSubscriptions();
 
 		// Setup menu/command palette pause detection
 		this.setupBrowserPauseDetection();
-	}
-
-	// ============================================
-	// Bookmarks (Workspace Storage)
-	// ============================================
-
-	/**
-	 * Load bookmarks from workspace storage
-	 */
-	private loadBookmarks(): void {
-		try {
-			const stored = this.storageService.get(BOOKMARKS_STORAGE_KEY, StorageScope.WORKSPACE);
-			if (stored) {
-				this.bookmarks = JSON.parse(stored) as BrowserBookmark[];
-				this.logger.debug(`[ProjectMode] Loaded ${this.bookmarks.length} bookmarks from workspace storage`);
-			}
-		} catch (error) {
-			this.logger.warn('[ProjectMode] Failed to load bookmarks:', error);
-			this.bookmarks = [];
-		}
-	}
-
-	/**
-	 * Save bookmarks to workspace storage
-	 */
-	private saveBookmarks(): void {
-		try {
-			this.storageService.store(
-				BOOKMARKS_STORAGE_KEY,
-				JSON.stringify(this.bookmarks),
-				StorageScope.WORKSPACE,
-				StorageTarget.USER
-			);
-			this.logger.debug(`[ProjectMode] Saved ${this.bookmarks.length} bookmarks to workspace storage`);
-		} catch (error) {
-			this.logger.error('[ProjectMode] Failed to save bookmarks:', error);
-		}
-	}
-
-	/**
-	 * Add a bookmark
-	 */
-	private addBookmark(bookmark: BrowserBookmark): void {
-		// Don't add duplicates
-		if (this.isBookmarked(bookmark.url)) {
-			return;
-		}
-		this.bookmarks.push(bookmark);
-		this.saveBookmarks();
-		this.notificationService.notify({
-			severity: Severity.Info,
-			message: `Bookmarked: ${bookmark.title}`,
-			sticky: false
-		});
-	}
-
-	/**
-	 * Remove a bookmark by URL
-	 */
-	private removeBookmark(url: string): void {
-		const index = this.bookmarks.findIndex(b => b.url === url);
-		if (index !== -1) {
-			const removed = this.bookmarks.splice(index, 1)[0];
-			this.saveBookmarks();
-			this.notificationService.notify({
-				severity: Severity.Info,
-				message: `Removed bookmark: ${removed.title}`,
-				sticky: false
-			});
-		}
-	}
-
-	/**
-	 * Check if a URL is bookmarked
-	 */
-	private isBookmarked(url: string): boolean {
-		return this.bookmarks.some(b => b.url === url);
-	}
-
-	/**
-	 * Get all bookmarks
-	 */
-	private getBookmarks(): BrowserBookmark[] {
-		return [...this.bookmarks];
-	}
-
-	/**
-	 * Navigate to a bookmarked URL
-	 */
-	private navigateToBookmark(url: string): void {
-		this.navigate(url);
 	}
 
 	/**
@@ -266,7 +166,7 @@ export class ProjectModeEditor extends EditorPane {
 		// Subscribe to title change events - update tab title
 		this._register(this.eventService.onBrowserTitleChanged((event) => {
 
-			const input = this.input as ProjectModeInput;
+			const input = this.input as EditorTabInput;
 			if (input) {
 				input.setPageTitle(event.title);
 			}
@@ -274,11 +174,34 @@ export class ProjectModeEditor extends EditorPane {
 
 		// Subscribe to overlay messages (from bottom action bar)
 		this._register(this.browserService.onOverlayMessage((event) => {
-			// Only handle messages for our bottom action bar
-			if (event.overlayViewId === this.bottomActionBarViewId) {
+			// Only handle messages for our action bar
+			if (event.overlayViewId === this.actionBar.overlayViewId) {
 				this.handleActionBarMessage(event.message);
 			}
 		}));
+
+		// Subscribe to browser messages (from injected scripts like inspect mode)
+		this._register(this.browserService.onBrowserMessage((event) => {
+			// Only handle messages for our browser view
+			if (event.browserViewId === this.browserViewId) {
+				this.handleBrowserMessage(event.message);
+			}
+		}));
+	}
+
+	/**
+	 * Handle messages from injected scripts in the browser
+	 */
+	private handleBrowserMessage(message: { type: string; [key: string]: any }): void {
+		this.logger.debug('[ProjectMode] Browser message:', message);
+
+		switch (message.type) {
+			case 'inspect-mode-exited':
+				// Sync state when inspect mode auto-exits (after copy or ESC)
+				this.inspectMode.reset();
+				this.logger.info('[ProjectMode] Inspect mode auto-exited');
+				break;
+		}
 	}
 
 	/**
@@ -321,103 +244,17 @@ export class ProjectModeEditor extends EditorPane {
 	}
 
 	/**
-	 * Pause browser - hide WebContentsView and show "Browsing Paused" overlay
-	 * Called when menus or command palette open
+	 * Pause browser - delegates to BrowserPause feature
 	 */
 	private pauseBrowser(): void {
-		if (this.isBrowserPaused || !this.browserViewId || !this.hasLoadedUrl) {
-			return;
-		}
-
-		this.isBrowserPaused = true;
-
-		// Hide the browser WebContentsView
-		this.browserService.setBrowserVisible(this.browserViewId, false);
-
-		// Show the paused overlay
-		this.showPausedOverlay();
+		this.browserPause.pause(this.browserViewId, this.browserContainer, this.hasLoadedUrl);
 	}
 
 	/**
-	 * Resume browser - show WebContentsView and hide overlay
-	 * Called when menus or command palette close
+	 * Resume browser - delegates to BrowserPause feature
 	 */
 	private resumeBrowser(): void {
-		if (!this.isBrowserPaused || !this.browserViewId) {
-			return;
-		}
-
-		this.isBrowserPaused = false;
-
-		// Hide the paused overlay
-		this.hidePausedOverlay();
-
-		// Show the browser WebContentsView (only if we have a URL loaded)
-		if (this.hasLoadedUrl && this.isVisible()) {
-			this.browserService.setBrowserVisible(this.browserViewId, true);
-		}
-	}
-
-	/**
-	 * Show "Browsing Paused" overlay
-	 */
-	private showPausedOverlay(): void {
-		if (!this.browserContainer) {
-			return;
-		}
-
-		// Create overlay if it doesn't exist
-		if (!this.pausedOverlay) {
-			this.pausedOverlay = document.createElement('div');
-			this.pausedOverlay.style.cssText = `
-				position: absolute;
-				top: 0;
-				left: 0;
-				right: 0;
-				bottom: 0;
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				justify-content: center;
-				background-color: var(--vscode-editor-background);
-				color: var(--vscode-descriptionForeground);
-				font-family: var(--vscode-font-family);
-				font-size: 14px;
-				gap: 12px;
-				z-index: 100;
-			`;
-
-			// Pause icon
-			const icon = document.createElement('div');
-			icon.style.cssText = `
-				font-size: 32px;
-				opacity: 0.6;
-			`;
-			icon.textContent = '⏸';
-			this.pausedOverlay.appendChild(icon);
-
-			// Text
-			const text = document.createElement('div');
-			text.style.cssText = `
-				font-size: 14px;
-				opacity: 0.8;
-			`;
-			text.textContent = 'Browsing paused';
-			this.pausedOverlay.appendChild(text);
-
-			this.browserContainer.appendChild(this.pausedOverlay);
-		}
-
-		this.pausedOverlay.style.display = 'flex';
-	}
-
-	/**
-	 * Hide "Browsing Paused" overlay
-	 */
-	private hidePausedOverlay(): void {
-		if (this.pausedOverlay) {
-			this.pausedOverlay.style.display = 'none';
-		}
+		this.browserPause.resume(this.browserViewId, this.hasLoadedUrl, this.isVisible());
 	}
 
 	protected createEditor(parent: HTMLElement): void {
@@ -455,12 +292,12 @@ export class ProjectModeEditor extends EditorPane {
 			onHardReload: () => this.hardReload(),
 			onScreenshot: () => this.takeScreenshot(),
 			onCopyUrl: () => this.copyCurrentUrl(),
-			// Bookmark callbacks
-			onBookmarkAdd: (bookmark: BrowserBookmark) => this.addBookmark(bookmark),
-			onBookmarkRemove: (url: string) => this.removeBookmark(url),
-			onBookmarkClick: (url: string) => this.navigateToBookmark(url),
-			getBookmarks: () => this.getBookmarks(),
-			isBookmarked: (url: string) => this.isBookmarked(url),
+			// Bookmark callbacks (delegate to Bookmarks feature)
+			onBookmarkAdd: (bookmark) => this.bookmarks.add(bookmark),
+			onBookmarkRemove: (url) => this.bookmarks.remove(url),
+			onBookmarkClick: (url) => this.navigate(url),
+			getBookmarks: () => this.bookmarks.getAll(),
+			isBookmarked: (url) => this.bookmarks.isBookmarked(url),
 			// Edit Mode callback
 			onEditModeToggle: (enabled: boolean) => this.toggleEditModeToolbar(enabled)
 		};
@@ -915,8 +752,8 @@ export class ProjectModeEditor extends EditorPane {
 			// Reset inspect mode on navigation (script is injected per-page)
 			// The injected script won't survive page navigation anyway,
 			// but we need to sync the state
-			if (this.isInspectModeActive) {
-				this.isInspectModeActive = false;
+			if (this.inspectMode.isInspectModeActive) {
+				this.inspectMode.reset();
 				this.logger.info('[ProjectMode] Inspect Mode reset due to navigation');
 			}
 
@@ -1093,7 +930,7 @@ export class ProjectModeEditor extends EditorPane {
 			}
 
 			// Update input
-			const input = this.input as ProjectModeInput;
+			const input = this.input as EditorTabInput;
 			if (input) {
 				input.setUrl(url);
 			}
@@ -1263,126 +1100,65 @@ export class ProjectModeEditor extends EditorPane {
 	}
 
 	// ============================================
-	// Edit Mode (Bottom Action Bar Toggle)
+	// Edit Mode & Action Bar (delegates to ActionBar feature)
 	// ============================================
 
 	/**
 	 * Toggle Edit Mode - shows/hides the bottom action bar
-	 * Called from the Edit Mode button in the address bar
 	 */
 	private async toggleEditModeToolbar(enabled: boolean): Promise<void> {
 		if (enabled) {
-			// Show bottom action bar
-			if (!this.bottomActionBarViewId) {
-				await this.createBottomActionBar();
+			if (!this.actionBar.exists) {
+				await this.actionBar.create(this.browserViewId!, this.getBrowserBounds());
 			} else {
-				await this.browserService.setOverlayVisible(this.bottomActionBarViewId, true);
+				await this.actionBar.show();
 			}
-			this.logger.info('[ProjectMode] Edit Mode ENABLED - bottom action bar shown');
+			this.logger.info('[ProjectMode] Edit Mode ENABLED');
 		} else {
-			// Hide bottom action bar
-			if (this.bottomActionBarViewId) {
-				await this.browserService.setOverlayVisible(this.bottomActionBarViewId, false);
-			}
-			this.logger.info('[ProjectMode] Edit Mode DISABLED - bottom action bar hidden');
-		}
-	}
-
-	// ============================================
-	// Bottom Action Bar (New Design)
-	// ============================================
-
-	/**
-	 * Create bottom action bar overlay
-	 * Fixed size overlay (220×50) with hover-expand behavior
-	 */
-	private async createBottomActionBar(): Promise<void> {
-		if (!this.browserViewId || !this.browserContainer) {
-			return;
-		}
-
-		// Don't create if already exists
-		if (this.bottomActionBarViewId) {
-			return;
-		}
-
-		try {
-			// Calculate overlay bounds (fixed size, centered at bottom)
-			const browserRect = this.browserContainer.getBoundingClientRect();
-			const bounds = getActionBarOverlayBounds(
-				{
-					x: Math.floor(browserRect.left),
-					y: Math.floor(browserRect.top),
-					width: Math.floor(browserRect.width),
-					height: Math.floor(browserRect.height)
-				},
-				this.bottomActionBarState.position
-			);
-
-			// Generate HTML content
-			const htmlContent = generateBottomActionBarHtml(this.bottomActionBarState);
-
-			// Create overlay view
-			this.bottomActionBarViewId = await this.browserService.createOverlayView(
-				this.browserViewId,
-				bounds,
-				htmlContent
-			);
-
-			this.logger.info('[ProjectMode] Bottom action bar created', { bounds });
-
-			// Messages are handled via event subscription (see setupEventSubscriptions)
-			// The overlay sends messages via console.log('ROOPIK_MSG:...')
-			// which triggers onOverlayMessage event from the main process
-		} catch (error) {
-			this.logger.error('[ProjectMode] Failed to create bottom action bar:', error);
+			await this.actionBar.hide();
+			this.logger.info('[ProjectMode] Edit Mode DISABLED');
 		}
 	}
 
 	/**
-	 * Handle message from bottom action bar
-	 * Called when action bar sends message via console.log bridge
+	 * Get current browser container bounds
 	 */
-	private async handleActionBarMessage(message: { type: string;[key: string]: any }): Promise<void> {
+	private getBrowserBounds(): ViewBounds {
+		const rect = this.browserContainer?.getBoundingClientRect() || { left: 0, top: 0, width: 0, height: 0 };
+		return {
+			x: Math.floor(rect.left),
+			y: Math.floor(rect.top),
+			width: Math.floor(rect.width),
+			height: Math.floor(rect.height)
+		};
+	}
+
+	/**
+	 * Update action bar bounds when browser resizes
+	 */
+	private async updateBottomActionBarBounds(): Promise<void> {
+		await this.actionBar.updateBounds(this.getBrowserBounds());
+	}
+
+	/**
+	 * Handle message from action bar
+	 */
+	private async handleActionBarMessage(message: { type: string; [key: string]: any }): Promise<void> {
 		this.logger.debug('[ProjectMode] Action bar message:', message);
 
 		switch (message.type) {
 			case 'mode-change':
 				await this.handleActionBarModeChange(message.mode as ActionBarMode);
 				break;
-
 			case 'ai-assistant':
-				// TODO: Open AI chat panel (Shadow DOM injection)
 				this.logger.info('[ProjectMode] AI Assistant clicked (not yet implemented)');
 				break;
-
-			case 'drag-start':
-				// TODO: Handle drag start for repositioning
-				this.logger.debug('[ProjectMode] Drag started');
-				break;
-
-			case 'drag-move':
-				// TODO: Update overlay position while dragging
-				break;
-
-			case 'drag-end':
-				// TODO: Snap to final position
-				this.logger.debug('[ProjectMode] Drag ended');
-				break;
-
 			case 'escape-pressed':
-				// Reset to select mode
-				this.bottomActionBarState.activeMode = 'select';
+				this.actionBar.activeMode = 'select';
 				break;
-
-			case 'placeholder-action':
-				this.logger.info(`[ProjectMode] Placeholder action: ${message.action}`);
-				break;
-
 			case 'action-bar-ready':
 				this.logger.info('[ProjectMode] Action bar ready');
 				break;
-
 			default:
 				this.logger.debug(`[ProjectMode] Unknown action bar message: ${message.type}`);
 		}
@@ -1392,215 +1168,45 @@ export class ProjectModeEditor extends EditorPane {
 	 * Handle mode change from action bar
 	 */
 	private async handleActionBarModeChange(mode: ActionBarMode): Promise<void> {
-		this.bottomActionBarState.activeMode = mode;
-		this.logger.info(`[ProjectMode] Action bar mode changed to: ${mode}`);
+		this.actionBar.activeMode = mode;
+		this.logger.info(`[ProjectMode] Action bar mode: ${mode}`);
 
 		switch (mode) {
 			case 'browse':
-				// Browse = normal browsing mode, disable all special modes
-				if (this.isInspectModeActive) {
-					await this.disableInspectMode();
-				}
-				// TODO: Disable drag select mode when implemented
-				break;
-
 			case 'select':
-				// Select mode - exit inspect but keep select behavior
-				if (this.isInspectModeActive) {
-					await this.disableInspectMode();
-				}
-				break;
-
-			case 'inspect':
-				// Enable inspect mode (persistent - stays active after click)
-				await this.enableInspectMode();
-				break;
-
 			case 'dragSelect':
-				// TODO: Enable drag selection mode
-				if (this.isInspectModeActive) {
-					await this.disableInspectMode();
+				if (this.inspectMode.isInspectModeActive) {
+					await this.inspectMode.disable(this.browserViewId!);
 				}
-				this.logger.info('[ProjectMode] Drag select mode (not yet implemented)');
 				break;
-		}
-	}
-
-	/**
-	 * Update bottom action bar bounds when browser resizes
-	 */
-	private async updateBottomActionBarBounds(): Promise<void> {
-		if (!this.bottomActionBarViewId || !this.browserContainer) {
-			return;
-		}
-
-		const browserRect = this.browserContainer.getBoundingClientRect();
-		const bounds = getActionBarOverlayBounds(
-			{
-				x: Math.floor(browserRect.left),
-				y: Math.floor(browserRect.top),
-				width: Math.floor(browserRect.width),
-				height: Math.floor(browserRect.height)
-			},
-			this.bottomActionBarState.position
-		);
-
-		await this.browserService.setOverlayBounds(this.bottomActionBarViewId, bounds);
-	}
-
-	/**
-	 * Destroy bottom action bar
-	 */
-	private async destroyBottomActionBar(): Promise<void> {
-		if (this.bottomActionBarViewId) {
-			await this.browserService.destroyOverlayView(this.bottomActionBarViewId);
-			this.bottomActionBarViewId = undefined;
+			case 'inspect':
+				await this.inspectMode.enable(this.browserViewId!);
+				break;
 		}
 	}
 
 	// ============================================
-	// Inspect Mode
+	// Inspect Mode (delegates to InspectMode feature class)
 	// ============================================
 
 	/**
 	 * Toggle Inspect Element Mode
-	 *
-	 * When enabled:
-	 * - Elements are highlighted on hover with an outline
-	 * - Clicking an element copies its full outerHTML to clipboard and auto-exits
-	 * - Press ESC to exit without copying
-	 *
-	 * This is accessible via API for automation (Playwright, agents, etc.)
+	 * Delegates to InspectMode feature class
 	 */
 	private async toggleInspectMode(): Promise<void> {
 		if (!this.browserViewId) {
 			this.logger.warn('[ProjectMode] Cannot toggle inspect mode: no browser view');
 			return;
 		}
-
-		// Check actual state in browser (not our cached state)
-		// This handles cases where script exited via ESC or copy
-		const isActiveInBrowser = await this.isInspectModeActiveInBrowser();
-
-		if (isActiveInBrowser) {
-			// Currently active, disable it
-			await this.disableInspectMode();
-		} else {
-			// Not active, enable it
-			await this.enableInspectMode();
-		}
-	}
-
-	/**
-	 * Check if inspect mode is actually active in the browser
-	 * (The script may have exited via ESC or copy)
-	 */
-	private async isInspectModeActiveInBrowser(): Promise<boolean> {
-		if (!this.browserViewId) {
-			return false;
-		}
-
-		try {
-			return await this.browserService.executeScript(
-				this.browserViewId,
-				'typeof window.__roopikInspectCleanup === "function"'
-			);
-		} catch {
-			return false;
-		}
-	}
-
-	/**
-	 * Enable Inspect Element Mode
-	 * Injects script into browser to highlight elements and capture clicks
-	 */
-	private async enableInspectMode(): Promise<void> {
-		if (!this.browserViewId) {
-			return;
-		}
-
-		this.logger.info('[ProjectMode] Inspect Mode ENABLED');
-		this.isInspectModeActive = true;
-
-		// Inject the inspect mode script
-		const inspectScript = this.getInspectModeScript();
-
-		try {
-			await this.browserService.executeScript(this.browserViewId, inspectScript);
-
-			// Show notification
-			this.notificationService.notify({
-				severity: Severity.Info,
-				message: 'Inspect Mode: Click element to copy HTML.',
-				sticky: false
-			});
-		} catch (error) {
-			this.logger.error('[ProjectMode] Failed to enable inspect mode:', error);
-			this.isInspectModeActive = false;
-		}
-	}
-
-	/**
-	 * Disable Inspect Element Mode
-	 * Removes the injected script from the browser
-	 */
-	private async disableInspectMode(): Promise<void> {
-		this.isInspectModeActive = false;
-
-		if (!this.browserViewId) {
-			return;
-		}
-
-		this.logger.info('[ProjectMode] Inspect Mode DISABLED');
-
-		// Inject cleanup script (safe to call even if already cleaned up)
-		const cleanupScript = `
-			(function() {
-				if (window.__roopikInspectCleanup) {
-					window.__roopikInspectCleanup();
-				}
-			})();
-		`;
-
-		try {
-			await this.browserService.executeScript(this.browserViewId, cleanupScript);
-		} catch (error) {
-			this.logger.error('[ProjectMode] Failed to disable inspect mode:', error);
-		}
-	}
-
-	/**
-	 * Generate the inspect mode JavaScript to inject into the browser
-	 * This script:
-	 * - Creates a highlight overlay that follows the hovered element
-	 * - Captures clicks and copies element's outerHTML to clipboard
-	 * - Shows a toast notification when element is copied
-	 * - Sends messages to parent for state sync
-	 * - Listens for ESC key to exit inspect mode
-	 */
-	private getInspectModeScript(): string {
-		return INSPECT_MODE_SCRIPT;
+		await this.inspectMode.toggle(this.browserViewId);
 	}
 
 	/**
 	 * Get the last inspected element's HTML
 	 * API for programmatic access (agents, automation tools like Playwright)
-	 *
-	 * @returns The outerHTML of the last clicked element, or null if none
 	 */
 	public async getLastInspectedElementHtml(): Promise<string | null> {
-		if (!this.browserViewId) {
-			return null;
-		}
-
-		try {
-			return await this.browserService.executeScript(
-				this.browserViewId,
-				'window.__roopikLastInspectedHtml || null'
-			);
-		} catch {
-			return null;
-		}
+		return this.inspectMode.getLastInspectedHtml(this.browserViewId!);
 	}
 
 	/**
@@ -1608,7 +1214,7 @@ export class ProjectModeEditor extends EditorPane {
 	 * API for programmatic access
 	 */
 	public isInspectModeEnabled(): boolean {
-		return this.isInspectModeActive;
+		return this.inspectMode.isInspectModeActive;
 	}
 
 	/**
@@ -1616,8 +1222,8 @@ export class ProjectModeEditor extends EditorPane {
 	 * API for agents and automation tools
 	 */
 	public async startInspectMode(): Promise<void> {
-		if (!this.isInspectModeActive) {
-			await this.toggleInspectMode();
+		if (!this.inspectMode.isInspectModeActive && this.browserViewId) {
+			await this.inspectMode.enable(this.browserViewId);
 		}
 	}
 
@@ -1626,8 +1232,8 @@ export class ProjectModeEditor extends EditorPane {
 	 * API for agents and automation tools
 	 */
 	public async stopInspectMode(): Promise<void> {
-		if (this.isInspectModeActive) {
-			await this.toggleInspectMode();
+		if (this.inspectMode.isInspectModeActive && this.browserViewId) {
+			await this.inspectMode.disable(this.browserViewId);
 		}
 	}
 
@@ -1738,7 +1344,7 @@ export class ProjectModeEditor extends EditorPane {
 	override async setInput(input: EditorInput, options: IEditorOptions | undefined, context: IEditorOpenContext, token: CancellationToken): Promise<void> {
 		await super.setInput(input, options, context, token);
 
-		if (input instanceof ProjectModeInput) {
+		if (input instanceof EditorTabInput) {
 			const initialUrl = input.url;
 
 			// CRITICAL: Listen for input disposal - this means the TAB is truly closed
@@ -1945,9 +1551,9 @@ export class ProjectModeEditor extends EditorPane {
 		// Hide views immediately
 		this.hideViews();
 
-		// Destroy bottom action bar
-		this.destroyBottomActionBar()
-			.catch((err: Error) => this.logger.error('[ProjectMode] Failed to destroy bottom action bar:', err));
+		// Destroy action bar
+		this.actionBar.destroy()
+			.catch((err: Error) => this.logger.error('[ProjectMode] Failed to destroy action bar:', err));
 
 		// Publish browser destroyed event to central event bus
 		this.eventService.publish('browser.destroyed', {
@@ -1973,290 +1579,3 @@ export class ProjectModeEditor extends EditorPane {
 		super.dispose();
 	}
 }
-
-// ============================================
-// Inspect Mode Script (injected into browser)
-// ============================================
-
-/**
- * JavaScript to inject into the browser for element inspection.
- * Features:
- * - Highlight overlay follows hovered element
- * - Label shows tag name, id, and classes (no dimensions)
- * - Click copies outerHTML to clipboard
- * - Toast notification confirms copy
- * - ESC key exits inspect mode
- * - Messages sent to parent for state sync
- */
-const INSPECT_MODE_SCRIPT = `
-(function() {
-	// Cleanup any existing inspect mode
-	if (window.__roopikInspectCleanup) {
-		window.__roopikInspectCleanup();
-	}
-
-	// ========== Create UI Elements ==========
-
-	// Highlight overlay
-	const overlay = document.createElement('div');
-	overlay.id = '__roopik_inspect_overlay';
-	overlay.style.cssText = [
-		'position: fixed',
-		'pointer-events: none',
-		'z-index: 2147483647',
-		'border: 2px solid #007acc',
-		'background-color: rgba(0, 122, 204, 0.1)',
-		'transition: all 0.05s ease-out',
-		'display: none'
-	].join(';');
-	document.body.appendChild(overlay);
-
-	// Element label (tag info)
-	const label = document.createElement('div');
-	label.id = '__roopik_inspect_label';
-	label.style.cssText = [
-		'position: fixed',
-		'pointer-events: none',
-		'z-index: 2147483647',
-		'background-color: #007acc',
-		'color: white',
-		'font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-		'font-size: 11px',
-		'padding: 2px 6px',
-		'border-radius: 2px',
-		'white-space: nowrap',
-		'display: none'
-	].join(';');
-	document.body.appendChild(label);
-
-	// Toast notification container (appears from top)
-	const toast = document.createElement('div');
-	toast.id = '__roopik_inspect_toast';
-	toast.style.cssText = [
-		'position: fixed',
-		'top: 20px',
-		'left: 50%',
-		'transform: translateX(-50%) translateY(-100px)',
-		'background-color: #1e1e1e',
-		'color: #ffffff',
-		'font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-		'font-size: 13px',
-		'padding: 10px 20px',
-		'border-radius: 6px',
-		'box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)',
-		'z-index: 2147483647',
-		'opacity: 0',
-		'transition: transform 0.3s ease, opacity 0.3s ease',
-		'pointer-events: none'
-	].join(';');
-	document.body.appendChild(toast);
-
-	let currentElement = null;
-	let toastTimeout = null;
-
-	// ========== Helper Functions ==========
-
-	// Get element description for label (tag name only)
-	function getElementDescription(el) {
-		return el.tagName.toLowerCase();
-	}
-
-	// Show toast notification
-	function showToast(message) {
-		if (toastTimeout) {
-			clearTimeout(toastTimeout);
-		}
-		toast.textContent = message;
-		toast.style.opacity = '1';
-		toast.style.transform = 'translateX(-50%) translateY(0)';
-
-		toastTimeout = setTimeout(function() {
-			toast.style.opacity = '0';
-			toast.style.transform = 'translateX(-50%) translateY(-100px)';
-		}, 2000);
-	}
-
-	// Copy text to clipboard (with fallback)
-	function copyToClipboard(text) {
-		return new Promise(function(resolve, reject) {
-			// Try modern clipboard API first
-			if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-				navigator.clipboard.writeText(text)
-					.then(resolve)
-					.catch(function() {
-						// Fall back to execCommand
-						fallbackCopy(text, resolve, reject);
-					});
-			} else {
-				fallbackCopy(text, resolve, reject);
-			}
-		});
-	}
-
-	function fallbackCopy(text, resolve, reject) {
-		try {
-			const textarea = document.createElement('textarea');
-			textarea.value = text;
-			textarea.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-			document.body.appendChild(textarea);
-			textarea.focus();
-			textarea.select();
-			const success = document.execCommand('copy');
-			document.body.removeChild(textarea);
-			if (success) {
-				resolve();
-			} else {
-				reject(new Error('execCommand failed'));
-			}
-		} catch (err) {
-			reject(err);
-		}
-	}
-
-	// Update overlay position
-	function updateOverlay(el) {
-		if (!el || el === document.body || el === document.documentElement) {
-			overlay.style.display = 'none';
-			label.style.display = 'none';
-			return;
-		}
-
-		const rect = el.getBoundingClientRect();
-		overlay.style.display = 'block';
-		overlay.style.top = rect.top + 'px';
-		overlay.style.left = rect.left + 'px';
-		overlay.style.width = rect.width + 'px';
-		overlay.style.height = rect.height + 'px';
-
-		// Position label above element, or below if not enough space
-		label.style.display = 'block';
-		label.textContent = getElementDescription(el);
-		const labelHeight = 20;
-		if (rect.top > labelHeight + 4) {
-			label.style.top = (rect.top - labelHeight - 4) + 'px';
-		} else {
-			label.style.top = (rect.bottom + 4) + 'px';
-		}
-		label.style.left = Math.max(0, rect.left) + 'px';
-	}
-
-	// Flash overlay green to indicate success
-	function flashSuccess() {
-		overlay.style.backgroundColor = 'rgba(0, 200, 0, 0.3)';
-		overlay.style.borderColor = '#00c800';
-		setTimeout(function() {
-			overlay.style.backgroundColor = 'rgba(0, 122, 204, 0.1)';
-			overlay.style.borderColor = '#007acc';
-		}, 200);
-	}
-
-	// Future use: send info back to Roopik (e.g., copied HTML to AI chat)
-	function notifyParent(type, data) {
-		window.postMessage({
-			source: 'roopik-inspect',
-			type: type,
-			data: data
-		}, '*');
-	}
-
-	// ========== Event Handlers ==========
-
-	function onMouseMove(e) {
-		// Ignore our own UI elements
-		const el = document.elementFromPoint(e.clientX, e.clientY);
-		if (el && el.id && el.id.startsWith('__roopik_inspect')) {
-			return;
-		}
-		if (el && el !== overlay && el !== label && el !== toast && el !== currentElement) {
-			currentElement = el;
-			updateOverlay(el);
-		}
-	}
-
-	function onClick(e) {
-		e.preventDefault();
-		e.stopPropagation();
-		e.stopImmediatePropagation();
-
-		if (currentElement && !(currentElement.id && currentElement.id.startsWith('__roopik_inspect'))) {
-			const html = currentElement.outerHTML;
-
-			// Store for API access
-			window.__roopikLastInspectedHtml = html;
-
-			// Copy to clipboard, then auto-exit inspect mode
-			copyToClipboard(html)
-				.then(function() {
-					flashSuccess();
-					showToast('✓ Element copied');
-					notifyParent('element-copied', { html: html });
-
-					// Auto-exit inspect mode after successful copy (with small delay for visual feedback)
-					setTimeout(function() {
-						cleanup();
-						notifyParent('inspect-mode-exited', {});
-					}, 300);
-				})
-				.catch(function(err) {
-					console.error('[Roopik Inspect] Copy failed:', err);
-					showToast('✗ Copy failed');
-					notifyParent('copy-failed', { error: err.message });
-					// Don't exit on failure - let user try again
-				});
-		}
-
-		return false;
-	}
-
-	function onKeyDown(e) {
-		if (e.key === 'Escape') {
-			cleanup();
-			notifyParent('inspect-mode-exited', {});
-		}
-	}
-
-	function onScroll() {
-		if (currentElement) {
-			updateOverlay(currentElement);
-		}
-	}
-
-	// ========== Cleanup ==========
-
-	function cleanup() {
-		document.removeEventListener('mousemove', onMouseMove, true);
-		document.removeEventListener('click', onClick, true);
-		document.removeEventListener('keydown', onKeyDown, true);
-		document.removeEventListener('scroll', onScroll, true);
-		window.removeEventListener('resize', onScroll);
-
-		if (toastTimeout) {
-			clearTimeout(toastTimeout);
-		}
-
-		if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-		if (label.parentNode) label.parentNode.removeChild(label);
-		if (toast.parentNode) toast.parentNode.removeChild(toast);
-
-		currentElement = null;
-		delete window.__roopikInspectCleanup;
-	}
-
-	// Store cleanup function
-	window.__roopikInspectCleanup = cleanup;
-
-	// ========== Initialize ==========
-
-	// Add event listeners (capture phase to intercept before page handlers)
-	document.addEventListener('mousemove', onMouseMove, true);
-	document.addEventListener('click', onClick, true);
-	document.addEventListener('keydown', onKeyDown, true);
-	document.addEventListener('scroll', onScroll, true);
-	window.addEventListener('resize', onScroll);
-
-	// Notify parent that inspect mode started
-	notifyParent('inspect-mode-started', {});
-
-	return 'Inspect mode enabled';
-})();
-`;

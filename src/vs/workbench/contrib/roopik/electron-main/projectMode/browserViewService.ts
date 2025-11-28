@@ -34,6 +34,9 @@ export class BrowserViewService implements IProjectModeService {
 	private readonly _onOverlayMessage = new Emitter<OverlayMessageEvent>();
 	readonly onOverlayMessage: Event<OverlayMessageEvent> = this._onOverlayMessage.event;
 
+	private readonly _onBrowserMessage = new Emitter<{ browserViewId: number; message: any }>();
+	readonly onBrowserMessage: Event<{ browserViewId: number; message: any }> = this._onBrowserMessage.event;
+
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
 	private static managedWebContentsIds = new Set<number>();
@@ -931,6 +934,19 @@ export class BrowserViewService implements IProjectModeService {
 		webContents.on('devtools-closed', () => {
 			this._onDevToolsClosed.fire({ browserViewId });
 			this.devtoolsModes.delete(browserViewId);
+		});
+
+		// Console message bridge for browser view (same pattern as overlay views)
+		// Messages with 'ROOPIK_MSG:' prefix are routed to the renderer
+		webContents.on('console-message', (_event, _level, message) => {
+			if (message.startsWith('ROOPIK_MSG:')) {
+				try {
+					const payload = JSON.parse(message.substring('ROOPIK_MSG:'.length));
+					this._onBrowserMessage.fire({ browserViewId, message: payload });
+				} catch (e) {
+					console.error('[ProjectMode] Failed to parse browser message:', e);
+				}
+			}
 		});
 	}
 

@@ -9,11 +9,11 @@ import type { IProjectModeService } from '../../common/projectMode/ipc.js';
 import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OverlayMessageEvent } from '../../common/projectMode/types.js';
 
 /**
- * ProjectMode Service Bridge
+ * Service Bridge
  *
  * Renderer-side proxy that communicates with main process via IPC.
  */
-export class ProjectModeServiceBridge implements IProjectModeService {
+export class ServiceBridge implements IProjectModeService {
 	readonly _serviceBrand: undefined;
 
 	// ============================================
@@ -36,11 +36,17 @@ export class ProjectModeServiceBridge implements IProjectModeService {
 	 */
 	readonly onOverlayMessage: Event<OverlayMessageEvent>;
 
+	/**
+	 * Event fired when the browser view sends a message via console.log bridge
+	 */
+	readonly onBrowserMessage: Event<{ browserViewId: number; message: any }>;
+
 	constructor(private channel: IChannel) {
 		// Subscribe to events from main process
 		this.onDevToolsClosed = this.channel.listen<DevToolsClosedEvent>('onDevToolsClosed');
 		this.onNavigationStateChanged = this.channel.listen<NavigationStateChangedEvent>('onNavigationStateChanged');
 		this.onOverlayMessage = this.channel.listen<OverlayMessageEvent>('onOverlayMessage');
+		this.onBrowserMessage = this.channel.listen<{ browserViewId: number; message: any }>('onBrowserMessage');
 	}
 
 	// ============================================

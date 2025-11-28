@@ -46,6 +46,12 @@ export interface IProjectModeService {
 	 */
 	readonly onOverlayMessage: Event<OverlayMessageEvent>;
 
+	/**
+	 * Fired when the browser view sends a message via console.log bridge
+	 * Used by inject scripts (inspect mode, etc.) to communicate with editor
+	 */
+	readonly onBrowserMessage: Event<{ browserViewId: number; message: any }>;
+
 	// ============================================
 	// Browser View Lifecycle
 	// ============================================

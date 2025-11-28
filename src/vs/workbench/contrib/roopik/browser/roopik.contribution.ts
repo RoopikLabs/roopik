@@ -23,8 +23,8 @@ import { RoopikViewsContribution } from './roopikViewPane.js';
 import { RoopikLogger } from '../common/roopikLogger.js';
 import { IOutputService } from '../../../services/output/common/output.js';
 import { ILoggerService } from '../../../../platform/log/common/log.js';
-import { ProjectModeEditor } from './projectMode/projectModeEditor.js';
-import { ProjectModeInput } from './projectMode/projectModeInput.js';
+import { Editor } from './projectMode/editor.js';
+import { EditorTabInput } from './projectMode/editorTabInput.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { IRoopikEventService, RoopikEventService } from '../common/events/index.js';
 import { IRoopikSettingsService, RoopikSettingsService } from '../common/settings/index.js';
@@ -79,11 +79,11 @@ Registry.as<IEditorFactoryRegistry>(EditorExtensions.EditorFactory).registerEdit
 // Register Project Mode Editor (Mode 2: Browser Preview)
 Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
 	EditorPaneDescriptor.create(
-		ProjectModeEditor,
-		ProjectModeEditor.ID,
+		Editor,
+		Editor.ID,
 		'Browser Preview'
 	),
-	[new SyncDescriptor(ProjectModeInput)]
+	[new SyncDescriptor(EditorTabInput)]
 );
 
 // Open Welcome Screen
@@ -162,13 +162,13 @@ registerAction2(class extends Action2 {
 		const storageService = accessor.get(IStorageService);
 
 		// SINGLETON: Get the one and only browser instance
-		const input = ProjectModeInput.getInstance();
+		const input = EditorTabInput.getInstance();
 
 		// Check if browser editor is already open in any group
 		// Use the singleton input directly since it's the same instance
 		const visibleEditors = editorService.visibleEditorPanes;
 		const existingPane = visibleEditors.find(
-			pane => pane.input instanceof ProjectModeInput
+			pane => pane.input instanceof EditorTabInput
 		);
 
 		if (existingPane) {
