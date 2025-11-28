@@ -5,12 +5,12 @@
 
 import { BrowserWindow, WebContentsView, session, app } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
-import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsMode, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
+import type { IProjectModeService } from '../../common/projectMode/ipc.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
 import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
 
 /**
- * Browser View Service V2
+ * Browser View Service
  *
  * Main process service managing WebContentsView lifecycle with:
  * - Proper destruction to avoid ghost processes
@@ -18,7 +18,7 @@ import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
  * - CDP debugger integration
  * - Device emulation via CDP
  */
-export class BrowserViewServiceV2 implements IProjectModeV2Service {
+export class BrowserViewService implements IProjectModeService {
 	readonly _serviceBrand: undefined;
 
 	// ============================================
@@ -39,23 +39,17 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	private static sessionConfigured = false;
 
 	/**
-	 * Check if a webContents ID is managed by ProjectModeV2
+	 * Check if a webContents ID is managed by ProjectMode
 	 * Called by app.ts to allow navigation for our browser views
 	 */
 	static isManagedWebContents(webContentsId: number): boolean {
-		return BrowserViewServiceV2.managedWebContentsIds.has(webContentsId);
+		return BrowserViewService.managedWebContentsIds.has(webContentsId);
 	}
 
 	// Browser views storage
 	private browserViews = new Map<number, WebContentsView>();
 	private browserWindows = new Map<number, BrowserWindow>();
 
-	// DevTools views (ON-DEMAND, not pre-created)
-	// Only populated in 'detached' mode - in 'attached' mode, Electron manages DevTools
-	private devtoolsViews = new Map<number, WebContentsView>();
-
-	// Track DevTools mode per browser view
-	private devtoolsModes = new Map<number, DevToolsMode>();
 
 	// Overlay views (for floating toolbar, menus)
 	// Maps overlayViewId -> { view, parentBrowserViewId }
@@ -85,8 +79,8 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		// =========================================================
 		const browserSession = session.fromPartition('persist:roopik-browser', { cache: true });
 
-		if (!BrowserViewServiceV2.sessionConfigured) {
-			BrowserViewServiceV2.sessionConfigured = true;
+		if (!BrowserViewService.sessionConfigured) {
+			BrowserViewService.sessionConfigured = true;
 
 			// A. Bypass Proxy for Localhost
 			// Electron often tries to route localhost through system proxies. Force direct connection.
@@ -142,7 +136,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		this.browserWindows.set(browserViewId, window);
 
 		// Add to static set for navigation whitelist
-		BrowserViewServiceV2.managedWebContentsIds.add(browserViewId);
+		BrowserViewService.managedWebContentsIds.add(browserViewId);
 
 		// Setup zoom handlers (keyboard + touchpad pinch)
 		this.setupZoomHandlers(browserView);
@@ -184,7 +178,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 				try {
 					window.contentView.removeChildView(browserView);
 				} catch (e) {
-					console.error('[ProjectModeV2] Error removing browser view from window:', e);
+					console.error('[ProjectMode] Error removing browser view from window:', e);
 				}
 			}
 
@@ -200,7 +194,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 					// Close the webContents (this is the correct method per Electron docs)
 					webContents.close();
 				} catch (e) {
-					console.error('[ProjectModeV2] Error closing browser webContents:', e);
+					console.error('[ProjectMode] Error closing browser webContents:', e);
 				}
 			}
 
@@ -211,7 +205,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			this.lastNavigationErrors.delete(browserViewId);
 
 			// Remove from static set
-			BrowserViewServiceV2.managedWebContentsIds.delete(browserViewId);
+			BrowserViewService.managedWebContentsIds.delete(browserViewId);
 		}
 	}
 
@@ -241,12 +235,12 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	async navigate(browserViewId: number, url: string): Promise<void> {
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView) {
-			console.error(`[ProjectModeV2] navigate() FAILED: browserView not found for ID ${browserViewId}`);
+			console.error(`[ProjectMode] navigate() FAILED: browserView not found for ID ${browserViewId}`);
 			return;
 		}
 
 		if (browserView.webContents.isDestroyed()) {
-			console.error(`[ProjectModeV2] navigate() FAILED: webContents is destroyed for ID ${browserViewId}`);
+			console.error(`[ProjectMode] navigate() FAILED: webContents is destroyed for ID ${browserViewId}`);
 			return;
 		}
 
@@ -276,9 +270,9 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 				const browserSession = browserView.webContents.session;
 				try {
 					await browserSession.clearCache();
-					console.log('[ProjectModeV2] Cache cleared for hard reload');
+					console.log('[ProjectMode] Cache cleared for hard reload');
 				} catch (e) {
-					console.error('[ProjectModeV2] Failed to clear cache:', e);
+					console.error('[ProjectMode] Failed to clear cache:', e);
 				}
 				browserView.webContents.reloadIgnoringCache();
 			} else {
@@ -374,145 +368,47 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	}
 
 	// ============================================
-	// DevTools (ON-DEMAND creation)
-	// Supports two modes:
-	// - 'attached': Docked inside browser window (Device Toolbar available)
-	// - 'detached': Separate WebContentsView (full layout control)
+	// DevTools (Attached Mode Only)
+	// DevTools docked inside browser window with Device Toolbar available.
+	// Users can detach from DevTools settings menu if needed.
 	// ============================================
 
-	async openDevTools(browserViewId: number, options: DevToolsOptions): Promise<DevToolsViewResult> {
+	async openDevTools(browserViewId: number, _options: DevToolsOptions): Promise<DevToolsViewResult> {
 		const browserView = this.browserViews.get(browserViewId);
-		const window = this.browserWindows.get(browserViewId);
 
-		if (!browserView || !window) {
+		if (!browserView) {
 			throw new Error(`Browser view ${browserViewId} not found`);
-		}
-
-		// Validate options - must have mode
-		if (!options || !options.mode) {
-			console.error(`[ProjectModeV2] openDevTools error: options or options.mode is undefined. Received:`, options);
-			throw new Error(`DevTools options are required. Received: ${JSON.stringify(options)}`);
 		}
 
 		// Close existing DevTools if any
 		await this.closeDevTools(browserViewId);
 
-		// Store the mode for this browser view
-		this.devtoolsModes.set(browserViewId, options.mode);
+		// Open DevTools docked at bottom of the browser window
+		// This gives us the Device Toolbar toggle and close button
+		// Users can detach from DevTools settings menu if they want a separate window
+		browserView.webContents.openDevTools({ mode: 'bottom' });
 
-		if (options.mode === 'attached') {
-			// =========================================================
-			// ATTACHED MODE: DevTools docked inside browser window
-			// Device Toolbar toggle and close button are available!
-			// =========================================================
-
-			// Open DevTools docked at bottom of the browser window
-			// This gives us the Device Toolbar toggle and close button
-			browserView.webContents.openDevTools({ mode: 'bottom' });
-
-			// In attached mode, we don't create a separate view - Electron manages it
-			// Return -1 as devtoolsViewId to indicate attached mode
-			return { devtoolsViewId: -1 };
-		} else {
-			// =========================================================
-			// DETACHED MODE: DevTools in separate WebContentsView
-			// Full layout control, but NO Device Toolbar toggle
-			// =========================================================
-
-			if (!options.bounds) {
-				throw new Error('Bounds are required for detached DevTools mode');
-			}
-
-			// CRITICAL: Create FRESH WebContentsView for DevTools
-			// Per Electron docs: "The devToolsWebContents must not have done any navigation"
-			const devtoolsView = new WebContentsView({
-				webPreferences: {
-					nodeIntegration: false,
-					contextIsolation: true
-				}
-			});
-
-			// Add to window BEFORE calling setDevToolsWebContents
-			window.contentView.addChildView(devtoolsView);
-
-			// Set bounds
-			devtoolsView.setBounds({
-				x: Math.round(options.bounds.x),
-				y: Math.round(options.bounds.y),
-				width: Math.round(options.bounds.width),
-				height: Math.round(options.bounds.height)
-			});
-
-			// CRITICAL: Call setDevToolsWebContents IMMEDIATELY after creation
-			// The devtools WebContents must be fresh/unused
-			browserView.webContents.setDevToolsWebContents(devtoolsView.webContents);
-
-			// Open DevTools with detach mode (required for setDevToolsWebContents)
-			browserView.webContents.openDevTools({ mode: 'detach' });
-
-			const devtoolsViewId = devtoolsView.webContents.id;
-			this.devtoolsViews.set(browserViewId, devtoolsView);
-
-			return { devtoolsViewId };
-		}
+		// Return -1 as devtoolsViewId since Electron manages the DevTools view
+		return { devtoolsViewId: -1 };
 	}
 
 	async closeDevTools(browserViewId: number): Promise<void> {
 		const browserView = this.browserViews.get(browserViewId);
-		const devtoolsView = this.devtoolsViews.get(browserViewId);
-		const window = this.browserWindows.get(browserViewId);
 
-		// Close DevTools on browser webContents (works for both modes)
+		// Close DevTools on browser webContents
 		// Graceful check - browser may already be destroyed
 		if (browserView && !browserView.webContents.isDestroyed()) {
 			try {
 				browserView.webContents.closeDevTools();
 			} catch (e) {
-				console.error('[ProjectModeV2] Error closing devtools on browser:', e);
+				console.error('[ProjectMode] Error closing devtools on browser:', e);
 			}
 		}
-
-		// ALWAYS cleanup detached DevTools WebContentsView if it exists
-		// Don't rely on mode - the view existing is enough to know we need to clean it up
-		// This fixes the bug where DevTools remained visible after browser tab closed
-		if (devtoolsView) {
-			// Remove from window
-			if (window && !window.isDestroyed() && window.contentView) {
-				try {
-					window.contentView.removeChildView(devtoolsView);
-				} catch (e) {
-					// Graceful - view may already be removed
-					console.error('[ProjectModeV2] Error removing devtools view:', e);
-				}
-			}
-
-			// Destroy devtools webContents
-			if (!devtoolsView.webContents.isDestroyed()) {
-				try {
-					devtoolsView.webContents.close();
-				} catch (e) {
-					// Graceful - webContents may already be destroyed
-					console.error('[ProjectModeV2] Error closing devtools webContents:', e);
-				}
-			}
-
-			this.devtoolsViews.delete(browserViewId);
-		}
-
-		// Clear mode tracking
-		this.devtoolsModes.delete(browserViewId);
 	}
 
-	async setDevToolsBounds(browserViewId: number, bounds: ViewBounds): Promise<void> {
-		const devtoolsView = this.devtoolsViews.get(browserViewId);
-		if (devtoolsView) {
-			devtoolsView.setBounds({
-				x: Math.round(bounds.x),
-				y: Math.round(bounds.y),
-				width: Math.round(bounds.width),
-				height: Math.round(bounds.height)
-			});
-		}
+	async setDevToolsBounds(_browserViewId: number, _bounds: ViewBounds): Promise<void> {
+		// In attached mode, Electron manages DevTools layout automatically
+		// This method is kept for API compatibility but is a no-op
 	}
 
 	async isDevToolsOpen(browserViewId: number): Promise<boolean> {
@@ -538,7 +434,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 				browserView.webContents.debugger.attach(protocolVersion);
 				this.debuggerAttached.set(browserViewId, true);
 			} catch (e) {
-				console.error('[ProjectModeV2] Failed to attach debugger:', e);
+				console.error('[ProjectMode] Failed to attach debugger:', e);
 				throw e;
 			}
 		}
@@ -551,7 +447,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 				browserView.webContents.debugger.detach();
 				this.debuggerAttached.set(browserViewId, false);
 			} catch (e) {
-				console.error('[ProjectModeV2] Failed to detach debugger:', e);
+				console.error('[ProjectMode] Failed to detach debugger:', e);
 			}
 		}
 	}
@@ -694,14 +590,14 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 				const failed = results.filter(r => !r.success);
 
 				if (loaded.length > 0) {
-					console.log(`[ProjectModeV2] Loaded ${loaded.length} DevTools extension(s): ${loaded.map(r => r.name).join(', ')}`);
+					console.log(`[ProjectMode] Loaded ${loaded.length} DevTools extension(s): ${loaded.map(r => r.name).join(', ')}`);
 				}
 				if (failed.length > 0) {
-					console.warn(`[ProjectModeV2] Failed to load ${failed.length} extension(s): ${failed.map(r => `${r.name} (${r.error})`).join(', ')}`);
+					console.warn(`[ProjectMode] Failed to load ${failed.length} extension(s): ${failed.map(r => `${r.name} (${r.error})`).join(', ')}`);
 				}
 			})
 			.catch(e => {
-				console.error('[ProjectModeV2] Error loading DevTools extensions:', e);
+				console.error('[ProjectMode] Error loading DevTools extensions:', e);
 			});
 	}
 
@@ -753,35 +649,15 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		this.destroyOverlaysForBrowser(browserViewId);
 
 		const browserView = this.browserViews.get(browserViewId);
-		const devtoolsView = this.devtoolsViews.get(browserViewId);
 		const window = this.browserWindows.get(browserViewId);
 
-		// Close DevTools first
+		// Close DevTools first (Electron manages cleanup in attached mode)
 		if (browserView && !browserView.webContents.isDestroyed()) {
 			try {
 				browserView.webContents.closeDevTools();
 			} catch (e) {
 				// Ignore - window might be dead
 			}
-		}
-
-		// Remove and destroy DevTools view
-		if (devtoolsView) {
-			if (window && !window.isDestroyed() && window.contentView) {
-				try {
-					window.contentView.removeChildView(devtoolsView);
-				} catch (e) {
-					// Ignore
-				}
-			}
-			if (!devtoolsView.webContents.isDestroyed()) {
-				try {
-					devtoolsView.webContents.close();
-				} catch (e) {
-					// Ignore
-				}
-			}
-			this.devtoolsViews.delete(browserViewId);
 		}
 
 		// Detach debugger
@@ -817,7 +693,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		this.browserWindows.delete(browserViewId);
 		this.debuggerAttached.delete(browserViewId);
 		this.lastNavigationErrors.delete(browserViewId);
-		BrowserViewServiceV2.managedWebContentsIds.delete(browserViewId);
+		BrowserViewService.managedWebContentsIds.delete(browserViewId);
 	}
 
 	private setupBrowserEvents(browserView: WebContentsView): void {
@@ -834,7 +710,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			if (IGNORED_ERROR_CODES.has(errorCode)) {
 				return;
 			}
-			console.error(`[ProjectModeV2] Load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
+			console.error(`[ProjectMode] Load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
 			// Track error so renderer can display it
 			this.setNavigationError(browserViewId, errorCode, errorDescription, validatedURL);
 			// Fire event to notify renderer
@@ -848,7 +724,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			if (IGNORED_ERROR_CODES.has(errorCode)) {
 				return;
 			}
-			console.error(`[ProjectModeV2] Provisional load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
+			console.error(`[ProjectMode] Provisional load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
 			// Track error so renderer can display it
 			this.setNavigationError(browserViewId, errorCode, errorDescription, validatedURL);
 			// Fire event to notify renderer
@@ -901,6 +777,11 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		webContents.on('did-stop-loading', () => {
 			// Fire event with EXPLICIT isLoading = false
 			this.fireNavigationStateChanged(browserViewId, false);
+
+			// CRITICAL: Set visual zoom limits AFTER page loads (per Electron docs)
+			// This enables pinch-to-zoom on touchpads
+			// Must be called after content is loaded for visual zoom to work properly
+			webContents.setVisualZoomLevelLimits(1, 5);
 		});
 
 		// NOTE: New window requests (Ctrl+Click, target="_blank", window.open, etc.)
@@ -922,8 +803,8 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 		// This allows renderer to sync its state without polling
 		webContents.on('devtools-closed', () => {
 			this._onDevToolsClosed.fire({ browserViewId });
-			this.devtoolsModes.delete(browserViewId);
 		});
+
 	}
 
 	// ============================================
@@ -933,10 +814,9 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 	private setupZoomHandlers(browserView: WebContentsView): void {
 		const wc = browserView.webContents;
 
-		// Enable pinch-to-zoom (touchpad gesture zoom)
-		// Parameters: minimum zoom factor, maximum zoom factor
-		// 0.25 = 25% minimum, 5 = 500% maximum
-		wc.setVisualZoomLevelLimits(0.25, 5);
+		// NOTE: setVisualZoomLevelLimits is called in did-stop-loading event
+		// (after page loads) per Electron documentation requirements
+		// This ensures visual zoom works properly with pinch gestures
 
 		// Handle keyboard zoom shortcuts (Ctrl++, Ctrl+-, Ctrl+0)
 		wc.on('before-input-event', (event, input) => {
@@ -1046,7 +926,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 						window.contentView.removeChildView(overlayData.view);
 						window.contentView.addChildView(overlayData.view);
 					} catch (e) {
-						console.error('[ProjectModeV2] Error bringing overlay to top:', e);
+						console.error('[ProjectMode] Error bringing overlay to top:', e);
 					}
 				}
 			}
@@ -1067,7 +947,7 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			try {
 				window.contentView.removeChildView(view);
 			} catch (e) {
-				console.error('[ProjectModeV2] Error removing overlay view:', e);
+				console.error('[ProjectMode] Error removing overlay view:', e);
 			}
 		}
 
@@ -1076,11 +956,24 @@ export class BrowserViewServiceV2 implements IProjectModeV2Service {
 			try {
 				view.webContents.close();
 			} catch (e) {
-				console.error('[ProjectModeV2] Error closing overlay webContents:', e);
+				console.error('[ProjectMode] Error closing overlay webContents:', e);
 			}
 		}
 
 		this.overlayViews.delete(overlayViewId);
+	}
+
+	/**
+	 * Execute JavaScript in an overlay view
+	 * Used for getting/setting state in the floating toolbar
+	 */
+	async executeScriptOnOverlay(overlayViewId: number, script: string): Promise<any> {
+		const overlayData = this.overlayViews.get(overlayViewId);
+		if (!overlayData || overlayData.view.webContents.isDestroyed()) {
+			throw new Error(`Overlay view ${overlayViewId} not found`);
+		}
+
+		return overlayData.view.webContents.executeJavaScript(script);
 	}
 
 	/**

@@ -5,15 +5,15 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
-import type { IProjectModeV2Service } from '../../common/projectModeV2/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
+import type { IProjectModeService } from '../../common/projectMode/ipc.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
 
 /**
- * ProjectModeV2 Service Bridge
+ * Service Bridge
  *
  * Renderer-side proxy that communicates with main process via IPC.
  */
-export class ProjectModeV2ServiceBridge implements IProjectModeV2Service {
+export class ServiceBridge implements IProjectModeService {
 	readonly _serviceBrand: undefined;
 
 	// ============================================
@@ -179,5 +179,9 @@ export class ProjectModeV2ServiceBridge implements IProjectModeV2Service {
 
 	async destroyOverlayView(overlayViewId: number): Promise<void> {
 		return this.channel.call('destroyOverlayView', overlayViewId);
+	}
+
+	async executeScriptOnOverlay(overlayViewId: number, script: string): Promise<any> {
+		return this.channel.call('executeScriptOnOverlay', { overlayViewId, script });
 	}
 }

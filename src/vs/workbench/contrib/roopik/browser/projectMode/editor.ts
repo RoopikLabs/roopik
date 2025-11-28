@@ -6,8 +6,8 @@
 import { EditorPane } from '../../../../browser/parts/editor/editorPane.js';
 import { ITelemetryService } from '../../../../../platform/telemetry/common/telemetry.js';
 import { IThemeService } from '../../../../../platform/theme/common/themeService.js';
-import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
-import { ProjectModeV2Input } from './projectModeV2Input.js';
+import { IStorageService } from '../../../../../platform/storage/common/storage.js';
+import { EditorTabInput } from './editorTabInput.js';
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { Dimension } from '../../../../../base/browser/dom.js';
 import { IEditorOpenContext } from '../../../../common/editor.js';
@@ -18,39 +18,23 @@ import { EditorInput } from '../../../../common/editor/editorInput.js';
 import { IEditorOptions } from '../../../../../platform/editor/common/editor.js';
 import { IMainProcessService } from '../../../../../platform/ipc/common/mainProcessService.js';
 import { INativeHostService } from '../../../../../platform/native/common/native.js';
-import { ProjectModeV2ServiceBridge } from './projectModeV2ServiceBridge.js';
-import { PROJECT_MODE_V2_CHANNEL } from '../../common/projectModeV2/ipc.js';
-import { BrowserControlBarV2, IBrowserControlBarV2Config, IBrowserControlBarV2Callbacks, BrowserBookmark } from './browserControlBarV2.js';
-import type { ViewBounds, DevToolsMode, NavigationStateChangedEvent } from '../../common/projectModeV2/types.js';
-import { generateFloatingToolbarHtml, FloatingToolbarState } from './floatingToolbarHtml.js';
+import { ServiceBridge } from './serviceBridge.js';
+import { PROJECT_MODE_CHANNEL } from '../../common/projectMode/ipc.js';
+import { BrowserControlBar, IBrowserControlBarConfig, IBrowserControlBarCallbacks } from './components/browserControlBar.js';
+import type { ViewBounds, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
 import { IRoopikEventService } from '../../common/events/index.js';
 import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
 import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
+// Features (extracted to features/ folder)
+import { InspectMode } from './features/inspectMode.js';
+import { Bookmarks } from './features/bookmarks.js';
+import { BrowserPause } from './features/browserPause.js';
+import { ActionBar } from './features/actionBar.js';
 
 /**
- * DevTools mode configuration flag
- *
- * - 'attached': DevTools docked inside browser window (has Device Toolbar toggle, close button)
- *   Electron manages the DevTools layout. Resize handle is NOT needed.
- *
- * - 'detached': DevTools in separate WebContentsView (full layout control, no Device Toolbar)
- *   We control the DevTools position and size. Resize handle IS needed.
- *
- * TODO: In the future, this will be a user setting preference.
- * For now, we default to 'attached' mode for the Device Toolbar feature.
- */
-const DEVTOOLS_MODE: DevToolsMode = 'attached'; // 'attached' or 'detached'
-
-/**
- * Storage key for browser bookmarks (workspace-scoped)
- * Each project has its own set of bookmarks
- */
-const BOOKMARKS_STORAGE_KEY = 'roopik.browser.bookmarks';
-
-/**
- * Project Mode V2 Editor
+ * Project Mode Editor
  *
  * Browser Preview with embedded DevTools using WebContentsView.
  * Features:
@@ -58,19 +42,18 @@ const BOOKMARKS_STORAGE_KEY = 'roopik.browser.bookmarks';
  * - Embedded DevTools (ON-DEMAND creation) with Device Toolbar
  * - CDP integration for AI agents (MCP compatible)
  */
-export class ProjectModeV2Editor extends EditorPane {
-	static readonly ID = 'roopik.projectModeV2Editor';
+export class Editor extends EditorPane {
+	static readonly ID = 'roopik.projectModeEditor';
 
 
 	private container: HTMLElement | undefined;
-	private controlBar: BrowserControlBarV2 | undefined;
+	private controlBar: BrowserControlBar | undefined;
 	private contentContainer: HTMLElement | undefined;
 	private browserContainer: HTMLElement | undefined;
-	private devtoolsContainer: HTMLElement | undefined;
 	private logger: ILogger;
 
 	// Service bridge to main process
-	private browserService: ProjectModeV2ServiceBridge;
+	private browserService: ServiceBridge;
 
 	// View IDs
 	private browserViewId: number | undefined;
@@ -86,35 +69,16 @@ export class ProjectModeV2Editor extends EditorPane {
 	// Used to decide whether to show placeholder on tab switch
 	private hasLoadedUrl: boolean = false;
 
-	// Floating toolbar overlay
-	private floatingToolbarViewId: number | undefined;
-	private floatingToolbarState: FloatingToolbarState = {
-		activeMode: 'none',
-		isExpanded: false
-	};
-
-	// "Browsing Paused" overlay - shown when menus/command palette are open
-	private pausedOverlay: HTMLElement | undefined;
-	private isBrowserPaused: boolean = false;
-
-	// DevTools resize handle
-	private devtoolsResizeHandle: HTMLElement | undefined;
-	private isResizingDevTools: boolean = false;
-	private devtoolsMinHeight: number = 100; // Minimum DevTools height in pixels
-	private devtoolsMaxHeightRatio: number = 0.8; // Max 80% of content area
 
 	// Track WHICH input we've registered the dispose listener for
 	// setInput() is called on EVERY tab switch, and may pass a different input instance!
-	private registeredInputForDispose: ProjectModeV2Input | undefined;
+	private registeredInputForDispose: EditorTabInput | undefined;
 
-	// Bookmarks (workspace-scoped storage)
-	private bookmarks: BrowserBookmark[] = [];
-
-	// Inspect element mode state
-	private isInspectModeActive: boolean = false;
-
-	// Edit mode state (controls floating toolbar visibility)
-	private isEditModeActive: boolean = false;
+	// Features (extracted to features/ folder)
+	private inspectMode!: InspectMode;
+	private bookmarks!: Bookmarks;
+	private browserPause!: BrowserPause;
+	private actionBar!: ActionBar;
 
 	constructor(
 		group: IEditorGroup,
@@ -130,109 +94,21 @@ export class ProjectModeV2Editor extends EditorPane {
 		@INotificationService private readonly notificationService: INotificationService,
 		@IClipboardService private readonly clipboardService: IClipboardService
 	) {
-		super(ProjectModeV2Editor.ID, group, telemetryService, themeService, storageService);
+		super(Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = RoopikLogger.create(loggerService);
-		this.browserService = new ProjectModeV2ServiceBridge(mainProcessService.getChannel(PROJECT_MODE_V2_CHANNEL));
+		this.browserService = new ServiceBridge(mainProcessService.getChannel(PROJECT_MODE_CHANNEL));
 
-		// Load bookmarks from workspace storage
-		this.loadBookmarks();
+		// Initialize features (extracted to features/ folder)
+		this.inspectMode = new InspectMode(this.browserService, this.notificationService);
+		this.bookmarks = new Bookmarks(this.storageService, this.notificationService, this.logger);
+		this.browserPause = new BrowserPause(this.browserService);
+		this.actionBar = new ActionBar(this.browserService, this.logger);
 
 		// Setup event subscriptions for UI updates
 		this.setupEventSubscriptions();
 
 		// Setup menu/command palette pause detection
 		this.setupBrowserPauseDetection();
-	}
-
-	// ============================================
-	// Bookmarks (Workspace Storage)
-	// ============================================
-
-	/**
-	 * Load bookmarks from workspace storage
-	 */
-	private loadBookmarks(): void {
-		try {
-			const stored = this.storageService.get(BOOKMARKS_STORAGE_KEY, StorageScope.WORKSPACE);
-			if (stored) {
-				this.bookmarks = JSON.parse(stored) as BrowserBookmark[];
-				this.logger.debug(`[ProjectModeV2] Loaded ${this.bookmarks.length} bookmarks from workspace storage`);
-			}
-		} catch (error) {
-			this.logger.warn('[ProjectModeV2] Failed to load bookmarks:', error);
-			this.bookmarks = [];
-		}
-	}
-
-	/**
-	 * Save bookmarks to workspace storage
-	 */
-	private saveBookmarks(): void {
-		try {
-			this.storageService.store(
-				BOOKMARKS_STORAGE_KEY,
-				JSON.stringify(this.bookmarks),
-				StorageScope.WORKSPACE,
-				StorageTarget.USER
-			);
-			this.logger.debug(`[ProjectModeV2] Saved ${this.bookmarks.length} bookmarks to workspace storage`);
-		} catch (error) {
-			this.logger.error('[ProjectModeV2] Failed to save bookmarks:', error);
-		}
-	}
-
-	/**
-	 * Add a bookmark
-	 */
-	private addBookmark(bookmark: BrowserBookmark): void {
-		// Don't add duplicates
-		if (this.isBookmarked(bookmark.url)) {
-			return;
-		}
-		this.bookmarks.push(bookmark);
-		this.saveBookmarks();
-		this.notificationService.notify({
-			severity: Severity.Info,
-			message: `Bookmarked: ${bookmark.title}`,
-			sticky: false
-		});
-	}
-
-	/**
-	 * Remove a bookmark by URL
-	 */
-	private removeBookmark(url: string): void {
-		const index = this.bookmarks.findIndex(b => b.url === url);
-		if (index !== -1) {
-			const removed = this.bookmarks.splice(index, 1)[0];
-			this.saveBookmarks();
-			this.notificationService.notify({
-				severity: Severity.Info,
-				message: `Removed bookmark: ${removed.title}`,
-				sticky: false
-			});
-		}
-	}
-
-	/**
-	 * Check if a URL is bookmarked
-	 */
-	private isBookmarked(url: string): boolean {
-		return this.bookmarks.some(b => b.url === url);
-	}
-
-	/**
-	 * Get all bookmarks
-	 */
-	private getBookmarks(): BrowserBookmark[] {
-		return [...this.bookmarks];
-	}
-
-	/**
-	 * Navigate to a bookmarked URL
-	 */
-	private navigateToBookmark(url: string): void {
-		this.navigate(url);
 	}
 
 	/**
@@ -269,7 +145,7 @@ export class ProjectModeV2Editor extends EditorPane {
 		// Subscribe to title change events - update tab title
 		this._register(this.eventService.onBrowserTitleChanged((event) => {
 
-			const input = this.input as ProjectModeV2Input;
+			const input = this.input as EditorTabInput;
 			if (input) {
 				input.setPageTitle(event.title);
 			}
@@ -316,113 +192,17 @@ export class ProjectModeV2Editor extends EditorPane {
 	}
 
 	/**
-	 * Pause browser - hide WebContentsView and show "Browsing Paused" overlay
-	 * Called when menus or command palette open
+	 * Pause browser - delegates to BrowserPause feature
 	 */
 	private pauseBrowser(): void {
-		if (this.isBrowserPaused || !this.browserViewId || !this.hasLoadedUrl) {
-			return;
-		}
-
-		this.isBrowserPaused = true;
-
-		// Hide the browser WebContentsView
-		this.browserService.setBrowserVisible(this.browserViewId, false);
-
-		// Hide floating toolbar too
-		if (this.floatingToolbarViewId) {
-			this.setFloatingToolbarVisible(false);
-		}
-
-		// Show the paused overlay
-		this.showPausedOverlay();
+		this.browserPause.pause(this.browserViewId, this.browserContainer, this.hasLoadedUrl);
 	}
 
 	/**
-	 * Resume browser - show WebContentsView and hide overlay
-	 * Called when menus or command palette close
+	 * Resume browser - delegates to BrowserPause feature
 	 */
 	private resumeBrowser(): void {
-		if (!this.isBrowserPaused || !this.browserViewId) {
-			return;
-		}
-
-		this.isBrowserPaused = false;
-
-		// Hide the paused overlay
-		this.hidePausedOverlay();
-
-		// Show the browser WebContentsView (only if we have a URL loaded)
-		if (this.hasLoadedUrl && this.isVisible()) {
-			this.browserService.setBrowserVisible(this.browserViewId, true);
-
-			// Show floating toolbar
-			if (this.floatingToolbarViewId) {
-				this.setFloatingToolbarVisible(true);
-			}
-		}
-	}
-
-	/**
-	 * Show "Browsing Paused" overlay
-	 */
-	private showPausedOverlay(): void {
-		if (!this.browserContainer) {
-			return;
-		}
-
-		// Create overlay if it doesn't exist
-		if (!this.pausedOverlay) {
-			this.pausedOverlay = document.createElement('div');
-			this.pausedOverlay.style.cssText = `
-				position: absolute;
-				top: 0;
-				left: 0;
-				right: 0;
-				bottom: 0;
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				justify-content: center;
-				background-color: var(--vscode-editor-background);
-				color: var(--vscode-descriptionForeground);
-				font-family: var(--vscode-font-family);
-				font-size: 14px;
-				gap: 12px;
-				z-index: 100;
-			`;
-
-			// Pause icon
-			const icon = document.createElement('div');
-			icon.style.cssText = `
-				font-size: 32px;
-				opacity: 0.6;
-			`;
-			icon.textContent = '⏸';
-			this.pausedOverlay.appendChild(icon);
-
-			// Text
-			const text = document.createElement('div');
-			text.style.cssText = `
-				font-size: 14px;
-				opacity: 0.8;
-			`;
-			text.textContent = 'Browsing paused';
-			this.pausedOverlay.appendChild(text);
-
-			this.browserContainer.appendChild(this.pausedOverlay);
-		}
-
-		this.pausedOverlay.style.display = 'flex';
-	}
-
-	/**
-	 * Hide "Browsing Paused" overlay
-	 */
-	private hidePausedOverlay(): void {
-		if (this.pausedOverlay) {
-			this.pausedOverlay.style.display = 'none';
-		}
+		this.browserPause.resume(this.browserViewId, this.hasLoadedUrl, this.isVisible());
 	}
 
 	protected createEditor(parent: HTMLElement): void {
@@ -437,7 +217,7 @@ export class ProjectModeV2Editor extends EditorPane {
 		parent.appendChild(this.container);
 
 		// Browser control bar configuration
-		const config: IBrowserControlBarV2Config = {
+		const config: IBrowserControlBarConfig = {
 			showDevTools: true,
 			showInspectMode: true,
 			showScreenshot: true,
@@ -448,29 +228,29 @@ export class ProjectModeV2Editor extends EditorPane {
 		};
 
 		// Browser control bar callbacks
-		const callbacks: IBrowserControlBarV2Callbacks = {
+		const callbacks: IBrowserControlBarCallbacks = {
 			onNavigate: (url: string) => this.navigate(url),
 			onBack: () => this.goBack(),
 			onForward: () => this.goForward(),
 			onHome: () => this.goHome(),
 			onRefresh: () => this.refresh(),
 			onStopDevServer: () => this.stopDevServer(),
-			onInspectMode: () => this.toggleInspectMode(),
+			onInspectMode: () => this.enableInspectMode(),
 			onDevTools: () => this.toggleDevTools(),
 			onHardReload: () => this.hardReload(),
 			onScreenshot: () => this.takeScreenshot(),
 			onCopyUrl: () => this.copyCurrentUrl(),
-			// Bookmark callbacks
-			onBookmarkAdd: (bookmark: BrowserBookmark) => this.addBookmark(bookmark),
-			onBookmarkRemove: (url: string) => this.removeBookmark(url),
-			onBookmarkClick: (url: string) => this.navigateToBookmark(url),
-			getBookmarks: () => this.getBookmarks(),
-			isBookmarked: (url: string) => this.isBookmarked(url),
+			// Bookmark callbacks (delegate to Bookmarks feature)
+			onBookmarkAdd: (bookmark) => this.bookmarks.add(bookmark),
+			onBookmarkRemove: (url) => this.bookmarks.remove(url),
+			onBookmarkClick: (url) => this.navigate(url),
+			getBookmarks: () => this.bookmarks.getAll(),
+			isBookmarked: (url) => this.bookmarks.isBookmarked(url),
 			// Edit Mode callback
 			onEditModeToggle: (enabled: boolean) => this.toggleEditModeToolbar(enabled)
 		};
 
-		this.controlBar = this._register(new BrowserControlBarV2(this.container, config, callbacks));
+		this.controlBar = this._register(new BrowserControlBar(this.container, config, callbacks));
 
 		// Content container (browser + devtools)
 		this.contentContainer = document.createElement('div');
@@ -498,48 +278,16 @@ export class ProjectModeV2Editor extends EditorPane {
 		// Placeholder shown when no URL is loaded (WebContentsView renders on top of this)
 		this.createPlaceholder();
 
-		// DevTools resize handle (between browser and devtools, initially hidden)
-		this.devtoolsResizeHandle = document.createElement('div');
-		this.devtoolsResizeHandle.style.display = 'none';
-		this.devtoolsResizeHandle.style.height = '4px';
-		this.devtoolsResizeHandle.style.width = '100%';
-		this.devtoolsResizeHandle.style.cursor = 'ns-resize';
-		this.devtoolsResizeHandle.style.backgroundColor = 'var(--vscode-panel-border)';
-		this.devtoolsResizeHandle.style.position = 'relative';
-		this.devtoolsResizeHandle.style.zIndex = '10';
-		this.devtoolsResizeHandle.style.flexShrink = '0';
-		// Hover effect
-		this.devtoolsResizeHandle.addEventListener('mouseenter', () => {
-			this.devtoolsResizeHandle!.style.backgroundColor = 'var(--vscode-focusBorder)';
-		});
-		this.devtoolsResizeHandle.addEventListener('mouseleave', () => {
-			if (!this.isResizingDevTools) {
-				this.devtoolsResizeHandle!.style.backgroundColor = 'var(--vscode-panel-border)';
-			}
-		});
-		this.setupDevToolsResize();
-		this.contentContainer.appendChild(this.devtoolsResizeHandle);
-
-		// DevTools container (bottom area, initially hidden)
-		this.devtoolsContainer = document.createElement('div');
-		this.devtoolsContainer.style.display = 'none';
-		this.devtoolsContainer.style.height = '300px'; // Fixed initial height (px instead of %)
-		this.devtoolsContainer.style.backgroundColor = '#242424';
-		this.devtoolsContainer.style.position = 'relative';
-		this.devtoolsContainer.style.flexShrink = '0';
-		this.contentContainer.appendChild(this.devtoolsContainer);
-
 		// Setup ResizeObserver for automatic bounds updates
-		// Observe container, browserContainer, and devtoolsContainer to catch all resize events
+		// Observe container and browserContainer to catch all resize events
 		// This is critical for split screen scenarios where parent resizes
 		this.resizeObserver = new ResizeObserver(() => {
 			this.updateViewBounds();
-			// Also update floating toolbar bounds on resize
-			this.updateFloatingToolbarBounds();
+			// Also update action bar bounds on resize
+			this.updateBottomActionBarBounds();
 		});
 		this.resizeObserver.observe(this.container); // Parent container for split resize
 		this.resizeObserver.observe(this.browserContainer);
-		this.resizeObserver.observe(this.devtoolsContainer);
 
 		// NOTE: Browser view initialization is handled by setInput()
 		// This ensures only ONE initialization happens per editor lifecycle
@@ -622,12 +370,6 @@ export class ProjectModeV2Editor extends EditorPane {
 			this.browserService.setBrowserVisible(this.browserViewId, true);
 			// Update bounds with robust timing to ensure CSS layout is complete
 			this.updateBoundsWithRetry();
-
-			// Floating toolbar is now controlled by Edit Mode button (default hidden)
-			// Only show if edit mode is already active
-			if (this.isEditModeActive) {
-				this.createFloatingToolbar();
-			}
 		}
 	}
 
@@ -638,29 +380,29 @@ export class ProjectModeV2Editor extends EditorPane {
 	private updateBoundsWithRetry(): void {
 		// Immediate update (may get wrong bounds if layout not complete)
 		this.updateViewBounds();
-		this.updateFloatingToolbarBounds();
+		this.updateBottomActionBarBounds();
 
 		// Use requestAnimationFrame to wait for next paint
 		requestAnimationFrame(() => {
 			this.updateViewBounds();
-			this.updateFloatingToolbarBounds();
+			this.updateBottomActionBarBounds();
 
 			// Additional delayed updates to catch late layout changes
 			// This handles split screen and other complex layout scenarios
 			setTimeout(() => {
 				this.updateViewBounds();
-				this.updateFloatingToolbarBounds();
+				this.updateBottomActionBarBounds();
 			}, 50);
 
 			setTimeout(() => {
 				this.updateViewBounds();
-				this.updateFloatingToolbarBounds();
+				this.updateBottomActionBarBounds();
 			}, 150);
 
 			// Final update after layout should definitely be stable
 			setTimeout(() => {
 				this.updateViewBounds();
-				this.updateFloatingToolbarBounds();
+				this.updateBottomActionBarBounds();
 			}, 300);
 		});
 	}
@@ -678,93 +420,6 @@ export class ProjectModeV2Editor extends EditorPane {
 		if (this.browserViewId) {
 			this.browserService.setBrowserVisible(this.browserViewId, false);
 		}
-		// Hide floating toolbar when placeholder is shown
-		if (this.floatingToolbarViewId) {
-			this.setFloatingToolbarVisible(false);
-		}
-	}
-
-	/**
-	 * Setup DevTools resize functionality
-	 * Allows users to drag the resize handle to change DevTools height
-	 */
-	private setupDevToolsResize(): void {
-		if (!this.devtoolsResizeHandle) {
-			return;
-		}
-
-		let startY = 0;
-		let startHeight = 0;
-
-		const onMouseMove = (e: MouseEvent) => {
-			if (!this.isResizingDevTools || !this.devtoolsContainer || !this.contentContainer) {
-				return;
-			}
-
-			// Calculate new height (moving up = more height, moving down = less height)
-			const deltaY = startY - e.clientY;
-			let newHeight = startHeight + deltaY;
-
-			// Get content container height for max calculation
-			const contentRect = this.contentContainer.getBoundingClientRect();
-			const maxHeight = contentRect.height * this.devtoolsMaxHeightRatio;
-
-			// Clamp to min/max
-			newHeight = Math.max(this.devtoolsMinHeight, Math.min(newHeight, maxHeight));
-
-			// Apply new height
-			this.devtoolsContainer.style.height = `${newHeight}px`;
-
-			// Update WebContentsView bounds in real-time for smooth resize
-			this.updateViewBounds();
-		};
-
-		const onMouseUp = () => {
-			if (!this.isResizingDevTools) {
-				return;
-			}
-
-			this.isResizingDevTools = false;
-
-			// Reset handle color
-			if (this.devtoolsResizeHandle) {
-				this.devtoolsResizeHandle.style.backgroundColor = 'var(--vscode-panel-border)';
-			}
-
-			// Remove document listeners
-			document.removeEventListener('mousemove', onMouseMove);
-			document.removeEventListener('mouseup', onMouseUp);
-
-			// Remove selection prevention
-			document.body.style.userSelect = '';
-			document.body.style.cursor = '';
-
-			// Final bounds update
-			this.updateViewBounds();
-		};
-
-		this.devtoolsResizeHandle.addEventListener('mousedown', (e: MouseEvent) => {
-			if (!this.devtoolsContainer) {
-				return;
-			}
-
-			this.isResizingDevTools = true;
-			startY = e.clientY;
-			startHeight = this.devtoolsContainer.getBoundingClientRect().height;
-
-			// Highlight handle during resize
-			this.devtoolsResizeHandle!.style.backgroundColor = 'var(--vscode-focusBorder)';
-
-			// Prevent text selection during drag
-			document.body.style.userSelect = 'none';
-			document.body.style.cursor = 'ns-resize';
-
-			// Add document-level listeners
-			document.addEventListener('mousemove', onMouseMove);
-			document.addEventListener('mouseup', onMouseUp);
-
-			e.preventDefault();
-		});
 	}
 
 	/**
@@ -814,14 +469,6 @@ export class ProjectModeV2Editor extends EditorPane {
 			this._register(this.browserService.onDevToolsClosed((event) => {
 				if (event.browserViewId === this.browserViewId && this.devtoolsVisible) {
 					this.devtoolsVisible = false;
-
-					// In detached mode, also hide our containers
-					if (DEVTOOLS_MODE === 'detached' && this.devtoolsContainer) {
-						this.devtoolsContainer.style.display = 'none';
-						if (this.devtoolsResizeHandle) {
-							this.devtoolsResizeHandle.style.display = 'none';
-						}
-					}
 				}
 			}));
 
@@ -843,13 +490,13 @@ export class ProjectModeV2Editor extends EditorPane {
 				runtime: true,
 				page: true
 			}).catch((cdpError) => {
-				this.logger.warn('[ProjectModeV2] Failed to enable CDP domains (non-fatal):', cdpError);
+				this.logger.warn('[ProjectMode] Failed to enable CDP domains (non-fatal):', cdpError);
 			});
 
 			// Note: Navigation is handled by setInput(), not here
 			// This prevents double navigation when reopening tabs
 		} catch (error) {
-			this.logger.error('[ProjectModeV2] Failed to initialize browser view:', error);
+			this.logger.error('[ProjectMode] Failed to initialize browser view:', error);
 			this.browserViewId = undefined;
 		} finally {
 			this.isInitializing = false;
@@ -926,14 +573,6 @@ export class ProjectModeV2Editor extends EditorPane {
 		// Check if URL changed
 		if (currentUrl !== this.lastKnownUrl) {
 			this.lastKnownUrl = currentUrl;
-
-			// Reset inspect mode on navigation (script is injected per-page)
-			// The injected script won't survive page navigation anyway,
-			// but we need to sync the state
-			if (this.isInspectModeActive) {
-				this.isInspectModeActive = false;
-				this.logger.info('[ProjectModeV2] Inspect Mode reset due to navigation');
-			}
 
 			// Publish navigation event to central event bus (title is sent separately via titleChanged)
 			this.eventService.publish('browser.navigated', {
@@ -1026,19 +665,7 @@ export class ProjectModeV2Editor extends EditorPane {
 		};
 		this.browserService.setBrowserBounds(this.browserViewId, browserBounds);
 
-		// Update DevTools bounds if visible
-		if (this.devtoolsVisible && this.devtoolsContainer) {
-			const devtoolsRect = this.devtoolsContainer.getBoundingClientRect();
-			if (devtoolsRect.width > 0 && devtoolsRect.height > 0) {
-				const devtoolsBounds: ViewBounds = {
-					x: Math.floor(devtoolsRect.left),
-					y: Math.floor(devtoolsRect.top),
-					width: Math.floor(devtoolsRect.width),
-					height: Math.floor(devtoolsRect.height)
-				};
-				this.browserService.setDevToolsBounds(this.browserViewId, devtoolsBounds);
-			}
-		}
+		// Note: In attached mode, Electron manages DevTools layout automatically
 	}
 
 	/**
@@ -1058,12 +685,12 @@ export class ProjectModeV2Editor extends EditorPane {
 
 	private async navigate(url: string): Promise<void> {
 		if (!url) {
-			this.logger.warn('[ProjectModeV2] Navigation aborted: No URL provided');
+			this.logger.warn('[ProjectMode] Navigation aborted: No URL provided');
 			return;
 		}
 
 		if (!this.browserViewId) {
-			this.logger.error('[ProjectModeV2] Navigation aborted: No browser view ID! Browser view may not be initialized.');
+			this.logger.error('[ProjectMode] Navigation aborted: No browser view ID! Browser view may not be initialized.');
 			return;
 		}
 
@@ -1077,7 +704,7 @@ export class ProjectModeV2Editor extends EditorPane {
 		if (this.isSearchQuery(trimmedUrl)) {
 			// Convert search query to Google search URL
 			const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(trimmedUrl)}`;
-			this.logger.info(`[ProjectModeV2] Searching Google for: "${trimmedUrl}"`);
+			this.logger.info(`[ProjectMode] Searching Google for: "${trimmedUrl}"`);
 			url = searchUrl;
 		} else if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://') && !trimmedUrl.startsWith('about:')) {
 			// Looks like a URL without protocol - add https://
@@ -1108,12 +735,12 @@ export class ProjectModeV2Editor extends EditorPane {
 			}
 
 			// Update input
-			const input = this.input as ProjectModeV2Input;
+			const input = this.input as EditorTabInput;
 			if (input) {
 				input.setUrl(url);
 			}
 		} catch (error) {
-			this.logger.error(`[ProjectModeV2] Navigation failed for URL "${url}":`, error);
+			this.logger.error(`[ProjectMode] Navigation failed for URL "${url}":`, error);
 
 			// Show user-friendly error message
 			const errorMessage = this.getNavigationErrorMessage(error, url);
@@ -1205,7 +832,7 @@ export class ProjectModeV2Editor extends EditorPane {
 	private stopDevServer(): void {
 		// TODO: Implement dev server stop functionality
 		// This will integrate with ViteServerService when available
-		this.logger.info('[ProjectModeV2] Stop Dev Server clicked (not yet implemented)');
+		this.logger.info('[ProjectMode] Stop Dev Server clicked (not yet implemented)');
 	}
 
 	// ============================================
@@ -1218,333 +845,94 @@ export class ProjectModeV2Editor extends EditorPane {
 		}
 
 		if (this.devtoolsVisible) {
-			// =========================================================
-			// CLOSE DevTools
-			// =========================================================
+			// Close DevTools
 			await this.browserService.closeDevTools(this.browserViewId);
-
-			// In detached mode, hide our custom container and resize handle
-			if (DEVTOOLS_MODE === 'detached' && this.devtoolsContainer) {
-				this.devtoolsContainer.style.display = 'none';
-				if (this.devtoolsResizeHandle) {
-					this.devtoolsResizeHandle.style.display = 'none';
-				}
-			}
-
 			this.devtoolsVisible = false;
 		} else {
-			// =========================================================
-			// OPEN DevTools
-			// =========================================================
-			if (DEVTOOLS_MODE === 'attached') {
-				// ATTACHED MODE: Electron manages DevTools layout
-				// DevTools will dock at bottom of browser window
-				// Device Toolbar toggle and close button will be available!
-				await this.browserService.openDevTools(this.browserViewId, { mode: 'attached' as const });
-				this.devtoolsVisible = true;
-			} else {
-				// DETACHED MODE: We manage DevTools layout
-				// Show resize handle and container
-				if (!this.devtoolsContainer) {
-					return;
-				}
-
-				if (this.devtoolsResizeHandle) {
-					this.devtoolsResizeHandle.style.display = 'block';
-				}
-				this.devtoolsContainer.style.display = 'block';
-
-				// Get container bounds (need slight delay for layout to update)
-				await new Promise(resolve => requestAnimationFrame(resolve));
-				const rect = this.devtoolsContainer.getBoundingClientRect();
-				const bounds: ViewBounds = {
-					x: Math.floor(rect.left),
-					y: Math.floor(rect.top),
-					width: Math.floor(rect.width),
-					height: Math.floor(rect.height)
-				};
-
-				// Open DevTools with our custom bounds
-				await this.browserService.openDevTools(this.browserViewId, {
-					mode: 'detached',
-					bounds
-				});
-				this.devtoolsVisible = true;
-
-				// Update bounds after layout settles
-				setTimeout(() => this.updateViewBounds(), 100);
-			}
+			// Open DevTools in attached mode (docked at bottom)
+			// Electron manages the layout. Device Toolbar toggle and close button are available.
+			// Users can detach from DevTools settings menu if needed.
+			await this.browserService.openDevTools(this.browserViewId, {});
+			this.devtoolsVisible = true;
 		}
 	}
 
 	// ============================================
-	// Floating Toolbar (Overlay)
+	// Edit Mode & Action Bar (delegates to ActionBar feature)
 	// ============================================
 
 	/**
-	 * Create floating toolbar overlay
-	 * This creates a WebContentsView that renders ON TOP of the browser view
-	 */
-	private async createFloatingToolbar(): Promise<void> {
-		if (!this.browserViewId || !this.browserContainer) {
-			return;
-		}
-
-		// Don't create if already exists
-		if (this.floatingToolbarViewId) {
-			return;
-		}
-
-		try {
-			// Calculate toolbar bounds - bottom center of browser container
-			const browserRect = this.browserContainer.getBoundingClientRect();
-			const toolbarWidth = 280;
-			const toolbarHeight = 60;
-
-			const bounds: ViewBounds = {
-				x: Math.floor(browserRect.left + (browserRect.width - toolbarWidth) / 2),
-				y: Math.floor(browserRect.bottom - toolbarHeight - 16), // 16px from bottom
-				width: toolbarWidth,
-				height: toolbarHeight
-			};
-
-			// Generate HTML content
-			const htmlContent = generateFloatingToolbarHtml(this.floatingToolbarState);
-
-			// Create overlay view
-			this.floatingToolbarViewId = await this.browserService.createOverlayView(
-				this.browserViewId,
-				bounds,
-				htmlContent
-			);
-		} catch (error) {
-			this.logger.error('[ProjectModeV2] Failed to create floating toolbar:', error);
-		}
-	}
-
-	/**
-	 * Update floating toolbar bounds when browser container resizes
-	 */
-	private async updateFloatingToolbarBounds(): Promise<void> {
-		if (!this.floatingToolbarViewId || !this.browserContainer) {
-			return;
-		}
-
-		const browserRect = this.browserContainer.getBoundingClientRect();
-		const toolbarWidth = 280;
-		const toolbarHeight = 60;
-
-		const bounds: ViewBounds = {
-			x: Math.floor(browserRect.left + (browserRect.width - toolbarWidth) / 2),
-			y: Math.floor(browserRect.bottom - toolbarHeight - 16),
-			width: toolbarWidth,
-			height: toolbarHeight
-		};
-
-		await this.browserService.setOverlayBounds(this.floatingToolbarViewId, bounds);
-	}
-
-	/**
-	 * Show/hide floating toolbar
-	 */
-	private async setFloatingToolbarVisible(visible: boolean): Promise<void> {
-		if (!this.floatingToolbarViewId) {
-			if (visible) {
-				// Create toolbar if it doesn't exist and we want to show it
-				await this.createFloatingToolbar();
-			}
-			return;
-		}
-
-		await this.browserService.setOverlayVisible(this.floatingToolbarViewId, visible);
-	}
-
-	/**
-	 * Destroy floating toolbar
-	 */
-	private async destroyFloatingToolbar(): Promise<void> {
-		if (this.floatingToolbarViewId) {
-			await this.browserService.destroyOverlayView(this.floatingToolbarViewId);
-			this.floatingToolbarViewId = undefined;
-		}
-	}
-
-	// ============================================
-	// Edit Mode (Floating Toolbar Toggle)
-	// ============================================
-
-	/**
-	 * Toggle Edit Mode - shows/hides the floating bottom action bar
-	 * Called from the Edit Mode button in the address bar
+	 * Toggle Edit Mode - shows/hides the bottom action bar
 	 */
 	private async toggleEditModeToolbar(enabled: boolean): Promise<void> {
-		this.isEditModeActive = enabled;
-
 		if (enabled) {
-			// Show floating toolbar
-			if (!this.floatingToolbarViewId) {
-				await this.createFloatingToolbar();
+			if (!this.actionBar.exists) {
+				await this.actionBar.create(this.browserViewId!, this.getBrowserBounds());
+			} else {
+				await this.actionBar.show();
 			}
-			await this.setFloatingToolbarVisible(true);
-			this.logger.info('[ProjectModeV2] Edit Mode ENABLED - floating toolbar shown');
+			this.logger.info('[ProjectMode] Edit Mode ENABLED');
 		} else {
-			// Hide floating toolbar
-			await this.setFloatingToolbarVisible(false);
-			this.logger.info('[ProjectModeV2] Edit Mode DISABLED - floating toolbar hidden');
-		}
-	}
-
-	// ============================================
-	// Inspect Mode
-	// ============================================
-
-	/**
-	 * Toggle Inspect Element Mode
-	 *
-	 * When enabled:
-	 * - Elements are highlighted on hover with an outline
-	 * - Clicking an element copies its full outerHTML to clipboard and auto-exits
-	 * - Press ESC to exit without copying
-	 *
-	 * This is accessible via API for automation (Playwright, agents, etc.)
-	 */
-	private async toggleInspectMode(): Promise<void> {
-		if (!this.browserViewId) {
-			this.logger.warn('[ProjectModeV2] Cannot toggle inspect mode: no browser view');
-			return;
-		}
-
-		// Check actual state in browser (not our cached state)
-		// This handles cases where script exited via ESC or copy
-		const isActiveInBrowser = await this.isInspectModeActiveInBrowser();
-
-		if (isActiveInBrowser) {
-			// Currently active, disable it
-			await this.disableInspectMode();
-		} else {
-			// Not active, enable it
-			await this.enableInspectMode();
+			await this.actionBar.hide();
+			this.logger.info('[ProjectMode] Edit Mode DISABLED');
 		}
 	}
 
 	/**
-	 * Check if inspect mode is actually active in the browser
-	 * (The script may have exited via ESC or copy)
+	 * Get current browser container bounds
 	 */
-	private async isInspectModeActiveInBrowser(): Promise<boolean> {
-		if (!this.browserViewId) {
-			return false;
-		}
-
-		try {
-			return await this.browserService.executeScript(
-				this.browserViewId,
-				'typeof window.__roopikInspectCleanup === "function"'
-			);
-		} catch {
-			return false;
-		}
+	private getBrowserBounds(): ViewBounds {
+		const rect = this.browserContainer?.getBoundingClientRect() || { left: 0, top: 0, width: 0, height: 0 };
+		return {
+			x: Math.floor(rect.left),
+			y: Math.floor(rect.top),
+			width: Math.floor(rect.width),
+			height: Math.floor(rect.height)
+		};
 	}
+
+	/**
+	 * Update action bar bounds when browser resizes
+	 */
+	private async updateBottomActionBarBounds(): Promise<void> {
+		await this.actionBar.updateBounds(this.getBrowserBounds());
+	}
+
+	// TODO: Action bar features are unimplemented
+	// Communication will use executeScript for on-demand queries
+
+	// ============================================
+	// Inspect Mode (delegates to InspectMode feature class)
+	// ============================================
 
 	/**
 	 * Enable Inspect Element Mode
-	 * Injects script into browser to highlight elements and capture clicks
+	 * Fire and forget - browser script handles auto-cleanup after copy
 	 */
 	private async enableInspectMode(): Promise<void> {
 		if (!this.browserViewId) {
 			return;
 		}
-
-		this.logger.info('[ProjectModeV2] Inspect Mode ENABLED');
-		this.isInspectModeActive = true;
-
-		// Inject the inspect mode script
-		const inspectScript = this.getInspectModeScript();
-
-		try {
-			await this.browserService.executeScript(this.browserViewId, inspectScript);
-
-			// Show notification
-			this.notificationService.notify({
-				severity: Severity.Info,
-				message: 'Inspect Mode: Click element to copy HTML.',
-				sticky: false
-			});
-		} catch (error) {
-			this.logger.error('[ProjectModeV2] Failed to enable inspect mode:', error);
-			this.isInspectModeActive = false;
-		}
-	}
-
-	/**
-	 * Disable Inspect Element Mode
-	 * Removes the injected script from the browser
-	 */
-	private async disableInspectMode(): Promise<void> {
-		this.isInspectModeActive = false;
-
-		if (!this.browserViewId) {
-			return;
-		}
-
-		this.logger.info('[ProjectModeV2] Inspect Mode DISABLED');
-
-		// Inject cleanup script (safe to call even if already cleaned up)
-		const cleanupScript = `
-			(function() {
-				if (window.__roopikInspectCleanup) {
-					window.__roopikInspectCleanup();
-				}
-			})();
-		`;
-
-		try {
-			await this.browserService.executeScript(this.browserViewId, cleanupScript);
-		} catch (error) {
-			this.logger.error('[ProjectModeV2] Failed to disable inspect mode:', error);
-		}
-	}
-
-	/**
-	 * Generate the inspect mode JavaScript to inject into the browser
-	 * This script:
-	 * - Creates a highlight overlay that follows the hovered element
-	 * - Captures clicks and copies element's outerHTML to clipboard
-	 * - Shows a toast notification when element is copied
-	 * - Sends messages to parent for state sync
-	 * - Listens for ESC key to exit inspect mode
-	 */
-	private getInspectModeScript(): string {
-		return INSPECT_MODE_SCRIPT;
+		await this.inspectMode.enable(this.browserViewId);
 	}
 
 	/**
 	 * Get the last inspected element's HTML
 	 * API for programmatic access (agents, automation tools like Playwright)
-	 *
-	 * @returns The outerHTML of the last clicked element, or null if none
 	 */
 	public async getLastInspectedElementHtml(): Promise<string | null> {
-		if (!this.browserViewId) {
-			return null;
-		}
-
-		try {
-			return await this.browserService.executeScript(
-				this.browserViewId,
-				'window.__roopikLastInspectedHtml || null'
-			);
-		} catch {
-			return null;
-		}
+		return this.inspectMode.getLastInspectedHtml(this.browserViewId!);
 	}
 
 	/**
-	 * Check if inspect mode is currently active
+	 * Check if inspect mode is active in the browser
 	 * API for programmatic access
 	 */
-	public isInspectModeEnabled(): boolean {
-		return this.isInspectModeActive;
+	public async isInspectModeActive(): Promise<boolean> {
+		if (!this.browserViewId) {
+			return false;
+		}
+		return this.inspectMode.isActiveInBrowser(this.browserViewId);
 	}
 
 	/**
@@ -1552,18 +940,8 @@ export class ProjectModeV2Editor extends EditorPane {
 	 * API for agents and automation tools
 	 */
 	public async startInspectMode(): Promise<void> {
-		if (!this.isInspectModeActive) {
-			await this.toggleInspectMode();
-		}
-	}
-
-	/**
-	 * Disable inspect mode programmatically
-	 * API for agents and automation tools
-	 */
-	public async stopInspectMode(): Promise<void> {
-		if (this.isInspectModeActive) {
-			await this.toggleInspectMode();
+		if (this.browserViewId) {
+			await this.inspectMode.enable(this.browserViewId);
 		}
 	}
 
@@ -1631,7 +1009,7 @@ export class ProjectModeV2Editor extends EditorPane {
 		try {
 			// Use VSCode's clipboard service (works reliably in Electron)
 			await this.clipboardService.writeText(url);
-			this.logger.info(`[ProjectModeV2] URL copied to clipboard: ${url}`);
+			this.logger.info(`[ProjectMode] URL copied to clipboard: ${url}`);
 
 			// Show success notification
 			this.notificationService.notify({
@@ -1640,7 +1018,7 @@ export class ProjectModeV2Editor extends EditorPane {
 				sticky: false
 			});
 		} catch (error) {
-			this.logger.error('[ProjectModeV2] Failed to copy URL to clipboard:', error);
+			this.logger.error('[ProjectMode] Failed to copy URL to clipboard:', error);
 			this.notificationService.notify({
 				severity: Severity.Error,
 				message: 'Failed to copy URL to clipboard',
@@ -1663,7 +1041,7 @@ export class ProjectModeV2Editor extends EditorPane {
 			link.href = dataUrl;
 			link.click();
 		} catch (error) {
-			this.logger.error('[ProjectModeV2] Screenshot failed:', error);
+			this.logger.error('[ProjectMode] Screenshot failed:', error);
 		}
 	}
 
@@ -1674,7 +1052,7 @@ export class ProjectModeV2Editor extends EditorPane {
 	override async setInput(input: EditorInput, options: IEditorOptions | undefined, context: IEditorOpenContext, token: CancellationToken): Promise<void> {
 		await super.setInput(input, options, context, token);
 
-		if (input instanceof ProjectModeV2Input) {
+		if (input instanceof EditorTabInput) {
 			const initialUrl = input.url;
 
 			// CRITICAL: Listen for input disposal - this means the TAB is truly closed
@@ -1737,7 +1115,7 @@ export class ProjectModeV2Editor extends EditorPane {
 				this.controlBar.setUrl(state.url);
 			}
 		} catch (error) {
-			this.logger.warn('[ProjectModeV2] Failed to sync URL bar:', error);
+			this.logger.warn('[ProjectMode] Failed to sync URL bar:', error);
 		}
 	}
 
@@ -1828,8 +1206,6 @@ export class ProjectModeV2Editor extends EditorPane {
 				}
 				// Update bounds with retry to ensure correct sizing
 				this.updateBoundsWithRetry();
-				// Show floating toolbar
-				this.setFloatingToolbarVisible(true);
 			} else {
 				// No URL loaded - show placeholder (browser stays hidden)
 				this.showPlaceholder();
@@ -1840,8 +1216,6 @@ export class ProjectModeV2Editor extends EditorPane {
 			if (this.browserViewId) {
 				this.browserService.setBrowserVisible(this.browserViewId, false);
 			}
-			// Hide floating toolbar
-			this.setFloatingToolbarVisible(false);
 		}
 	}
 
@@ -1853,11 +1227,6 @@ export class ProjectModeV2Editor extends EditorPane {
 		// The browser should only be destroyed in dispose() when the editor is actually closed.
 		if (this.browserViewId) {
 			this.browserService.setBrowserVisible(this.browserViewId, false);
-		}
-
-		// Hide floating toolbar but don't destroy
-		if (this.floatingToolbarViewId) {
-			this.setFloatingToolbarVisible(false);
 		}
 
 		// Note: We do NOT reset hasLoadedUrl, lastKnownUrl, lastKnownTitle etc.
@@ -1890,9 +1259,9 @@ export class ProjectModeV2Editor extends EditorPane {
 		// Hide views immediately
 		this.hideViews();
 
-		// Destroy floating toolbar
-		this.destroyFloatingToolbar()
-			.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy floating toolbar:', err));
+		// Destroy action bar
+		this.actionBar.destroy()
+			.catch((err: Error) => this.logger.error('[ProjectMode] Failed to destroy action bar:', err));
 
 		// Publish browser destroyed event to central event bus
 		this.eventService.publish('browser.destroyed', {
@@ -1901,7 +1270,7 @@ export class ProjectModeV2Editor extends EditorPane {
 
 		// Destroy the browser view in main process
 		this.browserService.destroyBrowserView(destroyedBrowserViewId)
-			.catch(err => this.logger.error('[ProjectModeV2] Failed to destroy browser view:', err));
+			.catch(err => this.logger.error('[ProjectMode] Failed to destroy browser view:', err));
 	}
 
 	override dispose(): void {
@@ -1918,290 +1287,3 @@ export class ProjectModeV2Editor extends EditorPane {
 		super.dispose();
 	}
 }
-
-// ============================================
-// Inspect Mode Script (injected into browser)
-// ============================================
-
-/**
- * JavaScript to inject into the browser for element inspection.
- * Features:
- * - Highlight overlay follows hovered element
- * - Label shows tag name, id, and classes (no dimensions)
- * - Click copies outerHTML to clipboard
- * - Toast notification confirms copy
- * - ESC key exits inspect mode
- * - Messages sent to parent for state sync
- */
-const INSPECT_MODE_SCRIPT = `
-(function() {
-	// Cleanup any existing inspect mode
-	if (window.__roopikInspectCleanup) {
-		window.__roopikInspectCleanup();
-	}
-
-	// ========== Create UI Elements ==========
-
-	// Highlight overlay
-	const overlay = document.createElement('div');
-	overlay.id = '__roopik_inspect_overlay';
-	overlay.style.cssText = [
-		'position: fixed',
-		'pointer-events: none',
-		'z-index: 2147483647',
-		'border: 2px solid #007acc',
-		'background-color: rgba(0, 122, 204, 0.1)',
-		'transition: all 0.05s ease-out',
-		'display: none'
-	].join(';');
-	document.body.appendChild(overlay);
-
-	// Element label (tag info)
-	const label = document.createElement('div');
-	label.id = '__roopik_inspect_label';
-	label.style.cssText = [
-		'position: fixed',
-		'pointer-events: none',
-		'z-index: 2147483647',
-		'background-color: #007acc',
-		'color: white',
-		'font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-		'font-size: 11px',
-		'padding: 2px 6px',
-		'border-radius: 2px',
-		'white-space: nowrap',
-		'display: none'
-	].join(';');
-	document.body.appendChild(label);
-
-	// Toast notification container (appears from top)
-	const toast = document.createElement('div');
-	toast.id = '__roopik_inspect_toast';
-	toast.style.cssText = [
-		'position: fixed',
-		'top: 20px',
-		'left: 50%',
-		'transform: translateX(-50%) translateY(-100px)',
-		'background-color: #1e1e1e',
-		'color: #ffffff',
-		'font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-		'font-size: 13px',
-		'padding: 10px 20px',
-		'border-radius: 6px',
-		'box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)',
-		'z-index: 2147483647',
-		'opacity: 0',
-		'transition: transform 0.3s ease, opacity 0.3s ease',
-		'pointer-events: none'
-	].join(';');
-	document.body.appendChild(toast);
-
-	let currentElement = null;
-	let toastTimeout = null;
-
-	// ========== Helper Functions ==========
-
-	// Get element description for label (tag name only)
-	function getElementDescription(el) {
-		return el.tagName.toLowerCase();
-	}
-
-	// Show toast notification
-	function showToast(message) {
-		if (toastTimeout) {
-			clearTimeout(toastTimeout);
-		}
-		toast.textContent = message;
-		toast.style.opacity = '1';
-		toast.style.transform = 'translateX(-50%) translateY(0)';
-
-		toastTimeout = setTimeout(function() {
-			toast.style.opacity = '0';
-			toast.style.transform = 'translateX(-50%) translateY(-100px)';
-		}, 2000);
-	}
-
-	// Copy text to clipboard (with fallback)
-	function copyToClipboard(text) {
-		return new Promise(function(resolve, reject) {
-			// Try modern clipboard API first
-			if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-				navigator.clipboard.writeText(text)
-					.then(resolve)
-					.catch(function() {
-						// Fall back to execCommand
-						fallbackCopy(text, resolve, reject);
-					});
-			} else {
-				fallbackCopy(text, resolve, reject);
-			}
-		});
-	}
-
-	function fallbackCopy(text, resolve, reject) {
-		try {
-			const textarea = document.createElement('textarea');
-			textarea.value = text;
-			textarea.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-			document.body.appendChild(textarea);
-			textarea.focus();
-			textarea.select();
-			const success = document.execCommand('copy');
-			document.body.removeChild(textarea);
-			if (success) {
-				resolve();
-			} else {
-				reject(new Error('execCommand failed'));
-			}
-		} catch (err) {
-			reject(err);
-		}
-	}
-
-	// Update overlay position
-	function updateOverlay(el) {
-		if (!el || el === document.body || el === document.documentElement) {
-			overlay.style.display = 'none';
-			label.style.display = 'none';
-			return;
-		}
-
-		const rect = el.getBoundingClientRect();
-		overlay.style.display = 'block';
-		overlay.style.top = rect.top + 'px';
-		overlay.style.left = rect.left + 'px';
-		overlay.style.width = rect.width + 'px';
-		overlay.style.height = rect.height + 'px';
-
-		// Position label above element, or below if not enough space
-		label.style.display = 'block';
-		label.textContent = getElementDescription(el);
-		const labelHeight = 20;
-		if (rect.top > labelHeight + 4) {
-			label.style.top = (rect.top - labelHeight - 4) + 'px';
-		} else {
-			label.style.top = (rect.bottom + 4) + 'px';
-		}
-		label.style.left = Math.max(0, rect.left) + 'px';
-	}
-
-	// Flash overlay green to indicate success
-	function flashSuccess() {
-		overlay.style.backgroundColor = 'rgba(0, 200, 0, 0.3)';
-		overlay.style.borderColor = '#00c800';
-		setTimeout(function() {
-			overlay.style.backgroundColor = 'rgba(0, 122, 204, 0.1)';
-			overlay.style.borderColor = '#007acc';
-		}, 200);
-	}
-
-	// Future use: send info back to Roopik (e.g., copied HTML to AI chat)
-	function notifyParent(type, data) {
-		window.postMessage({
-			source: 'roopik-inspect',
-			type: type,
-			data: data
-		}, '*');
-	}
-
-	// ========== Event Handlers ==========
-
-	function onMouseMove(e) {
-		// Ignore our own UI elements
-		const el = document.elementFromPoint(e.clientX, e.clientY);
-		if (el && el.id && el.id.startsWith('__roopik_inspect')) {
-			return;
-		}
-		if (el && el !== overlay && el !== label && el !== toast && el !== currentElement) {
-			currentElement = el;
-			updateOverlay(el);
-		}
-	}
-
-	function onClick(e) {
-		e.preventDefault();
-		e.stopPropagation();
-		e.stopImmediatePropagation();
-
-		if (currentElement && !(currentElement.id && currentElement.id.startsWith('__roopik_inspect'))) {
-			const html = currentElement.outerHTML;
-
-			// Store for API access
-			window.__roopikLastInspectedHtml = html;
-
-			// Copy to clipboard, then auto-exit inspect mode
-			copyToClipboard(html)
-				.then(function() {
-					flashSuccess();
-					showToast('✓ Element copied');
-					notifyParent('element-copied', { html: html });
-
-					// Auto-exit inspect mode after successful copy (with small delay for visual feedback)
-					setTimeout(function() {
-						cleanup();
-						notifyParent('inspect-mode-exited', {});
-					}, 300);
-				})
-				.catch(function(err) {
-					console.error('[Roopik Inspect] Copy failed:', err);
-					showToast('✗ Copy failed');
-					notifyParent('copy-failed', { error: err.message });
-					// Don't exit on failure - let user try again
-				});
-		}
-
-		return false;
-	}
-
-	function onKeyDown(e) {
-		if (e.key === 'Escape') {
-			cleanup();
-			notifyParent('inspect-mode-exited', {});
-		}
-	}
-
-	function onScroll() {
-		if (currentElement) {
-			updateOverlay(currentElement);
-		}
-	}
-
-	// ========== Cleanup ==========
-
-	function cleanup() {
-		document.removeEventListener('mousemove', onMouseMove, true);
-		document.removeEventListener('click', onClick, true);
-		document.removeEventListener('keydown', onKeyDown, true);
-		document.removeEventListener('scroll', onScroll, true);
-		window.removeEventListener('resize', onScroll);
-
-		if (toastTimeout) {
-			clearTimeout(toastTimeout);
-		}
-
-		if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-		if (label.parentNode) label.parentNode.removeChild(label);
-		if (toast.parentNode) toast.parentNode.removeChild(toast);
-
-		currentElement = null;
-		delete window.__roopikInspectCleanup;
-	}
-
-	// Store cleanup function
-	window.__roopikInspectCleanup = cleanup;
-
-	// ========== Initialize ==========
-
-	// Add event listeners (capture phase to intercept before page handlers)
-	document.addEventListener('mousemove', onMouseMove, true);
-	document.addEventListener('click', onClick, true);
-	document.addEventListener('keydown', onKeyDown, true);
-	document.addEventListener('scroll', onScroll, true);
-	window.addEventListener('resize', onScroll);
-
-	// Notify parent that inspect mode started
-	notifyParent('inspect-mode-started', {});
-
-	return 'Inspect mode enabled';
-})();
-`;

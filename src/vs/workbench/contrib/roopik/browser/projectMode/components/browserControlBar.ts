@@ -3,9 +3,9 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { Disposable } from '../../../../../base/common/lifecycle.js';
-import { Codicon } from '../../../../../base/common/codicons.js';
-import { ThemeIcon } from '../../../../../base/common/themables.js';
+import { Disposable } from '../../../../../../base/common/lifecycle.js';
+import { Codicon } from '../../../../../../base/common/codicons.js';
+import { ThemeIcon } from '../../../../../../base/common/themables.js';
 
 /**
  * Bookmark entry
@@ -17,9 +17,9 @@ export interface BrowserBookmark {
 }
 
 /**
- * Browser Control Bar V2 Configuration
+ * Browser Control Bar  Configuration
  */
-export interface IBrowserControlBarV2Config {
+export interface IBrowserControlBarConfig {
 	showDevTools?: boolean;
 	showInspectMode?: boolean;
 	showScreenshot?: boolean;
@@ -30,9 +30,9 @@ export interface IBrowserControlBarV2Config {
 }
 
 /**
- * Browser Control Bar V2 Callbacks
+ * Browser Control Bar Callbacks
  */
-export interface IBrowserControlBarV2Callbacks {
+export interface IBrowserControlBarCallbacks {
 	// Basic navigation
 	onNavigate: (url: string) => void;
 	onBack: () => void;
@@ -60,11 +60,11 @@ export interface IBrowserControlBarV2Callbacks {
 }
 
 /**
- * Browser Control Bar V2
+ * Browser Control Bar
  *
  * Control bar for browser preview with navigation and utility buttons.
  */
-export class BrowserControlBarV2 extends Disposable {
+export class BrowserControlBar extends Disposable {
 	private container: HTMLElement;
 	private urlInput: HTMLInputElement;
 	private urlInputWrapper: HTMLElement | undefined;
@@ -87,8 +87,8 @@ export class BrowserControlBarV2 extends Disposable {
 
 	constructor(
 		parent: HTMLElement,
-		private config: IBrowserControlBarV2Config,
-		private callbacks: IBrowserControlBarV2Callbacks
+		private config: IBrowserControlBarConfig,
+		private callbacks: IBrowserControlBarCallbacks
 	) {
 		super();
 		this.container = this.createContainer(parent);

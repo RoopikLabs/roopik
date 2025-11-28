@@ -7,20 +7,20 @@ import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
 import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from './types.js';
 
-export const IProjectModeV2Service = createDecorator<IProjectModeV2Service>('projectModeV2Service');
+export const IProjectModeService = createDecorator<IProjectModeService>('projectModeService');
 
 /**
- * IPC Channel name for ProjectModeV2
+ * IPC Channel name for ProjectMode
  */
-export const PROJECT_MODE_V2_CHANNEL = 'roopikProjectModeV2';
+export const PROJECT_MODE_CHANNEL = 'roopikProjectMode';
 
 /**
- * ProjectModeV2 Service Interface
+ * ProjectMode Service Interface
  *
  * Manages WebContentsView lifecycle with proper cleanup,
  * ON-DEMAND DevTools creation, and CDP integration.
  */
-export interface IProjectModeV2Service {
+export interface IProjectModeService {
 	readonly _serviceBrand: undefined;
 
 	// ============================================
@@ -39,6 +39,7 @@ export interface IProjectModeV2Service {
 	 * Fires on: did-navigate, did-start-loading, did-finish-load, page-title-updated
 	 */
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent>;
+
 
 	// ============================================
 	// Browser View Lifecycle
@@ -102,18 +103,17 @@ export interface IProjectModeV2Service {
 	getNavigationState(browserViewId: number): Promise<NavigationState>;
 
 	// ============================================
-	// DevTools (ON-DEMAND creation)
+	// DevTools (Attached Mode)
 	// ============================================
 
 	/**
-	 * Open DevTools
+	 * Open DevTools (docked at bottom of browser window)
 	 *
-	 * Supports two modes:
-	 * - 'attached': DevTools docked inside browser window (has Device Toolbar, close button)
-	 * - 'detached': DevTools in separate WebContentsView (full layout control, no Device Toolbar)
+	 * DevTools opens in attached mode with Device Toolbar and close button available.
+	 * Users can detach from DevTools settings menu if they want a separate window.
 	 *
 	 * @param browserViewId - The browser view to attach DevTools to
-	 * @param options - DevTools configuration (mode and bounds for detached mode)
+	 * @param options - DevTools configuration (reserved for future options)
 	 */
 	openDevTools(browserViewId: number, options: DevToolsOptions): Promise<DevToolsViewResult>;
 
@@ -228,4 +228,10 @@ export interface IProjectModeV2Service {
 	 * Destroy overlay view
 	 */
 	destroyOverlayView(overlayViewId: number): Promise<void>;
+
+	/**
+	 * Execute JavaScript in overlay view
+	 * Used for getting/setting state in floating toolbar
+	 */
+	executeScriptOnOverlay(overlayViewId: number, script: string): Promise<any>;
 }

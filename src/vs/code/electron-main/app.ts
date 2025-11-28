@@ -123,10 +123,10 @@ import { IWebContentExtractorService } from '../../platform/webContentExtractor/
 import { NativeWebContentExtractorService } from '../../platform/webContentExtractor/electron-main/webContentExtractorService.js';
 import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetry.js';
 
-// ProjectModeV2 - Browser Preview with embedded DevTools
-import { BrowserViewServiceV2 } from '../../workbench/contrib/roopik/electron-main/projectModeV2/browserViewServiceV2.js';
-import { ProjectModeV2Channel } from '../../workbench/contrib/roopik/electron-main/projectModeV2/projectModeV2Channel.js';
-import { PROJECT_MODE_V2_CHANNEL } from '../../workbench/contrib/roopik/common/projectModeV2/ipc.js';
+// ROOPIK: ProjectMode - Browser Preview with embedded DevTools
+import { BrowserViewService } from '../../workbench/contrib/roopik/electron-main/projectMode/browserViewService.js';
+import { ProjectModeChannel } from '../../workbench/contrib/roopik/electron-main/projectMode/projectModeChannel.js';
+import { PROJECT_MODE_CHANNEL } from '../../workbench/contrib/roopik/common/projectMode/ipc.js';
 
 /**
  * The main VS Code application. There will only ever be one instance,
@@ -394,14 +394,15 @@ export class CodeApplication extends Disposable {
 				this.auxiliaryWindowsMainService?.registerWindow(contents);
 			}
 
-			// Block any in-page navigation (except for ProjectModeV2 browser views)
+			// ROOPIK: Block any in-page navigation (except for ProjectMode browser views)
 			contents.on('will-navigate', event => {
-				// Allow navigation for ProjectModeV2 managed browser views
+				// ROOPIK: Allow navigation for ProjectMode managed browser views
 				const webContentsId = contents.id;
-				if (BrowserViewServiceV2.isManagedWebContents(webContentsId)) {
-					this.logService.trace(`[ProjectModeV2] Allowing navigation for managed browser view ${webContentsId}`);
+				if (BrowserViewService.isManagedWebContents(webContentsId)) {
+					this.logService.trace(`[ProjectMode] Allowing navigation for managed browser view ${webContentsId}`);
 					return; // Allow navigation
 				}
+				// ROOPIK END
 
 				this.logService.error('webContents#will-navigate: Prevented webcontent navigation');
 
@@ -409,19 +410,20 @@ export class CodeApplication extends Disposable {
 			});
 
 			// All Windows: only allow about:blank auxiliary windows to open
-			// For all other URLs, delegate to the OS (except for ProjectModeV2 browser views)
+			// ROOPIK: For all other URLs, delegate to the OS (except for ProjectMode browser views)
 			contents.setWindowOpenHandler(details => {
 
-				// ProjectModeV2 browser views: redirect to same view instead of opening new window
+				// ROOPIK: ProjectMode browser views - redirect to same view instead of opening new window
 				// This handles Ctrl+Click, middle-click, target="_blank", etc.
 				const webContentsId = contents.id;
-				if (BrowserViewServiceV2.isManagedWebContents(webContentsId)) {
-					this.logService.info(`[ProjectModeV2] new-window requested: ${details.url} (disposition: ${details.disposition})`);
-					this.logService.info(`[ProjectModeV2] Redirecting new window to current view: ${details.url}`);
+				if (BrowserViewService.isManagedWebContents(webContentsId)) {
+					this.logService.info(`[ProjectMode] new-window requested: ${details.url} (disposition: ${details.disposition})`);
+					this.logService.info(`[ProjectMode] Redirecting new window to current view: ${details.url}`);
 					// Load URL in the same view
 					contents.loadURL(details.url);
 					return { action: 'deny' };
 				}
+				// ROOPIK END
 
 				// about:blank windows can open as window with our default options
 				if (details.url === 'about:blank') {
@@ -1241,10 +1243,11 @@ export class CodeApplication extends Disposable {
 		const utilityProcessWorkerChannel = ProxyChannel.fromService(accessor.get(IUtilityProcessWorkerMainService), disposables);
 		mainProcessElectronServer.registerChannel(ipcUtilityProcessWorkerChannelName, utilityProcessWorkerChannel);
 
-		// ProjectModeV2 - Browser Preview with embedded DevTools and CDP
-		const projectModeV2Service = new BrowserViewServiceV2();
-		const projectModeV2Channel = new ProjectModeV2Channel(projectModeV2Service);
-		mainProcessElectronServer.registerChannel(PROJECT_MODE_V2_CHANNEL, projectModeV2Channel);
+		// ROOPIK: ProjectMode - Browser Preview with embedded DevTools and CDP
+		const projectModeService = new BrowserViewService();
+		const projectModeChannel = new ProjectModeChannel(projectModeService);
+		mainProcessElectronServer.registerChannel(PROJECT_MODE_CHANNEL, projectModeChannel);
+		// ROOPIK END
 	}
 
 	private async openFirstWindow(accessor: ServicesAccessor, initialProtocolUrls: IInitialProtocolUrls | undefined): Promise<ICodeWindow[]> {
