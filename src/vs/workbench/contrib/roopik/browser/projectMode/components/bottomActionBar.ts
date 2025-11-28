@@ -332,11 +332,13 @@ export function generateBottomActionBarHtml(state: BottomActionBarState): string
 		const dragHandle = document.getElementById('dragHandle');
 
 		// ============================================
-		// Message Passing (console.log bridge)
+		// Message Passing
+		// TODO: All features are unimplemented. Will use executeScript for communication.
 		// ============================================
 		function sendMessage(type, data = {}) {
-			const msg = JSON.stringify({ type, ...data });
-			console.log('ROOPIK_MSG:' + msg);
+			// TODO: Implement via executeScript polling or on-demand queries
+			// For now, just store state locally - editor will query via executeScript
+			console.debug('[ActionBar] Event:', type, data);
 		}
 
 		// ============================================

@@ -22,7 +22,6 @@ import { ServiceBridge } from './serviceBridge.js';
 import { PROJECT_MODE_CHANNEL } from '../../common/projectMode/ipc.js';
 import { BrowserControlBar, IBrowserControlBarConfig, IBrowserControlBarCallbacks } from './components/browserControlBar.js';
 import type { ViewBounds, DevToolsMode, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
-import { ActionBarMode } from './components/bottomActionBar.js';
 import { IRoopikEventService } from '../../common/events/index.js';
 import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
 import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js';
@@ -120,7 +119,7 @@ export class Editor extends EditorPane {
 		this.browserService = new ServiceBridge(mainProcessService.getChannel(PROJECT_MODE_CHANNEL));
 
 		// Initialize features (extracted to features/ folder)
-		this.inspectMode = new InspectMode(this.browserService, this.logger, this.notificationService);
+		this.inspectMode = new InspectMode(this.browserService, this.notificationService);
 		this.bookmarks = new Bookmarks(this.storageService, this.notificationService, this.logger);
 		this.browserPause = new BrowserPause(this.browserService);
 		this.actionBar = new ActionBar(this.browserService, this.logger);
@@ -171,37 +170,6 @@ export class Editor extends EditorPane {
 				input.setPageTitle(event.title);
 			}
 		}));
-
-		// Subscribe to overlay messages (from bottom action bar)
-		this._register(this.browserService.onOverlayMessage((event) => {
-			// Only handle messages for our action bar
-			if (event.overlayViewId === this.actionBar.overlayViewId) {
-				this.handleActionBarMessage(event.message);
-			}
-		}));
-
-		// Subscribe to browser messages (from injected scripts like inspect mode)
-		this._register(this.browserService.onBrowserMessage((event) => {
-			// Only handle messages for our browser view
-			if (event.browserViewId === this.browserViewId) {
-				this.handleBrowserMessage(event.message);
-			}
-		}));
-	}
-
-	/**
-	 * Handle messages from injected scripts in the browser
-	 */
-	private handleBrowserMessage(message: { type: string; [key: string]: any }): void {
-		this.logger.debug('[ProjectMode] Browser message:', message);
-
-		switch (message.type) {
-			case 'inspect-mode-exited':
-				// Sync state when inspect mode auto-exits (after copy or ESC)
-				this.inspectMode.reset();
-				this.logger.info('[ProjectMode] Inspect mode auto-exited');
-				break;
-		}
 	}
 
 	/**
@@ -287,7 +255,7 @@ export class Editor extends EditorPane {
 			onHome: () => this.goHome(),
 			onRefresh: () => this.refresh(),
 			onStopDevServer: () => this.stopDevServer(),
-			onInspectMode: () => this.toggleInspectMode(),
+			onInspectMode: () => this.enableInspectMode(),
 			onDevTools: () => this.toggleDevTools(),
 			onHardReload: () => this.hardReload(),
 			onScreenshot: () => this.takeScreenshot(),
@@ -749,14 +717,6 @@ export class Editor extends EditorPane {
 		if (currentUrl !== this.lastKnownUrl) {
 			this.lastKnownUrl = currentUrl;
 
-			// Reset inspect mode on navigation (script is injected per-page)
-			// The injected script won't survive page navigation anyway,
-			// but we need to sync the state
-			if (this.inspectMode.isInspectModeActive) {
-				this.inspectMode.reset();
-				this.logger.info('[ProjectMode] Inspect Mode reset due to navigation');
-			}
-
 			// Publish navigation event to central event bus (title is sent separately via titleChanged)
 			this.eventService.publish('browser.navigated', {
 				browserViewId: event.browserViewId,
@@ -1140,65 +1100,22 @@ export class Editor extends EditorPane {
 		await this.actionBar.updateBounds(this.getBrowserBounds());
 	}
 
-	/**
-	 * Handle message from action bar
-	 */
-	private async handleActionBarMessage(message: { type: string; [key: string]: any }): Promise<void> {
-		this.logger.debug('[ProjectMode] Action bar message:', message);
-
-		switch (message.type) {
-			case 'mode-change':
-				await this.handleActionBarModeChange(message.mode as ActionBarMode);
-				break;
-			case 'ai-assistant':
-				this.logger.info('[ProjectMode] AI Assistant clicked (not yet implemented)');
-				break;
-			case 'escape-pressed':
-				this.actionBar.activeMode = 'select';
-				break;
-			case 'action-bar-ready':
-				this.logger.info('[ProjectMode] Action bar ready');
-				break;
-			default:
-				this.logger.debug(`[ProjectMode] Unknown action bar message: ${message.type}`);
-		}
-	}
-
-	/**
-	 * Handle mode change from action bar
-	 */
-	private async handleActionBarModeChange(mode: ActionBarMode): Promise<void> {
-		this.actionBar.activeMode = mode;
-		this.logger.info(`[ProjectMode] Action bar mode: ${mode}`);
-
-		switch (mode) {
-			case 'browse':
-			case 'select':
-			case 'dragSelect':
-				if (this.inspectMode.isInspectModeActive) {
-					await this.inspectMode.disable(this.browserViewId!);
-				}
-				break;
-			case 'inspect':
-				await this.inspectMode.enable(this.browserViewId!);
-				break;
-		}
-	}
+	// TODO: Action bar features are unimplemented
+	// Communication will use executeScript for on-demand queries
 
 	// ============================================
 	// Inspect Mode (delegates to InspectMode feature class)
 	// ============================================
 
 	/**
-	 * Toggle Inspect Element Mode
-	 * Delegates to InspectMode feature class
+	 * Enable Inspect Element Mode
+	 * Fire and forget - browser script handles auto-cleanup after copy
 	 */
-	private async toggleInspectMode(): Promise<void> {
+	private async enableInspectMode(): Promise<void> {
 		if (!this.browserViewId) {
-			this.logger.warn('[ProjectMode] Cannot toggle inspect mode: no browser view');
 			return;
 		}
-		await this.inspectMode.toggle(this.browserViewId);
+		await this.inspectMode.enable(this.browserViewId);
 	}
 
 	/**
@@ -1210,11 +1127,14 @@ export class Editor extends EditorPane {
 	}
 
 	/**
-	 * Check if inspect mode is currently active
+	 * Check if inspect mode is active in the browser
 	 * API for programmatic access
 	 */
-	public isInspectModeEnabled(): boolean {
-		return this.inspectMode.isInspectModeActive;
+	public async isInspectModeActive(): Promise<boolean> {
+		if (!this.browserViewId) {
+			return false;
+		}
+		return this.inspectMode.isActiveInBrowser(this.browserViewId);
 	}
 
 	/**
@@ -1222,18 +1142,8 @@ export class Editor extends EditorPane {
 	 * API for agents and automation tools
 	 */
 	public async startInspectMode(): Promise<void> {
-		if (!this.inspectMode.isInspectModeActive && this.browserViewId) {
+		if (this.browserViewId) {
 			await this.inspectMode.enable(this.browserViewId);
-		}
-	}
-
-	/**
-	 * Disable inspect mode programmatically
-	 * API for agents and automation tools
-	 */
-	public async stopInspectMode(): Promise<void> {
-		if (this.inspectMode.isInspectModeActive && this.browserViewId) {
-			await this.inspectMode.disable(this.browserViewId);
 		}
 	}
 

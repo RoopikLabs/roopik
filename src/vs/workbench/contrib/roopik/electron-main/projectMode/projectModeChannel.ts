@@ -21,10 +21,6 @@ export class ProjectModeChannel implements IServerChannel {
 				return this.service.onDevToolsClosed;
 			case 'onNavigationStateChanged':
 				return this.service.onNavigationStateChanged;
-			case 'onOverlayMessage':
-				return this.service.onOverlayMessage;
-			case 'onBrowserMessage':
-				return this.service.onBrowserMessage;
 			default:
 				throw new Error(`[ProjectModeChannel] Unknown event: ${event}`);
 		}

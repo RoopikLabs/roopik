@@ -48,9 +48,9 @@ export class ActionBar {
 	}
 
 	/**
-	 * Get the view ID
+	 * Get the action bar's WebContentsView ID
 	 */
-	get overlayViewId(): number | undefined {
+	get actionBarViewId(): number | undefined {
 		return this.viewId;
 	}
 

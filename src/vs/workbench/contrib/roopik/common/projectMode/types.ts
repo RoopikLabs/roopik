@@ -154,16 +154,4 @@ export interface NavigationStateChangedEvent {
 	lastError?: NavigationError;
 }
 
-/**
- * Event payload when overlay sends a message via console.log bridge
- * Messages are sent as console.log('ROOPIK_MSG:' + JSON.stringify(payload))
- */
-export interface OverlayMessageEvent {
-	overlayViewId: number;
-	browserViewId: number;
-	message: {
-		type: string;
-		[key: string]: any;
-	};
-}
 

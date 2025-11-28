@@ -3,47 +3,32 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { ILogger } from '../../../../../../platform/log/common/log.js';
 import { INotificationService, Severity } from '../../../../../../platform/notification/common/notification.js';
 import type { IProjectModeService } from '../../../common/projectMode/ipc.js';
 
 /**
  * Inspect Mode Feature
  *
- * Provides element inspection functionality for the browser preview.
+ * Fire and forget - injects script, browser handles auto-cleanup.
  * Features:
  * - Highlight overlay follows hovered element
  * - Click copies outerHTML to clipboard
- * - Toast notification confirms copy
- * - ESC key exits inspect mode
+ * - Auto-exits after copy (or ESC)
  */
 export class InspectMode {
-	private isActive: boolean = false;
-
 	constructor(
 		private readonly browserService: IProjectModeService,
-		private readonly logger: ILogger,
 		private readonly notificationService: INotificationService
 	) { }
 
 	/**
-	 * Check if inspect mode is currently active
-	 */
-	get isInspectModeActive(): boolean {
-		return this.isActive;
-	}
-
-	/**
 	 * Enable Inspect Element Mode
-	 * Injects script into browser to highlight elements and capture clicks
+	 * Fire and forget - browser script handles auto-cleanup after copy
 	 */
 	async enable(browserViewId: number): Promise<void> {
 		if (!browserViewId) {
 			return;
 		}
-
-		this.logger.info('[InspectMode] ENABLED');
-		this.isActive = true;
 
 		try {
 			await this.browserService.executeScript(browserViewId, INSPECT_MODE_SCRIPT);
@@ -53,48 +38,8 @@ export class InspectMode {
 				message: 'Inspect Mode: Click element to copy HTML.',
 				sticky: false
 			});
-		} catch (error) {
-			this.logger.error('[InspectMode] Failed to enable:', error);
-			this.isActive = false;
-		}
-	}
-
-	/**
-	 * Disable Inspect Element Mode
-	 * Removes the injected script from the browser
-	 */
-	async disable(browserViewId: number): Promise<void> {
-		this.isActive = false;
-
-		if (!browserViewId) {
-			return;
-		}
-
-		this.logger.info('[InspectMode] DISABLED');
-
-		const cleanupScript = `
-			(function() {
-				if (window.__roopikInspectCleanup) {
-					window.__roopikInspectCleanup();
-				}
-			})();
-		`;
-
-		try {
-			await this.browserService.executeScript(browserViewId, cleanupScript);
-		} catch (error) {
-			this.logger.error('[InspectMode] Failed to disable:', error);
-		}
-	}
-
-	/**
-	 * Toggle inspect mode on/off
-	 */
-	async toggle(browserViewId: number): Promise<void> {
-		if (this.isActive) {
-			await this.disable(browserViewId);
-		} else {
-			await this.enable(browserViewId);
+		} catch {
+			// Silent fail - user will see no overlay appear
 		}
 	}
 
@@ -136,13 +81,6 @@ export class InspectMode {
 			return null;
 		}
 	}
-
-	/**
-	 * Reset state (call when browser is destroyed)
-	 */
-	reset(): void {
-		this.isActive = false;
-	}
 }
 
 // ============================================
@@ -156,8 +94,7 @@ export class InspectMode {
  * - Label shows tag name
  * - Click copies outerHTML to clipboard
  * - Toast notification confirms copy
- * - ESC key exits inspect mode
- * - Messages sent to parent for state sync
+ * - ESC key exits inspect mode (auto-exits after copy)
  */
 const INSPECT_MODE_SCRIPT = `
 (function() {
@@ -321,11 +258,6 @@ const INSPECT_MODE_SCRIPT = `
 		}, 200);
 	}
 
-	// Send message to Roopik editor via console.log bridge
-	// This is intercepted by the main process and forwarded to the editor
-	function notifyRoopik(type, data) {
-		console.log('ROOPIK_MSG:' + JSON.stringify({ type: type, ...data }));
-	}
 
 	// ========== Event Handlers ==========
 
@@ -361,7 +293,6 @@ const INSPECT_MODE_SCRIPT = `
 					// Auto-exit inspect mode after successful copy (with small delay for visual feedback)
 					setTimeout(function() {
 						cleanup();
-						notifyRoopik('inspect-mode-exited', {});
 					}, 300);
 				})
 				.catch(function(err) {
@@ -377,7 +308,6 @@ const INSPECT_MODE_SCRIPT = `
 	function onKeyDown(e) {
 		if (e.key === 'Escape') {
 			cleanup();
-			notifyRoopik('inspect-mode-exited', {});
 		}
 	}
 
@@ -419,9 +349,6 @@ const INSPECT_MODE_SCRIPT = `
 	document.addEventListener('keydown', onKeyDown, true);
 	document.addEventListener('scroll', onScroll, true);
 	window.addEventListener('resize', onScroll);
-
-	// Notify Roopik that inspect mode started
-	notifyRoopik('inspect-mode-started', {});
 
 	return 'Inspect mode enabled';
 })();

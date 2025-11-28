@@ -6,7 +6,7 @@
 import { Event } from '../../../../../base/common/event.js';
 import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OverlayMessageEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
 
 /**
  * Service Bridge
@@ -31,22 +31,10 @@ export class ServiceBridge implements IProjectModeService {
 	 */
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent>;
 
-	/**
-	 * Event fired when an overlay view sends a message via console.log bridge
-	 */
-	readonly onOverlayMessage: Event<OverlayMessageEvent>;
-
-	/**
-	 * Event fired when the browser view sends a message via console.log bridge
-	 */
-	readonly onBrowserMessage: Event<{ browserViewId: number; message: any }>;
-
 	constructor(private channel: IChannel) {
 		// Subscribe to events from main process
 		this.onDevToolsClosed = this.channel.listen<DevToolsClosedEvent>('onDevToolsClosed');
 		this.onNavigationStateChanged = this.channel.listen<NavigationStateChangedEvent>('onNavigationStateChanged');
-		this.onOverlayMessage = this.channel.listen<OverlayMessageEvent>('onOverlayMessage');
-		this.onBrowserMessage = this.channel.listen<{ browserViewId: number; message: any }>('onBrowserMessage');
 	}
 
 	// ============================================

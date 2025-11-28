@@ -6,7 +6,7 @@
 import { BrowserWindow, WebContentsView, session, app } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsMode, DevToolsClosedEvent, NavigationStateChangedEvent, OverlayMessageEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsMode, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
 import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
 
 /**
@@ -30,12 +30,6 @@ export class BrowserViewService implements IProjectModeService {
 
 	private readonly _onNavigationStateChanged = new Emitter<NavigationStateChangedEvent>();
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent> = this._onNavigationStateChanged.event;
-
-	private readonly _onOverlayMessage = new Emitter<OverlayMessageEvent>();
-	readonly onOverlayMessage: Event<OverlayMessageEvent> = this._onOverlayMessage.event;
-
-	private readonly _onBrowserMessage = new Emitter<{ browserViewId: number; message: any }>();
-	readonly onBrowserMessage: Event<{ browserViewId: number; message: any }> = this._onBrowserMessage.event;
 
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
@@ -936,18 +930,6 @@ export class BrowserViewService implements IProjectModeService {
 			this.devtoolsModes.delete(browserViewId);
 		});
 
-		// Console message bridge for browser view (same pattern as overlay views)
-		// Messages with 'ROOPIK_MSG:' prefix are routed to the renderer
-		webContents.on('console-message', (_event, _level, message) => {
-			if (message.startsWith('ROOPIK_MSG:')) {
-				try {
-					const payload = JSON.parse(message.substring('ROOPIK_MSG:'.length));
-					this._onBrowserMessage.fire({ browserViewId, message: payload });
-				} catch (e) {
-					console.error('[ProjectMode] Failed to parse browser message:', e);
-				}
-			}
-		});
 	}
 
 	// ============================================
@@ -1030,23 +1012,6 @@ export class BrowserViewService implements IProjectModeService {
 		this.overlayViews.set(overlayViewId, {
 			view: overlayView,
 			parentBrowserViewId: browserViewId
-		});
-
-		// Listen for console messages from the overlay
-		// Messages with 'ROOPIK_MSG:' prefix are routed to the renderer
-		overlayView.webContents.on('console-message', (_event, _level, message) => {
-			if (message.startsWith('ROOPIK_MSG:')) {
-				try {
-					const payload = JSON.parse(message.substring('ROOPIK_MSG:'.length));
-					this._onOverlayMessage.fire({
-						overlayViewId,
-						browserViewId,
-						message: payload
-					});
-				} catch (e) {
-					console.error('[ProjectMode] Failed to parse overlay message:', e);
-				}
-			}
 		});
 
 		return overlayViewId;

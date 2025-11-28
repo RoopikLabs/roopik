@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OverlayMessageEvent } from './types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from './types.js';
 
 export const IProjectModeService = createDecorator<IProjectModeService>('projectModeService');
 
@@ -40,17 +40,6 @@ export interface IProjectModeService {
 	 */
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent>;
 
-	/**
-	 * Fired when an overlay view sends a message via console.log bridge
-	 * Messages are sent as console.log('ROOPIK_MSG:' + JSON.stringify(payload))
-	 */
-	readonly onOverlayMessage: Event<OverlayMessageEvent>;
-
-	/**
-	 * Fired when the browser view sends a message via console.log bridge
-	 * Used by inject scripts (inspect mode, etc.) to communicate with editor
-	 */
-	readonly onBrowserMessage: Event<{ browserViewId: number; message: any }>;
 
 	// ============================================
 	// Browser View Lifecycle
