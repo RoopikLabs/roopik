@@ -78,9 +78,8 @@ export class SandboxCard extends Disposable {
 		container.style.cursor = 'pointer';
 		container.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
 
-		// Padding for glass effect
+		// Padding for glass effect (margin is handled by grid positioning)
 		container.style.padding = '40px 120px';
-		container.style.margin = '20px';
 
 		// Apply initial position and size directly (this.container not yet assigned)
 		container.style.left = `${this.sandbox.x}px`;

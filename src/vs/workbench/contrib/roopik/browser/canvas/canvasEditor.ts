@@ -29,6 +29,7 @@ import { IEditorOpenContext } from '../../../../common/editor.js';
 import { CanvasInput } from './canvasInput.js';
 import { SandboxCard, type ISandboxCardCallbacks } from './components/sandboxCard.js';
 import { FloatingToolbar, type IFloatingToolbarCallbacks } from './components/floatingToolbar.js';
+import { BottomActionBar, type IBottomActionBarCallbacks } from './components/bottomActionBar.js';
 import { DEFAULT_GRID_CONFIG } from '../../common/canvas/canvasTypes.js';
 import type { CanvasViewport, BackgroundPattern, Sandbox, GridConfig } from '../../common/canvas/canvasTypes.js';
 import { IWebviewService } from '../../../webview/browser/webview.js';
@@ -75,6 +76,7 @@ export class CanvasEditor extends EditorPane {
 
 	// UI Components
 	private floatingToolbar: FloatingToolbar | undefined;
+	private bottomActionBar: BottomActionBar | undefined;
 
 	constructor(
 		group: IEditorGroup,
@@ -134,6 +136,9 @@ export class CanvasEditor extends EditorPane {
 		// Create floating toolbar for testing
 		this.createFloatingToolbar();
 
+		// Create bottom action bar
+		this.createBottomActionBar();
+
 		// Sandboxes are loaded when setInput is called
 	}
 
@@ -152,6 +157,40 @@ export class CanvasEditor extends EditorPane {
 		};
 
 		this.floatingToolbar = new FloatingToolbar(this.container, toolbarCallbacks);
+	}
+
+	/**
+	 * Create the bottom action bar for canvas tools
+	 */
+	private createBottomActionBar(): void {
+		if (!this.container) {
+			return;
+		}
+
+		const actionBarCallbacks: IBottomActionBarCallbacks = {
+			onSelectMode: () => {
+				console.log('[CanvasEditor] Select mode toggled');
+				// TODO: Implement select mode
+			},
+			onInspectMode: () => {
+				console.log('[CanvasEditor] Inspect mode toggled');
+				// TODO: Implement inspect mode
+			},
+			onRectangleMode: () => {
+				console.log('[CanvasEditor] Rectangle selection mode toggled');
+				// TODO: Implement rectangle selection
+			},
+			onAIChat: () => {
+				console.log('[CanvasEditor] AI Chat toggled');
+				// TODO: Implement AI chat overlay
+			},
+			onViewModeToggle: () => {
+				console.log('[CanvasEditor] View mode toggled');
+				// TODO: Implement code/preview toggle
+			}
+		};
+
+		this.bottomActionBar = new BottomActionBar(this.container, actionBarCallbacks);
 	}
 
 	/**
@@ -379,13 +418,17 @@ export class CanvasEditor extends EditorPane {
 
 	/**
 	 * Calculate grid position for a sandbox
+	 * Note: CSS margin on the card provides visual separation automatically.
+	 * Grid calculation only includes the card size (sandboxWidth + padding).
 	 */
 	private calculateGridPosition(index: number): { x: number; y: number } {
 		const col = index % this.gridConfig.columns;
 		const row = Math.floor(index / this.gridConfig.columns);
 
-		const totalWidth = this.gridConfig.sandboxWidth + this.gridConfig.containerPaddingX * 2 + this.gridConfig.containerMargin * 2;
-		const totalHeight = this.gridConfig.sandboxHeight + this.gridConfig.containerPaddingY * 2 + this.gridConfig.containerMargin * 2;
+		// Total visual size of the card (sandbox content + padding)
+		// CSS margin is applied separately on the card element
+		const totalWidth = this.gridConfig.sandboxWidth + this.gridConfig.containerPaddingX * 2;
+		const totalHeight = this.gridConfig.sandboxHeight + this.gridConfig.containerPaddingY * 2;
 
 		return {
 			x: this.gridConfig.startX + col * (totalWidth + this.gridConfig.gapX),
@@ -580,8 +623,9 @@ export class CanvasEditor extends EditorPane {
 	}
 
 	override dispose(): void {
-		// Cleanup floating toolbar
+		// Cleanup UI components
 		this.floatingToolbar?.dispose();
+		this.bottomActionBar?.dispose();
 
 		// Cleanup sandbox cards
 		for (const card of this.sandboxCards.values()) {
