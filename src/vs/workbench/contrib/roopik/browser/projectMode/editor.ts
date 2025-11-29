@@ -626,6 +626,15 @@ export class Editor extends EditorPane {
 		if (currentUrl !== this.lastKnownUrl) {
 			this.lastKnownUrl = currentUrl;
 
+			// CRITICAL: Update input URL so it gets serialized correctly on reload
+			// This ensures the full URL (including path, query params, etc.) is saved
+			// not just the initial navigation URL which might have been redirected
+			// Update whenever URL changes to capture the final URL after all redirects
+			const input = this.input as EditorTabInput;
+			if (input && currentUrl && currentUrl !== 'about:blank') {
+				input.setUrl(currentUrl);
+			}
+
 			// Publish navigation event to central event bus (title is sent separately via titleChanged)
 			this.eventService.publish('browser.navigated', {
 				browserViewId: event.browserViewId,
@@ -1319,19 +1328,26 @@ export class Editor extends EditorPane {
 				}));
 			}
 
-			// Initialize browser view if not already done
-			if (!this.browserViewId) {
-				// Set URL bar to initial URL for first load
-				if (this.controlBar) {
-					this.controlBar.setUrl(initialUrl);
-				}
+		// Initialize browser view if not already done
+		// This happens on:
+		// 1. First time opening the browser preview
+		// 2. After IDE reload (browser view was destroyed, needs to be recreated)
+		//    - EditorTabInputSerializer restores the URL
+		//    - setInput() is called with restored input
+		//    - Browser view is recreated and navigated to restored URL
+		if (!this.browserViewId) {
+			// Set URL bar to initial URL for first load
+			if (this.controlBar) {
+				this.controlBar.setUrl(initialUrl);
+			}
 
-				await this.initializeBrowserView();
+			await this.initializeBrowserView();
 
-				// Navigate only on first initialization if we have a real URL
-				if (this.browserViewId && initialUrl && initialUrl !== 'about:blank') {
-					await this.navigate(initialUrl);
-				}
+			// Navigate only on first initialization if we have a real URL
+			// This handles both fresh opens and restores after reload
+			if (this.browserViewId && initialUrl && initialUrl !== 'about:blank') {
+				await this.navigate(initialUrl);
+			}
 			} else {
 				// Browser view already exists (tab switch back)
 				// Just restore visibility - NO re-navigation needed!

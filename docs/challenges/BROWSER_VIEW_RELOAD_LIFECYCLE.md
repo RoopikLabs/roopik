@@ -514,6 +514,91 @@ lifecycleMainService.onWillLoadWindow(e => {
 
 ---
 
+## Browser View Restoration After Reload
+
+### The Restoration Flow
+
+After destroying browser views before reload, we need to **restore** them after reload. VS Code provides an editor serialization system for this:
+
+```
+Before Reload:
+1. Browser view exists with URL "https://example.com"
+2. EditorTabInput has URL stored
+3. EditorTabInputSerializer.serialize() saves URL to storage
+4. onWillLoadWindow fires → destroy browser view
+
+After Reload:
+1. VS Code restores editor state from storage
+2. EditorTabInputSerializer.deserialize() recreates EditorTabInput with saved URL
+3. Editor.setInput() called with restored input
+4. Browser view doesn't exist → initializeBrowserView()
+5. Navigate to restored URL
+```
+
+### Implementation: Editor Serialization
+
+**EditorTabInputSerializer** (`editorTabInputSerializer.ts`):
+
+```typescript
+export class EditorTabInputSerializer implements IEditorSerializer {
+    serialize(editorInput: EditorInput): string {
+        if (editorInput instanceof EditorTabInput) {
+            return JSON.stringify({
+                url: editorInput.url,
+                pageTitle: editorInput.pageTitle
+            });
+        }
+        return '';
+    }
+
+    deserialize(instantiationService: IInstantiationService, serializedEditorInput: string): EditorInput {
+        const data = JSON.parse(serializedEditorInput);
+        const input = EditorTabInput.getInstance();
+        input.setUrl(data.url);  // Restore URL
+        input.setPageTitle(data.pageTitle);  // Restore page title
+        return input;
+    }
+}
+```
+
+**Registration** (in `roopik.contribution.ts`):
+
+```typescript
+Registry.as<IEditorFactoryRegistry>(EditorExtensions.EditorFactory)
+    .registerEditorSerializer(EditorTabInput.ID, EditorTabInputSerializer);
+```
+
+### How It Works
+
+1. **Before Reload:**
+   - User has browser preview open with URL "https://example.com"
+   - VS Code calls `EditorTabInputSerializer.serialize()` → saves URL to storage
+   - `onWillLoadWindow` fires → browser view destroyed
+
+2. **After Reload:**
+   - VS Code restores editor state from storage
+   - Calls `EditorTabInputSerializer.deserialize()` → recreates `EditorTabInput` with saved URL
+   - Calls `Editor.setInput()` with restored input
+   - Editor sees `browserViewId` doesn't exist → initializes new browser view
+   - Editor navigates to restored URL
+
+### Key Points
+
+- **Automatic:** VS Code handles serialization/deserialization automatically
+- **State Preservation:** URL and page title are preserved
+- **Seamless UX:** User sees the same page after reload
+- **No Manual Work:** Editor automatically navigates to restored URL in `setInput()`
+
+### Testing Restoration
+
+1. Open browser preview
+2. Navigate to a website (e.g., `https://example.com`)
+3. Reload IDE (Ctrl+Shift+P → "Reload Window")
+4. **Expected:** Browser preview reopens with the same URL
+5. **Result:** ✅ Works perfectly
+
+---
+
 ## Summary
 
 **The Problem:** Browser views became ghost views after IDE reload.
@@ -522,6 +607,33 @@ lifecycleMainService.onWillLoadWindow(e => {
 
 **Final Solution:** Use VS Code's `ILifecycleMainService.onWillLoadWindow` with `LoadReason.RELOAD` - semantic, reliable, no false positives.
 
+**Restoration:** Use VS Code's editor serialization system (`IEditorSerializer`) to save/restore URL state.
+
 **Key Takeaway:** Always use framework lifecycle services instead of raw Electron events when available. They provide semantic events that represent user intent, not just technical side-effects.
 
+---
 
+## URL Serialization Issue: Stale URLs After Reload
+
+### The Problem
+
+After reload, the browser would restore to only the hostname (e.g., `youtube.com`) instead of the full URL (e.g., `www.youtube.com/shorts/pJpzd8bJVks`). This happened because `EditorTabInput.url` was only updated during initial navigation, not when the browser navigated (including redirects).
+
+### The Fix
+
+Update `EditorTabInput.url` in `handleNavigationStateChanged()` whenever the browser URL changes. This ensures the full URL (including path, query params, etc.) is always saved, not just the initial navigation URL.
+
+```typescript
+// In handleNavigationStateChanged()
+if (currentUrl !== this.lastKnownUrl) {
+    this.lastKnownUrl = currentUrl;
+
+    // Update input URL so it gets serialized correctly on reload
+    const input = this.input as EditorTabInput;
+    if (input && currentUrl && currentUrl !== 'about:blank') {
+        input.setUrl(currentUrl);
+    }
+}
+```
+
+**Result:** The complete URL is now saved and restored correctly after reload.
