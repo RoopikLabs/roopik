@@ -34,6 +34,8 @@ import { InspectMode } from './features/inspectMode.js';
 import { Bookmarks } from './features/bookmarks.js';
 import { BrowserPause } from './features/browserPause.js';
 import { ActionBar } from './features/actionBar.js';
+// Components
+import { DefaultBrowserScreen } from './components/defaultBrowserScreen.js';
 
 /**
  * Project Mode Editor
@@ -167,6 +169,11 @@ export class Editor extends EditorPane {
 
 		// Subscribe to title change events - update tab title
 		this._register(this.eventService.onBrowserTitleChanged((event) => {
+			// Don't update title when showing default screen
+			// This prevents "about:blank" from appearing as the tab title
+			if (!this.hasLoadedUrl) {
+				return;
+			}
 
 			const input = this.input as EditorTabInput;
 			if (input) {
@@ -298,8 +305,8 @@ export class Editor extends EditorPane {
 		this.browserContainer.style.width = '100%';
 		this.contentContainer.appendChild(this.browserContainer);
 
-		// Placeholder shown when no URL is loaded (WebContentsView renders on top of this)
-		this.createPlaceholder();
+		// Default screen shown when no URL is loaded (WebContentsView renders on top of this)
+		this.createDefaultScreen();
 
 		// Setup ResizeObserver for automatic bounds updates
 		// Observe container and browserContainer to catch all resize events
@@ -319,152 +326,35 @@ export class Editor extends EditorPane {
 	// Promise for initialization - used to wait if already initializing
 	private initializationPromise: Promise<void> | undefined;
 
-	// Placeholder element shown when no URL is loaded
-	private placeholderElement: HTMLElement | undefined;
+	// Default browser screen (shown when no URL is loaded)
+	private defaultScreen: DefaultBrowserScreen | undefined;
 
 	/**
-	 * Create placeholder shown when no URL is loaded
-	 * Shows welcome screen with options to open project or browse
+	 * Create default browser screen (shown when no URL is loaded)
+	 * Uses modular DefaultBrowserScreen component
 	 */
-	private createPlaceholder(): void {
+	private createDefaultScreen(): void {
 		if (!this.browserContainer) {
 			return;
 		}
 
-		this.placeholderElement = document.createElement('div');
-		this.placeholderElement.style.cssText = `
-			position: absolute;
-			top: 0;
-			left: 0;
-			right: 0;
-			bottom: 0;
-			display: flex;
-			flex-direction: column;
-			align-items: center;
-			justify-content: center;
-			color: var(--vscode-descriptionForeground);
-			font-family: var(--vscode-font-family);
-			font-size: 14px;
-			gap: 24px;
-			z-index: 1;
-		`;
-
-		// Icon
-		const icon = document.createElement('div');
-		icon.style.cssText = `
-			font-size: 48px;
-			opacity: 0.5;
-		`;
-		icon.textContent = '🌐';
-		this.placeholderElement.appendChild(icon);
-
-		// Title
-		const title = document.createElement('div');
-		title.className = 'placeholder-title';
-		title.style.cssText = `
-			font-size: 18px;
-			font-weight: 500;
-			color: var(--vscode-foreground);
-		`;
-		title.textContent = 'Browser Preview';
-		this.placeholderElement.appendChild(title);
-
-		// Description
-		const description = document.createElement('div');
-		description.className = 'placeholder-description';
-		description.style.cssText = `
-			opacity: 0.7;
-			text-align: center;
-			max-width: 400px;
-			margin-bottom: 8px;
-		`;
-		description.textContent = 'Preview your project or browse the web';
-		this.placeholderElement.appendChild(description);
-
-		// Buttons container
-		const buttonsContainer = document.createElement('div');
-		buttonsContainer.style.cssText = `
-			display: flex;
-			gap: 12px;
-			flex-wrap: wrap;
-			justify-content: center;
-		`;
-
-		// Open Project button
-		const openProjectBtn = document.createElement('button');
-		openProjectBtn.style.cssText = `
-			padding: 10px 20px;
-			border: none;
-			border-radius: 4px;
-			background: var(--vscode-button-background);
-			color: var(--vscode-button-foreground);
-			font-size: 13px;
-			font-weight: 500;
-			cursor: pointer;
-			display: flex;
-			align-items: center;
-			gap: 8px;
-			transition: background 0.2s;
-		`;
-		const openProjectIcon = document.createElement('span');
-		openProjectIcon.style.fontSize = '16px';
-		openProjectIcon.textContent = '📁';
-		openProjectBtn.appendChild(openProjectIcon);
-		openProjectBtn.appendChild(document.createTextNode(' Open Project'));
-		openProjectBtn.title = 'Select a project folder to preview with live reload';
-		openProjectBtn.addEventListener('click', () => this.openProjectPicker());
-		openProjectBtn.addEventListener('mouseenter', () => {
-			openProjectBtn.style.background = 'var(--vscode-button-hoverBackground)';
-		});
-		openProjectBtn.addEventListener('mouseleave', () => {
-			openProjectBtn.style.background = 'var(--vscode-button-background)';
-		});
-		buttonsContainer.appendChild(openProjectBtn);
-
-		// Start Browsing button (secondary style)
-		const browseBtn = document.createElement('button');
-		browseBtn.style.cssText = `
-			padding: 10px 20px;
-			border: 1px solid var(--vscode-button-secondaryBackground, var(--vscode-input-border));
-			border-radius: 4px;
-			background: transparent;
-			color: var(--vscode-foreground);
-			font-size: 13px;
-			font-weight: 500;
-			cursor: pointer;
-			display: flex;
-			align-items: center;
-			gap: 8px;
-			transition: background 0.2s;
-		`;
-		const browseIcon = document.createElement('span');
-		browseIcon.style.fontSize = '16px';
-		browseIcon.textContent = '🔍';
-		browseBtn.appendChild(browseIcon);
-		browseBtn.appendChild(document.createTextNode(' Browse Web'));
-		browseBtn.title = 'Enter a URL in the address bar to start browsing';
-		browseBtn.addEventListener('click', () => this.focusUrlBar());
-		browseBtn.addEventListener('mouseenter', () => {
-			browseBtn.style.background = 'var(--vscode-list-hoverBackground)';
-		});
-		browseBtn.addEventListener('mouseleave', () => {
-			browseBtn.style.background = 'transparent';
-		});
-		buttonsContainer.appendChild(browseBtn);
-
-		this.placeholderElement.appendChild(buttonsContainer);
-
-		// Hint text
-		const hint = document.createElement('div');
-		hint.style.cssText = `
-			opacity: 0.5;
-			font-size: 12px;
-			margin-top: 16px;
-		`;
-		hint.textContent = 'Tip: You can also enter a URL directly in the address bar above';
-		this.placeholderElement.appendChild(hint);
-
-		this.browserContainer.appendChild(this.placeholderElement);
+		this.defaultScreen = new DefaultBrowserScreen(
+			this.browserContainer,
+			{
+				onOpenProject: () => this.openProjectPicker(),
+				onBrowseWeb: () => this.focusUrlBar(),
+				onNavigate: (url) => this.navigate(url),
+				onServerStopped: (projectRoot) => {
+					// Update editor state when server is stopped from tile
+					if (this.currentProjectRoot === projectRoot) {
+						this.currentProjectRoot = undefined;
+						this.isProjectMode = false;
+					}
+				}
+			},
+			this.devServerService,
+			this.notificationService
+		);
 	}
 
 	/**
@@ -510,8 +400,8 @@ export class Editor extends EditorPane {
 	 * Shows the WebContentsView using native visibility API
 	 */
 	private hidePlaceholder(): void {
-		if (this.placeholderElement) {
-			this.placeholderElement.style.display = 'none';
+		if (this.defaultScreen) {
+			this.defaultScreen.hide();
 		}
 		// Show the browser view using native visibility API (like Cursor)
 		if (this.browserViewId) {
@@ -560,13 +450,20 @@ export class Editor extends EditorPane {
 	 * Hides the WebContentsView using native visibility API so placeholder is visible
 	 */
 	private showPlaceholder(): void {
-		if (this.placeholderElement) {
-			this.placeholderElement.style.display = 'flex';
+		if (this.defaultScreen) {
+			this.defaultScreen.show();
 		}
 		// Hide the browser view using native visibility API (like Cursor)
 		// This properly hides the native view without destroying state
 		if (this.browserViewId) {
 			this.browserService.setBrowserVisible(this.browserViewId, false);
+		}
+
+		// Set tab title to "Browser Preview" when showing default screen
+		// This is the proper way - set title based on UI state, not filter browser's title
+		const input = this.input as EditorTabInput;
+		if (input) {
+			input.setPageTitle('');  // Clear page title so getName() returns "Browser Preview"
 		}
 	}
 
@@ -955,10 +852,51 @@ export class Editor extends EditorPane {
 		}
 	}
 
+	/**
+	 * Go to home screen (default browser screen)
+	 *
+	 * IMPORTANT: We MUST navigate to about:blank to properly unload the page.
+	 * This is the standard Electron pattern to:
+	 * - Stop audio/video playback
+	 * - Release page memory
+	 * - Clear JavaScript timers
+	 * - Unload all resources
+	 * - Clear any error states
+	 *
+	 * Just hiding the browser view would leave the page running in background!
+	 * (e.g., YouTube audio would keep playing)
+	 *
+	 * This method is ALWAYS safe to call - even if already on home screen.
+	 * It will reset error states and ensure clean state.
+	 */
 	private goHome(): void {
-		// Just navigate to about:blank - the navigation polling will
-		// detect the URL change and show the placeholder automatically
-		this.navigate('about:blank');
+		// 1. Update state FIRST so event handlers ignore title/URL changes
+		this.hasLoadedUrl = false;
+
+		// 2. Start navigation IMMEDIATELY (fire and forget - don't await)
+		//    This stops audio/video as fast as possible AND clears error states
+		//    Always navigate even if we think we're already on about:blank
+		//    to ensure clean state and clear any stuck errors
+		if (this.browserViewId) {
+			this.browserService.navigate(this.browserViewId, 'about:blank')
+				.catch(error => this.logger.warn('[ProjectMode] Failed to navigate to about:blank:', error));
+		}
+
+		// 3. Update UI (happens in parallel with navigation)
+		//    showPlaceholder() calls defaultScreen.show() which resets to normal state
+		//    (clears any error messages that might be displayed)
+		this.showPlaceholder();
+
+		// 4. Clear URL bar
+		if (this.controlBar) {
+			this.controlBar.setUrl('');
+		}
+
+		// 5. Update input URL state
+		const input = this.input as EditorTabInput;
+		if (input) {
+			input.setUrl('');
+		}
 	}
 
 	private async refresh(): Promise<void> {
@@ -988,8 +926,8 @@ export class Editor extends EditorPane {
 			this.isProjectMode = false;
 			this.currentProjectRoot = undefined;
 
-			// Navigate to blank after stopping server
-			this.navigate('about:blank');
+			// Show home screen after stopping server (don't navigate to about:blank)
+			this.goHome();
 
 			this.notificationService.notify({
 				severity: Severity.Info,
@@ -1471,27 +1409,9 @@ export class Editor extends EditorPane {
 		this.hasLoadedUrl = false;
 		this.showPlaceholder();
 
-		// Update placeholder to show error
-		if (this.placeholderElement) {
-			const title = this.placeholderElement.querySelector('div:nth-child(2)') as HTMLElement;
-			const description = this.placeholderElement.querySelector('div:nth-child(3)') as HTMLElement;
-
-			if (title) {
-				title.textContent = 'Navigation Failed';
-			}
-			if (description) {
-				description.textContent = message;
-			}
-
-			// Reset to normal state after 3 seconds
-			setTimeout(() => {
-				if (title) {
-					title.textContent = 'Browser Preview';
-				}
-				if (description) {
-					description.textContent = 'Enter a URL in the address bar above to start browsing';
-				}
-			}, 3000);
+		// Show error on the default screen
+		if (this.defaultScreen) {
+			this.defaultScreen.showError(message);
 		}
 	}
 
