@@ -27,14 +27,20 @@ import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { Dimension } from '../../../../../base/browser/dom.js';
 import { IEditorOpenContext } from '../../../../common/editor.js';
 import { CanvasInput } from './canvasInput.js';
-import type { CanvasViewport, BackgroundPattern } from '../../common/canvas/canvasTypes.js';
+import { SandboxCard, type ISandboxCardCallbacks } from './components/sandboxCard.js';
+import { FloatingToolbar, type IFloatingToolbarCallbacks } from './components/floatingToolbar.js';
+import { DEFAULT_GRID_CONFIG } from '../../common/canvas/canvasTypes.js';
+import type { CanvasViewport, BackgroundPattern, Sandbox, GridConfig } from '../../common/canvas/canvasTypes.js';
+import { IWebviewService } from '../../../webview/browser/webview.js';
+import { SAMPLE_COMPONENTS, getSampleComponent } from './data/sampleComponents.js';
+import { getPreviewManager } from './services/previewManager.js';
 
 /**
  * Canvas Editor - EditorPane implementation
  *
- * Phase 1: Basic structure with placeholder
- * Phase 2: Infinite canvas with pan/zoom
- * Phase 3: Sandbox cards with iframes
+ * Phase 1: Basic structure with placeholder ✅
+ * Phase 2: Infinite canvas with pan/zoom ✅
+ * Phase 3: Sandbox cards with iframes (in progress)
  */
 export class CanvasEditor extends EditorPane {
 	static readonly ID = 'roopik.canvasEditor';
@@ -49,15 +55,33 @@ export class CanvasEditor extends EditorPane {
 	private backgroundColor: string = '#1a1a1a';
 	private backgroundPattern: BackgroundPattern = 'dots';
 
+	// Sandbox management
+	private sandboxes: Map<string, Sandbox> = new Map();
+	private sandboxCards: Map<string, SandboxCard> = new Map();
+	private selectedSandboxId: string | null = null;
+	private focusedSandboxId: string | null = null;
+
 	// Interaction state
 	private isPanning: boolean = false;
 	private panStart: { x: number; y: number } = { x: 0, y: 0 };
+
+	// Drag state for sandboxes
+	private draggingSandboxId: string | null = null;
+	private dragStart: { x: number; y: number } = { x: 0, y: 0 };
+	private dragOffset: { x: number; y: number } = { x: 0, y: 0 };
+
+	// Grid configuration - uses defaults, can be customized via settings in future
+	private gridConfig: GridConfig = { ...DEFAULT_GRID_CONFIG };
+
+	// UI Components
+	private floatingToolbar: FloatingToolbar | undefined;
 
 	constructor(
 		group: IEditorGroup,
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IThemeService themeService: IThemeService,
-		@IStorageService storageService: IStorageService
+		@IStorageService storageService: IStorageService,
+		@IWebviewService private readonly webviewService: IWebviewService
 	) {
 		super(CanvasEditor.ID, group, telemetryService, themeService, storageService);
 	}
@@ -107,8 +131,27 @@ export class CanvasEditor extends EditorPane {
 		// Setup event listeners
 		this.setupCanvasEvents();
 
-		// Show placeholder for Phase 1
-		this.showPlaceholder();
+		// Create floating toolbar for testing
+		this.createFloatingToolbar();
+
+		// Sandboxes are loaded when setInput is called
+	}
+
+	/**
+	 * Create the floating toolbar for loading sample components
+	 */
+	private createFloatingToolbar(): void {
+		if (!this.container) {
+			return;
+		}
+
+		const toolbarCallbacks: IFloatingToolbarCallbacks = {
+			onLoadSample: (sampleId) => this.loadSampleById(sampleId),
+			onLoadAll: () => this.loadAllSamples(),
+			onClearAll: () => this.clearAllSandboxes()
+		};
+
+		this.floatingToolbar = new FloatingToolbar(this.container, toolbarCallbacks);
 	}
 
 	/**
@@ -249,94 +292,262 @@ export class CanvasEditor extends EditorPane {
 		return luminance > 0.5;
 	}
 
+	// ============================================
+	// Sandbox Management
+	// ============================================
+
 	/**
-	 * Show placeholder for Phase 1 testing
+	 * Load a single sample component by ID
 	 */
-	private showPlaceholder(): void {
+	private loadSampleById(sampleId: string): void {
+		const sample = getSampleComponent(sampleId);
+		if (!sample) {
+			console.warn(`[CanvasEditor] Sample not found: ${sampleId}`);
+			return;
+		}
+
+		// Check if already loaded
+		if (this.sandboxes.has(sampleId)) {
+			console.log(`[CanvasEditor] Sample already loaded: ${sampleId}`);
+			this.selectSandbox(sampleId);
+			return;
+		}
+
+		const { code, cdnUrls } = this.parseComponentCode(sample.id, sample.code);
+		const position = this.calculateGridPosition(this.sandboxes.size);
+
+		const sandbox: Sandbox = {
+			id: sample.id,
+			componentId: sample.id,
+			x: position.x,
+			y: position.y,
+			width: this.gridConfig.sandboxWidth + this.gridConfig.containerPaddingX * 2,
+			height: this.gridConfig.sandboxHeight + this.gridConfig.containerPaddingY * 2,
+			zIndex: this.sandboxes.size + 1,
+			state: 'loading',
+			sessionCode: code,
+			cdnUrls: cdnUrls
+		};
+
+		this.addSandbox(sandbox);
+		console.log(`[CanvasEditor] Loaded sample: ${sample.name}`);
+	}
+
+	/**
+	 * Load all sample components
+	 */
+	private loadAllSamples(): void {
+		SAMPLE_COMPONENTS.forEach(sample => {
+			if (!this.sandboxes.has(sample.id)) {
+				this.loadSampleById(sample.id);
+			}
+		});
+	}
+
+	/**
+	 * Clear all sandboxes from the canvas
+	 */
+	private clearAllSandboxes(): void {
+		const ids = Array.from(this.sandboxes.keys());
+		ids.forEach(id => this.deleteSandbox(id));
+		console.log('[CanvasEditor] Cleared all sandboxes');
+	}
+
+	/**
+	 * Load first 3 sample components for initial demo
+	 */
+	private loadInitialSamples(): void {
+		// Load only the first 3 samples on initial load
+		const initialSamples = SAMPLE_COMPONENTS.slice(0, 3);
+		initialSamples.forEach(sample => {
+			this.loadSampleById(sample.id);
+		});
+	}
+
+	/**
+	 * Parse component code to extract dependencies and transform imports
+	 * Uses PreviewManager for proper Golden Prompt transformation
+	 */
+	private parseComponentCode(componentId: string, code: string): { code: string; cdnUrls: string[] } {
+		const previewManager = getPreviewManager();
+		const sessionCode = previewManager.processComponent(componentId, code);
+		return {
+			code: sessionCode.code,
+			cdnUrls: sessionCode.cdnUrls
+		};
+	}
+
+	/**
+	 * Calculate grid position for a sandbox
+	 */
+	private calculateGridPosition(index: number): { x: number; y: number } {
+		const col = index % this.gridConfig.columns;
+		const row = Math.floor(index / this.gridConfig.columns);
+
+		const totalWidth = this.gridConfig.sandboxWidth + this.gridConfig.containerPaddingX * 2 + this.gridConfig.containerMargin * 2;
+		const totalHeight = this.gridConfig.sandboxHeight + this.gridConfig.containerPaddingY * 2 + this.gridConfig.containerMargin * 2;
+
+		return {
+			x: this.gridConfig.startX + col * (totalWidth + this.gridConfig.gapX),
+			y: this.gridConfig.startY + row * (totalHeight + this.gridConfig.gapY)
+		};
+	}
+
+	/**
+	 * Add a sandbox to the canvas
+	 */
+	private addSandbox(sandbox: Sandbox): void {
 		if (!this.canvasContent) {
 			return;
 		}
 
-		const placeholder = document.createElement('div');
-		placeholder.style.cssText = `
-			position: absolute;
-			left: 50%;
-			top: 50%;
-			transform: translate(-50%, -50%);
-			text-align: center;
-			color: var(--vscode-descriptionForeground);
-			font-family: var(--vscode-font-family);
-			pointer-events: none;
-		`;
+		this.sandboxes.set(sandbox.id, sandbox);
 
-		const icon = document.createElement('div');
-		icon.style.cssText = 'font-size: 64px; opacity: 0.5; margin-bottom: 16px;';
-		icon.textContent = '🎨';
-		placeholder.appendChild(icon);
-
-		const title = document.createElement('div');
-		title.style.cssText = `
-			font-size: 24px;
-			font-weight: 500;
-			color: var(--vscode-foreground);
-			margin-bottom: 8px;
-		`;
-		title.textContent = 'Component Canvas';
-		placeholder.appendChild(title);
-
-		const subtitle = document.createElement('div');
-		subtitle.style.cssText = 'font-size: 14px; opacity: 0.7;';
-		subtitle.textContent = 'Pan with mouse drag • Zoom with scroll wheel';
-		placeholder.appendChild(subtitle);
-
-		// Create the outer info div
-		const info = document.createElement('div');
-		info.style.cssText = `
-			margin-top: 24px;
-			padding: 12px 16px;
-			background: var(--vscode-editor-background);
-			border: 1px solid var(--vscode-widget-border);
-			border-radius: 8px;
-			font-size: 12px;
-		`;
-
-		// 1. Create and append the "Phase 1 Complete" line
-		const statusDiv = document.createElement('div');
-		statusDiv.style.cssText = 'margin-bottom: 8px; font-weight: 500;';
-		statusDiv.textContent = 'Phase 1 Complete ✅';
-		info.appendChild(statusDiv);
-
-		// 2. Create and append the "Canvas editor registered" line
-		const registeredDiv = document.createElement('div');
-		registeredDiv.textContent = 'Canvas editor registered and working!';
-		info.appendChild(registeredDiv);
-
-		// 3. Create and append the viewport info line (this is the one we update later)
-		const viewportDiv = document.createElement('div');
-		viewportDiv.style.cssText = 'margin-top: 8px; opacity: 0.7;';
-		// Set initial content
-		viewportDiv.textContent =
-			`Viewport: x=${this.viewport.x.toFixed(0)}, y=${this.viewport.y.toFixed(0)}, scale=${this.viewport.scale.toFixed(2)}`;
-		info.appendChild(viewportDiv);
-
-		placeholder.appendChild(info);
-
-		// Update viewport display on transform
-		const updateInfo = () => {
-			// Select the newly created 'viewportDiv' correctly, e.g., by its direct reference or a known structure
-			// If you don't keep a direct reference, use:
-			const viewportDivToUpdate = info.querySelector('div:last-child');
-			if (viewportDivToUpdate) {
-				viewportDivToUpdate.textContent =
-					`Viewport: x=${this.viewport.x.toFixed(0)}, y=${this.viewport.y.toFixed(0)}, scale=${this.viewport.scale.toFixed(2)}`;
-			}
+		const callbacks: ISandboxCardCallbacks = {
+			onClick: (id) => this.selectSandbox(id),
+			onDoubleClick: (id) => this.focusSandbox(id),
+			onDragStart: (id, e) => this.startSandboxDrag(id, e),
+			onDelete: (id) => this.deleteSandbox(id),
+			onExpand: (id) => this.expandSandbox(id)
 		};
 
-		// Observe transform changes
-		const observer = new MutationObserver(updateInfo);
-		observer.observe(this.canvasContent, { attributes: true, attributeFilter: ['style'] });
+		const card = new SandboxCard(this.canvasContent, sandbox, callbacks, this.webviewService);
+		this.sandboxCards.set(sandbox.id, card);
+	}
 
-		this.canvasContent.appendChild(placeholder);
+	/**
+	 * Select a sandbox
+	 */
+	private selectSandbox(id: string): void {
+		// Deselect previous
+		if (this.selectedSandboxId && this.selectedSandboxId !== id) {
+			const prevCard = this.sandboxCards.get(this.selectedSandboxId);
+			prevCard?.setSelected(false);
+		}
+
+		// Select new
+		this.selectedSandboxId = id;
+		const card = this.sandboxCards.get(id);
+		card?.setSelected(true);
+
+		// Bring to front
+		this.bringToFront(id);
+	}
+
+	/**
+	 * Focus a sandbox (double-click for focused editing mode)
+	 */
+	private focusSandbox(id: string): void {
+		// Clear previous focus
+		if (this.focusedSandboxId && this.focusedSandboxId !== id) {
+			const prevCard = this.sandboxCards.get(this.focusedSandboxId);
+			prevCard?.setFocused(false);
+		}
+
+		this.focusedSandboxId = id;
+		const card = this.sandboxCards.get(id);
+		card?.setFocused(true);
+
+		// TODO: Zoom canvas to center on this sandbox (Focus Mode)
+		console.log(`[CanvasEditor] Focus mode activated for: ${id}`);
+	}
+
+	/**
+	 * Start dragging a sandbox
+	 */
+	private startSandboxDrag(id: string, e: MouseEvent): void {
+		this.draggingSandboxId = id;
+		this.dragStart = { x: e.clientX, y: e.clientY };
+		this.dragOffset = { x: 0, y: 0 };
+
+		const card = this.sandboxCards.get(id);
+		card?.setDragging(true);
+
+		// Add document-level mouse move/up handlers
+		const onMouseMove = (moveEvent: MouseEvent) => {
+			if (!this.draggingSandboxId) {
+				return;
+			}
+
+			const deltaX = (moveEvent.clientX - this.dragStart.x) / this.viewport.scale;
+			const deltaY = (moveEvent.clientY - this.dragStart.y) / this.viewport.scale;
+
+			this.dragOffset = { x: deltaX, y: deltaY };
+			card?.applyDragOffset(deltaX, deltaY);
+		};
+
+		const onMouseUp = () => {
+			if (!this.draggingSandboxId) {
+				return;
+			}
+
+			const sandbox = this.sandboxes.get(this.draggingSandboxId);
+			if (sandbox && card) {
+				const newX = sandbox.x + this.dragOffset.x;
+				const newY = sandbox.y + this.dragOffset.y;
+				card.commitDragPosition(newX, newY);
+				sandbox.x = newX;
+				sandbox.y = newY;
+			}
+
+			card?.setDragging(false);
+			this.draggingSandboxId = null;
+			this.dragOffset = { x: 0, y: 0 };
+
+			document.removeEventListener('mousemove', onMouseMove);
+			document.removeEventListener('mouseup', onMouseUp);
+		};
+
+		document.addEventListener('mousemove', onMouseMove);
+		document.addEventListener('mouseup', onMouseUp);
+	}
+
+	/**
+	 * Delete a sandbox
+	 */
+	private deleteSandbox(id: string): void {
+		const card = this.sandboxCards.get(id);
+		card?.dispose();
+		this.sandboxCards.delete(id);
+		this.sandboxes.delete(id);
+
+		if (this.selectedSandboxId === id) {
+			this.selectedSandboxId = null;
+		}
+		if (this.focusedSandboxId === id) {
+			this.focusedSandboxId = null;
+		}
+
+		console.log(`[CanvasEditor] Deleted sandbox: ${id}`);
+	}
+
+	/**
+	 * Expand a sandbox to fullscreen/modal view
+	 */
+	private expandSandbox(id: string): void {
+		// TODO: Implement fullscreen expand view
+		console.log(`[CanvasEditor] Expand sandbox: ${id}`);
+	}
+
+	/**
+	 * Bring a sandbox to front (highest z-index)
+	 */
+	private bringToFront(id: string): void {
+		// Find max zIndex
+		let maxZ = 0;
+		for (const sandbox of this.sandboxes.values()) {
+			if (sandbox.zIndex > maxZ) {
+				maxZ = sandbox.zIndex;
+			}
+		}
+
+		// Set this one higher
+		const sandbox = this.sandboxes.get(id);
+		if (sandbox) {
+			sandbox.zIndex = maxZ + 1;
+			const card = this.sandboxCards.get(id);
+			card?.update({ zIndex: sandbox.zIndex });
+		}
 	}
 
 	// ============================================
@@ -352,9 +563,10 @@ export class CanvasEditor extends EditorPane {
 		await super.setInput(input, options, context, token);
 
 		if (input instanceof CanvasInput) {
-			// TODO: Load canvas state from storage
-			// For now, just log
 			console.log(`[CanvasEditor] Opening canvas: ${input.canvasId}`);
+
+			// Load initial sample components for demo
+			this.loadInitialSamples();
 		}
 	}
 
@@ -368,7 +580,16 @@ export class CanvasEditor extends EditorPane {
 	}
 
 	override dispose(): void {
-		// Cleanup
+		// Cleanup floating toolbar
+		this.floatingToolbar?.dispose();
+
+		// Cleanup sandbox cards
+		for (const card of this.sandboxCards.values()) {
+			card.dispose();
+		}
+		this.sandboxCards.clear();
+		this.sandboxes.clear();
+
 		super.dispose();
 	}
 }
