@@ -14,6 +14,7 @@ These documents cover challenges faced while implementing the Browser Preview V2
 |-----------|--------|----------|
 | Website reloads on tab switch | RESOLVED | [Tab Switching](./BROWSER_VIEW_TAB_SWITCHING.md) |
 | Ghost browser views on IDE reload | RESOLVED | [Ghost Process](./BROWSER_VIEW_GHOST_PROCESS.md) |
+| Browser views destroyed on extension activity | RESOLVED | [Reload Lifecycle](./BROWSER_VIEW_RELOAD_LIFECYCLE.md) |
 | Double browser view creation | RESOLVED | [Double Initialization](./BROWSER_VIEW_DOUBLE_INITIALIZATION.md) |
 | Placeholder hidden by native view | RESOLVED | [Visibility](./WEBCONTENTSVIEW_VISIBILITY.md) |
 | Localhost/dev server not loading | RESOLVED | [Localhost Loading](./LOCALHOST_LOADING.md) |
@@ -38,6 +39,11 @@ These documents cover challenges faced while implementing the Browser Preview V2
 **Issue**: Browser view persists after IDE reload as uncontrollable "ghost".
 **Solution**: Safety Leash pattern - attach window lifecycle listeners to auto-destroy.
 **File**: [BROWSER_VIEW_GHOST_PROCESS.md](./BROWSER_VIEW_GHOST_PROCESS.md)
+
+### The Reload Lifecycle Problem
+**Issue**: Browser views destroyed on extension activity due to false positives from `did-start-loading` event.
+**Solution**: Use VS Code's `ILifecycleMainService.onWillLoadWindow` with `LoadReason.RELOAD` for semantic, reliable reload detection.
+**File**: [BROWSER_VIEW_RELOAD_LIFECYCLE.md](./BROWSER_VIEW_RELOAD_LIFECYCLE.md)
 
 ### The Double Initialization Problem
 **Issue**: Race condition creates two browser views simultaneously.
@@ -90,12 +96,17 @@ setInput() → setBrowserVisible(true)
 dispose() → destroyBrowserView()
 ```
 
-### 2. Safety Leash Pattern
+### 2. Safety Leash Pattern (Legacy - see Reload Lifecycle doc for modern approach)
 ```typescript
-// Attach to window lifecycle events
+// OLD: Too broad - fires on extension activity
 window.webContents.once('did-start-loading', autoDestroy);
-window.once('closed', autoDestroy);
-window.webContents.once('render-process-gone', autoDestroy);
+
+// NEW: Semantic - only fires on actual reloads
+lifecycleMainService.onWillLoadWindow(e => {
+    if (e.reason === LoadReason.RELOAD) {
+        destroyAllBrowserViewsForWindow(e.window.win?.id);
+    }
+});
 ```
 
 ### 3. Single Entry Point Pattern

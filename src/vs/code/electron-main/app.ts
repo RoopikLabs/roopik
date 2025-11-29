@@ -1248,7 +1248,7 @@ export class CodeApplication extends Disposable {
 		mainProcessElectronServer.registerChannel(ipcUtilityProcessWorkerChannelName, utilityProcessWorkerChannel);
 
 		// ROOPIK: ProjectMode - Browser Preview with embedded DevTools and CDP
-		const projectModeService = new BrowserViewService();
+		const projectModeService = new BrowserViewService(accessor.get(ILifecycleMainService));
 		const projectModeChannel = new ProjectModeChannel(projectModeService);
 		mainProcessElectronServer.registerChannel(PROJECT_MODE_CHANNEL, projectModeChannel);
 

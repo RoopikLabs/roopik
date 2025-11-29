@@ -472,6 +472,8 @@ export class Editor extends EditorPane {
 	 * Note: This only creates the view, navigation is handled by setInput()
 	 */
 	private initializeBrowserView(): Promise<void> {
+		this.logger.info('[ProjectMode] initializeBrowserView() called');
+
 		// If already initialized, skip
 		if (this.browserViewId) {
 			return Promise.resolve();
@@ -500,6 +502,11 @@ export class Editor extends EditorPane {
 			const windowId = await this.nativeHostService.windowId;
 			const result = await this.browserService.createBrowserView(windowId);
 			this.browserViewId = result.browserViewId;
+
+			this.logger.info('[ProjectMode] Browser view initialized', {
+				windowId,
+				browserViewId: this.browserViewId
+			});
 
 			// Publish browser created event to central event bus
 			this.eventService.publish('browser.created', {
@@ -735,7 +742,9 @@ export class Editor extends EditorPane {
 		}
 
 		if (!this.browserViewId) {
-			this.logger.error('[ProjectMode] Navigation aborted: No browser view ID! Browser view may not be initialized.');
+			this.logger.error('[ProjectMode] Navigation aborted: No browser view ID! Browser view may not be initialized.', {
+				requestedUrl: url
+			});
 			return;
 		}
 
@@ -757,6 +766,11 @@ export class Editor extends EditorPane {
 		} else {
 			url = trimmedUrl;
 		}
+
+		this.logger.info('[ProjectMode] Navigation requested', {
+			browserViewId: this.browserViewId,
+			finalUrl: url
+		});
 
 		// Track if we're loading a real URL (for tab switch behavior)
 		const isRealUrl = url !== 'about:blank';
