@@ -86,8 +86,8 @@ export class RoopikWelcomeEditor extends EditorPane {
 		heroDescription.textContent = 'Start designing components, preview production-ready UI, and collaborate with AI agents—all inside a single workspace.';
 
 		const heroActions = append(heroContent, $('.hero-actions'));
-		this.createHeroButton(heroActions, 'New Canvas', 'roopik.openCanvas', true);
-		this.createHeroButton(heroActions, 'Open Project Preview', 'roopik.openProjectPreview');
+		this.createHeroButton(heroActions, 'codicon-new-file', 'New Canvas', 'roopik.openCanvas', true);
+		this.createHeroButton(heroActions, 'codicon-globe', 'Project Mode', 'roopik.openProjectPreview');
 
 		const heroShowcase = append(hero, $('.hero-showcase'));
 		const showcaseLabel = append(heroShowcase, $('.showcase-label'));
@@ -111,7 +111,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 			{ icon: 'codicon-new-file', label: 'New Canvas', commandId: 'roopik.openCanvas' },
 			{ icon: 'codicon-folder', label: 'Open Canvas', commandId: 'roopik.openCanvas' },
 			{ icon: 'codicon-file-symlink-directory', label: 'Import Canvas', commandId: 'roopik.openCanvas' },
-			{ icon: 'codicon-globe', label: 'Open Project Preview', commandId: 'roopik.openProjectPreview' },
+			{ icon: 'codicon-globe', label: 'Project Mode', commandId: 'roopik.openProjectPreview' },
 			{ icon: 'codicon-keyboard', label: 'Run Command...', commandId: 'workbench.action.showCommands' }
 		];
 
@@ -308,9 +308,16 @@ export class RoopikWelcomeEditor extends EditorPane {
 		this.renderCurrentView();
 	}
 
-	private createHeroButton(parent: HTMLElement, label: string, commandId: string, primary = false): void {
+	private createHeroButton(parent: HTMLElement, iconClass: string, label: string, commandId: string, primary = false): void {
 		const button = append(parent, primary ? $('.hero-button.primary') : $('.hero-button'));
-		button.textContent = label;
+
+		const icon = append(button, $('span.codicon'));
+		icon.classList.add(iconClass);
+		icon.setAttribute('aria-hidden', 'true');
+
+		const labelEl = append(button, $('.hero-button-label'));
+		labelEl.textContent = label;
+
 		button.onclick = () => this.commandService.executeCommand(commandId);
 	}
 

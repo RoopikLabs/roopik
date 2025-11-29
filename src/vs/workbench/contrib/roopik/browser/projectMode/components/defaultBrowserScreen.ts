@@ -59,26 +59,31 @@ export class DefaultBrowserScreen {
 			color: var(--vscode-descriptionForeground);
 			font-family: var(--vscode-font-family);
 			font-size: 14px;
-			gap: 24px;
+			gap: 20px;
 			z-index: 1;
+			padding: 40px 20px;
+			box-sizing: border-box;
 		`;
 
-		// Icon
-		const icon = document.createElement('div');
+		// Icon (using codicon)
+		const icon = document.createElement('span');
+		icon.className = 'codicon codicon-globe';
 		icon.style.cssText = `
-			font-size: 48px;
-			opacity: 0.5;
+			font-size: 64px;
+			opacity: 0.4;
+			color: var(--vscode-icon-foreground);
 		`;
-		icon.textContent = '🌐';
+		icon.setAttribute('aria-hidden', 'true');
 		this.element.appendChild(icon);
 
 		// Title
 		const title = document.createElement('div');
 		title.className = 'default-screen-title';
 		title.style.cssText = `
-			font-size: 18px;
+			font-size: 20px;
 			font-weight: 500;
 			color: var(--vscode-foreground);
+			margin-top: 8px;
 		`;
 		title.textContent = 'Browser Preview';
 		this.element.appendChild(title);
@@ -90,7 +95,9 @@ export class DefaultBrowserScreen {
 			opacity: 0.7;
 			text-align: center;
 			max-width: 400px;
-			margin-bottom: 8px;
+			font-size: 13px;
+			line-height: 1.5;
+			margin-bottom: 4px;
 		`;
 		description.textContent = 'Preview your project or browse the web';
 		this.element.appendChild(description);
@@ -99,15 +106,16 @@ export class DefaultBrowserScreen {
 		const buttonsContainer = document.createElement('div');
 		buttonsContainer.style.cssText = `
 			display: flex;
-			gap: 12px;
+			gap: 10px;
 			flex-wrap: wrap;
 			justify-content: center;
+			margin-top: 8px;
 		`;
 
 		// Open Project button
 		const openProjectBtn = this.createButton({
 			text: 'Open Project',
-			icon: '📁',
+			iconClass: 'codicon-folder',
 			primary: true,
 			title: 'Select a project folder to preview with live reload',
 			onClick: () => this.callbacks.onOpenProject()
@@ -117,7 +125,7 @@ export class DefaultBrowserScreen {
 		// Browse Web button
 		const browseBtn = this.createButton({
 			text: 'Browse Web',
-			icon: '🔍',
+			iconClass: 'codicon-search',
 			primary: false,
 			title: 'Enter a URL in the address bar to start browsing',
 			onClick: () => this.callbacks.onBrowseWeb()
@@ -131,13 +139,13 @@ export class DefaultBrowserScreen {
 		this.runningServerTile.className = 'running-server-tile';
 		this.runningServerTile.style.cssText = `
 			display: none;
-			margin-top: 24px;
-			padding: 16px 20px;
-			background: var(--vscode-editor-inactiveSelectionBackground, rgba(255, 255, 255, 0.05));
-			border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.1));
-			border-radius: 8px;
+			margin-top: 16px;
+			padding: 14px 18px;
+			background: var(--vscode-editorWidget-background);
+			border: 1px solid var(--vscode-widget-border);
+			border-radius: 6px;
 			cursor: pointer;
-			transition: all 0.2s ease;
+			transition: all 0.15s ease;
 			max-width: 400px;
 			width: 100%;
 			position: relative;
@@ -150,7 +158,9 @@ export class DefaultBrowserScreen {
 		hint.style.cssText = `
 			opacity: 0.5;
 			font-size: 12px;
-			margin-top: 16px;
+			margin-top: 20px;
+			text-align: center;
+			max-width: 400px;
 		`;
 		hint.textContent = 'Tip: You can also enter a URL directly in the address bar above';
 		this.element.appendChild(hint);
@@ -159,11 +169,11 @@ export class DefaultBrowserScreen {
 	}
 
 	/**
-	 * Create a styled button
+	 * Create a styled button (professional design with codicons)
 	 */
 	private createButton(options: {
 		text: string;
-		icon: string;
+		iconClass: string;
 		primary: boolean;
 		title: string;
 		onClick: () => void;
@@ -172,53 +182,72 @@ export class DefaultBrowserScreen {
 
 		if (options.primary) {
 			btn.style.cssText = `
-				padding: 10px 20px;
+				padding: 10px 16px;
 				border: none;
-				border-radius: 4px;
-				background: var(--vscode-button-background);
-				color: var(--vscode-button-foreground);
+				border-radius: 6px;
+				background: var(--vscode-button-primaryBackground);
+				color: var(--vscode-button-primaryForeground);
 				font-size: 13px;
 				font-weight: 500;
 				cursor: pointer;
 				display: flex;
 				align-items: center;
+				justify-content: center;
 				gap: 8px;
-				transition: background 0.2s;
+				transition: all 0.15s ease;
+				user-select: none;
 			`;
 		} else {
 			btn.style.cssText = `
-				padding: 10px 20px;
-				border: 1px solid var(--vscode-button-secondaryBackground, var(--vscode-input-border));
-				border-radius: 4px;
-				background: transparent;
+				padding: 10px 16px;
+				border: 1px solid var(--vscode-widget-border);
+				border-radius: 6px;
+				background: var(--vscode-editorWidget-background);
 				color: var(--vscode-foreground);
 				font-size: 13px;
 				font-weight: 500;
 				cursor: pointer;
 				display: flex;
 				align-items: center;
+				justify-content: center;
 				gap: 8px;
-				transition: background 0.2s;
+				transition: all 0.15s ease;
+				user-select: none;
 			`;
 		}
 
+		// Icon (codicon)
 		const iconSpan = document.createElement('span');
-		iconSpan.style.fontSize = '16px';
-		iconSpan.textContent = options.icon;
+		iconSpan.className = `codicon ${options.iconClass}`;
+		iconSpan.style.cssText = 'font-size: 16px;';
+		iconSpan.setAttribute('aria-hidden', 'true');
 		btn.appendChild(iconSpan);
-		btn.appendChild(document.createTextNode(` ${options.text}`));
+
+		// Text
+		const textSpan = document.createElement('span');
+		textSpan.textContent = options.text;
+		btn.appendChild(textSpan);
+
 		btn.title = options.title;
 
 		btn.addEventListener('click', options.onClick);
 		btn.addEventListener('mouseenter', () => {
-			btn.style.background = options.primary
-				? 'var(--vscode-button-hoverBackground)'
-				: 'var(--vscode-list-hoverBackground)';
+			if (options.primary) {
+				btn.style.background = 'var(--vscode-button-primaryHoverBackground)';
+			} else {
+				btn.style.background = 'var(--vscode-list-hoverBackground)';
+				btn.style.borderColor = 'var(--vscode-focusBorder)';
+			}
+			btn.style.transform = 'translateY(-1px)';
 		});
 		btn.addEventListener('mouseleave', () => {
-			btn.style.background = options.primary
-				? 'var(--vscode-button-background)'
-				: 'transparent';
+			if (options.primary) {
+				btn.style.background = 'var(--vscode-button-primaryBackground)';
+			} else {
+				btn.style.background = 'var(--vscode-editorWidget-background)';
+				btn.style.borderColor = 'var(--vscode-widget-border)';
+			}
+			btn.style.transform = 'translateY(0)';
 		});
 
 		return btn;
@@ -359,18 +388,23 @@ export class DefaultBrowserScreen {
 
 		container.appendChild(infoSection);
 
-		// Close button
-		const closeBtn = document.createElement('div');
-		closeBtn.className = 'running-server-close';
+		// Close button (using codicon)
+		const closeBtn = document.createElement('span');
+		closeBtn.className = 'running-server-close codicon codicon-close';
 		closeBtn.style.cssText = `
-			padding: 4px 8px;
+			padding: 4px;
 			border-radius: 4px;
-			font-size: 11px;
+			font-size: 14px;
 			opacity: 0.6;
-			transition: all 0.2s;
+			transition: all 0.15s ease;
+			cursor: pointer;
+			flex-shrink: 0;
+			display: flex;
+			align-items: center;
+			justify-content: center;
 		`;
 		closeBtn.title = 'Stop server';
-		closeBtn.textContent = '✕';
+		closeBtn.setAttribute('aria-hidden', 'true');
 		container.appendChild(closeBtn);
 
 		this.runningServerTile.appendChild(container);
@@ -411,10 +445,20 @@ export class DefaultBrowserScreen {
 		this.runningServerTile.onmouseenter = () => {
 			this.runningServerTile!.style.background = 'var(--vscode-list-hoverBackground)';
 			this.runningServerTile!.style.borderColor = 'var(--vscode-focusBorder)';
+			// Show close button on hover
+			const closeBtn = this.runningServerTile!.querySelector('.running-server-close') as HTMLElement;
+			if (closeBtn) {
+				closeBtn.style.opacity = '1';
+			}
 		};
 		this.runningServerTile.onmouseleave = () => {
-			this.runningServerTile!.style.background = 'var(--vscode-editor-inactiveSelectionBackground, rgba(255, 255, 255, 0.05))';
-			this.runningServerTile!.style.borderColor = 'var(--vscode-panel-border, rgba(255, 255, 255, 0.1))';
+			this.runningServerTile!.style.background = 'var(--vscode-editorWidget-background)';
+			this.runningServerTile!.style.borderColor = 'var(--vscode-widget-border)';
+			// Hide close button on leave
+			const closeBtn = this.runningServerTile!.querySelector('.running-server-close') as HTMLElement;
+			if (closeBtn) {
+				closeBtn.style.opacity = '0.6';
+			}
 		};
 	}
 
