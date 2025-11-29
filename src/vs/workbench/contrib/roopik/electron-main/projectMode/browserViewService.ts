@@ -8,6 +8,9 @@ import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
 import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
 import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
+import type { ILifecycleMainService } from '../../../../../platform/lifecycle/electron-main/lifecycleMainService.js';
+import { LoadReason } from '../../../../../platform/window/electron-main/window.js';
+import { Disposable } from '../../../../../base/common/lifecycle.js';
 
 /**
  * Browser View Service
@@ -17,8 +20,9 @@ import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
  * - ON-DEMAND DevTools creation (fresh WebContentsView each time)
  * - CDP debugger integration
  * - Device emulation via CDP
+ * - Graceful cleanup on window reload (via ILifecycleMainService)
  */
-export class BrowserViewService implements IProjectModeService {
+export class BrowserViewService extends Disposable implements IProjectModeService {
 	readonly _serviceBrand: undefined;
 
 	// ============================================
@@ -65,10 +69,72 @@ export class BrowserViewService implements IProjectModeService {
 	private debuggingPortCounter = 9222;
 
 	// ============================================
+	// Constructor & Lifecycle Setup
+	// ============================================
+
+	constructor(private readonly lifecycleMainService?: ILifecycleMainService) {
+		super();
+		this.setupLifecycleHooks();
+	}
+
+	/**
+	 * Setup lifecycle hooks to gracefully destroy browser views before window reload
+	 * This follows approach: destroy BEFORE reload, not during
+	 */
+	private setupLifecycleHooks(): void {
+		if (!this.lifecycleMainService) {
+			console.warn('[ProjectMode][Main] ILifecycleMainService not provided, skipping lifecycle hooks');
+			return;
+		}
+
+		// Listen for window reload events - destroy browser views BEFORE reload happens
+		// This is the key: we clean up gracefully before the window reloads, not during
+		this._register(this.lifecycleMainService.onWillLoadWindow(e => {
+			if (e.reason === LoadReason.RELOAD) {
+				// Get Electron BrowserWindow ID (not VS Code window ID)
+				const electronWindowId = e.window.win?.id;
+				if (electronWindowId !== undefined) {
+					console.log('[ProjectMode][Main] Window reload detected, destroying all browser views for window', electronWindowId);
+					this.destroyAllBrowserViewsForWindow(electronWindowId);
+				} else {
+					console.warn('[ProjectMode][Main] Window reload detected but Electron BrowserWindow not available');
+				}
+			}
+		}));
+	}
+
+	/**
+	 * Destroy all browser views associated with a specific window
+	 * Used when window is reloading to prevent ghost browser views
+	 */
+	private destroyAllBrowserViewsForWindow(windowId: number): void {
+		const browserViewIdsToDestroy: number[] = [];
+
+		// Find all browser views for this window
+		for (const [browserViewId, window] of this.browserWindows.entries()) {
+			if (window.id === windowId) {
+				browserViewIdsToDestroy.push(browserViewId);
+			}
+		}
+
+		console.log('[ProjectMode][Main] Destroying browser views for window reload', {
+			windowId,
+			browserViewIds: browserViewIdsToDestroy
+		});
+
+		// Destroy each browser view synchronously (window is reloading, no time for async)
+		for (const browserViewId of browserViewIdsToDestroy) {
+			this.destroyBrowserViewSync(browserViewId, 'window-reload');
+		}
+	}
+
+	// ============================================
 	// Browser View Lifecycle
 	// ============================================
 
 	async createBrowserView(windowId: number): Promise<BrowserViewResult> {
+		console.log('[ProjectMode][Main] createBrowserView() requested for window', windowId);
+
 		const window = BrowserWindow.fromId(windowId);
 		if (!window) {
 			throw new Error(`Window ${windowId} not found`);
@@ -131,6 +197,13 @@ export class BrowserViewService implements IProjectModeService {
 		const browserViewId = browserView.webContents.id;
 		const debuggingPort = this.debuggingPortCounter++;
 
+		console.log('[ProjectMode][Main] Browser view CREATED', {
+			browserViewId,
+			windowId,
+			debuggingPort,
+			webContentsId: browserView.webContents.id
+		});
+
 		// Store references
 		this.browserViews.set(browserViewId, browserView);
 		this.browserWindows.set(browserViewId, window);
@@ -155,6 +228,7 @@ export class BrowserViewService implements IProjectModeService {
 	}
 
 	async destroyBrowserView(browserViewId: number): Promise<void> {
+		console.log('[ProjectMode][Main] destroyBrowserView() called for', browserViewId);
 
 		// First destroy any overlay views
 		this.destroyOverlaysForBrowser(browserViewId);
@@ -171,6 +245,12 @@ export class BrowserViewService implements IProjectModeService {
 		const window = this.browserWindows.get(browserViewId);
 
 		if (browserView) {
+			console.log('[ProjectMode][Main] Destroying browser view', {
+				browserViewId,
+				windowId: window?.id,
+				webContentsDestroyed: browserView.webContents.isDestroyed()
+			});
+
 			const webContents = browserView.webContents;
 
 			// 1. Remove from window FIRST
@@ -233,16 +313,33 @@ export class BrowserViewService implements IProjectModeService {
 	// ============================================
 
 	async navigate(browserViewId: number, url: string): Promise<void> {
+		console.log('[ProjectMode][Main] navigate() requested', { browserViewId, url });
+
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView) {
-			console.error(`[ProjectMode] navigate() FAILED: browserView not found for ID ${browserViewId}`);
-			return;
+			const activeIds = Array.from(this.browserViews.keys());
+			const message = `[ProjectMode] navigate() FAILED: browserView not found for ID ${browserViewId}. Active IDs: [${activeIds.join(', ')}]`;
+			console.error(message, {
+				requestedId: browserViewId,
+				activeIds
+			});
+			// Propagate a hard error back to renderer so UI can show a proper message
+			throw new Error(message);
 		}
 
 		if (browserView.webContents.isDestroyed()) {
-			console.error(`[ProjectMode] navigate() FAILED: webContents is destroyed for ID ${browserViewId}`);
-			return;
+			const message = `[ProjectMode] navigate() FAILED: webContents is destroyed for ID ${browserViewId}`;
+			console.error(message, {
+				requestedId: browserViewId,
+				webContentsDestroyed: true
+			});
+			throw new Error(message);
 		}
+
+		console.log('[ProjectMode][Main] navigate() forwarding to webContents.loadURL()', {
+			browserViewId,
+			webContentsId: browserView.webContents.id
+		});
 
 		await browserView.webContents.loadURL(url);
 	}
@@ -374,9 +471,12 @@ export class BrowserViewService implements IProjectModeService {
 	// ============================================
 
 	async openDevTools(browserViewId: number, _options: DevToolsOptions): Promise<DevToolsViewResult> {
+		console.log('[ProjectMode][Main] openDevTools() requested for', browserViewId);
+
 		const browserView = this.browserViews.get(browserViewId);
 
 		if (!browserView) {
+			console.error('[ProjectMode][Main] openDevTools() FAILED: browser view not found', browserViewId);
 			throw new Error(`Browser view ${browserViewId} not found`);
 		}
 
@@ -386,6 +486,7 @@ export class BrowserViewService implements IProjectModeService {
 		// Open DevTools docked at bottom of the browser window
 		// This gives us the Device Toolbar toggle and close button
 		// Users can detach from DevTools settings menu if they want a separate window
+		console.log('[ProjectMode][Main] openDevTools() opening devtools on webContents', browserView.webContents.id);
 		browserView.webContents.openDevTools({ mode: 'bottom' });
 
 		// Return -1 as devtoolsViewId since Electron manages the DevTools view
@@ -608,43 +709,63 @@ export class BrowserViewService implements IProjectModeService {
 	/**
 	 * CRITICAL: THE SAFETY LEASH
 	 *
-	 * This is the KEY fix for ghost browser views!
+	 * This is a FALLBACK safety mechanism for edge cases (window close, crashes, etc.)
 	 *
-	 * In Electron, the Main Process (where WebContentsView lives) and the Renderer Process
-	 * (the VS Code window) are completely separate. When you reload the IDE (Renderer),
-	 * the IDE dies and comes back. But the Main Process NEVER stops running - it has no idea
-	 * the IDE "died", so it keeps holding onto that browser view.
+	 * NOTE: Window reload is now handled gracefully via ILifecycleMainService.onWillLoadWindow
+	 * (see setupLifecycleHooks()). This follows approach: destroy browser views
+	 * BEFORE the window reloads, not during. This prevents the "browser dies on extension
+	 * activity" bug while still preventing ghost browsers after reload.
 	 *
-	 * The fix: Attach listeners to the parent window that auto-destroy views on reload/close.
+	 * The old 'did-start-loading' approach was too broad - it fired on ANY workbench reload,
+	 * including when extension panels refreshed, causing false positives.
 	 *
-	 * KEY EVENT: 'did-start-loading' fires the MILLISECOND you press "Reload Window",
-	 * BEFORE the new UI is ready, giving us a clean visual wipe.
+	 * Historical note: The commented line below was the original approach, but it caused
+	 * browser views to die when the legacy extension's activity panel refreshed.
 	 */
 	private attachSafetyLeash(window: BrowserWindow, browserViewId: number): void {
 		// Define a cleanup function that triggers automatically
-		const autoDestruct = () => {
+		const autoDestruct = (reason: string) => {
+			console.log('[ProjectMode][Main] Safety leash auto-destroy triggered', {
+				reason,
+				windowId: window.id,
+				browserViewId
+			});
 			// Fire and forget - we don't await because the window is dying
-			this.destroyBrowserViewSync(browserViewId);
+			this.destroyBrowserViewSync(browserViewId, `safety-leash:${reason}`);
 		};
 
-		// 1. MOST IMPORTANT: 'did-start-loading' fires immediately when IDE reloads (Ctrl+R / Reload Window)
-		window.webContents.once('did-start-loading', autoDestruct);
+		// 1. HISTORICAL: 'did-start-loading' was too broad - fired on ANY workbench reload
+		// including extension panel refreshes. Now handled via ILifecycleMainService.onWillLoadWindow
+		// window.webContents.once('did-start-loading', () => autoDestruct('did-start-loading'));
 
 		// 2. If the IDE window is closed entirely
-		window.once('closed', autoDestruct);
+		window.once('closed', () => autoDestruct('window-closed'));
 
 		// 3. If the renderer process crashes or is killed
-		window.webContents.once('render-process-gone', autoDestruct);
+		window.webContents.once('render-process-gone', (_event, details) => {
+			console.warn('[ProjectMode][Main] render-process-gone detected for window', window.id, details);
+			autoDestruct(`render-process-gone:${details?.reason ?? 'unknown'}`);
+		});
 
 		// 4. If webContents is destroyed
-		window.webContents.once('destroyed', autoDestruct);
+		window.webContents.once('destroyed', () => autoDestruct('webcontents-destroyed'));
 	}
 
 	/**
 	 * Synchronous destroy - used by safety leash during window lifecycle events
 	 * Must be robust and never throw - the window is dying anyway
 	 */
-	private destroyBrowserViewSync(browserViewId: number): void {
+	private destroyBrowserViewSync(browserViewId: number, source?: string): void {
+		const hadBrowserView = this.browserViews.has(browserViewId);
+		const activeIdsSnapshot = Array.from(this.browserViews.keys());
+
+		console.warn('[ProjectMode][Main] destroyBrowserViewSync invoked', {
+			browserViewId,
+			source: source ?? 'unknown',
+			hadBrowserView,
+			activeIdsSnapshot
+		});
+
 		// Destroy overlay views first
 		this.destroyOverlaysForBrowser(browserViewId);
 
@@ -694,6 +815,12 @@ export class BrowserViewService implements IProjectModeService {
 		this.debuggerAttached.delete(browserViewId);
 		this.lastNavigationErrors.delete(browserViewId);
 		BrowserViewService.managedWebContentsIds.delete(browserViewId);
+
+		console.warn('[ProjectMode][Main] destroyBrowserViewSync cleanup complete', {
+			browserViewId,
+			source: source ?? 'unknown',
+			activeIdsAfter: Array.from(this.browserViews.keys())
+		});
 	}
 
 	private setupBrowserEvents(browserView: WebContentsView): void {
@@ -703,6 +830,24 @@ export class BrowserViewService implements IProjectModeService {
 		// Error codes that are expected/normal and should NOT be logged as errors:
 		// -3: ERR_ABORTED - Normal navigation cancellation (user navigated away, pressed stop, or new navigation started)
 		const IGNORED_ERROR_CODES = new Set([-3]);
+
+		// =====================================================
+		// LIFECYCLE / CRASH DIAGNOSTICS
+		// =====================================================
+
+		// Detect when this specific webContents dies (regardless of window events)
+		webContents.on('destroyed', () => {
+			console.warn('[ProjectMode][Main] webContents destroyed for browser view', {
+				browserViewId,
+				webContentsId: webContents.id
+			});
+			// Ensure maps are cleaned even if safety leash didn't run
+			this.destroyBrowserViewSync(browserViewId, 'webcontents:destroyed');
+		});
+
+		// =====================================================
+		// Navigation / loading events
+		// =====================================================
 
 		// Standard load failure
 		webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
@@ -762,11 +907,19 @@ export class BrowserViewService implements IProjectModeService {
 		});
 
 		webContents.on('did-start-loading', () => {
+			console.log('[ProjectMode][Main] did-start-loading', {
+				browserViewId,
+				url: webContents.getURL()
+			});
 			// Fire event with EXPLICIT isLoading = true
 			this.fireNavigationStateChanged(browserViewId, true);
 		});
 
 		webContents.on('did-finish-load', () => {
+			console.log('[ProjectMode][Main] did-finish-load', {
+				browserViewId,
+				url: webContents.getURL()
+			});
 			// Clear any previous error on successful load
 			this.clearNavigationError(browserViewId);
 			// Fire event with EXPLICIT isLoading = false
@@ -775,6 +928,10 @@ export class BrowserViewService implements IProjectModeService {
 
 		// did-stop-loading is more reliable than did-finish-load for complex pages
 		webContents.on('did-stop-loading', () => {
+			console.log('[ProjectMode][Main] did-stop-loading', {
+				browserViewId,
+				url: webContents.getURL()
+			});
 			// Fire event with EXPLICIT isLoading = false
 			this.fireNavigationStateChanged(browserViewId, false);
 

@@ -20,6 +20,8 @@ import { IMainProcessService } from '../../../../../platform/ipc/common/mainProc
 import { INativeHostService } from '../../../../../platform/native/common/native.js';
 import { ServiceBridge } from './serviceBridge.js';
 import { PROJECT_MODE_CHANNEL } from '../../common/projectMode/ipc.js';
+import { DevServerBridge } from './devServerBridge.js';
+import { DEV_SERVER_CHANNEL } from '../../common/projectMode/devServer.js';
 import { BrowserControlBar, IBrowserControlBarConfig, IBrowserControlBarCallbacks } from './components/browserControlBar.js';
 import type { ViewBounds, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
 import { IRoopikEventService } from '../../common/events/index.js';
@@ -32,6 +34,8 @@ import { InspectMode } from './features/inspectMode.js';
 import { Bookmarks } from './features/bookmarks.js';
 import { BrowserPause } from './features/browserPause.js';
 import { ActionBar } from './features/actionBar.js';
+// Components
+import { DefaultBrowserScreen } from './components/defaultBrowserScreen.js';
 
 /**
  * Project Mode Editor
@@ -54,9 +58,14 @@ export class Editor extends EditorPane {
 
 	// Service bridge to main process
 	private browserService: ServiceBridge;
+	private devServerService: DevServerBridge;
 
 	// View IDs
 	private browserViewId: number | undefined;
+
+	// Project mode state
+	private currentProjectRoot: string | undefined;
+	private isProjectMode: boolean = false;
 	private devtoolsVisible: boolean = false;
 
 	// Initialization state to prevent double init
@@ -97,12 +106,28 @@ export class Editor extends EditorPane {
 		super(Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = RoopikLogger.create(loggerService);
 		this.browserService = new ServiceBridge(mainProcessService.getChannel(PROJECT_MODE_CHANNEL));
+		this.devServerService = new DevServerBridge(mainProcessService.getChannel(DEV_SERVER_CHANNEL));
 
 		// Initialize features (extracted to features/ folder)
 		this.inspectMode = new InspectMode(this.browserService, this.notificationService);
 		this.bookmarks = new Bookmarks(this.storageService, this.notificationService, this.logger);
 		this.browserPause = new BrowserPause(this.browserService);
 		this.actionBar = new ActionBar(this.browserService, this.logger);
+
+		// Subscribe to DevServer logs and forward to VSCode output channel
+		// This is critical for debugging - shows all prerequisite checks, server startup, etc.
+		this._register(this.devServerService.onLog((event) => {
+			switch (event.level) {
+				case 'error':
+					this.logger.error(`[DevServer] ${event.message}`);
+					break;
+				case 'warn':
+					this.logger.warn(`[DevServer] ${event.message}`);
+					break;
+				default:
+					this.logger.info(`[DevServer] ${event.message}`);
+			}
+		}));
 
 		// Setup event subscriptions for UI updates
 		this.setupEventSubscriptions();
@@ -144,6 +169,11 @@ export class Editor extends EditorPane {
 
 		// Subscribe to title change events - update tab title
 		this._register(this.eventService.onBrowserTitleChanged((event) => {
+			// Don't update title when showing default screen
+			// This prevents "about:blank" from appearing as the tab title
+			if (!this.hasLoadedUrl) {
+				return;
+			}
 
 			const input = this.input as EditorTabInput;
 			if (input) {
@@ -275,8 +305,8 @@ export class Editor extends EditorPane {
 		this.browserContainer.style.width = '100%';
 		this.contentContainer.appendChild(this.browserContainer);
 
-		// Placeholder shown when no URL is loaded (WebContentsView renders on top of this)
-		this.createPlaceholder();
+		// Default screen shown when no URL is loaded (WebContentsView renders on top of this)
+		this.createDefaultScreen();
 
 		// Setup ResizeObserver for automatic bounds updates
 		// Observe container and browserContainer to catch all resize events
@@ -296,65 +326,73 @@ export class Editor extends EditorPane {
 	// Promise for initialization - used to wait if already initializing
 	private initializationPromise: Promise<void> | undefined;
 
-	// Placeholder element shown when no URL is loaded
-	private placeholderElement: HTMLElement | undefined;
+	// Default browser screen (shown when no URL is loaded)
+	private defaultScreen: DefaultBrowserScreen | undefined;
 
 	/**
-	 * Create placeholder shown when no URL is loaded
+	 * Create default browser screen (shown when no URL is loaded)
+	 * Uses modular DefaultBrowserScreen component
 	 */
-	private createPlaceholder(): void {
+	private createDefaultScreen(): void {
 		if (!this.browserContainer) {
 			return;
 		}
 
-		this.placeholderElement = document.createElement('div');
-		this.placeholderElement.style.cssText = `
-			position: absolute;
-			top: 0;
-			left: 0;
-			right: 0;
-			bottom: 0;
-			display: flex;
-			flex-direction: column;
-			align-items: center;
-			justify-content: center;
-			color: var(--vscode-descriptionForeground);
-			font-family: var(--vscode-font-family);
-			font-size: 14px;
-			gap: 16px;
-			z-index: 1;
-		`;
+		this.defaultScreen = new DefaultBrowserScreen(
+			this.browserContainer,
+			{
+				onOpenProject: () => this.openProjectPicker(),
+				onBrowseWeb: () => this.focusUrlBar(),
+				onNavigate: (url) => this.navigate(url),
+				onServerStopped: (projectRoot) => {
+					// Update editor state when server is stopped from tile
+					if (this.currentProjectRoot === projectRoot) {
+						this.currentProjectRoot = undefined;
+						this.isProjectMode = false;
+					}
+				}
+			},
+			this.devServerService,
+			this.notificationService
+		);
+	}
 
-		// Icon
-		const icon = document.createElement('div');
-		icon.style.cssText = `
-			font-size: 48px;
-			opacity: 0.5;
-		`;
-		icon.textContent = '🌐';
-		this.placeholderElement.appendChild(icon);
+	/**
+	 * Open project folder picker
+	 */
+	private async openProjectPicker(): Promise<void> {
+		// Use VSCode's quick pick to select from open workspaces
+		// or show folder picker dialog
+		const items = [
+			{ label: '$(folder) Select Folder...', description: 'Choose a project folder to preview' }
+		];
 
-		// Title
-		const title = document.createElement('div');
-		title.style.cssText = `
-			font-size: 16px;
-			font-weight: 500;
-			color: var(--vscode-foreground);
-		`;
-		title.textContent = 'Browser Preview';
-		this.placeholderElement.appendChild(title);
+		const selected = await this.quickInputService.pick(items, {
+			placeHolder: 'Select a project to preview',
+			canPickMany: false
+		});
 
-		// Description
-		const description = document.createElement('div');
-		description.style.cssText = `
-			opacity: 0.7;
-			text-align: center;
-			max-width: 300px;
-		`;
-		description.textContent = 'Enter a URL in the address bar above to start browsing';
-		this.placeholderElement.appendChild(description);
+		if (selected && selected.label.includes('Select Folder')) {
+			// Show native folder picker
+			const result = await this.nativeHostService.showOpenDialog({
+				title: 'Select Project Folder',
+				properties: ['openDirectory']
+			});
 
-		this.browserContainer.appendChild(this.placeholderElement);
+			if (result && !result.canceled && result.filePaths.length > 0) {
+				const projectPath = result.filePaths[0];
+				await this.startProjectPreview(projectPath);
+			}
+		}
+	}
+
+	/**
+	 * Focus the URL bar for manual URL entry
+	 */
+	private focusUrlBar(): void {
+		if (this.controlBar) {
+			this.controlBar.focusUrlInput();
+		}
 	}
 
 	/**
@@ -362,8 +400,8 @@ export class Editor extends EditorPane {
 	 * Shows the WebContentsView using native visibility API
 	 */
 	private hidePlaceholder(): void {
-		if (this.placeholderElement) {
-			this.placeholderElement.style.display = 'none';
+		if (this.defaultScreen) {
+			this.defaultScreen.hide();
 		}
 		// Show the browser view using native visibility API (like Cursor)
 		if (this.browserViewId) {
@@ -412,13 +450,20 @@ export class Editor extends EditorPane {
 	 * Hides the WebContentsView using native visibility API so placeholder is visible
 	 */
 	private showPlaceholder(): void {
-		if (this.placeholderElement) {
-			this.placeholderElement.style.display = 'flex';
+		if (this.defaultScreen) {
+			this.defaultScreen.show();
 		}
 		// Hide the browser view using native visibility API (like Cursor)
 		// This properly hides the native view without destroying state
 		if (this.browserViewId) {
 			this.browserService.setBrowserVisible(this.browserViewId, false);
+		}
+
+		// Set tab title to "Browser Preview" when showing default screen
+		// This is the proper way - set title based on UI state, not filter browser's title
+		const input = this.input as EditorTabInput;
+		if (input) {
+			input.setPageTitle('');  // Clear page title so getName() returns "Browser Preview"
 		}
 	}
 
@@ -427,6 +472,8 @@ export class Editor extends EditorPane {
 	 * Note: This only creates the view, navigation is handled by setInput()
 	 */
 	private initializeBrowserView(): Promise<void> {
+		this.logger.info('[ProjectMode] initializeBrowserView() called');
+
 		// If already initialized, skip
 		if (this.browserViewId) {
 			return Promise.resolve();
@@ -455,6 +502,11 @@ export class Editor extends EditorPane {
 			const windowId = await this.nativeHostService.windowId;
 			const result = await this.browserService.createBrowserView(windowId);
 			this.browserViewId = result.browserViewId;
+
+			this.logger.info('[ProjectMode] Browser view initialized', {
+				windowId,
+				browserViewId: this.browserViewId
+			});
 
 			// Publish browser created event to central event bus
 			this.eventService.publish('browser.created', {
@@ -574,6 +626,15 @@ export class Editor extends EditorPane {
 		if (currentUrl !== this.lastKnownUrl) {
 			this.lastKnownUrl = currentUrl;
 
+			// CRITICAL: Update input URL so it gets serialized correctly on reload
+			// This ensures the full URL (including path, query params, etc.) is saved
+			// not just the initial navigation URL which might have been redirected
+			// Update whenever URL changes to capture the final URL after all redirects
+			const input = this.input as EditorTabInput;
+			if (input && currentUrl && currentUrl !== 'about:blank') {
+				input.setUrl(currentUrl);
+			}
+
 			// Publish navigation event to central event bus (title is sent separately via titleChanged)
 			this.eventService.publish('browser.navigated', {
 				browserViewId: event.browserViewId,
@@ -690,7 +751,9 @@ export class Editor extends EditorPane {
 		}
 
 		if (!this.browserViewId) {
-			this.logger.error('[ProjectMode] Navigation aborted: No browser view ID! Browser view may not be initialized.');
+			this.logger.error('[ProjectMode] Navigation aborted: No browser view ID! Browser view may not be initialized.', {
+				requestedUrl: url
+			});
 			return;
 		}
 
@@ -712,6 +775,11 @@ export class Editor extends EditorPane {
 		} else {
 			url = trimmedUrl;
 		}
+
+		this.logger.info('[ProjectMode] Navigation requested', {
+			browserViewId: this.browserViewId,
+			finalUrl: url
+		});
 
 		// Track if we're loading a real URL (for tab switch behavior)
 		const isRealUrl = url !== 'about:blank';
@@ -807,10 +875,51 @@ export class Editor extends EditorPane {
 		}
 	}
 
+	/**
+	 * Go to home screen (default browser screen)
+	 *
+	 * IMPORTANT: We MUST navigate to about:blank to properly unload the page.
+	 * This is the standard Electron pattern to:
+	 * - Stop audio/video playback
+	 * - Release page memory
+	 * - Clear JavaScript timers
+	 * - Unload all resources
+	 * - Clear any error states
+	 *
+	 * Just hiding the browser view would leave the page running in background!
+	 * (e.g., YouTube audio would keep playing)
+	 *
+	 * This method is ALWAYS safe to call - even if already on home screen.
+	 * It will reset error states and ensure clean state.
+	 */
 	private goHome(): void {
-		// Just navigate to about:blank - the navigation polling will
-		// detect the URL change and show the placeholder automatically
-		this.navigate('about:blank');
+		// 1. Update state FIRST so event handlers ignore title/URL changes
+		this.hasLoadedUrl = false;
+
+		// 2. Start navigation IMMEDIATELY (fire and forget - don't await)
+		//    This stops audio/video as fast as possible AND clears error states
+		//    Always navigate even if we think we're already on about:blank
+		//    to ensure clean state and clear any stuck errors
+		if (this.browserViewId) {
+			this.browserService.navigate(this.browserViewId, 'about:blank')
+				.catch(error => this.logger.warn('[ProjectMode] Failed to navigate to about:blank:', error));
+		}
+
+		// 3. Update UI (happens in parallel with navigation)
+		//    showPlaceholder() calls defaultScreen.show() which resets to normal state
+		//    (clears any error messages that might be displayed)
+		this.showPlaceholder();
+
+		// 4. Clear URL bar
+		if (this.controlBar) {
+			this.controlBar.setUrl('');
+		}
+
+		// 5. Update input URL state
+		const input = this.input as EditorTabInput;
+		if (input) {
+			input.setUrl('');
+		}
 	}
 
 	private async refresh(): Promise<void> {
@@ -826,13 +935,162 @@ export class Editor extends EditorPane {
 	}
 
 	/**
-	 * Stop Dev Server (placeholder - feature coming later)
-	 * Will stop the Vite/dev server when implemented
+	 * Stop Dev Server
+	 * Stops the Vite dev server for the current project
 	 */
-	private stopDevServer(): void {
-		// TODO: Implement dev server stop functionality
-		// This will integrate with ViteServerService when available
-		this.logger.info('[ProjectMode] Stop Dev Server clicked (not yet implemented)');
+	private async stopDevServer(): Promise<void> {
+		if (!this.currentProjectRoot) {
+			this.logger.warn('[ProjectMode] No project to stop');
+			return;
+		}
+
+		try {
+			await this.devServerService.stopServer(this.currentProjectRoot);
+			this.isProjectMode = false;
+			this.currentProjectRoot = undefined;
+
+			// Show home screen after stopping server (don't navigate to about:blank)
+			this.goHome();
+
+			this.notificationService.notify({
+				severity: Severity.Info,
+				message: 'Dev server stopped',
+				sticky: false
+			});
+		} catch (error) {
+			this.logger.error('[ProjectMode] Failed to stop dev server:', error);
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: `Failed to stop dev server: ${error}`,
+				sticky: false
+			});
+		}
+	}
+
+	/**
+	 * Start project preview mode
+	 * Starts dev server and navigates to it
+	 * @param projectRoot - Path to project root directory
+	 *
+	 * CONSTRAINT: Only ONE dev server can run at a time globally.
+	 * If a different project is already running, we stop it first.
+	 * If the SAME project is already running, we just navigate to it.
+	 */
+	public async startProjectPreview(projectRoot: string): Promise<void> {
+		this.logger.info(`[ProjectMode] Starting project preview for: ${projectRoot}`);
+
+		// =====================================================
+		// SINGLE SERVER CONSTRAINT
+		// Only one dev server can run at a time!
+		// =====================================================
+
+		// Check if SAME project is already running - just navigate to it
+		if (this.isProjectMode && this.currentProjectRoot === projectRoot) {
+			this.logger.info('[ProjectMode] Same project already running, navigating to existing server');
+			const serverInfo = await this.devServerService.getServerInfo(projectRoot);
+			if (serverInfo?.url) {
+				await this.navigate(serverInfo.url);
+				return;
+			}
+			// Server info not found, continue to start fresh
+		}
+
+		// Check if DIFFERENT project is running - stop it first
+		if (this.isProjectMode && this.currentProjectRoot && this.currentProjectRoot !== projectRoot) {
+			this.logger.info(`[ProjectMode] Different project running (${this.currentProjectRoot}), stopping it first`);
+			this.notificationService.notify({
+				severity: Severity.Info,
+				message: 'Stopping previous project server...',
+				sticky: false
+			});
+
+			// Stop the existing server
+			await this.devServerService.stopServer(this.currentProjectRoot);
+			this.currentProjectRoot = undefined;
+			this.isProjectMode = false;
+		}
+
+		// =====================================================
+		// END SINGLE SERVER CONSTRAINT
+		// =====================================================
+
+		// Show loading state
+		if (this.controlBar) {
+			this.controlBar.showLoading();
+		}
+
+		// CRITICAL: Ensure browser view is initialized before starting dev server
+		// This fixes a race condition where user clicks "Open Project" before browser is ready
+		if (!this.browserViewId) {
+			this.logger.info('[ProjectMode] Browser view not ready, initializing...');
+			await this.initializeBrowserView();
+		}
+
+		// Double-check browser is ready (initialization might have failed)
+		if (!this.browserViewId) {
+			this.logger.error('[ProjectMode] Failed to initialize browser view');
+			if (this.controlBar) {
+				this.controlBar.hideLoading();
+			}
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: 'Failed to initialize browser preview. Please try again.',
+				sticky: false
+			});
+			return;
+		}
+
+		// NOTE: We don't subscribe to onStatusChanged here!
+		// The DevServerService fires events, but they go to ALL listeners.
+		// Since startServer() returns a Promise that resolves on success or rejects on error,
+		// we just await it directly. Status events are for external monitoring (e.g., status bar).
+
+		try {
+			// Start the dev server (this handles all prerequisite checks internally)
+			const url = await this.devServerService.startServer({
+				projectRoot,
+				port: 5173
+			});
+
+			// Update state
+			this.isProjectMode = true;
+			this.currentProjectRoot = projectRoot;
+
+			// Small delay to ensure Vite server is fully ready to accept connections
+			// The server reports READY when listening starts, but it may take a few ms
+			// to actually be able to serve requests (especially on first load with cold cache)
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			// Navigate to dev server URL
+			await this.navigate(url);
+
+			this.logger.info(`[ProjectMode] Project preview started at: ${url}`);
+		} catch (error) {
+			this.logger.error('[ProjectMode] Failed to start project preview:', error);
+			if (this.controlBar) {
+				this.controlBar.hideLoading();
+			}
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: `Failed to start project: ${error}`,
+				sticky: false
+			});
+		}
+	}
+
+
+	/**
+	 * Check if currently in project preview mode
+	 */
+	public isInProjectMode(): boolean {
+		return this.isProjectMode;
+	}
+
+	/**
+	 * Get current project root (if in project mode)
+	 */
+	public getProjectRoot(): string | undefined {
+		return this.currentProjectRoot;
 	}
 
 	// ============================================
@@ -1062,23 +1320,34 @@ export class Editor extends EditorPane {
 			if (this.registeredInputForDispose !== input) {
 				this.registeredInputForDispose = input;
 				this._register(input.onWillDispose(() => {
+					// Stop dev server FIRST to release the port
+					// This is critical - if we don't stop here, the server becomes orphaned
+					// and blocks the port until VSCode is restarted
+					this.stopDevServerOnClose();
 					this.destroyBrowserNow();
 				}));
 			}
 
-			// Initialize browser view if not already done
-			if (!this.browserViewId) {
-				// Set URL bar to initial URL for first load
-				if (this.controlBar) {
-					this.controlBar.setUrl(initialUrl);
-				}
+		// Initialize browser view if not already done
+		// This happens on:
+		// 1. First time opening the browser preview
+		// 2. After IDE reload (browser view was destroyed, needs to be recreated)
+		//    - EditorTabInputSerializer restores the URL
+		//    - setInput() is called with restored input
+		//    - Browser view is recreated and navigated to restored URL
+		if (!this.browserViewId) {
+			// Set URL bar to initial URL for first load
+			if (this.controlBar) {
+				this.controlBar.setUrl(initialUrl);
+			}
 
-				await this.initializeBrowserView();
+			await this.initializeBrowserView();
 
-				// Navigate only on first initialization if we have a real URL
-				if (this.browserViewId && initialUrl && initialUrl !== 'about:blank') {
-					await this.navigate(initialUrl);
-				}
+			// Navigate only on first initialization if we have a real URL
+			// This handles both fresh opens and restores after reload
+			if (this.browserViewId && initialUrl && initialUrl !== 'about:blank') {
+				await this.navigate(initialUrl);
+			}
 			} else {
 				// Browser view already exists (tab switch back)
 				// Just restore visibility - NO re-navigation needed!
@@ -1170,27 +1439,9 @@ export class Editor extends EditorPane {
 		this.hasLoadedUrl = false;
 		this.showPlaceholder();
 
-		// Update placeholder to show error
-		if (this.placeholderElement) {
-			const title = this.placeholderElement.querySelector('div:nth-child(2)') as HTMLElement;
-			const description = this.placeholderElement.querySelector('div:nth-child(3)') as HTMLElement;
-
-			if (title) {
-				title.textContent = 'Navigation Failed';
-			}
-			if (description) {
-				description.textContent = message;
-			}
-
-			// Reset to normal state after 3 seconds
-			setTimeout(() => {
-				if (title) {
-					title.textContent = 'Browser Preview';
-				}
-				if (description) {
-					description.textContent = 'Enter a URL in the address bar above to start browsing';
-				}
-			}, 3000);
+		// Show error on the default screen
+		if (this.defaultScreen) {
+			this.defaultScreen.showError(message);
 		}
 	}
 
@@ -1245,6 +1496,33 @@ export class Editor extends EditorPane {
 	}
 
 	/**
+	 * Stop dev server on tab close
+	 * CRITICAL: Must be called when tab is closed to release the port!
+	 * Without this, the server becomes orphaned and blocks the port.
+	 *
+	 * This is idempotent - safe to call multiple times.
+	 */
+	private stopDevServerOnClose(): void {
+		if (!this.currentProjectRoot) {
+			return;
+		}
+
+		const projectRoot = this.currentProjectRoot;
+		this.currentProjectRoot = undefined; // Clear immediately to prevent double-stop
+		this.isProjectMode = false;
+
+		this.logger.info(`[ProjectMode] Stopping dev server on tab close for: ${projectRoot}`);
+
+		this.devServerService.stopServer(projectRoot)
+			.then(() => {
+				this.logger.info('[ProjectMode] Dev server stopped successfully');
+			})
+			.catch(err => {
+				this.logger.error('[ProjectMode] Failed to stop dev server on tab close:', err);
+			});
+	}
+
+	/**
 	 * Destroy browser view immediately
 	 * Called when EditorInput is disposed (tab truly closed)
 	 */
@@ -1277,6 +1555,9 @@ export class Editor extends EditorPane {
 		// Cleanup ResizeObserver
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = undefined;
+
+		// Stop dev server if running (idempotent - may have already been stopped by onWillDispose)
+		this.stopDevServerOnClose();
 
 		// Destroy browser if not already destroyed by input disposal
 		// (destroyBrowserNow may have already been called via onWillDispose)

@@ -25,6 +25,7 @@ import { IOutputService } from '../../../services/output/common/output.js';
 import { ILoggerService } from '../../../../platform/log/common/log.js';
 import { Editor } from './projectMode/editor.js';
 import { EditorTabInput } from './projectMode/editorTabInput.js';
+import { EditorTabInputSerializer } from './projectMode/editorTabInputSerializer.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { IRoopikEventService, RoopikEventService } from '../common/events/index.js';
 import { IRoopikSettingsService, RoopikSettingsService } from '../common/settings/index.js';
@@ -84,6 +85,13 @@ Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane
 		'Browser Preview'
 	),
 	[new SyncDescriptor(EditorTabInput)]
+);
+
+// Register Browser Preview Serializer (for restore on reload)
+// This enables VS Code to restore the browser preview with the same URL after window reload
+Registry.as<IEditorFactoryRegistry>(EditorExtensions.EditorFactory).registerEditorSerializer(
+	EditorTabInput.ID,
+	EditorTabInputSerializer
 );
 
 // Open Welcome Screen
