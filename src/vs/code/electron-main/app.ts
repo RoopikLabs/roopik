@@ -127,6 +127,10 @@ import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetr
 import { BrowserViewService } from '../../workbench/contrib/roopik/electron-main/projectMode/browserViewService.js';
 import { ProjectModeChannel } from '../../workbench/contrib/roopik/electron-main/projectMode/projectModeChannel.js';
 import { PROJECT_MODE_CHANNEL } from '../../workbench/contrib/roopik/common/projectMode/ipc.js';
+// ROOPIK: DevServer - Vite dev server management
+import { DevServerService } from '../../workbench/contrib/roopik/electron-main/projectMode/devServer/devServerService.js';
+import { DevServerChannel } from '../../workbench/contrib/roopik/electron-main/projectMode/devServer/devServerChannel.js';
+import { DEV_SERVER_CHANNEL } from '../../workbench/contrib/roopik/common/projectMode/devServer.js';
 
 /**
  * The main VS Code application. There will only ever be one instance,
@@ -1247,6 +1251,11 @@ export class CodeApplication extends Disposable {
 		const projectModeService = new BrowserViewService();
 		const projectModeChannel = new ProjectModeChannel(projectModeService);
 		mainProcessElectronServer.registerChannel(PROJECT_MODE_CHANNEL, projectModeChannel);
+
+		// ROOPIK: DevServer - Vite dev server management for project preview
+		const devServerService = new DevServerService();
+		const devServerChannel = new DevServerChannel(devServerService);
+		mainProcessElectronServer.registerChannel(DEV_SERVER_CHANNEL, devServerChannel);
 		// ROOPIK END
 	}
 

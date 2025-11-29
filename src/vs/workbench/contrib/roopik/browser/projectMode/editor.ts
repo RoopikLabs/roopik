@@ -20,6 +20,8 @@ import { IMainProcessService } from '../../../../../platform/ipc/common/mainProc
 import { INativeHostService } from '../../../../../platform/native/common/native.js';
 import { ServiceBridge } from './serviceBridge.js';
 import { PROJECT_MODE_CHANNEL } from '../../common/projectMode/ipc.js';
+import { DevServerBridge } from './devServerBridge.js';
+import { DEV_SERVER_CHANNEL } from '../../common/projectMode/devServer.js';
 import { BrowserControlBar, IBrowserControlBarConfig, IBrowserControlBarCallbacks } from './components/browserControlBar.js';
 import type { ViewBounds, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
 import { IRoopikEventService } from '../../common/events/index.js';
@@ -54,9 +56,14 @@ export class Editor extends EditorPane {
 
 	// Service bridge to main process
 	private browserService: ServiceBridge;
+	private devServerService: DevServerBridge;
 
 	// View IDs
 	private browserViewId: number | undefined;
+
+	// Project mode state
+	private currentProjectRoot: string | undefined;
+	private isProjectMode: boolean = false;
 	private devtoolsVisible: boolean = false;
 
 	// Initialization state to prevent double init
@@ -97,12 +104,28 @@ export class Editor extends EditorPane {
 		super(Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = RoopikLogger.create(loggerService);
 		this.browserService = new ServiceBridge(mainProcessService.getChannel(PROJECT_MODE_CHANNEL));
+		this.devServerService = new DevServerBridge(mainProcessService.getChannel(DEV_SERVER_CHANNEL));
 
 		// Initialize features (extracted to features/ folder)
 		this.inspectMode = new InspectMode(this.browserService, this.notificationService);
 		this.bookmarks = new Bookmarks(this.storageService, this.notificationService, this.logger);
 		this.browserPause = new BrowserPause(this.browserService);
 		this.actionBar = new ActionBar(this.browserService, this.logger);
+
+		// Subscribe to DevServer logs and forward to VSCode output channel
+		// This is critical for debugging - shows all prerequisite checks, server startup, etc.
+		this._register(this.devServerService.onLog((event) => {
+			switch (event.level) {
+				case 'error':
+					this.logger.error(`[DevServer] ${event.message}`);
+					break;
+				case 'warn':
+					this.logger.warn(`[DevServer] ${event.message}`);
+					break;
+				default:
+					this.logger.info(`[DevServer] ${event.message}`);
+			}
+		}));
 
 		// Setup event subscriptions for UI updates
 		this.setupEventSubscriptions();
@@ -301,6 +324,7 @@ export class Editor extends EditorPane {
 
 	/**
 	 * Create placeholder shown when no URL is loaded
+	 * Shows welcome screen with options to open project or browse
 	 */
 	private createPlaceholder(): void {
 		if (!this.browserContainer) {
@@ -321,7 +345,7 @@ export class Editor extends EditorPane {
 			color: var(--vscode-descriptionForeground);
 			font-family: var(--vscode-font-family);
 			font-size: 14px;
-			gap: 16px;
+			gap: 24px;
 			z-index: 1;
 		`;
 
@@ -336,8 +360,9 @@ export class Editor extends EditorPane {
 
 		// Title
 		const title = document.createElement('div');
+		title.className = 'placeholder-title';
 		title.style.cssText = `
-			font-size: 16px;
+			font-size: 18px;
 			font-weight: 500;
 			color: var(--vscode-foreground);
 		`;
@@ -346,15 +371,138 @@ export class Editor extends EditorPane {
 
 		// Description
 		const description = document.createElement('div');
+		description.className = 'placeholder-description';
 		description.style.cssText = `
 			opacity: 0.7;
 			text-align: center;
-			max-width: 300px;
+			max-width: 400px;
+			margin-bottom: 8px;
 		`;
-		description.textContent = 'Enter a URL in the address bar above to start browsing';
+		description.textContent = 'Preview your project or browse the web';
 		this.placeholderElement.appendChild(description);
 
+		// Buttons container
+		const buttonsContainer = document.createElement('div');
+		buttonsContainer.style.cssText = `
+			display: flex;
+			gap: 12px;
+			flex-wrap: wrap;
+			justify-content: center;
+		`;
+
+		// Open Project button
+		const openProjectBtn = document.createElement('button');
+		openProjectBtn.style.cssText = `
+			padding: 10px 20px;
+			border: none;
+			border-radius: 4px;
+			background: var(--vscode-button-background);
+			color: var(--vscode-button-foreground);
+			font-size: 13px;
+			font-weight: 500;
+			cursor: pointer;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			transition: background 0.2s;
+		`;
+		const openProjectIcon = document.createElement('span');
+		openProjectIcon.style.fontSize = '16px';
+		openProjectIcon.textContent = '📁';
+		openProjectBtn.appendChild(openProjectIcon);
+		openProjectBtn.appendChild(document.createTextNode(' Open Project'));
+		openProjectBtn.title = 'Select a project folder to preview with live reload';
+		openProjectBtn.addEventListener('click', () => this.openProjectPicker());
+		openProjectBtn.addEventListener('mouseenter', () => {
+			openProjectBtn.style.background = 'var(--vscode-button-hoverBackground)';
+		});
+		openProjectBtn.addEventListener('mouseleave', () => {
+			openProjectBtn.style.background = 'var(--vscode-button-background)';
+		});
+		buttonsContainer.appendChild(openProjectBtn);
+
+		// Start Browsing button (secondary style)
+		const browseBtn = document.createElement('button');
+		browseBtn.style.cssText = `
+			padding: 10px 20px;
+			border: 1px solid var(--vscode-button-secondaryBackground, var(--vscode-input-border));
+			border-radius: 4px;
+			background: transparent;
+			color: var(--vscode-foreground);
+			font-size: 13px;
+			font-weight: 500;
+			cursor: pointer;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			transition: background 0.2s;
+		`;
+		const browseIcon = document.createElement('span');
+		browseIcon.style.fontSize = '16px';
+		browseIcon.textContent = '🔍';
+		browseBtn.appendChild(browseIcon);
+		browseBtn.appendChild(document.createTextNode(' Browse Web'));
+		browseBtn.title = 'Enter a URL in the address bar to start browsing';
+		browseBtn.addEventListener('click', () => this.focusUrlBar());
+		browseBtn.addEventListener('mouseenter', () => {
+			browseBtn.style.background = 'var(--vscode-list-hoverBackground)';
+		});
+		browseBtn.addEventListener('mouseleave', () => {
+			browseBtn.style.background = 'transparent';
+		});
+		buttonsContainer.appendChild(browseBtn);
+
+		this.placeholderElement.appendChild(buttonsContainer);
+
+		// Hint text
+		const hint = document.createElement('div');
+		hint.style.cssText = `
+			opacity: 0.5;
+			font-size: 12px;
+			margin-top: 16px;
+		`;
+		hint.textContent = 'Tip: You can also enter a URL directly in the address bar above';
+		this.placeholderElement.appendChild(hint);
+
 		this.browserContainer.appendChild(this.placeholderElement);
+	}
+
+	/**
+	 * Open project folder picker
+	 */
+	private async openProjectPicker(): Promise<void> {
+		// Use VSCode's quick pick to select from open workspaces
+		// or show folder picker dialog
+		const items = [
+			{ label: '$(folder) Select Folder...', description: 'Choose a project folder to preview' }
+		];
+
+		const selected = await this.quickInputService.pick(items, {
+			placeHolder: 'Select a project to preview',
+			canPickMany: false
+		});
+
+		if (selected && selected.label.includes('Select Folder')) {
+			// Show native folder picker
+			const result = await this.nativeHostService.showOpenDialog({
+				title: 'Select Project Folder',
+				properties: ['openDirectory']
+			});
+
+			if (result && !result.canceled && result.filePaths.length > 0) {
+				const projectPath = result.filePaths[0];
+				await this.startProjectPreview(projectPath);
+			}
+		}
+	}
+
+	/**
+	 * Focus the URL bar for manual URL entry
+	 */
+	private focusUrlBar(): void {
+		if (this.controlBar) {
+			this.controlBar.focusUrlInput();
+		}
 	}
 
 	/**
@@ -826,13 +974,162 @@ export class Editor extends EditorPane {
 	}
 
 	/**
-	 * Stop Dev Server (placeholder - feature coming later)
-	 * Will stop the Vite/dev server when implemented
+	 * Stop Dev Server
+	 * Stops the Vite dev server for the current project
 	 */
-	private stopDevServer(): void {
-		// TODO: Implement dev server stop functionality
-		// This will integrate with ViteServerService when available
-		this.logger.info('[ProjectMode] Stop Dev Server clicked (not yet implemented)');
+	private async stopDevServer(): Promise<void> {
+		if (!this.currentProjectRoot) {
+			this.logger.warn('[ProjectMode] No project to stop');
+			return;
+		}
+
+		try {
+			await this.devServerService.stopServer(this.currentProjectRoot);
+			this.isProjectMode = false;
+			this.currentProjectRoot = undefined;
+
+			// Navigate to blank after stopping server
+			this.navigate('about:blank');
+
+			this.notificationService.notify({
+				severity: Severity.Info,
+				message: 'Dev server stopped',
+				sticky: false
+			});
+		} catch (error) {
+			this.logger.error('[ProjectMode] Failed to stop dev server:', error);
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: `Failed to stop dev server: ${error}`,
+				sticky: false
+			});
+		}
+	}
+
+	/**
+	 * Start project preview mode
+	 * Starts dev server and navigates to it
+	 * @param projectRoot - Path to project root directory
+	 *
+	 * CONSTRAINT: Only ONE dev server can run at a time globally.
+	 * If a different project is already running, we stop it first.
+	 * If the SAME project is already running, we just navigate to it.
+	 */
+	public async startProjectPreview(projectRoot: string): Promise<void> {
+		this.logger.info(`[ProjectMode] Starting project preview for: ${projectRoot}`);
+
+		// =====================================================
+		// SINGLE SERVER CONSTRAINT
+		// Only one dev server can run at a time!
+		// =====================================================
+
+		// Check if SAME project is already running - just navigate to it
+		if (this.isProjectMode && this.currentProjectRoot === projectRoot) {
+			this.logger.info('[ProjectMode] Same project already running, navigating to existing server');
+			const serverInfo = await this.devServerService.getServerInfo(projectRoot);
+			if (serverInfo?.url) {
+				await this.navigate(serverInfo.url);
+				return;
+			}
+			// Server info not found, continue to start fresh
+		}
+
+		// Check if DIFFERENT project is running - stop it first
+		if (this.isProjectMode && this.currentProjectRoot && this.currentProjectRoot !== projectRoot) {
+			this.logger.info(`[ProjectMode] Different project running (${this.currentProjectRoot}), stopping it first`);
+			this.notificationService.notify({
+				severity: Severity.Info,
+				message: 'Stopping previous project server...',
+				sticky: false
+			});
+
+			// Stop the existing server
+			await this.devServerService.stopServer(this.currentProjectRoot);
+			this.currentProjectRoot = undefined;
+			this.isProjectMode = false;
+		}
+
+		// =====================================================
+		// END SINGLE SERVER CONSTRAINT
+		// =====================================================
+
+		// Show loading state
+		if (this.controlBar) {
+			this.controlBar.showLoading();
+		}
+
+		// CRITICAL: Ensure browser view is initialized before starting dev server
+		// This fixes a race condition where user clicks "Open Project" before browser is ready
+		if (!this.browserViewId) {
+			this.logger.info('[ProjectMode] Browser view not ready, initializing...');
+			await this.initializeBrowserView();
+		}
+
+		// Double-check browser is ready (initialization might have failed)
+		if (!this.browserViewId) {
+			this.logger.error('[ProjectMode] Failed to initialize browser view');
+			if (this.controlBar) {
+				this.controlBar.hideLoading();
+			}
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: 'Failed to initialize browser preview. Please try again.',
+				sticky: false
+			});
+			return;
+		}
+
+		// NOTE: We don't subscribe to onStatusChanged here!
+		// The DevServerService fires events, but they go to ALL listeners.
+		// Since startServer() returns a Promise that resolves on success or rejects on error,
+		// we just await it directly. Status events are for external monitoring (e.g., status bar).
+
+		try {
+			// Start the dev server (this handles all prerequisite checks internally)
+			const url = await this.devServerService.startServer({
+				projectRoot,
+				port: 5173
+			});
+
+			// Update state
+			this.isProjectMode = true;
+			this.currentProjectRoot = projectRoot;
+
+			// Small delay to ensure Vite server is fully ready to accept connections
+			// The server reports READY when listening starts, but it may take a few ms
+			// to actually be able to serve requests (especially on first load with cold cache)
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			// Navigate to dev server URL
+			await this.navigate(url);
+
+			this.logger.info(`[ProjectMode] Project preview started at: ${url}`);
+		} catch (error) {
+			this.logger.error('[ProjectMode] Failed to start project preview:', error);
+			if (this.controlBar) {
+				this.controlBar.hideLoading();
+			}
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: `Failed to start project: ${error}`,
+				sticky: false
+			});
+		}
+	}
+
+
+	/**
+	 * Check if currently in project preview mode
+	 */
+	public isInProjectMode(): boolean {
+		return this.isProjectMode;
+	}
+
+	/**
+	 * Get current project root (if in project mode)
+	 */
+	public getProjectRoot(): string | undefined {
+		return this.currentProjectRoot;
 	}
 
 	// ============================================
@@ -1062,6 +1359,10 @@ export class Editor extends EditorPane {
 			if (this.registeredInputForDispose !== input) {
 				this.registeredInputForDispose = input;
 				this._register(input.onWillDispose(() => {
+					// Stop dev server FIRST to release the port
+					// This is critical - if we don't stop here, the server becomes orphaned
+					// and blocks the port until VSCode is restarted
+					this.stopDevServerOnClose();
 					this.destroyBrowserNow();
 				}));
 			}
@@ -1245,6 +1546,33 @@ export class Editor extends EditorPane {
 	}
 
 	/**
+	 * Stop dev server on tab close
+	 * CRITICAL: Must be called when tab is closed to release the port!
+	 * Without this, the server becomes orphaned and blocks the port.
+	 *
+	 * This is idempotent - safe to call multiple times.
+	 */
+	private stopDevServerOnClose(): void {
+		if (!this.currentProjectRoot) {
+			return;
+		}
+
+		const projectRoot = this.currentProjectRoot;
+		this.currentProjectRoot = undefined; // Clear immediately to prevent double-stop
+		this.isProjectMode = false;
+
+		this.logger.info(`[ProjectMode] Stopping dev server on tab close for: ${projectRoot}`);
+
+		this.devServerService.stopServer(projectRoot)
+			.then(() => {
+				this.logger.info('[ProjectMode] Dev server stopped successfully');
+			})
+			.catch(err => {
+				this.logger.error('[ProjectMode] Failed to stop dev server on tab close:', err);
+			});
+	}
+
+	/**
 	 * Destroy browser view immediately
 	 * Called when EditorInput is disposed (tab truly closed)
 	 */
@@ -1277,6 +1605,9 @@ export class Editor extends EditorPane {
 		// Cleanup ResizeObserver
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = undefined;
+
+		// Stop dev server if running (idempotent - may have already been stopped by onWillDispose)
+		this.stopDevServerOnClose();
 
 		// Destroy browser if not already destroyed by input disposal
 		// (destroyBrowserNow may have already been called via onWillDispose)
