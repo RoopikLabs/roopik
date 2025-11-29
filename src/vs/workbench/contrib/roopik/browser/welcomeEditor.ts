@@ -80,10 +80,10 @@ export class RoopikWelcomeEditor extends EditorPane {
 		append(titleRow, logo);
 
 		const subtitle = append(heroContent, $('.welcome-subtitle'));
-		subtitle.textContent = 'Visual canvas + Chromium DevTools + AI copilots';
+		subtitle.textContent = 'Visual canvas + AI copilots';
 
 		const heroDescription = append(heroContent, $('.hero-description'));
-		heroDescription.textContent = 'Start designing components, preview production-ready UI, and collaborate with AI agents—all inside a single workspace.';
+		heroDescription.textContent = 'Start designing components, preview production-ready UI, and collaborate with AI agents— all inside a single workspace.';
 
 		const heroActions = append(heroContent, $('.hero-actions'));
 		this.createHeroButton(heroActions, 'codicon-new-file', 'New Canvas', 'roopik.openCanvas', true);

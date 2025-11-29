@@ -63,6 +63,9 @@
 	flex-direction: column;
 	gap: 12px;
 	min-width: 0;
+	width: 100%;
+	box-sizing: border-box;
+	overflow: hidden;
 }
 
 .hero-badge {
@@ -119,6 +122,8 @@
 	gap: 10px;
 	margin-top: 16px;
 	align-items: stretch;
+	width: 100%;
+	box-sizing: border-box;
 }
 
 .hero-button {
@@ -127,7 +132,8 @@
 	justify-content: center;
 	gap: 8px;
 	flex: 1 1 auto;
-	min-width: 180px;
+	min-width: 0;
+	max-width: 100%;
 	padding: 10px 16px;
 	border-radius: 6px;
 	border: 1px solid var(--vscode-widget-border);
@@ -138,6 +144,8 @@
 	font-weight: 500;
 	transition: all 0.15s ease;
 	user-select: none;
+	box-sizing: border-box;
+	overflow: hidden;
 }
 
 .hero-button .codicon {
@@ -149,6 +157,10 @@
 .hero-button-label {
 	flex: 1;
 	text-align: center;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .hero-button.primary {
@@ -440,11 +452,13 @@
 
 	.hero-actions {
 		flex-direction: column;
+		width: 100%;
 	}
 
 	.hero-button {
-		max-width: none;
+		max-width: 100%;
 		width: 100%;
+		min-width: 0;
 	}
 
 	.quick-start-container {
@@ -454,6 +468,40 @@
 
 	.checkbox-container {
 		justify-content: center;
+	}
+}
+
+/* Extra small screens - show icon + truncated text */
+@media (max-width: 400px) {
+	.hero-button {
+		padding: 10px 12px;
+		gap: 6px;
+		font-size: 12px;
+	}
+
+	.hero-button .codicon {
+		font-size: 14px;
+	}
+
+	.hero-button-label {
+		font-size: 12px;
+	}
+}
+
+/* Very small screens - ensure buttons never overflow */
+@media (max-width: 300px) {
+	.hero-actions {
+		gap: 8px;
+	}
+
+	.hero-button {
+		padding: 8px 10px;
+		min-width: 0;
+	}
+
+	.hero-button-label {
+		/* Allow text to be very short or just show icon */
+		max-width: 80px;
 	}
 }
 
