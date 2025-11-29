@@ -7,23 +7,43 @@
  * Plugin Manager Module
  *
  * Creates and manages Vite plugins for Roopik features:
- * - Source tracking (data-roopik-source attributes)
+ * - Source tracking (data-roopik-source attributes) with multi-line support
  * - Click-to-source script injection
  * - CORS handling for dev server
  *
- * Design:
- * - Factory functions for each plugin type
- * - Framework-specific plugin selection
- * - Composable plugin chains
+ * Architecture:
+ * - sourceTrackingCore.mjs: Shared regex logic for all frameworks
+ * - reactSourcePlugin.mjs: React/JSX with Babel AST + regex fallback
+ * - vueSourcePlugin.mjs: Vue SFC with template extraction + shared core
+ * - htmlSourcePlugin.mjs: Plain HTML with skip tags + shared core
+ *
+ * Features:
+ * - Multi-line element detection (startLine:startCol:endLine:endCol)
+ * - Parent context metadata (ComponentName|tag>parent>grandparent)
+ * - Component name tracking (data-roopik-component)
+ * - String literal safety (skip tags inside strings/template literals)
+ * - AST-based transformation with regex fallback
  */
+
+// Import modular source tracking plugins
+import { createReactSourcePlugin } from './reactSourcePlugin.mjs';
+import { createVueSourcePlugin } from './vueSourcePlugin.mjs';
+import { createHtmlSourcePlugin } from './htmlSourcePlugin.mjs';
+
+// Re-export for external use
+export { createReactSourcePlugin, createVueSourcePlugin, createHtmlSourcePlugin };
 
 // ============================================
 // Click-to-Source Script
 // ============================================
 
 /**
- * The script injected into every page for click-to-source functionality
- * This runs in the browser context
+ * The script injected into every page for click-to-source functionality.
+ * This runs in the browser context and provides:
+ * - Inspect mode with element highlighting
+ * - Click to copy element HTML
+ * - Source location parsing (supports multi-line format)
+ * - ESC to cancel
  */
 const CLICK_TO_SOURCE_SCRIPT = `
 <script data-roopik-inject="click-to-source">
@@ -100,6 +120,21 @@ const CLICK_TO_SOURCE_SCRIPT = `
 		return currentElement ? currentElement.outerHTML : null;
 	};
 
+	// Get last inspected element info (including source, component, parent)
+	window.__roopik_getLastInspectedInfo = function() {
+		if (!currentElement) return null;
+
+		return {
+			html: currentElement.outerHTML,
+			tagName: currentElement.tagName.toLowerCase(),
+			id: currentElement.id || null,
+			className: currentElement.className || null,
+			source: parseSourceAttr(currentElement.getAttribute('data-roopik-source')),
+			component: currentElement.getAttribute('data-roopik-component'),
+			parent: currentElement.getAttribute('data-roopik-parent')
+		};
+	};
+
 	// Mouse move handler (highlight on hover)
 	document.addEventListener('mousemove', function(e) {
 		if (!inspectMode) return;
@@ -123,6 +158,8 @@ const CLICK_TO_SOURCE_SCRIPT = `
 
 		// Get source info if available
 		const sourceAttr = el.getAttribute('data-roopik-source');
+		const componentAttr = el.getAttribute('data-roopik-component');
+		const parentAttr = el.getAttribute('data-roopik-parent');
 		const html = el.outerHTML;
 
 		// Build info object
@@ -131,7 +168,9 @@ const CLICK_TO_SOURCE_SCRIPT = `
 			tagName: el.tagName.toLowerCase(),
 			id: el.id || null,
 			className: el.className || null,
-			source: sourceAttr ? parseSourceAttr(sourceAttr) : null
+			source: sourceAttr ? parseSourceAttr(sourceAttr) : null,
+			component: componentAttr || null,
+			parent: parentAttr || null
 		};
 
 		// Copy HTML to clipboard
@@ -157,18 +196,56 @@ const CLICK_TO_SOURCE_SCRIPT = `
 		}
 	}, true);
 
-	// Parse source attribute (file:line:col)
+	/**
+	 * Parse source attribute
+	 * Supports both formats:
+	 * - Legacy: file:line:col
+	 * - New: file:startLine:startCol:endLine:endCol
+	 */
 	function parseSourceAttr(attr) {
 		if (!attr) return null;
+
 		const parts = attr.split(':');
-		if (parts.length >= 2) {
+
+		// Handle Windows paths (C:/path/to/file.tsx:1:0:10:5)
+		// Find where the path ends by looking for numeric parts
+		let pathEndIndex = 0;
+		for (let i = parts.length - 1; i >= 0; i--) {
+			if (isNaN(parseInt(parts[i], 10))) {
+				pathEndIndex = i;
+				break;
+			}
+		}
+
+		const filePath = parts.slice(0, pathEndIndex + 1).join(':');
+		const numbers = parts.slice(pathEndIndex + 1).map(n => parseInt(n, 10));
+
+		if (numbers.length >= 4) {
+			// New format: startLine:startCol:endLine:endCol
 			return {
-				file: parts.slice(0, -2).join(':') || parts[0], // Handle Windows paths
-				line: parseInt(parts[parts.length - 2], 10) || 1,
-				column: parseInt(parts[parts.length - 1], 10) || 1
+				file: filePath,
+				startLine: numbers[0] || 1,
+				startColumn: numbers[1] || 0,
+				endLine: numbers[2] || numbers[0] || 1,
+				endColumn: numbers[3] || 0,
+				// Legacy compatibility
+				line: numbers[0] || 1,
+				column: numbers[1] || 0
+			};
+		} else if (numbers.length >= 2) {
+			// Legacy format: line:col
+			return {
+				file: filePath,
+				line: numbers[0] || 1,
+				column: numbers[1] || 0,
+				startLine: numbers[0] || 1,
+				startColumn: numbers[1] || 0,
+				endLine: numbers[0] || 1,
+				endColumn: numbers[1] || 0
 			};
 		}
-		return { file: attr, line: 1, column: 1 };
+
+		return { file: attr, line: 1, column: 0 };
 	}
 
 	// Visual feedback when element is copied
@@ -187,7 +264,8 @@ const CLICK_TO_SOURCE_SCRIPT = `
 	window.__ROOPIK_INSPECT__ = {
 		enable: window.__roopik_enableInspect,
 		disable: window.__roopik_disableInspect,
-		isActive: window.__roopik_isInspectActive
+		isActive: window.__roopik_isInspectActive,
+		getLastInfo: window.__roopik_getLastInspectedInfo
 	};
 
 	console.log('[Roopik] Click-to-source ready. Call __roopik_enableInspect() to start.');
@@ -247,188 +325,10 @@ export function createCorsPlugin() {
 }
 
 /**
- * Create a no-op plugin (placeholder)
+ * Create a no-op plugin (placeholder for unsupported frameworks)
  */
 export function createNoopPlugin(name = 'roopik:noop') {
 	return { name };
-}
-
-// ============================================
-// Source Tracking Plugins (Framework-Specific)
-// ============================================
-
-/**
- * Create React source tracking plugin
- * Adds data-roopik-source to JSX elements during transformation
- *
- * Note: This is a simplified version. Full implementation would use
- * Babel AST transformation for accuracy. The regex approach works
- * for basic cases but may miss complex patterns.
- */
-export function createReactSourcePlugin(options = {}) {
-	const { verbose = false } = options;
-
-	return {
-		name: 'roopik:react-source',
-		enforce: 'pre', // Run before other transforms
-
-		transform(code, id) {
-			// Only process JSX/TSX files
-			if (!id.match(/\.(jsx|tsx)$/)) {
-				return null;
-			}
-
-			// Skip node_modules
-			if (id.includes('node_modules')) {
-				return null;
-			}
-
-			// Simple regex approach: add data-roopik-source to opening tags
-			// This is imperfect but works for common cases
-			let hasChanges = false;
-
-			// Match JSX elements: <Component or <div
-			// Add source info to self-closing and opening tags
-			const lines = code.split('\n');
-			const transformedLines = lines.map((line, lineIndex) => {
-				// Match opening tags: <TagName ...> or <TagName ... />
-				return line.replace(
-					/<([A-Z][a-zA-Z0-9]*|[a-z][a-z0-9-]*)(\s|>|\/>)/g,
-					(match, tagName, suffix) => {
-						hasChanges = true;
-						const lineNum = lineIndex + 1;
-						const source = `${id}:${lineNum}:1`;
-						return `<${tagName} data-roopik-source="${source}"${suffix}`;
-					}
-				);
-			});
-
-			if (hasChanges) {
-				if (verbose) {
-					console.log(`[Roopik] Added source tracking to: ${id}`);
-				}
-				return {
-					code: transformedLines.join('\n'),
-					map: null // We could generate source map here
-				};
-			}
-
-			return null;
-		}
-	};
-}
-
-/**
- * Create Vue source tracking plugin
- * Adds data-roopik-source to template elements
- */
-export function createVueSourcePlugin(options = {}) {
-	const { verbose = false } = options;
-
-	return {
-		name: 'roopik:vue-source',
-		enforce: 'pre',
-
-		transform(code, id) {
-			// Only process Vue SFC files
-			if (!id.endsWith('.vue')) {
-				return null;
-			}
-
-			// Skip node_modules
-			if (id.includes('node_modules')) {
-				return null;
-			}
-
-			// Find <template> section and add source tracking
-			const templateMatch = code.match(/<template>([\s\S]*?)<\/template>/);
-			if (!templateMatch) {
-				return null;
-			}
-
-			let template = templateMatch[1];
-			let hasChanges = false;
-
-			// Add source to HTML elements in template
-			const lines = template.split('\n');
-			const transformedLines = lines.map((line, lineIndex) => {
-				return line.replace(
-					/<([a-z][a-z0-9-]*)(\s|>)/gi,
-					(match, tagName, suffix) => {
-						// Skip script/style/template tags
-						if (['script', 'style', 'template'].includes(tagName.toLowerCase())) {
-							return match;
-						}
-						hasChanges = true;
-						const lineNum = lineIndex + 1;
-						const source = `${id}:${lineNum}:1`;
-						return `<${tagName} data-roopik-source="${source}"${suffix}`;
-					}
-				);
-			});
-
-			if (hasChanges) {
-				const newTemplate = transformedLines.join('\n');
-				const newCode = code.replace(templateMatch[1], newTemplate);
-
-				if (verbose) {
-					console.log(`[Roopik] Added source tracking to: ${id}`);
-				}
-
-				return {
-					code: newCode,
-					map: null
-				};
-			}
-
-			return null;
-		}
-	};
-}
-
-/**
- * Create HTML source tracking plugin
- * Adds data-roopik-source to HTML elements
- */
-export function createHtmlSourcePlugin(options = {}) {
-	const { verbose = false } = options;
-
-	return {
-		name: 'roopik:html-source',
-
-		transformIndexHtml: {
-			order: 'pre',
-			handler(html, ctx) {
-				const file = ctx.filename || 'index.html';
-				let lineNum = 0;
-
-				// Add source to HTML elements
-				const transformed = html.replace(
-					/<([a-z][a-z0-9-]*)(\s|>)/gi,
-					(match, tagName, suffix, offset) => {
-						// Count newlines before this match to get line number
-						const before = html.substring(0, offset);
-						lineNum = (before.match(/\n/g) || []).length + 1;
-
-						// Skip script/style/html/head/body/meta/link tags
-						const skipTags = ['script', 'style', 'html', 'head', 'body', 'meta', 'link', 'title', 'base'];
-						if (skipTags.includes(tagName.toLowerCase())) {
-							return match;
-						}
-
-						const source = `${file}:${lineNum}:1`;
-						return `<${tagName} data-roopik-source="${source}"${suffix}`;
-					}
-				);
-
-				if (verbose && transformed !== html) {
-					console.log(`[Roopik] Added source tracking to: ${file}`);
-				}
-
-				return transformed;
-			}
-		}
-	};
 }
 
 // ============================================
@@ -437,8 +337,13 @@ export function createHtmlSourcePlugin(options = {}) {
 
 /**
  * Get plugins for a specific framework
+ *
  * @param {string} frameworkId - Framework identifier
  * @param {Object} options - Plugin options
+ * @param {boolean} [options.verboseLogging=false] - Enable verbose logging
+ * @param {string} [options.babelPath] - Path to @babel/core (for React AST mode)
+ * @param {string} [options.vueCompilerPath] - Path to @vue/compiler-sfc (for Vue AST mode)
+ * @param {boolean} [options.forceRegexMode=false] - Force regex mode (skip AST)
  * @returns {Array} Array of Vite plugins
  */
 export function getPluginsForFramework(frameworkId, options = {}) {
@@ -453,24 +358,39 @@ export function getPluginsForFramework(frameworkId, options = {}) {
 	// Add framework-specific source tracking
 	switch (frameworkId) {
 		case 'react-vite':
-			plugins.push(createReactSourcePlugin(options));
+			plugins.push(createReactSourcePlugin({
+				babelPath: options.babelPath,
+				forceRegexMode: options.forceRegexMode,
+				verboseLogging: options.verboseLogging
+			}));
 			break;
 
 		case 'vue-vite':
-			plugins.push(createVueSourcePlugin(options));
+			plugins.push(createVueSourcePlugin({
+				compilerPath: options.vueCompilerPath,
+				forceRegexMode: options.forceRegexMode,
+				verboseLogging: options.verboseLogging
+			}));
 			break;
 
 		case 'solid-vite':
 			// SolidJS uses similar JSX syntax to React
-			plugins.push(createReactSourcePlugin(options));
+			plugins.push(createReactSourcePlugin({
+				babelPath: options.babelPath,
+				forceRegexMode: options.forceRegexMode,
+				verboseLogging: options.verboseLogging
+			}));
 			break;
 
 		case 'plain-html-vite':
-			plugins.push(createHtmlSourcePlugin(options));
+			plugins.push(createHtmlSourcePlugin({
+				verboseLogging: options.verboseLogging
+			}));
 			break;
 
 		case 'svelte-vite':
 			// Svelte has its own compilation, source tracking needs different approach
+			// TODO: Implement Svelte source tracking
 			plugins.push(createNoopPlugin('roopik:svelte-source-todo'));
 			break;
 
