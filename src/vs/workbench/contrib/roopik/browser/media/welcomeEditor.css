@@ -203,52 +203,92 @@
 	margin: 0;
 }
 
-.quick-start-grid {
+/* Quick Start Container - Two Column Layout */
+.quick-start-container {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-	gap: 16px;
+	grid-template-columns: 1fr 1fr;
+	gap: 32px;
 }
 
-.quick-card {
+.quick-start-column {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	padding: 18px;
-	border: 1px solid var(--vscode-widget-border);
-	border-radius: 8px;
-	background-color: var(--vscode-editorWidget-background);
+}
+
+.quick-start-column-title {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--vscode-textLink-activeForeground);
+	margin-bottom: 4px;
+}
+
+/* Quick Start Actions (VS Code style) */
+.quick-start-action {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 12px;
+	border-radius: 6px;
 	cursor: pointer;
-	transition: border-color 0.2s ease, transform 0.15s ease, box-shadow 0.15s ease;
+	color: var(--vscode-foreground);
+	transition: background-color 0.15s ease;
+	user-select: none;
 }
 
-.quick-card:hover {
-	border-color: var(--vscode-focusBorder);
-	transform: translateY(-2px);
-	box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+.quick-start-action:hover {
+	background-color: var(--vscode-list-hoverBackground);
 }
 
-.quick-card-icon {
-	font-size: 26px;
-	line-height: 1;
-}
-
-.quick-card-title {
+.quick-start-action .codicon {
 	font-size: 16px;
-	font-weight: 600;
+	color: var(--vscode-icon-foreground);
+	flex-shrink: 0;
+}
+
+.quick-start-action-label {
+	font-size: 13px;
+	font-weight: 400;
 	color: var(--vscode-foreground);
 }
 
-.quick-card-description {
-	font-size: 13px;
-	color: var(--vscode-descriptionForeground);
-	line-height: 1.5;
-	flex: 1;
+/* Recent Canvas Items */
+.recent-canvas-item {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 8px 12px;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+	user-select: none;
 }
 
-.quick-card-link {
-	font-size: 12px;
-	font-weight: 600;
-	color: var(--vscode-textLink-activeForeground);
+.recent-canvas-item:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+
+.recent-canvas-name {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+
+.recent-canvas-path {
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.quick-start-empty {
+	font-size: 13px;
+	color: var(--vscode-descriptionForeground);
+	padding: 8px 12px;
+	font-style: italic;
 }
 
 .tips-list {
@@ -389,8 +429,9 @@
 		width: 100%;
 	}
 
-	.quick-card {
-		padding: 16px;
+	.quick-start-container {
+		grid-template-columns: 1fr;
+		gap: 24px;
 	}
 
 	.checkbox-container {

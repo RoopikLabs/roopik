@@ -95,20 +95,48 @@ export class RoopikWelcomeEditor extends EditorPane {
 		const showcaseHighlight = append(heroShowcase, $('.showcase-highlight'));
 		showcaseHighlight.textContent = 'Preview, inspect, and edit with zero context switching.';
 
-		// Quick start grid
+		// Quick start section with two columns
 		const quickStartSection = append(container, $('.welcome-section'));
 		const quickStartTitle = append(quickStartSection, $('.section-title'));
 		quickStartTitle.textContent = 'Quick start';
 
-		const quickStartGrid = append(quickStartSection, $('.quick-start-grid'));
-		const quickStartCards = [
-			{ icon: '🎨', titleText: 'Canvas Mode', description: 'Infinite canvas for component-first workflows.', commandId: 'roopik.openCanvas' },
-			{ icon: '🧪', titleText: 'Browser Preview', description: 'Project Preview with Enriched context.', commandId: 'roopik.openProjectPreview' },
-			{ icon: '⚡', titleText: 'Command Palette', description: 'Run any Roopik command instantly.', commandId: 'workbench.action.showCommands' }
+		const quickStartContainer = append(quickStartSection, $('.quick-start-container'));
+
+		// Left column: Start actions
+		const startColumn = append(quickStartContainer, $('.quick-start-column'));
+		const startTitle = append(startColumn, $('.quick-start-column-title'));
+		startTitle.textContent = 'Start';
+
+		const startActions = [
+			{ icon: 'codicon-new-file', label: 'New Canvas', commandId: 'roopik.openCanvas' },
+			{ icon: 'codicon-folder', label: 'Open Canvas', commandId: 'roopik.openCanvas' },
+			{ icon: 'codicon-file-symlink-directory', label: 'Import Canvas', commandId: 'roopik.openCanvas' },
+			{ icon: 'codicon-globe', label: 'Open Project Preview', commandId: 'roopik.openProjectPreview' },
+			{ icon: 'codicon-keyboard', label: 'Run Command...', commandId: 'workbench.action.showCommands' }
 		];
 
-		for (const card of quickStartCards) {
-			this.createQuickStartCard(quickStartGrid, card.icon, card.titleText, card.description, card.commandId);
+		for (const action of startActions) {
+			this.createQuickStartAction(startColumn, action.icon, action.label, action.commandId);
+		}
+
+		// Right column: Recent canvases
+		const recentColumn = append(quickStartContainer, $('.quick-start-column'));
+		const recentTitle = append(recentColumn, $('.quick-start-column-title'));
+		recentTitle.textContent = 'Recent';
+
+		// Placeholder canvases (will be dynamic later)
+		const recentCanvases = [
+			{ name: 'Dashboard Design', path: '~/Projects/dashboard.canvas' },
+			{ name: 'Landing Page', path: '~/Projects/landing.canvas' }
+		];
+
+		if (recentCanvases.length > 0) {
+			for (const canvas of recentCanvases) {
+				this.createRecentCanvasItem(recentColumn, canvas.name, canvas.path);
+			}
+		} else {
+			const emptyState = append(recentColumn, $('.quick-start-empty'));
+			emptyState.textContent = 'No recent canvases';
 		}
 
 		// Footer with checkbox (sticky bar)
@@ -286,27 +314,40 @@ export class RoopikWelcomeEditor extends EditorPane {
 		button.onclick = () => this.commandService.executeCommand(commandId);
 	}
 
-	private createQuickStartCard(parent: HTMLElement, icon: string, title: string, description: string, commandId: string): void {
-		const card = append(parent, $('.quick-card'));
+	/**
+	 * Create a quick start action item (VS Code style - icon + text)
+	 */
+	private createQuickStartAction(parent: HTMLElement, iconClass: string, label: string, commandId: string): void {
+		const action = append(parent, $('.quick-start-action'));
 
-		const cardIcon = append(card, $('.quick-card-icon'));
-		cardIcon.textContent = icon;
+		const icon = append(action, $('span.codicon'));
+		icon.classList.add(iconClass);
+		icon.setAttribute('aria-hidden', 'true');
 
-		const cardTitle = append(card, $('.quick-card-title'));
-		cardTitle.textContent = title;
+		const labelEl = append(action, $('.quick-start-action-label'));
+		labelEl.textContent = label;
 
-		const cardDescription = append(card, $('.quick-card-description'));
-		cardDescription.textContent = description;
-
-		const link = append(card, $('.quick-card-link'));
-		link.textContent = 'Run command';
-
-		card.onclick = () => {
+		action.onclick = () => {
 			this.commandService.executeCommand(commandId);
 		};
-		link.onclick = (event) => {
-			event.stopPropagation();
-			this.commandService.executeCommand(commandId);
+	}
+
+	/**
+	 * Create a recent canvas item
+	 */
+	private createRecentCanvasItem(parent: HTMLElement, name: string, path: string): void {
+		const item = append(parent, $('.recent-canvas-item'));
+
+		const nameEl = append(item, $('.recent-canvas-name'));
+		nameEl.textContent = name;
+
+		const pathEl = append(item, $('.recent-canvas-path'));
+		pathEl.textContent = path;
+
+		// Placeholder click handler (will be implemented when canvas system is ready)
+		item.onclick = () => {
+			// TODO: Open canvas when implemented
+			this.commandService.executeCommand('roopik.openCanvas');
 		};
 	}
 
