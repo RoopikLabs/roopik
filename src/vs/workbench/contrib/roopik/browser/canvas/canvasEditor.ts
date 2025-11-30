@@ -32,6 +32,7 @@ import { FloatingToolbar, type IFloatingToolbarCallbacks } from './components/fl
 import { BottomActionBar, type IBottomActionBarCallbacks } from './components/bottomActionBar.js';
 import { CanvasActionButtons, type ICanvasActionButtonsCallbacks } from './components/canvasActionButtons.js';
 import { CanvasStatusPanel, type ICanvasStatusPanelCallbacks } from './components/canvasStatusPanel.js';
+import { showConfirmDialog } from './components/confirmDialog.js';
 import type { CanvasViewport, BackgroundPattern, Sandbox } from '../../common/canvas/canvasTypes.js';
 import { IWebviewService } from '../../../webview/browser/webview.js';
 import { SAMPLE_COMPONENTS, getSampleComponent } from './data/sampleComponents.js';
@@ -63,6 +64,9 @@ export class CanvasEditor extends EditorPane {
 	private sandboxCards: Map<string, SandboxCard> = new Map();
 	private selectedSandboxId: string | null = null;
 	private focusedSandboxId: string | null = null;
+
+	// Focus mode state - stores viewport before focus for restoration
+	private preFocusViewport: CanvasViewport | null = null;
 
 	// Interaction state
 	private isPanning: boolean = false;
@@ -555,12 +559,28 @@ export class CanvasEditor extends EditorPane {
 	}
 
 	/**
-	 * Clear all sandboxes from the canvas
+	 * Clear all sandboxes from the canvas (with confirmation)
 	 */
 	private clearAllSandboxes(): void {
-		const ids = Array.from(this.sandboxes.keys());
-		ids.forEach(id => this.deleteSandbox(id));
-		console.log('[CanvasEditor] Cleared all sandboxes');
+		if (!this.container || this.sandboxes.size === 0) {
+			return;
+		}
+
+		const count = this.sandboxes.size;
+		showConfirmDialog(this.container, {
+			title: 'Clear All Components',
+			message: `Are you sure you want to delete all ${count} component${count > 1 ? 's' : ''}? This action cannot be undone.`,
+			confirmText: 'Clear All',
+			cancelText: 'Cancel',
+			isDanger: true
+		}).then(confirmed => {
+			if (confirmed) {
+				// Delete all without individual confirmations
+				const ids = Array.from(this.sandboxes.keys());
+				ids.forEach(id => this.performDeleteSandbox(id));
+				console.log('[CanvasEditor] Cleared all sandboxes');
+			}
+		});
 	}
 
 	/**
@@ -610,6 +630,9 @@ export class CanvasEditor extends EditorPane {
 
 		// Update status panel component count
 		this.canvasStatusPanel?.setComponentCount(this.sandboxes.size);
+
+		// Auto-fit canvas to show all components smoothly
+		this.autoFitCanvasAfterChange();
 	}
 
 	/**
@@ -637,20 +660,107 @@ export class CanvasEditor extends EditorPane {
 
 	/**
 	 * Focus a sandbox (double-click for focused editing mode)
+	 * - First double-click: zoom and center on the sandbox
+	 * - Second double-click on same sandbox: unfocus and restore previous viewport
 	 */
 	private focusSandbox(id: string): void {
-		// Clear previous focus
+		if (!this.canvasContainer) {
+			return;
+		}
+
+		// If already focused on this sandbox, unfocus and restore viewport
+		if (this.focusedSandboxId === id) {
+			this.unfocusSandbox();
+			return;
+		}
+
+		// Clear previous focus if different sandbox
 		if (this.focusedSandboxId && this.focusedSandboxId !== id) {
 			const prevCard = this.sandboxCards.get(this.focusedSandboxId);
 			prevCard?.setFocused(false);
 		}
 
+		// Save current viewport before focusing (only if not already in focus mode)
+		if (!this.focusedSandboxId) {
+			this.preFocusViewport = { ...this.viewport };
+		}
+
+		// Set focus state
 		this.focusedSandboxId = id;
 		const card = this.sandboxCards.get(id);
+		const sandbox = this.sandboxes.get(id);
 		card?.setFocused(true);
 
-		// TODO: Zoom canvas to center on this sandbox (Focus Mode)
+		// Zoom and center on the focused sandbox
+		if (sandbox) {
+			const rect = this.canvasContainer.getBoundingClientRect();
+			const focusViewport = this.gridManager.calculateFocusViewport(
+				sandbox,
+				rect.width,
+				rect.height,
+				0.7 // Use 70% of screen for focused component
+			);
+
+			// Apply smooth transition
+			this.animateViewportTransition(focusViewport);
+		}
+
 		console.log(`[CanvasEditor] Focus mode activated for: ${id}`);
+	}
+
+	/**
+	 * Unfocus current sandbox and restore previous viewport
+	 */
+	private unfocusSandbox(): void {
+		if (!this.focusedSandboxId) {
+			return;
+		}
+
+		const card = this.sandboxCards.get(this.focusedSandboxId);
+		card?.setFocused(false);
+
+		// Restore previous viewport if saved
+		if (this.preFocusViewport) {
+			this.animateViewportTransition(this.preFocusViewport);
+			this.preFocusViewport = null;
+		}
+
+		console.log(`[CanvasEditor] Focus mode deactivated for: ${this.focusedSandboxId}`);
+		this.focusedSandboxId = null;
+	}
+
+	/**
+	 * Animate viewport transition for smooth focus/unfocus
+	 */
+	private animateViewportTransition(targetViewport: CanvasViewport, duration: number = 300): void {
+		if (!this.canvasContent) {
+			return;
+		}
+
+		const startViewport = { ...this.viewport };
+		const startTime = performance.now();
+
+		const animate = (currentTime: number) => {
+			const elapsed = currentTime - startTime;
+			const progress = Math.min(elapsed / duration, 1);
+
+			// Ease out cubic for smooth deceleration
+			const eased = 1 - Math.pow(1 - progress, 3);
+
+			// Interpolate viewport values
+			this.viewport.x = startViewport.x + (targetViewport.x - startViewport.x) * eased;
+			this.viewport.y = startViewport.y + (targetViewport.y - startViewport.y) * eased;
+			this.viewport.scale = startViewport.scale + (targetViewport.scale - startViewport.scale) * eased;
+
+			this.updateTransform();
+			this.canvasStatusPanel?.setZoom(this.viewport.scale);
+
+			if (progress < 1) {
+				requestAnimationFrame(animate);
+			}
+		};
+
+		requestAnimationFrame(animate);
 	}
 
 	/**
@@ -734,9 +844,34 @@ export class CanvasEditor extends EditorPane {
 	}
 
 	/**
-	 * Delete a sandbox
+	 * Request to delete a sandbox (shows confirmation dialog)
 	 */
 	private deleteSandbox(id: string): void {
+		if (!this.container) {
+			return;
+		}
+
+		const sandbox = this.sandboxes.get(id);
+		const sandboxName = sandbox?.componentId || id;
+
+		// Show confirmation dialog
+		showConfirmDialog(this.container, {
+			title: 'Delete Component',
+			message: `Are you sure you want to delete "${sandboxName}"? This action cannot be undone.`,
+			confirmText: 'Delete',
+			cancelText: 'Cancel',
+			isDanger: true
+		}).then(confirmed => {
+			if (confirmed) {
+				this.performDeleteSandbox(id);
+			}
+		});
+	}
+
+	/**
+	 * Actually delete a sandbox (after confirmation)
+	 */
+	private performDeleteSandbox(id: string): void {
 		const card = this.sandboxCards.get(id);
 		card?.dispose();
 		this.sandboxCards.delete(id);
@@ -749,10 +884,14 @@ export class CanvasEditor extends EditorPane {
 		}
 		if (this.focusedSandboxId === id) {
 			this.focusedSandboxId = null;
+			this.preFocusViewport = null;
 		}
 
 		// Update status panel component count
 		this.canvasStatusPanel?.setComponentCount(this.sandboxes.size);
+
+		// Auto-adjust canvas after deletion
+		this.autoFitCanvasAfterChange();
 
 		console.log(`[CanvasEditor] Deleted sandbox: ${id}`);
 	}
@@ -763,6 +902,45 @@ export class CanvasEditor extends EditorPane {
 	private expandSandbox(id: string): void {
 		// TODO: Implement fullscreen expand view
 		console.log(`[CanvasEditor] Expand sandbox: ${id}`);
+	}
+
+	/**
+	 * Auto-fit canvas after components are added or removed
+	 * This provides smooth UX by keeping all components visible and centered
+	 */
+	private autoFitCanvasAfterChange(): void {
+		if (!this.canvasContainer) {
+			return;
+		}
+
+		// Don't auto-fit if in focus mode
+		if (this.focusedSandboxId) {
+			return;
+		}
+
+		const sandboxArray = Array.from(this.sandboxes.values());
+
+		// If no sandboxes, reset to default position
+		if (sandboxArray.length === 0) {
+			const defaultViewport = this.gridManager.calculateDefaultViewport();
+			this.animateViewportTransition(defaultViewport, 200);
+			return;
+		}
+
+		const rect = this.canvasContainer.getBoundingClientRect();
+
+		// Calculate viewport to fit all content with some padding
+		// Use maxScale of 1.0 so we don't zoom in past 100%
+		const newViewport = this.gridManager.calculateResetViewport(
+			sandboxArray,
+			rect.width,
+			rect.height,
+			60, // padding
+			1.0 // maxScale - don't zoom in beyond 100%
+		);
+
+		// Animate to new viewport for smooth transition
+		this.animateViewportTransition(newViewport, 250);
 	}
 
 	/**
