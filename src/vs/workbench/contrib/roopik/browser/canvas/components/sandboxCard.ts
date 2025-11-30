@@ -40,6 +40,7 @@ export interface ISandboxCardCallbacks {
 export class SandboxCard extends Disposable {
 	private container: HTMLElement;
 	private webviewElement: IWebviewElement | undefined;
+	private webviewWrapper: HTMLElement | undefined;  // Wrapper for centering
 	private webviewContainer: HTMLElement | undefined;
 	private labelElement: HTMLElement;
 	private actionButtons: HTMLElement | undefined;
@@ -408,6 +409,7 @@ export class SandboxCard extends Disposable {
 	/**
 	 * Apply device emulation using CSS transform scaling
 	 * Creates a true viewport emulation where the component sees the actual device width
+	 * Centers the preview in the available space for better UX
 	 */
 	private applyDeviceEmulation(): void {
 		if (!this.webviewContainer) return;
@@ -421,27 +423,43 @@ export class SandboxCard extends Disposable {
 		const availableHeight = this.sandbox.height - 50; // Account for label area
 
 		if (config.width === 'auto' || config.height === 'auto') {
-			// Auto mode - use natural size, no transform
-			this.webviewContainer.style.width = '100%';
-			this.webviewContainer.style.height = '100%';
+			// Auto mode - use natural size, fill all available space
+			this.webviewContainer.style.width = `${availableWidth}px`;
+			this.webviewContainer.style.height = `${availableHeight}px`;
 			this.webviewContainer.style.transform = 'none';
-			this.webviewContainer.style.transformOrigin = 'top left';
+			this.webviewContainer.style.position = 'relative';
+			this.webviewContainer.style.left = '0';
+			this.webviewContainer.style.top = '0';
+			this.webviewContainer.style.margin = '0';
 		} else {
 			// Device preset - use CSS transform for true emulation
+			// CENTERED in available space with maximum scale while maintaining aspect ratio
 			const deviceWidth = config.width as number;
 			const deviceHeight = config.height as number;
 
-			// Calculate scale to fit within available space
+			// Calculate scale to fit within available space (use all space, maintain aspect ratio)
 			const scaleX = availableWidth / deviceWidth;
 			const scaleY = availableHeight / deviceHeight;
 			const scale = Math.min(scaleX, scaleY, 1); // Never scale up beyond 1:1
 
-			// Apply transform scaling
+			// Calculate the visual size after scaling
+			const visualWidth = deviceWidth * scale;
+			const visualHeight = deviceHeight * scale;
+
+			// Calculate centering offsets
+			const offsetX = (availableWidth - visualWidth) / 2;
+			const offsetY = (availableHeight - visualHeight) / 2;
+
+			// Apply transform scaling with centering
 			// The webview gets the FULL device size, CSS transform scales it visually
 			this.webviewContainer.style.width = `${deviceWidth}px`;
 			this.webviewContainer.style.height = `${deviceHeight}px`;
 			this.webviewContainer.style.transform = `scale(${scale})`;
 			this.webviewContainer.style.transformOrigin = 'top left';
+			this.webviewContainer.style.position = 'absolute';
+			this.webviewContainer.style.left = `${offsetX}px`;
+			this.webviewContainer.style.top = `${offsetY}px`;
+			this.webviewContainer.style.margin = '0';
 		}
 	}
 
@@ -588,16 +606,24 @@ export class SandboxCard extends Disposable {
 	// ============================================
 
 	private createWebview(): void {
-		// Create container for webview
+		// Create wrapper to hold the webview container (needed for centering in device modes)
+		this.webviewWrapper = document.createElement('div');
+		this.webviewWrapper.className = 'sandbox-webview-wrapper';
+		this.webviewWrapper.style.flex = '1';
+		this.webviewWrapper.style.position = 'relative';
+		this.webviewWrapper.style.marginTop = '10px';
+		this.webviewWrapper.style.overflow = 'hidden';
+
+		// Create container for webview (can be positioned absolute for centering)
 		this.webviewContainer = document.createElement('div');
 		this.webviewContainer.className = 'sandbox-webview-container';
-		this.webviewContainer.style.flex = '1';
-		this.webviewContainer.style.position = 'relative';
 		this.webviewContainer.style.background = '#ffffff';
 		this.webviewContainer.style.borderRadius = '8px';
 		this.webviewContainer.style.overflow = 'hidden';
 		this.webviewContainer.style.boxShadow = 'inset 0 0 0 1px rgba(0, 0, 0, 0.1)';
-		this.webviewContainer.style.marginTop = '10px';
+
+		// Add webviewContainer to wrapper
+		this.webviewWrapper.appendChild(this.webviewContainer);
 
 		// Create webview element using VSCode's webview service
 		this.webviewElement = this.webviewService.createWebviewElement({
@@ -849,9 +875,9 @@ export class SandboxCard extends Disposable {
 		this.actionButtons = this.createActionButtons();
 		this.container.appendChild(this.actionButtons);
 
-		// Add webview container
-		if (this.webviewContainer) {
-			this.container.appendChild(this.webviewContainer);
+		// Add webview wrapper (which contains the webview container)
+		if (this.webviewWrapper) {
+			this.container.appendChild(this.webviewWrapper);
 		}
 	}
 
