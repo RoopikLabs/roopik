@@ -51,6 +51,7 @@ export class CanvasActionButtons extends Disposable {
 	private container: HTMLElement;
 	private buttonsContainer: HTMLElement | undefined;
 	private toggleButton: HTMLElement | undefined;
+	private deviceToggleButton: HTMLElement | undefined;  // Independent device mode toggle
 	private colorInput: HTMLInputElement | undefined;
 	private autoCollapseTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -111,6 +112,14 @@ export class CanvasActionButtons extends Disposable {
 			this.container.insertBefore(warning, this.buttonsContainer);
 		}
 
+		// Create device toggle button at top-right (independent floating button)
+		// Remove old one first if it exists
+		if (this.deviceToggleButton && this.deviceToggleButton.parentElement) {
+			this.deviceToggleButton.parentElement.removeChild(this.deviceToggleButton);
+		}
+		this.deviceToggleButton = this.createDeviceToggleButton();
+		this.parent.appendChild(this.deviceToggleButton);
+
 		// Setup hover listeners for auto-collapse
 		this.setupAutoCollapse();
 	}
@@ -149,15 +158,6 @@ export class CanvasActionButtons extends Disposable {
 			() => this.callbacks.onPatternToggle()
 		);
 		panel.appendChild(patternBtn);
-
-		// === Device Mode Toggle ===
-		const deviceBtn = this.createActionButton(
-			`Device: ${getDeviceLabel(this.state.deviceMode)}`,
-			createDeviceIcon(this.state.deviceMode, 20),
-			this.state.deviceMode !== 'auto',
-			() => this.cycleDeviceMode()
-		);
-		panel.appendChild(deviceBtn);
 
 		// === Separator ===
 		const separator = document.createElement('div');
@@ -236,6 +236,73 @@ export class CanvasActionButtons extends Disposable {
 			if (this.state.isExpanded) {
 				this.startAutoCollapseTimer();
 			}
+		});
+
+		return btn;
+	}
+
+	/**
+	 * Create device toggle button - floating at top-right corner
+	 * Same style as expand button (44x44px, circular, glass-morphism)
+	 * Shows "A" for Auto mode, SVG icons for others
+	 */
+	private createDeviceToggleButton(): HTMLElement {
+		const btn = document.createElement('button');
+		const label = getDeviceLabel(this.state.deviceMode);
+		btn.title = `Device: ${label} (click to cycle)`;
+		btn.style.cssText = `
+			position: absolute;
+			top: 24px;
+			right: 24px;
+			z-index: 1000;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 44px;
+			height: 44px;
+			padding: 0;
+			background: rgba(28, 28, 30, 0.9);
+			backdrop-filter: blur(20px) saturate(180%);
+			-webkit-backdrop-filter: blur(20px) saturate(180%);
+			border: 1px solid rgba(255, 255, 255, 0.12);
+			border-radius: 50%;
+			cursor: pointer;
+			transition: all 0.2s ease;
+			color: ${this.state.deviceMode !== 'auto' ? '#60a5fa' : 'rgba(255, 255, 255, 0.8)'};
+			box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+		`;
+
+		// For Auto mode, show "A" text; for others show icons
+		if (this.state.deviceMode === 'auto') {
+			const text = document.createElement('span');
+			text.textContent = 'A';
+			text.style.cssText = `
+				font-size: 18px;
+				font-weight: 600;
+				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			`;
+			btn.appendChild(text);
+		} else {
+			const icon = createDeviceIcon(this.state.deviceMode, 20);
+			btn.appendChild(icon);
+		}
+
+		// Hover effects
+		btn.addEventListener('mouseenter', () => {
+			btn.style.background = 'rgba(59, 130, 246, 0.3)';
+			btn.style.color = '#60a5fa';
+			btn.style.transform = 'scale(1.05)';
+		});
+
+		btn.addEventListener('mouseleave', () => {
+			btn.style.background = 'rgba(28, 28, 30, 0.9)';
+			btn.style.color = this.state.deviceMode !== 'auto' ? '#60a5fa' : 'rgba(255, 255, 255, 0.8)';
+			btn.style.transform = 'scale(1)';
+		});
+
+		// Click to cycle device mode
+		btn.addEventListener('click', () => {
+			this.cycleDeviceMode();
 		});
 
 		return btn;
@@ -617,12 +684,19 @@ export class CanvasActionButtons extends Disposable {
 
 	public setVisible(visible: boolean): void {
 		this.container.style.display = visible ? '' : 'none';
+		if (this.deviceToggleButton) {
+			this.deviceToggleButton.style.display = visible ? '' : 'none';
+		}
 	}
 
 	public override dispose(): void {
 		this.clearAutoCollapseTimer();
 		if (this.container.parentElement) {
 			this.container.parentElement.removeChild(this.container);
+		}
+		// Also remove the device toggle button (it's appended to parent, not container)
+		if (this.deviceToggleButton && this.deviceToggleButton.parentElement) {
+			this.deviceToggleButton.parentElement.removeChild(this.deviceToggleButton);
 		}
 		super.dispose();
 	}
