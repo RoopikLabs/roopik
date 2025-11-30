@@ -524,7 +524,7 @@ window.addEventListener('message', (event) => {
 │  • ESC to exit                                                          │
 │                                                                          │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │ [Component Name] [Auto][Desktop][Tablet][Mobile] [- 100% +] [X]  │  │
+│  │ [Component Name] [Auto][Desktop][Tablet][Mobile]              [X]  │  │
 │  ├───────────────────────────────────────────────────────────────────┤  │
 │  │                                                                   │  │
 │  │                                                                   │  │

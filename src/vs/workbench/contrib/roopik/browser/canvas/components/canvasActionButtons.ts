@@ -21,7 +21,8 @@
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import { clearNode } from '../../../../../../base/browser/dom.js';
 import type { CanvasMode } from '../services/gridManager.js';
-import type { BackgroundPattern } from '../../../common/canvas/canvasTypes.js';
+import type { BackgroundPattern, DevicePreset } from '../../../common/canvas/canvasTypes.js';
+import { createDeviceIcon, getDeviceLabel, getNextDeviceMode } from './deviceIcons.js';
 
 // Configuration constants
 const AUTO_COLLAPSE_DELAY_MS = 3000; // 3 seconds
@@ -33,6 +34,7 @@ export interface ICanvasActionButtonsCallbacks {
 	onModeToggle: () => void;
 	onPatternToggle: () => void;
 	onColorChange: (color: string) => void;
+	onDeviceModeChange: (mode: DevicePreset) => void;
 }
 
 export interface ICanvasActionButtonsState {
@@ -42,6 +44,7 @@ export interface ICanvasActionButtonsState {
 	backgroundColor: string;
 	isExpanded: boolean;
 	statusPanelVisible: boolean; // Whether status panel is visible (affects bottom offset)
+	deviceMode: DevicePreset;
 }
 
 export class CanvasActionButtons extends Disposable {
@@ -57,7 +60,8 @@ export class CanvasActionButtons extends Disposable {
 		pattern: 'dots',
 		backgroundColor: '#1a1a1a',
 		isExpanded: false,
-		statusPanelVisible: true // Default to true since status panel is visible by default
+		statusPanelVisible: true, // Default to true since status panel is visible by default
+		deviceMode: 'auto'
 	};
 
 	constructor(
@@ -145,6 +149,15 @@ export class CanvasActionButtons extends Disposable {
 			() => this.callbacks.onPatternToggle()
 		);
 		panel.appendChild(patternBtn);
+
+		// === Device Mode Toggle ===
+		const deviceBtn = this.createActionButton(
+			`Device: ${getDeviceLabel(this.state.deviceMode)}`,
+			createDeviceIcon(this.state.deviceMode, 20),
+			this.state.deviceMode !== 'auto',
+			() => this.cycleDeviceMode()
+		);
+		panel.appendChild(deviceBtn);
 
 		// === Separator ===
 		const separator = document.createElement('div');
@@ -541,6 +554,13 @@ export class CanvasActionButtons extends Disposable {
 		return svg;
 	}
 
+	private cycleDeviceMode(): void {
+		const nextMode = getNextDeviceMode(this.state.deviceMode);
+		this.state.deviceMode = nextMode;
+		this.callbacks.onDeviceModeChange(nextMode);
+		this.render();
+	}
+
 	// ============================================
 	// Public Methods
 	// ============================================
@@ -588,6 +608,15 @@ export class CanvasActionButtons extends Disposable {
 	public setStatusPanelVisible(visible: boolean): void {
 		this.state.statusPanelVisible = visible;
 		this.render();
+	}
+
+	public setDeviceMode(mode: DevicePreset): void {
+		this.state.deviceMode = mode;
+		this.render();
+	}
+
+	public setVisible(visible: boolean): void {
+		this.container.style.display = visible ? '' : 'none';
 	}
 
 	public override dispose(): void {

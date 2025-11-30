@@ -238,6 +238,10 @@ export class FloatingToolbar extends Disposable {
 		return btn;
 	}
 
+	public setVisible(visible: boolean): void {
+		this.container.style.display = visible ? '' : 'none';
+	}
+
 	public override dispose(): void {
 		if (this.container.parentElement) {
 			this.container.parentElement.removeChild(this.container);
