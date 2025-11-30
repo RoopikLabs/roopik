@@ -993,6 +993,14 @@ export class BrowserControlBar extends Disposable {
 		this.urlInput.focus();
 	}
 
+	/**
+	 * Focus the URL input (alias for focus())
+	 */
+	focusUrlInput(): void {
+		this.urlInput.focus();
+		this.urlInput.select(); // Select all text for easy replacement
+	}
+
 	updateNavigationState(canGoBack: boolean, canGoForward: boolean): void {
 		if (this.backButton) {
 			this.backButton.disabled = !canGoBack;

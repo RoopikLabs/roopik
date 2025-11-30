@@ -63,6 +63,9 @@
 	flex-direction: column;
 	gap: 12px;
 	min-width: 0;
+	width: 100%;
+	box-sizing: border-box;
+	overflow: hidden;
 }
 
 .hero-badge {
@@ -116,42 +119,69 @@
 .hero-actions {
 	display: flex;
 	flex-wrap: wrap;
-	justify-content: center;
-	width: 100%;
-	gap: 12px;
-	margin-top: 12px;
+	gap: 10px;
+	margin-top: 16px;
 	align-items: stretch;
+	width: 100%;
+	box-sizing: border-box;
 }
 
 .hero-button {
-	flex: 1 1 200px;
-	min-width: 160px;
-	max-width: 320px;
-	padding: 12px 16px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	flex: 1 1 auto;
+	min-width: 0;
+	max-width: 100%;
+	padding: 10px 16px;
 	border-radius: 6px;
-	border: 1px solid var(--vscode-button-border);
-	background-color: var(--vscode-button-secondaryBackground);
-	color: var(--vscode-button-secondaryForeground);
+	border: 1px solid var(--vscode-widget-border);
+	background-color: var(--vscode-editorWidget-background);
+	color: var(--vscode-foreground);
 	cursor: pointer;
+	font-size: 13px;
+	font-weight: 500;
+	transition: all 0.15s ease;
+	user-select: none;
+	box-sizing: border-box;
+	overflow: hidden;
+}
+
+.hero-button .codicon {
+	font-size: 16px;
+	color: var(--vscode-icon-foreground);
+	flex-shrink: 0;
+}
+
+.hero-button-label {
+	flex: 1;
 	text-align: center;
-	font-weight: 600;
-	transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .hero-button.primary {
-	background: linear-gradient(135deg, #6e8efb, #4b6cb7);
-	color: #fff;
-	border-color: transparent;
+	background-color: var(--vscode-button-primaryBackground);
+	color: var(--vscode-button-primaryForeground);
+	border-color: var(--vscode-button-primaryBackground);
+}
+
+.hero-button.primary .codicon {
+	color: var(--vscode-button-primaryForeground);
 }
 
 .hero-button:hover {
-	transform: translateY(-1px);
-	background-color: var(--vscode-button-secondaryHoverBackground);
+	background-color: var(--vscode-list-hoverBackground);
 	border-color: var(--vscode-focusBorder);
+	transform: translateY(-1px);
 }
 
 .hero-button.primary:hover {
-	filter: brightness(1.05);
+	background-color: var(--vscode-button-primaryHoverBackground);
+	border-color: var(--vscode-button-primaryHoverBackground);
 }
 
 .hero-showcase {
@@ -203,52 +233,92 @@
 	margin: 0;
 }
 
-.quick-start-grid {
+/* Quick Start Container - Two Column Layout */
+.quick-start-container {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-	gap: 16px;
+	grid-template-columns: 1fr 1fr;
+	gap: 32px;
 }
 
-.quick-card {
+.quick-start-column {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	padding: 18px;
-	border: 1px solid var(--vscode-widget-border);
-	border-radius: 8px;
-	background-color: var(--vscode-editorWidget-background);
+}
+
+.quick-start-column-title {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--vscode-textLink-activeForeground);
+	margin-bottom: 4px;
+}
+
+/* Quick Start Actions (VS Code style) */
+.quick-start-action {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 12px;
+	border-radius: 6px;
 	cursor: pointer;
-	transition: border-color 0.2s ease, transform 0.15s ease, box-shadow 0.15s ease;
+	color: var(--vscode-foreground);
+	transition: background-color 0.15s ease;
+	user-select: none;
 }
 
-.quick-card:hover {
-	border-color: var(--vscode-focusBorder);
-	transform: translateY(-2px);
-	box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+.quick-start-action:hover {
+	background-color: var(--vscode-list-hoverBackground);
 }
 
-.quick-card-icon {
-	font-size: 26px;
-	line-height: 1;
-}
-
-.quick-card-title {
+.quick-start-action .codicon {
 	font-size: 16px;
-	font-weight: 600;
+	color: var(--vscode-icon-foreground);
+	flex-shrink: 0;
+}
+
+.quick-start-action-label {
+	font-size: 13px;
+	font-weight: 400;
 	color: var(--vscode-foreground);
 }
 
-.quick-card-description {
-	font-size: 13px;
-	color: var(--vscode-descriptionForeground);
-	line-height: 1.5;
-	flex: 1;
+/* Recent Canvas Items */
+.recent-canvas-item {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 8px 12px;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+	user-select: none;
 }
 
-.quick-card-link {
-	font-size: 12px;
-	font-weight: 600;
-	color: var(--vscode-textLink-activeForeground);
+.recent-canvas-item:hover {
+	background-color: var(--vscode-list-hoverBackground);
+}
+
+.recent-canvas-name {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--vscode-foreground);
+}
+
+.recent-canvas-path {
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.quick-start-empty {
+	font-size: 13px;
+	color: var(--vscode-descriptionForeground);
+	padding: 8px 12px;
+	font-style: italic;
 }
 
 .tips-list {
@@ -382,19 +452,56 @@
 
 	.hero-actions {
 		flex-direction: column;
-	}
-
-	.hero-button {
-		max-width: none;
 		width: 100%;
 	}
 
-	.quick-card {
-		padding: 16px;
+	.hero-button {
+		max-width: 100%;
+		width: 100%;
+		min-width: 0;
+	}
+
+	.quick-start-container {
+		grid-template-columns: 1fr;
+		gap: 24px;
 	}
 
 	.checkbox-container {
 		justify-content: center;
+	}
+}
+
+/* Extra small screens - show icon + truncated text */
+@media (max-width: 400px) {
+	.hero-button {
+		padding: 10px 12px;
+		gap: 6px;
+		font-size: 12px;
+	}
+
+	.hero-button .codicon {
+		font-size: 14px;
+	}
+
+	.hero-button-label {
+		font-size: 12px;
+	}
+}
+
+/* Very small screens - ensure buttons never overflow */
+@media (max-width: 300px) {
+	.hero-actions {
+		gap: 8px;
+	}
+
+	.hero-button {
+		padding: 8px 10px;
+		min-width: 0;
+	}
+
+	.hero-button-label {
+		/* Allow text to be very short or just show icon */
+		max-width: 80px;
 	}
 }
 

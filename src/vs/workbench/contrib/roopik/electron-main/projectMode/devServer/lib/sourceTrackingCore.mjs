@@ -1,0 +1,423 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+/**
+ * Source Tracking Core Module
+ *
+ * Shared regex-based source tracking logic used by all framework plugins.
+ * This module provides the common functionality for:
+ * - Parsing HTML/JSX/Vue templates to find elements
+ * - Calculating line/column positions (including multi-line spans)
+ * - Building parent context chains
+ * - String literal safety checks
+ *
+ * Features:
+ * - Multi-line element detection (startLine:startCol:endLine:endCol)
+ * - Parent context metadata (ComponentName|tag>parent>grandparent)
+ * - Component name tracking (data-roopik-component)
+ * - String literal safety (skip tags inside strings/template literals)
+ * - Configurable skip tags for HTML
+ */
+
+import { basename, extname } from 'path';
+
+// ============================================
+// Configuration
+// ============================================
+
+/** Maximum number of parent elements to track in hierarchy */
+export const MAX_PARENT_DEPTH = 3;
+
+/** Enable/disable parent metadata collection */
+export const ENABLE_PARENT_METADATA = true;
+
+// ============================================
+// Regex Patterns (Shared by all frameworks)
+// ============================================
+
+/**
+ * Match opening tags: <TagName (followed by space, /, or >)
+ * Captures: [1] = tagName, [2] = trailing character (space, /, or >)
+ */
+export const OPENING_TAG_REGEX = /<([a-zA-Z][a-zA-Z0-9.-]*)([\s\/>])/g;
+
+/**
+ * Match closing tags: </TagName>
+ * Captures: [1] = tagName
+ */
+export const CLOSING_TAG_REGEX = /<\/([a-zA-Z][a-zA-Z0-9.-]*)>/g;
+
+// ============================================
+// String Safety Checks
+// ============================================
+
+/**
+ * Check if a position in code is inside a string literal or template literal.
+ * This prevents modifying HTML code that's displayed as text content
+ * (e.g., code examples on tutorial websites).
+ *
+ * @param {string} code - The full source code
+ * @param {number} position - Character position to check
+ * @returns {boolean} - True if inside a string/template literal
+ */
+export function isInsideString(code, position) {
+	let inSingleQuote = false;
+	let inDoubleQuote = false;
+	let inTemplateString = false;
+	let prevChar = '';
+
+	for (let i = 0; i < position; i++) {
+		const char = code[i];
+
+		// Skip escaped characters
+		if (prevChar === '\\') {
+			prevChar = char;
+			continue;
+		}
+
+		// Toggle string states
+		if (char === "'" && !inDoubleQuote && !inTemplateString) {
+			inSingleQuote = !inSingleQuote;
+		} else if (char === '"' && !inSingleQuote && !inTemplateString) {
+			inDoubleQuote = !inDoubleQuote;
+		} else if (char === '`' && !inSingleQuote && !inDoubleQuote) {
+			inTemplateString = !inTemplateString;
+		}
+
+		prevChar = char;
+	}
+
+	return inSingleQuote || inDoubleQuote || inTemplateString;
+}
+
+/**
+ * Check if a position is inside a script or style tag (for HTML files).
+ * Also checks for string literals within attribute values.
+ *
+ * @param {string} html - The HTML code
+ * @param {number} position - Character position to check
+ * @returns {boolean} - True if inside script/style tag or attribute value
+ */
+export function isInsideScriptOrStyle(html, position) {
+	let inScript = false;
+	let inStyle = false;
+	let inSingleQuote = false;
+	let inDoubleQuote = false;
+	let prevChar = '';
+
+	for (let i = 0; i < position; i++) {
+		const char = html[i];
+		const remaining = html.substring(i, Math.min(i + 20, html.length));
+
+		// Skip escaped characters
+		if (prevChar === '\\') {
+			prevChar = char;
+			continue;
+		}
+
+		// Check for script/style tag boundaries
+		if (remaining.startsWith('<script')) {
+			inScript = true;
+		} else if (remaining.startsWith('</script>')) {
+			inScript = false;
+		} else if (remaining.startsWith('<style')) {
+			inStyle = true;
+		} else if (remaining.startsWith('</style>')) {
+			inStyle = false;
+		}
+
+		// Track quote context (for attribute values)
+		if (!inScript && !inStyle) {
+			if (char === "'" && !inDoubleQuote) {
+				inSingleQuote = !inSingleQuote;
+			} else if (char === '"' && !inSingleQuote) {
+				inDoubleQuote = !inDoubleQuote;
+			}
+		}
+
+		prevChar = char;
+	}
+
+	return inScript || inStyle || inSingleQuote || inDoubleQuote;
+}
+
+// ============================================
+// Position Calculation
+// ============================================
+
+/**
+ * Calculate line and column from character offset.
+ *
+ * @param {string} code - The source code
+ * @param {number} offset - Character offset
+ * @param {number} baseLineOffset - Base line offset (for Vue templates)
+ * @returns {{ line: number, column: number }}
+ */
+export function calculatePosition(code, offset, baseLineOffset = 0) {
+	const beforeMatch = code.substring(0, offset);
+	const lineOffset = beforeMatch.split('\n').length - 1;
+	const lastNewline = beforeMatch.lastIndexOf('\n');
+	const column = offset - lastNewline - 1;
+	const line = baseLineOffset + lineOffset + 1; // 1-based line numbers
+
+	return { line, column };
+}
+
+// ============================================
+// Tag Matching
+// ============================================
+
+/**
+ * Collect all opening and closing tags from code.
+ *
+ * @param {string} code - The source code
+ * @returns {Array<{type: 'opening'|'closing', tagName: string, trailing?: string, start: number, end: number, fullMatch?: string}>}
+ */
+export function collectAllTags(code) {
+	const allMatches = [];
+
+	// Collect opening tags
+	const openingRegex = new RegExp(OPENING_TAG_REGEX.source, 'g');
+	let match;
+	while ((match = openingRegex.exec(code)) !== null) {
+		allMatches.push({
+			type: 'opening',
+			tagName: match[1],
+			trailing: match[2],
+			start: match.index,
+			end: match.index + match[0].length,
+			fullMatch: match[0]
+		});
+	}
+
+	// Collect closing tags
+	const closingRegex = new RegExp(CLOSING_TAG_REGEX.source, 'g');
+	while ((match = closingRegex.exec(code)) !== null) {
+		allMatches.push({
+			type: 'closing',
+			tagName: match[1],
+			start: match.index,
+			end: match.index + match[0].length
+		});
+	}
+
+	// Sort by position
+	allMatches.sort((a, b) => a.start - b.start);
+
+	return allMatches;
+}
+
+/**
+ * Find matching closing tag for an opening tag (handles nesting).
+ *
+ * @param {Array} allMatches - All collected tags
+ * @param {number} openingPos - Position of opening tag
+ * @param {string} tagName - Tag name to match
+ * @returns {Object|null} - Matching closing tag or null
+ */
+export function findMatchingClosingTag(allMatches, openingPos, tagName) {
+	let depth = 1;
+	let foundOpening = false;
+
+	for (const match of allMatches) {
+		if (match.start < openingPos) continue;
+		if (match.start === openingPos && match.type === 'opening') {
+			foundOpening = true;
+			continue;
+		}
+		if (!foundOpening) continue;
+
+		if (match.tagName === tagName) {
+			if (match.type === 'opening') {
+				depth++;
+			} else if (match.type === 'closing') {
+				depth--;
+				if (depth === 0) {
+					return match;
+				}
+			}
+		}
+	}
+
+	return null;
+}
+
+// ============================================
+// Main Parsing Function
+// ============================================
+
+/**
+ * @typedef {Object} ParseOptions
+ * @property {string} filePath - Path to the source file
+ * @property {number} [baseLineOffset=0] - Line offset for templates (Vue)
+ * @property {string[]} [skipTags=[]] - Tags to skip (HTML: script, style, etc.)
+ * @property {boolean} [checkScriptStyle=false] - Check for script/style context (HTML)
+ * @property {string} [componentName] - Override component name extraction
+ */
+
+/**
+ * @typedef {Object} ElementReplacement
+ * @property {number} start - Start position in code
+ * @property {number} end - End position in code
+ * @property {string} original - Original matched string
+ * @property {string} replacement - Replacement string with attributes
+ */
+
+/**
+ * Parse code to find all elements and generate replacements with source tracking attributes.
+ *
+ * @param {string} code - The source code to parse
+ * @param {ParseOptions} options - Parsing options
+ * @returns {ElementReplacement[]} - Array of replacements to apply
+ */
+export function parseElements(code, options) {
+	const {
+		filePath,
+		baseLineOffset = 0,
+		skipTags = [],
+		checkScriptStyle = false,
+		componentName: overrideComponentName
+	} = options;
+
+	const replacements = [];
+	const elementStack = []; // Stack to track parent elements
+
+	// Normalize file path (forward slashes)
+	const relPath = filePath.replace(/\\/g, '/');
+
+	// Extract component name from filename
+	const componentName = overrideComponentName || basename(filePath, extname(filePath));
+
+	// Collect all tags
+	const allMatches = collectAllTags(code);
+
+	// Process matches to build element tree
+	for (const item of allMatches) {
+		if (item.type === 'opening') {
+			const matchStart = item.start;
+			const matchEnd = item.end;
+			const tagName = item.tagName;
+			const trailing = item.trailing;
+
+			// Skip configured tags (case-insensitive)
+			if (skipTags.length > 0 && skipTags.includes(tagName.toLowerCase())) {
+				continue;
+			}
+
+			// Skip if already has data-roopik-source
+			const surroundingCode = code.substring(matchStart, Math.min(matchEnd + 100, code.length));
+			if (surroundingCode.includes('data-roopik-source')) {
+				continue;
+			}
+
+			// SECURITY: Skip if inside string literal
+			if (isInsideString(code, matchStart)) {
+				continue;
+			}
+
+			// SECURITY: Skip if inside script/style tag (HTML only)
+			if (checkScriptStyle && isInsideScriptOrStyle(code, matchStart)) {
+				continue;
+			}
+
+			// Calculate start position
+			const startPos = calculatePosition(code, matchStart, baseLineOffset);
+
+			// Check if this is a self-closing tag (ends with />)
+			const isSelfClosing = trailing === '/';
+
+			// Find end position
+			let endLine = startPos.line;
+			let endColumn = startPos.column;
+
+			if (!isSelfClosing) {
+				// Find the matching closing tag
+				const closingTag = findMatchingClosingTag(allMatches, matchStart, tagName);
+				if (closingTag) {
+					const endPos = calculatePosition(code, closingTag.end, baseLineOffset);
+					endLine = endPos.line;
+					endColumn = endPos.column;
+				}
+			} else {
+				// Self-closing: end is same as opening tag end
+				const endPos = calculatePosition(code, matchEnd, baseLineOffset);
+				endLine = endPos.line;
+				endColumn = endPos.column;
+			}
+
+			// Build parent chain (root → child order)
+			let parentChain = '';
+			if (ENABLE_PARENT_METADATA) {
+				const parents = elementStack.slice(-MAX_PARENT_DEPTH).map(p => p.tagName);
+				parents.push(tagName); // Append current element
+				parentChain = parents.join('>');
+			}
+
+			// Create attributes
+			// Format: file:startLine:startCol:endLine:endCol
+			const sourceAttr = ` data-roopik-source="${relPath}:${startPos.line}:${startPos.column}:${endLine}:${endColumn}"`;
+			const componentAttr = ` data-roopik-component="${tagName}"`;
+			const parentAttr = ENABLE_PARENT_METADATA ? ` data-roopik-parent="${componentName}|${parentChain}"` : '';
+
+			const replacement = `<${tagName}${sourceAttr}${componentAttr}${parentAttr}${trailing}`;
+
+			replacements.push({
+				start: matchStart,
+				end: matchEnd,
+				original: item.fullMatch,
+				replacement: replacement
+			});
+
+			// Push to stack if not self-closing
+			if (!isSelfClosing) {
+				elementStack.push({ tagName, startPos: matchStart });
+			}
+		} else if (item.type === 'closing') {
+			// Pop from stack when closing tag found
+			if (elementStack.length > 0 && elementStack[elementStack.length - 1].tagName === item.tagName) {
+				elementStack.pop();
+			}
+		}
+	}
+
+	return replacements;
+}
+
+/**
+ * Apply replacements to code (in reverse order to maintain positions).
+ *
+ * @param {string} code - Original code
+ * @param {ElementReplacement[]} replacements - Replacements to apply
+ * @returns {string} - Modified code
+ */
+export function applyReplacements(code, replacements) {
+	let modifiedCode = code;
+
+	// Apply in reverse order to maintain positions
+	for (let i = replacements.length - 1; i >= 0; i--) {
+		const elem = replacements[i];
+		modifiedCode = modifiedCode.substring(0, elem.start) + elem.replacement + modifiedCode.substring(elem.end);
+	}
+
+	return modifiedCode;
+}
+
+/**
+ * Convenience function: Parse and apply replacements in one step.
+ *
+ * @param {string} code - The source code
+ * @param {ParseOptions} options - Parsing options
+ * @returns {{ code: string, count: number }} - Modified code and replacement count
+ */
+export function transformCode(code, options) {
+	const replacements = parseElements(code, options);
+
+	if (replacements.length === 0) {
+		return { code, count: 0 };
+	}
+
+	const modifiedCode = applyReplacements(code, replacements);
+	return { code: modifiedCode, count: replacements.length };
+}
