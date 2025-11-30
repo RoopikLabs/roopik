@@ -45,6 +45,7 @@ export class SandboxCard extends Disposable {
 	private _isFocused: boolean = false;
 	private _isHovered: boolean = false;
 	private _isDragging: boolean = false;
+	private _isOverlapping: boolean = false; // Visual overlap indicator
 	private _state: SandboxState = 'loading';
 
 	constructor(
@@ -78,8 +79,10 @@ export class SandboxCard extends Disposable {
 		container.style.cursor = 'pointer';
 		container.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
 
-		// Padding for glass effect (margin is handled by grid positioning)
+		// Padding for glass effect and margin for spacing between cards
+		// Matches extension's SandboxPreview.tsx styling
 		container.style.padding = '40px 120px';
+		container.style.margin = '20px';
 
 		// Apply initial position and size directly (this.container not yet assigned)
 		container.style.left = `${this.sandbox.x}px`;
@@ -636,8 +639,10 @@ export class SandboxCard extends Disposable {
 			(this.container.style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter = 'blur(60px) saturate(250%) brightness(1.1)';
 		}
 
-		// Border
-		if (this._isFocused) {
+		// Border - overlap indicator takes priority during drag
+		if (this._isOverlapping && this._isDragging) {
+			this.container.style.border = '2px solid rgba(251, 191, 36, 0.8)'; // Yellow/amber for overlap warning
+		} else if (this._isFocused) {
 			this.container.style.border = '1px solid rgba(0, 122, 204, 0.5)';
 		} else if (this._isSelected) {
 			this.container.style.border = '1px solid rgba(75, 85, 190, 0.5)';
@@ -647,8 +652,10 @@ export class SandboxCard extends Disposable {
 			this.container.style.border = '1px solid rgba(255, 255, 255, 0.2)';
 		}
 
-		// Box shadow
-		if (this._isDragging) {
+		// Box shadow - overlap indicator adds glow during drag
+		if (this._isDragging && this._isOverlapping) {
+			this.container.style.boxShadow = '0 0 0 4px rgba(251, 191, 36, 0.3), 0 8px 32px rgba(251, 191, 36, 0.4), 0 0 48px rgba(251, 191, 36, 0.2)';
+		} else if (this._isDragging) {
 			this.container.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
 		} else if (this._isFocused) {
 			this.container.style.boxShadow = '0 0 0 4px rgba(0, 122, 204, 0.15), 0 32px 80px rgba(0, 0, 0, 0.4), inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(255, 255, 255, 0.05)';
@@ -726,6 +733,18 @@ export class SandboxCard extends Disposable {
 
 	setDragging(dragging: boolean): void {
 		this._isDragging = dragging;
+		// Clear overlap indicator when dragging ends
+		if (!dragging) {
+			this._isOverlapping = false;
+		}
+		this.updateVisualState();
+	}
+
+	/**
+	 * Set overlap indicator (visual warning during drag)
+	 */
+	setOverlapping(overlapping: boolean): void {
+		this._isOverlapping = overlapping;
 		this.updateVisualState();
 	}
 

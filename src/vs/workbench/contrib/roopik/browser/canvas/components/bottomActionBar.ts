@@ -23,11 +23,16 @@ export interface IBottomActionBarCallbacks {
 	onViewModeToggle: () => void;
 }
 
+// Configuration constants
+const DEFAULT_BOTTOM_OFFSET = 24; // Default bottom position
+const STATUS_PANEL_HEIGHT = 28; // Height of status panel when visible
+
 export interface IBottomActionBarState {
 	isSelectMode: boolean;
 	isInspectMode: boolean;
 	isRectangleMode: boolean;
 	viewMode: 'preview' | 'code';
+	statusPanelVisible: boolean; // Whether status panel is visible (affects bottom offset)
 }
 
 export class BottomActionBar extends Disposable {
@@ -36,7 +41,8 @@ export class BottomActionBar extends Disposable {
 		isSelectMode: false,
 		isInspectMode: false,
 		isRectangleMode: false,
-		viewMode: 'preview'
+		viewMode: 'preview',
+		statusPanelVisible: true // Default to true since status panel is visible by default
 	};
 
 	constructor(
@@ -50,14 +56,20 @@ export class BottomActionBar extends Disposable {
 	}
 
 	private render(): void {
+		// Calculate bottom offset based on status panel visibility
+		const bottomOffset = this.state.statusPanelVisible
+			? DEFAULT_BOTTOM_OFFSET + STATUS_PANEL_HEIGHT // Just above status panel
+			: DEFAULT_BOTTOM_OFFSET;
+
 		// Main container - floating at bottom center
 		this.container.style.cssText = `
 			position: absolute;
-			bottom: 24px;
+			bottom: ${bottomOffset}px;
 			left: 50%;
 			transform: translateX(-50%);
 			z-index: 1000;
 			pointer-events: auto;
+			transition: bottom 0.2s ease;
 		`;
 
 		// Action bar container with glass effect
@@ -369,6 +381,13 @@ export class BottomActionBar extends Disposable {
 
 	public getState(): IBottomActionBarState {
 		return { ...this.state };
+	}
+
+	public setStatusPanelVisible(visible: boolean): void {
+		if (this.state.statusPanelVisible !== visible) {
+			this.state.statusPanelVisible = visible;
+			this.render();
+		}
 	}
 
 	public override dispose(): void {

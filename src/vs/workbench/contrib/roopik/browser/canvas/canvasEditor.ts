@@ -30,11 +30,13 @@ import { CanvasInput } from './canvasInput.js';
 import { SandboxCard, type ISandboxCardCallbacks } from './components/sandboxCard.js';
 import { FloatingToolbar, type IFloatingToolbarCallbacks } from './components/floatingToolbar.js';
 import { BottomActionBar, type IBottomActionBarCallbacks } from './components/bottomActionBar.js';
-import { DEFAULT_GRID_CONFIG } from '../../common/canvas/canvasTypes.js';
-import type { CanvasViewport, BackgroundPattern, Sandbox, GridConfig } from '../../common/canvas/canvasTypes.js';
+import { CanvasActionButtons, type ICanvasActionButtonsCallbacks } from './components/canvasActionButtons.js';
+import { CanvasStatusPanel, type ICanvasStatusPanelCallbacks } from './components/canvasStatusPanel.js';
+import type { CanvasViewport, BackgroundPattern, Sandbox } from '../../common/canvas/canvasTypes.js';
 import { IWebviewService } from '../../../webview/browser/webview.js';
 import { SAMPLE_COMPONENTS, getSampleComponent } from './data/sampleComponents.js';
 import { getPreviewManager } from './services/previewManager.js';
+import { getGridManager, type GridManager } from './services/gridManager.js';
 
 /**
  * Canvas Editor - EditorPane implementation
@@ -71,12 +73,17 @@ export class CanvasEditor extends EditorPane {
 	private dragStart: { x: number; y: number } = { x: 0, y: 0 };
 	private dragOffset: { x: number; y: number } = { x: 0, y: 0 };
 
-	// Grid configuration - uses defaults, can be customized via settings in future
-	private gridConfig: GridConfig = { ...DEFAULT_GRID_CONFIG };
+	// Grid Manager - handles all grid calculations and snapping
+	private gridManager: GridManager;
 
 	// UI Components
 	private floatingToolbar: FloatingToolbar | undefined;
 	private bottomActionBar: BottomActionBar | undefined;
+	private canvasActionButtons: CanvasActionButtons | undefined;
+	private canvasStatusPanel: CanvasStatusPanel | undefined;
+
+	// Status panel visibility flag (can be toggled via settings later)
+	private showStatusPanel: boolean = true;
 
 	constructor(
 		group: IEditorGroup,
@@ -86,6 +93,9 @@ export class CanvasEditor extends EditorPane {
 		@IWebviewService private readonly webviewService: IWebviewService
 	) {
 		super(CanvasEditor.ID, group, telemetryService, themeService, storageService);
+
+		// Initialize grid manager
+		this.gridManager = getGridManager();
 	}
 
 	/**
@@ -139,6 +149,12 @@ export class CanvasEditor extends EditorPane {
 		// Create bottom action bar
 		this.createBottomActionBar();
 
+		// Create canvas action buttons (Tidy Up, Mode Toggle)
+		this.createCanvasActionButtons();
+
+		// Create canvas status panel (zoom, reset, info)
+		this.createCanvasStatusPanel();
+
 		// Sandboxes are loaded when setInput is called
 	}
 
@@ -191,6 +207,191 @@ export class CanvasEditor extends EditorPane {
 		};
 
 		this.bottomActionBar = new BottomActionBar(this.container, actionBarCallbacks);
+		this.bottomActionBar.setStatusPanelVisible(this.showStatusPanel);
+	}
+
+	/**
+	 * Create the canvas action buttons (Tidy Up, Mode Toggle)
+	 */
+	private createCanvasActionButtons(): void {
+		if (!this.container) {
+			return;
+		}
+
+		const actionButtonsCallbacks: ICanvasActionButtonsCallbacks = {
+			onTidyUp: () => {
+				console.log('[CanvasEditor] Tidy Up clicked');
+				this.tidyUpSandboxes();
+			},
+			onModeToggle: () => {
+				const newMode = this.gridManager.toggleMode();
+				console.log(`[CanvasEditor] Mode toggled to: ${newMode}`);
+				this.canvasActionButtons?.setMode(newMode);
+				this.canvasStatusPanel?.setMode(newMode);
+
+				// Auto tidy up when switching to grid mode
+				if (newMode === 'grid') {
+					this.tidyUpSandboxes();
+				}
+			},
+			onPatternToggle: () => {
+				this.cycleBackgroundPattern();
+			},
+			onColorChange: (color: string) => {
+				this.setBackgroundColor(color);
+			}
+		};
+
+		this.canvasActionButtons = new CanvasActionButtons(this.container, actionButtonsCallbacks);
+
+		// Initialize with current state
+		this.canvasActionButtons.setPattern(this.backgroundPattern);
+		this.canvasActionButtons.setBackgroundColor(this.backgroundColor);
+		this.canvasActionButtons.setStatusPanelVisible(this.showStatusPanel);
+	}
+
+	/**
+	 * Create the canvas status panel (zoom controls, reset, info)
+	 */
+	private createCanvasStatusPanel(): void {
+		if (!this.container || !this.showStatusPanel) {
+			return;
+		}
+
+		const statusPanelCallbacks: ICanvasStatusPanelCallbacks = {
+			onZoomIn: () => {
+				const step = CanvasStatusPanel.getZoomStep();
+				const limits = CanvasStatusPanel.getZoomLimits();
+				this.viewport.scale = Math.min(this.viewport.scale + step, limits.max);
+				this.updateTransform();
+				this.canvasStatusPanel?.setZoom(this.viewport.scale);
+			},
+			onZoomOut: () => {
+				const step = CanvasStatusPanel.getZoomStep();
+				const limits = CanvasStatusPanel.getZoomLimits();
+				this.viewport.scale = Math.max(this.viewport.scale - step, limits.min);
+				this.updateTransform();
+				this.canvasStatusPanel?.setZoom(this.viewport.scale);
+			},
+			onZoomReset: () => {
+				this.viewport.scale = 1;
+				this.updateTransform();
+				this.canvasStatusPanel?.setZoom(this.viewport.scale);
+			},
+			onFitToScreen: () => {
+				this.fitToScreen();
+			},
+			onResetPositions: () => {
+				this.resetPositions();
+			}
+		};
+
+		this.canvasStatusPanel = new CanvasStatusPanel(this.container, statusPanelCallbacks);
+
+		// Initialize with current state
+		this.canvasStatusPanel.setZoom(this.viewport.scale);
+		this.canvasStatusPanel.setComponentCount(this.sandboxes.size);
+		this.canvasStatusPanel.setMode(this.gridManager.getMode());
+	}
+
+	/**
+	 * Reset positions - center all components in visible range
+	 */
+	private resetPositions(): void {
+		if (!this.canvasContainer) {
+			return;
+		}
+
+		const rect = this.canvasContainer.getBoundingClientRect();
+		const sandboxArray = Array.from(this.sandboxes.values());
+
+		// Calculate new viewport to center all content
+		const newViewport = this.gridManager.calculateResetViewport(
+			sandboxArray,
+			rect.width,
+			rect.height
+		);
+
+		// Apply new viewport with smooth transition
+		this.viewport = newViewport;
+		this.updateTransform();
+		this.canvasStatusPanel?.setZoom(this.viewport.scale);
+
+		console.log(`[CanvasEditor] Reset positions - centered ${sandboxArray.length} components`);
+	}
+
+	/**
+	 * Fit all sandboxes to screen
+	 */
+	private fitToScreen(): void {
+		if (!this.canvasContainer) {
+			return;
+		}
+
+		const rect = this.canvasContainer.getBoundingClientRect();
+		const sandboxArray = Array.from(this.sandboxes.values());
+
+		// Use fit viewport which may scale down to fit
+		const newViewport = this.gridManager.calculateFitViewport(
+			sandboxArray,
+			rect.width,
+			rect.height
+		);
+
+		this.viewport = newViewport;
+		this.updateTransform();
+		this.canvasStatusPanel?.setZoom(this.viewport.scale);
+
+		console.log(`[CanvasEditor] Fit to screen - scale: ${Math.round(this.viewport.scale * 100)}%`);
+	}
+
+	/**
+	 * Cycle through background patterns: dots -> grid -> plain -> dots
+	 */
+	private cycleBackgroundPattern(): void {
+		const patterns: BackgroundPattern[] = ['dots', 'grid', 'plain'];
+		const currentIndex = patterns.indexOf(this.backgroundPattern);
+		const nextIndex = (currentIndex + 1) % patterns.length;
+		this.backgroundPattern = patterns[nextIndex];
+
+		this.updateBackground();
+		this.canvasActionButtons?.setPattern(this.backgroundPattern);
+		console.log(`[CanvasEditor] Background pattern changed to: ${this.backgroundPattern}`);
+	}
+
+	/**
+	 * Set background color
+	 */
+	private setBackgroundColor(color: string): void {
+		this.backgroundColor = color;
+		this.updateBackground();
+		console.log(`[CanvasEditor] Background color changed to: ${color}`);
+	}
+
+	/**
+	 * Tidy up all sandboxes - reorganize to their nearest grid slots
+	 * Also centers all components in view (calls resetPositions at end)
+	 */
+	private tidyUpSandboxes(): void {
+		const sandboxArray = Array.from(this.sandboxes.values());
+		const newPositions = this.gridManager.tidyUp(sandboxArray);
+
+		// Apply new positions with animation
+		newPositions.forEach((position, id) => {
+			const sandbox = this.sandboxes.get(id);
+			const card = this.sandboxCards.get(id);
+
+			if (sandbox && card) {
+				sandbox.x = position.x;
+				sandbox.y = position.y;
+				card.commitDragPosition(position.x, position.y);
+			}
+		});
+
+		console.log(`[CanvasEditor] Tidied up ${sandboxArray.length} sandboxes`);
+
+		// Center all components in view after tidy up
+		this.resetPositions();
 	}
 
 	/**
@@ -246,10 +447,11 @@ export class CanvasEditor extends EditorPane {
 			const isPinch = e.ctrlKey;
 			const delta = isPinch ? -e.deltaY : -e.deltaY;
 
-			// Calculate zoom
+			// Calculate zoom with limits from status panel
+			const limits = CanvasStatusPanel.getZoomLimits();
 			const zoomIntensity = isPinch ? 0.01 : 0.001;
 			const scaleChange = delta * zoomIntensity;
-			const newScale = Math.max(0.1, Math.min(10, this.viewport.scale + scaleChange));
+			const newScale = Math.max(limits.min, Math.min(limits.max, this.viewport.scale + scaleChange));
 
 			// Zoom toward mouse position
 			const scaleRatio = newScale / this.viewport.scale;
@@ -258,6 +460,9 @@ export class CanvasEditor extends EditorPane {
 			this.viewport.scale = newScale;
 
 			this.updateTransform();
+
+			// Update status panel zoom display
+			this.canvasStatusPanel?.setZoom(this.viewport.scale);
 		}, { passive: false });
 	}
 
@@ -277,58 +482,18 @@ export class CanvasEditor extends EditorPane {
 	}
 
 	/**
-	 * Update background pattern
+	 * Update background pattern - delegates to GridManager
 	 */
 	private updateBackground(): void {
 		if (!this.canvasContainer) {
 			return;
 		}
-
-		const gridSize = 20 * this.viewport.scale;
-		const offsetX = this.viewport.x % gridSize;
-		const offsetY = this.viewport.y % gridSize;
-
-		// Determine pattern color based on background brightness
-		const isLight = this.isLightColor(this.backgroundColor);
-		const patternColor = isLight
-			? 'rgba(0, 0, 0, 0.1)'
-			: 'rgba(255, 255, 255, 0.05)';
-		const dotColor = isLight
-			? 'rgba(0, 0, 0, 0.15)'
-			: 'rgba(255, 255, 255, 0.15)';
-
-		this.canvasContainer.style.backgroundColor = this.backgroundColor;
-
-		if (this.backgroundPattern === 'grid') {
-			this.canvasContainer.style.backgroundImage = `
-				linear-gradient(${patternColor} 1px, transparent 1px),
-				linear-gradient(90deg, ${patternColor} 1px, transparent 1px)
-			`;
-			this.canvasContainer.style.backgroundSize = `${gridSize}px ${gridSize}px`;
-			this.canvasContainer.style.backgroundPosition = `${offsetX}px ${offsetY}px`;
-		} else if (this.backgroundPattern === 'dots') {
-			this.canvasContainer.style.backgroundImage =
-				`radial-gradient(circle, ${dotColor} 1px, transparent 1px)`;
-			this.canvasContainer.style.backgroundSize = `${gridSize}px ${gridSize}px`;
-			this.canvasContainer.style.backgroundPosition = `${offsetX}px ${offsetY}px`;
-		} else {
-			this.canvasContainer.style.backgroundImage = 'none';
-		}
-	}
-
-	/**
-	 * Check if a color is light (for pattern contrast)
-	 */
-	private isLightColor(color: string): boolean {
-		// Parse hex color
-		const hex = color.replace('#', '');
-		const r = parseInt(hex.substring(0, 2), 16);
-		const g = parseInt(hex.substring(2, 4), 16);
-		const b = parseInt(hex.substring(4, 6), 16);
-
-		// Calculate relative luminance
-		const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-		return luminance > 0.5;
+		this.gridManager.applyBackgroundPattern(
+			this.canvasContainer,
+			this.viewport,
+			this.backgroundColor,
+			this.backgroundPattern
+		);
 	}
 
 	// ============================================
@@ -353,15 +518,21 @@ export class CanvasEditor extends EditorPane {
 		}
 
 		const { code, cdnUrls } = this.parseComponentCode(sample.id, sample.code);
-		const position = this.calculateGridPosition(this.sandboxes.size);
+		// Use getNextAvailableSlot to find first unoccupied position (works in both modes)
+		const sandboxArray = Array.from(this.sandboxes.values());
+		const position = this.gridManager.getNextAvailableSlot(sandboxArray);
+		const config = this.gridManager.getConfig();
 
+		// sandbox.width/height stores the content size (sandboxWidth/sandboxHeight)
+		// The SandboxCard CSS adds padding and margin for visual styling
+		// Grid calculations use the full visual size (getSandboxDimensions) for spacing
 		const sandbox: Sandbox = {
 			id: sample.id,
 			componentId: sample.id,
 			x: position.x,
 			y: position.y,
-			width: this.gridConfig.sandboxWidth + this.gridConfig.containerPaddingX * 2,
-			height: this.gridConfig.sandboxHeight + this.gridConfig.containerPaddingY * 2,
+			width: config.sandboxWidth,
+			height: config.sandboxHeight,
 			zIndex: this.sandboxes.size + 1,
 			state: 'loading',
 			sessionCode: code,
@@ -417,26 +588,6 @@ export class CanvasEditor extends EditorPane {
 	}
 
 	/**
-	 * Calculate grid position for a sandbox
-	 * Note: CSS margin on the card provides visual separation automatically.
-	 * Grid calculation only includes the card size (sandboxWidth + padding).
-	 */
-	private calculateGridPosition(index: number): { x: number; y: number } {
-		const col = index % this.gridConfig.columns;
-		const row = Math.floor(index / this.gridConfig.columns);
-
-		// Total visual size of the card (sandbox content + padding)
-		// CSS margin is applied separately on the card element
-		const totalWidth = this.gridConfig.sandboxWidth + this.gridConfig.containerPaddingX * 2;
-		const totalHeight = this.gridConfig.sandboxHeight + this.gridConfig.containerPaddingY * 2;
-
-		return {
-			x: this.gridConfig.startX + col * (totalWidth + this.gridConfig.gapX),
-			y: this.gridConfig.startY + row * (totalHeight + this.gridConfig.gapY)
-		};
-	}
-
-	/**
 	 * Add a sandbox to the canvas
 	 */
 	private addSandbox(sandbox: Sandbox): void {
@@ -456,6 +607,9 @@ export class CanvasEditor extends EditorPane {
 
 		const card = new SandboxCard(this.canvasContent, sandbox, callbacks, this.webviewService);
 		this.sandboxCards.set(sandbox.id, card);
+
+		// Update status panel component count
+		this.canvasStatusPanel?.setComponentCount(this.sandboxes.size);
 	}
 
 	/**
@@ -475,6 +629,10 @@ export class CanvasEditor extends EditorPane {
 
 		// Bring to front
 		this.bringToFront(id);
+
+		// Update status panel with selected sandbox info
+		const sandbox = this.sandboxes.get(id);
+		this.canvasStatusPanel?.setSelectedSandbox(id, sandbox?.componentId || id);
 	}
 
 	/**
@@ -504,11 +662,15 @@ export class CanvasEditor extends EditorPane {
 		this.dragOffset = { x: 0, y: 0 };
 
 		const card = this.sandboxCards.get(id);
+		const sandbox = this.sandboxes.get(id);
 		card?.setDragging(true);
+
+		// Bring to front when starting to drag
+		this.bringToFront(id);
 
 		// Add document-level mouse move/up handlers
 		const onMouseMove = (moveEvent: MouseEvent) => {
-			if (!this.draggingSandboxId) {
+			if (!this.draggingSandboxId || !sandbox) {
 				return;
 			}
 
@@ -517,6 +679,18 @@ export class CanvasEditor extends EditorPane {
 
 			this.dragOffset = { x: deltaX, y: deltaY };
 			card?.applyDragOffset(deltaX, deltaY);
+
+			// Check for overlap during drag (for visual indicator)
+			const currentX = sandbox.x + deltaX;
+			const currentY = sandbox.y + deltaY;
+			const sandboxArray = Array.from(this.sandboxes.values());
+			const overlapInfo = this.gridManager.detectOverlap(currentX, currentY, id, sandboxArray);
+
+			// Update overlap indicator on the card
+			card?.setOverlapping(overlapInfo.isOverlapping);
+
+			// Update the action buttons overlap state (for the warning indicator)
+			this.canvasActionButtons?.setOverlapping(overlapInfo.isOverlapping);
 		};
 
 		const onMouseUp = () => {
@@ -524,16 +698,30 @@ export class CanvasEditor extends EditorPane {
 				return;
 			}
 
-			const sandbox = this.sandboxes.get(this.draggingSandboxId);
-			if (sandbox && card) {
-				const newX = sandbox.x + this.dragOffset.x;
-				const newY = sandbox.y + this.dragOffset.y;
+			const draggedSandbox = this.sandboxes.get(this.draggingSandboxId);
+			if (draggedSandbox && card) {
+				let newX = draggedSandbox.x + this.dragOffset.x;
+				let newY = draggedSandbox.y + this.dragOffset.y;
+
+				// Apply snap-to-grid based on current mode
+				const sandboxArray = Array.from(this.sandboxes.values());
+				const snapResult = this.gridManager.snapToGrid(newX, newY, sandboxArray, this.draggingSandboxId);
+
+				// Always use snap result (in grid mode it always snaps, in free mode it respects threshold)
+				newX = snapResult.x;
+				newY = snapResult.y;
+
+				if (snapResult.snappedX || snapResult.snappedY) {
+					console.log(`[CanvasEditor] Snapped to grid: (${newX}, ${newY})${snapResult.isOverlapping ? ' (overlapping)' : ''}`);
+				}
+
 				card.commitDragPosition(newX, newY);
-				sandbox.x = newX;
-				sandbox.y = newY;
+				draggedSandbox.x = newX;
+				draggedSandbox.y = newY;
 			}
 
 			card?.setDragging(false);
+			this.canvasActionButtons?.setOverlapping(false); // Clear overlap indicator
 			this.draggingSandboxId = null;
 			this.dragOffset = { x: 0, y: 0 };
 
@@ -556,10 +744,15 @@ export class CanvasEditor extends EditorPane {
 
 		if (this.selectedSandboxId === id) {
 			this.selectedSandboxId = null;
+			// Clear selected sandbox in status panel
+			this.canvasStatusPanel?.setSelectedSandbox(null, null);
 		}
 		if (this.focusedSandboxId === id) {
 			this.focusedSandboxId = null;
 		}
+
+		// Update status panel component count
+		this.canvasStatusPanel?.setComponentCount(this.sandboxes.size);
 
 		console.log(`[CanvasEditor] Deleted sandbox: ${id}`);
 	}
@@ -591,6 +784,15 @@ export class CanvasEditor extends EditorPane {
 			const card = this.sandboxCards.get(id);
 			card?.update({ zIndex: sandbox.zIndex });
 		}
+	}
+
+	/**
+	 * Reorganize all sandboxes to their grid positions
+	 * Used by the reset button in status panel
+	 */
+	public reorganizeToGrid(): void {
+		// Delegate to tidyUpSandboxes which uses the new GridManager.tidyUp method
+		this.tidyUpSandboxes();
 	}
 
 	// ============================================
@@ -626,6 +828,8 @@ export class CanvasEditor extends EditorPane {
 		// Cleanup UI components
 		this.floatingToolbar?.dispose();
 		this.bottomActionBar?.dispose();
+		this.canvasActionButtons?.dispose();
+		this.canvasStatusPanel?.dispose();
 
 		// Cleanup sandbox cards
 		for (const card of this.sandboxCards.values()) {
