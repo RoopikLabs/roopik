@@ -15,7 +15,7 @@
  * - Collapse/Expand toggle button (always visible)
  *
  * Design: Glass-morphism floating buttons with smooth animations
- * Auto-collapses after 3 seconds of no hover
+ * Auto-expands on hover, auto-collapses after 1 second when mouse leaves
  */
 
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
@@ -25,7 +25,7 @@ import type { BackgroundPattern, DevicePreset } from '../../../common/canvas/can
 import { createDeviceIcon, getDeviceLabel, getNextDeviceMode } from './deviceIcons.js';
 
 // Configuration constants
-const AUTO_COLLAPSE_DELAY_MS = 3000; // 3 seconds
+const AUTO_COLLAPSE_DELAY_MS = 1000; // 1 second (same as fullscreen mode)
 const DEFAULT_BOTTOM_OFFSET = 24; // Default bottom position
 const STATUS_PANEL_HEIGHT = 28; // Height of status panel when visible
 
@@ -51,6 +51,7 @@ export class CanvasActionButtons extends Disposable {
 	private container: HTMLElement;
 	private buttonsContainer: HTMLElement | undefined;
 	private toggleButton: HTMLElement | undefined;
+	private toggleArrow: SVGElement | undefined;  // Reference for rotation animation
 	private deviceToggleButton: HTMLElement | undefined;  // Independent device mode toggle
 	private colorInput: HTMLInputElement | undefined;
 	private autoCollapseTimer: ReturnType<typeof setTimeout> | undefined;
@@ -210,9 +211,9 @@ export class CanvasActionButtons extends Disposable {
 			box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 		`;
 
-		// Arrow icon
-		const arrow = this.createArrowIcon(this.state.isExpanded);
-		btn.appendChild(arrow);
+		// Arrow icon - store reference for rotation animation
+		this.toggleArrow = this.createArrowIcon(this.state.isExpanded);
+		btn.appendChild(this.toggleArrow);
 
 		// Hover effects
 		btn.addEventListener('mouseenter', () => {
@@ -227,12 +228,12 @@ export class CanvasActionButtons extends Disposable {
 			btn.style.transform = 'scale(1)';
 		});
 
-		// Click to toggle
-		btn.addEventListener('click', () => {
-			this.state.isExpanded = !this.state.isExpanded;
-			this.render();
-
-			// Reset auto-collapse timer when manually toggling
+		// Click to toggle - use setExpanded instead of render()
+		btn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			this.clearAutoCollapseTimer();
+			this.setExpanded(!this.state.isExpanded);
+			// If manually expanded, start auto-collapse timer
 			if (this.state.isExpanded) {
 				this.startAutoCollapseTimer();
 			}
@@ -333,24 +334,48 @@ export class CanvasActionButtons extends Disposable {
 		// Clear any existing timer
 		this.clearAutoCollapseTimer();
 
-		// Add hover listeners to container
+		// Add hover listeners to container - auto-expand on hover
 		this.container.addEventListener('mouseenter', () => {
 			this.clearAutoCollapseTimer();
+			// Auto-expand on hover
+			if (!this.state.isExpanded) {
+				this.setExpanded(true);
+			}
 		});
 
 		this.container.addEventListener('mouseleave', () => {
-			if (this.state.isExpanded) {
-				this.startAutoCollapseTimer();
-			}
+			// Auto-collapse after delay
+			this.startAutoCollapseTimer();
 		});
+	}
+
+	/**
+	 * Set expanded state and update UI without full re-render
+	 */
+	private setExpanded(expanded: boolean): void {
+		this.state.isExpanded = expanded;
+
+		if (this.buttonsContainer) {
+			this.buttonsContainer.style.opacity = expanded ? '1' : '0';
+			this.buttonsContainer.style.transform = expanded ? 'scaleY(1) translateY(0)' : 'scaleY(0.8) translateY(10px)';
+			this.buttonsContainer.style.pointerEvents = expanded ? 'auto' : 'none';
+			this.buttonsContainer.style.maxHeight = expanded ? '400px' : '0';
+		}
+
+		if (this.toggleArrow) {
+			this.toggleArrow.style.transform = expanded ? 'rotate(180deg)' : 'rotate(0deg)';
+		}
+
+		if (this.toggleButton) {
+			this.toggleButton.title = expanded ? 'Collapse panel' : 'Expand panel';
+		}
 	}
 
 	private startAutoCollapseTimer(): void {
 		this.clearAutoCollapseTimer();
 		this.autoCollapseTimer = setTimeout(() => {
 			if (this.state.isExpanded) {
-				this.state.isExpanded = false;
-				this.render();
+				this.setExpanded(false);
 			}
 		}, AUTO_COLLAPSE_DELAY_MS);
 	}

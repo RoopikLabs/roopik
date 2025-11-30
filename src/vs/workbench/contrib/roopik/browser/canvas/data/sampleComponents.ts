@@ -725,6 +725,352 @@ export default function Component() {
     );
 }`;
 
+export const sampleOnboardingScroll = `// DEPENDENCIES: [{"npm": "react", "global": "React", "url": "https://unpkg.com/react@18.2.0/umd/react.production.min.js"}, {"npm": "react-dom", "global": "ReactDOM", "url": "https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"}]
+
+import React, { useState } from 'react';
+
+export default function Component() {
+    const [formData, setFormData] = useState({
+        fullName: '',
+        email: '',
+        company: '',
+        role: '',
+        experience: '',
+        interests: [],
+        goals: '',
+        budget: '',
+        timeline: '',
+        preferences: '',
+        additionalInfo: ''
+    });
+
+    const handleChange = (field, value) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleInterestToggle = (interest) => {
+        setFormData(prev => ({
+            ...prev,
+            interests: prev.interests.includes(interest)
+                ? prev.interests.filter(i => i !== interest)
+                : [...prev.interests, interest]
+        }));
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        alert(\`Thank you! We'll be in touch soon.\`);
+    };
+
+    const inputStyle = {
+        width: '100%',
+        padding: '14px 16px',
+        fontSize: '15px',
+        border: '2px solid #e5e7eb',
+        borderRadius: '10px',
+        outline: 'none',
+        transition: 'all 0.2s ease',
+        fontFamily: 'inherit',
+        boxSizing: 'border-box',
+        background: 'white'
+    };
+
+    const sectionStyle = {
+        background: 'white',
+        borderRadius: '16px',
+        padding: '40px',
+        marginBottom: '32px',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)'
+    };
+
+    return (
+        <div style={{
+            minHeight: '100vh',
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            padding: '60px 20px'
+        }}>
+            <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+                {/* Header */}
+                <div style={{ textAlign: 'center', marginBottom: '48px', color: 'white' }}>
+                    <div style={{ fontSize: '64px', marginBottom: '16px' }}>🚀</div>
+                    <h1 style={{ fontSize: '42px', fontWeight: '800', margin: '0 0 12px 0' }}>
+                        Welcome to Roopik
+                    </h1>
+                    <p style={{ fontSize: '18px', opacity: 0.9, lineHeight: '1.6' }}>
+                        Let's get you set up! Please fill out the details below to get started.
+                    </p>
+                </div>
+
+                <form onSubmit={handleSubmit}>
+                    {/* Personal Information */}
+                    <div style={sectionStyle}>
+                        <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span>👤</span> Personal Information
+                        </h2>
+                        <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '24px' }}>
+                            Tell us a bit about yourself
+                        </p>
+
+                        <div style={{ marginBottom: '20px' }}>
+                            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                                Full Name *
+                            </label>
+                            <input
+                                type="text"
+                                value={formData.fullName}
+                                onChange={(e) => handleChange('fullName', e.target.value)}
+                                placeholder="John Doe"
+                                style={inputStyle}
+                                required
+                            />
+                        </div>
+
+                        <div style={{ marginBottom: '20px' }}>
+                            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                                Email Address *
+                            </label>
+                            <input
+                                type="email"
+                                value={formData.email}
+                                onChange={(e) => handleChange('email', e.target.value)}
+                                placeholder="john@company.com"
+                                style={inputStyle}
+                                required
+                            />
+                        </div>
+
+                        <div>
+                            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                                Company Name
+                            </label>
+                            <input
+                                type="text"
+                                value={formData.company}
+                                onChange={(e) => handleChange('company', e.target.value)}
+                                placeholder="Acme Inc."
+                                style={inputStyle}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Professional Details */}
+                    <div style={sectionStyle}>
+                        <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span>💼</span> Professional Details
+                        </h2>
+                        <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '24px' }}>
+                            Help us understand your role and experience
+                        </p>
+
+                        <div style={{ marginBottom: '20px' }}>
+                            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                                Your Role *
+                            </label>
+                            <select
+                                value={formData.role}
+                                onChange={(e) => handleChange('role', e.target.value)}
+                                style={{ ...inputStyle, cursor: 'pointer' }}
+                                required
+                            >
+                                <option value="">Select your role</option>
+                                <option value="designer">UI/UX Designer</option>
+                                <option value="developer">Frontend Developer</option>
+                                <option value="product">Product Manager</option>
+                                <option value="founder">Founder/Entrepreneur</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                                Years of Experience
+                            </label>
+                            <select
+                                value={formData.experience}
+                                onChange={(e) => handleChange('experience', e.target.value)}
+                                style={{ ...inputStyle, cursor: 'pointer' }}
+                            >
+                                <option value="">Select experience level</option>
+                                <option value="0-1">0-1 years</option>
+                                <option value="2-5">2-5 years</option>
+                                <option value="6-10">6-10 years</option>
+                                <option value="10+">10+ years</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Interests */}
+                    <div style={sectionStyle}>
+                        <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span>🎯</span> What Interests You?
+                        </h2>
+                        <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '24px' }}>
+                            Select all that apply (scroll to see more options)
+                        </p>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                            {['Component Design', 'Prototyping', 'Code Generation', 'Design Systems', 'Animation', 'Responsive Design', 'Accessibility', 'Performance'].map(interest => (
+                                <button
+                                    key={interest}
+                                    type="button"
+                                    onClick={() => handleInterestToggle(interest)}
+                                    style={{
+                                        padding: '12px 16px',
+                                        fontSize: '14px',
+                                        fontWeight: '500',
+                                        border: \`2px solid \${formData.interests.includes(interest) ? '#667eea' : '#e5e7eb'}\`,
+                                        borderRadius: '8px',
+                                        background: formData.interests.includes(interest) ? '#667eea' : 'white',
+                                        color: formData.interests.includes(interest) ? 'white' : '#374151',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    {interest}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Goals */}
+                    <div style={sectionStyle}>
+                        <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span>🎨</span> Your Goals
+                        </h2>
+                        <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '24px' }}>
+                            What do you hope to achieve with Roopik?
+                        </p>
+
+                        <textarea
+                            value={formData.goals}
+                            onChange={(e) => handleChange('goals', e.target.value)}
+                            placeholder="E.g., Build a design system for my startup, create reusable components, speed up my design workflow..."
+                            style={{
+                                ...inputStyle,
+                                minHeight: '120px',
+                                resize: 'vertical',
+                                fontFamily: 'inherit'
+                            }}
+                        />
+                    </div>
+
+                    {/* Project Details */}
+                    <div style={sectionStyle}>
+                        <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span>📋</span> Project Details
+                        </h2>
+                        <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '24px' }}>
+                            Help us understand your project needs
+                        </p>
+
+                        <div style={{ marginBottom: '20px' }}>
+                            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                                Budget Range
+                            </label>
+                            <select
+                                value={formData.budget}
+                                onChange={(e) => handleChange('budget', e.target.value)}
+                                style={{ ...inputStyle, cursor: 'pointer' }}
+                            >
+                                <option value="">Select budget range</option>
+                                <option value="free">Free tier</option>
+                                <option value="1-50">$1 - $50/month</option>
+                                <option value="50-200">$50 - $200/month</option>
+                                <option value="200+">$200+/month</option>
+                            </select>
+                        </div>
+
+                        <div style={{ marginBottom: '20px' }}>
+                            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                                Timeline
+                            </label>
+                            <select
+                                value={formData.timeline}
+                                onChange={(e) => handleChange('timeline', e.target.value)}
+                                style={{ ...inputStyle, cursor: 'pointer' }}
+                            >
+                                <option value="">Select timeline</option>
+                                <option value="immediate">Starting immediately</option>
+                                <option value="1month">Within 1 month</option>
+                                <option value="3months">Within 3 months</option>
+                                <option value="6months">Within 6 months</option>
+                                <option value="exploring">Just exploring</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                                Design Preferences
+                            </label>
+                            <textarea
+                                value={formData.preferences}
+                                onChange={(e) => handleChange('preferences', e.target.value)}
+                                placeholder="Any specific design styles, frameworks, or tools you prefer?"
+                                style={{
+                                    ...inputStyle,
+                                    minHeight: '100px',
+                                    resize: 'vertical',
+                                    fontFamily: 'inherit'
+                                }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Additional Information */}
+                    <div style={sectionStyle}>
+                        <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span>💬</span> Additional Information
+                        </h2>
+                        <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '24px' }}>
+                            Anything else you'd like us to know?
+                        </p>
+
+                        <textarea
+                            value={formData.additionalInfo}
+                            onChange={(e) => handleChange('additionalInfo', e.target.value)}
+                            placeholder="Questions, comments, or special requirements..."
+                            style={{
+                                ...inputStyle,
+                                minHeight: '120px',
+                                resize: 'vertical',
+                                fontFamily: 'inherit'
+                            }}
+                        />
+                    </div>
+
+                    {/* Submit Button */}
+                    <div style={{ textAlign: 'center', marginTop: '48px', marginBottom: '32px' }}>
+                        <button
+                            type="submit"
+                            style={{
+                                padding: '16px 48px',
+                                fontSize: '18px',
+                                fontWeight: '700',
+                                color: 'white',
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                border: 'none',
+                                borderRadius: '50px',
+                                cursor: 'pointer',
+                                boxShadow: '0 8px 24px rgba(102, 126, 234, 0.4)',
+                                transition: 'transform 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                        >
+                            Submit & Get Started
+                        </button>
+                        <p style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '14px', marginTop: '16px' }}>
+                            By submitting, you agree to our terms and privacy policy
+                        </p>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}`;
+
+
 // ============================================
 // New Complex Components (Header, Footer, Dashboard, etc.)
 // ============================================
@@ -1906,6 +2252,11 @@ export const SAMPLE_COMPONENTS: SampleComponent[] = [
 		id: 'onboarding_slider_008',
 		name: 'Onboarding - Slider',
 		code: sampleOnboardingSlider
+	},
+	{
+		id: 'onboarding_scroll_009',
+		name: 'Onboarding - Scroll Form',
+		code: sampleOnboardingScroll
 	},
 	// New larger/complex components
 	{

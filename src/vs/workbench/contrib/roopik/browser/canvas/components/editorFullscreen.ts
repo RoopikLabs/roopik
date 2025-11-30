@@ -29,6 +29,8 @@ import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import { getWindow, clearNode } from '../../../../../../base/browser/dom.js';
 import type { Sandbox } from '../../../common/canvas/canvasTypes.js';
 import { IWebviewService, IWebviewElement } from '../../../../webview/browser/webview.js';
+import { createDeviceIcon, getDeviceLabel, getNextDeviceMode } from './deviceIcons.js';
+import type { DevicePreset as CanvasDevicePreset } from '../../../common/canvas/canvasTypes.js';
 
 // Device presets for responsive preview
 export type DevicePreset = 'desktop' | 'tablet' | 'mobile' | 'auto';
@@ -71,10 +73,25 @@ export interface IEditorFullscreenState {
 export class EditorFullscreen extends Disposable {
 	private overlay: HTMLElement;
 	private contentContainer: HTMLElement | undefined;
-	private controlsContainer: HTMLElement | undefined;
 	private webviewElement: IWebviewElement | undefined;
 	private webviewContainer: HTMLElement | undefined;
+
+	// Floating controls
+	private actionButtonsContainer: HTMLElement | undefined;
+	private buttonsPanel: HTMLElement | undefined;
+	private toggleButton: HTMLElement | undefined;
+	private toggleArrow: SVGElement | undefined;
+	private deviceButton: HTMLElement | undefined;
 	private sizeIndicator: HTMLElement | undefined;
+	private isExpanded: boolean = false;
+	private autoCloseTimer: ReturnType<typeof setTimeout> | undefined;
+
+	// Double-ESC tracking
+	private lastEscTime: number = 0;
+	private static readonly DOUBLE_ESC_THRESHOLD_MS = 400; // Max time between ESC presses
+	private static readonly AUTO_CLOSE_DELAY_MS = 1000; // Auto-close after 1 second
+	private static readonly SIZE_INDICATOR_HIDE_DELAY_MS = 4000; // Auto-hide size indicator after 4 seconds
+	private sizeIndicatorTimer: ReturnType<typeof setTimeout> | undefined;
 
 	private state: IEditorFullscreenState;
 
@@ -135,175 +152,231 @@ export class EditorFullscreen extends Disposable {
 		// Clear overlay using VSCode's safe clearNode
 		clearNode(this.overlay);
 
-		// Create top controls bar
-		this.controlsContainer = this.createControlsBar();
-		this.overlay.appendChild(this.controlsContainer);
-
-		// Create content area
+		// Create content area (full screen, no header)
 		this.contentContainer = this.createContentArea();
 		this.overlay.appendChild(this.contentContainer);
 
 		// Create webview for component
 		this.createWebview();
+
+		// Create expandable action buttons (bottom-right) - same style as canvas
+		this.actionButtonsContainer = this.createActionButtons();
+		this.overlay.appendChild(this.actionButtonsContainer);
+
+		// Create size indicator (bottom-left)
+		this.sizeIndicator = this.createSizeIndicator();
+		this.overlay.appendChild(this.sizeIndicator);
 	}
 
-	private createControlsBar(): HTMLElement {
-		const bar = document.createElement('div');
-		bar.className = 'fullscreen-controls-bar';
-		bar.style.cssText = `
+	/**
+	 * Create expandable action buttons (bottom-right)
+	 * Same style as canvas - glass-morphism with expand/collapse
+	 * Contains: Device toggle, Reload, Close
+	 */
+	private createActionButtons(): HTMLElement {
+		const container = document.createElement('div');
+		container.style.cssText = `
+			position: absolute;
+			bottom: 24px;
+			right: 24px;
+			z-index: 10;
 			display: flex;
+			flex-direction: column;
+			gap: 8px;
 			align-items: center;
-			justify-content: space-between;
-			padding: 12px 20px;
-			background: rgba(0, 0, 0, 0.3);
-			backdrop-filter: blur(10px);
-			-webkit-backdrop-filter: blur(10px);
-			border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-			flex-shrink: 0;
 		`;
 
-		// Left section - Component info
-		const leftSection = document.createElement('div');
-		leftSection.style.cssText = `display: flex; align-items: center; gap: 12px;`;
+		// Expandable buttons panel
+		this.buttonsPanel = this.createButtonsPanel();
+		container.appendChild(this.buttonsPanel);
 
-		const title = document.createElement('span');
-		title.style.cssText = `
-			font-size: 14px;
-			font-weight: 600;
-			color: #ffffff;
-			letter-spacing: -0.01em;
-		`;
-		title.textContent = this.state.sandbox.componentId || this.state.sandbox.id;
-		leftSection.appendChild(title);
+		// Toggle button (always visible)
+		this.toggleButton = this.createToggleButton();
+		container.appendChild(this.toggleButton);
 
-		bar.appendChild(leftSection);
-
-		// Center section - Device presets + size indicator
-		const centerSection = document.createElement('div');
-		centerSection.style.cssText = `display: flex; align-items: center; gap: 12px;`;
-
-		// Device buttons container
-		const deviceButtons = document.createElement('div');
-		deviceButtons.style.cssText = `display: flex; align-items: center; gap: 4px;`;
-
-		const devices: DevicePreset[] = ['auto', 'desktop', 'tablet', 'mobile'];
-		devices.forEach(device => {
-			const btn = this.createDeviceButton(device);
-			deviceButtons.appendChild(btn);
+		// Auto-expand on hover
+		container.addEventListener('mouseenter', () => {
+			this.cancelAutoClose();
+			if (!this.isExpanded) {
+				this.setExpanded(true);
+			}
 		});
 
-		centerSection.appendChild(deviceButtons);
+		// Auto-close on mouse leave after delay
+		container.addEventListener('mouseleave', () => {
+			this.startAutoClose();
+		});
 
-		// Size indicator (shows actual dimensions)
-		this.sizeIndicator = document.createElement('span');
-		this.sizeIndicator.className = 'size-indicator';
-		this.sizeIndicator.style.cssText = `
-			font-size: 11px;
-			color: rgba(255, 255, 255, 0.5);
-			font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-			padding: 4px 8px;
-			background: rgba(255, 255, 255, 0.05);
-			border-radius: 4px;
-		`;
-		centerSection.appendChild(this.sizeIndicator);
-
-		bar.appendChild(centerSection);
-
-		// Right section - Reload + Close buttons
-		const rightSection = document.createElement('div');
-		rightSection.style.cssText = `display: flex; align-items: center; gap: 8px;`;
-
-		// Reload button
-		const reloadBtn = this.createReloadButton();
-		rightSection.appendChild(reloadBtn);
-
-		// Close button
-		const closeBtn = this.createCloseButton();
-		rightSection.appendChild(closeBtn);
-
-		bar.appendChild(rightSection);
-
-		return bar;
+		return container;
 	}
 
-	private createDeviceButton(device: DevicePreset): HTMLElement {
-		const config = DEVICE_PRESETS[device];
-		const isActive = this.state.device === device;
+	/**
+	 * Set expanded state and update UI without full re-render
+	 */
+	private setExpanded(expanded: boolean): void {
+		this.isExpanded = expanded;
 
+		if (this.buttonsPanel) {
+			this.buttonsPanel.style.opacity = expanded ? '1' : '0';
+			this.buttonsPanel.style.transform = expanded ? 'scaleY(1) translateY(0)' : 'scaleY(0.8) translateY(10px)';
+			this.buttonsPanel.style.pointerEvents = expanded ? 'auto' : 'none';
+			this.buttonsPanel.style.maxHeight = expanded ? '400px' : '0';
+		}
+
+		if (this.toggleArrow) {
+			this.toggleArrow.style.transform = expanded ? 'rotate(180deg)' : 'rotate(0deg)';
+		}
+
+		if (this.toggleButton) {
+			this.toggleButton.title = expanded ? 'Collapse panel' : 'Expand panel';
+		}
+	}
+
+	/**
+	 * Start auto-close timer
+	 */
+	private startAutoClose(): void {
+		this.cancelAutoClose();
+		this.autoCloseTimer = setTimeout(() => {
+			if (this.isExpanded) {
+				this.setExpanded(false);
+			}
+		}, EditorFullscreen.AUTO_CLOSE_DELAY_MS);
+	}
+
+	/**
+	 * Cancel auto-close timer
+	 */
+	private cancelAutoClose(): void {
+		if (this.autoCloseTimer) {
+			clearTimeout(this.autoCloseTimer);
+			this.autoCloseTimer = undefined;
+		}
+	}
+
+	/**
+	 * Create the expandable buttons panel
+	 * Order (top to bottom): Close, Separator, Reload, Device
+	 */
+	private createButtonsPanel(): HTMLElement {
+		const panel = document.createElement('div');
+		panel.style.cssText = `
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+			padding: 10px;
+			background: rgba(28, 28, 30, 0.9);
+			backdrop-filter: blur(20px) saturate(180%);
+			-webkit-backdrop-filter: blur(20px) saturate(180%);
+			border: 1px solid rgba(255, 255, 255, 0.12);
+			border-radius: 16px;
+			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+			overflow: hidden;
+			transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+			transform-origin: bottom center;
+			opacity: ${this.isExpanded ? '1' : '0'};
+			transform: ${this.isExpanded ? 'scaleY(1) translateY(0)' : 'scaleY(0.8) translateY(10px)'};
+			pointer-events: ${this.isExpanded ? 'auto' : 'none'};
+			max-height: ${this.isExpanded ? '400px' : '0'};
+		`;
+
+		// Close button (TOP - red on hover)
+		const closeBtn = this.createPanelButton('Close (ESC×2)', this.createCloseIcon(), true, () => this.close());
+		panel.appendChild(closeBtn);
+
+		// Separator
+		const separator = document.createElement('div');
+		separator.style.cssText = `
+			height: 1px;
+			background: rgba(255, 255, 255, 0.1);
+			margin: 2px 0;
+		`;
+		panel.appendChild(separator);
+
+		// Reload button
+		const reloadBtn = this.createPanelButton('Reload', this.createReloadIcon(), false, () => this.reloadComponent());
+		panel.appendChild(reloadBtn);
+
+		// Device toggle button (BOTTOM) - store reference for updates
+		this.deviceButton = this.createPanelButton(
+			`Device: ${getDeviceLabel(this.state.device as CanvasDevicePreset)}`,
+			this.createDeviceButtonContent(),
+			false,
+			() => this.cycleDeviceMode()
+		);
+		panel.appendChild(this.deviceButton);
+
+		return panel;
+	}
+
+	/**
+	 * Create the toggle button (always visible)
+	 */
+	private createToggleButton(): HTMLElement {
 		const btn = document.createElement('button');
-		btn.title = config.name;
+		btn.title = this.isExpanded ? 'Collapse panel' : 'Expand panel';
 		btn.style.cssText = `
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			gap: 6px;
-			padding: 6px 12px;
-			background: ${isActive ? 'rgba(59, 130, 246, 0.2)' : 'transparent'};
-			border: 1px solid ${isActive ? 'rgba(59, 130, 246, 0.4)' : 'rgba(255, 255, 255, 0.1)'};
-			border-radius: 6px;
-			color: ${isActive ? '#60a5fa' : 'rgba(255, 255, 255, 0.7)'};
-			font-size: 12px;
+			width: 44px;
+			height: 44px;
+			padding: 0;
+			background: rgba(28, 28, 30, 0.9);
+			backdrop-filter: blur(20px) saturate(180%);
+			-webkit-backdrop-filter: blur(20px) saturate(180%);
+			border: 1px solid rgba(255, 255, 255, 0.12);
+			border-radius: 50%;
 			cursor: pointer;
-			transition: all 0.15s ease;
+			transition: all 0.2s ease;
+			color: rgba(255, 255, 255, 0.8);
+			box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 		`;
 
-		// Icon
-		btn.appendChild(this.createDeviceIcon(device));
+		// Arrow icon - store reference for updates
+		this.toggleArrow = this.createArrowIcon();
+		btn.appendChild(this.toggleArrow);
 
-		// Label
-		const label = document.createElement('span');
-		label.textContent = config.name;
-		btn.appendChild(label);
-
+		// Hover effects
 		btn.addEventListener('mouseenter', () => {
-			if (!isActive) {
-				btn.style.background = 'rgba(255, 255, 255, 0.08)';
-				btn.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-			}
+			btn.style.background = 'rgba(59, 130, 246, 0.3)';
+			btn.style.color = '#60a5fa';
+			btn.style.transform = 'scale(1.05)';
 		});
 
 		btn.addEventListener('mouseleave', () => {
-			if (!isActive) {
-				btn.style.background = 'transparent';
-				btn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-			}
+			btn.style.background = 'rgba(28, 28, 30, 0.9)';
+			btn.style.color = 'rgba(255, 255, 255, 0.8)';
+			btn.style.transform = 'scale(1)';
 		});
 
-		btn.addEventListener('click', () => {
-			this.state.device = device;
-			this.callbacks.onDeviceChange?.(device);
-			this.render();
+		// Click to toggle - use setExpanded instead of render()
+		btn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			this.cancelAutoClose();
+			this.setExpanded(!this.isExpanded);
+			// If manually collapsed, don't auto-close; if manually expanded, start auto-close
+			if (this.isExpanded) {
+				this.startAutoClose();
+			}
 		});
 
 		return btn;
 	}
 
-	private createDeviceIcon(device: DevicePreset): SVGElement {
+	private createArrowIcon(): SVGElement {
 		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-		svg.setAttribute('width', '14');
-		svg.setAttribute('height', '14');
-		svg.setAttribute('viewBox', '0 0 16 16');
+		svg.setAttribute('width', '20');
+		svg.setAttribute('height', '20');
+		svg.setAttribute('viewBox', '0 0 24 24');
 		svg.setAttribute('fill', 'none');
-		svg.setAttribute('stroke', 'currentColor');
-		svg.setAttribute('stroke-width', '1.5');
+		svg.style.transition = 'transform 0.25s ease';
+		svg.style.transform = this.isExpanded ? 'rotate(180deg)' : 'rotate(0deg)';
 
 		const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-
-		switch (device) {
-			case 'auto':
-				path.setAttribute('d', 'M2 4h12v8H2zM5 14h6');
-				break;
-			case 'desktop':
-				path.setAttribute('d', 'M2 3h12v9H2zM6 14h4M8 12v2');
-				break;
-			case 'tablet':
-				path.setAttribute('d', 'M4 2h8v12H4zM7 12h2');
-				break;
-			case 'mobile':
-				path.setAttribute('d', 'M5 1h6v14H5zM7 12h2');
-				break;
-		}
-
+		path.setAttribute('d', 'M18 15L12 9L6 15');
+		path.setAttribute('stroke', 'currentColor');
+		path.setAttribute('stroke-width', '2');
 		path.setAttribute('stroke-linecap', 'round');
 		path.setAttribute('stroke-linejoin', 'round');
 		svg.appendChild(path);
@@ -311,116 +384,210 @@ export class EditorFullscreen extends Disposable {
 		return svg;
 	}
 
-	private createCloseButton(): HTMLElement {
+	/**
+	 * Create device button content (A for auto, icons for others)
+	 */
+	private createDeviceButtonContent(): HTMLElement {
+		const container = document.createElement('span');
+		container.className = 'device-btn-content';
+
+		if (this.state.device === 'auto') {
+			container.textContent = 'A';
+			container.style.cssText = `
+				font-size: 16px;
+				font-weight: 600;
+				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			`;
+		} else {
+			const icon = createDeviceIcon(this.state.device as CanvasDevicePreset, 20);
+			container.appendChild(icon);
+		}
+
+		return container;
+	}
+
+	/**
+	 * Cycle to next device mode
+	 */
+	private cycleDeviceMode(): void {
+		const nextMode = getNextDeviceMode(this.state.device as CanvasDevicePreset);
+		this.state.device = nextMode;
+		this.callbacks.onDeviceChange?.(nextMode);
+
+		// Update device button content and webview size without full re-render
+		this.updateDeviceButton();
+		this.updateWebviewSize();
+
+		// Show size indicator temporarily
+		this.showSizeIndicator();
+	}
+
+	/**
+	 * Update device button content without re-rendering
+	 */
+	private updateDeviceButton(): void {
+		if (!this.deviceButton) {
+			return;
+		}
+
+		// Update title
+		this.deviceButton.title = `Device: ${getDeviceLabel(this.state.device as CanvasDevicePreset)}`;
+
+		// Update content - use safe DOM manipulation (no innerHTML due to Trusted Types)
+		const content = this.deviceButton.querySelector('.device-btn-content');
+		if (content) {
+			// Clear children safely using clearNode from VSCode's dom utilities
+			clearNode(content as HTMLElement);
+
+			if (this.state.device === 'auto') {
+				content.textContent = 'A';
+				(content as HTMLElement).style.cssText = `
+					font-size: 16px;
+					font-weight: 600;
+					font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+				`;
+			} else {
+				const icon = createDeviceIcon(this.state.device as CanvasDevicePreset, 20);
+				content.appendChild(icon);
+				(content as HTMLElement).style.cssText = '';
+			}
+		}
+	}
+
+	/**
+	 * Create a button for the action panel
+	 */
+	private createPanelButton(title: string, content: HTMLElement | SVGElement, isDanger: boolean, onClick: () => void): HTMLElement {
 		const btn = document.createElement('button');
-		btn.title = 'Close fullscreen (ESC)';
+		btn.title = title;
 		btn.style.cssText = `
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			width: 36px;
-			height: 36px;
-			background: rgba(255, 255, 255, 0.08);
-			border: 1px solid rgba(255, 255, 255, 0.1);
-			border-radius: 8px;
-			color: rgba(255, 255, 255, 0.9);
+			width: 40px;
+			height: 40px;
+			padding: 0;
+			background: transparent;
+			border: none;
+			border-radius: 10px;
 			cursor: pointer;
 			transition: all 0.15s ease;
-			margin-left: 8px;
+			color: rgba(255, 255, 255, 0.7);
 		`;
 
-		// X icon
-		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-		svg.setAttribute('width', '18');
-		svg.setAttribute('height', '18');
-		svg.setAttribute('viewBox', '0 0 16 16');
-		svg.setAttribute('fill', 'none');
-		svg.setAttribute('stroke', 'currentColor');
-		svg.setAttribute('stroke-width', '2');
-		svg.setAttribute('stroke-linecap', 'round');
-
-		const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-		path1.setAttribute('d', 'M4 4L12 12');
-		svg.appendChild(path1);
-
-		const path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-		path2.setAttribute('d', 'M12 4L4 12');
-		svg.appendChild(path2);
-
-		btn.appendChild(svg);
+		btn.appendChild(content);
 
 		btn.addEventListener('mouseenter', () => {
-			btn.style.background = 'rgba(239, 68, 68, 0.2)';
-			btn.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-			btn.style.color = '#ef4444';
+			if (isDanger) {
+				btn.style.background = 'rgba(239, 68, 68, 0.25)';
+				btn.style.color = '#ef4444';
+			} else {
+				btn.style.background = 'rgba(255, 255, 255, 0.1)';
+				btn.style.color = 'rgba(255, 255, 255, 0.9)';
+			}
 		});
 
 		btn.addEventListener('mouseleave', () => {
-			btn.style.background = 'rgba(255, 255, 255, 0.08)';
-			btn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-			btn.style.color = 'rgba(255, 255, 255, 0.9)';
+			btn.style.background = 'transparent';
+			btn.style.color = 'rgba(255, 255, 255, 0.7)';
 		});
 
-		btn.addEventListener('click', () => this.close());
+		btn.addEventListener('click', onClick);
 
 		return btn;
 	}
 
-	private createReloadButton(): HTMLElement {
-		const btn = document.createElement('button');
-		btn.title = 'Reload component';
-		btn.style.cssText = `
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			width: 36px;
-			height: 36px;
-			background: rgba(255, 255, 255, 0.08);
-			border: 1px solid rgba(255, 255, 255, 0.1);
+	private createReloadIcon(): SVGElement {
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('width', '14');
+		svg.setAttribute('height', '14');
+		svg.setAttribute('viewBox', '0 0 90 90');
+		svg.setAttribute('fill', 'none');
+
+		const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		path.setAttribute(
+			'd',
+			'M75.702 53.014c-2.142 7.995-7.27 14.678-14.439 18.816c-7.168 4.138-15.519 5.239-23.514 3.095c-16.505-4.423-26.335-21.448-21.913-37.953C20.258 20.467 37.286 10.64 53.79 15.06c4.213 1.129 8.076 3.118 11.413 5.809l-8.349 8.35h26.654V2.565l-8.354 8.354c-5.1-4.405-11.133-7.61-17.74-9.381C33.451-4.882 8.735 9.389 2.314 33.35c-6.42 23.961 7.851 48.678 31.811 55.098C38.001 89.486 41.934 90 45.842 90c7.795 0 15.488-2.044 22.42-6.046c10.407-6.008 17.851-15.709 20.962-27.317L75.702 53.014z'
+		);
+		path.setAttribute('fill', 'rgba(255, 255, 255, 0.8)');
+
+		svg.appendChild(path);
+		return svg;
+	}
+
+	private createCloseIcon(): SVGElement {
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('width', '20');
+		svg.setAttribute('height', '20');
+		svg.setAttribute('viewBox', '0 0 24 24');
+		svg.setAttribute('fill', 'none');
+
+		const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		path1.setAttribute('d', 'M6 6L18 18');
+		path1.setAttribute('stroke', 'currentColor');
+		path1.setAttribute('stroke-width', '2');
+		path1.setAttribute('stroke-linecap', 'round');
+		svg.appendChild(path1);
+
+		const path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		path2.setAttribute('d', 'M18 6L6 18');
+		path2.setAttribute('stroke', 'currentColor');
+		path2.setAttribute('stroke-width', '2');
+		path2.setAttribute('stroke-linecap', 'round');
+		svg.appendChild(path2);
+
+		return svg;
+	}
+
+	/**
+	 * Create size indicator (bottom-left)
+	 * Shows current viewport dimensions - hidden by default, shown on device change
+	 */
+	private createSizeIndicator(): HTMLElement {
+		const indicator = document.createElement('div');
+		indicator.style.cssText = `
+			position: absolute;
+			bottom: 24px;
+			left: 24px;
+			z-index: 10;
+			font-size: 12px;
+			font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+			padding: 8px 12px;
+			background: rgba(28, 28, 30, 0.9);
+			backdrop-filter: blur(20px) saturate(180%);
+			-webkit-backdrop-filter: blur(20px) saturate(180%);
+			border: 1px solid rgba(255, 255, 255, 0.12);
 			border-radius: 8px;
-			color: rgba(255, 255, 255, 0.9);
-			cursor: pointer;
-			transition: all 0.15s ease;
+			color: rgba(255, 255, 255, 0.5);
+			box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+			opacity: 0;
+			transition: opacity 0.2s ease;
+			pointer-events: none;
 		`;
 
-		// Reload icon (circular arrow)
-		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-		svg.setAttribute('width', '16');
-		svg.setAttribute('height', '16');
-		svg.setAttribute('viewBox', '0 0 16 16');
-		svg.setAttribute('fill', 'none');
-		svg.setAttribute('stroke', 'currentColor');
-		svg.setAttribute('stroke-width', '1.5');
-		svg.setAttribute('stroke-linecap', 'round');
-		svg.setAttribute('stroke-linejoin', 'round');
+		return indicator;
+	}
 
-		// Circular arrow path
-		const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-		path.setAttribute('d', 'M14 8A6 6 0 1 1 8 2');
-		svg.appendChild(path);
+	/**
+	 * Show size indicator temporarily (auto-hides after delay)
+	 */
+	private showSizeIndicator(): void {
+		if (!this.sizeIndicator) return;
 
-		// Arrow head
-		const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-		arrow.setAttribute('d', 'M8 5V2h3');
-		svg.appendChild(arrow);
+		// Clear any existing timer
+		if (this.sizeIndicatorTimer) {
+			clearTimeout(this.sizeIndicatorTimer);
+		}
 
-		btn.appendChild(svg);
+		// Show the indicator
+		this.sizeIndicator.style.opacity = '1';
 
-		btn.addEventListener('mouseenter', () => {
-			btn.style.background = 'rgba(59, 130, 246, 0.2)';
-			btn.style.borderColor = 'rgba(59, 130, 246, 0.4)';
-			btn.style.color = '#60a5fa';
-		});
-
-		btn.addEventListener('mouseleave', () => {
-			btn.style.background = 'rgba(255, 255, 255, 0.08)';
-			btn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-			btn.style.color = 'rgba(255, 255, 255, 0.9)';
-		});
-
-		btn.addEventListener('click', () => this.reloadComponent());
-
-		return btn;
+		// Auto-hide after delay
+		this.sizeIndicatorTimer = setTimeout(() => {
+			if (this.sizeIndicator) {
+				this.sizeIndicator.style.opacity = '0';
+			}
+		}, EditorFullscreen.SIZE_INDICATOR_HIDE_DELAY_MS);
 	}
 
 	private reloadComponent(): void {
@@ -432,13 +599,47 @@ export class EditorFullscreen extends Disposable {
 		const content = document.createElement('div');
 		content.className = 'fullscreen-content';
 		content.style.cssText = `
-			flex: 1;
+			position: absolute;
+			top: 0;
+			left: 0;
+			right: 0;
+			bottom: 0;
 			display: flex;
 			align-items: center;
 			justify-content: center;
 			overflow: auto;
-			padding: 40px;
+			padding: 80px;
+			scrollbar-width: thin;
+			scrollbar-color: var(--vscode-scrollbarSlider-background, rgba(255, 255, 255, 0.25)) transparent;
 		`;
+
+		// Add WebKit scrollbar styling (for Chrome, Edge, Safari)
+		// We need to inject a style element since inline styles don't support pseudo-elements
+		const styleId = 'roopik-fullscreen-scrollbar-style';
+		if (!document.getElementById(styleId)) {
+			const style = document.createElement('style');
+			style.id = styleId;
+			style.textContent = `
+				.roopik-editor-fullscreen .fullscreen-content::-webkit-scrollbar {
+					width: 10px;
+					height: 10px;
+				}
+				.roopik-editor-fullscreen .fullscreen-content::-webkit-scrollbar-track {
+					background: transparent;
+				}
+				.roopik-editor-fullscreen .fullscreen-content::-webkit-scrollbar-thumb {
+					background-color: var(--vscode-scrollbarSlider-background, rgba(0, 0, 0, 0.3));
+					border-radius: 999px;
+					border: 2px solid transparent;
+					background-clip: padding-box;
+					box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+				}
+				.roopik-editor-fullscreen .fullscreen-content::-webkit-scrollbar-thumb:hover {
+					background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(0, 0, 0, 0.45));
+				}
+			`;
+			document.head.appendChild(style);
+		}
 
 		return content;
 	}
@@ -486,36 +687,30 @@ export class EditorFullscreen extends Disposable {
 		// Create webview container with device frame styling
 		// This container gets the FULL viewport size (e.g., 1280×800)
 		// CSS transform scales it down visually while keeping internal viewport size
+		// NO rounded corners - realistic browser view
 		this.webviewContainer = document.createElement('div');
 		this.webviewContainer.className = 'fullscreen-webview-container';
 		this.webviewContainer.style.cssText = `
 			width: ${viewportWidth}px;
 			height: ${viewportHeight}px;
 			background: #ffffff;
-			border-radius: ${scale < 1 ? Math.round(12 / scale) : 12}px;
 			overflow: hidden;
 			transform: scale(${scale});
 			transform-origin: top left;
-			box-shadow: 0 ${Math.round(24 / scale)}px ${Math.round(80 / scale)}px rgba(0, 0, 0, 0.5);
+			box-shadow: 0 ${Math.round(16 / scale)}px ${Math.round(48 / scale)}px rgba(0, 0, 0, 0.4);
 		`;
 
 		// Wrapper to contain the scaled webview and center it
+		// NO rounded corners - realistic browser experience
 		const wrapper = document.createElement('div');
 		wrapper.className = 'fullscreen-webview-wrapper';
 		wrapper.style.cssText = `
 			width: ${visualWidth}px;
 			height: ${visualHeight}px;
 			position: relative;
-			border-radius: ${scale < 1 ? 12 : 12}px;
 			overflow: hidden;
-			box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.3);
+			box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
 		`;
-
-		// Device frame (optional visual) - on wrapper
-		if (this.state.device !== 'auto') {
-			wrapper.style.border = '8px solid #2a2a2a';
-			wrapper.style.borderRadius = '20px';
-		}
 
 		wrapper.appendChild(this.webviewContainer);
 
@@ -739,13 +934,67 @@ export class EditorFullscreen extends Disposable {
 	private setupKeyboardHandler(): void {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if (e.key === 'Escape') {
-				this.close();
+				const now = Date.now();
+				const timeSinceLastEsc = now - this.lastEscTime;
+
+				if (timeSinceLastEsc <= EditorFullscreen.DOUBLE_ESC_THRESHOLD_MS) {
+					// Double ESC detected - close fullscreen
+					this.close();
+				} else {
+					// First ESC - record time and show hint
+					this.lastEscTime = now;
+					this.showEscHint();
+				}
 			}
 		};
 		document.addEventListener('keydown', handleKeyDown);
 		this._register({
 			dispose: () => document.removeEventListener('keydown', handleKeyDown)
 		});
+	}
+
+	/**
+	 * Show a brief hint that user needs to press ESC again to exit
+	 */
+	private showEscHint(): void {
+		// Create hint element
+		const hint = document.createElement('div');
+		hint.style.cssText = `
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			z-index: 100;
+			padding: 16px 24px;
+			background: rgba(28, 28, 30, 0.95);
+			backdrop-filter: blur(20px);
+			border: 1px solid rgba(255, 255, 255, 0.15);
+			border-radius: 12px;
+			color: rgba(255, 255, 255, 0.9);
+			font-size: 14px;
+			font-weight: 500;
+			box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+			opacity: 0;
+			transition: opacity 0.15s ease;
+		`;
+		hint.textContent = 'Press ESC again to exit';
+
+		this.overlay.appendChild(hint);
+
+		// Fade in
+		requestAnimationFrame(() => {
+			hint.style.opacity = '1';
+		});
+
+		// Remove after delay
+		setTimeout(() => {
+			hint.style.opacity = '0';
+			setTimeout(() => {
+				if (hint.parentElement) {
+					hint.parentElement.removeChild(hint);
+				}
+			}, 150);
+		}, EditorFullscreen.DOUBLE_ESC_THRESHOLD_MS + 100);
 	}
 
 	private setupResizeHandler(): void {
@@ -810,11 +1059,11 @@ export class EditorFullscreen extends Disposable {
 		const visualHeight = Math.round(viewportHeight * scale);
 
 		// Update webview container - full viewport size with CSS transform
+		// NO rounded corners - realistic browser view
 		this.webviewContainer.style.width = `${viewportWidth}px`;
 		this.webviewContainer.style.height = `${viewportHeight}px`;
 		this.webviewContainer.style.transform = `scale(${scale})`;
 		this.webviewContainer.style.transformOrigin = 'top left';
-		this.webviewContainer.style.borderRadius = `${scale < 1 ? Math.round(12 / scale) : 12}px`;
 
 		// Update wrapper size
 		const wrapper = this.webviewContainer.parentElement;
@@ -832,9 +1081,11 @@ export class EditorFullscreen extends Disposable {
 			return;
 		}
 
+		const deviceLabel = getDeviceLabel(this.state.device as CanvasDevicePreset);
+
 		if (config.width === 'auto' || config.height === 'auto') {
-			// Auto mode - just show current size
-			this.sizeIndicator.textContent = `${Math.round(viewportWidth)} × ${Math.round(viewportHeight)}`;
+			// Auto mode - show current size
+			this.sizeIndicator.textContent = `${deviceLabel} · ${Math.round(viewportWidth)} × ${Math.round(viewportHeight)}`;
 			this.sizeIndicator.style.color = 'rgba(255, 255, 255, 0.5)';
 		} else {
 			// Device preset - show ACTUAL viewport size and visual scale
@@ -844,71 +1095,14 @@ export class EditorFullscreen extends Disposable {
 			if (scale < 0.99) {
 				// Scaled down visually - show viewport size and visual scale percentage
 				const scalePercent = Math.round(scale * 100);
-				this.sizeIndicator.textContent = `${targetWidth} × ${targetHeight} @ ${scalePercent}%`;
+				this.sizeIndicator.textContent = `${deviceLabel} · ${targetWidth} × ${targetHeight} @ ${scalePercent}%`;
 				this.sizeIndicator.style.color = 'rgba(251, 191, 36, 0.7)'; // Amber to indicate visual scaling
 			} else {
 				// Full size (1:1)
-				this.sizeIndicator.textContent = `${targetWidth} × ${targetHeight} (1:1)`;
+				this.sizeIndicator.textContent = `${deviceLabel} · ${targetWidth} × ${targetHeight} (1:1)`;
 				this.sizeIndicator.style.color = 'rgba(34, 197, 94, 0.7)'; // Green for full size
 			}
 		}
-	}
-
-	/**
-	 * Calculate a human-readable ratio from a scale value
-	 * e.g., 0.8 -> "4:5", 0.75 -> "3:4", 0.5 -> "1:2"
-	 */
-	private calculateRatio(scale: number): string {
-		// Common ratios to match against
-		const commonRatios = [
-			{ ratio: '1:1', value: 1 },
-			{ ratio: '9:10', value: 0.9 },
-			{ ratio: '4:5', value: 0.8 },
-			{ ratio: '3:4', value: 0.75 },
-			{ ratio: '2:3', value: 0.667 },
-			{ ratio: '1:2', value: 0.5 },
-			{ ratio: '1:3', value: 0.333 },
-			{ ratio: '1:4', value: 0.25 },
-		];
-
-		// Find closest matching ratio
-		let closest = commonRatios[0];
-		let minDiff = Math.abs(scale - closest.value);
-
-		for (const r of commonRatios) {
-			const diff = Math.abs(scale - r.value);
-			if (diff < minDiff) {
-				minDiff = diff;
-				closest = r;
-			}
-		}
-
-		// If close enough to a common ratio, use it
-		if (minDiff < 0.05) {
-			return closest.ratio;
-		}
-
-		// Otherwise, calculate approximate ratio
-		// Find GCD to simplify the fraction
-		const percent = Math.round(scale * 100);
-		const gcd = this.gcd(percent, 100);
-		const numerator = percent / gcd;
-		const denominator = 100 / gcd;
-
-		// If denominator is reasonable, show as ratio
-		if (denominator <= 10) {
-			return `${numerator}:${denominator}`;
-		}
-
-		// Fall back to percentage for odd values
-		return `${percent}%`;
-	}
-
-	/**
-	 * Calculate Greatest Common Divisor using Euclidean algorithm
-	 */
-	private gcd(a: number, b: number): number {
-		return b === 0 ? a : this.gcd(b, a % b);
 	}
 
 	private close(): void {
@@ -921,6 +1115,10 @@ export class EditorFullscreen extends Disposable {
 	}
 
 	public override dispose(): void {
+		this.cancelAutoClose();
+		if (this.sizeIndicatorTimer) {
+			clearTimeout(this.sizeIndicatorTimer);
+		}
 		if (this.webviewElement) {
 			this.webviewElement.dispose();
 			this.webviewElement = undefined;

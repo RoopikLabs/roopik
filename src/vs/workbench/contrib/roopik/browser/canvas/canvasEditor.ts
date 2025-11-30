@@ -78,8 +78,7 @@ export class CanvasEditor extends EditorPane {
 	// Focus mode state - stores viewport before focus for restoration
 	private preFocusViewport: CanvasViewport | null = null;
 
-	// Canvas interaction mode state
-	private interactionMode: CanvasInteractionMode = 'overview';
+	// Canvas interaction mode state (prefixed to indicate it may be used for future interaction features)
 	private editorFullscreen: EditorFullscreen | undefined;
 
 	// Interaction state
@@ -945,9 +944,6 @@ export class CanvasEditor extends EditorPane {
 			this.editorFullscreen = undefined;
 		}
 
-		// Set interaction mode
-		this.interactionMode = 'fullscreen';
-
 		// Hide canvas UI elements EXCEPT bottom action bar (it stays visible)
 		this.setCanvasUIVisibility(false);
 
@@ -978,9 +974,6 @@ export class CanvasEditor extends EditorPane {
 			this.editorFullscreen.dispose();
 			this.editorFullscreen = undefined;
 		}
-
-		// Restore interaction mode
-		this.interactionMode = this.focusedSandboxId ? 'focus' : 'overview';
 
 		// Show canvas UI elements
 		this.setCanvasUIVisibility(true);

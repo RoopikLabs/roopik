@@ -10,7 +10,9 @@ import { EditorPaneDescriptor, IEditorPaneRegistry } from '../../../browser/edit
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { EditorExtensions, IEditorFactoryRegistry } from '../../../common/editor.js';
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
-import { IEditorService, SIDE_GROUP } from '../../../services/editor/common/editorService.js';
+import { IEditorService } from '../../../services/editor/common/editorService.js';
+import { IEditorGroupsService, preferredSideBySideGroupDirection } from '../../../services/editor/common/editorGroupsService.js';
+import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 import { IStorageService, StorageScope } from '../../../../platform/storage/common/storage.js';
 import { ILifecycleService, LifecyclePhase, StartupKind } from '../../../services/lifecycle/common/lifecycle.js';
@@ -118,10 +120,10 @@ registerAction2(class extends Action2 {
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
-		const editorService = accessor.get(IEditorService);
+		const editorGroupsService = accessor.get(IEditorGroupsService);
 		const welcomeInput = RoopikWelcomeInput.getInstance('welcome');
-		// Open in new tab and focus on it
-		await editorService.openEditor(welcomeInput, { pinned: true });
+		// Open in active group and focus on it
+		await editorGroupsService.activeGroup.openEditor(welcomeInput, { pinned: true });
 	}
 });
 
@@ -137,10 +139,10 @@ registerAction2(class extends Action2 {
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
-		const editorService = accessor.get(IEditorService);
+		const editorGroupsService = accessor.get(IEditorGroupsService);
 		const settingsInput = RoopikWelcomeInput.getInstance('settings');
-		// Open in new tab and focus on it
-		await editorService.openEditor(settingsInput, { pinned: true });
+		// Open in active group and focus on it
+		await editorGroupsService.activeGroup.openEditor(settingsInput, { pinned: true });
 	}
 });
 
@@ -156,13 +158,13 @@ registerAction2(class extends Action2 {
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
-		const editorService = accessor.get(IEditorService);
+		const editorGroupsService = accessor.get(IEditorGroupsService);
 
 		// Get or create default canvas
 		const canvasInput = CanvasInput.getInstance('default', 'Component Canvas');
 
-		// Open canvas editor
-		await editorService.openEditor(canvasInput, { pinned: true });
+		// Open canvas editor in active group
+		await editorGroupsService.activeGroup.openEditor(canvasInput, { pinned: true });
 	}
 });
 
@@ -181,6 +183,8 @@ registerAction2(class extends Action2 {
 
 	async run(accessor: ServicesAccessor): Promise<void> {
 		const editorService = accessor.get(IEditorService);
+		const editorGroupsService = accessor.get(IEditorGroupsService);
+		const configurationService = accessor.get(IConfigurationService);
 		const notificationService = accessor.get(INotificationService);
 		const storageService = accessor.get(IStorageService);
 
@@ -196,13 +200,19 @@ registerAction2(class extends Action2 {
 
 		if (existingPane) {
 			// Focus existing editor in its current group (don't create new split)
-			await editorService.openEditor(input, { pinned: true }, existingPane.group);
+			await existingPane.group.openEditor(input, { pinned: true });
 			return;
 		}
 
-		// Open in RIGHT split (SIDE_GROUP) by default
+		// Open in side group (SIDE_GROUP) by default
 		// This avoids blocking left-side menu items (File, Edit, View, etc.)
-		await editorService.openEditor(input, { pinned: true }, SIDE_GROUP);
+		// Resolve SIDE_GROUP to actual group (creates new group if needed)
+		const direction = preferredSideBySideGroupDirection(configurationService);
+		let targetGroup = editorGroupsService.findGroup({ direction });
+		if (!targetGroup) {
+			targetGroup = editorGroupsService.addGroup(editorGroupsService.activeGroup, direction);
+		}
+		await targetGroup.openEditor(input, { pinned: true });
 
 		// Show hint notification (once per installation)
 		const hintKey = 'roopik.browserRightSideHintShown';
@@ -225,6 +235,7 @@ class RoopikStartupContribution extends Disposable implements IWorkbenchContribu
 
 	constructor(
 		@IEditorService private readonly editorService: IEditorService,
+		@IEditorGroupsService private readonly editorGroupsService: IEditorGroupsService,
 		@IStorageService private readonly storageService: IStorageService,
 		@ILifecycleService private readonly lifecycleService: ILifecycleService,
 		@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,
@@ -267,7 +278,7 @@ class RoopikStartupContribution extends Disposable implements IWorkbenchContribu
 		if (showOnStartup && this.lifecycleService.startupKind !== StartupKind.ReloadedWindow) {
 			if (!this.editorService.activeEditor || this.layoutService.openedDefaultEditors) {
 				const welcomeInput = RoopikWelcomeInput.getInstance('welcome');
-				await this.editorService.openEditor(welcomeInput);
+				await this.editorGroupsService.activeGroup.openEditor(welcomeInput);
 			}
 		}
 	}

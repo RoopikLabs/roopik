@@ -5,10 +5,10 @@
 
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import { getWindow, clearNode } from '../../../../../../base/browser/dom.js';
-import type { Sandbox, SandboxState, DevicePreset, DevicePresetConfig } from '../../../common/canvas/canvasTypes.js';
+import type { Sandbox, SandboxState, DevicePreset } from '../../../common/canvas/canvasTypes.js';
 import { DEVICE_PRESETS } from '../../../common/canvas/canvasTypes.js';
 import { IWebviewService, IWebviewElement } from '../../../../webview/browser/webview.js';
-import { createDeviceIcon, getDeviceLabel, getNextDeviceMode } from './deviceIcons.js';
+import { createDeviceIcon, getNextDeviceMode } from './deviceIcons.js';
 
 /**
  * Sandbox Card Callbacks
@@ -54,7 +54,6 @@ export class SandboxCard extends Disposable {
 	private _state: SandboxState = 'loading';
 
 	// Device emulation state
-	private _effectiveDeviceMode: DevicePreset = 'auto';  // Current effective mode (sandbox override or global)
 	private _globalDeviceMode: DevicePreset = 'auto';     // Global device mode from canvas
 	private deviceModeButton: HTMLElement | undefined;
 
@@ -355,7 +354,6 @@ export class SandboxCard extends Disposable {
 
 		// Set as sandbox override
 		this.sandbox.deviceMode = nextMode;
-		this._effectiveDeviceMode = nextMode;
 
 		// Update button UI
 		this.updateDeviceModeButtonUI();
@@ -372,7 +370,6 @@ export class SandboxCard extends Disposable {
 	 */
 	public resetToGlobalDeviceMode(): void {
 		this.sandbox.deviceMode = undefined;
-		this._effectiveDeviceMode = this._globalDeviceMode;
 		this.updateDeviceModeButtonUI();
 		this.applyDeviceEmulation();
 	}
@@ -385,7 +382,6 @@ export class SandboxCard extends Disposable {
 		this._globalDeviceMode = mode;
 		// Only update if no sandbox override
 		if (this.sandbox.deviceMode === undefined) {
-			this._effectiveDeviceMode = mode;
 			this.updateDeviceModeButtonUI();
 			this.applyDeviceEmulation();
 		}
@@ -400,8 +396,7 @@ export class SandboxCard extends Disposable {
 		this.sandbox.deviceMode = undefined;
 		// Set the global mode
 		this._globalDeviceMode = mode;
-		// Apply the forced mode
-		this._effectiveDeviceMode = mode;
+		// Update UI and apply
 		this.updateDeviceModeButtonUI();
 		this.applyDeviceEmulation();
 	}
@@ -555,25 +550,19 @@ export class SandboxCard extends Disposable {
 
 	private createReloadIcon(): HTMLElement {
 		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-		svg.setAttribute('width', '18');
-		svg.setAttribute('height', '18');
-		svg.setAttribute('viewBox', '0 0 16 16');
+		svg.setAttribute('width', '12');
+		svg.setAttribute('height', '12');
+		svg.setAttribute('viewBox', '0 0 90 90');
 		svg.setAttribute('fill', 'none');
-		svg.setAttribute('stroke', 'rgba(255, 255, 255, 0.9)');
-		svg.setAttribute('stroke-width', '1.5');
-		svg.setAttribute('stroke-linecap', 'round');
-		svg.setAttribute('stroke-linejoin', 'round');
 
-		// Circular arrow path
 		const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-		path.setAttribute('d', 'M14 8A6 6 0 1 1 8 2');
+		path.setAttribute(
+			'd',
+			'M75.702 53.014c-2.142 7.995-7.27 14.678-14.439 18.816c-7.168 4.138-15.519 5.239-23.514 3.095c-16.505-4.423-26.335-21.448-21.913-37.953C20.258 20.467 37.286 10.64 53.79 15.06c4.213 1.129 8.076 3.118 11.413 5.809l-8.349 8.35h26.654V2.565l-8.354 8.354c-5.1-4.405-11.133-7.61-17.74-9.381C33.451-4.882 8.735 9.389 2.314 33.35c-6.42 23.961 7.851 48.678 31.811 55.098C38.001 89.486 41.934 90 45.842 90c7.795 0 15.488-2.044 22.42-6.046c10.407-6.008 17.851-15.709 20.962-27.317L75.702 53.014z'
+		);
+		path.setAttribute('fill', 'rgba(255, 255, 255, 0.9)');
+
 		svg.appendChild(path);
-
-		// Arrow head
-		const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-		arrow.setAttribute('d', 'M8 5V2h3');
-		svg.appendChild(arrow);
-
 		return svg as unknown as HTMLElement;
 	}
 
