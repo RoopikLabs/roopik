@@ -12,7 +12,7 @@
 
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import { clearNode } from '../../../../../../base/browser/dom.js';
-import { SAMPLE_COMPONENTS } from '../data/sampleComponents.js';
+import { NEW_SAMPLE_COMPONENTS } from '../services/newSamples.js';
 
 export interface IFloatingToolbarCallbacks {
 	onLoadSample: (sampleId: string) => void;
@@ -179,7 +179,7 @@ export class FloatingToolbar extends Disposable {
 		`;
 
 		// Create sample component buttons
-		SAMPLE_COMPONENTS.forEach((sample, index) => {
+		Object.values(NEW_SAMPLE_COMPONENTS).forEach((sample, index) => {
 			const sampleBtn = this.createSampleButton(sample.name, sample.id, index);
 			dropdown.appendChild(sampleBtn);
 		});

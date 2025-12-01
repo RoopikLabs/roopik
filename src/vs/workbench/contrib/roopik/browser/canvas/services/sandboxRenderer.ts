@@ -10,12 +10,13 @@ import { ComponentInput } from '../../../common/sandboxPipeline/types.js';
  * Get the sandbox template HTML
  */
 export function getSandboxTemplate(): string {
-	// For now, we inline it to avoid file loading issues
-	return `<!DOCTYPE html>
+  // For now, we inline it to avoid file loading issues
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-eval' 'unsafe-inline' blob: https://esm.sh; style-src 'unsafe-inline'; connect-src https://esm.sh;">
   <title>Roopik Sandbox</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -33,8 +34,20 @@ export function getSandboxTemplate(): string {
       if (type === 'execute') {
         sandboxId = data.sandboxId;
         try {
-          eval(data.code);
-          window.parent.postMessage({ type: 'rendered', sandboxId }, '*');
+          const blob = new Blob([data.code], { type: 'text/javascript' });
+          const url = URL.createObjectURL(blob);
+          import(url)
+            .then(() => {
+              window.parent.postMessage({ type: 'rendered', sandboxId }, '*');
+              URL.revokeObjectURL(url);
+            })
+            .catch(error => {
+              const errorDiv = document.createElement('div');
+              errorDiv.className = 'sandbox-error';
+              errorDiv.textContent = \`Error: \${error.message}\\n\\nStack:\\n\${error.stack}\`;
+              document.getElementById('root').appendChild(errorDiv);
+              window.parent.postMessage({ type: 'error', sandboxId, error: { message: error.message, stack: error.stack } }, '*');
+            });
         } catch (error) {
           const errorDiv = document.createElement('div');
           errorDiv.className = 'sandbox-error';
@@ -60,62 +73,62 @@ export function getSandboxTemplate(): string {
  * Create a sandbox iframe with the new template
  */
 export function createSandboxIframe(containerId: string): HTMLIFrameElement {
-	const iframe = document.createElement('iframe');
-	iframe.id = containerId;
-	iframe.sandbox.add('allow-scripts');
-	iframe.style.width = '100%';
-	iframe.style.height = '100%';
-	iframe.style.border = 'none';
+  const iframe = document.createElement('iframe');
+  iframe.id = containerId;
+  iframe.sandbox.add('allow-scripts');
+  iframe.style.width = '100%';
+  iframe.style.height = '100%';
+  iframe.style.border = 'none';
 
-	// Set sandbox content
-	iframe.srcdoc = getSandboxTemplate();
+  // Set sandbox content
+  iframe.srcdoc = getSandboxTemplate();
 
-	return iframe;
+  return iframe;
 }
 
 /**
  * Execute code in sandbox using the pipeline
  */
 export async function executeSandboxCode(
-	pipelineService: ISandboxPipelineService,
-	iframe: HTMLIFrameElement,
-	input: ComponentInput
+  pipelineService: ISandboxPipelineService,
+  iframe: HTMLIFrameElement,
+  input: ComponentInput
 ): Promise<void> {
-	// 1. Transform code via pipeline
-	const jobId = await pipelineService.processComponent(input);
+  // 1. Transform code via pipeline
+  const jobId = await pipelineService.processComponent(input);
 
-	// 2. Wait for transformation
-	const result = await pipelineService.waitForCompletion(jobId);
+  // 2. Wait for transformation
+  const result = await pipelineService.waitForCompletion(jobId);
 
-	// 3. Send to iframe
-	iframe.contentWindow?.postMessage({
-		type: 'execute',
-		data: {
-			sandboxId: input.id,
-			code: result.bundledCode
-		}
-	}, '*');
+  // 3. Send to iframe
+  iframe.contentWindow?.postMessage({
+    type: 'execute',
+    data: {
+      sandboxId: input.id,
+      code: result.bundledCode
+    }
+  }, '*');
 }
 
 /**
  * Extract dependencies from code (optional helper)
  */
 export function extractDependenciesFromCode(code: string): Record<string, string> | undefined {
-	// Simple heuristic: look for common imports
-	const deps: Record<string, string> = {};
+  // Simple heuristic: look for common imports
+  const deps: Record<string, string> = {};
 
-	if (code.includes('from "react"') || code.includes("from 'react'")) {
-		deps['react'] = '18';
-		deps['react-dom'] = '18';
-	}
+  if (code.includes('from "react"') || code.includes("from 'react'")) {
+    deps['react'] = '18';
+    deps['react-dom'] = '18';
+  }
 
-	if (code.includes('from "vue"') || code.includes("from 'vue'")) {
-		deps['vue'] = '3';
-	}
+  if (code.includes('from "vue"') || code.includes("from 'vue'")) {
+    deps['vue'] = '3';
+  }
 
-	if (code.includes('from "solid-js"') || code.includes("from 'solid-js'")) {
-		deps['solid-js'] = '1';
-	}
+  if (code.includes('from "solid-js"') || code.includes("from 'solid-js'")) {
+    deps['solid-js'] = '1';
+  }
 
-	return Object.keys(deps).length > 0 ? deps : undefined;
+  return Object.keys(deps).length > 0 ? deps : undefined;
 }

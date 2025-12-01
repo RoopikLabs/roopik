@@ -131,6 +131,9 @@ import { PROJECT_MODE_CHANNEL } from '../../workbench/contrib/roopik/common/proj
 import { DevServerService } from '../../workbench/contrib/roopik/electron-main/projectMode/devServer/devServerService.js';
 import { DevServerChannel } from '../../workbench/contrib/roopik/electron-main/projectMode/devServer/devServerChannel.js';
 import { DEV_SERVER_CHANNEL } from '../../workbench/contrib/roopik/common/projectMode/devServer.js';
+// ROOPIK: Sandbox Pipeline - ESBuild component transformation
+import { SandboxPipelineMainService } from '../../workbench/contrib/roopik/electron-main/sandboxPipeline/sandboxPipelineMainService.js';
+import { SandboxPipelineChannel } from '../../workbench/contrib/roopik/electron-main/sandboxPipeline/sandboxPipelineChannel.js';
 
 /**
  * The main VS Code application. There will only ever be one instance,
@@ -1256,6 +1259,11 @@ export class CodeApplication extends Disposable {
 		const devServerService = new DevServerService();
 		const devServerChannel = new DevServerChannel(devServerService);
 		mainProcessElectronServer.registerChannel(DEV_SERVER_CHANNEL, devServerChannel);
+
+		// ROOPIK: Sandbox Pipeline - ESBuild component transformation
+		const sandboxPipelineService = new SandboxPipelineMainService();
+		const sandboxPipelineChannel = new SandboxPipelineChannel(sandboxPipelineService);
+		mainProcessElectronServer.registerChannel('sandboxPipeline', sandboxPipelineChannel);
 		// ROOPIK END
 	}
 

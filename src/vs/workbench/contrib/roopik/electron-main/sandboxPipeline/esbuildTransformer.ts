@@ -80,6 +80,7 @@ export class ESBuildTransformer {
 				write: false,
 				metafile: true, // Get accurate import graph
 				target: 'es2022',
+				outfile: 'bundle.js',
 				plugins: [
 					...this.getFrameworkPlugins(framework),
 					this.createVirtualFSPlugin(files),
@@ -96,6 +97,7 @@ export class ESBuildTransformer {
 			let cssCode = '';
 
 			for (const file of result.outputFiles) {
+				console.log('[ESBuildTransformer] Output file:', file.path, 'Size:', file.text.length);
 				if (file.path.endsWith('.css')) {
 					cssCode += file.text;
 				} else if (file.path.endsWith('.js')) {
@@ -209,12 +211,21 @@ render(Component(), document.getElementById('root'));
 
 					let url: string;
 
-					if (dependencies[packageName]) {
-						// AI provided a version - use it
-						url = `https://esm.sh/${packageName}@${dependencies[packageName]}`;
+					const parts = packageName.split('/');
+					const mainPkg = packageName.startsWith('@') ? `${parts[0]}/${parts[1]}` : parts[0];
+
+					if (dependencies[mainPkg]) {
+						const version = dependencies[mainPkg];
+						if (packageName === mainPkg) {
+							url = `https://esm.sh/${packageName}@${version}?dev`;
+						} else {
+							// Handle subpath: package@version/subpath
+							const subpath = packageName.substring(mainPkg.length);
+							url = `https://esm.sh/${mainPkg}@${version}${subpath}?dev`;
+						}
 					} else {
 						// No version - let esm.sh resolve to latest stable
-						url = `https://esm.sh/${packageName}`;
+						url = `https://esm.sh/${packageName}?dev`;
 					}
 
 					return { path: url, external: true };

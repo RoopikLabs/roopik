@@ -149,6 +149,7 @@ export class NewSandboxCard extends Disposable {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-eval' 'unsafe-inline' blob: https://esm.sh; style-src 'unsafe-inline'; connect-src https://esm.sh;">
     <title>New Roopik Sandbox</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -170,8 +171,19 @@ export class NewSandboxCard extends Disposable {
 
             if (type === 'execute') {
                 try {
-                    eval(code);
-                    vscode.postMessage({ type: 'rendered' });
+                    const blob = new Blob([code], { type: 'text/javascript' });
+                    const url = URL.createObjectURL(blob);
+                    import(url)
+                        .then(() => {
+                            vscode.postMessage({ type: 'rendered' });
+                            URL.revokeObjectURL(url);
+                        })
+                        .catch(error => {
+                            console.error(error);
+                            document.getElementById('root').innerHTML =
+                                '<div class="error">Error: ' + error.message + '</div>';
+                            vscode.postMessage({ type: 'error', message: error.message });
+                        });
                 } catch (error) {
                     document.getElementById('root').innerHTML =
                         '<div class="error">Error: ' + error.message + '</div>';

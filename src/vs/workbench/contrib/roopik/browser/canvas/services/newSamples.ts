@@ -244,5 +244,202 @@ export default function Card() {
 	);
 }`,
 		dependencies: { 'react': '18', 'react-dom': '18' }
+	},
+
+	'REACT_LOGIN': {
+		id: 'react_login_new',
+		name: '🚀 React Login (ESBuild)',
+		code: `import React, { useState } from 'react';
+
+export default function Login() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
+      fontFamily: 'system-ui, sans-serif'
+    }}>
+      <div style={{
+        background: 'rgba(255, 255, 255, 0.1)',
+        backdropFilter: 'blur(10px)',
+        padding: '40px',
+        borderRadius: '20px',
+        boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.37)',
+        border: '1px solid rgba(255, 255, 255, 0.18)',
+        width: '100%',
+        maxWidth: '400px'
+      }}>
+        <h2 style={{ color: 'white', marginBottom: '30px', textAlign: 'center' }}>Welcome Back</h2>
+        <div style={{ marginBottom: '20px' }}>
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '12px',
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              borderRadius: '8px',
+              color: 'white',
+              fontSize: '16px',
+              outline: 'none'
+            }}
+          />
+        </div>
+        <div style={{ marginBottom: '30px' }}>
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '12px',
+              background: 'rgba(255, 255, 255, 0.2)',
+              border: 'none',
+              borderRadius: '8px',
+              color: 'white',
+              fontSize: '16px',
+              outline: 'none'
+            }}
+          />
+        </div>
+        <button style={{
+          width: '100%',
+          padding: '12px',
+          background: '#4facfe',
+          border: 'none',
+          borderRadius: '8px',
+          color: 'white',
+          fontSize: '16px',
+          fontWeight: 'bold',
+          cursor: 'pointer',
+          transition: 'background 0.3s'
+        }}>
+          Sign In
+        </button>
+      </div>
+    </div>
+  );
+}`,
+		dependencies: { 'react': '18', 'react-dom': '18' }
+	},
+
+	'REACT_DASHBOARD': {
+		id: 'react_dashboard_new',
+		name: '🚀 React Dashboard (ESBuild)',
+		code: `import React from 'react';
+
+export default function Dashboard() {
+  return (
+    <div style={{
+      padding: '20px',
+      background: '#f0f2f5',
+      minHeight: '100vh',
+      fontFamily: 'system-ui, sans-serif'
+    }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: '20px'
+      }}>
+        {[
+          { title: 'Users', value: '1,234', color: '#4facfe' },
+          { title: 'Revenue', value: '$12,345', color: '#43e97b' },
+          { title: 'Bounce Rate', value: '42%', color: '#fa709a' },
+          { title: 'Active', value: '567', color: '#fddb92' }
+        ].map((stat, i) => (
+          <div key={i} style={{
+            background: 'white',
+            padding: '20px',
+            borderRadius: '12px',
+            boxShadow: '0 4px 6px rgba(0,0,0,0.05)'
+          }}>
+            <h3 style={{ margin: '0 0 10px 0', color: '#666', fontSize: '14px' }}>{stat.title}</h3>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#333' }}>{stat.value}</div>
+            <div style={{
+              marginTop: '10px',
+              height: '4px',
+              background: '#eee',
+              borderRadius: '2px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                width: '70%',
+                height: '100%',
+                background: stat.color
+              }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}`,
+		dependencies: { 'react': '18', 'react-dom': '18' }
+	},
+
+	'REACT_PRICING': {
+		id: 'react_pricing_new',
+		name: '🚀 React Pricing (ESBuild)',
+		code: `import React from 'react';
+
+export default function Pricing() {
+  return (
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#111',
+      fontFamily: 'system-ui, sans-serif',
+      padding: '20px'
+    }}>
+      <div style={{
+        background: '#222',
+        padding: '40px',
+        borderRadius: '24px',
+        textAlign: 'center',
+        color: 'white',
+        border: '1px solid #333',
+        maxWidth: '320px',
+        width: '100%'
+      }}>
+        <h3 style={{ margin: '0 0 10px 0', color: '#888' }}>Pro Plan</h3>
+        <div style={{ fontSize: '48px', fontWeight: 'bold', marginBottom: '20px' }}>
+          $29<span style={{ fontSize: '16px', color: '#666' }}>/mo</span>
+        </div>
+        <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 30px 0', textAlign: 'left' }}>
+          {['Unlimited Projects', 'AI Code Generation', 'Priority Support', 'Custom Domain'].map((feat, i) => (
+            <li key={i} style={{ padding: '10px 0', borderBottom: '1px solid #333', color: '#ccc' }}>
+              ✓ {feat}
+            </li>
+          ))}
+        </ul>
+        <button style={{
+          width: '100%',
+          padding: '16px',
+          background: 'white',
+          color: 'black',
+          border: 'none',
+          borderRadius: '12px',
+          fontSize: '16px',
+          fontWeight: 'bold',
+          cursor: 'pointer'
+        }}>
+          Get Started
+        </button>
+      </div>
+    </div>
+  );
+}`,
+		dependencies: { 'react': '18', 'react-dom': '18' }
 	}
 };
