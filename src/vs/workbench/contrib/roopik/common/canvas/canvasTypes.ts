@@ -30,6 +30,35 @@ export type ComponentType = 'atomic' | 'composite' | 'page';
  */
 export type BackgroundPattern = 'grid' | 'dots' | 'plain';
 
+/**
+ * Device preview modes for sandbox emulation
+ * - auto: Use sandbox's natural size (no scaling)
+ * - desktop: 1280×800 viewport
+ * - tablet: 768×1024 viewport
+ * - mobile: 375×667 viewport
+ */
+export type DevicePreset = 'auto' | 'desktop' | 'tablet' | 'mobile';
+
+/**
+ * Device preset configuration
+ */
+export interface DevicePresetConfig {
+	width: number | 'auto';
+	height: number | 'auto';
+	label: string;
+	icon: string;  // For UI display
+}
+
+/**
+ * Device preset definitions
+ */
+export const DEVICE_PRESETS: Record<DevicePreset, DevicePresetConfig> = {
+	auto: { width: 'auto', height: 'auto', label: 'Auto', icon: '⬜' },
+	desktop: { width: 1280, height: 800, label: 'Desktop', icon: '🖥️' },
+	tablet: { width: 768, height: 1024, label: 'Tablet', icon: '📱' },
+	mobile: { width: 375, height: 667, label: 'Mobile', icon: '📲' }
+};
+
 // ============================================
 // Dependency Manifest (Golden Prompt)
 // ============================================
@@ -130,6 +159,9 @@ export interface Sandbox {
 	// Code for rendering (transformed to const-based)
 	sessionCode?: string;
 	cdnUrls?: string[];
+
+	// Device emulation mode (optional - defaults to global if not set)
+	deviceMode?: DevicePreset;
 }
 
 /**
@@ -161,6 +193,9 @@ export interface CanvasState {
 	// Preferences
 	backgroundColor: string;
 	backgroundPattern: BackgroundPattern;
+
+	// Global device emulation mode (applies to all sandboxes without override)
+	globalDeviceMode: DevicePreset;
 
 	// Timestamps
 	createdAt: number;
@@ -247,5 +282,6 @@ export const DEFAULT_CANVAS_STATE: Omit<CanvasState, 'id' | 'name' | 'createdAt'
 	selectedSandboxId: null,
 	focusedSandboxId: null,
 	backgroundColor: '#1a1a1a',
-	backgroundPattern: 'dots'
+	backgroundPattern: 'dots',
+	globalDeviceMode: 'auto'
 };

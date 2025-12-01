@@ -15,16 +15,17 @@
  * - Collapse/Expand toggle button (always visible)
  *
  * Design: Glass-morphism floating buttons with smooth animations
- * Auto-collapses after 3 seconds of no hover
+ * Auto-expands on hover, auto-collapses after 1 second when mouse leaves
  */
 
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import { clearNode } from '../../../../../../base/browser/dom.js';
 import type { CanvasMode } from '../services/gridManager.js';
-import type { BackgroundPattern } from '../../../common/canvas/canvasTypes.js';
+import type { BackgroundPattern, DevicePreset } from '../../../common/canvas/canvasTypes.js';
+import { createDeviceIcon, getDeviceLabel, getNextDeviceMode } from './deviceIcons.js';
 
 // Configuration constants
-const AUTO_COLLAPSE_DELAY_MS = 3000; // 3 seconds
+const AUTO_COLLAPSE_DELAY_MS = 1000; // 1 second (same as fullscreen mode)
 const DEFAULT_BOTTOM_OFFSET = 24; // Default bottom position
 const STATUS_PANEL_HEIGHT = 28; // Height of status panel when visible
 
@@ -33,6 +34,7 @@ export interface ICanvasActionButtonsCallbacks {
 	onModeToggle: () => void;
 	onPatternToggle: () => void;
 	onColorChange: (color: string) => void;
+	onDeviceModeChange: (mode: DevicePreset) => void;
 }
 
 export interface ICanvasActionButtonsState {
@@ -42,12 +44,15 @@ export interface ICanvasActionButtonsState {
 	backgroundColor: string;
 	isExpanded: boolean;
 	statusPanelVisible: boolean; // Whether status panel is visible (affects bottom offset)
+	deviceMode: DevicePreset;
 }
 
 export class CanvasActionButtons extends Disposable {
 	private container: HTMLElement;
 	private buttonsContainer: HTMLElement | undefined;
 	private toggleButton: HTMLElement | undefined;
+	private toggleArrow: SVGElement | undefined;  // Reference for rotation animation
+	private deviceToggleButton: HTMLElement | undefined;  // Independent device mode toggle
 	private colorInput: HTMLInputElement | undefined;
 	private autoCollapseTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -57,7 +62,8 @@ export class CanvasActionButtons extends Disposable {
 		pattern: 'dots',
 		backgroundColor: '#1a1a1a',
 		isExpanded: false,
-		statusPanelVisible: true // Default to true since status panel is visible by default
+		statusPanelVisible: true, // Default to true since status panel is visible by default
+		deviceMode: 'auto'
 	};
 
 	constructor(
@@ -106,6 +112,14 @@ export class CanvasActionButtons extends Disposable {
 			const warning = this.createOverlapWarning();
 			this.container.insertBefore(warning, this.buttonsContainer);
 		}
+
+		// Create device toggle button at top-right (independent floating button)
+		// Remove old one first if it exists
+		if (this.deviceToggleButton && this.deviceToggleButton.parentElement) {
+			this.deviceToggleButton.parentElement.removeChild(this.deviceToggleButton);
+		}
+		this.deviceToggleButton = this.createDeviceToggleButton();
+		this.parent.appendChild(this.deviceToggleButton);
 
 		// Setup hover listeners for auto-collapse
 		this.setupAutoCollapse();
@@ -197,9 +211,9 @@ export class CanvasActionButtons extends Disposable {
 			box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 		`;
 
-		// Arrow icon
-		const arrow = this.createArrowIcon(this.state.isExpanded);
-		btn.appendChild(arrow);
+		// Arrow icon - store reference for rotation animation
+		this.toggleArrow = this.createArrowIcon(this.state.isExpanded);
+		btn.appendChild(this.toggleArrow);
 
 		// Hover effects
 		btn.addEventListener('mouseenter', () => {
@@ -214,15 +228,82 @@ export class CanvasActionButtons extends Disposable {
 			btn.style.transform = 'scale(1)';
 		});
 
-		// Click to toggle
-		btn.addEventListener('click', () => {
-			this.state.isExpanded = !this.state.isExpanded;
-			this.render();
-
-			// Reset auto-collapse timer when manually toggling
+		// Click to toggle - use setExpanded instead of render()
+		btn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			this.clearAutoCollapseTimer();
+			this.setExpanded(!this.state.isExpanded);
+			// If manually expanded, start auto-collapse timer
 			if (this.state.isExpanded) {
 				this.startAutoCollapseTimer();
 			}
+		});
+
+		return btn;
+	}
+
+	/**
+	 * Create device toggle button - floating at top-right corner
+	 * Same style as expand button (44x44px, circular, glass-morphism)
+	 * Shows "A" for Auto mode, SVG icons for others
+	 */
+	private createDeviceToggleButton(): HTMLElement {
+		const btn = document.createElement('button');
+		const label = getDeviceLabel(this.state.deviceMode);
+		btn.title = `Device: ${label} (click to cycle)`;
+		btn.style.cssText = `
+			position: absolute;
+			top: 24px;
+			right: 24px;
+			z-index: 1000;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 44px;
+			height: 44px;
+			padding: 0;
+			background: rgba(28, 28, 30, 0.9);
+			backdrop-filter: blur(20px) saturate(180%);
+			-webkit-backdrop-filter: blur(20px) saturate(180%);
+			border: 1px solid rgba(255, 255, 255, 0.12);
+			border-radius: 50%;
+			cursor: pointer;
+			transition: all 0.2s ease;
+			color: ${this.state.deviceMode !== 'auto' ? '#60a5fa' : 'rgba(255, 255, 255, 0.8)'};
+			box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+		`;
+
+		// For Auto mode, show "A" text; for others show icons
+		if (this.state.deviceMode === 'auto') {
+			const text = document.createElement('span');
+			text.textContent = 'A';
+			text.style.cssText = `
+				font-size: 18px;
+				font-weight: 600;
+				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+			`;
+			btn.appendChild(text);
+		} else {
+			const icon = createDeviceIcon(this.state.deviceMode, 20);
+			btn.appendChild(icon);
+		}
+
+		// Hover effects
+		btn.addEventListener('mouseenter', () => {
+			btn.style.background = 'rgba(59, 130, 246, 0.3)';
+			btn.style.color = '#60a5fa';
+			btn.style.transform = 'scale(1.05)';
+		});
+
+		btn.addEventListener('mouseleave', () => {
+			btn.style.background = 'rgba(28, 28, 30, 0.9)';
+			btn.style.color = this.state.deviceMode !== 'auto' ? '#60a5fa' : 'rgba(255, 255, 255, 0.8)';
+			btn.style.transform = 'scale(1)';
+		});
+
+		// Click to cycle device mode
+		btn.addEventListener('click', () => {
+			this.cycleDeviceMode();
 		});
 
 		return btn;
@@ -253,24 +334,48 @@ export class CanvasActionButtons extends Disposable {
 		// Clear any existing timer
 		this.clearAutoCollapseTimer();
 
-		// Add hover listeners to container
+		// Add hover listeners to container - auto-expand on hover
 		this.container.addEventListener('mouseenter', () => {
 			this.clearAutoCollapseTimer();
+			// Auto-expand on hover
+			if (!this.state.isExpanded) {
+				this.setExpanded(true);
+			}
 		});
 
 		this.container.addEventListener('mouseleave', () => {
-			if (this.state.isExpanded) {
-				this.startAutoCollapseTimer();
-			}
+			// Auto-collapse after delay
+			this.startAutoCollapseTimer();
 		});
+	}
+
+	/**
+	 * Set expanded state and update UI without full re-render
+	 */
+	private setExpanded(expanded: boolean): void {
+		this.state.isExpanded = expanded;
+
+		if (this.buttonsContainer) {
+			this.buttonsContainer.style.opacity = expanded ? '1' : '0';
+			this.buttonsContainer.style.transform = expanded ? 'scaleY(1) translateY(0)' : 'scaleY(0.8) translateY(10px)';
+			this.buttonsContainer.style.pointerEvents = expanded ? 'auto' : 'none';
+			this.buttonsContainer.style.maxHeight = expanded ? '400px' : '0';
+		}
+
+		if (this.toggleArrow) {
+			this.toggleArrow.style.transform = expanded ? 'rotate(180deg)' : 'rotate(0deg)';
+		}
+
+		if (this.toggleButton) {
+			this.toggleButton.title = expanded ? 'Collapse panel' : 'Expand panel';
+		}
 	}
 
 	private startAutoCollapseTimer(): void {
 		this.clearAutoCollapseTimer();
 		this.autoCollapseTimer = setTimeout(() => {
 			if (this.state.isExpanded) {
-				this.state.isExpanded = false;
-				this.render();
+				this.setExpanded(false);
 			}
 		}, AUTO_COLLAPSE_DELAY_MS);
 	}
@@ -541,6 +646,13 @@ export class CanvasActionButtons extends Disposable {
 		return svg;
 	}
 
+	private cycleDeviceMode(): void {
+		const nextMode = getNextDeviceMode(this.state.deviceMode);
+		this.state.deviceMode = nextMode;
+		this.callbacks.onDeviceModeChange(nextMode);
+		this.render();
+	}
+
 	// ============================================
 	// Public Methods
 	// ============================================
@@ -590,10 +702,26 @@ export class CanvasActionButtons extends Disposable {
 		this.render();
 	}
 
+	public setDeviceMode(mode: DevicePreset): void {
+		this.state.deviceMode = mode;
+		this.render();
+	}
+
+	public setVisible(visible: boolean): void {
+		this.container.style.display = visible ? '' : 'none';
+		if (this.deviceToggleButton) {
+			this.deviceToggleButton.style.display = visible ? '' : 'none';
+		}
+	}
+
 	public override dispose(): void {
 		this.clearAutoCollapseTimer();
 		if (this.container.parentElement) {
 			this.container.parentElement.removeChild(this.container);
+		}
+		// Also remove the device toggle button (it's appended to parent, not container)
+		if (this.deviceToggleButton && this.deviceToggleButton.parentElement) {
+			this.deviceToggleButton.parentElement.removeChild(this.deviceToggleButton);
 		}
 		super.dispose();
 	}

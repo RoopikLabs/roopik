@@ -19,6 +19,7 @@
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import { clearNode } from '../../../../../../base/browser/dom.js';
 import type { CanvasMode } from '../services/gridManager.js';
+import type { DevicePreset } from '../../../common/canvas/canvasTypes.js';
 
 // Configuration constants
 const MIN_ZOOM = 0.1;    // 10%
@@ -31,6 +32,7 @@ export interface ICanvasStatusPanelCallbacks {
 	onZoomReset: () => void;  // Reset to 100%
 	onFitToScreen: () => void;
 	onResetPositions: () => void;
+	onDeviceModeChange?: (mode: DevicePreset) => void;  // Global device mode change
 }
 
 export interface ICanvasStatusPanelState {
@@ -40,6 +42,7 @@ export interface ICanvasStatusPanelState {
 	componentCount: number;
 	mode: CanvasMode;
 	isVisible: boolean;
+	globalDeviceMode: DevicePreset;  // Global device emulation mode
 }
 
 export class CanvasStatusPanel extends Disposable {
@@ -51,7 +54,8 @@ export class CanvasStatusPanel extends Disposable {
 		selectedSandboxName: null,
 		componentCount: 0,
 		mode: 'grid',
-		isVisible: true
+		isVisible: true,
+		globalDeviceMode: 'auto'
 	};
 
 	constructor(
@@ -308,7 +312,7 @@ export class CanvasStatusPanel extends Disposable {
 		resetBtn.addEventListener('click', () => this.callbacks.onResetPositions());
 		section.appendChild(resetBtn);
 
-		// Mode indicator
+		// Mode indicator (Grid/Free)
 		const modeIndicator = document.createElement('div');
 		modeIndicator.title = this.state.mode === 'grid' ? 'Grid Mode' : 'Free Mode';
 		modeIndicator.style.cssText = `
@@ -327,7 +331,54 @@ export class CanvasStatusPanel extends Disposable {
 		modeIndicator.textContent = this.state.mode;
 		section.appendChild(modeIndicator);
 
+		// Device mode indicator (minimal single letter: A, D, T, M)
+		const deviceIndicator = document.createElement('div');
+		const deviceLetter = this.getDeviceLetter(this.state.globalDeviceMode);
+		const deviceLabel = this.getDeviceLabel(this.state.globalDeviceMode);
+		deviceIndicator.title = `Device: ${deviceLabel}`;
+		deviceIndicator.style.cssText = `
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 18px;
+			height: 18px;
+			background: rgba(34, 197, 94, 0.15);
+			border-radius: 3px;
+			color: #4ade80;
+			font-size: 10px;
+			font-weight: 600;
+			font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+		`;
+		deviceIndicator.textContent = deviceLetter;
+		section.appendChild(deviceIndicator);
+
 		return section;
+	}
+
+	/**
+	 * Get single letter for device mode
+	 */
+	private getDeviceLetter(device: DevicePreset): string {
+		switch (device) {
+			case 'auto': return 'A';
+			case 'desktop': return 'D';
+			case 'tablet': return 'T';
+			case 'mobile': return 'M';
+			default: return 'A';
+		}
+	}
+
+	/**
+	 * Get full label for device mode
+	 */
+	private getDeviceLabel(device: DevicePreset): string {
+		switch (device) {
+			case 'auto': return 'Auto';
+			case 'desktop': return 'Desktop (1280×800)';
+			case 'tablet': return 'Tablet (768×1024)';
+			case 'mobile': return 'Mobile (375×667)';
+			default: return 'Auto';
+		}
 	}
 
 	private createIconButton(
@@ -576,6 +627,15 @@ export class CanvasStatusPanel extends Disposable {
 	public setMode(mode: CanvasMode): void {
 		this.state.mode = mode;
 		this.render();
+	}
+
+	public setGlobalDeviceMode(mode: DevicePreset): void {
+		this.state.globalDeviceMode = mode;
+		this.render();
+	}
+
+	public getGlobalDeviceMode(): DevicePreset {
+		return this.state.globalDeviceMode;
 	}
 
 	public setVisible(visible: boolean): void {

@@ -33,7 +33,16 @@ import { BottomActionBar, type IBottomActionBarCallbacks } from './components/bo
 import { CanvasActionButtons, type ICanvasActionButtonsCallbacks } from './components/canvasActionButtons.js';
 import { CanvasStatusPanel, type ICanvasStatusPanelCallbacks } from './components/canvasStatusPanel.js';
 import { showConfirmDialog } from './components/confirmDialog.js';
-import type { CanvasViewport, BackgroundPattern, Sandbox } from '../../common/canvas/canvasTypes.js';
+import { EditorFullscreen } from './components/editorFullscreen.js';
+import type { CanvasViewport, BackgroundPattern, Sandbox, DevicePreset } from '../../common/canvas/canvasTypes.js';
+
+/**
+ * Canvas interaction modes
+ * - overview: Default mode - see all components, pan/zoom canvas
+ * - focus: Zoomed on one component, still in canvas context
+ * - fullscreen: Component takes full screen, isolated viewing/editing
+ */
+export type CanvasInteractionMode = 'overview' | 'focus' | 'fullscreen';
 import { IWebviewService } from '../../../webview/browser/webview.js';
 import { SAMPLE_COMPONENTS, getSampleComponent } from './data/sampleComponents.js';
 import { getPreviewManager } from './services/previewManager.js';
@@ -58,6 +67,7 @@ export class CanvasEditor extends EditorPane {
 	private viewport: CanvasViewport = { x: 0, y: 0, scale: 1 };
 	private backgroundColor: string = '#1a1a1a';
 	private backgroundPattern: BackgroundPattern = 'dots';
+	private globalDeviceMode: DevicePreset = 'auto';
 
 	// Sandbox management
 	private sandboxes: Map<string, Sandbox> = new Map();
@@ -67,6 +77,9 @@ export class CanvasEditor extends EditorPane {
 
 	// Focus mode state - stores viewport before focus for restoration
 	private preFocusViewport: CanvasViewport | null = null;
+
+	// Canvas interaction mode state (prefixed to indicate it may be used for future interaction features)
+	private editorFullscreen: EditorFullscreen | undefined;
 
 	// Interaction state
 	private isPanning: boolean = false;
@@ -243,6 +256,11 @@ export class CanvasEditor extends EditorPane {
 			},
 			onColorChange: (color: string) => {
 				this.setBackgroundColor(color);
+			},
+			onDeviceModeChange: (mode: DevicePreset) => {
+				this.setGlobalDeviceMode(mode);
+				// Update status panel indicator
+				this.canvasStatusPanel?.setGlobalDeviceMode(mode);
 			}
 		};
 
@@ -252,6 +270,7 @@ export class CanvasEditor extends EditorPane {
 		this.canvasActionButtons.setPattern(this.backgroundPattern);
 		this.canvasActionButtons.setBackgroundColor(this.backgroundColor);
 		this.canvasActionButtons.setStatusPanelVisible(this.showStatusPanel);
+		this.canvasActionButtons.setDeviceMode(this.globalDeviceMode);
 	}
 
 	/**
@@ -287,6 +306,9 @@ export class CanvasEditor extends EditorPane {
 			},
 			onResetPositions: () => {
 				this.resetPositions();
+			},
+			onDeviceModeChange: (mode: DevicePreset) => {
+				this.setGlobalDeviceMode(mode);
 			}
 		};
 
@@ -622,10 +644,14 @@ export class CanvasEditor extends EditorPane {
 			onDoubleClick: (id) => this.focusSandbox(id),
 			onDragStart: (id, e) => this.startSandboxDrag(id, e),
 			onDelete: (id) => this.deleteSandbox(id),
-			onExpand: (id) => this.expandSandbox(id)
+			onExpand: (id) => this.expandSandbox(id),
+			onDeviceModeChange: (id, mode) => this.handleSandboxDeviceModeChange(id, mode)
 		};
 
 		const card = new SandboxCard(this.canvasContent, sandbox, callbacks, this.webviewService);
+
+		// Apply current global device mode to the new card
+		card.setGlobalDeviceMode(this.globalDeviceMode);
 		this.sandboxCards.set(sandbox.id, card);
 
 		// Update status panel component count
@@ -897,11 +923,78 @@ export class CanvasEditor extends EditorPane {
 	}
 
 	/**
-	 * Expand a sandbox to fullscreen/modal view
+	 * Expand a sandbox to editor fullscreen view
+	 * Uses position: absolute to stay within editor container
+	 * Bottom action bar remains visible for tools
 	 */
 	private expandSandbox(id: string): void {
-		// TODO: Implement fullscreen expand view
-		console.log(`[CanvasEditor] Expand sandbox: ${id}`);
+		if (!this.container) {
+			return;
+		}
+
+		const sandbox = this.sandboxes.get(id);
+		if (!sandbox) {
+			console.warn(`[CanvasEditor] Cannot expand - sandbox not found: ${id}`);
+			return;
+		}
+
+		// Close any existing editor fullscreen
+		if (this.editorFullscreen) {
+			this.editorFullscreen.dispose();
+			this.editorFullscreen = undefined;
+		}
+
+		// Hide canvas UI elements EXCEPT bottom action bar (it stays visible)
+		this.setCanvasUIVisibility(false);
+
+		// Create editor fullscreen - passes container (not document.body)
+		// This keeps activity bar and sidebar accessible
+		this.editorFullscreen = new EditorFullscreen(
+			this.container,  // Editor container, not document.body
+			sandbox,
+			{
+				onClose: () => {
+					this.exitFullscreenMode();
+				},
+				onDeviceChange: (device) => {
+					console.log(`[CanvasEditor] Device changed to: ${device}`);
+				}
+			},
+			this.webviewService
+		);
+
+		console.log(`[CanvasEditor] Editor fullscreen activated for: ${id}`);
+	}
+
+	/**
+	 * Exit fullscreen mode and return to overview
+	 */
+	private exitFullscreenMode(): void {
+		if (this.editorFullscreen) {
+			this.editorFullscreen.dispose();
+			this.editorFullscreen = undefined;
+		}
+
+		// Show canvas UI elements
+		this.setCanvasUIVisibility(true);
+
+		console.log('[CanvasEditor] Editor fullscreen deactivated');
+	}
+
+	/**
+	 * Show/hide canvas UI elements (toolbar, action bars, status panel)
+	 * Note: Bottom action bar stays visible in fullscreen mode for tools access
+	 */
+	private setCanvasUIVisibility(visible: boolean): void {
+		this.floatingToolbar?.setVisible(visible);
+		this.canvasActionButtons?.setVisible(visible);
+		this.canvasStatusPanel?.setVisible(visible);
+
+		// Bottom action bar always stays visible (even in fullscreen) for tools
+		// But we need to tell it whether status panel is visible so it adjusts its bottom position
+		// When status panel is hidden (fullscreen mode), action bar moves to lower position
+		this.bottomActionBar?.setStatusPanelVisible(visible);
+		this.bottomActionBar?.setVisible(true); // Always visible
 	}
 
 	/**
@@ -974,6 +1067,55 @@ export class CanvasEditor extends EditorPane {
 	}
 
 	// ============================================
+	// Device Mode Management
+	// ============================================
+
+	/**
+	 * Set global device mode for all sandboxes
+	 *
+	 * Behavior:
+	 * - Auto mode: Each sandbox can have its own device mode (respects overrides)
+	 * - Desktop/Tablet/Mobile: Force ALL sandboxes to this mode, clearing any per-sandbox overrides
+	 */
+	private setGlobalDeviceMode(mode: DevicePreset): void {
+		this.globalDeviceMode = mode;
+
+		if (mode === 'auto') {
+			// Auto mode - just propagate the global mode, each sandbox keeps its own override
+			for (const card of this.sandboxCards.values()) {
+				card.setGlobalDeviceMode(mode);
+			}
+			console.log(`[CanvasEditor] Global device mode set to: ${mode} (respecting individual overrides)`);
+		} else {
+			// Desktop/Tablet/Mobile - force ALL sandboxes to this mode
+			// Clear any per-sandbox overrides and apply the forced mode
+			for (const [id, card] of this.sandboxCards.entries()) {
+				// Clear the sandbox override in data
+				const sandbox = this.sandboxes.get(id);
+				if (sandbox) {
+					sandbox.deviceMode = undefined;
+				}
+				// Force the mode on the card
+				card.forceDeviceMode(mode);
+			}
+			console.log(`[CanvasEditor] Global device mode FORCED to: ${mode} (cleared all overrides)`);
+		}
+	}
+
+	/**
+	 * Handle per-sandbox device mode change
+	 * When a user changes device mode on individual sandbox, it becomes an override
+	 */
+	private handleSandboxDeviceModeChange(id: string, mode: DevicePreset): void {
+		const sandbox = this.sandboxes.get(id);
+		if (sandbox) {
+			// Store the device mode override in the sandbox data
+			sandbox.deviceMode = mode;
+			console.log(`[CanvasEditor] Sandbox ${id} device mode override set to: ${mode}`);
+		}
+	}
+
+	// ============================================
 	// EditorPane Lifecycle
 	// ============================================
 
@@ -1003,6 +1145,9 @@ export class CanvasEditor extends EditorPane {
 	}
 
 	override dispose(): void {
+		// Cleanup editor fullscreen if open
+		this.editorFullscreen?.dispose();
+
 		// Cleanup UI components
 		this.floatingToolbar?.dispose();
 		this.bottomActionBar?.dispose();

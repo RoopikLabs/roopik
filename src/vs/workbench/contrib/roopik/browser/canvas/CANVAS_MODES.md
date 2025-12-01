@@ -32,6 +32,7 @@ The default canvas state where users can see all components as thumbnails on the
 ### User Actions
 - **Single click** on sandbox → Select (brings to front)
 - **Double click** on sandbox → Enter Focus Mode
+- **Click reload button (↻)** → Re-render component (fixes CDN errors)
 - **Click expand button (↗)** → Enter Fullscreen Mode
 - **Drag sandbox label** → Reposition
 - **Scroll wheel** → Zoom in/out
@@ -89,69 +90,75 @@ preFocusViewport: CanvasViewport    // Saved viewport before focus
 
 ## 3. Fullscreen Mode
 
-**State**: `interactionMode = 'fullscreen'`, `fullscreenOverlay` active
+**State**: `interactionMode = 'fullscreen'`, `editorFullscreen` active
 
 ### Description
-Opens the component in a completely isolated full-screen overlay for detailed viewing and future editing capabilities.
+Opens the component in an editor-contained fullscreen overlay for detailed viewing and future editing capabilities. Activity bar and sidebar remain accessible.
 
 ### Features
-- Component renders in isolated overlay (z-index 10000)
-- All canvas UI is hidden
-- Device presets for responsive preview:
+- Component renders in editor-contained overlay (position: absolute, z-index: 100)
+- Canvas UI is hidden (except bottom action bar)
+- Device presets for responsive preview (scale to fit while maintaining aspect ratio):
   - **Auto**: Fills available space
-  - **Desktop**: 1280×800px
-  - **Tablet**: 768×1024px
-  - **Mobile**: 375×667px
-- Zoom controls (+/- and reset, range 25%-200%)
+  - **Desktop**: 1280×800px (max, scales down on smaller screens)
+  - **Tablet**: 768×1024px (max, scales down on smaller screens)
+  - **Mobile**: 375×667px (max, scales down on smaller screens)
+- Size indicator shows actual dimensions and scale percentage
+- Native browser zoom (Ctrl+/-, pinch) works inside webview
 - ESC key to exit
 - New webview instance (independent from canvas sandbox)
+- Responsive resize handling - updates dimensions on window resize
 
 ### User Actions
-- **Click device buttons** → Switch preview size
-- **Click zoom controls** → Adjust zoom level
+- **Click device buttons** → Switch preview size (scales to fit)
+- **Click reload button** → Re-render component (fixes CDN errors)
+- **Ctrl+/- or pinch** → Native browser zoom inside webview
 - **Press ESC** → Exit to previous mode
 - **Click X button** → Exit to previous mode
 
 ### UI Components
 ```
-┌─────────────────────────────────────────────────────────┐
-│ [Component Name] [Fullscreen]  [Auto][Desktop][Tablet]  │
-│                               [Mobile]  [- 100% +] [X]  │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│                                                         │
-│                    ┌───────────────┐                    │
-│                    │               │                    │
-│                    │   Component   │                    │
-│                    │   Preview     │                    │
-│                    │               │                    │
-│                    └───────────────┘                    │
-│                                                         │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────┐
+│ [Component Name]    [Auto][Desktop][Tablet][Mobile] 1024×640 (4:5) [↻][X] │
+├───────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│                                                                           │
+│                    ┌───────────────┐                                      │
+│                    │               │                                      │
+│                    │   Component   │  ← Scales to fit available space     │
+│                    │   Preview     │    while maintaining aspect ratio    │
+│                    │               │    (never scales up beyond 1:1)      │
+│                    └───────────────┘                                      │
+│                                                                           │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+
+[↻] = Reload button (re-renders component, useful for CDN errors)
+[X] = Close button (ESC also works)
+Size indicator shows ratio (e.g., 1:1, 4:5, 3:4) instead of percentage
 ```
 
 ### State Variables
 ```typescript
-fullscreenOverlay: FullscreenOverlay | undefined  // Overlay instance
+editorFullscreen: EditorFullscreen | undefined  // Fullscreen instance
 ```
 
 ### Code Flow
 1. `expandSandbox(id)` called when expand button clicked
 2. Sets `interactionMode = 'fullscreen'`
-3. Hides canvas UI with `setCanvasUIVisibility(false)`
-4. Creates `FullscreenOverlay` instance
-5. Overlay creates its own webview and renders component
+3. Hides canvas UI with `setCanvasUIVisibility(false)` (except bottom action bar)
+4. Creates `EditorFullscreen` instance
+5. Fullscreen creates its own webview and renders component
 
 ### Exit Flow
 1. `exitFullscreenMode()` called (via ESC or close button)
-2. Disposes `fullscreenOverlay`
+2. Disposes `editorFullscreen`
 3. Restores `interactionMode` based on `focusedSandboxId`
 4. Shows canvas UI with `setCanvasUIVisibility(true)`
 
 ### Code Location
 - `canvasEditor.ts`: `expandSandbox()`, `exitFullscreenMode()`, `setCanvasUIVisibility()`
-- `fullscreenOverlay.ts`: Full implementation of overlay UI
+- `editorFullscreen.ts`: Full implementation of fullscreen UI
 
 ---
 
@@ -191,10 +198,10 @@ fullscreenOverlay: FullscreenOverlay | undefined  // Overlay instance
 |------|---------|
 | `canvasEditor.ts` | Main editor, mode state management |
 | `sandboxCard.ts` | Sandbox UI, triggers for focus/expand |
-| `fullscreenOverlay.ts` | Fullscreen mode overlay |
+| `editorFullscreen.ts` | Editor-contained fullscreen mode |
 | `gridManager.ts` | Viewport calculations for focus mode |
 | `floatingToolbar.ts` | Top toolbar (hidden in fullscreen) |
-| `bottomActionBar.ts` | Bottom action bar (hidden in fullscreen) |
+| `bottomActionBar.ts` | Bottom action bar (visible in fullscreen) |
 | `canvasActionButtons.ts` | Action buttons (hidden in fullscreen) |
 | `canvasStatusPanel.ts` | Status panel (hidden in fullscreen) |
 

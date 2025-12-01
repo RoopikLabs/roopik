@@ -4,9 +4,11 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
-import { getWindow } from '../../../../../../base/browser/dom.js';
-import type { Sandbox, SandboxState } from '../../../common/canvas/canvasTypes.js';
+import { getWindow, clearNode } from '../../../../../../base/browser/dom.js';
+import type { Sandbox, SandboxState, DevicePreset } from '../../../common/canvas/canvasTypes.js';
+import { DEVICE_PRESETS } from '../../../common/canvas/canvasTypes.js';
 import { IWebviewService, IWebviewElement } from '../../../../webview/browser/webview.js';
+import { createDeviceIcon, getNextDeviceMode } from './deviceIcons.js';
 
 /**
  * Sandbox Card Callbacks
@@ -17,6 +19,8 @@ export interface ISandboxCardCallbacks {
 	onDragStart: (id: string, e: MouseEvent) => void;
 	onDelete: (id: string) => void;
 	onExpand: (id: string) => void;
+	onReload?: (id: string) => void;  // Optional - reload component
+	onDeviceModeChange?: (id: string, mode: DevicePreset) => void;  // Per-sandbox device mode change
 }
 
 /**
@@ -36,6 +40,7 @@ export interface ISandboxCardCallbacks {
 export class SandboxCard extends Disposable {
 	private container: HTMLElement;
 	private webviewElement: IWebviewElement | undefined;
+	private webviewWrapper: HTMLElement | undefined;  // Wrapper for centering
 	private webviewContainer: HTMLElement | undefined;
 	private labelElement: HTMLElement;
 	private actionButtons: HTMLElement | undefined;
@@ -47,6 +52,10 @@ export class SandboxCard extends Disposable {
 	private _isDragging: boolean = false;
 	private _isOverlapping: boolean = false; // Visual overlap indicator
 	private _state: SandboxState = 'loading';
+
+	// Device emulation state
+	private _globalDeviceMode: DevicePreset = 'auto';     // Global device mode from canvas
+	private deviceModeButton: HTMLElement | undefined;
 
 	constructor(
 		private parent: HTMLElement,
@@ -229,6 +238,16 @@ export class SandboxCard extends Disposable {
 		container.style.opacity = '0';
 		container.style.transition = 'opacity 0.2s ease';
 
+		// Device mode toggle button
+		this.deviceModeButton = this.createDeviceModeButton();
+		container.appendChild(this.deviceModeButton);
+
+		// Reload button
+		const reloadBtn = this.createActionButton('Reload component', this.createReloadIcon(), () => {
+			this.reloadComponent();
+		});
+		container.appendChild(reloadBtn);
+
 		// Expand button
 		const expandBtn = this.createActionButton('Expand to fullscreen', this.createExpandIcon(), () => {
 			this.callbacks.onExpand(this.sandbox.id);
@@ -242,6 +261,201 @@ export class SandboxCard extends Disposable {
 		container.appendChild(deleteBtn);
 
 		return container;
+	}
+
+	/**
+	 * Create device mode toggle button that cycles through modes
+	 */
+	private createDeviceModeButton(): HTMLElement {
+		const btn = document.createElement('button');
+		btn.className = 'sandbox-action-btn device-mode-btn';
+		this.updateDeviceModeButtonUI(btn);
+
+		btn.style.background = 'rgba(59, 130, 246, 0.15)';
+		btn.style.border = '1px solid rgba(59, 130, 246, 0.3)';
+		btn.style.padding = '2px 6px';
+		btn.style.cursor = 'pointer';
+		btn.style.display = 'flex';
+		btn.style.alignItems = 'center';
+		btn.style.justifyContent = 'center';
+		btn.style.gap = '3px';
+		btn.style.transition = 'all 0.2s ease';
+		btn.style.borderRadius = '4px';
+		btn.style.fontSize = '10px';
+		btn.style.fontWeight = '500';
+		btn.style.color = '#60a5fa';
+		btn.style.fontFamily = 'inherit';
+
+		btn.addEventListener('mouseenter', () => {
+			btn.style.background = 'rgba(59, 130, 246, 0.25)';
+			btn.style.borderColor = 'rgba(59, 130, 246, 0.5)';
+		});
+
+		btn.addEventListener('mouseleave', () => {
+			btn.style.background = 'rgba(59, 130, 246, 0.15)';
+			btn.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+		});
+
+		btn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			this.cycleDeviceMode();
+		});
+
+		return btn;
+	}
+
+	/**
+	 * Update device mode button UI to reflect current mode
+	 */
+	private updateDeviceModeButtonUI(btn?: HTMLElement): void {
+		const button = btn || this.deviceModeButton;
+		if (!button) return;
+
+		const effectiveMode = this.getEffectiveDeviceMode();
+		const config = DEVICE_PRESETS[effectiveMode];
+		const hasOverride = this.sandbox.deviceMode !== undefined;
+
+		// Clear content using VSCode's clearNode (avoids TrustedHTML issues)
+		clearNode(button);
+
+		// SVG Icon (using shared device icons)
+		const icon = createDeviceIcon(effectiveMode, 14);
+		icon.style.cssText = 'flex-shrink: 0;';
+		button.appendChild(icon);
+
+		// Override indicator (show asterisk if sandbox has its own mode)
+		if (hasOverride) {
+			const indicator = document.createElement('span');
+			indicator.textContent = '*';
+			indicator.style.color = '#fbbf24';
+			indicator.style.marginLeft = '2px';
+			indicator.title = 'Custom device mode (click to cycle, hold Shift+click to reset to global)';
+			button.appendChild(indicator);
+		}
+
+		// Update tooltip
+		const sizeText = config.width === 'auto' ? 'Auto size' : `${config.width}×${config.height}`;
+		button.title = `Device: ${config.label} (${sizeText})${hasOverride ? ' - Override' : ' - Global'}\nClick to cycle, Shift+click to reset`;
+	}
+
+	/**
+	 * Get effective device mode (sandbox override or global)
+	 */
+	private getEffectiveDeviceMode(): DevicePreset {
+		return this.sandbox.deviceMode ?? this._globalDeviceMode;
+	}
+
+	/**
+	 * Cycle through device modes
+	 */
+	private cycleDeviceMode(): void {
+		const currentMode = this.getEffectiveDeviceMode();
+		const nextMode = getNextDeviceMode(currentMode);
+
+		// Set as sandbox override
+		this.sandbox.deviceMode = nextMode;
+
+		// Update button UI
+		this.updateDeviceModeButtonUI();
+
+		// Apply device emulation
+		this.applyDeviceEmulation();
+
+		// Notify parent
+		this.callbacks.onDeviceModeChange?.(this.sandbox.id, nextMode);
+	}
+
+	/**
+	 * Reset to global device mode (remove sandbox override)
+	 */
+	public resetToGlobalDeviceMode(): void {
+		this.sandbox.deviceMode = undefined;
+		this.updateDeviceModeButtonUI();
+		this.applyDeviceEmulation();
+	}
+
+	/**
+	 * Set global device mode from canvas (respects sandbox override)
+	 * Used when global mode is 'auto' - each sandbox can have its own setting
+	 */
+	public setGlobalDeviceMode(mode: DevicePreset): void {
+		this._globalDeviceMode = mode;
+		// Only update if no sandbox override
+		if (this.sandbox.deviceMode === undefined) {
+			this.updateDeviceModeButtonUI();
+			this.applyDeviceEmulation();
+		}
+	}
+
+	/**
+	 * Force device mode (clears sandbox override and applies forced mode)
+	 * Used when global mode is Desktop/Tablet/Mobile - ALL sandboxes get this mode
+	 */
+	public forceDeviceMode(mode: DevicePreset): void {
+		// Clear the sandbox override
+		this.sandbox.deviceMode = undefined;
+		// Set the global mode
+		this._globalDeviceMode = mode;
+		// Update UI and apply
+		this.updateDeviceModeButtonUI();
+		this.applyDeviceEmulation();
+	}
+
+	/**
+	 * Apply device emulation using CSS transform scaling
+	 * Creates a true viewport emulation where the component sees the actual device width
+	 * Centers the preview in the available space for better UX
+	 */
+	private applyDeviceEmulation(): void {
+		if (!this.webviewContainer) return;
+
+		const mode = this.getEffectiveDeviceMode();
+		const config = DEVICE_PRESETS[mode];
+
+		// Get available space in the sandbox card (minus padding)
+		// The sandbox.width/height is the content area size
+		const availableWidth = this.sandbox.width - 20; // 10px margin on each side
+		const availableHeight = this.sandbox.height - 50; // Account for label area
+
+		if (config.width === 'auto' || config.height === 'auto') {
+			// Auto mode - use natural size, fill all available space
+			this.webviewContainer.style.width = `${availableWidth}px`;
+			this.webviewContainer.style.height = `${availableHeight}px`;
+			this.webviewContainer.style.transform = 'none';
+			this.webviewContainer.style.position = 'relative';
+			this.webviewContainer.style.left = '0';
+			this.webviewContainer.style.top = '0';
+			this.webviewContainer.style.margin = '0';
+		} else {
+			// Device preset - use CSS transform for true emulation
+			// CENTERED in available space with maximum scale while maintaining aspect ratio
+			const deviceWidth = config.width as number;
+			const deviceHeight = config.height as number;
+
+			// Calculate scale to fit within available space (use all space, maintain aspect ratio)
+			const scaleX = availableWidth / deviceWidth;
+			const scaleY = availableHeight / deviceHeight;
+			const scale = Math.min(scaleX, scaleY, 1); // Never scale up beyond 1:1
+
+			// Calculate the visual size after scaling
+			const visualWidth = deviceWidth * scale;
+			const visualHeight = deviceHeight * scale;
+
+			// Calculate centering offsets
+			const offsetX = (availableWidth - visualWidth) / 2;
+			const offsetY = (availableHeight - visualHeight) / 2;
+
+			// Apply transform scaling with centering
+			// The webview gets the FULL device size, CSS transform scales it visually
+			this.webviewContainer.style.width = `${deviceWidth}px`;
+			this.webviewContainer.style.height = `${deviceHeight}px`;
+			this.webviewContainer.style.transform = `scale(${scale})`;
+			this.webviewContainer.style.transformOrigin = 'top left';
+			this.webviewContainer.style.position = 'absolute';
+			this.webviewContainer.style.left = `${offsetX}px`;
+			this.webviewContainer.style.top = `${offsetY}px`;
+			this.webviewContainer.style.margin = '0';
+		}
 	}
 
 	private createActionButton(title: string, icon: HTMLElement, onClick: () => void, isDanger: boolean = false): HTMLElement {
@@ -334,6 +548,36 @@ export class SandboxCard extends Disposable {
 		return svg as unknown as HTMLElement;
 	}
 
+	private createReloadIcon(): HTMLElement {
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('width', '12');
+		svg.setAttribute('height', '12');
+		svg.setAttribute('viewBox', '0 0 90 90');
+		svg.setAttribute('fill', 'none');
+
+		const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		path.setAttribute(
+			'd',
+			'M75.702 53.014c-2.142 7.995-7.27 14.678-14.439 18.816c-7.168 4.138-15.519 5.239-23.514 3.095c-16.505-4.423-26.335-21.448-21.913-37.953C20.258 20.467 37.286 10.64 53.79 15.06c4.213 1.129 8.076 3.118 11.413 5.809l-8.349 8.35h26.654V2.565l-8.354 8.354c-5.1-4.405-11.133-7.61-17.74-9.381C33.451-4.882 8.735 9.389 2.314 33.35c-6.42 23.961 7.851 48.678 31.811 55.098C38.001 89.486 41.934 90 45.842 90c7.795 0 15.488-2.044 22.42-6.046c10.407-6.008 17.851-15.709 20.962-27.317L75.702 53.014z'
+		);
+		path.setAttribute('fill', 'rgba(255, 255, 255, 0.9)');
+
+		svg.appendChild(path);
+		return svg as unknown as HTMLElement;
+	}
+
+	/**
+	 * Reload the component by re-sending the code to the webview
+	 * This is useful when the component fails to load due to CDN errors or other issues
+	 */
+	private reloadComponent(): void {
+		// Re-send the code to trigger a fresh render
+		this.sendCodeToWebview();
+
+		// Also notify the parent via callback if provided
+		this.callbacks.onReload?.(this.sandbox.id);
+	}
+
 	private showActionButtons(): void {
 		if (this.actionButtons) {
 			this.actionButtons.style.opacity = '1';
@@ -351,16 +595,24 @@ export class SandboxCard extends Disposable {
 	// ============================================
 
 	private createWebview(): void {
-		// Create container for webview
+		// Create wrapper to hold the webview container (needed for centering in device modes)
+		this.webviewWrapper = document.createElement('div');
+		this.webviewWrapper.className = 'sandbox-webview-wrapper';
+		this.webviewWrapper.style.flex = '1';
+		this.webviewWrapper.style.position = 'relative';
+		this.webviewWrapper.style.marginTop = '10px';
+		this.webviewWrapper.style.overflow = 'hidden';
+
+		// Create container for webview (can be positioned absolute for centering)
 		this.webviewContainer = document.createElement('div');
 		this.webviewContainer.className = 'sandbox-webview-container';
-		this.webviewContainer.style.flex = '1';
-		this.webviewContainer.style.position = 'relative';
 		this.webviewContainer.style.background = '#ffffff';
 		this.webviewContainer.style.borderRadius = '8px';
 		this.webviewContainer.style.overflow = 'hidden';
 		this.webviewContainer.style.boxShadow = 'inset 0 0 0 1px rgba(0, 0, 0, 0.1)';
-		this.webviewContainer.style.marginTop = '10px';
+
+		// Add webviewContainer to wrapper
+		this.webviewWrapper.appendChild(this.webviewContainer);
 
 		// Create webview element using VSCode's webview service
 		this.webviewElement = this.webviewService.createWebviewElement({
@@ -391,6 +643,9 @@ export class SandboxCard extends Disposable {
 		setTimeout(() => {
 			this.sendCodeToWebview();
 		}, 500);
+
+		// Apply device emulation sizing after webview is created
+		this.applyDeviceEmulation();
 	}
 
 	private getSandboxHtml(): string {
@@ -411,10 +666,7 @@ export class SandboxCard extends Disposable {
         }
         #root {
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
+            width: 100%;
         }
         .sandbox-error {
             background: #fee;
@@ -612,9 +864,9 @@ export class SandboxCard extends Disposable {
 		this.actionButtons = this.createActionButtons();
 		this.container.appendChild(this.actionButtons);
 
-		// Add webview container
-		if (this.webviewContainer) {
-			this.container.appendChild(this.webviewContainer);
+		// Add webview wrapper (which contains the webview container)
+		if (this.webviewWrapper) {
+			this.container.appendChild(this.webviewWrapper);
 		}
 	}
 
