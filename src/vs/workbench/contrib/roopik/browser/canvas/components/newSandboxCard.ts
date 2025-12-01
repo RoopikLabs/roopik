@@ -4,34 +4,56 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
+import { getWindow, clearNode } from '../../../../../../base/browser/dom.js';
+import type { Sandbox, SandboxState, DevicePreset } from '../../../common/canvas/canvasTypes.js';
+import { DEVICE_PRESETS } from '../../../common/canvas/canvasTypes.js';
 import { IWebviewService, IWebviewElement } from '../../../../webview/browser/webview.js';
-import { getWindow } from '../../../../../../base/browser/dom.js';
-import { Sandbox, DevicePreset, SandboxState } from '../../../common/canvas/canvasTypes.js';
 import { ISandboxPipelineService } from '../../../common/sandboxPipeline/sandboxPipelineService.js';
+import { createDeviceIcon, getNextDeviceMode } from './deviceIcons.js';
 
+/**
+ * New Sandbox Card Callbacks
+ */
 export interface INewSandboxCardCallbacks {
 	onClick: (id: string) => void;
+	onDoubleClick: (id: string) => void;
+	onDragStart: (id: string, e: MouseEvent) => void;
 	onDelete: (id: string) => void;
-	onDoubleClick?: (id: string) => void;
-	onDragStart?: (id: string, e: MouseEvent) => void;
-	onExpand?: (id: string) => void;
+	onExpand: (id: string) => void;
+	onReload?: (id: string) => void;
 	onDeviceModeChange?: (id: string, mode: DevicePreset) => void;
 }
 
 /**
- * New Sandbox Card - Uses ESBuild Pipeline
+ * Sandbox Card - ESBuild Pipeline Version
+ *
+ * This version uses the new ESBuild-based sandbox pipeline for component processing.
+ * UI cloned from the original SandboxCard for consistency.
+ *
+ * Features:
+ * - Glass-morphism design with backdrop blur
+ * - ESBuild pipeline integration
+ * - Device emulation
+ * - Drag handle, action buttons (reload, expand, delete)
+ * - Selection and focus states
  */
 export class NewSandboxCard extends Disposable {
 	private container: HTMLElement;
-	private webviewElement: IWebviewElement | null = null;
-	private webviewContainer: HTMLElement | null = null;
-	private _state: SandboxState = 'loading';
+	private webviewElement: IWebviewElement | undefined;
+	private webviewWrapper: HTMLElement | undefined;
+	private webviewContainer: HTMLElement | undefined;
+	private labelElement: HTMLElement;
+	private actionButtons: HTMLElement | undefined;
 
-	// Visual state
 	private _isSelected: boolean = false;
-	// private _isFocused: boolean = false;
+	private _isFocused: boolean = false;
+	private _isHovered: boolean = false;
 	private _isDragging: boolean = false;
-	// private _isOverlapping: boolean = false;
+	private _isOverlapping: boolean = false;
+
+	// Device emulation state
+	private _globalDeviceMode: DevicePreset = 'auto';
+	private deviceModeButton: HTMLElement | undefined;
 
 	constructor(
 		private parent: HTMLElement,
@@ -42,83 +64,539 @@ export class NewSandboxCard extends Disposable {
 	) {
 		super();
 		this.container = this.createContainer();
+		this.labelElement = this.createLabel();
 		this.createWebview();
 		this.render();
 	}
 
+	// ============================================
+	// Container Creation
+	// ============================================
+
 	private createContainer(): HTMLElement {
 		const container = document.createElement('div');
-		container.className = 'new-sandbox-card';
+		container.className = 'roopik-sandbox-card new-pipeline';
+		container.dataset.sandboxId = this.sandbox.id;
+
+		// Base styles
 		container.style.position = 'absolute';
+		container.style.display = 'flex';
+		container.style.flexDirection = 'column';
+		container.style.borderRadius = '20px';
+		container.style.overflow = 'hidden';
+		container.style.cursor = 'pointer';
+		container.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+
+		// Padding for glass effect
+		container.style.padding = '40px 120px';
+		container.style.margin = '20px';
+
+		// Position and size
 		container.style.left = `${this.sandbox.x}px`;
 		container.style.top = `${this.sandbox.y}px`;
 		container.style.width = `${this.sandbox.width}px`;
 		container.style.height = `${this.sandbox.height}px`;
-		container.style.background = 'linear-gradient(135deg, rgba(40, 40, 45, 0.95) 0%, rgba(30, 30, 35, 0.95) 100%)';
-		container.style.border = '2px solid #4CAF50'; // Green border
-		container.style.borderRadius = '12px';
-		container.style.padding = '12px';
-		container.style.display = 'flex';
-		container.style.flexDirection = 'column';
-		container.style.boxShadow = '0 12px 48px rgba(0, 0, 0, 0.5)';
-		container.style.backdropFilter = 'blur(60px)';
 		container.style.zIndex = String(this.sandbox.zIndex);
-		container.style.transition = 'box-shadow 0.2s ease, border-color 0.2s ease';
 
-		// Add label
-		const label = document.createElement('div');
-		label.textContent = `🚀 NEW: ${this.sandbox.id}`;
-		label.style.color = '#4CAF50';
-		label.style.fontSize = '12px';
-		label.style.fontWeight = 'bold';
-		label.style.marginBottom = '8px';
-		label.style.userSelect = 'none';
-		container.appendChild(label);
-
-		// Add delete button
-		const deleteBtn = document.createElement('button');
-		deleteBtn.textContent = '×';
-		deleteBtn.style.position = 'absolute';
-		deleteBtn.style.top = '8px';
-		deleteBtn.style.right = '8px';
-		deleteBtn.style.background = 'rgba(255, 0, 0, 0.8)';
-		deleteBtn.style.border = 'none';
-		deleteBtn.style.color = 'white';
-		deleteBtn.style.width = '24px';
-		deleteBtn.style.height = '24px';
-		deleteBtn.style.borderRadius = '50%';
-		deleteBtn.style.cursor = 'pointer';
-		deleteBtn.style.fontSize = '18px';
-		deleteBtn.style.lineHeight = '1';
-		deleteBtn.onclick = (e) => {
-			e.stopPropagation();
-			this.callbacks.onDelete(this.sandbox.id);
-		};
-		container.appendChild(deleteBtn);
+		// Glass-morphism styling
+		container.style.background = 'linear-gradient(135deg, rgba(40, 40, 45, 0.25) 0%, rgba(30, 30, 35, 0.25) 100%)';
+		container.style.backdropFilter = 'blur(60px) saturate(250%) brightness(1.1)';
+		(container.style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter = 'blur(60px) saturate(250%) brightness(1.1)';
+		container.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+		container.style.boxShadow = '0 12px 48px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2), inset 0 2px 0 rgba(255, 255, 255, 0.15), inset 0 -2px 0 rgba(255, 255, 255, 0.05)';
 
 		// Event listeners
-		container.onmousedown = (e) => {
-			if (e.target === container || e.target === label) {
-				this.callbacks.onDragStart?.(this.sandbox.id, e);
+		this.setupEventListeners(container);
+
+		this.parent.appendChild(container);
+		return container;
+	}
+
+	private setupEventListeners(container: HTMLElement): void {
+		// Hover
+		container.addEventListener('mouseenter', () => {
+			this._isHovered = true;
+			this.updateVisualState();
+			this.showActionButtons();
+		});
+
+		container.addEventListener('mouseleave', () => {
+			this._isHovered = false;
+			this.updateVisualState();
+			if (!this._isSelected && !this._isFocused) {
+				this.hideActionButtons();
+			}
+		});
+
+		// Click (select)
+		container.addEventListener('click', (e) => {
+			if ((e.target as HTMLElement).closest('.sandbox-action-btn') ||
+				(e.target as HTMLElement).tagName === 'IFRAME') {
+				return;
 			}
 			this.callbacks.onClick(this.sandbox.id);
-		};
+		});
 
-		container.ondblclick = () => this.callbacks.onDoubleClick?.(this.sandbox.id);
+		// Double-click (focus mode)
+		container.addEventListener('dblclick', (e) => {
+			if ((e.target as HTMLElement).tagName === 'IFRAME') {
+				return;
+			}
+			this.callbacks.onDoubleClick(this.sandbox.id);
+		});
+	}
+
+	// ============================================
+	// Label (Drag Handle)
+	// ============================================
+
+	private createLabel(): HTMLElement {
+		const label = document.createElement('div');
+		label.className = 'sandbox-label';
+		label.style.position = 'absolute';
+		label.style.top = '16px';
+		label.style.left = '20px';
+		label.style.display = 'flex';
+		label.style.alignItems = 'center';
+		label.style.gap = '8px';
+		label.style.cursor = 'move';
+		label.style.userSelect = 'none';
+		label.style.zIndex = '10';
+
+		// Drag icon
+		const dragIcon = this.createDragIcon();
+		label.appendChild(dragIcon);
+
+		// ID text
+		const idText = document.createElement('span');
+		idText.style.fontSize = '12px';
+		idText.style.fontWeight = '700';
+		idText.style.color = '#ffffff';
+		idText.style.letterSpacing = '0.05em';
+		idText.style.textTransform = 'uppercase';
+		idText.style.textShadow = '0 2px 8px rgba(0, 0, 0, 0.3)';
+		idText.textContent = this.sandbox.id;
+		label.appendChild(idText);
+
+		// Drag events
+		label.addEventListener('mousedown', (e) => {
+			e.stopPropagation();
+			this._isDragging = true;
+			this.updateVisualState();
+			this.callbacks.onDragStart(this.sandbox.id, e);
+		});
+
+		return label;
+	}
+
+	private createDragIcon(): HTMLElement {
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('width', '14');
+		svg.setAttribute('height', '14');
+		svg.setAttribute('viewBox', '0 0 16 16');
+		svg.setAttribute('fill', 'none');
+		svg.style.opacity = '0.7';
+		svg.style.flexShrink = '0';
+		svg.style.color = '#ffffff';
+
+		// 2x3 dot grid
+		const positions = [
+			[4, 4], [12, 4],
+			[4, 8], [12, 8],
+			[4, 12], [12, 12]
+		];
+
+		for (const [cx, cy] of positions) {
+			const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+			circle.setAttribute('cx', String(cx));
+			circle.setAttribute('cy', String(cy));
+			circle.setAttribute('r', '1.5');
+			circle.setAttribute('fill', 'currentColor');
+			svg.appendChild(circle);
+		}
+
+		return svg as unknown as HTMLElement;
+	}
+
+	// ============================================
+	// Action Buttons
+	// ============================================
+
+	private createActionButtons(): HTMLElement {
+		const container = document.createElement('div');
+		container.className = 'sandbox-actions';
+		container.style.position = 'absolute';
+		container.style.top = '16px';
+		container.style.right = '20px';
+		container.style.display = 'flex';
+		container.style.alignItems = 'center';
+		container.style.gap = '8px';
+		container.style.zIndex = '10';
+		container.style.opacity = '0';
+		container.style.transition = 'opacity 0.2s ease';
+
+		// Device mode button
+		this.deviceModeButton = this.createDeviceModeButton();
+		container.appendChild(this.deviceModeButton);
+
+		// Reload button
+		const reloadBtn = this.createActionButton('Reload component', this.createReloadIcon(), () => {
+			this.reloadComponent();
+		});
+		container.appendChild(reloadBtn);
+
+		// Expand button
+		const expandBtn = this.createActionButton('Expand to fullscreen', this.createExpandIcon(), () => {
+			this.callbacks.onExpand(this.sandbox.id);
+		});
+		container.appendChild(expandBtn);
+
+		// Delete button
+		const deleteBtn = this.createActionButton('Delete sandbox', this.createDeleteIcon(), () => {
+			this.callbacks.onDelete(this.sandbox.id);
+		}, true);
+		container.appendChild(deleteBtn);
 
 		return container;
 	}
 
-	private createWebview(): void {
-		this.webviewContainer = document.createElement('div');
-		this.webviewContainer.style.flex = '1';
-		this.webviewContainer.style.background = '#ffffff';
-		this.webviewContainer.style.borderRadius = '8px';
-		this.webviewContainer.style.overflow = 'hidden';
-		this.webviewContainer.style.position = 'relative';
+	private createDeviceModeButton(): HTMLElement {
+		const btn = document.createElement('button');
+		btn.className = 'sandbox-action-btn device-mode-btn';
+		this.updateDeviceModeButtonUI(btn);
 
-		this.webviewElement = this.webviewService.createWebviewElement({
-			title: `New Sandbox: ${this.sandbox.id}`,
+		btn.style.background = 'rgba(59, 130, 246, 0.15)';
+		btn.style.border = '1px solid rgba(59, 130, 246, 0.3)';
+		btn.style.padding = '2px 6px';
+		btn.style.cursor = 'pointer';
+		btn.style.display = 'flex';
+		btn.style.alignItems = 'center';
+		btn.style.justifyContent = 'center';
+		btn.style.gap = '3px';
+		btn.style.transition = 'all 0.2s ease';
+		btn.style.borderRadius = '4px';
+		btn.style.fontSize = '10px';
+		btn.style.fontWeight = '500';
+		btn.style.color = '#60a5fa';
+		btn.style.fontFamily = 'inherit';
+
+		btn.addEventListener('mouseenter', () => {
+			btn.style.background = 'rgba(59, 130, 246, 0.25)';
+			btn.style.borderColor = 'rgba(59, 130, 246, 0.5)';
+		});
+
+		btn.addEventListener('mouseleave', () => {
+			btn.style.background = 'rgba(59, 130, 246, 0.15)';
+			btn.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+		});
+
+		btn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			this.cycleDeviceMode();
+		});
+
+		return btn;
+	}
+
+	private updateDeviceModeButtonUI(btn?: HTMLElement): void {
+		const button = btn || this.deviceModeButton;
+		if (!button) return;
+
+		const effectiveMode = this.getEffectiveDeviceMode();
+		const config = DEVICE_PRESETS[effectiveMode];
+		const hasOverride = this.sandbox.deviceMode !== undefined;
+
+		clearNode(button);
+
+		const icon = createDeviceIcon(effectiveMode, 14);
+		icon.style.cssText = 'flex-shrink: 0;';
+		button.appendChild(icon);
+
+		if (hasOverride) {
+			const indicator = document.createElement('span');
+			indicator.textContent = '*';
+			indicator.style.color = '#fbbf24';
+			indicator.style.marginLeft = '2px';
+			indicator.title = 'Custom device mode';
+			button.appendChild(indicator);
+		}
+
+		const sizeText = config.width === 'auto' ? 'Auto size' : `${config.width}×${config.height}`;
+		button.title = `Device: ${config.label} (${sizeText})${hasOverride ? ' - Override' : ' - Global'}\nClick to cycle`;
+	}
+
+	private getEffectiveDeviceMode(): DevicePreset {
+		return this.sandbox.deviceMode ?? this._globalDeviceMode;
+	}
+
+	private cycleDeviceMode(): void {
+		const currentMode = this.getEffectiveDeviceMode();
+		const nextMode = getNextDeviceMode(currentMode);
+
+		this.sandbox.deviceMode = nextMode;
+		this.updateDeviceModeButtonUI();
+		this.applyDeviceEmulation();
+		this.callbacks.onDeviceModeChange?.(this.sandbox.id, nextMode);
+	}
+
+	/**
+	 * Reset to global device mode (remove sandbox override)
+	 */
+	public resetToGlobalDeviceMode(): void {
+		this.sandbox.deviceMode = undefined;
+		this.updateDeviceModeButtonUI();
+		this.applyDeviceEmulation();
+	}
+
+	public setGlobalDeviceMode(mode: DevicePreset): void {
+		this._globalDeviceMode = mode;
+		if (this.sandbox.deviceMode === undefined) {
+			this.updateDeviceModeButtonUI();
+			this.applyDeviceEmulation();
+		}
+	}
+
+	public forceDeviceMode(mode: DevicePreset): void {
+		this.sandbox.deviceMode = undefined;
+		this._globalDeviceMode = mode;
+		this.updateDeviceModeButtonUI();
+		this.applyDeviceEmulation();
+	}
+
+	private applyDeviceEmulation(): void {
+		if (!this.webviewContainer) return;
+
+		const mode = this.getEffectiveDeviceMode();
+		const config = DEVICE_PRESETS[mode];
+
+		const availableWidth = this.sandbox.width - 20;
+		const availableHeight = this.sandbox.height - 50;
+
+		if (config.width === 'auto' || config.height === 'auto') {
+			this.webviewContainer.style.width = `${availableWidth}px`;
+			this.webviewContainer.style.height = `${availableHeight}px`;
+			this.webviewContainer.style.transform = 'none';
+			this.webviewContainer.style.position = 'relative';
+			this.webviewContainer.style.left = '0';
+			this.webviewContainer.style.top = '0';
+			this.webviewContainer.style.margin = '0';
+		} else {
+			const deviceWidth = config.width as number;
+			const deviceHeight = config.height as number;
+
+			const scaleX = availableWidth / deviceWidth;
+			const scaleY = availableHeight / deviceHeight;
+			const scale = Math.min(scaleX, scaleY, 1);
+
+			const visualWidth = deviceWidth * scale;
+			const visualHeight = deviceHeight * scale;
+
+			const offsetX = (availableWidth - visualWidth) / 2;
+			const offsetY = (availableHeight - visualHeight) / 2;
+
+			this.webviewContainer.style.width = `${deviceWidth}px`;
+			this.webviewContainer.style.height = `${deviceHeight}px`;
+			this.webviewContainer.style.transform = `scale(${scale})`;
+			this.webviewContainer.style.transformOrigin = 'top left';
+			this.webviewContainer.style.position = 'absolute';
+			this.webviewContainer.style.left = `${offsetX}px`;
+			this.webviewContainer.style.top = `${offsetY}px`;
+			this.webviewContainer.style.margin = '0';
+		}
+	}
+
+	private createActionButton(title: string, icon: HTMLElement, onClick: () => void, isDanger: boolean = false): HTMLElement {
+		const btn = document.createElement('button');
+		btn.className = 'sandbox-action-btn';
+		btn.title = title;
+		btn.style.background = 'transparent';
+		btn.style.border = 'none';
+		btn.style.padding = '4px';
+		btn.style.cursor = 'pointer';
+		btn.style.display = 'flex';
+		btn.style.alignItems = 'center';
+		btn.style.justifyContent = 'center';
+		btn.style.transition = 'all 0.2s ease';
+		btn.style.opacity = '0.7';
+		btn.style.borderRadius = '4px';
+
+		btn.appendChild(icon);
+
+		btn.addEventListener('mouseenter', () => {
+			btn.style.opacity = '1';
+			if (isDanger) {
+				const svg = btn.querySelector('svg');
+				if (svg) svg.setAttribute('stroke', '#ef4444');
+			}
+		});
+
+		btn.addEventListener('mouseleave', () => {
+			btn.style.opacity = '0.7';
+			if (isDanger) {
+				const svg = btn.querySelector('svg');
+				if (svg) svg.setAttribute('stroke', 'rgba(255, 255, 255, 0.9)');
+			}
+		});
+
+		btn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			onClick();
+		});
+
+		return btn;
+	}
+
+	private createExpandIcon(): HTMLElement {
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('width', '18');
+		svg.setAttribute('height', '18');
+		svg.setAttribute('viewBox', '0 0 16 16');
+		svg.setAttribute('fill', 'none');
+		svg.setAttribute('stroke', 'rgba(255, 255, 255, 0.9)');
+		svg.setAttribute('stroke-width', '1.5');
+		svg.setAttribute('stroke-linecap', 'round');
+		svg.setAttribute('stroke-linejoin', 'round');
+
+		const paths = ['M2 6 L2 2 L6 2', 'M10 2 L14 2 L14 6', 'M14 10 L14 14 L10 14', 'M6 14 L2 14 L2 10'];
+		for (const d of paths) {
+			const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+			path.setAttribute('d', d);
+			svg.appendChild(path);
+		}
+
+		return svg as unknown as HTMLElement;
+	}
+
+	private createDeleteIcon(): HTMLElement {
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('width', '18');
+		svg.setAttribute('height', '18');
+		svg.setAttribute('viewBox', '0 0 16 16');
+		svg.setAttribute('fill', 'none');
+		svg.setAttribute('stroke', 'rgba(255, 255, 255, 0.9)');
+		svg.setAttribute('stroke-width', '2');
+		svg.setAttribute('stroke-linecap', 'round');
+		svg.setAttribute('stroke-linejoin', 'round');
+
+		const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		path1.setAttribute('d', 'M4 4 L12 12');
+		svg.appendChild(path1);
+
+		const path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		path2.setAttribute('d', 'M12 4 L4 12');
+		svg.appendChild(path2);
+
+		return svg as unknown as HTMLElement;
+	}
+
+	private createReloadIcon(): HTMLElement {
+		const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('width', '12');
+		svg.setAttribute('height', '12');
+		svg.setAttribute('viewBox', '0 0 90 90');
+		svg.setAttribute('fill', 'none');
+
+		const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		path.setAttribute(
+			'd',
+			'M75.702 53.014c-2.142 7.995-7.27 14.678-14.439 18.816c-7.168 4.138-15.519 5.239-23.514 3.095c-16.505-4.423-26.335-21.448-21.913-37.953C20.258 20.467 37.286 10.64 53.79 15.06c4.213 1.129 8.076 3.118 11.413 5.809l-8.349 8.35h26.654V2.565l-8.354 8.354c-5.1-4.405-11.133-7.61-17.74-9.381C33.451-4.882 8.735 9.389 2.314 33.35c-6.42 23.961 7.851 48.678 31.811 55.098C38.001 89.486 41.934 90 45.842 90c7.795 0 15.488-2.044 22.42-6.046c10.407-6.008 17.851-15.709 20.962-27.317L75.702 53.014z'
+		);
+		path.setAttribute('fill', 'rgba(255, 255, 255, 0.9)');
+
+		svg.appendChild(path);
+		return svg as unknown as HTMLElement;
+	}
+
+	/**
+	 * Smart reload - recreates webview and forces fresh processing
+	 * This helps when:
+	 * - CDN resources fail to load
+	 * - HTTP timeouts occur
+	 * - Component gets stuck in error state
+	 * - Cache issues prevent proper rendering
+	 */
+	private reloadComponent(): void {
+		console.log('[NewSandboxCard] Smart reload initiated...');
+
+		// Clear error state
+		this.sandbox.state = 'loading';
+		this.sandbox.errorMessage = undefined;
+
+		// Dispose old webview completely
+		if (this.webviewElement) {
+			this.webviewElement.dispose();
+			this.webviewElement = undefined;
+		}
+
+		// Clear webview container
+		if (this.webviewContainer) {
+			this.webviewContainer.remove();
+			this.webviewContainer = undefined;
+		}
+
+		if (this.webviewWrapper) {
+			this.webviewWrapper.remove();
+			this.webviewWrapper = undefined;
+		}
+
+		// Recreate fresh webview
+		this.createWebview();
+
+		// Re-render to add webview back to DOM
+		if (this.webviewWrapper) {
+			// Find where to insert (after label, before or after action buttons)
+			const label = this.container.querySelector('.sandbox-label');
+			if (label && label.nextSibling) {
+				this.container.insertBefore(this.webviewWrapper, label.nextSibling);
+			} else {
+				this.container.appendChild(this.webviewWrapper);
+			}
+		}
+
+		// Notify parent
+		this.callbacks.onReload?.(this.sandbox.id);
+
+		console.log('[NewSandboxCard] Smart reload complete - fresh webview created');
+	}
+
+	private showActionButtons(): void {
+		if (this.actionButtons) {
+			this.actionButtons.style.opacity = '1';
+		}
+	}
+
+	private hideActionButtons(): void {
+		if (this.actionButtons) {
+			this.actionButtons.style.opacity = '0';
+		}
+	}
+
+	// ============================================
+	// Webview Creation (ESBuild Pipeline)
+	// ============================================
+
+	private createWebview(): void {
+		this.webviewWrapper = document.createElement('div');
+		this.webviewWrapper.className = 'sandbox-webview-wrapper';
+		this.webviewWrapper.style.position = 'relative';
+		this.webviewWrapper.style.flex = '1';
+		this.webviewWrapper.style.display = 'flex';
+		this.webviewWrapper.style.alignItems = 'center';
+		this.webviewWrapper.style.justifyContent = 'center';
+		this.webviewWrapper.style.overflow = 'hidden';
+
+		this.webviewContainer = document.createElement('div');
+		this.webviewContainer.className = 'sandbox-webview-container';
+		this.webviewContainer.style.width = '100%';
+		this.webviewContainer.style.height = '100%';
+		this.webviewContainer.style.borderRadius = '12px';
+		this.webviewContainer.style.overflow = 'hidden';
+		this.webviewContainer.style.background = '#ffffff';
+
+		this.webviewWrapper.appendChild(this.webviewContainer);
+
+		const webview = this.webviewService.createWebviewElement({
+			title: `Sandbox: ${this.sandbox.id}`,
 			options: {
 				enableFindWidget: false,
 				retainContextWhenHidden: true
@@ -130,73 +608,74 @@ export class NewSandboxCard extends Disposable {
 			extension: undefined
 		});
 
-		this.webviewElement.mountTo(this.webviewContainer, getWindow(this.parent));
-		this.webviewElement.setHtml(this.getSandboxHtml());
+		this.webviewElement = webview;
 
-		this._register(this.webviewElement.onMessage((e: any) => {
+		// Mount webview to container using VSCode's mountTo API
+		webview.mountTo(this.webviewContainer, getWindow(this.parent));
+
+		// Set HTML content
+		webview.setHtml(this.getWebviewHTML());
+
+		// Listen for messages
+		this._register(webview.onMessage(e => {
 			this.onWebviewMessage(e.message);
 		}));
 
-		// Process component through pipeline
+		// Process component after a short delay
 		setTimeout(() => {
 			this.processComponentWithPipeline();
 		}, 500);
 	}
 
-	private getSandboxHtml(): string {
+	private getWebviewHTML(): string {
 		return `<!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-eval' 'unsafe-inline' blob: https://esm.sh; style-src 'unsafe-inline'; connect-src https://esm.sh;">
-    <title>New Roopik Sandbox</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: system-ui, sans-serif; background: #fff; }
-        #root { min-height: 100vh; width: 100%; }
-        .loading { padding: 20px; color: #666; }
-        .error { padding: 20px; background: #fee; border-left: 4px solid #c33; color: #c33; }
-    </style>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta http-equiv="Content-Security-Policy" content="
+		default-src 'none';
+		script-src 'unsafe-inline' 'unsafe-eval' blob: https://esm.sh;
+		style-src 'unsafe-inline' https://esm.sh https://fonts.googleapis.com;
+		font-src https://fonts.gstatic.com;
+		connect-src https://esm.sh;
+		img-src data: https:;
+	">
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		html, body { width: 100%; height: 100%; overflow: hidden; }
+		#root { width: 100%; height: 100%; }
+	</style>
 </head>
 <body>
-    <div id="root">
-        <div class="loading">Processing with ESBuild pipeline...</div>
-    </div>
-    <script type="module">
-        const vscode = acquireVsCodeApi();
+	<div id="root"></div>
+	<script>
+		window.addEventListener('message', async (event) => {
+			const message = event.data;
 
-        window.addEventListener('message', (event) => {
-            const { type, code } = event.data;
+			if (message.type === 'execute') {
+				try {
+					const blobUrl = URL.createObjectURL(
+						new Blob([message.code], { type: 'application/javascript' })
+					);
+					await import(blobUrl);
+					URL.revokeObjectURL(blobUrl);
+				} catch (error) {
+					console.error('[Webview] Execution error:', error);
+					window.parent.postMessage({ type: 'error', message: error.message }, '*');
+				}
+			}
+		});
 
-            if (type === 'execute') {
-                try {
-                    const blob = new Blob([code], { type: 'text/javascript' });
-                    const url = URL.createObjectURL(blob);
-                    import(url)
-                        .then(() => {
-                            vscode.postMessage({ type: 'rendered' });
-                            URL.revokeObjectURL(url);
-                        })
-                        .catch(error => {
-                            console.error(error);
-                            document.getElementById('root').innerHTML =
-                                '<div class="error">Error: ' + error.message + '</div>';
-                            vscode.postMessage({ type: 'error', message: error.message });
-                        });
-                } catch (error) {
-                    document.getElementById('root').innerHTML =
-                        '<div class="error">Error: ' + error.message + '</div>';
-                    vscode.postMessage({ type: 'error', message: error.message });
-                }
-            }
-        });
-
-        vscode.postMessage({ type: 'ready' });
-    </script>
+		window.parent.postMessage({ type: 'ready' }, '*');
+	</script>
 </body>
 </html>`;
 	}
+
+	// ============================================
+	// ESBuild Pipeline Processing
+	// ============================================
 
 	private async processComponentWithPipeline(): Promise<void> {
 		if (!this.sandbox.sessionCode) {
@@ -205,9 +684,9 @@ export class NewSandboxCard extends Disposable {
 		}
 
 		try {
-			this._state = 'loading';
+			this.sandbox.state = 'loading';
 
-			// Detect framework from code
+			// Detect framework and use correct file extension
 			const framework = this.detectFramework(this.sandbox.sessionCode);
 			const filename = this.getFilenameForFramework(framework);
 
@@ -230,7 +709,7 @@ export class NewSandboxCard extends Disposable {
 				code: result.bundledCode
 			});
 
-			this._state = 'ready';
+			this.sandbox.state = 'ready';
 			console.log('[NewSandboxCard] ✅ Rendered via pipeline!', {
 				framework: result.framework,
 				cdnUrls: result.cdnUrls,
@@ -238,7 +717,7 @@ export class NewSandboxCard extends Disposable {
 			});
 
 		} catch (error) {
-			this._state = 'error';
+			this.sandbox.state = 'error';
 			console.error('[NewSandboxCard] Pipeline error:', error);
 		}
 	}
@@ -312,101 +791,202 @@ export class NewSandboxCard extends Disposable {
 		if (message.type === 'ready') {
 			console.log('[NewSandboxCard] Webview ready');
 		} else if (message.type === 'rendered') {
-			this._state = 'ready';
+			this.sandbox.state = 'ready';
 			console.log('[NewSandboxCard] Component rendered');
 		} else if (message.type === 'error') {
-			this._state = 'error';
+			this.sandbox.state = 'error';
 			console.error('[NewSandboxCard] Error:', message.message);
 		}
 	}
 
 	private render(): void {
 		if (this.webviewContainer) {
-			this.container.appendChild(this.webviewContainer);
+			this.container.appendChild(this.webviewWrapper!);
 		}
-		this.parent.appendChild(this.container);
+
+		this.container.appendChild(this.labelElement);
+
+		this.actionButtons = this.createActionButtons();
+		this.container.appendChild(this.actionButtons);
+
+		this.updateVisualState();
+		this.applyDeviceEmulation();
 	}
 
 	// ============================================
-	// Public API (Matching SandboxCard)
+	// Visual State Management
 	// ============================================
 
-	get element(): HTMLElement {
+	private updateVisualState(): void {
+		// Backdrop filter (disabled during drag for performance!)
+		if (this._isDragging) {
+			this.container.style.backdropFilter = 'none';
+			(this.container.style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter = 'none';
+		} else {
+			this.container.style.backdropFilter = 'blur(60px) saturate(250%) brightness(1.1)';
+			(this.container.style as CSSStyleDeclaration & { webkitBackdropFilter?: string }).webkitBackdropFilter = 'blur(60px) saturate(250%) brightness(1.1)';
+		}
+
+		// Transition (disabled during drag for performance!)
+		this.container.style.transition = this._isDragging ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+
+		// Webview pointer events (disabled during drag)
+		if (this.webviewContainer) {
+			this.webviewContainer.style.pointerEvents = this._isDragging ? 'none' : 'auto';
+		}
+
+		// Border - overlap indicator during drag
+		if (this._isOverlapping && this._isDragging) {
+			this.container.style.border = '2px solid rgba(251, 191, 36, 0.8)';
+		} else if (this._isDragging) {
+			this.container.style.border = '1px solid rgba(255, 255, 255, 0.3)';
+		} else if (this._isSelected) {
+			this.container.style.border = '2px solid rgba(59, 130, 246, 0.8)';
+		} else if (this._isFocused) {
+			this.container.style.border = '2px solid rgba(168, 85, 247, 0.8)';
+		} else if (this._isHovered) {
+			this.container.style.border = '1px solid rgba(255, 255, 255, 0.4)';
+		} else {
+			this.container.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+		}
+
+		// Box shadow - simplified during drag
+		if (this._isDragging && this._isOverlapping) {
+			this.container.style.boxShadow = '0 0 0 4px rgba(251, 191, 36, 0.3), 0 8px 32px rgba(251, 191, 36, 0.4)';
+		} else if (this._isDragging) {
+			this.container.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
+		} else if (this._isFocused) {
+			this.container.style.boxShadow = '0 0 0 4px rgba(168, 85, 247, 0.2), 0 12px 48px rgba(0, 0, 0, 0.3)';
+		} else if (this._isSelected) {
+			this.container.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.2), 0 12px 48px rgba(0, 0, 0, 0.3)';
+		} else if (this._isHovered) {
+			this.container.style.boxShadow = '0 16px 56px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2)';
+		} else {
+			this.container.style.boxShadow = '0 12px 48px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2), inset 0 2px 0 rgba(255, 255, 255, 0.15), inset 0 -2px 0 rgba(255, 255, 255, 0.05)';
+		}
+
+		// Cursor
+		this.container.style.cursor = this._isDragging ? 'grabbing' : 'pointer';
+
+		// Opacity during drag
+		if (this._isDragging) {
+			this.container.style.opacity = '0.9';
+		} else {
+			this.container.style.opacity = '1';
+		}
+	}
+
+	// ============================================
+	// Public API
+	// ============================================
+
+	public setSelected(selected: boolean): void {
+		this._isSelected = selected;
+		this.updateVisualState();
+		if (selected) {
+			this.showActionButtons();
+		} else if (!this._isHovered && !this._isFocused) {
+			this.hideActionButtons();
+		}
+	}
+
+	public setFocused(focused: boolean): void {
+		this._isFocused = focused;
+		this.updateVisualState();
+		if (focused) {
+			this.showActionButtons();
+		} else if (!this._isHovered && !this._isSelected) {
+			this.hideActionButtons();
+		}
+	}
+
+	public setDragging(dragging: boolean): void {
+		this._isDragging = dragging;
+		// Clear overlap indicator when dragging ends
+		if (!dragging) {
+			this._isOverlapping = false;
+		}
+		this.updateVisualState();
+	}
+
+	public setOverlapping(overlapping: boolean): void {
+		this._isOverlapping = overlapping;
+		this.updateVisualState();
+	}
+
+	public updatePosition(x: number, y: number): void {
+		this.sandbox.x = x;
+		this.sandbox.y = y;
+		this.container.style.left = `${x}px`;
+		this.container.style.top = `${y}px`;
+	}
+
+	public updateSize(width: number, height: number): void {
+		this.sandbox.width = width;
+		this.sandbox.height = height;
+		this.container.style.width = `${width}px`;
+		this.container.style.height = `${height}px`;
+		this.applyDeviceEmulation();
+	}
+
+	public updateZIndex(zIndex: number): void {
+		this.sandbox.zIndex = zIndex;
+		this.container.style.zIndex = String(zIndex);
+	}
+
+	public getElement(): HTMLElement {
 		return this.container;
 	}
 
-	get id(): string {
-		return this.sandbox.id;
-	}
-
-	get state(): SandboxState {
-		return this._state;
-	}
-
-	setSelected(selected: boolean): void {
-		this._isSelected = selected;
-		this.updateVisualState();
-	}
-
-	setFocused(focused: boolean): void {
-		// this._isFocused = focused;
-		this.updateVisualState();
-	}
-
-	setDragging(dragging: boolean): void {
-		this._isDragging = dragging;
-		this.updateVisualState();
-	}
-
-	setOverlapping(overlapping: boolean): void {
-		// this._isOverlapping = overlapping;
-		this.updateVisualState();
-	}
-
-	applyDragOffset(offsetX: number, offsetY: number): void {
+	/**
+	 * Apply drag offset (visual only, doesn't update sandbox data)
+	 */
+	public applyDragOffset(offsetX: number, offsetY: number): void {
 		this.container.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0)`;
 	}
 
-	commitDragPosition(newX: number, newY: number): void {
+	/**
+	 * Clear drag offset and update actual position
+	 */
+	public commitDragPosition(newX: number, newY: number): void {
 		this.sandbox.x = newX;
 		this.sandbox.y = newY;
 		this.container.style.transform = 'none';
-		this.container.style.left = `${newX}px`;
-		this.container.style.top = `${newY}px`;
+		this.updatePosition(newX, newY);
 	}
 
-	update(sandbox: Partial<Sandbox>): void {
+	public getSandbox(): Sandbox {
+		return this.sandbox;
+	}
+
+	/**
+	 * Update sandbox data and re-render
+	 */
+	public update(sandbox: Partial<Sandbox>): void {
 		Object.assign(this.sandbox, sandbox);
-		if (sandbox.x !== undefined) this.container.style.left = `${sandbox.x}px`;
-		if (sandbox.y !== undefined) this.container.style.top = `${sandbox.y}px`;
-		if (sandbox.width !== undefined) this.container.style.width = `${sandbox.width}px`;
-		if (sandbox.height !== undefined) this.container.style.height = `${sandbox.height}px`;
-		if (sandbox.zIndex !== undefined) this.container.style.zIndex = String(sandbox.zIndex);
-	}
 
-	setGlobalDeviceMode(mode: DevicePreset): void {
-		// TODO: Implement device mode scaling
-	}
-
-	forceDeviceMode(mode: DevicePreset): void {
-		// TODO: Implement forced device mode
-	}
-
-	private updateVisualState(): void {
-		if (this._isSelected) {
-			this.container.style.borderColor = '#4CAF50';
-			this.container.style.boxShadow = '0 0 0 4px rgba(76, 175, 80, 0.3), 0 12px 48px rgba(0, 0, 0, 0.5)';
-		} else {
-			this.container.style.borderColor = '#4CAF50';
-			this.container.style.boxShadow = '0 12px 48px rgba(0, 0, 0, 0.5)';
+		if ('x' in sandbox || 'y' in sandbox) {
+			this.updatePosition(this.sandbox.x, this.sandbox.y);
 		}
+		if ('width' in sandbox || 'height' in sandbox) {
+			this.updateSize(this.sandbox.width, this.sandbox.height);
+		}
+		if ('zIndex' in sandbox) {
+			this.updateZIndex(this.sandbox.zIndex);
+		}
+		if ('sessionCode' in sandbox) {
+			// Re-process with new code
+			this.processComponentWithPipeline();
+		}
+	}
 
-		if (this._isDragging) {
-			this.container.style.cursor = 'grabbing';
-			this.container.style.opacity = '0.8';
-		} else {
-			this.container.style.cursor = 'default';
-			this.container.style.opacity = '1';
+	/**
+	 * Update render state
+	 */
+	public setState(state: SandboxState, errorMessage?: string): void {
+		this.sandbox.state = state;
+		if (errorMessage) {
+			this.sandbox.errorMessage = errorMessage;
 		}
 	}
 

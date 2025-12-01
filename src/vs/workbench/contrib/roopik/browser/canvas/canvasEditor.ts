@@ -34,7 +34,7 @@ import { BottomActionBar, type IBottomActionBarCallbacks } from './components/bo
 import { CanvasActionButtons, type ICanvasActionButtonsCallbacks } from './components/canvasActionButtons.js';
 import { CanvasStatusPanel, type ICanvasStatusPanelCallbacks } from './components/canvasStatusPanel.js';
 import { showConfirmDialog } from './components/confirmDialog.js';
-import { EditorFullscreen } from './components/editorFullscreen.js';
+import { NewEditorFullscreen } from './components/newEditorFullscreen.js';
 import type { CanvasViewport, BackgroundPattern, Sandbox, DevicePreset } from '../../common/canvas/canvasTypes.js';
 
 /**
@@ -79,7 +79,7 @@ export class CanvasEditor extends EditorPane {
 	private preFocusViewport: CanvasViewport | null = null;
 
 	// Canvas interaction mode state (prefixed to indicate it may be used for future interaction features)
-	private editorFullscreen: EditorFullscreen | undefined;
+	private editorFullscreen: NewEditorFullscreen | undefined;
 
 	// Interaction state
 	private isPanning: boolean = false;
@@ -944,10 +944,9 @@ export class CanvasEditor extends EditorPane {
 		// Hide canvas UI elements EXCEPT bottom action bar (it stays visible)
 		this.setCanvasUIVisibility(false);
 
-		// Create editor fullscreen - passes container (not document.body)
-		// This keeps activity bar and sidebar accessible
-		this.editorFullscreen = new EditorFullscreen(
-			this.container,  // Editor container, not document.body
+		// Create editor fullscreen with ESBuild pipeline
+		this.editorFullscreen = new NewEditorFullscreen(
+			this.container,
 			sandbox,
 			{
 				onClose: () => {
@@ -957,7 +956,8 @@ export class CanvasEditor extends EditorPane {
 					console.log(`[CanvasEditor] Device changed to: ${device}`);
 				}
 			},
-			this.webviewService
+			this.webviewService,
+			this.pipelineService
 		);
 
 		console.log(`[CanvasEditor] Editor fullscreen activated for: ${id}`);
