@@ -28,6 +28,7 @@ import { IStorageService } from '../../../../platform/storage/common/storage.js'
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { IExtensionService } from '../../../services/extensions/common/extensions.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
+import { ICommandService } from '../../../../platform/commands/common/commands.js';
 
 const roopikViewIcon = registerIcon('roopik-view-icon', Codicon.paintcan, localize('roopikViewIcon', 'View icon of the Roopik view.'));
 
@@ -53,6 +54,7 @@ export class RoopikDashboardView extends ViewPane {
 		@IOpenerService openerService: IOpenerService,
 		@IThemeService themeService: IThemeService,
 		@IHoverService hoverService: IHoverService,
+		@ICommandService private readonly commandService: ICommandService,
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
 	}
@@ -61,6 +63,31 @@ export class RoopikDashboardView extends ViewPane {
 		super.renderBody(container);
 
 		container.style.padding = '8px';
+		container.style.display = 'flex';
+		container.style.flexDirection = 'column';
+		container.style.gap = '8px';
+
+		// Top action bar (New Canvas, Project Mode)
+		const actionsRow = document.createElement('div');
+		actionsRow.style.display = 'flex';
+		actionsRow.style.alignItems = 'center';
+		actionsRow.style.justifyContent = 'flex-start';
+		actionsRow.style.gap = '6px';
+		actionsRow.style.marginBottom = '8px';
+
+		const buttonsRow = document.createElement('div');
+		buttonsRow.style.display = 'flex';
+		buttonsRow.style.gap = '4px';
+		buttonsRow.style.flexWrap = 'wrap';
+
+		const newCanvasBtn = this.createPrimaryActionButton('Canvas', 'codicon-new-file', 'roopik.openCanvas');
+		const projectModeBtn = this.createSecondaryActionButton('Project', 'codicon-globe', 'roopik.openProjectPreview');
+
+		buttonsRow.appendChild(newCanvasBtn);
+		buttonsRow.appendChild(projectModeBtn);
+		actionsRow.appendChild(buttonsRow);
+
+		container.appendChild(actionsRow);
 
 		// Canvases Section
 		this.createSection(container, 'Canvases', [
@@ -142,6 +169,84 @@ export class RoopikDashboardView extends ViewPane {
 
 		container.appendChild(section);
 		return section;
+	}
+
+	private createPrimaryActionButton(label: string, codiconClass: string, commandId: string): HTMLElement {
+		const btn = document.createElement('button');
+		btn.style.display = 'inline-flex';
+		btn.style.alignItems = 'center';
+		btn.style.justifyContent = 'center';
+		btn.style.padding = '3px 10px';
+		btn.style.borderRadius = '999px';
+		btn.style.border = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
+		btn.style.cursor = 'pointer';
+		btn.style.fontSize = '11px';
+		btn.style.fontWeight = '500';
+		btn.style.fontFamily = 'inherit';
+		btn.style.background = 'var(--vscode-sideBarSectionHeader-background, rgba(15, 23, 42, 0.8))';
+		btn.style.color = 'var(--vscode-foreground)';
+		btn.title = label;
+
+		btn.onmouseenter = () => {
+			btn.style.background = 'var(--vscode-list-hoverBackground)';
+		};
+		btn.onmouseleave = () => {
+			btn.style.background = 'var(--vscode-sideBarSectionHeader-background, rgba(15, 23, 42, 0.8))';
+		};
+
+		const icon = document.createElement('span');
+		icon.classList.add('codicon', codiconClass);
+		btn.appendChild(icon);
+
+		const text = document.createElement('span');
+		text.textContent = label;
+		text.style.marginLeft = '4px';
+		btn.appendChild(text);
+
+		btn.onclick = () => {
+			this.commandService.executeCommand(commandId);
+		};
+
+		return btn;
+	}
+
+	private createSecondaryActionButton(label: string, codiconClass: string, commandId: string): HTMLElement {
+		const btn = document.createElement('button');
+		btn.style.display = 'inline-flex';
+		btn.style.alignItems = 'center';
+		btn.style.justifyContent = 'center';
+		btn.style.padding = '3px 10px';
+		btn.style.borderRadius = '999px';
+		btn.style.border = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
+		btn.style.cursor = 'pointer';
+		btn.style.fontSize = '11px';
+		btn.style.fontWeight = '500';
+		btn.style.fontFamily = 'inherit';
+		btn.style.background = 'transparent';
+		btn.style.color = 'var(--vscode-foreground)';
+		btn.title = label;
+
+		btn.onmouseenter = () => {
+			btn.style.background = 'var(--vscode-list-hoverBackground)';
+		};
+		btn.onmouseleave = () => {
+			btn.style.background = 'transparent';
+		};
+
+		const icon = document.createElement('span');
+		icon.classList.add('codicon', codiconClass);
+		btn.appendChild(icon);
+
+		const text = document.createElement('span');
+		text.textContent = label;
+		text.style.marginLeft = '4px';
+		btn.appendChild(text);
+
+		btn.onclick = () => {
+			this.commandService.executeCommand(commandId);
+		};
+
+		return btn;
 	}
 
 	protected override layoutBody(height: number, width: number): void {
