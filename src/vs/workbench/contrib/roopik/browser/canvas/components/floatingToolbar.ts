@@ -12,7 +12,7 @@
 
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import { clearNode } from '../../../../../../base/browser/dom.js';
-import { NEW_SAMPLE_COMPONENTS } from '../services/newSamples.js';
+import { NEW_SAMPLE_COMPONENTS } from '../data/newSamples.js';
 
 export interface IFloatingToolbarCallbacks {
 	onLoadSample: (sampleId: string) => void;
@@ -23,13 +23,16 @@ export interface IFloatingToolbarCallbacks {
 export class FloatingToolbar extends Disposable {
 	private container: HTMLElement;
 	private isExpanded: boolean = false;
+	private static stylesInjected = false;
 
 	constructor(
 		private parent: HTMLElement,
 		private callbacks: IFloatingToolbarCallbacks
 	) {
 		super();
+		FloatingToolbar.ensureStyles();
 		this.container = document.createElement('div');
+		this.container.classList.add('roopik-toolbar');
 		this.render();
 		this.parent.appendChild(this.container);
 	}
@@ -106,18 +109,13 @@ export class FloatingToolbar extends Disposable {
 		});
 		toolbar.appendChild(clearBtn);
 
-		// Samples dropdown panel
-		let dropdown: HTMLElement | null = null;
-		if (this.isExpanded) {
-			dropdown = this.createDropdown();
-		}
+		// Samples dropdown panel (always present, visibility handled via CSS hover)
+		const dropdown = this.createDropdown();
 
 		// Clear and rebuild (use clearNode for Trusted Types compliance)
 		clearNode(this.container);
 		this.container.appendChild(toolbar);
-		if (dropdown) {
-			this.container.appendChild(dropdown);
-		}
+		this.container.appendChild(dropdown);
 	}
 
 	private createButton(text: string, color: string, onClick: () => void): HTMLElement {
@@ -164,6 +162,7 @@ export class FloatingToolbar extends Disposable {
 
 	private createDropdown(): HTMLElement {
 		const dropdown = document.createElement('div');
+		dropdown.className = 'roopik-toolbar__dropdown';
 		dropdown.style.cssText = `
 			display: grid;
 			grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -247,5 +246,54 @@ export class FloatingToolbar extends Disposable {
 			this.container.parentElement.removeChild(this.container);
 		}
 		super.dispose();
+	}
+
+	private static ensureStyles(): void {
+		if (FloatingToolbar.stylesInjected) {
+			return;
+		}
+
+		const style = document.createElement('style');
+		style.textContent = `
+			.roopik-toolbar__dropdown {
+				max-height: 0;
+				opacity: 0;
+				pointer-events: none;
+				overflow: hidden;
+				margin-top: 0;
+				transition: max-height 150ms ease, opacity 150ms ease, margin-top 150ms ease, transform 150ms ease;
+				transform: translateY(-6px);
+				scrollbar-width: thin;
+				scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+			}
+
+			.roopik-toolbar:hover .roopik-toolbar__dropdown {
+				max-height: 240px;
+				opacity: 1;
+				pointer-events: auto;
+				overflow-y: auto;
+				margin-top: 8px;
+				transform: translateY(0);
+			}
+
+			.roopik-toolbar__dropdown::-webkit-scrollbar {
+				width: 8px;
+			}
+
+			.roopik-toolbar__dropdown::-webkit-scrollbar-track {
+				background: transparent;
+			}
+
+			.roopik-toolbar__dropdown::-webkit-scrollbar-thumb {
+				background: rgba(148, 163, 184, 0.35);
+				border-radius: 999px;
+			}
+
+			.roopik-toolbar__dropdown::-webkit-scrollbar-thumb:hover {
+				background: rgba(148, 163, 184, 0.6);
+			}
+		`;
+		document.head.appendChild(style);
+		FloatingToolbar.stylesInjected = true;
 	}
 }

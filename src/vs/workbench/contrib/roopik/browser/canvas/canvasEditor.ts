@@ -45,7 +45,7 @@ import type { CanvasViewport, BackgroundPattern, Sandbox, DevicePreset } from '.
  */
 export type CanvasInteractionMode = 'overview' | 'focus' | 'fullscreen';
 import { IWebviewService } from '../../../webview/browser/webview.js';
-import { NEW_SAMPLE_COMPONENTS } from './services/newSamples.js';
+import { NEW_SAMPLE_COMPONENTS } from './data/newSamples.js';
 import { getGridManager, type GridManager } from './services/gridManager.js';
 
 /**
@@ -610,6 +610,7 @@ export class CanvasEditor extends EditorPane {
 	/**
 	 * Load first 3 sample components for initial demo
 	 */
+	/*
 	private loadInitialSamples(): void {
 		// Load the 3 NEW samples
 		const initialSamples = Object.values(NEW_SAMPLE_COMPONENTS);
@@ -617,6 +618,7 @@ export class CanvasEditor extends EditorPane {
 			this.loadSampleById(sample.id);
 		});
 	}
+	*/
 
 
 
@@ -1126,7 +1128,7 @@ export class CanvasEditor extends EditorPane {
 			console.log(`[CanvasEditor] Opening canvas: ${input.canvasId}`);
 
 			// Load initial sample components for demo
-			this.loadInitialSamples();
+			// this.loadInitialSamples();
 		}
 	}
 
