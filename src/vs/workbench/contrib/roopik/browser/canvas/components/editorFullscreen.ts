@@ -593,10 +593,9 @@ export class EditorFullscreen extends Disposable {
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			overflow: auto;
-			padding: 80px;
-			scrollbar-width: thin;
-			scrollbar-color: var(--vscode-scrollbarSlider-background, rgba(255, 255, 255, 0.25)) transparent;
+			overflow: hidden;
+			padding: 60px;
+			padding-bottom: 140px;
 		`;
 
 		return content;
@@ -608,9 +607,14 @@ export class EditorFullscreen extends Disposable {
 		const config = DEVICE_PRESETS[this.state.device];
 		const containerRect = this.contentContainer.getBoundingClientRect();
 
-		const padding = 80;
-		const availableWidth = containerRect.width - padding;
-		const availableHeight = containerRect.height - padding;
+		// Calculate available space accounting for padding
+		// Horizontal: 60px left + 60px right = 120px
+		// Vertical: 60px top + 140px bottom = 200px
+		const horizontalPadding = 120;
+		const verticalPadding = 200;
+
+		const availableWidth = Math.max(100, containerRect.width - horizontalPadding);
+		const availableHeight = Math.max(100, containerRect.height - verticalPadding);
 
 		let viewportWidth: number;
 		let viewportHeight: number;
@@ -865,9 +869,14 @@ export class EditorFullscreen extends Disposable {
 		const config = DEVICE_PRESETS[this.state.device];
 		const containerRect = this.contentContainer.getBoundingClientRect();
 
-		const padding = 80;
-		const availableWidth = containerRect.width - padding;
-		const availableHeight = containerRect.height - padding;
+		// Calculate available space accounting for padding
+		// Horizontal: 60px left + 60px right = 120px
+		// Vertical: 60px top + 140px bottom = 200px
+		const horizontalPadding = 120;
+		const verticalPadding = 200;
+
+		const availableWidth = Math.max(100, containerRect.width - horizontalPadding);
+		const availableHeight = Math.max(100, containerRect.height - verticalPadding);
 
 		let viewportWidth: number;
 		let viewportHeight: number;
