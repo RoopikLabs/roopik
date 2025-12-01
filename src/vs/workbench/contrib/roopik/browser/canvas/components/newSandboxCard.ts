@@ -207,17 +207,18 @@ export class NewSandboxCard extends Disposable {
 		try {
 			this._state = 'loading';
 
+			// Detect framework from code
+			const framework = this.detectFramework(this.sandbox.sessionCode);
+			const filename = this.getFilenameForFramework(framework);
+
 			// Process through pipeline
 			const jobId = await this.pipelineService.processComponent({
 				id: this.sandbox.id,
 				source: 'ai',
 				files: {
-					'Component.jsx': this.sandbox.sessionCode
+					[filename]: this.sandbox.sessionCode
 				},
-				dependencies: {
-					'react': '18',
-					'react-dom': '18'
-				}
+				dependencies: this.getDependenciesForFramework(framework)
 			});
 
 			// Wait for result
@@ -240,6 +241,71 @@ export class NewSandboxCard extends Disposable {
 			this._state = 'error';
 			console.error('[NewSandboxCard] Pipeline error:', error);
 		}
+	}
+
+	/**
+	 * Detect framework from code content
+	 */
+	private detectFramework(code: string): string {
+		// Vue SFC detection
+		if (code.includes('<template>') && code.includes('<script')) {
+			return 'vue';
+		}
+
+		// Svelte detection
+		if (code.includes('<script>') && code.includes('<style>') && !code.includes('<template>')) {
+			return 'svelte';
+		}
+
+		// Vanilla HTML detection
+		if (code.trim().startsWith('<') && !code.includes('import React') && !code.includes('from \'react\'')) {
+			return 'html';
+		}
+
+		// Solid detection
+		if (code.includes('solid-js')) {
+			return 'solid';
+		}
+
+		// Preact detection
+		if (code.includes('preact')) {
+			return 'preact';
+		}
+
+		// Default to React
+		return 'react';
+	}
+
+	/**
+	 * Get appropriate filename for framework
+	 */
+	private getFilenameForFramework(framework: string): string {
+		const extensionMap: Record<string, string> = {
+			'react': 'Component.jsx',
+			'vue': 'Component.vue',
+			'svelte': 'Component.svelte',
+			'solid': 'Component.tsx',
+			'preact': 'Component.jsx',
+			'html': 'index.html'
+		};
+
+		return extensionMap[framework] || 'Component.jsx';
+	}
+
+	/**
+	 * Get dependencies for framework
+	 */
+	private getDependenciesForFramework(framework: string): Record<string, string> {
+		const depsMap: Record<string, Record<string, string>> = {
+			'react': { 'react': '18', 'react-dom': '18' },
+			'vue': { 'vue': '3.4.21' },
+			'svelte': { 'svelte': '4.2.15' },
+			'solid': { 'solid-js': '1.8.0' },
+			'preact': { 'preact': '10.19.0' },
+			'html': {}
+		};
+
+		return depsMap[framework] || {};
 	}
 
 	private onWebviewMessage(message: any): void {
