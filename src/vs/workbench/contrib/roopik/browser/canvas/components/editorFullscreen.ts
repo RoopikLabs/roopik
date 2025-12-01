@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 /**
- * NewEditorFullscreen - ESBuild Pipeline Fullscreen Editor
+ * EditorFullscreen - ESBuild Pipeline Fullscreen Editor
  *
  * Next-generation fullscreen component preview with ESBuild pipeline integration.
  * Built for extensibility to support future features:
@@ -45,12 +45,12 @@ export const DEVICE_PRESETS: Record<DevicePreset, IDevicePresetConfig> = {
 	mobile: { name: 'Mobile', width: 375, height: 667, icon: 'smartphone' }
 };
 
-export interface INewEditorFullscreenCallbacks {
+export interface IEditorFullscreenCallbacks {
 	onClose: () => void;
 	onDeviceChange?: (device: DevicePreset) => void;
 }
 
-export interface INewEditorFullscreenState {
+export interface IEditorFullscreenState {
 	sandbox: Sandbox;
 	device: DevicePreset;
 	backgroundColor: string;
@@ -58,7 +58,7 @@ export interface INewEditorFullscreenState {
 }
 
 /**
- * NewEditorFullscreen - ESBuild Pipeline Version
+ * EditorFullscreen - ESBuild Pipeline Version
  *
  * Key features:
  * - ESBuild pipeline integration (same as NewSandboxCard)
@@ -66,7 +66,7 @@ export interface INewEditorFullscreenState {
  * - Smart reload (recreates webview)
  * - Extensible for future split-screen mode
  */
-export class NewEditorFullscreen extends Disposable {
+export class EditorFullscreen extends Disposable {
 	private overlay: HTMLElement;
 	private contentContainer: HTMLElement | undefined;
 	private webviewElement: IWebviewElement | undefined;
@@ -89,12 +89,12 @@ export class NewEditorFullscreen extends Disposable {
 	private static readonly SIZE_INDICATOR_HIDE_DELAY_MS = 4000;
 	private sizeIndicatorTimer: ReturnType<typeof setTimeout> | undefined;
 
-	private state: INewEditorFullscreenState;
+	private state: IEditorFullscreenState;
 
 	constructor(
 		private editorContainer: HTMLElement,
 		sandbox: Sandbox,
-		private callbacks: INewEditorFullscreenCallbacks,
+		private callbacks: IEditorFullscreenCallbacks,
 		private webviewService: IWebviewService,
 		private pipelineService: ISandboxPipelineService
 	) {
@@ -310,7 +310,7 @@ export class NewEditorFullscreen extends Disposable {
 			if (this.isExpanded) {
 				this.setExpanded(false);
 			}
-		}, NewEditorFullscreen.AUTO_CLOSE_DELAY_MS);
+		}, EditorFullscreen.AUTO_CLOSE_DELAY_MS);
 	}
 
 	private cancelAutoClose(): void {
@@ -514,7 +514,7 @@ export class NewEditorFullscreen extends Disposable {
 			if (this.sizeIndicator) {
 				this.sizeIndicator.style.opacity = '0';
 			}
-		}, NewEditorFullscreen.SIZE_INDICATOR_HIDE_DELAY_MS);
+		}, EditorFullscreen.SIZE_INDICATOR_HIDE_DELAY_MS);
 	}
 
 	private updateSizeIndicator(viewportWidth: number, viewportHeight: number, config: IDevicePresetConfig, scale: number = 1): void {
@@ -637,12 +637,12 @@ export class NewEditorFullscreen extends Disposable {
 
 		// Listen for messages (for future error handling)
 		this._register(this.webviewElement.onMessage(e => {
-			console.log('[NewEditorFullscreen] Webview message:', e.message);
+			console.log('[EditorFullscreen] Webview message:', e.message);
 		}));
 
 		// Process component after a short delay (same as NewSandboxCard)
 		setTimeout(() => {
-			console.log('[NewEditorFullscreen] Starting pipeline processing...');
+			console.log('[EditorFullscreen] Starting pipeline processing...');
 			this.processAndRender();
 		}, 500);
 	}
@@ -698,7 +698,7 @@ export class NewEditorFullscreen extends Disposable {
 
 	private async processAndRender(): Promise<void> {
 		if (!this.state.sandbox.sessionCode) {
-			console.error('[NewEditorFullscreen] No code to process');
+			console.error('[EditorFullscreen] No code to process');
 			return;
 		}
 
@@ -722,13 +722,13 @@ export class NewEditorFullscreen extends Disposable {
 				code: result.bundledCode
 			});
 
-			console.log('[NewEditorFullscreen] ✅ Rendered via pipeline!', {
+			console.log('[EditorFullscreen] ✅ Rendered via pipeline!', {
 				framework: result.framework,
 				size: result.metadata.size
 			});
 
 		} catch (error) {
-			console.error('[NewEditorFullscreen] Pipeline error:', error);
+			console.error('[EditorFullscreen] Pipeline error:', error);
 		}
 	}
 
@@ -770,7 +770,7 @@ export class NewEditorFullscreen extends Disposable {
 	// ============================================
 
 	private smartReload(): void {
-		console.log('[NewEditorFullscreen] Smart reload initiated...');
+		console.log('[EditorFullscreen] Smart reload initiated...');
 
 		// Dispose webview
 		if (this.webviewElement) {
@@ -794,7 +794,7 @@ export class NewEditorFullscreen extends Disposable {
 		// Recreate webview
 		this.createWebview();
 
-		console.log('[NewEditorFullscreen] Smart reload complete');
+		console.log('[EditorFullscreen] Smart reload complete');
 	}
 
 	// ============================================
@@ -874,7 +874,7 @@ export class NewEditorFullscreen extends Disposable {
 				const now = Date.now();
 				const timeSinceLastEsc = now - this.lastEscTime;
 
-				if (timeSinceLastEsc <= NewEditorFullscreen.DOUBLE_ESC_THRESHOLD_MS) {
+				if (timeSinceLastEsc <= EditorFullscreen.DOUBLE_ESC_THRESHOLD_MS) {
 					this.close();
 				} else {
 					this.lastEscTime = now;
@@ -924,7 +924,7 @@ export class NewEditorFullscreen extends Disposable {
 					hint.parentElement.removeChild(hint);
 				}
 			}, 150);
-		}, NewEditorFullscreen.DOUBLE_ESC_THRESHOLD_MS + 100);
+		}, EditorFullscreen.DOUBLE_ESC_THRESHOLD_MS + 100);
 	}
 
 	// ============================================

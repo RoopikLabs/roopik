@@ -27,14 +27,14 @@ import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { Dimension } from '../../../../../base/browser/dom.js';
 import { IEditorOpenContext } from '../../../../common/editor.js';
 import { CanvasInput } from './canvasInput.js';
-import { NewSandboxCard, type INewSandboxCardCallbacks } from './components/newSandboxCard.js';
+import { SandboxCard, type ISandboxCardCallbacks } from './components/sandboxCard.js';
 import { ISandboxPipelineService } from '../../common/sandboxPipeline/sandboxPipelineService.js';
 import { FloatingToolbar, type IFloatingToolbarCallbacks } from './components/floatingToolbar.js';
 import { BottomActionBar, type IBottomActionBarCallbacks } from './components/bottomActionBar.js';
 import { CanvasActionButtons, type ICanvasActionButtonsCallbacks } from './components/canvasActionButtons.js';
 import { CanvasStatusPanel, type ICanvasStatusPanelCallbacks } from './components/canvasStatusPanel.js';
 import { showConfirmDialog } from './components/confirmDialog.js';
-import { NewEditorFullscreen } from './components/newEditorFullscreen.js';
+import { EditorFullscreen } from './components/editorFullscreen.js';
 import type { CanvasViewport, BackgroundPattern, Sandbox, DevicePreset } from '../../common/canvas/canvasTypes.js';
 
 /**
@@ -71,7 +71,7 @@ export class CanvasEditor extends EditorPane {
 
 	// Sandbox management
 	private sandboxes: Map<string, Sandbox> = new Map();
-	private sandboxCards: Map<string, NewSandboxCard> = new Map();
+	private sandboxCards: Map<string, SandboxCard> = new Map();
 	private selectedSandboxId: string | null = null;
 	private focusedSandboxId: string | null = null;
 
@@ -79,7 +79,7 @@ export class CanvasEditor extends EditorPane {
 	private preFocusViewport: CanvasViewport | null = null;
 
 	// Canvas interaction mode state (prefixed to indicate it may be used for future interaction features)
-	private editorFullscreen: NewEditorFullscreen | undefined;
+	private editorFullscreen: EditorFullscreen | undefined;
 
 	// Interaction state
 	private isPanning: boolean = false;
@@ -632,7 +632,7 @@ export class CanvasEditor extends EditorPane {
 
 		this.sandboxes.set(sandbox.id, sandbox);
 
-		const callbacks: INewSandboxCardCallbacks = {
+		const callbacks: ISandboxCardCallbacks = {
 			onClick: (id) => this.selectSandbox(id),
 			onDelete: (id) => this.deleteSandbox(id),
 			onDragStart: (id, e) => this.startSandboxDrag(id, e),
@@ -641,7 +641,7 @@ export class CanvasEditor extends EditorPane {
 			onDeviceModeChange: (id, mode) => this.handleSandboxDeviceModeChange(id, mode)
 		};
 
-		const card = new NewSandboxCard(
+		const card = new SandboxCard(
 			this.canvasContent,
 			sandbox,
 			callbacks,
@@ -945,7 +945,7 @@ export class CanvasEditor extends EditorPane {
 		this.setCanvasUIVisibility(false);
 
 		// Create editor fullscreen with ESBuild pipeline
-		this.editorFullscreen = new NewEditorFullscreen(
+		this.editorFullscreen = new EditorFullscreen(
 			this.container,
 			sandbox,
 			{
