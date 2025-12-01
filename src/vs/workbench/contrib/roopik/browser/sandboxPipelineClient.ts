@@ -5,6 +5,7 @@
 
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { ISandboxPipelineService } from '../common/sandboxPipeline/sandboxPipelineService.js';
+import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 import { ComponentInput, SandboxJob, TransformedComponent, QueueStatus, ValidationResult } from '../common/sandboxPipeline/types.js';
 
 /**
@@ -20,66 +21,70 @@ export class SandboxPipelineClient extends Disposable implements ISandboxPipelin
 
 	declare readonly _serviceBrand: undefined;
 
-	constructor() {
+	constructor(
+		@IMainProcessService private readonly mainProcessService: IMainProcessService
+	) {
 		super();
+	}
+
+	private get channel() {
+		return this.mainProcessService.getChannel('sandboxPipeline');
 	}
 
 	/**
 	 * Process a component (sends to main process)
-	 * TODO: Implement actual IPC communication
 	 */
 	async processComponent(input: ComponentInput): Promise<string> {
-		// Placeholder - will be implemented with VSCode's IPC in Phase 4
-		throw new Error('SandboxPipelineClient: IPC not yet implemented. Use in Phase 4.');
+		return this.channel.call('processComponent', input);
 	}
 
 	/**
 	 * Validate a component without processing
 	 */
 	async validateComponent(input: ComponentInput): Promise<ValidationResult> {
-		throw new Error('SandboxPipelineClient: IPC not yet implemented. Use in Phase 4.');
+		return this.channel.call('validateComponent', input);
 	}
 
 	/**
 	 * Get job status by ID
 	 */
 	async getJobStatus(jobId: string): Promise<SandboxJob | undefined> {
-		throw new Error('SandboxPipelineClient: IPC not yet implemented. Use in Phase 4.');
+		return this.channel.call('getJobStatus', jobId);
 	}
 
 	/**
 	 * Get all jobs
 	 */
 	async getAllJobs(): Promise<SandboxJob[]> {
-		throw new Error('SandboxPipelineClient: IPC not yet implemented. Use in Phase 4.');
+		return this.channel.call('getAllJobs');
 	}
 
 	/**
 	 * Get queue statistics
 	 */
 	async getQueueStatus(): Promise<QueueStatus> {
-		throw new Error('SandboxPipelineClient: IPC not yet implemented. Use in Phase 4.');
+		return this.channel.call('getQueueStatus');
 	}
 
 	/**
 	 * Wait for job completion
 	 */
 	async waitForCompletion(jobId: string, timeout?: number): Promise<TransformedComponent> {
-		throw new Error('SandboxPipelineClient: IPC not yet implemented. Use in Phase 4.');
+		return this.channel.call('waitForCompletion', [jobId, timeout]);
 	}
 
 	/**
 	 * Cancel a queued job
 	 */
 	async cancelJob(jobId: string): Promise<boolean> {
-		throw new Error('SandboxPipelineClient: IPC not yet implemented. Use in Phase 4.');
+		return this.channel.call('cancelJob', jobId);
 	}
 
 	/**
 	 * Clear completed and failed jobs
 	 */
 	async clearCompletedJobs(): Promise<number> {
-		throw new Error('SandboxPipelineClient: IPC not yet implemented. Use in Phase 4.');
+		return this.channel.call('clearCompletedJobs');
 	}
 
 	override dispose(): void {

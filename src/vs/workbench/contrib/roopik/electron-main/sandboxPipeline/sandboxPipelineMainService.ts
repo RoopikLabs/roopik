@@ -3,7 +3,7 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { Disposable } from '../../../../base/common/lifecycle.js';
+import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { ISandboxPipelineService } from '../../common/sandboxPipeline/sandboxPipelineService.js';
 import { ComponentInput, SandboxJob, TransformedComponent, QueueStatus, ValidationResult } from '../../common/sandboxPipeline/types.js';
 import { ComponentParser } from '../../common/sandboxPipeline/componentParser.js';

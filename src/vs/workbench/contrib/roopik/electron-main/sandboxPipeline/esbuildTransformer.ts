@@ -293,7 +293,7 @@ render(Component(), document.getElementById('root'));
 		if (framework === 'vue') {
 			plugins.push(vuePlugin());
 		} else if (framework === 'svelte') {
-			plugins.push(sveltePlugin.default ? sveltePlugin.default() : sveltePlugin());
+			plugins.push((sveltePlugin as any).default ? (sveltePlugin as any).default() : (sveltePlugin as any)());
 		}
 		// Solid, Preact, React use built-in JSX
 

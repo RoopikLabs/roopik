@@ -9,7 +9,7 @@
  * Shows how to use the new sandbox renderer with the pipeline.
  */
 
-import { ISandboxPipelineService } from '../../common/sandboxPipeline/sandboxPipelineService.js';
+import { ISandboxPipelineService } from '../../../common/sandboxPipeline/sandboxPipelineService.js';
 import { createSandboxIframe, executeSandboxCode, extractDependenciesFromCode } from './sandboxRenderer.js';
 
 /**

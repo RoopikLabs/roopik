@@ -3,8 +3,8 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { Emitter } from '../../../../base/common/event.js';
-import { Disposable } from '../../../../base/common/lifecycle.js';
+import { Emitter } from '../../../../../base/common/event.js';
+import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { ComponentInput, SandboxJob, QueueStatus } from '../../common/sandboxPipeline/types.js';
 import { ESBuildTransformer } from './esbuildTransformer.js';
 

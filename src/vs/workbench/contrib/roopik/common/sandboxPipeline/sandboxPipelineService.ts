@@ -3,7 +3,7 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
 import { ComponentInput, SandboxJob, TransformedComponent, QueueStatus, ValidationResult } from './types.js';
 
 export const ISandboxPipelineService = createDecorator<ISandboxPipelineService>('sandboxPipelineService');

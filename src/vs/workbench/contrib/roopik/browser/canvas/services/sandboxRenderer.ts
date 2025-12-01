@@ -3,20 +3,13 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-/**
- * Sandbox Renderer Utility
- *
- * Helper functions for creating and managing sandboxes with the new pipeline.
- */
-
-import { ISandboxPipelineService } from '../../common/sandboxPipeline/sandboxPipelineService.js';
-import { ComponentInput } from '../../common/sandboxPipeline/types.js';
+import { ISandboxPipelineService } from '../../../common/sandboxPipeline/sandboxPipelineService.js';
+import { ComponentInput } from '../../../common/sandboxPipeline/types.js';
 
 /**
  * Get the sandbox template HTML
  */
 export function getSandboxTemplate(): string {
-	// In production, this would load from the actual HTML file
 	// For now, we inline it to avoid file loading issues
 	return `<!DOCTYPE html>
 <html lang="en">
