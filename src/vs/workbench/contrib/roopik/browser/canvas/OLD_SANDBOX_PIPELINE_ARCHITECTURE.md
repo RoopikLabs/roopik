@@ -1,4 +1,7 @@
-# Sandbox Pipeline Architecture (Future Implementation)
+# Sandbox Pipeline Architecture (Future Implementation - PLAN DROPPED!)
+
+> **NOTE**: This document is no longer relevant as the plan was dropped.
+## NOW WE WILL move to ESBUILD Architecture to simply everythign!
 
 > **Status**: Planned | **Priority**: Medium | **Blocked By**: Core component layer completion
 
