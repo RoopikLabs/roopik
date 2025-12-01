@@ -91,6 +91,8 @@ export class EditorFullscreen extends Disposable {
 
 	private state: IEditorFullscreenState;
 
+	private static scrollbarStylesInjected = false;
+
 	constructor(
 		private editorContainer: HTMLElement,
 		sandbox: Sandbox,
@@ -105,6 +107,8 @@ export class EditorFullscreen extends Disposable {
 			device: 'auto',
 			backgroundColor: '#1a1a1a'
 		};
+
+		EditorFullscreen.ensureScrollbarStyles();
 
 		this.overlay = this.createOverlay();
 		this.render();
@@ -540,6 +544,39 @@ export class EditorFullscreen extends Disposable {
 		}
 	}
 
+	private static ensureScrollbarStyles(): void {
+		if (EditorFullscreen.scrollbarStylesInjected) {
+			return;
+		}
+
+		const style = document.createElement('style');
+		style.textContent = `
+			.roopik-editor-fullscreen-new .fullscreen-content::-webkit-scrollbar {
+				width: 8px;
+				height: 8px;
+			}
+
+			.roopik-editor-fullscreen-new .fullscreen-content::-webkit-scrollbar-track {
+				background: transparent;
+			}
+
+			.roopik-editor-fullscreen-new .fullscreen-content::-webkit-scrollbar-thumb {
+				background-color: var(--vscode-scrollbarSlider-background, rgba(255, 255, 255, 0.25));
+				border-radius: 999px;
+				border: 2px solid transparent;
+				background-clip: padding-box;
+				box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+			}
+
+			.roopik-editor-fullscreen-new .fullscreen-content::-webkit-scrollbar-thumb:hover {
+				background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(255, 255, 255, 0.4));
+			}
+		`;
+
+		document.head.appendChild(style);
+		EditorFullscreen.scrollbarStylesInjected = true;
+	}
+
 	// ============================================
 	// Content Area & Webview
 	// ============================================
@@ -558,6 +595,8 @@ export class EditorFullscreen extends Disposable {
 			justify-content: center;
 			overflow: auto;
 			padding: 80px;
+			scrollbar-width: thin;
+			scrollbar-color: var(--vscode-scrollbarSlider-background, rgba(255, 255, 255, 0.25)) transparent;
 		`;
 
 		return content;
