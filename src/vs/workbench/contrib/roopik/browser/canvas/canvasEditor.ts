@@ -28,6 +28,7 @@ import { Dimension } from '../../../../../base/browser/dom.js';
 import { IEditorOpenContext } from '../../../../common/editor.js';
 import { CanvasInput } from './canvasInput.js';
 import { SandboxCard, type ISandboxCardCallbacks } from './components/sandboxCard.js';
+import { ISandboxPipelineService } from '../../common/sandboxPipeline/sandboxPipelineService.js';
 import { FloatingToolbar, type IFloatingToolbarCallbacks } from './components/floatingToolbar.js';
 import { BottomActionBar, type IBottomActionBarCallbacks } from './components/bottomActionBar.js';
 import { CanvasActionButtons, type ICanvasActionButtonsCallbacks } from './components/canvasActionButtons.js';
@@ -44,8 +45,7 @@ import type { CanvasViewport, BackgroundPattern, Sandbox, DevicePreset } from '.
  */
 export type CanvasInteractionMode = 'overview' | 'focus' | 'fullscreen';
 import { IWebviewService } from '../../../webview/browser/webview.js';
-import { SAMPLE_COMPONENTS, getSampleComponent } from './data/sampleComponents.js';
-import { getPreviewManager } from './services/previewManager.js';
+import { NEW_SAMPLE_COMPONENTS } from './data/newSamples.js';
 import { getGridManager, type GridManager } from './services/gridManager.js';
 
 /**
@@ -107,7 +107,8 @@ export class CanvasEditor extends EditorPane {
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IThemeService themeService: IThemeService,
 		@IStorageService storageService: IStorageService,
-		@IWebviewService private readonly webviewService: IWebviewService
+		@IWebviewService private readonly webviewService: IWebviewService,
+		@ISandboxPipelineService private readonly pipelineService: ISandboxPipelineService
 	) {
 		super(CanvasEditor.ID, group, telemetryService, themeService, storageService);
 
@@ -529,8 +530,13 @@ export class CanvasEditor extends EditorPane {
 	/**
 	 * Load a single sample component by ID
 	 */
+	/**
+	 * Load a single sample component by ID
+	 */
 	private loadSampleById(sampleId: string): void {
-		const sample = getSampleComponent(sampleId);
+		// Find in NEW samples
+		const sample = Object.values(NEW_SAMPLE_COMPONENTS).find(s => s.id === sampleId);
+
 		if (!sample) {
 			console.warn(`[CanvasEditor] Sample not found: ${sampleId}`);
 			return;
@@ -543,15 +549,11 @@ export class CanvasEditor extends EditorPane {
 			return;
 		}
 
-		const { code, cdnUrls } = this.parseComponentCode(sample.id, sample.code);
-		// Use getNextAvailableSlot to find first unoccupied position (works in both modes)
+		// Use getNextAvailableSlot to find first unoccupied position
 		const sandboxArray = Array.from(this.sandboxes.values());
 		const position = this.gridManager.getNextAvailableSlot(sandboxArray);
 		const config = this.gridManager.getConfig();
 
-		// sandbox.width/height stores the content size (sandboxWidth/sandboxHeight)
-		// The SandboxCard CSS adds padding and margin for visual styling
-		// Grid calculations use the full visual size (getSandboxDimensions) for spacing
 		const sandbox: Sandbox = {
 			id: sample.id,
 			componentId: sample.id,
@@ -561,8 +563,8 @@ export class CanvasEditor extends EditorPane {
 			height: config.sandboxHeight,
 			zIndex: this.sandboxes.size + 1,
 			state: 'loading',
-			sessionCode: code,
-			cdnUrls: cdnUrls
+			sessionCode: sample.code,
+			cdnUrls: [] // Pipeline handles dependencies
 		};
 
 		this.addSandbox(sandbox);
@@ -573,7 +575,7 @@ export class CanvasEditor extends EditorPane {
 	 * Load all sample components
 	 */
 	private loadAllSamples(): void {
-		SAMPLE_COMPONENTS.forEach(sample => {
+		Object.values(NEW_SAMPLE_COMPONENTS).forEach(sample => {
 			if (!this.sandboxes.has(sample.id)) {
 				this.loadSampleById(sample.id);
 			}
@@ -608,26 +610,17 @@ export class CanvasEditor extends EditorPane {
 	/**
 	 * Load first 3 sample components for initial demo
 	 */
+	/*
 	private loadInitialSamples(): void {
-		// Load only the first 3 samples on initial load
-		const initialSamples = SAMPLE_COMPONENTS.slice(0, 3);
+		// Load the 3 NEW samples
+		const initialSamples = Object.values(NEW_SAMPLE_COMPONENTS);
 		initialSamples.forEach(sample => {
 			this.loadSampleById(sample.id);
 		});
 	}
+	*/
 
-	/**
-	 * Parse component code to extract dependencies and transform imports
-	 * Uses PreviewManager for proper Golden Prompt transformation
-	 */
-	private parseComponentCode(componentId: string, code: string): { code: string; cdnUrls: string[] } {
-		const previewManager = getPreviewManager();
-		const sessionCode = previewManager.processComponent(componentId, code);
-		return {
-			code: sessionCode.code,
-			cdnUrls: sessionCode.cdnUrls
-		};
-	}
+
 
 	/**
 	 * Add a sandbox to the canvas
@@ -641,17 +634,21 @@ export class CanvasEditor extends EditorPane {
 
 		const callbacks: ISandboxCardCallbacks = {
 			onClick: (id) => this.selectSandbox(id),
-			onDoubleClick: (id) => this.focusSandbox(id),
-			onDragStart: (id, e) => this.startSandboxDrag(id, e),
 			onDelete: (id) => this.deleteSandbox(id),
+			onDragStart: (id, e) => this.startSandboxDrag(id, e),
+			onDoubleClick: (id) => this.focusSandbox(id),
 			onExpand: (id) => this.expandSandbox(id),
 			onDeviceModeChange: (id, mode) => this.handleSandboxDeviceModeChange(id, mode)
 		};
 
-		const card = new SandboxCard(this.canvasContent, sandbox, callbacks, this.webviewService);
+		const card = new SandboxCard(
+			this.canvasContent,
+			sandbox,
+			callbacks,
+			this.webviewService,
+			this.pipelineService
+		);
 
-		// Apply current global device mode to the new card
-		card.setGlobalDeviceMode(this.globalDeviceMode);
 		this.sandboxCards.set(sandbox.id, card);
 
 		// Update status panel component count
@@ -947,10 +944,9 @@ export class CanvasEditor extends EditorPane {
 		// Hide canvas UI elements EXCEPT bottom action bar (it stays visible)
 		this.setCanvasUIVisibility(false);
 
-		// Create editor fullscreen - passes container (not document.body)
-		// This keeps activity bar and sidebar accessible
+		// Create editor fullscreen with ESBuild pipeline
 		this.editorFullscreen = new EditorFullscreen(
-			this.container,  // Editor container, not document.body
+			this.container,
 			sandbox,
 			{
 				onClose: () => {
@@ -960,7 +956,8 @@ export class CanvasEditor extends EditorPane {
 					console.log(`[CanvasEditor] Device changed to: ${device}`);
 				}
 			},
-			this.webviewService
+			this.webviewService,
+			this.pipelineService
 		);
 
 		console.log(`[CanvasEditor] Editor fullscreen activated for: ${id}`);
@@ -1131,7 +1128,7 @@ export class CanvasEditor extends EditorPane {
 			console.log(`[CanvasEditor] Opening canvas: ${input.canvasId}`);
 
 			// Load initial sample components for demo
-			this.loadInitialSamples();
+			// this.loadInitialSamples();
 		}
 	}
 

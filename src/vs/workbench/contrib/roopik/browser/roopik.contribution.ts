@@ -33,6 +33,8 @@ import { IRoopikEventService, RoopikEventService } from '../common/events/index.
 import { IRoopikSettingsService, RoopikSettingsService } from '../common/settings/index.js';
 import { CanvasEditor } from './canvas/canvasEditor.js';
 import { CanvasInput } from './canvas/canvasInput.js';
+import { ISandboxPipelineService } from '../common/sandboxPipeline/sandboxPipelineService.js';
+import { SandboxPipelineClient } from './sandboxPipelineClient.js';
 
 /**
  * Roopik Design IDE - Main Contribution
@@ -297,4 +299,8 @@ registerWorkbenchContribution2(RoopikViewsContribution.ID, RoopikViewsContributi
 registerSingleton(IRoopikEventService, RoopikEventService, InstantiationType.Delayed);
 
 // Register Settings Service (persistence + configuration management)
+// Register Settings Service (persistence + configuration management)
 registerSingleton(IRoopikSettingsService, RoopikSettingsService, InstantiationType.Delayed);
+
+// Register Sandbox Pipeline Service (Client)
+registerSingleton(ISandboxPipelineService, SandboxPipelineClient, InstantiationType.Delayed);

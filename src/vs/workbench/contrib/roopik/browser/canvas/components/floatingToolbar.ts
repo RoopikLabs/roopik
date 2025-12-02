@@ -12,7 +12,7 @@
 
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import { clearNode } from '../../../../../../base/browser/dom.js';
-import { SAMPLE_COMPONENTS } from '../data/sampleComponents.js';
+import { NEW_SAMPLE_COMPONENTS } from '../data/newSamples.js';
 
 export interface IFloatingToolbarCallbacks {
 	onLoadSample: (sampleId: string) => void;
@@ -23,13 +23,19 @@ export interface IFloatingToolbarCallbacks {
 export class FloatingToolbar extends Disposable {
 	private container: HTMLElement;
 	private isExpanded: boolean = false;
+	private static stylesInjected = false;
+	private collapseTimeout: number | undefined;
+	private samplesBtn: HTMLElement | null = null;
+	private dropdown: HTMLElement | null = null;
 
 	constructor(
 		private parent: HTMLElement,
 		private callbacks: IFloatingToolbarCallbacks
 	) {
 		super();
+		FloatingToolbar.ensureStyles();
 		this.container = document.createElement('div');
+		this.container.classList.add('roopik-toolbar');
 		this.render();
 		this.parent.appendChild(this.container);
 	}
@@ -94,6 +100,8 @@ export class FloatingToolbar extends Disposable {
 				this.render();
 			}
 		);
+		toggleBtn.classList.add('roopik-toolbar__samples-btn');
+		this.samplesBtn = toggleBtn;
 		toolbar.appendChild(toggleBtn);
 
 		// Separator
@@ -106,18 +114,17 @@ export class FloatingToolbar extends Disposable {
 		});
 		toolbar.appendChild(clearBtn);
 
-		// Samples dropdown panel
-		let dropdown: HTMLElement | null = null;
-		if (this.isExpanded) {
-			dropdown = this.createDropdown();
-		}
+		// Samples dropdown panel (always present, visibility handled via JS with delay)
+		const dropdown = this.createDropdown();
+		this.dropdown = dropdown;
 
 		// Clear and rebuild (use clearNode for Trusted Types compliance)
 		clearNode(this.container);
 		this.container.appendChild(toolbar);
-		if (dropdown) {
-			this.container.appendChild(dropdown);
-		}
+		this.container.appendChild(dropdown);
+
+		// Setup hover handlers for delayed collapse
+		this.setupHoverHandlers();
 	}
 
 	private createButton(text: string, color: string, onClick: () => void): HTMLElement {
@@ -164,6 +171,7 @@ export class FloatingToolbar extends Disposable {
 
 	private createDropdown(): HTMLElement {
 		const dropdown = document.createElement('div');
+		dropdown.className = 'roopik-toolbar__dropdown';
 		dropdown.style.cssText = `
 			display: grid;
 			grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -179,7 +187,7 @@ export class FloatingToolbar extends Disposable {
 		`;
 
 		// Create sample component buttons
-		SAMPLE_COMPONENTS.forEach((sample, index) => {
+		Object.values(NEW_SAMPLE_COMPONENTS).forEach((sample, index) => {
 			const sampleBtn = this.createSampleButton(sample.name, sample.id, index);
 			dropdown.appendChild(sampleBtn);
 		});
@@ -242,10 +250,114 @@ export class FloatingToolbar extends Disposable {
 		this.container.style.display = visible ? '' : 'none';
 	}
 
+	private setupHoverHandlers(): void {
+		if (!this.samplesBtn || !this.dropdown) {
+			return;
+		}
+
+		// Expand on hover over Samples button
+		this.samplesBtn.addEventListener('mouseenter', () => {
+			this.cancelCollapse();
+			this.expandDropdown();
+		});
+
+		// Start collapse timer when leaving Samples button
+		this.samplesBtn.addEventListener('mouseleave', () => {
+			this.scheduleCollapse();
+		});
+
+		// Cancel collapse when entering dropdown
+		this.dropdown.addEventListener('mouseenter', () => {
+			this.cancelCollapse();
+			this.expandDropdown();
+		});
+
+		// Start collapse timer when leaving dropdown
+		this.dropdown.addEventListener('mouseleave', () => {
+			this.scheduleCollapse();
+		});
+	}
+
+	private expandDropdown(): void {
+		if (!this.dropdown) {
+			return;
+		}
+		this.dropdown.classList.add('roopik-toolbar__dropdown--expanded');
+	}
+
+	private scheduleCollapse(): void {
+		this.cancelCollapse();
+		// 200ms delay - standard UX practice for dropdown menus
+		this.collapseTimeout = window.setTimeout(() => {
+			if (this.dropdown) {
+				this.dropdown.classList.remove('roopik-toolbar__dropdown--expanded');
+			}
+			this.collapseTimeout = undefined;
+		}, 200);
+	}
+
+	private cancelCollapse(): void {
+		if (this.collapseTimeout !== undefined) {
+			clearTimeout(this.collapseTimeout);
+			this.collapseTimeout = undefined;
+		}
+	}
+
 	public override dispose(): void {
+		this.cancelCollapse();
 		if (this.container.parentElement) {
 			this.container.parentElement.removeChild(this.container);
 		}
 		super.dispose();
+	}
+
+	private static ensureStyles(): void {
+		if (FloatingToolbar.stylesInjected) {
+			return;
+		}
+
+		const style = document.createElement('style');
+		style.textContent = `
+			.roopik-toolbar__dropdown {
+				max-height: 0;
+				opacity: 0;
+				pointer-events: none;
+				overflow: hidden;
+				margin-top: 0;
+				transition: max-height 150ms ease, opacity 150ms ease, margin-top 150ms ease, transform 150ms ease;
+				transform: translateY(-6px);
+				scrollbar-width: thin;
+				scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+			}
+
+			/* Show dropdown when expanded class is added */
+			.roopik-toolbar__dropdown--expanded {
+				max-height: 240px;
+				opacity: 1;
+				pointer-events: auto;
+				overflow-y: auto;
+				margin-top: 8px;
+				transform: translateY(0);
+			}
+
+			.roopik-toolbar__dropdown::-webkit-scrollbar {
+				width: 8px;
+			}
+
+			.roopik-toolbar__dropdown::-webkit-scrollbar-track {
+				background: transparent;
+			}
+
+			.roopik-toolbar__dropdown::-webkit-scrollbar-thumb {
+				background: rgba(148, 163, 184, 0.35);
+				border-radius: 999px;
+			}
+
+			.roopik-toolbar__dropdown::-webkit-scrollbar-thumb:hover {
+				background: rgba(148, 163, 184, 0.6);
+			}
+		`;
+		document.head.appendChild(style);
+		FloatingToolbar.stylesInjected = true;
 	}
 }
