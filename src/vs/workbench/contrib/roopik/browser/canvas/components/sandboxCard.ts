@@ -384,10 +384,11 @@ export class SandboxCard extends Disposable {
 			this.webviewContainer.style.flexShrink = '0';
 		} else {
 			// Device mode: fixed device size, scaled to fit available space
-			// Use sandbox's logical dimensions (not getBoundingClientRect which is affected by canvas zoom)
-			// Available space = sandbox size - padding (top bar + bottom margin + side padding)
-			const availableWidth = this.sandbox.width - (SandboxCard.SIDE_PADDING * 2);
-			const availableHeight = this.sandbox.height - (SandboxCard.TOP_BAR_HEIGHT * 2);
+			// Use webviewWrapper's actual dimensions (clientWidth/clientHeight are not affected by zoom/transforms)
+			// This gives us the true available space for the preview
+			// Use offsetWidth/offsetHeight as fallback if clientWidth/clientHeight are 0 (element not yet laid out)
+			const availableWidth = this.webviewWrapper.clientWidth || this.webviewWrapper.offsetWidth || (this.sandbox.width - (SandboxCard.SIDE_PADDING * 2));
+			const availableHeight = this.webviewWrapper.clientHeight || this.webviewWrapper.offsetHeight || (this.sandbox.height - (SandboxCard.TOP_BAR_HEIGHT * 2));
 
 			const deviceWidth = config.width as number;
 			const deviceHeight = config.height as number;
@@ -1101,7 +1102,10 @@ export class SandboxCard extends Disposable {
 		this.sandbox.height = height;
 		this.container.style.width = `${width}px`;
 		this.container.style.height = `${height}px`;
-		this.applyDeviceEmulation();
+		// Defer device emulation to next frame to ensure layout has completed
+		requestAnimationFrame(() => {
+			this.applyDeviceEmulation();
+		});
 	}
 
 	public updateZIndex(zIndex: number): void {
