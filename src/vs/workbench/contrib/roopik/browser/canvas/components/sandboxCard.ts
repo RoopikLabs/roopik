@@ -364,25 +364,26 @@ export class SandboxCard extends Disposable {
 	}
 
 	private applyDeviceEmulation(): void {
-		if (!this.webviewContainer) return;
+		if (!this.webviewContainer || !this.webviewWrapper) return;
 
 		const mode = this.getEffectiveDeviceMode();
 		const config = DEVICE_PRESETS[mode];
 
-		// Calculate available space (sandbox minus padding and header)
-		const availableWidth = this.sandbox.width - 20;
-		const availableHeight = this.sandbox.height - 50;
-
 		if (config.width === 'auto' || config.height === 'auto') {
-			// Auto mode: fill available space with actual pixel dimensions
-			this.webviewContainer.style.width = `${availableWidth}px`;
-			this.webviewContainer.style.height = `${availableHeight}px`;
+			// Auto mode: fill available space, let flexbox handle it
+			this.webviewContainer.style.width = '100%';
+			this.webviewContainer.style.height = '100%';
 			this.webviewContainer.style.transform = 'none';
-			this.webviewContainer.style.position = 'relative';
-			this.webviewContainer.style.left = '0';
-			this.webviewContainer.style.top = '0';
+			this.webviewContainer.style.transformOrigin = '';
+			this.webviewContainer.style.margin = '0';
+			this.webviewContainer.style.flexShrink = '0';
 		} else {
-			// Device mode: fixed device size, scaled to fit, centered with absolute positioning
+			// Device mode: fixed device size, scaled to fit
+			// Use wrapper's actual dimensions for accurate scaling
+			const wrapperRect = this.webviewWrapper.getBoundingClientRect();
+			const availableWidth = wrapperRect.width > 0 ? wrapperRect.width : (this.sandbox.width - 240);
+			const availableHeight = wrapperRect.height > 0 ? wrapperRect.height : (this.sandbox.height - 80);
+
 			const deviceWidth = config.width as number;
 			const deviceHeight = config.height as number;
 
@@ -390,19 +391,22 @@ export class SandboxCard extends Disposable {
 			const scaleY = availableHeight / deviceHeight;
 			const scale = Math.min(scaleX, scaleY, 1);
 
-			const visualWidth = deviceWidth * scale;
-			const visualHeight = deviceHeight * scale;
+			// Calculate the visual size after scaling
+			const scaledWidth = deviceWidth * scale;
+			const scaledHeight = deviceHeight * scale;
 
-			const offsetX = (availableWidth - visualWidth) / 2;
-			const offsetY = (availableHeight - visualHeight) / 2;
+			// Calculate negative margins to shrink layout box to match visual size
+			// This allows flexbox centering to work correctly with scaled elements
+			const marginX = (deviceWidth - scaledWidth) / 2;
+			const marginY = (deviceHeight - scaledHeight) / 2;
 
+			// Set fixed device dimensions and scale
 			this.webviewContainer.style.width = `${deviceWidth}px`;
 			this.webviewContainer.style.height = `${deviceHeight}px`;
 			this.webviewContainer.style.transform = `scale(${scale})`;
-			this.webviewContainer.style.transformOrigin = 'top left';
-			this.webviewContainer.style.position = 'absolute';
-			this.webviewContainer.style.left = `${offsetX}px`;
-			this.webviewContainer.style.top = `${offsetY}px`;
+			this.webviewContainer.style.transformOrigin = 'center center';
+			this.webviewContainer.style.margin = `-${marginY}px -${marginX}px`;
+			this.webviewContainer.style.flexShrink = '0';
 		}
 	}
 
@@ -585,7 +589,7 @@ export class SandboxCard extends Disposable {
 		this.webviewWrapper.style.display = 'flex';
 		this.webviewWrapper.style.alignItems = 'center';
 		this.webviewWrapper.style.justifyContent = 'center';
-		this.webviewWrapper.style.overflow = 'hidden';
+		this.webviewWrapper.style.overflow = 'visible'; // Allow scaled content to be visible
 
 		this.webviewContainer = document.createElement('div');
 		this.webviewContainer.className = 'sandbox-webview-container';
