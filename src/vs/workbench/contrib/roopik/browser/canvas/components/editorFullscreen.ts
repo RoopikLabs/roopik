@@ -678,9 +678,9 @@ export class EditorFullscreen extends Disposable {
 		this.webviewElement.mountTo(this.webviewContainer, getWindow(this.editorContainer));
 		this.webviewElement.setHtml(this.getWebviewHTML());
 
-		// Listen for messages (for future error handling)
+		// Listen for messages
 		this._register(this.webviewElement.onMessage(e => {
-			console.log('[EditorFullscreen] Webview message:', e.message);
+			this.onWebviewMessage(e.message);
 		}));
 
 		// Process component after a short delay (same as NewSandboxCard)
@@ -698,10 +698,10 @@ export class EditorFullscreen extends Disposable {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<meta http-equiv="Content-Security-Policy" content="
 		default-src 'none';
-		script-src 'unsafe-inline' 'unsafe-eval' blob: https://esm.sh;
-		style-src 'unsafe-inline' https://esm.sh https://fonts.googleapis.com;
+		script-src 'unsafe-inline' 'unsafe-eval' blob: https://esm.sh https://unpkg.com https://cdn.skypack.dev https://cdn.jsdelivr.net;
+		style-src 'unsafe-inline' https://esm.sh https://unpkg.com https://cdn.skypack.dev https://cdn.jsdelivr.net https://fonts.googleapis.com;
 		font-src https://fonts.gstatic.com;
-		connect-src https://esm.sh;
+		connect-src https://esm.sh https://unpkg.com https://cdn.skypack.dev https://cdn.jsdelivr.net;
 		img-src data: https:;
 	">
 	<style>
@@ -713,6 +713,28 @@ export class EditorFullscreen extends Disposable {
 <body>
 	<div id="root"></div>
 	<script>
+		// Acquire VSCode API for proper messaging (window.parent is overridden by VSCode)
+		const vscode = acquireVsCodeApi();
+
+		// Global error handler for runtime errors (React hooks, etc.)
+		window.onerror = function(message, source, lineno, colno, error) {
+			console.error('[Fullscreen] Runtime error:', message, error);
+			vscode.postMessage({
+				type: 'error',
+				message: typeof message === 'string' ? message : (error?.message || 'Unknown error')
+			});
+			return true; // Prevent default error handling
+		};
+
+		// Global handler for unhandled promise rejections
+		window.addEventListener('unhandledrejection', function(event) {
+			console.error('[Fullscreen] Unhandled rejection:', event.reason);
+			vscode.postMessage({
+				type: 'error',
+				message: event.reason?.message || String(event.reason) || 'Unhandled promise rejection'
+			});
+		});
+
 		window.addEventListener('message', async (event) => {
 			const message = event.data;
 
@@ -723,13 +745,17 @@ export class EditorFullscreen extends Disposable {
 					);
 					await import(blobUrl);
 					URL.revokeObjectURL(blobUrl);
+					// Signal success
+					vscode.postMessage({ type: 'rendered' });
 				} catch (error) {
 					console.error('[Fullscreen] Execution error:', error);
+					vscode.postMessage({ type: 'error', message: error.message });
 				}
 			}
 		});
 
-		window.parent.postMessage({ type: 'ready' }, '*');
+		// Signal ready
+		vscode.postMessage({ type: 'ready' });
 	</script>
 </body>
 </html>`;
@@ -771,8 +797,20 @@ export class EditorFullscreen extends Disposable {
 			});
 
 		} catch (error) {
+			// Pipeline/build errors - show in UI
+			this._isError = true;
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			this.showError(this.formatPipelineError(errorMessage));
 			console.error('[EditorFullscreen] Pipeline error:', error);
 		}
+	}
+
+	/**
+	 * Format pipeline errors for display
+	 */
+	private formatPipelineError(message: string): string {
+		// Just return the message as-is - no hardcoded string manipulation
+		return message;
 	}
 
 	private detectFramework(code: string): string {
@@ -814,6 +852,9 @@ export class EditorFullscreen extends Disposable {
 
 	private smartReload(): void {
 		console.log('[EditorFullscreen] Smart reload initiated...');
+
+		// Clear error state
+		this._isError = false;
 
 		// Dispose webview
 		if (this.webviewElement) {
@@ -976,6 +1017,129 @@ export class EditorFullscreen extends Disposable {
 	}
 
 	// ============================================
+	// Error Handling
+	// ============================================
+
+	private _isError: boolean = false;
+
+	private onWebviewMessage(message: any): void {
+		if (message.type === 'ready') {
+			console.log('[EditorFullscreen] Webview ready');
+		} else if (message.type === 'rendered') {
+			this._isError = false;
+			this.updateWebviewContainerStyle();
+			console.log('[EditorFullscreen] Component rendered');
+		} else if (message.type === 'error') {
+			this._isError = true;
+			this.showError(message.message);
+			console.error('[EditorFullscreen] Error:', message.message);
+		}
+	}
+
+	private showError(errorMessage: string): void {
+		// Set error HTML directly in the webview - no overlay needed
+		if (this.webviewElement) {
+			this.webviewElement.setHtml(this.getErrorHTML(errorMessage));
+		}
+		// Update container style to show red glow
+		this.updateWebviewContainerStyle();
+	}
+
+	private getErrorHTML(errorMessage: string): string {
+		// Escape HTML entities to prevent XSS
+		const escaped = errorMessage
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;');
+
+		return `<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		html, body {
+			width: 100%;
+			height: 100%;
+			background: #ffffff;
+			font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+		}
+		.error-container {
+			width: 100%;
+			height: 100%;
+			display: flex;
+			flex-direction: column;
+			padding: 32px;
+			overflow: auto;
+		}
+		.error-header {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			margin-bottom: 20px;
+			flex-shrink: 0;
+		}
+		.error-icon {
+			width: 24px;
+			height: 24px;
+			flex-shrink: 0;
+		}
+		.error-title {
+			font-size: 16px;
+			font-weight: 600;
+			color: #dc2626;
+		}
+		.error-content {
+			background: #fef2f2;
+			border: 1px solid #fecaca;
+			border-radius: 10px;
+			padding: 18px;
+			flex: 1;
+			overflow: auto;
+		}
+		.error-message {
+			font-size: 13px;
+			line-height: 1.7;
+			color: #991b1b;
+			white-space: pre-wrap;
+			word-break: break-word;
+		}
+	</style>
+</head>
+<body>
+	<div class="error-container">
+		<div class="error-header">
+			<svg class="error-icon" viewBox="0 0 20 20" fill="none">
+				<circle cx="10" cy="10" r="9" stroke="#dc2626" stroke-width="1.5" fill="#fee2e2"/>
+				<path d="M7 7L13 13" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
+				<path d="M13 7L7 13" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
+			</svg>
+			<span class="error-title">Error</span>
+		</div>
+		<div class="error-content">
+			<div class="error-message">${escaped}</div>
+		</div>
+	</div>
+</body>
+</html>`;
+	}
+
+	private updateWebviewContainerStyle(): void {
+		if (!this.webviewContainer) return;
+
+		if (this._isError) {
+			// Red glow border when in error state
+			this.webviewContainer.style.boxShadow = '0 0 0 3px rgba(239, 68, 68, 0.5), 0 0 32px rgba(239, 68, 68, 0.3), 0 16px 48px rgba(0, 0, 0, 0.4)';
+		} else {
+			// Normal shadow - scale-adjusted
+			const scale = this.webviewContainer.style.transform.match(/scale\(([^)]+)\)/)?.[1] || '1';
+			this.webviewContainer.style.boxShadow = `0 ${Math.round(16 / parseFloat(scale))}px ${Math.round(48 / parseFloat(scale))}px rgba(0, 0, 0, 0.4)`;
+		}
+	}
+
+	// ============================================
 	// Lifecycle
 	// ============================================
 
@@ -988,17 +1152,54 @@ export class EditorFullscreen extends Disposable {
 	}
 
 	public override dispose(): void {
+		// Cancel any pending timers
 		this.cancelAutoClose();
 		if (this.sizeIndicatorTimer) {
 			clearTimeout(this.sizeIndicatorTimer);
+			this.sizeIndicatorTimer = undefined;
 		}
+
+		// Dispose webview first
 		if (this.webviewElement) {
 			this.webviewElement.dispose();
 			this.webviewElement = undefined;
 		}
+
+		// Remove webview container
+		if (this.webviewContainer) {
+			this.webviewContainer.remove();
+			this.webviewContainer = undefined;
+		}
+
+		// Remove size indicator
+		if (this.sizeIndicator) {
+			this.sizeIndicator.remove();
+			this.sizeIndicator = undefined;
+		}
+
+		// Remove action buttons container (includes buttonsPanel and toggleButton)
+		if (this.actionButtonsContainer) {
+			this.actionButtonsContainer.remove();
+			this.actionButtonsContainer = undefined;
+		}
+
+		// Clear UI element references
+		this.buttonsPanel = undefined;
+		this.toggleButton = undefined;
+		this.toggleArrow = undefined;
+		this.deviceButton = undefined;
+
+		// Remove content container
+		if (this.contentContainer) {
+			this.contentContainer.remove();
+			this.contentContainer = undefined;
+		}
+
+		// Remove overlay last (this removes everything that's still attached)
 		if (this.overlay.parentElement) {
 			this.overlay.parentElement.removeChild(this.overlay);
 		}
+
 		super.dispose();
 	}
 }

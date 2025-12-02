@@ -364,44 +364,38 @@ export class SandboxCard extends Disposable {
 	}
 
 	private applyDeviceEmulation(): void {
-		if (!this.webviewContainer) return;
+		if (!this.webviewContainer || !this.webviewWrapper) return;
 
 		const mode = this.getEffectiveDeviceMode();
 		const config = DEVICE_PRESETS[mode];
 
-		const availableWidth = this.sandbox.width - 20;
-		const availableHeight = this.sandbox.height - 50;
-
 		if (config.width === 'auto' || config.height === 'auto') {
-			this.webviewContainer.style.width = `${availableWidth}px`;
-			this.webviewContainer.style.height = `${availableHeight}px`;
+			// Auto mode: fill available space
+			this.webviewContainer.style.width = '100%';
+			this.webviewContainer.style.height = '100%';
 			this.webviewContainer.style.transform = 'none';
 			this.webviewContainer.style.position = 'relative';
-			this.webviewContainer.style.left = '0';
-			this.webviewContainer.style.top = '0';
 			this.webviewContainer.style.margin = '0';
 		} else {
+			// Device mode: fixed size, scaled to fit, centered via CSS
 			const deviceWidth = config.width as number;
 			const deviceHeight = config.height as number;
+
+			// Calculate available space (sandbox minus padding and header)
+			const availableWidth = this.sandbox.width - 20; // 10px padding each side
+			const availableHeight = this.sandbox.height - 50; // header + padding
 
 			const scaleX = availableWidth / deviceWidth;
 			const scaleY = availableHeight / deviceHeight;
 			const scale = Math.min(scaleX, scaleY, 1);
 
-			const visualWidth = deviceWidth * scale;
-			const visualHeight = deviceHeight * scale;
-
-			const offsetX = (availableWidth - visualWidth) / 2;
-			const offsetY = (availableHeight - visualHeight) / 2;
-
 			this.webviewContainer.style.width = `${deviceWidth}px`;
 			this.webviewContainer.style.height = `${deviceHeight}px`;
 			this.webviewContainer.style.transform = `scale(${scale})`;
-			this.webviewContainer.style.transformOrigin = 'top left';
-			this.webviewContainer.style.position = 'absolute';
-			this.webviewContainer.style.left = `${offsetX}px`;
-			this.webviewContainer.style.top = `${offsetY}px`;
+			this.webviewContainer.style.transformOrigin = 'center center';
+			this.webviewContainer.style.position = 'relative';
 			this.webviewContainer.style.margin = '0';
+			// Wrapper already has flex centering, so position: relative + transformOrigin: center works
 		}
 	}
 
@@ -521,6 +515,7 @@ export class SandboxCard extends Disposable {
 		// Clear error state
 		this.sandbox.state = 'loading';
 		this.sandbox.errorMessage = undefined;
+		this.updateVisualState();
 
 		// Dispose old webview completely
 		if (this.webviewElement) {
@@ -635,10 +630,10 @@ export class SandboxCard extends Disposable {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<meta http-equiv="Content-Security-Policy" content="
 		default-src 'none';
-		script-src 'unsafe-inline' 'unsafe-eval' blob: https://esm.sh;
-		style-src 'unsafe-inline' https://esm.sh https://fonts.googleapis.com;
+		script-src 'unsafe-inline' 'unsafe-eval' blob: https://esm.sh https://unpkg.com https://cdn.skypack.dev https://cdn.jsdelivr.net;
+		style-src 'unsafe-inline' https://esm.sh https://unpkg.com https://cdn.skypack.dev https://cdn.jsdelivr.net https://fonts.googleapis.com;
 		font-src https://fonts.gstatic.com;
-		connect-src https://esm.sh;
+		connect-src https://esm.sh https://unpkg.com https://cdn.skypack.dev https://cdn.jsdelivr.net;
 		img-src data: https:;
 	">
 	<style>
@@ -650,6 +645,28 @@ export class SandboxCard extends Disposable {
 <body>
 	<div id="root"></div>
 	<script>
+		// Acquire VSCode API for proper messaging (window.parent is overridden by VSCode)
+		const vscode = acquireVsCodeApi();
+
+		// Global error handler for runtime errors (React hooks, etc.)
+		window.onerror = function(message, source, lineno, colno, error) {
+			console.error('[Webview] Runtime error:', message, error);
+			vscode.postMessage({
+				type: 'error',
+				message: typeof message === 'string' ? message : (error?.message || 'Unknown error')
+			});
+			return true; // Prevent default error handling
+		};
+
+		// Global handler for unhandled promise rejections
+		window.addEventListener('unhandledrejection', function(event) {
+			console.error('[Webview] Unhandled rejection:', event.reason);
+			vscode.postMessage({
+				type: 'error',
+				message: event.reason?.message || String(event.reason) || 'Unhandled promise rejection'
+			});
+		});
+
 		window.addEventListener('message', async (event) => {
 			const message = event.data;
 
@@ -660,14 +677,17 @@ export class SandboxCard extends Disposable {
 					);
 					await import(blobUrl);
 					URL.revokeObjectURL(blobUrl);
+					// Signal success
+					vscode.postMessage({ type: 'rendered' });
 				} catch (error) {
 					console.error('[Webview] Execution error:', error);
-					window.parent.postMessage({ type: 'error', message: error.message }, '*');
+					vscode.postMessage({ type: 'error', message: error.message });
 				}
 			}
 		});
 
-		window.parent.postMessage({ type: 'ready' }, '*');
+		// Signal ready
+		vscode.postMessage({ type: 'ready' });
 	</script>
 </body>
 </html>`;
@@ -685,6 +705,7 @@ export class SandboxCard extends Disposable {
 
 		try {
 			this.sandbox.state = 'loading';
+			this.updateVisualState();
 
 			// Detect framework and use correct file extension
 			const framework = this.detectFramework(this.sandbox.sessionCode);
@@ -717,9 +738,21 @@ export class SandboxCard extends Disposable {
 			});
 
 		} catch (error) {
+			// Pipeline/build errors - show in UI
 			this.sandbox.state = 'error';
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			this.sandbox.errorMessage = errorMessage;
+			this.showError(this.formatPipelineError(errorMessage));
 			console.error('[SandboxCard] Pipeline error:', error);
 		}
+	}
+
+	/**
+	 * Format pipeline errors for display
+	 */
+	private formatPipelineError(message: string): string {
+		// Just return the message as-is - no hardcoded string manipulation
+		return message;
 	}
 
 	/**
@@ -792,9 +825,12 @@ export class SandboxCard extends Disposable {
 			console.log('[SandboxCard] Webview ready');
 		} else if (message.type === 'rendered') {
 			this.sandbox.state = 'ready';
+			this.clearError();
 			console.log('[SandboxCard] Component rendered');
 		} else if (message.type === 'error') {
 			this.sandbox.state = 'error';
+			this.sandbox.errorMessage = message.message;
+			this.showError(message.message);
 			console.error('[SandboxCard] Error:', message.message);
 		}
 	}
@@ -835,8 +871,13 @@ export class SandboxCard extends Disposable {
 			this.webviewContainer.style.pointerEvents = this._isDragging ? 'none' : 'auto';
 		}
 
-		// Border - overlap indicator during drag
-		if (this._isOverlapping && this._isDragging) {
+		// Check if in error state
+		const isError = this.sandbox.state === 'error';
+
+		// Border - error state takes priority, then overlap, selection states
+		if (isError) {
+			this.container.style.border = '2px solid rgba(239, 68, 68, 0.8)';
+		} else if (this._isOverlapping && this._isDragging) {
 			this.container.style.border = '2px solid rgba(251, 191, 36, 0.8)';
 		} else if (this._isDragging) {
 			this.container.style.border = '1px solid rgba(255, 255, 255, 0.3)';
@@ -850,8 +891,10 @@ export class SandboxCard extends Disposable {
 			this.container.style.border = '1px solid rgba(255, 255, 255, 0.2)';
 		}
 
-		// Box shadow - simplified during drag
-		if (this._isDragging && this._isOverlapping) {
+		// Box shadow - error glow takes priority
+		if (isError) {
+			this.container.style.boxShadow = '0 0 0 4px rgba(239, 68, 68, 0.2), 0 0 24px rgba(239, 68, 68, 0.3), 0 12px 48px rgba(0, 0, 0, 0.3)';
+		} else if (this._isDragging && this._isOverlapping) {
 			this.container.style.boxShadow = '0 0 0 4px rgba(251, 191, 36, 0.3), 0 8px 32px rgba(251, 191, 36, 0.4)';
 		} else if (this._isDragging) {
 			this.container.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.5)';
@@ -874,6 +917,120 @@ export class SandboxCard extends Disposable {
 		} else {
 			this.container.style.opacity = '1';
 		}
+	}
+
+	// ============================================
+	// Error Display (renders inside webview)
+	// ============================================
+
+	private showError(errorMessage: string): void {
+		// Set error HTML directly in the webview - no overlay needed
+		if (this.webviewElement) {
+			this.webviewElement.setHtml(this.getErrorHTML(errorMessage));
+		}
+		// Update visual state to show red glow border
+		this.updateVisualState();
+	}
+
+	private getErrorHTML(errorMessage: string): string {
+		// Escape HTML entities to prevent XSS
+		const escaped = errorMessage
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;');
+
+		return `<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		html, body {
+			width: 100%;
+			height: 100%;
+			background: #ffffff;
+			font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+		}
+		.error-container {
+			width: 100%;
+			height: 100%;
+			display: flex;
+			flex-direction: column;
+			padding: 20px;
+			overflow: auto;
+		}
+		.error-header {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			margin-bottom: 16px;
+			flex-shrink: 0;
+		}
+		.error-icon {
+			width: 20px;
+			height: 20px;
+			flex-shrink: 0;
+		}
+		.error-title {
+			font-size: 14px;
+			font-weight: 600;
+			color: #dc2626;
+		}
+		.error-content {
+			background: #fef2f2;
+			border: 1px solid #fecaca;
+			border-radius: 8px;
+			padding: 14px;
+			flex: 1;
+			overflow: auto;
+		}
+		.error-message {
+			font-size: 12px;
+			line-height: 1.6;
+			color: #991b1b;
+			white-space: pre-wrap;
+			word-break: break-word;
+		}
+	</style>
+</head>
+<body>
+	<div class="error-container">
+		<div class="error-header">
+			<svg class="error-icon" viewBox="0 0 20 20" fill="none">
+				<circle cx="10" cy="10" r="9" stroke="#dc2626" stroke-width="1.5" fill="#fee2e2"/>
+				<path d="M7 7L13 13" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
+				<path d="M13 7L7 13" stroke="#dc2626" stroke-width="1.5" stroke-linecap="round"/>
+			</svg>
+			<span class="error-title">Error</span>
+		</div>
+		<div class="error-content">
+			<div class="error-message">${escaped}</div>
+		</div>
+	</div>
+</body>
+</html>`;
+	}
+
+	private clearError(): void {
+		this.sandbox.errorMessage = undefined;
+		// Restore normal border via updateVisualState
+		this.updateVisualState();
+	}
+
+	/**
+	 * Get current error message (for AI agents/external access)
+	 */
+	public getErrorMessage(): string | undefined {
+		return this.sandbox.errorMessage;
+	}
+
+	/**
+	 * Check if sandbox is in error state
+	 */
+	public hasError(): boolean {
+		return this.sandbox.state === 'error';
 	}
 
 	// ============================================
@@ -991,8 +1148,36 @@ export class SandboxCard extends Disposable {
 	}
 
 	override dispose(): void {
-		this.webviewElement?.dispose();
+		// Dispose webview first
+		if (this.webviewElement) {
+			this.webviewElement.dispose();
+			this.webviewElement = undefined;
+		}
+
+		// Remove webview container
+		if (this.webviewContainer) {
+			this.webviewContainer.remove();
+			this.webviewContainer = undefined;
+		}
+
+		// Remove webview wrapper
+		if (this.webviewWrapper) {
+			this.webviewWrapper.remove();
+			this.webviewWrapper = undefined;
+		}
+
+		// Remove action buttons
+		if (this.actionButtons) {
+			this.actionButtons.remove();
+			this.actionButtons = undefined;
+		}
+
+		// Clear device mode button reference
+		this.deviceModeButton = undefined;
+
+		// Remove container last (this removes everything that's still attached)
 		this.container.remove();
+
 		super.dispose();
 	}
 }

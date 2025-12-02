@@ -16,7 +16,7 @@ export function getSandboxTemplate(): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-eval' 'unsafe-inline' blob: https://esm.sh; style-src 'unsafe-inline'; connect-src https://esm.sh;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-eval' 'unsafe-inline' blob: https://esm.sh https://unpkg.com https://cdn.skypack.dev https://cdn.jsdelivr.net; style-src 'unsafe-inline' https://esm.sh https://unpkg.com https://cdn.skypack.dev https://cdn.jsdelivr.net; connect-src https://esm.sh https://unpkg.com https://cdn.skypack.dev https://cdn.jsdelivr.net;">
   <title>Roopik Sandbox</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }

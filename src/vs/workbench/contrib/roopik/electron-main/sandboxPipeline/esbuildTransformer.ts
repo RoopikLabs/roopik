@@ -9,6 +9,139 @@ import vuePlugin from 'esbuild-plugin-vue3';
 import { Framework, ComponentInput, TransformedComponent } from '../../common/sandboxPipeline/types.js';
 import { ComponentParser } from '../../common/sandboxPipeline/componentParser.js';
 
+// ============================================
+// CDN Configuration
+// ============================================
+
+/**
+ * Supported CDN Providers (ESM-compatible only)
+ *
+ * - esm.sh: RECOMMENDED - Best ESM support, auto-converts CJS, supports React 18+, handles module deduplication
+ * - skypack: Good fallback for non-React packages (stuck on React 17.x, see github.com/skypackjs/skypack-cdn/issues/88)
+ * - jsdelivr: Fast but has React hooks issues due to multiple React instances (no module deduplication)
+ */
+export type CDNProvider = 'esm.sh' | 'skypack' | 'jsdelivr';
+
+/**
+ * CHANGE THIS to switch CDN providers globally
+ * Default: 'esm.sh' (recommended - best ESM support, only reliable CDN for React 18+)
+ */
+const CDN_PROVIDER: CDNProvider = 'jsdelivr';
+
+/**
+ * CDN URL Templates
+ *
+ * Each provider has slightly different URL formats:
+ * - withVersion: When AI/user specifies exact version
+ * - withoutVersion: Fallback to latest stable
+ * - withSubpath: For deep imports like 'react-dom/client'
+ */
+const CDN_TEMPLATES: Record<CDNProvider, {
+	withVersion: (pkg: string, version: string) => string;
+	withoutVersion: (pkg: string) => string;
+	withSubpath: (pkg: string, version: string, subpath: string) => string;
+	withSubpathNoVersion: (pkg: string, subpath: string) => string;
+}> = {
+	'esm.sh': {
+		// Best ESM support, ?dev enables development mode (better errors)
+		// Only CDN that properly supports React 18+ and react-dom/client
+		withVersion: (pkg, version) => `https://esm.sh/${pkg}@${version}?dev`,
+		withoutVersion: (pkg) => `https://esm.sh/${pkg}?dev`,
+		withSubpath: (pkg, version, subpath) => `https://esm.sh/${pkg}@${version}${subpath}?dev`,
+		withSubpathNoVersion: (pkg, subpath) => `https://esm.sh/${pkg}${subpath}?dev`
+	},
+	'skypack': {
+		// Good for non-React packages. React issues: stuck on 17.x, react-dom/client returns 404
+		withVersion: (pkg, version) => `https://cdn.skypack.dev/${pkg}@${version}?min`,
+		withoutVersion: (pkg) => `https://cdn.skypack.dev/${pkg}?min`,
+		withSubpath: (pkg, version, subpath) => `https://cdn.skypack.dev/${pkg}@${version}${subpath}?min`,
+		withSubpathNoVersion: (pkg, subpath) => `https://cdn.skypack.dev/${pkg}${subpath}?min`
+	},
+	'jsdelivr': {
+		// Fast CDN but React hooks fail due to multiple React instances (no module deduplication)
+		withVersion: (pkg, version) => `https://cdn.jsdelivr.net/npm/${pkg}@${version}/+esm`,
+		withoutVersion: (pkg) => `https://cdn.jsdelivr.net/npm/${pkg}/+esm`,
+		withSubpath: (pkg, version, subpath) => `https://cdn.jsdelivr.net/npm/${pkg}@${version}${subpath}/+esm`,
+		withSubpathNoVersion: (pkg, subpath) => `https://cdn.jsdelivr.net/npm/${pkg}${subpath}/+esm`
+	}
+};
+
+/**
+ * Stable versions for common packages
+ * Used as fallback when AI provides invalid/hallucinated versions
+ */
+const STABLE_VERSIONS: Record<string, string> = {
+	// React ecosystem
+	'react': '18.2.0',
+	'react-dom': '18.2.0',
+	'react-router': '6.20.0',
+	'react-router-dom': '6.20.0',
+
+	// Vue ecosystem
+	'vue': '3.4.0',
+	'@vue/compiler-sfc': '3.4.0',
+	'vue-router': '4.2.5',
+	'pinia': '2.1.7',
+
+	// Svelte ecosystem
+	'svelte': '4.2.8',
+
+	// Solid ecosystem
+	'solid-js': '1.8.7',
+
+	// Preact ecosystem
+	'preact': '10.19.3',
+
+	// UI Libraries
+	'@mui/material': '5.15.0',
+	'@mui/icons-material': '5.15.0',
+	'@emotion/react': '11.11.0',
+	'@emotion/styled': '11.11.0',
+	'antd': '5.12.0',
+	'@chakra-ui/react': '2.8.2',
+
+	// Utilities
+	'lodash': '4.17.21',
+	'axios': '1.6.2',
+	'date-fns': '3.0.0',
+	'dayjs': '1.11.10'
+};
+
+/**
+ * Package pairs that MUST have matching versions
+ * If react is 18.x, react-dom MUST also be 18.x
+ */
+const VERSION_PAIRS: Record<string, string[]> = {
+	'react': ['react-dom'],
+	'vue': ['@vue/compiler-sfc'],
+	'@mui/material': ['@mui/icons-material']
+};
+
+/**
+ * Get CDN URL for a package
+ */
+function getCDNUrl(packageName: string, version?: string, subpath?: string): string {
+	const cdn = CDN_TEMPLATES[CDN_PROVIDER];
+
+	if (subpath) {
+		return version
+			? cdn.withSubpath(packageName, version, subpath)
+			: cdn.withSubpathNoVersion(packageName, subpath);
+	}
+
+	return version
+		? cdn.withVersion(packageName, version)
+		: cdn.withoutVersion(packageName);
+}
+
+/**
+ * Get stable fallback version for a package
+ */
+function getStableVersion(packageName: string): string | undefined {
+	return STABLE_VERSIONS[packageName];
+}
+
+
 /**
  * ESBuild Code Transformer (Refactored)
  *
@@ -165,6 +298,7 @@ app.mount('#root');
 		if (framework === 'svelte') {
 			return `
 import UserComponent from '${importPath}';
+
 const Component = UserComponent.default || UserComponent;
 new Component({ target: document.getElementById('root') });
 `;
@@ -195,43 +329,92 @@ render(Component(), document.getElementById('root'));
 	}
 
 	/**
-	 * Dynamic CDN Resolver with Graceful Fallbacks
+	 * Dynamic CDN Resolver with Graceful Fallbacks & Version Validation
 	 *
 	 * Strategy:
 	 * 1. Use AI-provided version if exists
-	 * 2. Fallback to esm.sh (resolves to latest stable)
-	 * 3. ESBuild will error if package doesn't exist
+	 * 2. Validate version pairs (react must match react-dom)
+	 * 3. Fallback to stable version if available
+	 * 4. Otherwise let CDN resolve to latest
+	 *
+	 * Uses configurable CDN_PROVIDER (esm.sh, unpkg, skypack, jsdelivr)
 	 */
 	private createCDNResolverPlugin(dependencies: Record<string, string>): esbuild.Plugin {
+		// Normalize and validate dependencies before processing
+		const normalizedDeps = this.normalizeAndValidateDependencies(dependencies);
+
 		return {
 			name: 'cdn-resolver',
 			setup(build) {
 				build.onResolve({ filter: /^[^.\/]/ }, args => {
-					const packageName = args.path;
+					const packagePath = args.path;
 
-					let url: string;
+					// Parse package name and subpath
+					// Examples:
+					//   'react' -> mainPkg: 'react', subpath: ''
+					//   'react-dom/client' -> mainPkg: 'react-dom', subpath: '/client'
+					//   '@mui/material' -> mainPkg: '@mui/material', subpath: ''
+					//   '@mui/material/Button' -> mainPkg: '@mui/material', subpath: '/Button'
 
-					const parts = packageName.split('/');
-					const mainPkg = packageName.startsWith('@') ? `${parts[0]}/${parts[1]}` : parts[0];
+					const parts = packagePath.split('/');
+					let mainPkg: string;
+					let subpath: string;
 
-					if (dependencies[mainPkg]) {
-						const version = dependencies[mainPkg];
-						if (packageName === mainPkg) {
-							url = `https://esm.sh/${packageName}@${version}?dev`;
-						} else {
-							// Handle subpath: package@version/subpath
-							const subpath = packageName.substring(mainPkg.length);
-							url = `https://esm.sh/${mainPkg}@${version}${subpath}?dev`;
-						}
+					if (packagePath.startsWith('@')) {
+						// Scoped package: @scope/name or @scope/name/subpath
+						mainPkg = `${parts[0]}/${parts[1]}`;
+						subpath = parts.length > 2 ? '/' + parts.slice(2).join('/') : '';
 					} else {
-						// No version - let esm.sh resolve to latest stable
-						url = `https://esm.sh/${packageName}?dev`;
+						// Regular package: name or name/subpath
+						mainPkg = parts[0];
+						subpath = parts.length > 1 ? '/' + parts.slice(1).join('/') : '';
 					}
+
+					// Get version from normalized dependencies or fallback to stable
+					const version = normalizedDeps[mainPkg] || getStableVersion(mainPkg);
+
+					// Generate CDN URL using configurable provider
+					const url = getCDNUrl(mainPkg, version, subpath || undefined);
+
+					console.log(`[CDN] ${packagePath} -> ${url}`);
 
 					return { path: url, external: true };
 				});
 			}
 		};
+	}
+
+	/**
+	 * Normalize and validate dependencies
+	 *
+	 * - Ensures version pairs match (react & react-dom same version)
+	 * - Falls back to stable versions for invalid/missing versions
+	 */
+	private normalizeAndValidateDependencies(deps: Record<string, string>): Record<string, string> {
+		const normalized: Record<string, string> = { ...deps };
+
+		// Validate version pairs
+		for (const [primary, dependents] of Object.entries(VERSION_PAIRS)) {
+			if (normalized[primary]) {
+				const primaryVersion = normalized[primary];
+
+				for (const dependent of dependents) {
+					if (normalized[dependent] && normalized[dependent] !== primaryVersion) {
+						// Version mismatch - force to match primary
+						console.warn(
+							`[CDN] Version mismatch: ${dependent}@${normalized[dependent]} ` +
+							`should match ${primary}@${primaryVersion}. Auto-fixing.`
+						);
+						normalized[dependent] = primaryVersion;
+					} else if (!normalized[dependent]) {
+						// Dependent not specified - inherit from primary
+						normalized[dependent] = primaryVersion;
+					}
+				}
+			}
+		}
+
+		return normalized;
 	}
 
 	/**

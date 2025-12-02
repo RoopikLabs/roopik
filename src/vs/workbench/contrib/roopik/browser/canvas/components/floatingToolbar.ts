@@ -24,6 +24,9 @@ export class FloatingToolbar extends Disposable {
 	private container: HTMLElement;
 	private isExpanded: boolean = false;
 	private static stylesInjected = false;
+	private collapseTimeout: number | undefined;
+	private samplesBtn: HTMLElement | null = null;
+	private dropdown: HTMLElement | null = null;
 
 	constructor(
 		private parent: HTMLElement,
@@ -97,6 +100,8 @@ export class FloatingToolbar extends Disposable {
 				this.render();
 			}
 		);
+		toggleBtn.classList.add('roopik-toolbar__samples-btn');
+		this.samplesBtn = toggleBtn;
 		toolbar.appendChild(toggleBtn);
 
 		// Separator
@@ -109,13 +114,17 @@ export class FloatingToolbar extends Disposable {
 		});
 		toolbar.appendChild(clearBtn);
 
-		// Samples dropdown panel (always present, visibility handled via CSS hover)
+		// Samples dropdown panel (always present, visibility handled via JS with delay)
 		const dropdown = this.createDropdown();
+		this.dropdown = dropdown;
 
 		// Clear and rebuild (use clearNode for Trusted Types compliance)
 		clearNode(this.container);
 		this.container.appendChild(toolbar);
 		this.container.appendChild(dropdown);
+
+		// Setup hover handlers for delayed collapse
+		this.setupHoverHandlers();
 	}
 
 	private createButton(text: string, color: string, onClick: () => void): HTMLElement {
@@ -241,7 +250,61 @@ export class FloatingToolbar extends Disposable {
 		this.container.style.display = visible ? '' : 'none';
 	}
 
+	private setupHoverHandlers(): void {
+		if (!this.samplesBtn || !this.dropdown) {
+			return;
+		}
+
+		// Expand on hover over Samples button
+		this.samplesBtn.addEventListener('mouseenter', () => {
+			this.cancelCollapse();
+			this.expandDropdown();
+		});
+
+		// Start collapse timer when leaving Samples button
+		this.samplesBtn.addEventListener('mouseleave', () => {
+			this.scheduleCollapse();
+		});
+
+		// Cancel collapse when entering dropdown
+		this.dropdown.addEventListener('mouseenter', () => {
+			this.cancelCollapse();
+			this.expandDropdown();
+		});
+
+		// Start collapse timer when leaving dropdown
+		this.dropdown.addEventListener('mouseleave', () => {
+			this.scheduleCollapse();
+		});
+	}
+
+	private expandDropdown(): void {
+		if (!this.dropdown) {
+			return;
+		}
+		this.dropdown.classList.add('roopik-toolbar__dropdown--expanded');
+	}
+
+	private scheduleCollapse(): void {
+		this.cancelCollapse();
+		// 200ms delay - standard UX practice for dropdown menus
+		this.collapseTimeout = window.setTimeout(() => {
+			if (this.dropdown) {
+				this.dropdown.classList.remove('roopik-toolbar__dropdown--expanded');
+			}
+			this.collapseTimeout = undefined;
+		}, 200);
+	}
+
+	private cancelCollapse(): void {
+		if (this.collapseTimeout !== undefined) {
+			clearTimeout(this.collapseTimeout);
+			this.collapseTimeout = undefined;
+		}
+	}
+
 	public override dispose(): void {
+		this.cancelCollapse();
 		if (this.container.parentElement) {
 			this.container.parentElement.removeChild(this.container);
 		}
@@ -267,7 +330,8 @@ export class FloatingToolbar extends Disposable {
 				scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
 			}
 
-			.roopik-toolbar:hover .roopik-toolbar__dropdown {
+			/* Show dropdown when expanded class is added */
+			.roopik-toolbar__dropdown--expanded {
 				max-height: 240px;
 				opacity: 1;
 				pointer-events: auto;
