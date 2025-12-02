@@ -73,6 +73,10 @@ export class SandboxCard extends Disposable {
 	// Container Creation
 	// ============================================
 
+	// Top bar height (label + buttons) + margin
+	private static readonly TOP_BAR_HEIGHT = 48; // 16px top + ~20px content + 12px margin below
+	private static readonly SIDE_PADDING = 80; // Visual side padding for square-ish look
+
 	private createContainer(): HTMLElement {
 		const container = document.createElement('div');
 		container.className = 'roopik-sandbox-card new-pipeline';
@@ -87,8 +91,9 @@ export class SandboxCard extends Disposable {
 		container.style.cursor = 'pointer';
 		container.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
 
-		// Padding for glass effect
-		container.style.padding = '40px 120px';
+		// Minimal padding - just for visual breathing room
+		// Top: space for top bar, Bottom: same as top for symmetry, Sides: padding for square-ish look
+		container.style.padding = `${SandboxCard.TOP_BAR_HEIGHT}px ${SandboxCard.SIDE_PADDING}px ${SandboxCard.TOP_BAR_HEIGHT}px ${SandboxCard.SIDE_PADDING}px`;
 		container.style.margin = '20px';
 
 		// Position and size
@@ -378,18 +383,20 @@ export class SandboxCard extends Disposable {
 			this.webviewContainer.style.margin = '0';
 			this.webviewContainer.style.flexShrink = '0';
 		} else {
-			// Device mode: fixed device size, scaled to fit
-			// Use wrapper's actual dimensions for accurate scaling
-			const wrapperRect = this.webviewWrapper.getBoundingClientRect();
-			const availableWidth = wrapperRect.width > 0 ? wrapperRect.width : (this.sandbox.width - 240);
-			const availableHeight = wrapperRect.height > 0 ? wrapperRect.height : (this.sandbox.height - 80);
+			// Device mode: fixed device size, scaled to fit available space
+			// Use sandbox's logical dimensions (not getBoundingClientRect which is affected by canvas zoom)
+			// Available space = sandbox size - padding (top bar + bottom margin + side padding)
+			const availableWidth = this.sandbox.width - (SandboxCard.SIDE_PADDING * 2);
+			const availableHeight = this.sandbox.height - (SandboxCard.TOP_BAR_HEIGHT * 2);
 
 			const deviceWidth = config.width as number;
 			const deviceHeight = config.height as number;
 
+			// Scale to fit available space while maintaining aspect ratio
+			// No cap at 1 - allow scaling up if space is available
 			const scaleX = availableWidth / deviceWidth;
 			const scaleY = availableHeight / deviceHeight;
-			const scale = Math.min(scaleX, scaleY, 1);
+			const scale = Math.min(scaleX, scaleY);
 
 			// Calculate the visual size after scaling
 			const scaledWidth = deviceWidth * scale;
