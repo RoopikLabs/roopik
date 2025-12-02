@@ -776,21 +776,25 @@ export class SandboxCard extends Disposable {
 
 	/**
 	 * Detect framework from code content
+	 *
+	 * Detection priority:
+	 * 1. Vue SFC - has <template> AND <script>
+	 * 2. Svelte - has Svelte imports (from 'svelte')
+	 * 3. Solid - has solid-js imports
+	 * 4. Preact - has preact imports
+	 * 5. React - has React imports
+	 * 6. HTML - starts with < and no framework imports
 	 */
 	private detectFramework(code: string): string {
-		// Vue SFC detection
+		// Vue SFC detection - must have both <template> and <script>
 		if (code.includes('<template>') && code.includes('<script')) {
 			return 'vue';
 		}
 
-		// Svelte detection
-		if (code.includes('<script>') && code.includes('<style>') && !code.includes('<template>')) {
+		// Svelte detection - look for Svelte-specific imports
+		// Svelte components import from 'svelte' (e.g., import { onMount } from 'svelte')
+		if (code.includes('from \'svelte\'') || code.includes('from "svelte"')) {
 			return 'svelte';
-		}
-
-		// Vanilla HTML detection
-		if (code.trim().startsWith('<') && !code.includes('import React') && !code.includes('from \'react\'')) {
-			return 'html';
 		}
 
 		// Solid detection
@@ -803,7 +807,17 @@ export class SandboxCard extends Disposable {
 			return 'preact';
 		}
 
-		// Default to React
+		// React detection - explicit imports
+		if (code.includes('import React') || code.includes('from \'react\'') || code.includes('from "react"')) {
+			return 'react';
+		}
+
+		// Vanilla HTML detection - starts with HTML tag and no framework imports
+		if (code.trim().startsWith('<')) {
+			return 'html';
+		}
+
+		// Default to React for JSX-like code
 		return 'react';
 	}
 
@@ -830,7 +844,7 @@ export class SandboxCard extends Disposable {
 		const depsMap: Record<string, Record<string, string>> = {
 			'react': { 'react': '18', 'react-dom': '18' },
 			'vue': { 'vue': '3.4.21' },
-			'svelte': { 'svelte': '4.2.15' },
+			'svelte': { 'svelte': '5.45.2' },
 			'solid': { 'solid-js': '1.8.0' },
 			'preact': { 'preact': '10.19.0' },
 			'html': {}

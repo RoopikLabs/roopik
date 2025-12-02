@@ -2923,8 +2923,7 @@ function shuffleStats() {
 		grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 	}
 }
-</style>
-`,
+</style>`,
 		dependencies: { vue: '3.4.21' }
 	},
 
@@ -3043,9 +3042,8 @@ function shuffleStats() {
 			<span>Monitored regions: 12</span>
 		</div>
 	</div>
-</div>
-`,
-		dependencies: { svelte: '4.2.15' }
+</div>`,
+		dependencies: { svelte: '5.45.2' }
 	},
 
 	'VANILLA_LANDING_HERO': {
@@ -3159,8 +3157,7 @@ function shuffleStats() {
 			primary.textContent = 'Start building';
 		}, 1200);
 	});
-</script>
-`,
+</script>`,
 		dependencies: {}
 	}
 };

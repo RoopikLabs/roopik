@@ -814,11 +814,19 @@ export class EditorFullscreen extends Disposable {
 	}
 
 	private detectFramework(code: string): string {
+		// Vue SFC - must have both <template> and <script>
 		if (code.includes('<template>') && code.includes('<script')) return 'vue';
-		if (code.includes('<script>') && code.includes('<style>') && !code.includes('<template>')) return 'svelte';
-		if (code.trim().startsWith('<') && !code.includes('import React') && !code.includes('from \'react\'')) return 'html';
+		// Svelte - look for Svelte-specific imports (from 'svelte')
+		if (code.includes('from \'svelte\'') || code.includes('from "svelte"')) return 'svelte';
+		// Solid - has solid-js imports
 		if (code.includes('solid-js')) return 'solid';
+		// Preact - has preact imports
 		if (code.includes('preact')) return 'preact';
+		// React - explicit imports
+		if (code.includes('import React') || code.includes('from \'react\'') || code.includes('from "react"')) return 'react';
+		// Vanilla HTML - starts with < and no framework imports
+		if (code.trim().startsWith('<')) return 'html';
+		// Default to React for JSX-like code
 		return 'react';
 	}
 
@@ -838,7 +846,7 @@ export class EditorFullscreen extends Disposable {
 		const map: Record<string, Record<string, string>> = {
 			'react': { 'react': '18', 'react-dom': '18' },
 			'vue': { 'vue': '3.4.21' },
-			'svelte': { 'svelte': '4.2.15' },
+			'svelte': { 'svelte': '5.45.2' },
 			'solid': { 'solid-js': '1.8.0' },
 			'preact': { 'preact': '10.19.0' },
 			'html': {}

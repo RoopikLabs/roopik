@@ -6,6 +6,9 @@
 import * as esbuild from 'esbuild';
 import sveltePlugin from 'esbuild-svelte';
 import vuePlugin from 'esbuild-plugin-vue3';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { Framework, ComponentInput, TransformedComponent } from '../../common/sandboxPipeline/types.js';
 import { ComponentParser } from '../../common/sandboxPipeline/componentParser.js';
 
@@ -83,8 +86,8 @@ const STABLE_VERSIONS: Record<string, string> = {
 	'vue-router': '4.2.5',
 	'pinia': '2.1.7',
 
-	// Svelte ecosystem
-	'svelte': '4.2.8',
+	// Svelte ecosystem (Svelte 5 for esbuild-svelte@0.9.x compatibility)
+	'svelte': '5.45.2',
 
 	// Solid ecosystem
 	'solid-js': '1.8.7',
@@ -143,6 +146,71 @@ function getStableVersion(packageName: string): string | undefined {
 
 
 /**
+ * Framework build modes
+ *
+ * - 'virtual': Use in-memory virtual FS (fast, works for JSX/TSX frameworks)
+ * - 'disk': Write to temp directory (required for frameworks with custom file formats)
+ */
+type BuildMode = 'virtual' | 'disk';
+
+/**
+ * Framework configuration for build process
+ */
+interface FrameworkBuildConfig {
+	mode: BuildMode;
+	getPlugins: () => esbuild.Plugin[];
+}
+
+/**
+ * Framework build configurations
+ *
+ * Add new frameworks here with their build requirements
+ */
+const FRAMEWORK_BUILD_CONFIGS: Record<Framework, FrameworkBuildConfig> = {
+	react: {
+		mode: 'virtual',
+		getPlugins: () => []
+	},
+	solid: {
+		mode: 'virtual',
+		getPlugins: () => []
+	},
+	preact: {
+		mode: 'virtual',
+		getPlugins: () => []
+	},
+	vue: {
+		mode: 'disk', // Vue plugin requires disk access for .vue files
+		getPlugins: () => [vuePlugin()]
+	},
+	svelte: {
+		mode: 'disk', // Svelte plugin requires disk access for .svelte files
+		getPlugins: () => {
+			// esbuild-svelte with Svelte 5 compiler options
+			const pluginFn = (sveltePlugin as any).default || sveltePlugin;
+			const plugin = pluginFn({
+				compilerOptions: {
+					// Generate client-side code (not SSR)
+					generate: 'client',
+					// Use dev mode for better error messages
+					dev: true,
+					// Enable compatibility mode for Svelte 4 style components (onMount, etc.)
+					// This allows components using the old API to work in Svelte 5
+					compatibility: {
+						componentApi: 4
+					}
+				}
+			});
+			return [plugin];
+		}
+	},
+	html: {
+		mode: 'virtual',
+		getPlugins: () => []
+	}
+};
+
+/**
  * ESBuild Code Transformer (Refactored)
  *
  * Key improvements:
@@ -150,6 +218,7 @@ function getStableVersion(packageName: string): string | undefined {
  * - Synthetic entry points (proper ESM, no globals)
  * - Metafile-based URL extraction (reliable)
  * - Graceful fallbacks
+ * - Disk-based builds for frameworks that need it (Vue, Svelte)
  */
 export class ESBuildTransformer {
 
@@ -176,90 +245,231 @@ export class ESBuildTransformer {
 			[syntheticEntryPath]: syntheticEntryCode
 		};
 
-		// 5. Transform with ESBuild
-		const { code, metafile } = await this.transformWithESBuild(
-			syntheticEntryPath,
-			framework,
-			allFiles,
-			input.dependencies || {}
-		);
+		// 5. Get framework build config
+		const buildConfig = FRAMEWORK_BUILD_CONFIGS[framework];
+
+		// 6. Handle HTML framework specially (no ESBuild needed)
+		if (framework === 'html') {
+			const result = this.transformHTML(input.files);
+			return {
+				id: input.id,
+				framework,
+				bundledCode: result.code,
+				cdnUrls: [],
+				metadata: {
+					size: result.code.length,
+					transformTime: Date.now() - startTime
+				}
+			};
+		}
+
+		// 7. Transform with ESBuild (disk-based or virtual)
+		let result: { code: string; metafile: esbuild.Metafile };
+
+		if (buildConfig.mode === 'disk') {
+			result = await this.transformWithDiskBuild(
+				syntheticEntryPath,
+				allFiles,
+				input.dependencies || {},
+				buildConfig
+			);
+		} else {
+			result = await this.transformWithVirtualBuild(
+				syntheticEntryPath,
+				allFiles,
+				input.dependencies || {},
+				buildConfig
+			);
+		}
 
 		return {
 			id: input.id,
 			framework,
-			bundledCode: code,
-			cdnUrls: this.extractImportsFromMeta(metafile),
+			bundledCode: result.code,
+			cdnUrls: this.extractImportsFromMeta(result.metafile),
 			metadata: {
-				size: code.length,
+				size: result.code.length,
 				transformTime: Date.now() - startTime
 			}
 		};
 	}
 
 	/**
-	 * Transform code with ESBuild
+	 * Transform HTML/CSS/JS (vanilla) - no ESBuild needed
+	 *
+	 * For vanilla HTML, we inject the content directly into the DOM.
+	 * This handles:
+	 * - HTML content -> injected into #root
+	 * - CSS content -> injected as <style> tag
+	 * - JS content -> executed directly
 	 */
-	private async transformWithESBuild(
+	private transformHTML(files: { [filename: string]: string }): { code: string } {
+		let htmlContent = '';
+		let cssContent = '';
+		let jsContent = '';
+
+		for (const [filename, content] of Object.entries(files)) {
+			if (filename.endsWith('.html')) {
+				htmlContent += content;
+			} else if (filename.endsWith('.css')) {
+				cssContent += content;
+			} else if (filename.endsWith('.js')) {
+				jsContent += content;
+			}
+		}
+
+		// Generate code that injects HTML, CSS, and runs JS
+		const code = `
+// Vanilla HTML/CSS/JS bundle
+(function() {
+	// Inject CSS
+	${cssContent ? `
+	const style = document.createElement('style');
+	style.textContent = ${JSON.stringify(cssContent)};
+	document.head.appendChild(style);
+	` : ''}
+
+	// Inject HTML into #root
+	${htmlContent ? `
+	const root = document.getElementById('root');
+	if (root) {
+		root.innerHTML = ${JSON.stringify(htmlContent)};
+	}
+	` : ''}
+
+	// Execute JS
+	${jsContent}
+})();
+`;
+
+		return { code };
+	}
+
+	/**
+	 * Disk-based build for frameworks that require file system access
+	 *
+	 * Writes files to a temp directory, runs ESBuild, then cleans up.
+	 * Required for Vue, Svelte, and other frameworks with custom file formats.
+	 */
+	private async transformWithDiskBuild(
 		entryPath: string,
-		framework: Framework,
 		files: { [filename: string]: string },
-		dependencies: Record<string, string>
+		dependencies: Record<string, string>,
+		buildConfig: FrameworkBuildConfig
 	): Promise<{ code: string; metafile: esbuild.Metafile }> {
+		// Create temp directory
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'roopik-sandbox-'));
+
+		// Track local files so CDN resolver doesn't intercept them
+		const localFiles = new Set(Object.keys(files));
+
 		try {
+			// Write all files to temp directory
+			for (const [filename, content] of Object.entries(files)) {
+				const filePath = path.join(tempDir, filename);
+				const fileDir = path.dirname(filePath);
+
+				// Create subdirectories if needed
+				if (!fs.existsSync(fileDir)) {
+					fs.mkdirSync(fileDir, { recursive: true });
+				}
+
+				fs.writeFileSync(filePath, content, 'utf-8');
+			}
+
+			console.log(`[ESBuildTransformer] Disk build in: ${tempDir}`);
+			console.log(`[ESBuildTransformer] Local files:`, Array.from(localFiles));
+
+			// Run ESBuild with disk-based entry point
 			const result = await esbuild.build({
-				entryPoints: [entryPath],
+				entryPoints: [path.join(tempDir, entryPath)],
 				bundle: true,
 				format: 'esm',
 				write: false,
-				metafile: true, // Get accurate import graph
+				metafile: true,
 				target: 'es2022',
 				outfile: 'bundle.js',
+				absWorkingDir: tempDir,
 				plugins: [
-					...this.getFrameworkPlugins(framework),
-					this.createVirtualFSPlugin(files),
-					this.createCDNResolverPlugin(dependencies)
+					...buildConfig.getPlugins(),
+					this.createCDNResolverPlugin(dependencies, localFiles)
 				]
 			});
 
-			// CRITICAL FIX: Handle CSS output files
-			// ESBuild may generate separate CSS files for:
-			// - Imported .css files
-			// - Vue/Svelte <style> tags
-			// - CSS-in-JS libraries
-			let jsCode = '';
-			let cssCode = '';
+			return this.processESBuildResult(result);
 
-			for (const file of result.outputFiles) {
-				console.log('[ESBuildTransformer] Output file:', file.path, 'Size:', file.text.length);
-				if (file.path.endsWith('.css')) {
-					cssCode += file.text;
-				} else if (file.path.endsWith('.js')) {
-					jsCode += file.text;
-				}
+		} finally {
+			// Clean up temp directory
+			try {
+				fs.rmSync(tempDir, { recursive: true, force: true });
+				console.log(`[ESBuildTransformer] Cleaned up: ${tempDir}`);
+			} catch (cleanupError) {
+				console.warn(`[ESBuildTransformer] Failed to clean up temp dir: ${cleanupError}`);
 			}
+		}
+	}
 
-			// If CSS was generated, inject it into the JS bundle
-			// We can't send separate CSS files via postMessage, so we
-			// create a <style> tag dynamically in the iframe
-			if (cssCode) {
-				const escapedCss = JSON.stringify(cssCode);
-				jsCode += `\n
+	/**
+	 * Virtual FS build for simple frameworks (React, Solid, Preact)
+	 *
+	 * Uses in-memory virtual file system - faster, no disk I/O.
+	 */
+	private async transformWithVirtualBuild(
+		entryPath: string,
+		files: { [filename: string]: string },
+		dependencies: Record<string, string>,
+		buildConfig: FrameworkBuildConfig
+	): Promise<{ code: string; metafile: esbuild.Metafile }> {
+		const result = await esbuild.build({
+			entryPoints: [entryPath],
+			bundle: true,
+			format: 'esm',
+			write: false,
+			metafile: true,
+			target: 'es2022',
+			outfile: 'bundle.js',
+			plugins: [
+				...buildConfig.getPlugins(),
+				this.createVirtualFSPlugin(files),
+				this.createCDNResolverPlugin(dependencies)
+			]
+		});
+
+		return this.processESBuildResult(result);
+	}
+
+	/**
+	 * Process ESBuild result - extract JS and CSS, combine into single bundle
+	 */
+	private processESBuildResult(result: esbuild.BuildResult): { code: string; metafile: esbuild.Metafile } {
+		let jsCode = '';
+		let cssCode = '';
+
+		for (const file of result.outputFiles || []) {
+			console.log('[ESBuildTransformer] Output file:', file.path, 'Size:', file.text.length);
+			if (file.path.endsWith('.css')) {
+				cssCode += file.text;
+			} else if (file.path.endsWith('.js')) {
+				jsCode += file.text;
+			}
+		}
+
+		// If CSS was generated, inject it into the JS bundle
+		if (cssCode) {
+			const escapedCss = JSON.stringify(cssCode);
+			jsCode += `\n
 // Auto-injected CSS from ESBuild
 (function() {
 	const style = document.createElement('style');
 	style.textContent = ${escapedCss};
 	document.head.appendChild(style);
 })();`;
-			}
-
-			return {
-				code: jsCode,
-				metafile: result.metafile!
-			};
-
-		} catch (error) {
-			throw new Error(`ESBuild transformation failed: ${(error as Error).message}`);
 		}
+
+		return {
+			code: jsCode,
+			metafile: result.metafile!
+		};
 	}
 
 	/**
@@ -296,11 +506,16 @@ app.mount('#root');
 		}
 
 		if (framework === 'svelte') {
+			// Svelte 5 with legacy componentApi mode - use traditional new Component() style
+			// This is compatible with Svelte 4 components using onMount, etc.
 			return `
 import UserComponent from '${importPath}';
 
+const target = document.getElementById('root');
 const Component = UserComponent.default || UserComponent;
-new Component({ target: document.getElementById('root') });
+
+// Svelte 5 legacy mode: use new Component() constructor
+new Component({ target });
 `;
 		}
 
@@ -339,15 +554,38 @@ render(Component(), document.getElementById('root'));
 	 *
 	 * Uses configurable CDN_PROVIDER (esm.sh, unpkg, skypack, jsdelivr)
 	 */
-	private createCDNResolverPlugin(dependencies: Record<string, string>): esbuild.Plugin {
+	private createCDNResolverPlugin(dependencies: Record<string, string>, localFiles?: Set<string>): esbuild.Plugin {
 		// Normalize and validate dependencies before processing
 		const normalizedDeps = this.normalizeAndValidateDependencies(dependencies);
+
+		// Helper to check if path is absolute (works on both Windows and Unix)
+		const isAbsolutePath = (p: string): boolean => {
+			// Windows: C:\, D:\, etc. or \\network\path
+			// Unix: /path
+			return /^([A-Za-z]:|\\\\|\/)/i.test(p);
+		};
 
 		return {
 			name: 'cdn-resolver',
 			setup(build) {
 				build.onResolve({ filter: /^[^.\/]/ }, args => {
 					const packagePath = args.path;
+
+					// Skip absolute paths (Windows: C:\..., Unix: /...)
+					// These are local files, not npm packages
+					if (isAbsolutePath(packagePath)) {
+						return null;
+					}
+
+					// Skip our synthetic entry point and local files
+					if (packagePath === 'roopik-main-entry.js' || packagePath.startsWith('roopik-')) {
+						return null; // Let other resolvers handle it
+					}
+
+					// Skip files that exist locally (for disk-based builds)
+					if (localFiles?.has(packagePath)) {
+						return null;
+					}
 
 					// Parse package name and subpath
 					// Examples:
@@ -477,22 +715,6 @@ render(Component(), document.getElementById('root'));
 		};
 	}
 
-
-	/**
-	 * Get framework-specific plugins
-	 */
-	private getFrameworkPlugins(framework: Framework): esbuild.Plugin[] {
-		const plugins: esbuild.Plugin[] = [];
-
-		if (framework === 'vue') {
-			plugins.push(vuePlugin());
-		} else if (framework === 'svelte') {
-			plugins.push((sveltePlugin as any).default ? (sveltePlugin as any).default() : (sveltePlugin as any)());
-		}
-		// Solid, Preact, React use built-in JSX
-
-		return plugins;
-	}
 
 	/**
 	 * Extract CDN URLs from ESBuild metafile

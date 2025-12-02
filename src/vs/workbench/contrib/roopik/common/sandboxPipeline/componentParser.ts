@@ -58,25 +58,48 @@ export class ComponentParser {
 	/**
 	 * Detects framework based on file extensions and imports.
 	 * Uses a scoring system to avoid false positives.
+	 *
+	 * Priority order:
+	 * 1. Definitive file extensions (.vue, .svelte)
+	 * 2. Definitive imports (solid-js, preact)
+	 * 3. Scoring system for ambiguous cases
+	 * 4. Vanilla HTML/CSS/JS detection (no framework imports = html)
 	 */
 	detectFramework(files: { [filename: string]: string }): Framework {
 		const scores: Record<Framework, number> = {
 			react: 0, vue: 0, svelte: 0, solid: 0, preact: 0, html: 0
 		};
 
+		let hasJsxTsx = false;
+		let hasHtml = false;
+		let hasFrameworkImport = false;
+
 		for (const [filename, code] of Object.entries(files)) {
 			// 1. Hard Extension Match (High Confidence)
 			if (filename.endsWith('.vue')) return 'vue';
 			if (filename.endsWith('.svelte')) return 'svelte';
-			if (filename.endsWith('.html')) scores.html += 2;
+
+			// Track file types
+			if (filename.endsWith('.html')) hasHtml = true;
+			if (filename.endsWith('.jsx') || filename.endsWith('.tsx')) hasJsxTsx = true;
 
 			// 2. Import Regex Match (Medium Confidence)
 			// We strip comments to be safe, or just rely on the 'from' syntax which usually implies code
 			if (/from\s+['"]solid-js['"]/.test(code)) return 'solid';
 			if (/from\s+['"]preact['"]/.test(code)) return 'preact';
-			if (/from\s+['"]react['"]/.test(code)) scores.react += 2;
-			if (/from\s+['"]vue['"]/.test(code)) scores.vue += 2;
-			if (/from\s+['"]svelte['"]/.test(code)) scores.svelte += 2;
+
+			if (/from\s+['"]react['"]/.test(code)) {
+				scores.react += 2;
+				hasFrameworkImport = true;
+			}
+			if (/from\s+['"]vue['"]/.test(code)) {
+				scores.vue += 2;
+				hasFrameworkImport = true;
+			}
+			if (/from\s+['"]svelte['"]/.test(code)) {
+				scores.svelte += 2;
+				hasFrameworkImport = true;
+			}
 
 			// 3. Ambiguous Extension Match (Low Confidence)
 			if (filename.endsWith('.jsx') || filename.endsWith('.tsx')) {
@@ -88,9 +111,29 @@ export class ComponentParser {
 			}
 		}
 
-		// Return highest score
-		let bestMatch: Framework = 'react';
-		let maxScore = -1;
+		// 4. Vanilla HTML/CSS/JS detection
+		// If no framework imports and no JSX/TSX files, it's vanilla HTML
+		if (!hasFrameworkImport && !hasJsxTsx && hasHtml) {
+			return 'html';
+		}
+
+		// Also detect vanilla HTML if only .html, .css, .js files exist (no JSX/TSX)
+		if (!hasFrameworkImport && !hasJsxTsx) {
+			const filenames = Object.keys(files);
+			const isVanilla = filenames.every(f =>
+				f.endsWith('.html') ||
+				f.endsWith('.css') ||
+				f.endsWith('.js') ||
+				f.endsWith('.json')
+			);
+			if (isVanilla && filenames.length > 0) {
+				return 'html';
+			}
+		}
+
+		// Return highest score (for JSX/TSX files without clear framework imports)
+		let bestMatch: Framework = 'react'; // Default for JSX/TSX
+		let maxScore = 0;
 
 		(Object.keys(scores) as Framework[]).forEach(fw => {
 			if (scores[fw] > maxScore) {
