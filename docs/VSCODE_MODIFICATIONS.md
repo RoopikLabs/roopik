@@ -146,3 +146,21 @@ Files modified outside of `workbench/contrib/roopik/` to integrate Roopik into V
 | **~397-405** | Modified navigation handler | Updated `contents.on('will-navigate')` handler:<br>- Changed comment to: `// ROOPIK: Block any in-page navigation (except for ProjectMode browser views)`<br>- Added check: `if (BrowserViewService.isManagedWebContents(webContentsId)) { return; }`<br>- Allows navigation for ProjectMode managed browser views<br>- Ends with `// ROOPIK END` |
 | **~413-426** | Modified window open handler | Updated `contents.setWindowOpenHandler()` handler:<br>- Changed comment to: `// ROOPIK: For all other URLs, delegate to the OS (except for ProjectMode browser views)`<br>- Added logic to redirect new window requests (Ctrl+Click, `target="_blank"`, etc.) to the same view for ProjectMode browser views<br>- Prevents new windows from opening for ProjectMode managed views<br>- Ends with `// ROOPIK END` |
 | **~1246-1250** | Registered ProjectMode IPC channel | Added IPC channel registration:<br>`// ROOPIK: ProjectMode - Browser Preview with embedded DevTools and CDP`<br>`const projectModeService = new BrowserViewService();`<br>`const projectModeChannel = new ProjectModeChannel(projectModeService);`<br>`mainProcessElectronServer.registerChannel(PROJECT_MODE_CHANNEL, projectModeChannel);`<br>`// ROOPIK END` |
+| **~134-136** | Added imports for SandboxPipeline | Added imports:<br>`// ROOPIK: Sandbox Pipeline - ESBuild component transformation`<br>`import { SandboxPipelineMainService } from '../../workbench/contrib/roopik/electron-main/sandboxPipeline/sandboxPipelineMainService.js';`<br>`import { SandboxPipelineChannel } from '../../workbench/contrib/roopik/electron-main/sandboxPipeline/sandboxPipelineChannel.js';` |
+| **~1263-1266** | Registered SandboxPipeline IPC channel | Added IPC channel registration:<br>`// ROOPIK: Sandbox Pipeline - ESBuild component transformation`<br>`const sandboxPipelineService = new SandboxPipelineMainService();`<br>`const sandboxPipelineChannel = new SandboxPipelineChannel(sandboxPipelineService);`<br>`mainProcessElectronServer.registerChannel('sandboxPipeline', sandboxPipelineChannel);`<br>`// ROOPIK END` |
+
+---
+
+## Dependencies Added to Core
+
+**Location:** `package.json` (root)
+
+| Package | Version | Reason |
+|---------|---------|--------|
+| `esbuild` | `^0.27.0` | JavaScript/TypeScript bundler for sandbox component transformation |
+| `esbuild-plugin-vue3` | `^0.5.1` | ESBuild plugin to compile Vue 3 SFC (.vue files) |
+| `esbuild-svelte` | `^0.9.3` | ESBuild plugin to compile Svelte components (.svelte files) |
+| `svelte` | `^5.45.2` | Svelte 5 compiler (required by esbuild-svelte@0.9.x) |
+| `@vue/compiler-sfc` | `^3.5.25` | Vue 3 SFC compiler (peer dependency of esbuild-plugin-vue3) |
+
+**Why in core?** Sandbox pipeline runs in electron-main process to bundle user components with ESBuild. Frameworks like Vue/Svelte need their compiler plugins available at build time.
