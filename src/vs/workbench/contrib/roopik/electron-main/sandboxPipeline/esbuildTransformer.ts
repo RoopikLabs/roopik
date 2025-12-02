@@ -26,7 +26,7 @@ export type CDNProvider = 'esm.sh' | 'skypack' | 'jsdelivr';
  * CHANGE THIS to switch CDN providers globally
  * Default: 'esm.sh' (recommended - best ESM support, only reliable CDN for React 18+)
  */
-const CDN_PROVIDER: CDNProvider = 'jsdelivr';
+const CDN_PROVIDER: CDNProvider = 'esm.sh';
 
 /**
  * CDN URL Templates

@@ -364,38 +364,45 @@ export class SandboxCard extends Disposable {
 	}
 
 	private applyDeviceEmulation(): void {
-		if (!this.webviewContainer || !this.webviewWrapper) return;
+		if (!this.webviewContainer) return;
 
 		const mode = this.getEffectiveDeviceMode();
 		const config = DEVICE_PRESETS[mode];
 
+		// Calculate available space (sandbox minus padding and header)
+		const availableWidth = this.sandbox.width - 20;
+		const availableHeight = this.sandbox.height - 50;
+
 		if (config.width === 'auto' || config.height === 'auto') {
-			// Auto mode: fill available space
-			this.webviewContainer.style.width = '100%';
-			this.webviewContainer.style.height = '100%';
+			// Auto mode: fill available space with actual pixel dimensions
+			this.webviewContainer.style.width = `${availableWidth}px`;
+			this.webviewContainer.style.height = `${availableHeight}px`;
 			this.webviewContainer.style.transform = 'none';
 			this.webviewContainer.style.position = 'relative';
-			this.webviewContainer.style.margin = '0';
+			this.webviewContainer.style.left = '0';
+			this.webviewContainer.style.top = '0';
 		} else {
-			// Device mode: fixed size, scaled to fit, centered via CSS
+			// Device mode: fixed device size, scaled to fit, centered with absolute positioning
 			const deviceWidth = config.width as number;
 			const deviceHeight = config.height as number;
-
-			// Calculate available space (sandbox minus padding and header)
-			const availableWidth = this.sandbox.width - 20; // 10px padding each side
-			const availableHeight = this.sandbox.height - 50; // header + padding
 
 			const scaleX = availableWidth / deviceWidth;
 			const scaleY = availableHeight / deviceHeight;
 			const scale = Math.min(scaleX, scaleY, 1);
 
+			const visualWidth = deviceWidth * scale;
+			const visualHeight = deviceHeight * scale;
+
+			const offsetX = (availableWidth - visualWidth) / 2;
+			const offsetY = (availableHeight - visualHeight) / 2;
+
 			this.webviewContainer.style.width = `${deviceWidth}px`;
 			this.webviewContainer.style.height = `${deviceHeight}px`;
 			this.webviewContainer.style.transform = `scale(${scale})`;
-			this.webviewContainer.style.transformOrigin = 'center center';
-			this.webviewContainer.style.position = 'relative';
-			this.webviewContainer.style.margin = '0';
-			// Wrapper already has flex centering, so position: relative + transformOrigin: center works
+			this.webviewContainer.style.transformOrigin = 'top left';
+			this.webviewContainer.style.position = 'absolute';
+			this.webviewContainer.style.left = `${offsetX}px`;
+			this.webviewContainer.style.top = `${offsetY}px`;
 		}
 	}
 
