@@ -1,0 +1,57 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ============================================================
+   Floating Toolbar (Top)
+   ============================================================ */
+.floating-toolbar {
+	position: fixed;
+	top: 12px;
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 8px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	z-index: 100;
+}
+
+.floating-toolbar button {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border: none;
+	border-radius: 4px;
+	font-size: 12px;
+	cursor: pointer;
+	transition: background 0.15s;
+}
+
+.floating-toolbar button:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.floating-toolbar button.secondary {
+	background: transparent;
+	color: var(--vscode-foreground);
+}
+
+.floating-toolbar button.secondary:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.floating-toolbar .separator {
+	width: 1px;
+	height: 20px;
+	background: var(--vscode-panel-border);
+	margin: 0 4px;
+}

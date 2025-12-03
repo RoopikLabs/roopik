@@ -1,0 +1,134 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ============================================================
+   Sandbox Card
+   ============================================================ */
+.sandbox-card {
+	position: absolute;
+	display: flex;
+	flex-direction: column;
+	background: linear-gradient(135deg, rgba(40, 40, 45, 0.25) 0%, rgba(30, 30, 35, 0.25) 100%);
+	backdrop-filter: blur(60px) saturate(250%) brightness(1.1);
+	-webkit-backdrop-filter: blur(60px) saturate(250%) brightness(1.1);
+	border-radius: 20px;
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2),
+		inset 0 2px 0 rgba(255, 255, 255, 0.15), inset 0 -2px 0 rgba(255, 255, 255, 0.05);
+	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	cursor: pointer;
+	padding: 40px 120px;
+}
+
+.sandbox-card:hover {
+	border-color: rgba(255, 165, 0, 0.45);
+	box-shadow: 0 0 0 4px rgba(255, 165, 0, 0.1), 0 24px 64px rgba(0, 0, 0, 0.35),
+		inset 0 2px 0 rgba(255, 255, 255, 0.2), inset 0 -2px 0 rgba(255, 255, 255, 0.05),
+		0 0 32px rgba(255, 165, 0, 0.2);
+}
+
+.sandbox-card.selected {
+	background: linear-gradient(135deg, rgba(30, 30, 35, 0.35) 0%, rgba(20, 20, 25, 0.35) 100%);
+	border-color: rgba(75, 85, 190, 0.5);
+	box-shadow: 0 0 0 4px rgba(75, 85, 190, 0.15), 0 32px 80px rgba(0, 0, 0, 0.4),
+		inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(255, 255, 255, 0.05),
+		0 0 32px rgba(75, 85, 190, 0.2);
+}
+
+.sandbox-card.focused {
+	border-color: rgba(0, 122, 204, 0.5);
+	box-shadow: 0 0 0 4px rgba(0, 122, 204, 0.15), 0 32px 80px rgba(0, 0, 0, 0.4),
+		inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(255, 255, 255, 0.05);
+}
+
+.sandbox-card.dragging {
+	backdrop-filter: none;
+	-webkit-backdrop-filter: none;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+	cursor: grabbing;
+	transition: none;
+}
+
+.sandbox-card .card-header {
+	position: absolute;
+	top: 16px;
+	left: 20px;
+	right: 20px;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	z-index: 10;
+}
+
+.sandbox-card .card-label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	cursor: move;
+	user-select: none;
+}
+
+.sandbox-card .card-label .drag-icon {
+	opacity: 0.7;
+	color: #ffffff;
+}
+
+.sandbox-card .card-label .title {
+	font-size: 12px;
+	font-weight: 700;
+	color: #ffffff;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.sandbox-card .card-actions {
+	display: flex;
+	gap: 8px;
+	opacity: 0;
+	transition: opacity 0.2s;
+}
+
+.sandbox-card:hover .card-actions,
+.sandbox-card.selected .card-actions,
+.sandbox-card.focused .card-actions {
+	opacity: 1;
+}
+
+.sandbox-card .card-actions button {
+	background: transparent;
+	border: none;
+	padding: 4px;
+	cursor: pointer;
+	opacity: 0.7;
+	transition: all 0.2s;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.sandbox-card .card-actions button:hover {
+	opacity: 1;
+}
+
+.sandbox-card .card-actions button.delete:hover svg {
+	stroke: #ef4444;
+}
+
+.sandbox-card .card-body {
+	flex: 1;
+	background: #ffffff;
+	border-radius: 8px;
+	overflow: hidden;
+	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+	margin-top: 10px;
+}
+
+.sandbox-card .card-body iframe {
+	width: 100%;
+	height: 100%;
+	border: none;
+	display: block;
+}

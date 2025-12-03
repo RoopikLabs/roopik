@@ -3,7 +3,7 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import type { Transform, SnapMode, BackgroundPattern } from '../types';
+import type { Transform, SnapMode, BackgroundPattern } from '../../types';
 
 interface StatusPanelProps {
 	transform: Transform;

@@ -4,9 +4,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useRef, useState, useEffect, useCallback } from 'react';
-import type { Sandbox, Transform, BackgroundPattern, Point, Rect, SnapResult } from '../types';
-import { SandboxCard } from './SandboxCard';
-import { gridManager } from '../services/GridManager';
+import type { Sandbox, Transform, BackgroundPattern, Point, Rect, SnapResult } from '../../types';
+import { SandboxCard } from '../SandboxCard';
+import { gridManager } from '../../services/GridManager';
+import { isLightColor } from '../../utils';
 
 interface InfiniteCanvasProps {
 	sandboxes: Sandbox[];
@@ -21,18 +22,6 @@ interface InfiniteCanvasProps {
 	onSandboxUpdate: (id: string, updates: Partial<Sandbox>) => void;
 	onSandboxDelete: (id: string) => void;
 	onCanvasClick: () => void;
-}
-
-/**
- * Check if a color is light (for pattern contrast)
- */
-function isLightColor(color: string): boolean {
-	const hex = color.replace('#', '');
-	const r = parseInt(hex.substr(0, 2), 16);
-	const g = parseInt(hex.substr(2, 2), 16);
-	const b = parseInt(hex.substr(4, 2), 16);
-	const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-	return luminance > 0.5;
 }
 
 export function InfiniteCanvas({

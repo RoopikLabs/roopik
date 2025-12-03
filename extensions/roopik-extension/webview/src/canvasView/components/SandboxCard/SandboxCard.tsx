@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useRef, useEffect, useState } from 'react';
-import type { Sandbox, Point } from '../types';
+import type { Sandbox, Point } from '../../types';
 
 interface SandboxCardProps {
 	sandbox: Sandbox;
@@ -160,7 +160,6 @@ export function SandboxCard({
 	const handleExpandClick = (e: React.MouseEvent) => {
 		e.stopPropagation();
 		// TODO: Implement fullscreen mode
-		console.log('[SandboxCard] Expand clicked for:', sandbox.id);
 	};
 
 	const handleDeleteClick = (e: React.MouseEvent) => {
