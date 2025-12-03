@@ -42,6 +42,7 @@ export function InfiniteCanvas({
 }: InfiniteCanvasProps) {
 	const canvasRef = useRef<HTMLDivElement>(null);
 	const [isPanning, setIsPanning] = useState(false);
+	const [isZooming, setIsZooming] = useState(false);
 	const [dragStart, setDragStart] = useState<Point>({ x: 0, y: 0 });
 	const [draggingSandbox, setDraggingSandbox] = useState<string | null>(null);
 	const [sandboxDragStart, setSandboxDragStart] = useState<Point>({ x: 0, y: 0 });
@@ -58,6 +59,7 @@ export function InfiniteCanvas({
 	const lastZoomTimeRef = useRef(0);
 	const scrollAnimationFrameRef = useRef<number | null>(null);
 	const pendingScrollDeltaRef = useRef<Point>({ x: 0, y: 0 });
+	const zoomTimeoutRef = useRef<number | null>(null);
 
 	// Native wheel handler for smooth zoom/pan
 	useEffect(() => {
@@ -69,9 +71,22 @@ export function InfiniteCanvas({
 			const hasHorizontalDelta = Math.abs(e.deltaX) > 0;
 			const isTouchpadScroll = hasHorizontalDelta || (Math.abs(e.deltaY) > 0 && Math.abs(e.deltaY) < 50);
 
+			// Helper to mark zooming state (disables CSS transition during manual zoom)
+			const markZooming = () => {
+				setIsZooming(true);
+				if (zoomTimeoutRef.current !== null) {
+					clearTimeout(zoomTimeoutRef.current);
+				}
+				zoomTimeoutRef.current = window.setTimeout(() => {
+					setIsZooming(false);
+					zoomTimeoutRef.current = null;
+				}, 150);
+			};
+
 			// Touchpad scroll (pan)
 			if (!isPinch && isTouchpadScroll) {
 				e.preventDefault();
+				markZooming(); // Also disable transition during pan
 				pendingScrollDeltaRef.current.x += e.deltaX;
 				pendingScrollDeltaRef.current.y += e.deltaY;
 
@@ -92,6 +107,7 @@ export function InfiniteCanvas({
 			// Mouse wheel zoom (no ctrlKey)
 			if (!isPinch) {
 				e.preventDefault();
+				markZooming();
 				const rect = canvas.getBoundingClientRect();
 				const mouseX = e.clientX - rect.left;
 				const mouseY = e.clientY - rect.top;
@@ -113,6 +129,7 @@ export function InfiniteCanvas({
 
 			// Touchpad pinch zoom
 			e.preventDefault();
+			markZooming();
 			const rect = canvas.getBoundingClientRect();
 			const mouseX = e.clientX - rect.left;
 			const mouseY = e.clientY - rect.top;
@@ -153,6 +170,9 @@ export function InfiniteCanvas({
 			canvas.removeEventListener('wheel', handleWheel);
 			if (scrollAnimationFrameRef.current !== null) {
 				cancelAnimationFrame(scrollAnimationFrameRef.current);
+			}
+			if (zoomTimeoutRef.current !== null) {
+				clearTimeout(zoomTimeoutRef.current);
 			}
 		};
 	}, [transform, onTransformChange]);
@@ -260,7 +280,7 @@ export function InfiniteCanvas({
 	return (
 		<div
 			ref={canvasRef}
-			className={`canvas ${isPanning ? 'panning' : ''}`}
+			className={`canvas ${isPanning ? 'panning' : ''} ${isZooming ? 'zooming' : ''}`}
 			onMouseDown={handleMouseDown}
 			onMouseMove={handleMouseMove}
 			onMouseUp={handleMouseUp}

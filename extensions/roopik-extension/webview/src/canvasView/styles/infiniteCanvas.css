@@ -26,6 +26,13 @@
 .canvas-content {
 	position: absolute;
 	will-change: transform;
+	transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Disable transition when manually panning/zooming for smooth performance */
+.canvas.panning .canvas-content,
+.canvas.zooming .canvas-content {
+	transition: none;
 }
 
 /* ============================================================
