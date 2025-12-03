@@ -1,0 +1,386 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+:root {
+	font-family: var(--vscode-font-family, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+	line-height: 1.5;
+	font-weight: 400;
+	font-synthesis: none;
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+* {
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+
+body {
+	width: 100vw;
+	height: 100vh;
+	overflow: hidden;
+	color: var(--vscode-foreground);
+	background-color: var(--vscode-editor-background);
+}
+
+#root {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+/* ============================================================
+   Canvas Container
+   ============================================================ */
+.canvas-container {
+	flex: 1;
+	position: relative;
+	overflow: hidden;
+}
+
+.canvas {
+	width: 100%;
+	height: 100%;
+	position: relative;
+	cursor: grab;
+}
+
+.canvas.panning {
+	cursor: grabbing;
+}
+
+.canvas-content {
+	position: absolute;
+	will-change: transform;
+}
+
+/* ============================================================
+   Floating Toolbar (Top)
+   ============================================================ */
+.floating-toolbar {
+	position: fixed;
+	top: 12px;
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	background: var(--vscode-editor-background);
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: 8px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	z-index: 100;
+}
+
+.floating-toolbar button {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border: none;
+	border-radius: 4px;
+	font-size: 12px;
+	cursor: pointer;
+	transition: background 0.15s;
+}
+
+.floating-toolbar button:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.floating-toolbar button.secondary {
+	background: transparent;
+	color: var(--vscode-foreground);
+}
+
+.floating-toolbar button.secondary:hover {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.floating-toolbar .separator {
+	width: 1px;
+	height: 20px;
+	background: var(--vscode-panel-border);
+	margin: 0 4px;
+}
+
+/* ============================================================
+   Status Panel (Bottom)
+   ============================================================ */
+.status-panel {
+	position: fixed;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	height: 28px;
+	background: var(--vscode-statusBar-background);
+	color: var(--vscode-statusBar-foreground);
+	font-size: 11px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 12px;
+	border-top: 1px solid var(--vscode-statusBar-border);
+}
+
+.status-panel .status-left,
+.status-panel .status-right {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.status-panel .status-group {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.status-panel .separator {
+	width: 1px;
+	height: 14px;
+	background: var(--vscode-statusBar-foreground);
+	opacity: 0.3;
+}
+
+/* Single snap toggle button - clean & lean */
+.status-panel .snap-toggle {
+	padding: 2px 8px;
+	background: transparent;
+	color: var(--vscode-statusBar-foreground);
+	border: 1px solid var(--vscode-statusBar-foreground);
+	border-radius: 3px;
+	font-size: 10px;
+	cursor: pointer;
+	transition: all 0.15s;
+	opacity: 0.8;
+}
+
+.status-panel .snap-toggle:hover {
+	background: var(--vscode-statusBarItem-hoverBackground);
+	opacity: 1;
+}
+
+/* Pattern toggle button */
+.status-panel .pattern-toggle {
+	background: transparent;
+	border: none;
+	padding: 2px 8px;
+	cursor: pointer;
+	color: var(--vscode-statusBar-foreground);
+	font-size: 14px;
+	opacity: 0.8;
+	transition: opacity 0.15s;
+}
+
+.status-panel .pattern-toggle:hover {
+	opacity: 1;
+}
+
+.status-panel .zoom-controls {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.status-panel .zoom-controls button {
+	width: 20px;
+	height: 20px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: transparent;
+	color: var(--vscode-statusBar-foreground);
+	border: none;
+	border-radius: 3px;
+	cursor: pointer;
+	font-size: 12px;
+}
+
+.status-panel .zoom-controls button:hover {
+	background: var(--vscode-statusBarItem-hoverBackground);
+}
+
+/* ============================================================
+   Sandbox Card
+   ============================================================ */
+.sandbox-card {
+	position: absolute;
+	display: flex;
+	flex-direction: column;
+	background: linear-gradient(135deg, rgba(40, 40, 45, 0.25) 0%, rgba(30, 30, 35, 0.25) 100%);
+	backdrop-filter: blur(60px) saturate(250%) brightness(1.1);
+	-webkit-backdrop-filter: blur(60px) saturate(250%) brightness(1.1);
+	border-radius: 20px;
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2),
+		inset 0 2px 0 rgba(255, 255, 255, 0.15), inset 0 -2px 0 rgba(255, 255, 255, 0.05);
+	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	cursor: pointer;
+	padding: 40px 120px;
+}
+
+.sandbox-card:hover {
+	border-color: rgba(255, 165, 0, 0.45);
+	box-shadow: 0 0 0 4px rgba(255, 165, 0, 0.1), 0 24px 64px rgba(0, 0, 0, 0.35),
+		inset 0 2px 0 rgba(255, 255, 255, 0.2), inset 0 -2px 0 rgba(255, 255, 255, 0.05),
+		0 0 32px rgba(255, 165, 0, 0.2);
+}
+
+.sandbox-card.selected {
+	background: linear-gradient(135deg, rgba(30, 30, 35, 0.35) 0%, rgba(20, 20, 25, 0.35) 100%);
+	border-color: rgba(75, 85, 190, 0.5);
+	box-shadow: 0 0 0 4px rgba(75, 85, 190, 0.15), 0 32px 80px rgba(0, 0, 0, 0.4),
+		inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(255, 255, 255, 0.05),
+		0 0 32px rgba(75, 85, 190, 0.2);
+}
+
+.sandbox-card.focused {
+	border-color: rgba(0, 122, 204, 0.5);
+	box-shadow: 0 0 0 4px rgba(0, 122, 204, 0.15), 0 32px 80px rgba(0, 0, 0, 0.4),
+		inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(255, 255, 255, 0.05);
+}
+
+.sandbox-card.dragging {
+	backdrop-filter: none;
+	-webkit-backdrop-filter: none;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+	cursor: grabbing;
+	transition: none;
+}
+
+.sandbox-card .card-header {
+	position: absolute;
+	top: 16px;
+	left: 20px;
+	right: 20px;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	z-index: 10;
+}
+
+.sandbox-card .card-label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	cursor: move;
+	user-select: none;
+}
+
+.sandbox-card .card-label .drag-icon {
+	opacity: 0.7;
+	color: #ffffff;
+}
+
+.sandbox-card .card-label .title {
+	font-size: 12px;
+	font-weight: 700;
+	color: #ffffff;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.sandbox-card .card-actions {
+	display: flex;
+	gap: 8px;
+	opacity: 0;
+	transition: opacity 0.2s;
+}
+
+.sandbox-card:hover .card-actions,
+.sandbox-card.selected .card-actions,
+.sandbox-card.focused .card-actions {
+	opacity: 1;
+}
+
+.sandbox-card .card-actions button {
+	background: transparent;
+	border: none;
+	padding: 4px;
+	cursor: pointer;
+	opacity: 0.7;
+	transition: all 0.2s;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.sandbox-card .card-actions button:hover {
+	opacity: 1;
+}
+
+.sandbox-card .card-actions button.delete:hover svg {
+	stroke: #ef4444;
+}
+
+.sandbox-card .card-body {
+	flex: 1;
+	background: #ffffff;
+	border-radius: 8px;
+	overflow: hidden;
+	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+	margin-top: 10px;
+}
+
+.sandbox-card .card-body iframe {
+	width: 100%;
+	height: 100%;
+	border: none;
+	display: block;
+}
+
+/* ============================================================
+   Empty State
+   ============================================================ */
+.empty-state {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	text-align: center;
+	color: var(--vscode-descriptionForeground);
+	pointer-events: none;
+}
+
+.empty-state h2 {
+	font-size: 24px;
+	font-weight: 400;
+	margin-bottom: 8px;
+}
+
+.empty-state p {
+	font-size: 14px;
+	opacity: 0.7;
+}
+
+/* ============================================================
+   Snap Lines (for Smart Grid)
+   ============================================================ */
+.snap-line {
+	position: absolute;
+	background: var(--vscode-focusBorder);
+	pointer-events: none;
+	z-index: 1000;
+}
+
+.snap-line.vertical {
+	width: 1px;
+	top: 0;
+	bottom: 0;
+}
+
+.snap-line.horizontal {
+	height: 1px;
+	left: 0;
+	right: 0;
+}

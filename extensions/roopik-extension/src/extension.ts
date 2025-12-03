@@ -28,13 +28,6 @@ export function activate(context: vscode.ExtensionContext): void {
 		})
 	);
 
-	// Add component command
-	context.subscriptions.push(
-		vscode.commands.registerCommand('roopik.canvas.addComponent', () => {
-			canvasPanel?.addComponent();
-		})
-	);
-
 	console.log('[Roopik Canvas] Extension activated');
 }
 

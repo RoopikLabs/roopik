@@ -4,19 +4,39 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
+import { CoreBridgeService } from '../services/CoreBridgeService';
+import type {
+	WebviewMessage,
+	ExtensionMessage,
+	WebviewTransformCodeMessage,
+	WebviewSaveCanvasMessage,
+	WebviewLoadCanvasMessage,
+	WebviewOpenFileMessage,
+	WebviewLogMessage
+} from '../types/messages';
 
 /**
  * CanvasPanel - WebviewPanel wrapper for the infinite canvas
  *
+ * This is a CLEAN wrapper that loads the Vite-built React app.
+ * All UI logic lives in the webview (webview/src/canvasView/)
+ *
  * Key feature: retainContextWhenHidden preserves state across tab switches!
+ *
+ * Architecture:
+ * - UI rendering: Happens in webview (60fps, local React components)
+ * - GridManager: Runs in webview for 60fps snap (no IPC during drag!)
+ * - Heavy processing: Delegates to Core via CoreBridgeService
  */
 export class CanvasPanel {
 	private readonly panel: vscode.WebviewPanel;
 	private readonly extensionUri: vscode.Uri;
+	private readonly coreBridge: CoreBridgeService;
 	private disposed = false;
 
 	constructor(extensionUri: vscode.Uri) {
 		this.extensionUri = extensionUri;
+		this.coreBridge = CoreBridgeService.getInstance();
 
 		this.panel = vscode.window.createWebviewPanel(
 			'roopikCanvas',
@@ -25,7 +45,10 @@ export class CanvasPanel {
 			{
 				enableScripts: true,
 				retainContextWhenHidden: true, // Key for persistence!
-				localResourceRoots: [extensionUri]
+				localResourceRoots: [
+					vscode.Uri.joinPath(extensionUri, 'dist'),
+					vscode.Uri.joinPath(extensionUri, 'webview', 'dist')
+				]
 			}
 		);
 
@@ -33,7 +56,7 @@ export class CanvasPanel {
 		this.panel.webview.onDidReceiveMessage(this.handleMessage.bind(this));
 		this.panel.onDidDispose(() => this.dispose());
 
-		console.log('[CanvasPanel] Created');
+		console.log('[CanvasPanel] Created with Vite-built React webview');
 	}
 
 	reveal(): void {
@@ -50,17 +73,17 @@ export class CanvasPanel {
 		this.panel.onDidDispose(callback);
 	}
 
-	addComponent(): void {
-		this.panel.webview.postMessage({
-			type: 'addComponent',
-			payload: {
-				id: `component-${Date.now()}`,
-				code: `export default function Button() {\n  return <button>Click me</button>;\n}`
-			}
-		});
+	/**
+	 * Send message to webview
+	 */
+	private postMessage(message: ExtensionMessage): void {
+		this.panel.webview.postMessage(message);
 	}
 
-	private async handleMessage(message: { type: string; payload?: unknown }): Promise<void> {
+	/**
+	 * Handle messages from webview
+	 */
+	private async handleMessage(message: WebviewMessage): Promise<void> {
 		console.log('[CanvasPanel] Message:', message.type);
 
 		switch (message.type) {
@@ -69,34 +92,125 @@ export class CanvasPanel {
 				break;
 
 			case 'transformCode':
-				await this.handleTransformCode(message.payload as TransformPayload);
+				await this.handleTransformCode(message as WebviewTransformCodeMessage);
+				break;
+
+			case 'saveCanvas':
+				await this.handleSaveCanvas(message as WebviewSaveCanvasMessage);
+				break;
+
+			case 'loadCanvas':
+				await this.handleLoadCanvas(message as WebviewLoadCanvasMessage);
+				break;
+
+			case 'openFile':
+				await this.handleOpenFile(message as WebviewOpenFileMessage);
+				break;
+
+			case 'log':
+				this.handleLog(message as WebviewLogMessage);
 				break;
 		}
 	}
 
-	private async handleTransformCode(payload: TransformPayload): Promise<void> {
-		try {
-			const result = await vscode.commands.executeCommand<{ html: string }>(
-				'roopik.core.transformCode',
-				payload.code,
-				{}
-			);
+	/**
+	 * Transform code via Core's ESBuild pipeline
+	 */
+	private async handleTransformCode(message: WebviewTransformCodeMessage): Promise<void> {
+		const { code, componentId, options } = message.payload;
 
-			this.panel.webview.postMessage({
-				type: 'transformComplete',
-				payload: { html: result?.html ?? '<div>Error</div>', componentId: payload.componentId }
-			});
-		} catch (error) {
-			this.panel.webview.postMessage({
+		const result = await this.coreBridge.transformCode(code, options);
+
+		if (result.error) {
+			this.postMessage({
 				type: 'transformError',
-				payload: { error: String(error), componentId: payload.componentId }
+				payload: { error: result.error, componentId }
+			});
+		} else {
+			this.postMessage({
+				type: 'transformComplete',
+				payload: { html: result.html, componentId }
 			});
 		}
 	}
 
-	private getHtml(): string {
-		const nonce = getNonce();
+	/**
+	 * Save canvas state to disk
+	 */
+	private async handleSaveCanvas(message: WebviewSaveCanvasMessage): Promise<void> {
+		const { canvasId, state } = message.payload;
+		const success = await this.coreBridge.saveCanvasState(canvasId, state);
 
+		this.postMessage({
+			type: 'canvasSaved',
+			payload: { success }
+		});
+	}
+
+	/**
+	 * Load canvas state from disk
+	 */
+	private async handleLoadCanvas(message: WebviewLoadCanvasMessage): Promise<void> {
+		const { canvasId } = message.payload;
+		const state = await this.coreBridge.loadCanvasState(canvasId);
+
+		if (state) {
+			this.postMessage({
+				type: 'canvasLoaded',
+				payload: { state }
+			});
+		}
+	}
+
+	/**
+	 * Open file in editor
+	 */
+	private async handleOpenFile(message: WebviewOpenFileMessage): Promise<void> {
+		const { filePath, line, column } = message.payload;
+		await this.coreBridge.openFile(filePath, line, column);
+	}
+
+	/**
+	 * Handle log messages from webview
+	 */
+	private handleLog(message: WebviewLogMessage): void {
+		const { level, message: text, data } = message.payload;
+		const prefix = '[Webview]';
+
+		switch (level) {
+			case 'error':
+				console.error(prefix, text, data);
+				break;
+			case 'warn':
+				console.warn(prefix, text, data);
+				break;
+			case 'debug':
+				console.debug(prefix, text, data);
+				break;
+			default:
+				console.log(prefix, text, data);
+		}
+	}
+
+	/**
+	 * Generate webview HTML - loads Vite-built React app
+	 * NO inline HTML/CSS/JS - all UI lives in webview/src/canvasView/
+	 */
+	private getHtml(): string {
+		const webview = this.panel.webview;
+
+		// Get URIs for the Vite-built assets
+		const scriptUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this.extensionUri, 'webview', 'dist', 'assets', 'canvasView.js')
+		);
+		const styleUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this.extensionUri, 'webview', 'dist', 'assets', 'canvasView.css')
+		);
+
+		// Content Security Policy
+		const cspSource = webview.cspSource;
+
+		// CSP: Allow unsafe-inline/eval for React and Babel in sandbox iframes
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -104,219 +218,20 @@ export class CanvasPanel {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<meta http-equiv="Content-Security-Policy" content="
 		default-src 'none';
-		style-src 'unsafe-inline';
-		script-src 'nonce-${nonce}';
-		frame-src blob: data:;
+		style-src ${cspSource} 'unsafe-inline';
+		script-src ${cspSource} 'unsafe-inline' 'unsafe-eval' https://unpkg.com;
+		frame-src blob: data: https:;
+		connect-src https://unpkg.com;
+		img-src ${cspSource} data: https:;
 	">
+	<link rel="stylesheet" href="${styleUri}">
 	<title>Roopik Canvas</title>
-	<style>
-		* { margin: 0; padding: 0; box-sizing: border-box; }
-		html, body {
-			width: 100%; height: 100%;
-			overflow: hidden;
-			font-family: var(--vscode-font-family);
-			color: var(--vscode-foreground);
-			background: var(--vscode-editor-background);
-		}
-		#canvas {
-			width: 100%; height: 100%;
-			position: relative;
-			overflow: hidden;
-			cursor: grab;
-		}
-		#canvas.dragging { cursor: grabbing; }
-		#content {
-			position: absolute;
-			transform-origin: 0 0;
-			will-change: transform;
-		}
-		.card {
-			position: absolute;
-			width: 320px; height: 240px;
-			background: var(--vscode-editor-background);
-			border: 1px solid var(--vscode-panel-border);
-			border-radius: 8px;
-			box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-			overflow: hidden;
-			cursor: move;
-		}
-		.card:hover { border-color: var(--vscode-focusBorder); }
-		.card-header {
-			padding: 8px 12px;
-			background: var(--vscode-sideBar-background);
-			border-bottom: 1px solid var(--vscode-panel-border);
-			font-size: 12px;
-			display: flex;
-			justify-content: space-between;
-		}
-		.card-body {
-			width: 100%; height: calc(100% - 36px);
-			background: white;
-		}
-		.card-body iframe { width: 100%; height: 100%; border: none; }
-		#status {
-			position: fixed;
-			bottom: 0; left: 0; right: 0;
-			height: 24px;
-			background: var(--vscode-statusBar-background);
-			color: var(--vscode-statusBar-foreground);
-			font-size: 11px;
-			display: flex;
-			align-items: center;
-			padding: 0 12px;
-			gap: 16px;
-		}
-		.empty {
-			position: absolute;
-			top: 50%; left: 50%;
-			transform: translate(-50%, -50%);
-			text-align: center;
-			color: var(--vscode-descriptionForeground);
-		}
-	</style>
 </head>
 <body>
-	<div id="canvas">
-		<div id="content"></div>
-		<div class="empty" id="empty">
-			<h2>Roopik Canvas</h2>
-			<p>Click "Add Component" to start</p>
-		</div>
-	</div>
-	<div id="status">
-		<span id="zoom">100%</span>
-		<span id="count">0 components</span>
-	</div>
-
-	<script nonce="${nonce}">
-	(function() {
-		const vscode = acquireVsCodeApi();
-		const canvas = document.getElementById('canvas');
-		const content = document.getElementById('content');
-		const empty = document.getElementById('empty');
-		const zoomEl = document.getElementById('zoom');
-		const countEl = document.getElementById('count');
-
-		const state = { x: 0, y: 0, scale: 1, dragging: false, target: null, start: { x: 0, y: 0 } };
-		const components = new Map();
-
-		function updateTransform() {
-			content.style.transform = \`translate(\${state.x}px, \${state.y}px) scale(\${state.scale})\`;
-			zoomEl.textContent = Math.round(state.scale * 100) + '%';
-		}
-
-		function updateCount() {
-			const n = components.size;
-			countEl.textContent = n + ' component' + (n !== 1 ? 's' : '');
-			empty.style.display = n === 0 ? 'block' : 'none';
-		}
-
-		function createCard(id, code, x = 100, y = 100) {
-			const card = document.createElement('div');
-			card.className = 'card';
-			card.dataset.id = id;
-			card.style.left = x + 'px';
-			card.style.top = y + 'px';
-			card.innerHTML = \`
-				<div class="card-header">
-					<span>\${id}</span>
-					<span style="cursor:pointer">×</span>
-				</div>
-				<div class="card-body">
-					<iframe sandbox="allow-scripts"></iframe>
-				</div>
-			\`;
-
-			card.querySelector('.card-header').addEventListener('mousedown', (e) => {
-				if (e.target.textContent === '×') {
-					card.remove();
-					components.delete(id);
-					updateCount();
-					return;
-				}
-				state.dragging = true;
-				state.target = card;
-				state.start = { x: e.clientX - parseInt(card.style.left), y: e.clientY - parseInt(card.style.top) };
-				canvas.classList.add('dragging');
-			});
-
-			content.appendChild(card);
-			components.set(id, { code, x, y });
-			updateCount();
-
-			vscode.postMessage({ type: 'transformCode', payload: { code, componentId: id } });
-			return card;
-		}
-
-		canvas.addEventListener('mousedown', (e) => {
-			if (e.target === canvas || e.target === content) {
-				state.dragging = true;
-				state.target = null;
-				state.start = { x: e.clientX - state.x, y: e.clientY - state.y };
-				canvas.classList.add('dragging');
-			}
-		});
-
-		document.addEventListener('mousemove', (e) => {
-			if (!state.dragging) return;
-			if (state.target) {
-				state.target.style.left = (e.clientX - state.start.x) + 'px';
-				state.target.style.top = (e.clientY - state.start.y) + 'px';
-			} else {
-				state.x = e.clientX - state.start.x;
-				state.y = e.clientY - state.start.y;
-				updateTransform();
-			}
-		});
-
-		document.addEventListener('mouseup', () => {
-			state.dragging = false;
-			state.target = null;
-			canvas.classList.remove('dragging');
-		});
-
-		canvas.addEventListener('wheel', (e) => {
-			e.preventDefault();
-			const delta = e.deltaY > 0 ? 0.9 : 1.1;
-			const newScale = Math.max(0.1, Math.min(3, state.scale * delta));
-			const rect = canvas.getBoundingClientRect();
-			const mx = e.clientX - rect.left;
-			const my = e.clientY - rect.top;
-			state.x = mx - (mx - state.x) * (newScale / state.scale);
-			state.y = my - (my - state.y) * (newScale / state.scale);
-			state.scale = newScale;
-			updateTransform();
-		});
-
-		window.addEventListener('message', (e) => {
-			const msg = e.data;
-			if (msg.type === 'addComponent') {
-				const n = components.size;
-				createCard(msg.payload.id, msg.payload.code, 100 + (n % 3) * 350, 100 + Math.floor(n / 3) * 280);
-			} else if (msg.type === 'transformComplete') {
-				const card = document.querySelector(\`[data-id="\${msg.payload.componentId}"]\`);
-				if (card) card.querySelector('iframe').srcdoc = msg.payload.html;
-			}
-		});
-
-		vscode.postMessage({ type: 'ready' });
-	})();
-	</script>
+	<div id="root"></div>
+	<script type="module" src="${scriptUri}"></script>
 </body>
 </html>`;
 	}
 }
 
-function getNonce(): string {
-	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-	let result = '';
-	for (let i = 0; i < 32; i++) {
-		result += chars.charAt(Math.floor(Math.random() * chars.length));
-	}
-	return result;
-}
-
-interface TransformPayload {
-	code: string;
-	componentId: string;
-}
