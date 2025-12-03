@@ -5,8 +5,8 @@
 
 import * as vscode from 'vscode';
 import { CoreBridgeService } from '../services/CoreBridgeService';
+import { CanvasStateManager, CanvasState } from '../services/CanvasStateManager';
 import { Logger } from '../services/Logger';
-import type { ComponentInput } from '../types/pipeline';
 import type {
 	WebviewMessage,
 	ExtensionMessage,
@@ -14,6 +14,34 @@ import type {
 	WebviewOpenFileMessage,
 	WebviewLogMessage
 } from '../types/messages';
+
+/** Save canvas message from webview */
+interface WebviewSaveCanvasMessage {
+	type: 'saveCanvas';
+	payload: {
+		canvasId: string;
+		state: CanvasState;
+	};
+}
+
+/** Canvas loaded message to webview */
+interface ExtensionCanvasLoadedMessage {
+	type: 'canvasLoaded';
+	payload: {
+		state: CanvasState;
+	};
+}
+
+/** Canvas saved confirmation to webview */
+interface ExtensionCanvasSavedMessage {
+	type: 'canvasSaved';
+	payload: {
+		success: boolean;
+	};
+}
+
+/** Extended message type including canvas messages */
+type CanvasExtensionMessage = ExtensionMessage | ExtensionCanvasLoadedMessage | ExtensionCanvasSavedMessage;
 
 /**
  * CanvasPanel - WebviewPanel wrapper for the infinite canvas
@@ -27,21 +55,28 @@ import type {
  * - UI rendering: Happens in webview (60fps, local React components)
  * - GridManager: Runs in webview for 60fps snap (no IPC during drag!)
  * - Heavy processing: Delegates to Core via CoreBridgeService
+ * - State persistence: File-based via CanvasStateManager
  */
 export class CanvasPanel {
 	private readonly panel: vscode.WebviewPanel;
 	private readonly extensionUri: vscode.Uri;
 	private readonly coreBridge: CoreBridgeService;
+	private readonly stateManager: CanvasStateManager;
+	private readonly canvasName: string;
+	private readonly initialState: CanvasState;
 	private readonly logger = Logger.getInstance().createScoped('CanvasPanel');
 	private disposed = false;
 
-	constructor(extensionUri: vscode.Uri) {
+	constructor(extensionUri: vscode.Uri, canvasName: string, initialState: CanvasState) {
 		this.extensionUri = extensionUri;
+		this.canvasName = canvasName;
+		this.initialState = initialState;
 		this.coreBridge = CoreBridgeService.getInstance();
+		this.stateManager = CanvasStateManager.getInstance();
 
 		this.panel = vscode.window.createWebviewPanel(
 			'roopikCanvas',
-			'Roopik Canvas',
+			canvasName,
 			vscode.ViewColumn.One,
 			{
 				enableScripts: true,
@@ -57,7 +92,7 @@ export class CanvasPanel {
 		this.panel.webview.onDidReceiveMessage(this.handleMessage.bind(this));
 		this.panel.onDidDispose(() => this.dispose());
 
-		this.logger.info('Created with Vite-built React webview');
+		this.logger.info(`Created canvas: ${canvasName}`, { id: initialState.id });
 	}
 
 	reveal(): void {
@@ -77,23 +112,34 @@ export class CanvasPanel {
 	/**
 	 * Send message to webview
 	 */
-	private postMessage(message: ExtensionMessage): void {
+	private postMessage(message: CanvasExtensionMessage): void {
 		this.panel.webview.postMessage(message);
 	}
 
 	/**
 	 * Handle messages from webview
 	 */
-	private async handleMessage(message: WebviewMessage): Promise<void> {
+	private async handleMessage(message: WebviewMessage | WebviewSaveCanvasMessage): Promise<void> {
 		this.logger.debug(`Message: ${message.type}`);
 
 		switch (message.type) {
 			case 'ready':
-				this.logger.info('Webview ready');
+				this.logger.info('Webview ready, sending initial state');
+				// Send the initial canvas state to webview
+				this.postMessage({
+					type: 'canvasLoaded',
+					payload: {
+						state: this.initialState
+					}
+				});
 				break;
 
 			case 'buildComponent':
 				await this.handleBuildComponent(message as WebviewBuildComponentMessage);
+				break;
+
+			case 'saveCanvas':
+				await this.handleSaveCanvas(message as WebviewSaveCanvasMessage);
 				break;
 
 			case 'openFile':
@@ -103,6 +149,33 @@ export class CanvasPanel {
 			case 'log':
 				this.handleLog(message as WebviewLogMessage);
 				break;
+		}
+	}
+
+	/**
+	 * Save canvas state to file
+	 */
+	private async handleSaveCanvas(message: WebviewSaveCanvasMessage): Promise<void> {
+		const { state } = message.payload;
+
+		this.logger.debug(`Saving canvas: ${this.canvasName}`, {
+			sandboxCount: state.sandboxes.length
+		});
+
+		try {
+			await this.stateManager.saveCanvas(this.canvasName, state);
+			this.postMessage({
+				type: 'canvasSaved',
+				payload: { success: true }
+			});
+			this.logger.info(`Canvas saved: ${this.canvasName}`);
+		} catch (error) {
+			const errorMsg = error instanceof Error ? error.message : String(error);
+			this.logger.error(`Failed to save canvas: ${this.canvasName}`, { error: errorMsg });
+			this.postMessage({
+				type: 'canvasSaved',
+				payload: { success: false }
+			});
 		}
 	}
 

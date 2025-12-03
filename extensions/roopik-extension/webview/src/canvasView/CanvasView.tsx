@@ -15,11 +15,15 @@ import type {
 	ExtensionMessage,
 	WebviewMessage,
 	VSCodeAPI,
-	ComponentInput
+	ComponentInput,
+	CanvasState
 } from './types';
 
 // Get VSCode API (only call once!)
 const vscode: VSCodeAPI = acquireVsCodeApi();
+
+/** Debounce delay for auto-save (ms) */
+const AUTO_SAVE_DELAY = 1000;
 
 /**
  * Default sample ComponentInput for "Add" button
@@ -95,8 +99,62 @@ export function CanvasView() {
 	const [backgroundColor] = useState('#1e1e1e');
 	const [exitingSandboxIds, setExitingSandboxIds] = useState<Set<string>>(new Set());
 
+	// Canvas metadata (set when state is loaded from extension)
+	const canvasIdRef = useRef<string>('');
+	const canvasNameRef = useRef<string>('');
+	const canvasCreatedAtRef = useRef<number>(Date.now());
+
 	// Track pending builds to handle responses
 	const pendingBuildsRef = useRef<Set<string>>(new Set());
+
+	// Auto-save timer ref
+	const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	/**
+	 * Save canvas state to extension (debounced)
+	 */
+	const saveCanvasState = useCallback(() => {
+		// Clear existing timer
+		if (saveTimerRef.current) {
+			clearTimeout(saveTimerRef.current);
+		}
+
+		// Debounce the save
+		saveTimerRef.current = setTimeout(() => {
+			const state: CanvasState = {
+				id: canvasIdRef.current,
+				name: canvasNameRef.current,
+				sandboxes,
+				selectedSandboxId,
+				viewport: transform,
+				createdAt: canvasCreatedAtRef.current,
+				updatedAt: Date.now()
+			};
+
+			console.log('[CanvasView] 💾 Saving canvas state:', {
+				id: state.id,
+				name: state.name,
+				sandboxCount: state.sandboxes.length
+			});
+
+			const message: WebviewMessage = {
+				type: 'saveCanvas',
+				payload: {
+					canvasId: state.id,
+					state
+				}
+			};
+			vscode.postMessage(message);
+		}, AUTO_SAVE_DELAY);
+	}, [sandboxes, selectedSandboxId, transform]);
+
+	// Auto-save when state changes (after initial load)
+	useEffect(() => {
+		// Only save if we have a canvas ID (meaning state was loaded)
+		if (canvasIdRef.current) {
+			saveCanvasState();
+		}
+	}, [sandboxes, selectedSandboxId, transform, saveCanvasState]);
 
 	// Sync snap mode with GridManager
 	useEffect(() => {
@@ -169,6 +227,18 @@ export function CanvasView() {
 				case 'canvasLoaded': {
 					// Restore canvas state
 					const { state } = msg.payload;
+					console.log('[CanvasView] 📂 Canvas loaded:', {
+						id: state.id,
+						name: state.name,
+						sandboxCount: state.sandboxes.length
+					});
+
+					// Store canvas metadata
+					canvasIdRef.current = state.id;
+					canvasNameRef.current = state.name;
+					canvasCreatedAtRef.current = state.createdAt;
+
+					// Restore UI state
 					setSandboxes(state.sandboxes);
 					setSelectedSandboxId(state.selectedSandboxId);
 					setTransform(state.viewport);

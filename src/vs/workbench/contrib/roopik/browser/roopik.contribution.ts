@@ -3,7 +3,7 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { localize2 } from '../../../../nls.js';
+import { localize, localize2 } from '../../../../nls.js';
 import { registerAction2, Action2 } from '../../../../platform/actions/common/actions.js';
 import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
@@ -20,6 +20,7 @@ import { ILifecycleService, LifecyclePhase, StartupKind } from '../../../service
 import { IWorkbenchLayoutService } from '../../../services/layout/browser/layoutService.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
+import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
 import { RoopikWelcomeEditor } from './welcomeEditor.js';
 import { RoopikWelcomeInput, RoopikWelcomeInputSerializer } from './welcomeInput.js';
 import { RoopikViewsContribution } from './roopikViewPane.js';
@@ -153,7 +154,7 @@ registerAction2(class extends Action2 {
 });
 
 // Open Canvas (Mode 1: Component Canvas)
-// Delegates to roopik-extension for WebviewPanel (persists across tab switches!)
+// Prompts for canvas name, then delegates to roopik-extension for WebviewPanel
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
@@ -165,10 +166,34 @@ registerAction2(class extends Action2 {
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
+		const quickInputService = accessor.get(IQuickInputService);
 		const commandService = accessor.get(ICommandService);
 
-		// Delegate to extension - WebviewPanel persists across tab switches!
-		await commandService.executeCommand('roopik.canvas.open');
+		// Prompt for canvas name
+		const canvasName = await quickInputService.input({
+			title: localize('roopik.canvasName.title', 'New Canvas'),
+			prompt: localize('roopik.canvasName.prompt', 'Enter a name for your canvas'),
+			placeHolder: localize('roopik.canvasName.placeholder', 'e.g., Dashboard Components, Landing Page, etc.'),
+			validateInput: async (value: string) => {
+				if (!value || !value.trim()) {
+					return localize('roopik.canvasName.required', 'Canvas name is required');
+				}
+				// Validate for valid folder name (no special chars except - and _)
+				const invalidChars = /[<>:"/\\|?*]/;
+				if (invalidChars.test(value)) {
+					return localize('roopik.canvasName.invalidChars', 'Canvas name cannot contain: < > : " / \\ | ? *');
+				}
+				return undefined;
+			}
+		});
+
+		// User cancelled
+		if (!canvasName) {
+			return;
+		}
+
+		// Delegate to extension with canvas name - WebviewPanel persists across tab switches!
+		await commandService.executeCommand('roopik.canvas.open', canvasName.trim());
 	}
 });
 
