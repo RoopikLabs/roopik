@@ -57,7 +57,7 @@ export function CanvasView() {
 	const [selectedSandboxId, setSelectedSandboxId] = useState<string | null>(null);
 	const [focusedSandboxId, setFocusedSandboxId] = useState<string | null>(null);
 	const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
-	const [snapMode, setSnapMode] = useState<SnapMode>('smart');
+	const [snapMode, setSnapMode] = useState<SnapMode>('grid'); // Default to grid mode
 	const [pattern, setPattern] = useState<BackgroundPattern>('dots');
 	const [backgroundColor] = useState('#1e1e1e');
 
@@ -93,19 +93,19 @@ export function CanvasView() {
 		vscode.postMessage(message);
 	}, []);
 
-	// Add component handler
+	// Add component handler - uses GridManager to find next available slot
 	const handleAddComponent = useCallback(() => {
-		const n = sandboxes.length;
-		const x = 100 + (n % 3) * 600;
-		const y = 100 + Math.floor(n / 3) * 500;
+		// Get sandbox dimensions from GridManager config
+		const config = gridManager.getConfig();
+		const position = gridManager.getNextAvailableSlot(sandboxes);
 
 		const newSandbox: Sandbox = {
 			id: `component-${Date.now()}`,
-			x,
-			y,
-			width: 400,
-			height: 350,
-			zIndex: n + 1,
+			x: position.x,
+			y: position.y,
+			width: config.sandboxWidth,
+			height: config.sandboxHeight,
+			zIndex: sandboxes.length + 1,
 			sandboxMessage: {
 				type: 'init',
 				code: SAMPLE_CODE,
@@ -118,16 +118,52 @@ export function CanvasView() {
 
 		setSandboxes(prev => [...prev, newSandbox]);
 		setSelectedSandboxId(newSandbox.id);
-	}, [sandboxes.length]);
+	}, [sandboxes]);
 
 	// Sandbox handlers
 	const handleSandboxClick = useCallback((id: string) => {
 		setSelectedSandboxId(id);
+		// Bring clicked sandbox to top (highest z-index)
+		setSandboxes(prev => {
+			const maxZ = Math.max(...prev.map(s => s.zIndex));
+			return prev.map(s => s.id === id ? { ...s, zIndex: maxZ + 1 } : s);
+		});
 	}, []);
 
+	// Double click - enter/exit focus mode with zoom to sandbox
 	const handleSandboxDoubleClick = useCallback((id: string) => {
-		setFocusedSandboxId(prev => prev === id ? null : id);
-	}, []);
+		const isExitingFocus = focusedSandboxId === id;
+
+		if (isExitingFocus) {
+			// Exit focus mode - reset view
+			setFocusedSandboxId(null);
+			// Reset to fit all sandboxes or default view
+			const viewport = gridManager.calculateResetViewport(
+				sandboxes,
+				window.innerWidth,
+				window.innerHeight
+			);
+			setTransform(viewport);
+		} else {
+			// Enter focus mode - zoom to this sandbox
+			setFocusedSandboxId(id);
+			const sandbox = sandboxes.find(s => s.id === id);
+			if (sandbox) {
+				// Calculate viewport to center and zoom on this sandbox
+				const viewport = gridManager.calculateFocusViewport(
+					sandbox,
+					window.innerWidth,
+					window.innerHeight
+				);
+				setTransform(viewport);
+			}
+			// Also bring to top
+			setSandboxes(prev => {
+				const maxZ = Math.max(...prev.map(s => s.zIndex));
+				return prev.map(s => s.id === id ? { ...s, zIndex: maxZ + 1 } : s);
+			});
+		}
+	}, [focusedSandboxId, sandboxes]);
 
 	const handleSandboxUpdate = useCallback((id: string, updates: Partial<Sandbox>) => {
 		setSandboxes(prev =>
@@ -167,6 +203,37 @@ export function CanvasView() {
 	const handleResetView = useCallback(() => {
 		setTransform({ x: 0, y: 0, scale: 1 });
 	}, []);
+
+	// Tidy Up - reorganize all sandboxes to fill grid slots sequentially (no gaps) + reset view
+	const handleTidyUp = useCallback(() => {
+		if (sandboxes.length === 0) return;
+
+		// Get new positions from GridManager's tidyUp
+		const newPositions = gridManager.tidyUp(sandboxes);
+
+		// Update all sandboxes with their new positions
+		const updatedSandboxes = sandboxes.map(sandbox => {
+			const newPos = newPositions.get(sandbox.id);
+			if (newPos) {
+				return { ...sandbox, x: newPos.x, y: newPos.y };
+			}
+			return sandbox;
+		});
+
+		setSandboxes(updatedSandboxes);
+
+		// Reset view to show all tidied sandboxes nicely
+		const viewport = gridManager.calculateResetViewport(
+			updatedSandboxes,
+			window.innerWidth,
+			window.innerHeight
+		);
+		setTransform(viewport);
+
+		// Clear any selection/focus state for clean view
+		setSelectedSandboxId(null);
+		setFocusedSandboxId(null);
+	}, [sandboxes]);
 
 	// Snap mode handler
 	const handleSnapModeChange = useCallback((mode: SnapMode) => {
@@ -211,7 +278,7 @@ export function CanvasView() {
 			<FloatingToolbar
 				tabName="Canvas"
 				onAddComponent={handleAddComponent}
-				onResetView={handleResetView}
+				onTidyUp={handleTidyUp}
 			/>
 
 			{/* Infinite Canvas (main area) */}
@@ -223,6 +290,7 @@ export function CanvasView() {
 					transform={transform}
 					pattern={pattern}
 					backgroundColor={backgroundColor}
+					snapMode={snapMode}
 					onTransformChange={handleTransformChange}
 					onSandboxClick={handleSandboxClick}
 					onSandboxDoubleClick={handleSandboxDoubleClick}

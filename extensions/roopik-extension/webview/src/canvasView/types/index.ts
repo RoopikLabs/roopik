@@ -31,12 +31,11 @@ export interface Transform {
 }
 
 /**
- * Snap mode for component placement
- * - free: No snapping, drag anywhere
- * - grid: Snaps to fixed 20px grid
- * - smart: Snaps to other components' edges (Figma-like alignment)
+ * Canvas positioning mode
+ * - grid: Strict grid positioning, no overlap allowed, auto-snap to grid slots
+ * - free: Free positioning, overlap allowed with visual indicator, optional snap
  */
-export type SnapMode = 'free' | 'grid' | 'smart';
+export type SnapMode = 'grid' | 'free';
 
 /**
  * Background pattern type
@@ -78,11 +77,70 @@ export interface Rect {
  * Snap result from GridManager
  */
 export interface SnapResult {
-	point: Point;
-	snapLines: {
-		vertical: number | null;
-		horizontal: number | null;
-	};
+	x: number;
+	y: number;
+	snappedX: boolean;
+	snappedY: boolean;
+	isOverlapping: boolean;
+	blockedByGrid: boolean;
+}
+
+/**
+ * Grid layout configuration
+ */
+export interface GridConfig {
+	columns: number;
+	sandboxWidth: number;
+	sandboxHeight: number;
+	gapX: number;
+	gapY: number;
+	startX: number;
+	startY: number;
+	containerPaddingX: number;
+	containerPaddingY: number;
+	containerMargin: number;
+}
+
+/**
+ * Default grid configuration - 4 columns, 500x500 sandboxes
+ */
+export const DEFAULT_GRID_CONFIG: GridConfig = {
+	columns: 4,
+	sandboxWidth: 500,
+	sandboxHeight: 500,
+	gapX: 60,
+	gapY: 60,
+	startX: 100,
+	startY: 100,
+	containerPaddingX: 120,
+	containerPaddingY: 40,
+	containerMargin: 20
+};
+
+/**
+ * Canvas viewport for zoom/pan calculations
+ */
+export interface CanvasViewport {
+	x: number;
+	y: number;
+	scale: number;
+}
+
+/**
+ * Grid position
+ */
+export interface GridPosition {
+	x: number;
+	y: number;
+}
+
+/**
+ * Overlap detection result
+ */
+export interface OverlapInfo {
+	isOverlapping: boolean;
+	overlappingWith: string[];
+	overlapPercent: number;
 }
 
 /**

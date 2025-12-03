@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useRef, useState, useEffect, useCallback } from 'react';
-import type { Sandbox, Transform, BackgroundPattern, Point, Rect, SnapResult } from '../../types';
+import type { Sandbox, Transform, BackgroundPattern, Point, SnapMode } from '../../types';
 import { SandboxCard } from '../SandboxCard';
 import { gridManager } from '../../services/GridManager';
 import { isLightColor } from '../../utils';
@@ -16,6 +16,7 @@ interface InfiniteCanvasProps {
 	transform: Transform;
 	pattern: BackgroundPattern;
 	backgroundColor: string;
+	snapMode: SnapMode;
 	onTransformChange: (transform: Transform) => void;
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
@@ -31,6 +32,7 @@ export function InfiniteCanvas({
 	transform,
 	pattern,
 	backgroundColor,
+	snapMode,
 	onTransformChange,
 	onSandboxClick,
 	onSandboxDoubleClick,
@@ -44,10 +46,12 @@ export function InfiniteCanvas({
 	const [draggingSandbox, setDraggingSandbox] = useState<string | null>(null);
 	const [sandboxDragStart, setSandboxDragStart] = useState<Point>({ x: 0, y: 0 });
 	const [dragOffset, setDragOffset] = useState<Point>({ x: 0, y: 0 });
-	const [snapLines, setSnapLines] = useState<{ vertical: number | null; horizontal: number | null }>({
-		vertical: null,
-		horizontal: null
-	});
+	const [isOverlapping, setIsOverlapping] = useState(false);
+
+	// Keep gridManager in sync with snapMode prop
+	useEffect(() => {
+		gridManager.setMode(snapMode);
+	}, [snapMode]);
 
 	// Refs for smooth touchpad zoom
 	const accumulatedDeltaRef = useRef(0);
@@ -165,43 +169,24 @@ export function InfiniteCanvas({
 	// Pan canvas or drag sandbox
 	const handleMouseMove = useCallback((e: React.MouseEvent) => {
 		if (draggingSandbox) {
-			// Dragging a sandbox - calculate offset
+			// Dragging a sandbox - calculate offset (FREE movement during drag!)
 			const deltaX = (e.clientX - sandboxDragStart.x) / transform.scale;
 			const deltaY = (e.clientY - sandboxDragStart.y) / transform.scale;
 
-			// Get current sandbox bounds
+			// Get current sandbox
 			const sandbox = sandboxes.find(s => s.id === draggingSandbox);
 			if (!sandbox) return;
 
-			const bounds: Rect = {
-				x: sandbox.x,
-				y: sandbox.y,
-				width: sandbox.width,
-				height: sandbox.height
-			};
+			// Calculate new position - FREE movement, no snap during drag
+			const newX = sandbox.x + deltaX;
+			const newY = sandbox.y + deltaY;
 
-			// Get other sandboxes for smart snap
-			const others: Rect[] = sandboxes
-				.filter(s => s.id !== draggingSandbox)
-				.map(s => ({ x: s.x, y: s.y, width: s.width, height: s.height }));
+			// Set drag offset directly (free movement)
+			setDragOffset({ x: deltaX, y: deltaY });
 
-			// Apply snap (60fps local operation!)
-			const newPoint: Point = { x: sandbox.x + deltaX, y: sandbox.y + deltaY };
-			let result: SnapResult;
-
-			if (gridManager.getMode() === 'smart') {
-				result = gridManager.smartSnap(newPoint, bounds, others);
-			} else {
-				const snapped = gridManager.snap(newPoint.x, newPoint.y);
-				result = { point: snapped, snapLines: { vertical: null, horizontal: null } };
-			}
-
-			// Calculate final offset from original position
-			setDragOffset({
-				x: result.point.x - sandbox.x,
-				y: result.point.y - sandbox.y
-			});
-			setSnapLines(result.snapLines);
+			// Check for overlap (visual indicator only)
+			const overlapInfo = gridManager.detectOverlap(newX, newY, draggingSandbox, sandboxes);
+			setIsOverlapping(overlapInfo.isOverlapping);
 		} else if (isPanning) {
 			// Panning canvas
 			const newX = e.clientX - dragStart.x;
@@ -210,22 +195,29 @@ export function InfiniteCanvas({
 		}
 	}, [draggingSandbox, sandboxDragStart, transform, sandboxes, isPanning, dragStart, onTransformChange]);
 
-	// End drag
+	// End drag - apply snap to grid on release
 	const handleMouseUp = useCallback(() => {
 		if (draggingSandbox && (dragOffset.x !== 0 || dragOffset.y !== 0)) {
-			// Commit the final position
 			const sandbox = sandboxes.find(s => s.id === draggingSandbox);
 			if (sandbox) {
+				// Calculate the free position where user dropped
+				const freeX = sandbox.x + dragOffset.x;
+				const freeY = sandbox.y + dragOffset.y;
+
+				// Apply snap to nearest grid slot on release
+				const snapped = gridManager.snapToGrid(freeX, freeY, sandboxes, draggingSandbox);
+
+				// Commit the snapped position
 				onSandboxUpdate(draggingSandbox, {
-					x: sandbox.x + dragOffset.x,
-					y: sandbox.y + dragOffset.y
+					x: snapped.x,
+					y: snapped.y
 				});
 			}
 		}
 		setIsPanning(false);
 		setDraggingSandbox(null);
 		setDragOffset({ x: 0, y: 0 });
-		setSnapLines({ vertical: null, horizontal: null });
+		setIsOverlapping(false);
 	}, [draggingSandbox, dragOffset, sandboxes, onSandboxUpdate]);
 
 	// Start dragging a sandbox
@@ -299,6 +291,7 @@ export function InfiniteCanvas({
 							isFocused={sandbox.id === focusedSandboxId}
 							isDragging={isDragging}
 							dragOffset={isDragging ? dragOffset : undefined}
+							isOverlapping={isDragging && isOverlapping}
 							onMouseDown={(e) => handleSandboxMouseDown(e, sandbox.id)}
 							onClick={() => onSandboxClick(sandbox.id)}
 							onDoubleClick={() => onSandboxDoubleClick(sandbox.id)}
@@ -307,20 +300,6 @@ export function InfiniteCanvas({
 					);
 				})}
 			</div>
-
-			{/* Snap lines for Smart Grid mode */}
-			{snapLines.vertical !== null && (
-				<div
-					className="snap-line vertical"
-					style={{ left: snapLines.vertical * transform.scale + transform.x }}
-				/>
-			)}
-			{snapLines.horizontal !== null && (
-				<div
-					className="snap-line horizontal"
-					style={{ top: snapLines.horizontal * transform.scale + transform.y }}
-				/>
-			)}
 
 			{/* Empty state */}
 			{sandboxes.length === 0 && (

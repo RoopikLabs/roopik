@@ -6,7 +6,7 @@
 interface FloatingToolbarProps {
 	tabName?: string;
 	onAddComponent: () => void;
-	onResetView: () => void;
+	onTidyUp: () => void;
 }
 
 /**
@@ -16,7 +16,7 @@ interface FloatingToolbarProps {
 export function FloatingToolbar({
 	tabName = 'Canvas',
 	onAddComponent,
-	onResetView
+	onTidyUp
 }: FloatingToolbarProps) {
 	return (
 		<div className="floating-toolbar">
@@ -26,8 +26,8 @@ export function FloatingToolbar({
 				+ Add Component
 			</button>
 			<div className="separator" />
-			<button className="secondary" onClick={onResetView} title="Reset View (Ctrl+0)">
-				Reset
+			<button className="secondary" onClick={onTidyUp} title="Tidy Up - Reorganize all to grid">
+				⊞ Tidy Up
 			</button>
 		</div>
 	);

@@ -12,6 +12,7 @@ interface SandboxCardProps {
 	isFocused: boolean;
 	isDragging?: boolean;
 	dragOffset?: Point;
+	isOverlapping?: boolean;
 	onMouseDown: (e: React.MouseEvent) => void;
 	onClick: () => void;
 	onDoubleClick: () => void;
@@ -134,6 +135,7 @@ export function SandboxCard({
 	isFocused,
 	isDragging = false,
 	dragOffset,
+	isOverlapping = false,
 	onMouseDown,
 	onClick,
 	onDoubleClick,
@@ -172,6 +174,7 @@ export function SandboxCard({
 	if (isSelected) classNames.push('selected');
 	if (isFocused) classNames.push('focused');
 	if (isDragging) classNames.push('dragging');
+	if (isOverlapping) classNames.push('overlapping');
 
 	return (
 		<div

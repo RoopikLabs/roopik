@@ -22,27 +22,19 @@ interface StatusPanelProps {
  * Get display label for snap mode
  */
 function getSnapModeLabel(mode: SnapMode): string {
-	switch (mode) {
-		case 'free': return 'Free';
-		case 'grid': return 'Grid';
-		case 'smart': return 'Smart';
-	}
+	return mode === 'grid' ? 'Grid' : 'Free';
 }
 
 /**
- * Get next snap mode in cycle
+ * Get next snap mode (toggle between grid and free)
  */
 function getNextSnapMode(mode: SnapMode): SnapMode {
-	switch (mode) {
-		case 'free': return 'grid';
-		case 'grid': return 'smart';
-		case 'smart': return 'free';
-	}
+	return mode === 'grid' ? 'free' : 'grid';
 }
 
 /**
  * StatusPanel - Bottom status bar with zoom, snap mode, and info
- * Clean, lean design - single button toggles through snap modes
+ * Clean, lean design - single button toggles between grid and free modes
  */
 export function StatusPanel({
 	transform,
@@ -76,13 +68,13 @@ export function StatusPanel({
 
 				<div className="separator" />
 
-				{/* Single Snap Mode Toggle Button */}
+				{/* Snap Mode Toggle Button (Grid / Free) */}
 				<button
 					className="snap-toggle"
 					onClick={handleSnapModeToggle}
-					title={`Snap: ${getSnapModeLabel(snapMode)} (click to cycle)`}
+					title={`Snap Mode: ${getSnapModeLabel(snapMode)} (click to toggle)`}
 				>
-					Snap: {getSnapModeLabel(snapMode)}
+					{snapMode === 'grid' ? '⊞' : '◇'} {getSnapModeLabel(snapMode)}
 				</button>
 
 				<div className="separator" />
