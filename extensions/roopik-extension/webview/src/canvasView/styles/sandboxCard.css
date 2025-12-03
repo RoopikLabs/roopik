@@ -20,6 +20,36 @@
 	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 	cursor: pointer;
 	padding: 40px 120px;
+	/* Smooth entry animation from old extension */
+	animation: sandbox-enter 0.4s cubic-bezier(0.4, 0, 0.2, 1) backwards;
+}
+
+/* Smooth entry animation for new sandboxes */
+@keyframes sandbox-enter {
+	from {
+		opacity: 0;
+		transform: scale(0.9) translateY(20px);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
+}
+
+/* Exit animation class (applied via JS before removal) */
+.sandbox-card.exiting {
+	animation: sandbox-exit 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes sandbox-exit {
+	from {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
+	to {
+		opacity: 0;
+		transform: scale(0.9) translateY(-20px);
+	}
 }
 
 .sandbox-card:hover {

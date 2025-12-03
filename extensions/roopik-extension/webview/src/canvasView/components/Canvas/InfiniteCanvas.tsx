@@ -17,6 +17,7 @@ interface InfiniteCanvasProps {
 	pattern: BackgroundPattern;
 	backgroundColor: string;
 	snapMode: SnapMode;
+	exitingSandboxIds?: Set<string>; // For smooth exit animations
 	onTransformChange: (transform: Transform) => void;
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
@@ -33,6 +34,7 @@ export function InfiniteCanvas({
 	pattern,
 	backgroundColor,
 	snapMode,
+	exitingSandboxIds = new Set(),
 	onTransformChange,
 	onSandboxClick,
 	onSandboxDoubleClick,
@@ -303,6 +305,7 @@ export function InfiniteCanvas({
 				{/* Render sandboxes */}
 				{sandboxes.map((sandbox) => {
 					const isDragging = draggingSandbox === sandbox.id;
+					const isExiting = exitingSandboxIds.has(sandbox.id);
 					return (
 						<SandboxCard
 							key={sandbox.id}
@@ -312,6 +315,7 @@ export function InfiniteCanvas({
 							isDragging={isDragging}
 							dragOffset={isDragging ? dragOffset : undefined}
 							isOverlapping={isDragging && isOverlapping}
+							isExiting={isExiting}
 							onMouseDown={(e) => handleSandboxMouseDown(e, sandbox.id)}
 							onClick={() => onSandboxClick(sandbox.id)}
 							onDoubleClick={() => onSandboxDoubleClick(sandbox.id)}

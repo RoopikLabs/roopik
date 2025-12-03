@@ -13,6 +13,7 @@ interface SandboxCardProps {
 	isDragging?: boolean;
 	dragOffset?: Point;
 	isOverlapping?: boolean;
+	isExiting?: boolean; // For smooth exit animation
 	onMouseDown: (e: React.MouseEvent) => void;
 	onClick: () => void;
 	onDoubleClick: () => void;
@@ -136,6 +137,7 @@ export function SandboxCard({
 	isDragging = false,
 	dragOffset,
 	isOverlapping = false,
+	isExiting = false,
 	onMouseDown,
 	onClick,
 	onDoubleClick,
@@ -175,6 +177,7 @@ export function SandboxCard({
 	if (isFocused) classNames.push('focused');
 	if (isDragging) classNames.push('dragging');
 	if (isOverlapping) classNames.push('overlapping');
+	if (isExiting) classNames.push('exiting');
 
 	return (
 		<div
