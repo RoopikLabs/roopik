@@ -37,6 +37,9 @@ import { CanvasInput } from './canvas/canvasInput.js';
 import { ISandboxPipelineService } from '../common/sandboxPipeline/sandboxPipelineService.js';
 import { SandboxPipelineClient } from './sandboxPipelineClient.js';
 
+// Import canvas commands (registers roopik.pipeline.* commands for extension use)
+import './canvas/canvasCommands.js';
+
 /**
  * Roopik Design IDE - Main Contribution
  *

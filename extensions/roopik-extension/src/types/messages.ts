@@ -11,43 +11,7 @@
  * - Extension → Webview (responses, state updates)
  */
 
-// ============================================================================
-// Canvas State Types
-// ============================================================================
-
-export interface SandboxState {
-	id: string;
-	code: string;
-	x: number;
-	y: number;
-	width: number;
-	height: number;
-	title?: string;
-	isFullscreen?: boolean;
-	deviceMode?: 'desktop' | 'tablet' | 'mobile';
-}
-
-export interface ViewportState {
-	x: number;
-	y: number;
-	scale: number;
-}
-
-export interface CanvasState {
-	sandboxes: SandboxState[];
-	viewport: ViewportState;
-}
-
-export interface TransformOptions {
-	framework?: 'react' | 'vue' | 'svelte';
-	typescript?: boolean;
-}
-
-export interface TransformResult {
-	html: string;
-	css?: string;
-	error?: string;
-}
+import type { ComponentInput, TransformedComponent } from './pipeline';
 
 // ============================================================================
 // Messages FROM Webview TO Extension
@@ -57,27 +21,16 @@ export interface WebviewReadyMessage {
 	type: 'ready';
 }
 
-export interface WebviewTransformCodeMessage {
-	type: 'transformCode';
+/**
+ * Request to build a component via Core's ESBuild pipeline
+ */
+export interface WebviewBuildComponentMessage {
+	type: 'buildComponent';
 	payload: {
-		code: string;
+		/** Unique ID to correlate request/response */
 		componentId: string;
-		options?: TransformOptions;
-	};
-}
-
-export interface WebviewSaveCanvasMessage {
-	type: 'saveCanvas';
-	payload: {
-		canvasId: string;
-		state: CanvasState;
-	};
-}
-
-export interface WebviewLoadCanvasMessage {
-	type: 'loadCanvas';
-	payload: {
-		canvasId: string;
+		/** ComponentInput for the pipeline */
+		input: ComponentInput;
 	};
 }
 
@@ -101,9 +54,7 @@ export interface WebviewLogMessage {
 
 export type WebviewMessage =
 	| WebviewReadyMessage
-	| WebviewTransformCodeMessage
-	| WebviewSaveCanvasMessage
-	| WebviewLoadCanvasMessage
+	| WebviewBuildComponentMessage
 	| WebviewOpenFileMessage
 	| WebviewLogMessage;
 
@@ -111,33 +62,29 @@ export type WebviewMessage =
 // Messages FROM Extension TO Webview
 // ============================================================================
 
-export interface ExtensionTransformCompleteMessage {
-	type: 'transformComplete';
+/**
+ * Component built successfully
+ */
+export interface ExtensionComponentBuiltMessage {
+	type: 'componentBuilt';
 	payload: {
-		html: string;
+		/** Component ID (matches request) */
 		componentId: string;
+		/** Build result from Core */
+		result: TransformedComponent;
 	};
 }
 
-export interface ExtensionTransformErrorMessage {
-	type: 'transformError';
+/**
+ * Component build failed
+ */
+export interface ExtensionComponentErrorMessage {
+	type: 'componentError';
 	payload: {
+		/** Component ID (matches request) */
+		componentId: string;
+		/** Error message */
 		error: string;
-		componentId: string;
-	};
-}
-
-export interface ExtensionCanvasLoadedMessage {
-	type: 'canvasLoaded';
-	payload: {
-		state: CanvasState;
-	};
-}
-
-export interface ExtensionCanvasSavedMessage {
-	type: 'canvasSaved';
-	payload: {
-		success: boolean;
 	};
 }
 
@@ -149,10 +96,8 @@ export interface ExtensionThemeChangedMessage {
 }
 
 export type ExtensionMessage =
-	| ExtensionTransformCompleteMessage
-	| ExtensionTransformErrorMessage
-	| ExtensionCanvasLoadedMessage
-	| ExtensionCanvasSavedMessage
+	| ExtensionComponentBuiltMessage
+	| ExtensionComponentErrorMessage
 	| ExtensionThemeChangedMessage;
 
 // ============================================================================
@@ -164,9 +109,7 @@ export function isWebviewMessage(message: unknown): message is WebviewMessage {
 	const msg = message as { type?: string };
 	return typeof msg.type === 'string' && [
 		'ready',
-		'transformCode',
-		'saveCanvas',
-		'loadCanvas',
+		'buildComponent',
 		'openFile',
 		'log'
 	].includes(msg.type);
@@ -176,10 +119,8 @@ export function isExtensionMessage(message: unknown): message is ExtensionMessag
 	if (!message || typeof message !== 'object') return false;
 	const msg = message as { type?: string };
 	return typeof msg.type === 'string' && [
-		'transformComplete',
-		'transformError',
-		'canvasLoaded',
-		'canvasSaved',
+		'componentBuilt',
+		'componentError',
 		'themeChanged'
 	].includes(msg.type);
 }

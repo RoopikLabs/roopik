@@ -6,12 +6,11 @@
 import * as vscode from 'vscode';
 import { CoreBridgeService } from '../services/CoreBridgeService';
 import { Logger } from '../services/Logger';
+import type { ComponentInput } from '../types/pipeline';
 import type {
 	WebviewMessage,
 	ExtensionMessage,
-	WebviewTransformCodeMessage,
-	WebviewSaveCanvasMessage,
-	WebviewLoadCanvasMessage,
+	WebviewBuildComponentMessage,
 	WebviewOpenFileMessage,
 	WebviewLogMessage
 } from '../types/messages';
@@ -93,16 +92,8 @@ export class CanvasPanel {
 				this.logger.info('Webview ready');
 				break;
 
-			case 'transformCode':
-				await this.handleTransformCode(message as WebviewTransformCodeMessage);
-				break;
-
-			case 'saveCanvas':
-				await this.handleSaveCanvas(message as WebviewSaveCanvasMessage);
-				break;
-
-			case 'loadCanvas':
-				await this.handleLoadCanvas(message as WebviewLoadCanvasMessage);
+			case 'buildComponent':
+				await this.handleBuildComponent(message as WebviewBuildComponentMessage);
 				break;
 
 			case 'openFile':
@@ -116,50 +107,54 @@ export class CanvasPanel {
 	}
 
 	/**
-	 * Transform code via Core's ESBuild pipeline
+	 * Build component via Core's ESBuild pipeline
 	 */
-	private async handleTransformCode(message: WebviewTransformCodeMessage): Promise<void> {
-		const { code, componentId, options } = message.payload;
+	private async handleBuildComponent(message: WebviewBuildComponentMessage): Promise<void> {
+		const { componentId, input } = message.payload;
 
-		const result = await this.coreBridge.transformCode(code, options);
-
-		if (result.error) {
-			this.postMessage({
-				type: 'transformError',
-				payload: { error: result.error, componentId }
-			});
-		} else {
-			this.postMessage({
-				type: 'transformComplete',
-				payload: { html: result.html, componentId }
-			});
-		}
-	}
-
-	/**
-	 * Save canvas state to disk
-	 */
-	private async handleSaveCanvas(message: WebviewSaveCanvasMessage): Promise<void> {
-		const { canvasId, state } = message.payload;
-		const success = await this.coreBridge.saveCanvasState(canvasId, state);
-
-		this.postMessage({
-			type: 'canvasSaved',
-			payload: { success }
+		this.logger.info(`📥 Build request received: ${componentId}`, {
+			inputId: input.id,
+			framework: input.framework,
+			files: Object.keys(input.files),
+			dependencies: input.dependencies
 		});
-	}
 
-	/**
-	 * Load canvas state from disk
-	 */
-	private async handleLoadCanvas(message: WebviewLoadCanvasMessage): Promise<void> {
-		const { canvasId } = message.payload;
-		const state = await this.coreBridge.loadCanvasState(canvasId);
+		try {
+			// Build via Core pipeline
+			this.logger.debug(`🔨 Calling Core pipeline for: ${componentId}`);
+			const result = await this.coreBridge.buildComponent(input);
 
-		if (state) {
+			this.logger.info(`✅ Build success: ${componentId}`, {
+				framework: result.framework,
+				bundledCodeLength: result.bundledCode?.length || 0,
+				cdnUrls: result.cdnUrls,
+				transformTime: result.metadata?.transformTime
+			});
+
+			// Log first 300 chars of bundled code
+			if (result.bundledCode) {
+				this.logger.debug(`📦 Bundled code preview: ${result.bundledCode.substring(0, 300)}...`);
+			}
+
+			// Send success response
 			this.postMessage({
-				type: 'canvasLoaded',
-				payload: { state }
+				type: 'componentBuilt',
+				payload: {
+					componentId,
+					result
+				}
+			});
+		} catch (error) {
+			const errorMsg = error instanceof Error ? error.message : String(error);
+			this.logger.error(`❌ Build failed: ${componentId}`, { error: errorMsg });
+
+			// Send error response
+			this.postMessage({
+				type: 'componentError',
+				payload: {
+					componentId,
+					error: errorMsg
+				}
 			});
 		}
 	}
@@ -211,7 +206,7 @@ export class CanvasPanel {
 		// Content Security Policy
 		const cspSource = webview.cspSource;
 
-		// CSP: Allow unsafe-inline/eval for React and Babel in sandbox iframes
+		// CSP: Allow esm.sh for CDN imports in sandbox iframes
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -220,9 +215,9 @@ export class CanvasPanel {
 	<meta http-equiv="Content-Security-Policy" content="
 		default-src 'none';
 		style-src ${cspSource} 'unsafe-inline';
-		script-src ${cspSource} 'unsafe-inline' 'unsafe-eval' https://unpkg.com;
+		script-src ${cspSource} 'unsafe-inline' 'unsafe-eval' https://esm.sh https://cdn.skypack.dev;
 		frame-src blob: data: https:;
-		connect-src https://unpkg.com;
+		connect-src https://esm.sh https://cdn.skypack.dev;
 		img-src ${cspSource} data: https:;
 	">
 	<link rel="stylesheet" href="${styleUri}">
@@ -235,4 +230,3 @@ export class CanvasPanel {
 </html>`;
 	}
 }
-

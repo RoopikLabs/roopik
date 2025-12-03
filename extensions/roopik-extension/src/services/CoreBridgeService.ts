@@ -4,15 +4,16 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import type { CanvasState, TransformOptions, TransformResult } from '../types/messages';
+import type { ComponentInput, TransformedComponent, SandboxJob, QueueStatus, ValidationResult } from '../types/pipeline';
 
 /**
- * CoreBridgeService - Bridge between Extension and Core
+ * CoreBridgeService - Bridge between Extension and Core's Sandbox Pipeline
  *
  * Handles communication with Core services via commands:
- * - roopik.core.transformCode (ESBuild bundling)
- * - roopik.core.saveCanvasState (persistence)
- * - roopik.core.loadCanvasState (persistence)
+ * - roopik.pipeline.buildComponent (one-shot build)
+ * - roopik.pipeline.processComponent (async job submission)
+ * - roopik.pipeline.waitForCompletion (wait for job)
+ * - roopik.pipeline.getJobStatus (check job status)
  *
  * NOTE: GridManager stays LOCAL in extension for 60fps performance!
  */
@@ -29,58 +30,203 @@ export class CoreBridgeService {
 	}
 
 	/**
-	 * Transform code via Core's ESBuild pipeline
-	 * Heavy processing - goes to Core
+	 * Build a component through Core's ESBuild pipeline (one-shot)
+	 * Convenience method that submits job and waits for result
+	 *
+	 * @param input ComponentInput with files, framework, dependencies
+	 * @param timeout Optional timeout in ms (default 30000)
+	 * @returns TransformedComponent with bundled code ready for sandbox execution
 	 */
-	async transformCode(code: string, options?: TransformOptions): Promise<TransformResult> {
+	async buildComponent(input: ComponentInput, timeout?: number): Promise<TransformedComponent> {
+		console.log('[CoreBridgeService] 🚀 Calling roopik.pipeline.buildComponent:', {
+			inputId: input.id,
+			framework: input.framework,
+			files: Object.keys(input.files),
+			dependencies: input.dependencies,
+			timeout: timeout || 30000
+		});
+
 		try {
-			const result = await vscode.commands.executeCommand<TransformResult>(
-				'roopik.core.transformCode',
-				code,
-				options || {}
+			const startTime = Date.now();
+			const result = await vscode.commands.executeCommand<TransformedComponent>(
+				'roopik.pipeline.buildComponent',
+				input,
+				timeout || 30000
 			);
-			return result || { html: '', error: 'No result from transform' };
+			const elapsed = Date.now() - startTime;
+
+			if (!result) {
+				console.error('[CoreBridgeService] ❌ No result from Core pipeline');
+				throw new Error('No result from pipeline');
+			}
+
+			console.log('[CoreBridgeService] ✅ Core pipeline returned result:', {
+				inputId: input.id,
+				framework: result.framework,
+				bundledCodeLength: result.bundledCode?.length || 0,
+				cdnUrls: result.cdnUrls,
+				transformTime: result.metadata?.transformTime,
+				totalElapsed: elapsed
+			});
+
+			return result;
 		} catch (error) {
-			console.error('[CoreBridgeService] Transform failed:', error);
-			return {
-				html: '',
-				error: error instanceof Error ? error.message : String(error)
-			};
+			console.error('[CoreBridgeService] ❌ Build failed:', error);
+			throw error;
 		}
 	}
 
 	/**
-	 * Save canvas state to disk via Core
-	 * Persistence - goes to Core
+	 * Submit a component for processing (async)
+	 * Returns job ID immediately, use waitForCompletion to get result
+	 *
+	 * @param input ComponentInput
+	 * @returns Job ID for tracking
 	 */
-	async saveCanvasState(canvasId: string, state: CanvasState): Promise<boolean> {
+	async processComponent(input: ComponentInput): Promise<string> {
 		try {
-			await vscode.commands.executeCommand(
-				'roopik.core.saveCanvasState',
-				canvasId,
-				state
+			const jobId = await vscode.commands.executeCommand<string>(
+				'roopik.pipeline.processComponent',
+				input
 			);
-			return true;
+			if (!jobId) {
+				throw new Error('No job ID returned from pipeline');
+			}
+			return jobId;
 		} catch (error) {
-			console.error('[CoreBridgeService] Save failed:', error);
+			console.error('[CoreBridgeService] Process failed:', error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Wait for a job to complete
+	 *
+	 * @param jobId Job ID from processComponent
+	 * @param timeout Optional timeout in ms (default 30000)
+	 * @returns TransformedComponent when job completes
+	 */
+	async waitForCompletion(jobId: string, timeout?: number): Promise<TransformedComponent> {
+		try {
+			const result = await vscode.commands.executeCommand<TransformedComponent>(
+				'roopik.pipeline.waitForCompletion',
+				jobId,
+				timeout || 30000
+			);
+			if (!result) {
+				throw new Error('No result from pipeline');
+			}
+			return result;
+		} catch (error) {
+			console.error('[CoreBridgeService] Wait for completion failed:', error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Get job status
+	 *
+	 * @param jobId Job ID
+	 * @returns SandboxJob with status info
+	 */
+	async getJobStatus(jobId: string): Promise<SandboxJob | undefined> {
+		try {
+			return await vscode.commands.executeCommand<SandboxJob | undefined>(
+				'roopik.pipeline.getJobStatus',
+				jobId
+			);
+		} catch (error) {
+			console.error('[CoreBridgeService] Get job status failed:', error);
+			return undefined;
+		}
+	}
+
+	/**
+	 * Get all jobs in queue
+	 *
+	 * @returns Array of SandboxJob
+	 */
+	async getAllJobs(): Promise<SandboxJob[]> {
+		try {
+			const jobs = await vscode.commands.executeCommand<SandboxJob[]>(
+				'roopik.pipeline.getAllJobs'
+			);
+			return jobs || [];
+		} catch (error) {
+			console.error('[CoreBridgeService] Get all jobs failed:', error);
+			return [];
+		}
+	}
+
+	/**
+	 * Get queue status
+	 *
+	 * @returns QueueStatus with counts
+	 */
+	async getQueueStatus(): Promise<QueueStatus> {
+		try {
+			const status = await vscode.commands.executeCommand<QueueStatus>(
+				'roopik.pipeline.getQueueStatus'
+			);
+			return status || { queued: 0, processing: 0, completed: 0, failed: 0 };
+		} catch (error) {
+			console.error('[CoreBridgeService] Get queue status failed:', error);
+			return { queued: 0, processing: 0, completed: 0, failed: 0 };
+		}
+	}
+
+	/**
+	 * Validate a component without building
+	 *
+	 * @param input ComponentInput
+	 * @returns ValidationResult
+	 */
+	async validateComponent(input: ComponentInput): Promise<ValidationResult> {
+		try {
+			const result = await vscode.commands.executeCommand<ValidationResult>(
+				'roopik.pipeline.validateComponent',
+				input
+			);
+			return result || { valid: false, errors: ['No validation result'] };
+		} catch (error) {
+			console.error('[CoreBridgeService] Validate failed:', error);
+			return { valid: false, errors: [String(error)] };
+		}
+	}
+
+	/**
+	 * Cancel a queued job
+	 *
+	 * @param jobId Job ID
+	 * @returns true if cancelled
+	 */
+	async cancelJob(jobId: string): Promise<boolean> {
+		try {
+			const result = await vscode.commands.executeCommand<boolean>(
+				'roopik.pipeline.cancelJob',
+				jobId
+			);
+			return result || false;
+		} catch (error) {
+			console.error('[CoreBridgeService] Cancel job failed:', error);
 			return false;
 		}
 	}
 
 	/**
-	 * Load canvas state from disk via Core
-	 * Persistence - goes to Core
+	 * Clear completed and failed jobs from queue
+	 *
+	 * @returns Number of jobs cleared
 	 */
-	async loadCanvasState(canvasId: string): Promise<CanvasState | null> {
+	async clearCompletedJobs(): Promise<number> {
 		try {
-			const state = await vscode.commands.executeCommand<CanvasState>(
-				'roopik.core.loadCanvasState',
-				canvasId
+			const count = await vscode.commands.executeCommand<number>(
+				'roopik.pipeline.clearCompletedJobs'
 			);
-			return state || null;
+			return count || 0;
 		} catch (error) {
-			console.error('[CoreBridgeService] Load failed:', error);
-			return null;
+			console.error('[CoreBridgeService] Clear jobs failed:', error);
+			return 0;
 		}
 	}
 

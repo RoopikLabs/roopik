@@ -3,9 +3,55 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
+// ============================================================================
+// Pipeline Types (Mirrors Core's sandboxPipeline/types.ts)
+// ============================================================================
+
+export type Framework = 'react' | 'vue' | 'svelte' | 'solid' | 'preact' | 'html';
+export type ComponentSource = 'ai' | 'user' | 'upload' | 'import' | 'sample';
+export type JobPriority = 'high' | 'normal' | 'low';
+
+/**
+ * Input to the Core build pipeline
+ */
+export interface ComponentInput {
+	id: string;
+	source: ComponentSource;
+	framework?: Framework;
+	files: { [filename: string]: string };
+	entryFile?: string;
+	priority?: JobPriority;
+	dependencies?: Record<string, string>;
+}
+
+/**
+ * Output from the Core build pipeline
+ */
+export interface TransformedComponent {
+	id: string;
+	framework: Framework;
+	bundledCode: string;
+	cdnUrls: string[];
+	metadata: {
+		size: number;
+		transformTime: number;
+	};
+}
+
+// ============================================================================
+// Sandbox Types
+// ============================================================================
+
+/**
+ * Build status for a sandbox
+ */
+export type SandboxBuildStatus = 'pending' | 'building' | 'ready' | 'error';
+
 /**
  * Sandbox represents a live, interactive preview environment (iframe)
- * Mode 1: Client-side transpilation with Babel
+ *
+ * All components are built via Core's ESBuild pipeline.
+ * The bundledCode is pre-built ESM ready for execution in the iframe.
  */
 export interface Sandbox {
 	id: string;
@@ -14,11 +60,21 @@ export interface Sandbox {
 	width: number;
 	height: number;
 	zIndex: number;
-	sandboxMessage: {
-		type: 'init' | 'update';
-		code: string;
-		cdnUrls?: string[];
-	};
+
+	/** Build status */
+	buildStatus: SandboxBuildStatus;
+
+	/** Error message if build failed */
+	buildError?: string;
+
+	/** Pre-built ESM from Core's ESBuild pipeline */
+	bundledCode?: string;
+
+	/** CDN URLs used in the bundle */
+	cdnUrls?: string[];
+
+	/** Original ComponentInput (for rebuild/persistence) */
+	componentInput: ComponentInput;
 }
 
 /**
@@ -143,12 +199,18 @@ export interface OverlapInfo {
 	overlapPercent: number;
 }
 
+// ============================================================================
+// Message Types
+// ============================================================================
+
 /**
  * Message types from Extension to Webview
  */
 export type ExtensionMessage =
-	| { type: 'transformComplete'; payload: { componentId: string; html: string } }
-	| { type: 'transformError'; payload: { componentId: string; error: string } }
+	// Core pipeline responses
+	| { type: 'componentBuilt'; payload: { componentId: string; result: TransformedComponent } }
+	| { type: 'componentError'; payload: { componentId: string; error: string } }
+	// Canvas state
 	| { type: 'canvasLoaded'; payload: { state: CanvasState } }
 	| { type: 'canvasSaved'; payload: { success: boolean } }
 	| { type: 'themeChanged'; payload: { theme: 'light' | 'dark' | 'high-contrast' } };
@@ -158,7 +220,9 @@ export type ExtensionMessage =
  */
 export type WebviewMessage =
 	| { type: 'ready' }
-	| { type: 'transformCode'; payload: { code: string; componentId: string; options?: Record<string, unknown> } }
+	// Core pipeline request
+	| { type: 'buildComponent'; payload: { componentId: string; input: ComponentInput } }
+	// Canvas state
 	| { type: 'saveCanvas'; payload: { canvasId: string; state: CanvasState } }
 	| { type: 'loadCanvas'; payload: { canvasId: string } }
 	| { type: 'openFile'; payload: { filePath: string; line?: number; column?: number } }

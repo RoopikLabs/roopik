@@ -3,9 +3,10 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { InfiniteCanvas, FloatingToolbar, StatusPanel } from './components';
 import { gridManager } from './services/GridManager';
+import { SAMPLE_COMPONENTS, type SampleComponent } from './data/sampleComponents';
 import type {
 	Sandbox,
 	Transform,
@@ -13,34 +14,59 @@ import type {
 	BackgroundPattern,
 	ExtensionMessage,
 	WebviewMessage,
-	VSCodeAPI
+	VSCodeAPI,
+	ComponentInput
 } from './types';
 
 // Get VSCode API (only call once!)
 const vscode: VSCodeAPI = acquireVsCodeApi();
 
 /**
- * Sample component code for new sandboxes
+ * Default sample ComponentInput for "Add" button
  */
-const SAMPLE_CODE = `const Component = () => {
-  const [count, setCount] = React.useState(0);
+const DEFAULT_COMPONENT_INPUT: ComponentInput = {
+	id: 'new-component',
+	source: 'user',
+	framework: 'react',
+	files: {
+		'new-component.jsx': `import React, { useState } from 'react';
+
+export default function NewComponent() {
+  const [count, setCount] = useState(0);
   return (
-    <button
-      onClick={() => setCount(c => c + 1)}
-      style={{
-        padding: '12px 24px',
-        fontSize: '16px',
-        background: '#3b82f6',
-        color: 'white',
-        border: 'none',
-        borderRadius: '8px',
-        cursor: 'pointer'
-      }}
-    >
-      Clicked {count} times
-    </button>
+    <div style={{
+      padding: '40px',
+      fontFamily: 'system-ui, sans-serif',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      <button
+        onClick={() => setCount(c => c + 1)}
+        style={{
+          padding: '16px 32px',
+          fontSize: '18px',
+          background: 'white',
+          color: '#333',
+          border: 'none',
+          borderRadius: '12px',
+          cursor: 'pointer',
+          boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
+        }}
+      >
+        Clicked {count} times
+      </button>
+    </div>
   );
-};`;
+}`
+	},
+	dependencies: {
+		'react': '18.2.0',
+		'react-dom': '18.2.0'
+	}
+};
 
 /**
  * CanvasView - Main orchestrator component
@@ -48,8 +74,15 @@ const SAMPLE_CODE = `const Component = () => {
  * Manages:
  * - Sandboxes (components)
  * - Transform (pan/zoom)
- * - Snap mode (Free | Grid | Smart)
+ * - Snap mode (Free | Grid)
+ * - Sample component loading
  * - Communication with Extension via postMessage
+ *
+ * Flow:
+ * 1. Create sandbox with ComponentInput (buildStatus: 'pending')
+ * 2. Send buildComponent message to Extension
+ * 3. Receive componentBuilt/componentError response
+ * 4. Update sandbox with bundledCode or error
  */
 export function CanvasView() {
 	// State
@@ -57,9 +90,13 @@ export function CanvasView() {
 	const [selectedSandboxId, setSelectedSandboxId] = useState<string | null>(null);
 	const [focusedSandboxId, setFocusedSandboxId] = useState<string | null>(null);
 	const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
-	const [snapMode, setSnapMode] = useState<SnapMode>('grid'); // Default to grid mode
+	const [snapMode, setSnapMode] = useState<SnapMode>('grid');
 	const [pattern, setPattern] = useState<BackgroundPattern>('dots');
 	const [backgroundColor] = useState('#1e1e1e');
+	const [exitingSandboxIds, setExitingSandboxIds] = useState<Set<string>>(new Set());
+
+	// Track pending builds to handle responses
+	const pendingBuildsRef = useRef<Set<string>>(new Set());
 
 	// Sync snap mode with GridManager
 	useEffect(() => {
@@ -72,12 +109,74 @@ export function CanvasView() {
 			const msg = event.data;
 
 			switch (msg.type) {
+				case 'componentBuilt': {
+					// Component built successfully - update sandbox
+					const { componentId, result } = msg.payload;
+					pendingBuildsRef.current.delete(componentId);
+
+					console.log('[CanvasView] ✅ componentBuilt received:', {
+						componentId,
+						framework: result.framework,
+						bundledCodeLength: result.bundledCode?.length || 0,
+						cdnUrls: result.cdnUrls,
+						metadata: result.metadata
+					});
+
+					// Log first 500 chars of bundled code for debugging
+					if (result.bundledCode) {
+						console.log('[CanvasView] 📦 Bundled code preview (first 500 chars):', result.bundledCode);
+					}
+
+					setSandboxes(prev => prev.map(sandbox => {
+						if (sandbox.id === componentId) {
+							return {
+								...sandbox,
+								buildStatus: 'ready',
+								bundledCode: result.bundledCode,
+								cdnUrls: result.cdnUrls,
+								buildError: undefined
+							};
+						}
+						return sandbox;
+					}));
+					break;
+				}
+
+				case 'componentError': {
+					// Build failed - update sandbox with error
+					const { componentId, error } = msg.payload;
+					pendingBuildsRef.current.delete(componentId);
+
+					console.error('[CanvasView] ❌ componentError received:', {
+						componentId,
+						error
+					});
+
+					setSandboxes(prev => prev.map(sandbox => {
+						if (sandbox.id === componentId) {
+							return {
+								...sandbox,
+								buildStatus: 'error',
+								buildError: error,
+								bundledCode: undefined
+							};
+						}
+						return sandbox;
+					}));
+					break;
+				}
+
 				case 'canvasLoaded': {
 					// Restore canvas state
 					const { state } = msg.payload;
 					setSandboxes(state.sandboxes);
 					setSelectedSandboxId(state.selectedSandboxId);
 					setTransform(state.viewport);
+					break;
+				}
+
+				case 'themeChanged': {
+					// Handle theme change if needed
 					break;
 				}
 			}
@@ -93,51 +192,187 @@ export function CanvasView() {
 		vscode.postMessage(message);
 	}, []);
 
-	// Add component handler - uses GridManager to find next available slot
-	const handleAddComponent = useCallback(() => {
-		// Get sandbox dimensions from GridManager config
+	/**
+	 * Request component build from Extension (via Core pipeline)
+	 */
+	const requestBuild = useCallback((componentId: string, input: ComponentInput) => {
+		pendingBuildsRef.current.add(componentId);
+
+		console.log('[CanvasView] 📤 Sending buildComponent request:', {
+			componentId,
+			inputId: input.id,
+			files: Object.keys(input.files),
+			framework: input.framework,
+			dependencies: input.dependencies
+		});
+
+		const message: WebviewMessage = {
+			type: 'buildComponent',
+			payload: { componentId, input }
+		};
+		vscode.postMessage(message);
+	}, []);
+
+	/**
+	 * Create a new sandbox with ComponentInput
+	 * Starts in 'building' state and requests build from Extension
+	 */
+	const createSandbox = useCallback((input: ComponentInput): Sandbox => {
 		const config = gridManager.getConfig();
 		const position = gridManager.getNextAvailableSlot(sandboxes);
 
-		const newSandbox: Sandbox = {
-			id: `component-${Date.now()}`,
+		// Generate unique ID
+		const timestamp = Date.now();
+		const uniqueId = `${input.id}-${timestamp}`;
+
+		// Update input with unique ID
+		const uniqueInput: ComponentInput = { ...input, id: uniqueId };
+
+		const sandbox: Sandbox = {
+			id: uniqueId,
 			x: position.x,
 			y: position.y,
 			width: config.sandboxWidth,
 			height: config.sandboxHeight,
 			zIndex: sandboxes.length + 1,
-			sandboxMessage: {
-				type: 'init',
-				code: SAMPLE_CODE,
-				cdnUrls: [
-					'https://unpkg.com/react@18/umd/react.development.js',
-					'https://unpkg.com/react-dom@18/umd/react-dom.development.js'
-				]
-			}
+			buildStatus: 'building',
+			componentInput: uniqueInput
 		};
 
-		setSandboxes(prev => [...prev, newSandbox]);
+		// Request build from Extension
+		requestBuild(uniqueId, uniqueInput);
+
+		return sandbox;
+	}, [sandboxes, requestBuild]);
+
+	/**
+	 * Auto-fit viewport to show all sandboxes
+	 */
+	const fitAllSandboxes = useCallback((sandboxList: Sandbox[]) => {
+		if (sandboxList.length === 0) return;
+
+		setTimeout(() => {
+			const viewport = gridManager.calculateFitViewport(
+				sandboxList,
+				window.innerWidth,
+				window.innerHeight,
+				100
+			);
+			setTransform(viewport);
+		}, 100);
+	}, []);
+
+	// Add component handler
+	const handleAddComponent = useCallback(() => {
+		const uniqueInput = {
+			...DEFAULT_COMPONENT_INPUT,
+			id: `component-${Date.now()}`
+		};
+		const newSandbox = createSandbox(uniqueInput);
+		setSandboxes(prev => {
+			const updated = [...prev, newSandbox];
+			fitAllSandboxes(updated);
+			return updated;
+		});
 		setSelectedSandboxId(newSandbox.id);
+	}, [createSandbox, fitAllSandboxes]);
+
+	// Load a specific sample component
+	const handleLoadSample = useCallback((sample: SampleComponent) => {
+		// Check if already loaded (by original sample ID prefix)
+		const existingSandbox = sandboxes.find(s =>
+			s.componentInput?.id.startsWith(sample.id + '-') ||
+			s.id.startsWith(sample.id + '-')
+		);
+
+		if (existingSandbox) {
+			// Select existing instead of creating duplicate
+			setSelectedSandboxId(existingSandbox.id);
+			setSandboxes(prev => {
+				const maxZ = Math.max(...prev.map(s => s.zIndex));
+				return prev.map(s => s.id === existingSandbox.id ? { ...s, zIndex: maxZ + 1 } : s);
+			});
+			return;
+		}
+
+		const newSandbox = createSandbox(sample.input);
+		setSandboxes(prev => {
+			const updated = [...prev, newSandbox];
+			fitAllSandboxes(updated);
+			return updated;
+		});
+		setSelectedSandboxId(newSandbox.id);
+	}, [sandboxes, createSandbox, fitAllSandboxes]);
+
+	// Load all sample components
+	const handleLoadAll = useCallback(() => {
+		const newSandboxes: Sandbox[] = [];
+
+		SAMPLE_COMPONENTS.forEach(sample => {
+			// Skip if already loaded
+			const alreadyLoaded = sandboxes.some(s =>
+				s.componentInput?.id.startsWith(sample.id + '-') ||
+				s.id.startsWith(sample.id + '-')
+			);
+			if (alreadyLoaded) return;
+
+			const config = gridManager.getConfig();
+			const existingCount = sandboxes.length + newSandboxes.length;
+			const position = gridManager.getNextAvailableSlot([...sandboxes, ...newSandboxes]);
+
+			const timestamp = Date.now();
+			const uniqueId = `${sample.id}-${timestamp}-${newSandboxes.length}`;
+			const uniqueInput: ComponentInput = { ...sample.input, id: uniqueId };
+
+			const sandbox: Sandbox = {
+				id: uniqueId,
+				x: position.x,
+				y: position.y,
+				width: config.sandboxWidth,
+				height: config.sandboxHeight,
+				zIndex: existingCount + 1,
+				buildStatus: 'building',
+				componentInput: uniqueInput
+			};
+
+			// Request build
+			requestBuild(uniqueId, uniqueInput);
+			newSandboxes.push(sandbox);
+		});
+
+		if (newSandboxes.length > 0) {
+			setSandboxes(prev => {
+				const updated = [...prev, ...newSandboxes];
+				fitAllSandboxes(updated);
+				return updated;
+			});
+		}
+	}, [sandboxes, requestBuild, fitAllSandboxes]);
+
+	// Clear all sandboxes
+	const handleClearAll = useCallback(() => {
+		if (sandboxes.length === 0) return;
+		setSandboxes([]);
+		setSelectedSandboxId(null);
+		setFocusedSandboxId(null);
+		setTransform({ x: 0, y: 0, scale: 1 });
+		pendingBuildsRef.current.clear();
 	}, [sandboxes]);
 
 	// Sandbox handlers
 	const handleSandboxClick = useCallback((id: string) => {
 		setSelectedSandboxId(id);
-		// Bring clicked sandbox to top (highest z-index)
 		setSandboxes(prev => {
 			const maxZ = Math.max(...prev.map(s => s.zIndex));
 			return prev.map(s => s.id === id ? { ...s, zIndex: maxZ + 1 } : s);
 		});
 	}, []);
 
-	// Double click - enter/exit focus mode with zoom to sandbox
 	const handleSandboxDoubleClick = useCallback((id: string) => {
 		const isExitingFocus = focusedSandboxId === id;
 
 		if (isExitingFocus) {
-			// Exit focus mode - reset view
 			setFocusedSandboxId(null);
-			// Reset to fit all sandboxes or default view
 			const viewport = gridManager.calculateResetViewport(
 				sandboxes,
 				window.innerWidth,
@@ -145,11 +380,9 @@ export function CanvasView() {
 			);
 			setTransform(viewport);
 		} else {
-			// Enter focus mode - zoom to this sandbox
 			setFocusedSandboxId(id);
 			const sandbox = sandboxes.find(s => s.id === id);
 			if (sandbox) {
-				// Calculate viewport to center and zoom on this sandbox
 				const viewport = gridManager.calculateFocusViewport(
 					sandbox,
 					window.innerWidth,
@@ -157,7 +390,6 @@ export function CanvasView() {
 				);
 				setTransform(viewport);
 			}
-			// Also bring to top
 			setSandboxes(prev => {
 				const maxZ = Math.max(...prev.map(s => s.zIndex));
 				return prev.map(s => s.id === id ? { ...s, zIndex: maxZ + 1 } : s);
@@ -172,10 +404,27 @@ export function CanvasView() {
 	}, []);
 
 	const handleSandboxDelete = useCallback((id: string) => {
-		setSandboxes(prev => prev.filter(s => s.id !== id));
+		setExitingSandboxIds(prev => new Set(prev).add(id));
+
 		if (selectedSandboxId === id) setSelectedSandboxId(null);
 		if (focusedSandboxId === id) setFocusedSandboxId(null);
-	}, [selectedSandboxId, focusedSandboxId]);
+		pendingBuildsRef.current.delete(id);
+
+		setTimeout(() => {
+			setSandboxes(prev => {
+				const remaining = prev.filter(s => s.id !== id);
+				if (remaining.length > 0) {
+					fitAllSandboxes(remaining);
+				}
+				return remaining;
+			});
+			setExitingSandboxIds(prev => {
+				const next = new Set(prev);
+				next.delete(id);
+				return next;
+			});
+		}, 300);
+	}, [selectedSandboxId, focusedSandboxId, fitAllSandboxes]);
 
 	const handleCanvasClick = useCallback(() => {
 		setSelectedSandboxId(null);
@@ -201,17 +450,18 @@ export function CanvasView() {
 	}, []);
 
 	const handleResetView = useCallback(() => {
-		setTransform({ x: 0, y: 0, scale: 1 });
-	}, []);
+		if (sandboxes.length > 0) {
+			fitAllSandboxes(sandboxes);
+		} else {
+			setTransform({ x: 0, y: 0, scale: 1 });
+		}
+	}, [sandboxes, fitAllSandboxes]);
 
-	// Tidy Up - reorganize all sandboxes to fill grid slots sequentially (no gaps) + reset view
+	// Tidy Up
 	const handleTidyUp = useCallback(() => {
 		if (sandboxes.length === 0) return;
 
-		// Get new positions from GridManager's tidyUp
 		const newPositions = gridManager.tidyUp(sandboxes);
-
-		// Update all sandboxes with their new positions
 		const updatedSandboxes = sandboxes.map(sandbox => {
 			const newPos = newPositions.get(sandbox.id);
 			if (newPos) {
@@ -221,19 +471,10 @@ export function CanvasView() {
 		});
 
 		setSandboxes(updatedSandboxes);
-
-		// Reset view to show all tidied sandboxes nicely
-		const viewport = gridManager.calculateResetViewport(
-			updatedSandboxes,
-			window.innerWidth,
-			window.innerHeight
-		);
-		setTransform(viewport);
-
-		// Clear any selection/focus state for clean view
+		fitAllSandboxes(updatedSandboxes);
 		setSelectedSandboxId(null);
 		setFocusedSandboxId(null);
-	}, [sandboxes]);
+	}, [sandboxes, fitAllSandboxes]);
 
 	// Snap mode handler
 	const handleSnapModeChange = useCallback((mode: SnapMode) => {
@@ -252,16 +493,13 @@ export function CanvasView() {
 	// Keyboard shortcuts
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
-			// Delete selected sandbox
 			if ((e.key === 'Delete' || e.key === 'Backspace') && selectedSandboxId) {
 				handleSandboxDelete(selectedSandboxId);
 			}
-			// Reset zoom
 			if (e.key === '0' && (e.ctrlKey || e.metaKey)) {
 				e.preventDefault();
 				handleResetView();
 			}
-			// Escape to deselect
 			if (e.key === 'Escape') {
 				setSelectedSandboxId(null);
 				setFocusedSandboxId(null);
@@ -278,7 +516,11 @@ export function CanvasView() {
 			<FloatingToolbar
 				tabName="Canvas"
 				onAddComponent={handleAddComponent}
+				onLoadSample={handleLoadSample}
+				onLoadAll={handleLoadAll}
+				onClearAll={handleClearAll}
 				onTidyUp={handleTidyUp}
+				sandboxCount={sandboxes.length}
 			/>
 
 			{/* Infinite Canvas (main area) */}
@@ -291,6 +533,7 @@ export function CanvasView() {
 					pattern={pattern}
 					backgroundColor={backgroundColor}
 					snapMode={snapMode}
+					exitingSandboxIds={exitingSandboxIds}
 					onTransformChange={handleTransformChange}
 					onSandboxClick={handleSandboxClick}
 					onSandboxDoubleClick={handleSandboxDoubleClick}

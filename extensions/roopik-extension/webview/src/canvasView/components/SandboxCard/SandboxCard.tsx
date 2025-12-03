@@ -3,7 +3,7 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import type { Sandbox, Point } from '../../types';
 
 interface SandboxCardProps {
@@ -13,7 +13,7 @@ interface SandboxCardProps {
 	isDragging?: boolean;
 	dragOffset?: Point;
 	isOverlapping?: boolean;
-	isExiting?: boolean; // For smooth exit animation
+	isExiting?: boolean;
 	onMouseDown: (e: React.MouseEvent) => void;
 	onClick: () => void;
 	onDoubleClick: () => void;
@@ -21,15 +21,20 @@ interface SandboxCardProps {
 }
 
 /**
- * Sandbox template HTML with Babel for client-side React transpilation
+ * Generate sandbox HTML that executes pre-built ESM from Core's pipeline
+ *
+ * The bundledCode is already transpiled by Core's ESBuild pipeline as ESM
+ * with CDN imports (e.g., import React from "https://esm.sh/react@18.2.0").
+ *
+ * We embed the ESM code directly in <script type="module"> tag.
+ * No blob URLs needed - the code runs inline as a module.
  */
-const SANDBOX_HTML = `
-<!DOCTYPE html>
+function generateSandboxHTML(bundledCode: string): string {
+	return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline' 'unsafe-eval' https://unpkg.com; connect-src https://unpkg.com;">
 	<title>Roopik Component Sandbox</title>
 	<style>
 		* { margin: 0; padding: 0; box-sizing: border-box; }
@@ -40,95 +45,251 @@ const SANDBOX_HTML = `
 		}
 		#root {
 			min-height: 100vh;
+		}
+		.sandbox-error {
 			display: flex;
 			align-items: center;
 			justify-content: center;
+			min-height: 100vh;
 			padding: 20px;
 		}
-		.sandbox-error {
-			background: #fee;
-			border: 2px solid #fcc;
-			border-radius: 8px;
-			padding: 20px;
-			max-width: 600px;
+		.sandbox-error .error-content {
+			background: #fef2f2;
+			border: 2px solid #fecaca;
+			border-radius: 12px;
+			padding: 24px;
+			max-width: 500px;
 		}
-		.sandbox-error h3 { color: #c33; margin-bottom: 10px; }
+		.sandbox-error h3 {
+			color: #dc2626;
+			margin-bottom: 12px;
+			font-size: 16px;
+		}
 		.sandbox-error pre {
 			background: #f5f5f5;
-			padding: 10px;
-			border-radius: 4px;
+			padding: 12px;
+			border-radius: 8px;
 			overflow-x: auto;
 			font-size: 12px;
+			color: #374151;
+			white-space: pre-wrap;
+			word-break: break-word;
+		}
+		.sandbox-loading {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 100vh;
+			color: #6b7280;
+			font-size: 14px;
 		}
 	</style>
 </head>
 <body>
-	<div id="root">
-		<div style="color: #666; font-size: 14px;">Initializing sandbox...</div>
-	</div>
-	<script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
-	<script>
-		function loadCDNScripts(urls) {
-			return new Promise((resolve, reject) => {
-				if (!urls || urls.length === 0) { resolve(); return; }
-				let loaded = 0;
-				urls.forEach(url => {
-					const script = document.createElement('script');
-					script.src = url;
-					script.crossOrigin = 'anonymous';
-					script.onload = () => { loaded++; if (loaded === urls.length) resolve(); };
-					script.onerror = () => reject(new Error('Failed to load: ' + url));
-					document.head.appendChild(script);
-				});
-			});
-		}
+	<div id="root"><div class="sandbox-loading">Loading component...</div></div>
 
-		function renderComponent(code) {
-			try {
-				const transpiled = Babel.transform(code, {
-					presets: ['react'],
-					filename: 'component.jsx'
-				}).code;
-				const root = document.getElementById('root');
-				root.innerHTML = '';
-				const componentFunc = new Function('React', 'ReactDOM', transpiled + '\\n\\nreturn Component;');
-				const Component = componentFunc(window.React, window.ReactDOM);
-				if (window.ReactDOM.createRoot) {
-					const reactRoot = window.ReactDOM.createRoot(root);
-					reactRoot.render(window.React.createElement(Component));
-				} else {
-					window.ReactDOM.render(window.React.createElement(Component), root);
-				}
-				window.parent.postMessage({ type: 'ready' }, '*');
-			} catch (error) {
-				const root = document.getElementById('root');
-				root.innerHTML = '<div class="sandbox-error"><h3>Component Error</h3><pre>' + error.message + '</pre></div>';
-				window.parent.postMessage({ type: 'error', message: error.message }, '*');
-			}
-		}
+	<!-- ESM module script - the bundled code runs directly as a module -->
+	<script type="module">
+${bundledCode}
 
-		window.addEventListener('message', async (event) => {
-			const message = event.data;
-			if (message.type === 'init') {
-				try {
-					if (message.cdnUrls && message.cdnUrls.length > 0) {
-						await loadCDNScripts(message.cdnUrls);
-					}
-					renderComponent(message.code);
-				} catch (error) {
-					const root = document.getElementById('root');
-					root.innerHTML = '<div class="sandbox-error"><h3>Initialization Error</h3><pre>' + error.message + '</pre></div>';
-				}
-			} else if (message.type === 'update') {
-				renderComponent(message.code);
-			}
-		});
-
+		// Notify parent that component is ready
 		window.parent.postMessage({ type: 'sandbox-ready' }, '*');
 	</script>
+
+	<!-- Error handler for uncaught errors -->
+	<script>
+		window.onerror = function(msg, url, line, col, error) {
+			console.error('[Sandbox] Error:', error || msg);
+			const root = document.getElementById('root');
+			if (root) {
+				root.innerHTML = '<div class="sandbox-error"><div class="error-content">' +
+					'<h3>Component Error</h3>' +
+					'<pre>' + (error?.message || msg) + '</pre>' +
+					'</div></div>';
+			}
+			window.parent.postMessage({
+				type: 'sandbox-error',
+				message: error?.message || String(msg)
+			}, '*');
+			return true;
+		};
+	</script>
 </body>
-</html>
-`;
+</html>`;
+}
+
+/**
+ * Loading state HTML shown while component is building
+ */
+const LOADING_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Building...</title>
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+			background: #fafafa;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 100vh;
+		}
+		.loading {
+			text-align: center;
+			color: #666;
+		}
+		.spinner {
+			width: 40px;
+			height: 40px;
+			border: 3px solid #e5e7eb;
+			border-top-color: #3b82f6;
+			border-radius: 50%;
+			animation: spin 1s linear infinite;
+			margin: 0 auto 16px;
+		}
+		@keyframes spin {
+			to { transform: rotate(360deg); }
+		}
+		.loading-text {
+			font-size: 14px;
+			color: #6b7280;
+		}
+	</style>
+</head>
+<body>
+	<div class="loading">
+		<div class="spinner"></div>
+		<div class="loading-text">Building component...</div>
+	</div>
+</body>
+</html>`;
+
+/**
+ * Error state HTML shown when build fails
+ */
+function generateErrorHTML(error: string): string {
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Build Error</title>
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+			background: #fef2f2;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 100vh;
+			padding: 20px;
+		}
+		.error-container {
+			background: white;
+			border: 2px solid #fecaca;
+			border-radius: 12px;
+			padding: 24px;
+			max-width: 500px;
+			box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+		}
+		h3 {
+			color: #dc2626;
+			margin-bottom: 12px;
+			font-size: 16px;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+		.icon {
+			width: 20px;
+			height: 20px;
+		}
+		pre {
+			background: #f5f5f5;
+			padding: 12px;
+			border-radius: 8px;
+			overflow-x: auto;
+			font-size: 12px;
+			color: #374151;
+			white-space: pre-wrap;
+			word-break: break-word;
+		}
+	</style>
+</head>
+<body>
+	<div class="error-container">
+		<h3>
+			<svg class="icon" viewBox="0 0 20 20" fill="#dc2626">
+				<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+			</svg>
+			Build Failed
+		</h3>
+		<pre>${escapeHtml(error)}</pre>
+	</div>
+</body>
+</html>`;
+}
+
+/**
+ * Pending state HTML shown before build starts
+ */
+const PENDING_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Pending</title>
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+			background: #f9fafb;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 100vh;
+		}
+		.pending {
+			text-align: center;
+			color: #9ca3af;
+		}
+		.icon {
+			width: 48px;
+			height: 48px;
+			margin-bottom: 12px;
+			opacity: 0.5;
+		}
+		.pending-text {
+			font-size: 14px;
+		}
+	</style>
+</head>
+<body>
+	<div class="pending">
+		<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+			<circle cx="12" cy="12" r="10"/>
+			<path d="M12 6v6l4 2"/>
+		</svg>
+		<div class="pending-text">Waiting to build...</div>
+	</div>
+</body>
+</html>`;
+
+/**
+ * Escape HTML special characters
+ */
+function escapeHtml(text: string): string {
+	return text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#039;');
+}
 
 export function SandboxCard({
 	sandbox,
@@ -146,20 +307,53 @@ export function SandboxCard({
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [isHovered, setIsHovered] = useState(false);
 
-	// Send sandboxMessage to iframe when it loads
-	useEffect(() => {
-		const iframe = iframeRef.current;
-		if (!iframe) return;
+	// Generate srcDoc based on build status
+	const srcDoc = useMemo(() => {
+		console.log('[SandboxCard] 🔄 Generating srcDoc for:', {
+			sandboxId: sandbox.id,
+			buildStatus: sandbox.buildStatus,
+			hasBundledCode: !!sandbox.bundledCode,
+			bundledCodeLength: sandbox.bundledCode?.length || 0
+		});
 
-		const handleIframeLoad = () => {
-			setTimeout(() => {
-				iframe.contentWindow?.postMessage(sandbox.sandboxMessage, '*');
-			}, 100);
-		};
+		switch (sandbox.buildStatus) {
+			case 'pending':
+				console.log('[SandboxCard] ⏳ Status: pending');
+				return PENDING_HTML;
+			case 'building':
+				console.log('[SandboxCard] 🔨 Status: building');
+				return LOADING_HTML;
+			case 'error':
+				console.error('[SandboxCard] ❌ Status: error -', sandbox.buildError);
+				return generateErrorHTML(sandbox.buildError || 'Unknown error');
+			case 'ready':
+				if (sandbox.bundledCode) {
+					console.log('[SandboxCard] ✅ Status: ready - Injecting bundledCode');
+					console.log('[SandboxCard] 📦 BundledCode preview (first 500 chars):', sandbox.bundledCode.substring(0, 500));
+					const html = generateSandboxHTML(sandbox.bundledCode);
+					console.log('[SandboxCard] 📄 Generated HTML length:', html.length);
+					return html;
+				}
+				console.error('[SandboxCard] ❌ Status: ready but no bundledCode!');
+				return generateErrorHTML('No bundled code available');
+			default:
+				console.warn('[SandboxCard] ⚠️ Unknown status:', sandbox.buildStatus);
+				return PENDING_HTML;
+		}
+	}, [sandbox.buildStatus, sandbox.buildError, sandbox.bundledCode, sandbox.id]);
 
-		iframe.addEventListener('load', handleIframeLoad);
-		return () => iframe.removeEventListener('load', handleIframeLoad);
-	}, [sandbox.id, sandbox.sandboxMessage]);
+	// Get display name from componentInput
+	const displayName = useMemo(() => {
+		const input = sandbox.componentInput;
+		if (!input) return sandbox.id;
+
+		// Use the first filename without extension
+		const filename = Object.keys(input.files)[0];
+		if (filename) {
+			return filename.replace(/\.(jsx|tsx|js|ts|vue|svelte)$/, '');
+		}
+		return input.id;
+	}, [sandbox.id, sandbox.componentInput]);
 
 	const handleExpandClick = (e: React.MouseEvent) => {
 		e.stopPropagation();
@@ -178,6 +372,10 @@ export function SandboxCard({
 	if (isDragging) classNames.push('dragging');
 	if (isOverlapping) classNames.push('overlapping');
 	if (isExiting) classNames.push('exiting');
+
+	// Add build status class for visual feedback
+	if (sandbox.buildStatus === 'building') classNames.push('building');
+	if (sandbox.buildStatus === 'error') classNames.push('build-error');
 
 	return (
 		<div
@@ -217,7 +415,15 @@ export function SandboxCard({
 						<circle cx="4" cy="12" r="1.5" fill="currentColor" />
 						<circle cx="12" cy="12" r="1.5" fill="currentColor" />
 					</svg>
-					<span className="title">{sandbox.id}</span>
+					<span className="title">{displayName}</span>
+
+					{/* Build status indicator */}
+					{sandbox.buildStatus === 'building' && (
+						<span className="status-badge building">Building...</span>
+					)}
+					{sandbox.buildStatus === 'error' && (
+						<span className="status-badge error">Error</span>
+					)}
 				</div>
 
 				{/* Action buttons */}
@@ -245,9 +451,9 @@ export function SandboxCard({
 			<div className="card-body">
 				<iframe
 					ref={iframeRef}
-					srcDoc={SANDBOX_HTML}
+					srcDoc={srcDoc}
 					sandbox="allow-scripts allow-same-origin"
-					title={sandbox.id}
+					title={displayName}
 					style={{
 						pointerEvents: isDragging ? 'none' : 'auto',
 					}}

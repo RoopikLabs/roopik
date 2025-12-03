@@ -168,3 +168,67 @@
 	border: none;
 	display: block;
 }
+
+/* ============================================================
+   Build Status Styles
+   ============================================================ */
+
+/* Status badge in header */
+.sandbox-card .status-badge {
+	font-size: 10px;
+	font-weight: 600;
+	padding: 2px 8px;
+	border-radius: 4px;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.sandbox-card .status-badge.building {
+	background: rgba(59, 130, 246, 0.2);
+	color: #60a5fa;
+	animation: pulse-building 1.5s ease-in-out infinite;
+}
+
+.sandbox-card .status-badge.error {
+	background: rgba(239, 68, 68, 0.2);
+	color: #f87171;
+}
+
+@keyframes pulse-building {
+	0%, 100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.5;
+	}
+}
+
+/* Building state - subtle pulsing border */
+.sandbox-card.building {
+	border-color: rgba(59, 130, 246, 0.4);
+	animation: sandbox-enter 0.4s cubic-bezier(0.4, 0, 0.2, 1) backwards,
+		border-pulse 2s ease-in-out infinite;
+}
+
+@keyframes border-pulse {
+	0%, 100% {
+		border-color: rgba(59, 130, 246, 0.4);
+		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2),
+			inset 0 2px 0 rgba(255, 255, 255, 0.15), inset 0 -2px 0 rgba(255, 255, 255, 0.05),
+			0 0 20px rgba(59, 130, 246, 0.15);
+	}
+	50% {
+		border-color: rgba(59, 130, 246, 0.6);
+		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2),
+			inset 0 2px 0 rgba(255, 255, 255, 0.15), inset 0 -2px 0 rgba(255, 255, 255, 0.05),
+			0 0 30px rgba(59, 130, 246, 0.25);
+	}
+}
+
+/* Error state - red border */
+.sandbox-card.build-error {
+	border-color: rgba(239, 68, 68, 0.5);
+	box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2),
+		inset 0 2px 0 rgba(255, 255, 255, 0.15), inset 0 -2px 0 rgba(255, 255, 255, 0.05),
+		0 0 20px rgba(239, 68, 68, 0.2);
+}
