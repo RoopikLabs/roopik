@@ -6,6 +6,7 @@
 import { localize2 } from '../../../../nls.js';
 import { registerAction2, Action2 } from '../../../../platform/actions/common/actions.js';
 import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
+import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { EditorPaneDescriptor, IEditorPaneRegistry } from '../../../browser/editor.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { EditorExtensions, IEditorFactoryRegistry } from '../../../common/editor.js';
@@ -149,6 +150,7 @@ registerAction2(class extends Action2 {
 });
 
 // Open Canvas (Mode 1: Component Canvas)
+// Delegates to roopik-extension for WebviewPanel (persists across tab switches!)
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
@@ -160,13 +162,10 @@ registerAction2(class extends Action2 {
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
-		const editorGroupsService = accessor.get(IEditorGroupsService);
+		const commandService = accessor.get(ICommandService);
 
-		// Get or create default canvas
-		const canvasInput = CanvasInput.getInstance('default', 'Component Canvas');
-
-		// Open canvas editor in active group
-		await editorGroupsService.activeGroup.openEditor(canvasInput, { pinned: true });
+		// Delegate to extension - WebviewPanel persists across tab switches!
+		await commandService.executeCommand('roopik.canvas.open');
 	}
 });
 

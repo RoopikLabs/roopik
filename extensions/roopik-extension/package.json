@@ -1,0 +1,41 @@
+{
+	"name": "roopik-canvas",
+	"displayName": "Roopik Canvas",
+	"description": "Canvas webview for Roopik IDE",
+	"version": "0.0.1",
+	"publisher": "roopik",
+	"private": true,
+	"license": "MIT",
+	"engines": {
+		"vscode": "^1.85.0"
+	},
+	"activationEvents": [
+		"onCommand:roopik.canvas.open"
+	],
+	"main": "./dist/extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "roopik.canvas.open",
+				"title": "Open Canvas",
+				"category": "Roopik"
+			},
+			{
+				"command": "roopik.canvas.addComponent",
+				"title": "Add Component",
+				"category": "Roopik"
+			}
+		]
+	},
+	"scripts": {
+		"build": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+		"watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --watch",
+		"lint": "eslint src --ext ts"
+	},
+	"devDependencies": {
+		"@types/node": "^20.10.0",
+		"@types/vscode": "^1.85.0",
+		"esbuild": "^0.24.0",
+		"typescript": "^5.3.2"
+	}
+}
