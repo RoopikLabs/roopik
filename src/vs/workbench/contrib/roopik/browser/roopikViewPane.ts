@@ -59,6 +59,8 @@ export class RoopikDashboardView extends ViewPane {
 	static readonly NAME = localize2('roopikDashboard', "Dashboard");
 
 	private canvasesContainer: HTMLElement | undefined;
+	private fileWatcher: { dispose(): void } | undefined;
+	private static animationsInjected = false;
 
 	constructor(
 		options: { id: string; title: string },
@@ -81,6 +83,9 @@ export class RoopikDashboardView extends ViewPane {
 
 	protected override renderBody(container: HTMLElement): void {
 		super.renderBody(container);
+
+		// Inject CSS for professional animations
+		this.injectDeleteAnimations();
 
 		container.style.padding = '8px';
 		container.style.display = 'flex';
@@ -115,6 +120,9 @@ export class RoopikDashboardView extends ViewPane {
 
 		// Load canvases from file system
 		this.loadCanvases();
+
+		// Watch canvases.json for changes (auto-refresh on create/delete)
+		this.setupFileWatcher();
 
 		// Projects Section (placeholder for now)
 		this.createSection(container, 'Projects', [
@@ -170,6 +178,37 @@ export class RoopikDashboardView extends ViewPane {
 				{ label: 'No canvases yet', description: 'Click "Canvas" to create one', onClick: () => { } }
 			]);
 		}
+	}
+
+	/**
+	 * Setup file watcher for canvases.json
+	 * Auto-refreshes the canvas list when the file changes
+	 */
+	private setupFileWatcher(): void {
+		const workspace = this.workspaceContextService.getWorkspace();
+		if (!workspace.folders || workspace.folders.length === 0) {
+			return;
+		}
+
+		const workspaceFolder = workspace.folders[0];
+		const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvases.json');
+
+		// Dispose existing watcher if any
+		if (this.fileWatcher) {
+			this.fileWatcher.dispose();
+		}
+
+		// Watch for changes to canvases.json
+		this.fileWatcher = this.fileService.watch(canvasesJsonUri);
+		this._register({ dispose: () => this.fileWatcher?.dispose() });
+
+		// Listen for file changes
+		this._register(this.fileService.onDidFilesChange(e => {
+			// Check if canvases.json was affected
+			if (e.affects(canvasesJsonUri)) {
+				this.loadCanvases();
+			}
+		}));
 	}
 
 	/**
@@ -312,94 +351,137 @@ export class RoopikDashboardView extends ViewPane {
 			let isConfirming = false;
 
 			if (item.onDelete) {
-				// Trash icon button (appears on hover)
+				// Trash icon button (appears on hover with smooth fade-in)
 				deleteBtn = document.createElement('button');
 				deleteBtn.style.display = 'none';
 				deleteBtn.style.background = 'transparent';
 				deleteBtn.style.border = 'none';
 				deleteBtn.style.cursor = 'pointer';
-				deleteBtn.style.padding = '4px 6px';
-				deleteBtn.style.borderRadius = '3px';
+				deleteBtn.style.padding = '6px 8px';
+				deleteBtn.style.borderRadius = '4px';
 				deleteBtn.style.color = 'var(--vscode-descriptionForeground)';
 				deleteBtn.style.marginLeft = '8px';
-				deleteBtn.style.transition = 'color 0.1s';
+				deleteBtn.style.transition = 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
+				deleteBtn.style.opacity = '0.7';
+				deleteBtn.style.transform = 'scale(0.95)';
 				deleteBtn.title = 'Delete canvas';
 
 				const trashIcon = document.createElement('span');
 				trashIcon.classList.add('codicon', 'codicon-trash');
+				trashIcon.style.fontSize = '13px';
 				deleteBtn.appendChild(trashIcon);
 
 				deleteBtn.addEventListener('mouseenter', () => {
 					deleteBtn!.style.color = 'var(--vscode-errorForeground)';
+					deleteBtn!.style.opacity = '1';
+					deleteBtn!.style.transform = 'scale(1.05)';
+					deleteBtn!.style.background = 'var(--vscode-inputValidation-errorBackground, rgba(244, 67, 54, 0.1))';
 				});
 				deleteBtn.addEventListener('mouseleave', () => {
 					deleteBtn!.style.color = 'var(--vscode-descriptionForeground)';
+					deleteBtn!.style.opacity = '0.7';
+					deleteBtn!.style.transform = 'scale(0.95)';
+					deleteBtn!.style.background = 'transparent';
 				});
 
-				// Red delete zone (slides in from right, covers 1/3)
+				// Professional delete zone with smooth slide animation
 				deleteZone = document.createElement('div');
 				deleteZone.style.position = 'absolute';
-				deleteZone.style.right = '-35%';
+				deleteZone.style.right = '-33%';
 				deleteZone.style.top = '0';
 				deleteZone.style.bottom = '0';
-				deleteZone.style.width = '35%';
-				deleteZone.style.background = 'var(--vscode-errorForeground)';
+				deleteZone.style.width = '33%';
+				deleteZone.style.background = 'linear-gradient(135deg, var(--vscode-errorForeground) 0%, var(--vscode-inputValidation-errorBorder, #c62828) 100%)';
 				deleteZone.style.display = 'flex';
 				deleteZone.style.alignItems = 'center';
 				deleteZone.style.justifyContent = 'center';
 				deleteZone.style.cursor = 'pointer';
-				deleteZone.style.transition = 'right 0.15s ease-out';
+				deleteZone.style.transition = 'right 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease';
 				deleteZone.style.borderRadius = '0 4px 4px 0';
+				deleteZone.style.boxShadow = 'inset 0 0 20px rgba(0, 0, 0, 0.2)';
+				deleteZone.style.zIndex = '10';
 
+				// Confirmation icon with better styling
 				const confirmIcon = document.createElement('span');
 				confirmIcon.classList.add('codicon', 'codicon-trash');
 				confirmIcon.style.color = 'white';
-				confirmIcon.style.fontSize = '14px';
+				confirmIcon.style.fontSize = '16px';
+				confirmIcon.style.transition = 'transform 0.15s ease';
 				deleteZone.appendChild(confirmIcon);
 
-				// Click trash icon -> show delete zone
+				// Click trash icon -> show delete zone with smooth animation
 				deleteBtn.addEventListener('click', (e) => {
 					e.stopPropagation();
 					isConfirming = true;
 					deleteBtn!.style.display = 'none';
 					deleteZone!.style.right = '0';
+					deleteZone!.style.boxShadow = 'inset 0 0 30px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(244, 67, 54, 0.3)';
+
+					// Subtle pulse animation on confirm icon
+					confirmIcon.style.animation = 'roopik-pulse 0.3s ease';
+					setTimeout(() => {
+						confirmIcon.style.animation = '';
+					}, 300);
 				});
 
 				// Click delete zone -> confirm delete
 				deleteZone.addEventListener('click', (e) => {
 					e.stopPropagation();
-					item.onDelete!();
+					// Add click feedback
+					deleteZone!.style.transform = 'scale(0.98)';
+					setTimeout(() => {
+						deleteZone!.style.transform = '';
+						item.onDelete!();
+					}, 100);
 				});
 
-				// Hover effect on delete zone
+				// Enhanced hover effect on delete zone
 				deleteZone.addEventListener('mouseenter', () => {
-					deleteZone!.style.background = 'var(--vscode-inputValidation-errorBackground, #5a1d1d)';
+					deleteZone!.style.background = 'linear-gradient(135deg, var(--vscode-inputValidation-errorBackground, #5a1d1d) 0%, var(--vscode-errorForeground) 100%)';
+					deleteZone!.style.boxShadow = 'inset 0 0 30px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(244, 67, 54, 0.4)';
+					confirmIcon.style.transform = 'scale(1.1)';
 				});
 				deleteZone.addEventListener('mouseleave', () => {
-					deleteZone!.style.background = 'var(--vscode-errorForeground)';
+					deleteZone!.style.background = 'linear-gradient(135deg, var(--vscode-errorForeground) 0%, var(--vscode-inputValidation-errorBorder, #c62828) 100%)';
+					deleteZone!.style.boxShadow = 'inset 0 0 20px rgba(0, 0, 0, 0.2)';
+					confirmIcon.style.transform = 'scale(1)';
 				});
 
 				itemEl.appendChild(deleteBtn);
 				itemEl.appendChild(deleteZone);
 			}
 
-			// Hover effect (only if clickable)
+			// Enhanced hover effect (only if clickable)
 			if (item.onClick) {
+				itemEl.style.transition = 'background-color 0.15s ease, transform 0.15s ease';
+
 				itemEl.addEventListener('mouseenter', () => {
 					itemEl.style.backgroundColor = 'var(--vscode-list-hoverBackground)';
+					itemEl.style.transform = 'translateX(2px)';
 					if (deleteBtn && !isConfirming) {
 						deleteBtn.style.display = 'block';
+						// Smooth fade-in for delete button
+						setTimeout(() => {
+							if (deleteBtn) {
+								deleteBtn.style.opacity = '0.7';
+								deleteBtn.style.transform = 'scale(0.95)';
+							}
+						}, 10);
 					}
 				});
 				itemEl.addEventListener('mouseleave', () => {
 					itemEl.style.backgroundColor = 'transparent';
+					itemEl.style.transform = 'translateX(0)';
 					if (deleteBtn) {
 						deleteBtn.style.display = 'none';
+						deleteBtn.style.opacity = '0';
+						deleteBtn.style.transform = 'scale(0.95)';
 					}
-					// Reset delete zone on mouse leave
+					// Smooth reset of delete zone on mouse leave
 					if (isConfirming && deleteZone) {
 						isConfirming = false;
-						deleteZone.style.right = '-35%';
+						deleteZone.style.right = '-33%';
+						deleteZone.style.boxShadow = 'inset 0 0 20px rgba(0, 0, 0, 0.2)';
 					}
 				});
 
@@ -492,6 +574,25 @@ export class RoopikDashboardView extends ViewPane {
 		};
 
 		return btn;
+	}
+
+	/**
+	 * Inject CSS animations for professional delete interactions
+	 */
+	private injectDeleteAnimations(): void {
+		if (RoopikDashboardView.animationsInjected) {
+			return;
+		}
+
+		const style = document.createElement('style');
+		style.textContent = `
+			@keyframes roopik-pulse {
+				0%, 100% { transform: scale(1); }
+				50% { transform: scale(1.15); }
+			}
+		`;
+		document.head.appendChild(style);
+		RoopikDashboardView.animationsInjected = true;
 	}
 
 	protected override layoutBody(height: number, width: number): void {
