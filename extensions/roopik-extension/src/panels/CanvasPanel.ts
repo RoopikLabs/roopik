@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { CoreBridgeService } from '../services/CoreBridgeService';
+import { Logger } from '../services/Logger';
 import type {
 	WebviewMessage,
 	ExtensionMessage,
@@ -32,6 +33,7 @@ export class CanvasPanel {
 	private readonly panel: vscode.WebviewPanel;
 	private readonly extensionUri: vscode.Uri;
 	private readonly coreBridge: CoreBridgeService;
+	private readonly logger = Logger.getInstance().createScoped('CanvasPanel');
 	private disposed = false;
 
 	constructor(extensionUri: vscode.Uri) {
@@ -56,7 +58,7 @@ export class CanvasPanel {
 		this.panel.webview.onDidReceiveMessage(this.handleMessage.bind(this));
 		this.panel.onDidDispose(() => this.dispose());
 
-		console.log('[CanvasPanel] Created with Vite-built React webview');
+		this.logger.info('Created with Vite-built React webview');
 	}
 
 	reveal(): void {
@@ -84,11 +86,11 @@ export class CanvasPanel {
 	 * Handle messages from webview
 	 */
 	private async handleMessage(message: WebviewMessage): Promise<void> {
-		console.log('[CanvasPanel] Message:', message.type);
+		this.logger.debug(`Message: ${message.type}`);
 
 		switch (message.type) {
 			case 'ready':
-				console.log('[CanvasPanel] Webview ready');
+				this.logger.info('Webview ready');
 				break;
 
 			case 'transformCode':
@@ -175,20 +177,19 @@ export class CanvasPanel {
 	 */
 	private handleLog(message: WebviewLogMessage): void {
 		const { level, message: text, data } = message.payload;
-		const prefix = '[Webview]';
 
 		switch (level) {
 			case 'error':
-				console.error(prefix, text, data);
+				this.logger.error(`[Webview] ${text}`, data);
 				break;
 			case 'warn':
-				console.warn(prefix, text, data);
+				this.logger.warn(`[Webview] ${text}`, data);
 				break;
 			case 'debug':
-				console.debug(prefix, text, data);
+				this.logger.debug(`[Webview] ${text}`, data);
 				break;
 			default:
-				console.log(prefix, text, data);
+				this.logger.info(`[Webview] ${text}`, data);
 		}
 	}
 
