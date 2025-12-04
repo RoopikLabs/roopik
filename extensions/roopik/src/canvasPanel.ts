@@ -10,6 +10,8 @@ import { PreviewManager } from './componentIsolation/core/PreviewManager';
 import { ComponentSandbox } from './componentIsolation/renderer/ComponentSandbox';
 import type { ComponentSource } from './componentIsolation/core/types';
 import { Logger } from './logger';
+import { CoreBridgeService } from './services/CoreBridgeService';
+import type { ComponentInput } from './types/pipeline';
 
 /**
  * Canvas State Interface
@@ -608,6 +610,9 @@ export class CanvasPanel {
 					case 'saveSandboxes':
 						await this.handleSaveSandboxes(message.sandboxes);
 						break;
+					case 'buildComponent':
+						await this.handleBuildComponent(message.payload);
+						break;
 				}
 			},
 			null,
@@ -837,6 +842,61 @@ export class CanvasPanel {
 		}
 	}
 
+	/**
+	 * Handle build component request via Core's ESBuild pipeline
+	 * This replaces the old Babel-based client-side transpilation
+	 */
+	private async handleBuildComponent(payload: { componentId: string; input: ComponentInput }) {
+		const { componentId, input } = payload;
+
+		this.logger.info(`📥 Build request received: ${componentId}`, {
+			inputId: input.id,
+			framework: input.framework,
+			files: Object.keys(input.files),
+			dependencies: input.dependencies
+		});
+
+		try {
+			// Build via Core pipeline
+			this.logger.debug(`🔨 Calling Core pipeline for: ${componentId}`);
+			const coreBridge = CoreBridgeService.getInstance();
+			const result = await coreBridge.buildComponent(input);
+
+			this.logger.info(`✅ Build success: ${componentId}`, {
+				framework: result.framework,
+				bundledCodeLength: result.bundledCode?.length || 0,
+				cdnUrls: result.cdnUrls,
+				transformTime: result.metadata?.transformTime
+			});
+
+			// Log first 300 chars of bundled code for debugging
+			if (result.bundledCode) {
+				this.logger.debug(`📦 Bundled code preview: ${result.bundledCode.substring(0, 300)}...`);
+			}
+
+			// Send success response to webview
+			this._panel.webview.postMessage({
+				type: 'componentBuilt',
+				payload: {
+					componentId,
+					result
+				}
+			});
+		} catch (error) {
+			const errorMsg = error instanceof Error ? error.message : String(error);
+			this.logger.error(`❌ Build failed: ${componentId}`, { error: errorMsg });
+
+			// Send error response to webview
+			this._panel.webview.postMessage({
+				type: 'componentError',
+				payload: {
+					componentId,
+					error: errorMsg
+				}
+			});
+		}
+	}
+
 	public dispose() {
 		this.logger.debug('Disposing...');
 
@@ -881,15 +941,15 @@ export class CanvasPanel {
 			vscode.Uri.joinPath(this.extensionUri, 'webview', 'build', 'assets', 'componentView.css')
 		);
 
-		// CSP updated to allow unpkg.com and unsafe-eval for Babel Standalone
+		// CSP: Allow esm.sh for CDN imports in sandbox iframes
 		const csp = `
 			default-src 'none';
 			style-src ${webview.cspSource} 'unsafe-inline';
-			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https://unpkg.com;
+			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https://esm.sh https://cdn.skypack.dev;
 			font-src ${webview.cspSource};
-			img-src ${webview.cspSource} data:;
-			connect-src ${webview.cspSource} https://unpkg.com;
-			frame-src ${webview.cspSource} data: blob:;
+			img-src ${webview.cspSource} data: https:;
+			connect-src https://esm.sh https://cdn.skypack.dev;
+			frame-src blob: data: https:;
 		`;
 
 		return `<!DOCTYPE html>

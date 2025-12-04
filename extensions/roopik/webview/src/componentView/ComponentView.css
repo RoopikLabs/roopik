@@ -18,6 +18,18 @@
 	background-color: #1a1a1a;
 	margin: 0;
 	padding: 0;
+	position: relative;
+}
+
+/* ============================================================
+   Canvas Container - Takes up all remaining space
+   ============================================================ */
+
+.canvas-container {
+	flex: 1;
+	position: relative;
+	overflow: hidden;
+	min-height: 0;
 }
 
 /* ============================================================
