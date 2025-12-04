@@ -1,0 +1,68 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ============================================================
+   Status Panel (Bottom Bar)
+   ============================================================ */
+
+.status-bar {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 4px 16px;
+	background-color: var(--vscode-statusBar-background);
+	color: var(--vscode-statusBar-foreground);
+	border-top: 1px solid var(--vscode-panel-border);
+	font-size: 12px;
+	flex-shrink: 0;
+	height: 24px;
+}
+
+.status-left {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.status-right {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.status-bar span {
+	white-space: nowrap;
+}
+
+/* ============================================================
+   Status Panel Buttons
+   ============================================================ */
+
+.zoom-btn {
+	cursor: pointer;
+	user-select: none;
+	font-size: 14px;
+	opacity: 0.8;
+	transition: opacity 0.2s;
+}
+
+.zoom-btn:hover {
+	opacity: 1;
+}
+
+.pattern-btn {
+	background: none;
+	border: none;
+	color: var(--vscode-statusBar-foreground);
+	cursor: pointer;
+	font-size: 14px;
+	padding: 0 4px;
+	opacity: 0.8;
+	transition: opacity 0.2s;
+}
+
+.pattern-btn:hover {
+	opacity: 1;
+}
