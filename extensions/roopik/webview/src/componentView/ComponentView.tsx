@@ -17,6 +17,7 @@ import { InfiniteCanvas } from '../canvasView/components/InfiniteCanvas';
 import { StatusPanel } from '../canvasView/components/StatusPanel';
 import { GlobalDeviceToggle } from '../canvasView/components/DeviceToggle';
 import { FloatingToolbar } from '../canvasView/components/Toolbar';
+import { FullscreenOverlay } from '../canvasView/components/FullscreenOverlay';
 import { BottomActionBar } from '../components/BottomActionBar';
 import { SAMPLE_COMPONENTS, type SampleComponent } from '../canvasView/data/sampleComponents';
 import {
@@ -58,6 +59,9 @@ function App() {
 
 	// Device mode state
 	const [globalDeviceMode, setGlobalDeviceMode] = useState<DevicePreset>('auto');
+
+	// Fullscreen mode state
+	const [fullscreenSandboxId, setFullscreenSandboxId] = useState<string | null>(null);
 
 	// Bottom Action Bar state
 	const [isSelectMode, setIsSelectMode] = useState(false);
@@ -388,8 +392,13 @@ function App() {
 
 	// Sandbox expand (fullscreen) handler
 	const handleSandboxExpand = useCallback((sandboxId: string) => {
-		console.log('[Canvas] Expand sandbox:', sandboxId);
-		// TODO: Implement fullscreen mode
+		console.log('[Canvas] Expand sandbox to fullscreen:', sandboxId);
+		setFullscreenSandboxId(sandboxId);
+	}, []);
+
+	// Exit fullscreen handler
+	const handleExitFullscreen = useCallback(() => {
+		setFullscreenSandboxId(null);
 	}, []);
 
 	// Sandbox update handler
@@ -404,8 +413,13 @@ function App() {
 				handleSandboxDelete(selectedSandboxId);
 			}
 			if (e.key === 'Escape') {
-				setSelectedSandboxId(null);
-				setFocusedSandboxId(null);
+				// Exit fullscreen first, then deselect
+				if (fullscreenSandboxId) {
+					handleExitFullscreen();
+				} else {
+					setSelectedSandboxId(null);
+					setFocusedSandboxId(null);
+				}
 			}
 			if (e.key === '0' && (e.ctrlKey || e.metaKey)) {
 				e.preventDefault();
@@ -415,7 +429,7 @@ function App() {
 
 		window.addEventListener('keydown', handleKeyDown);
 		return () => window.removeEventListener('keydown', handleKeyDown);
-	}, [selectedSandboxId, handleSandboxDelete, handleResetView]);
+	}, [selectedSandboxId, handleSandboxDelete, handleResetView, fullscreenSandboxId, handleExitFullscreen]);
 
 	// Window resize handler
 	useEffect(() => {
@@ -619,6 +633,21 @@ function App() {
 				isRectangleMode={isRectangleMode}
 				selectedElementType={null}
 			/>
+
+			{/* Fullscreen Overlay */}
+			{fullscreenSandboxId && (() => {
+				const sandbox = sandboxes.find(s => s.id === fullscreenSandboxId);
+				if (!sandbox) return null;
+
+				return (
+					<FullscreenOverlay
+						sandbox={sandbox}
+						deviceMode={globalDeviceMode}
+						onDeviceModeChange={setGlobalDeviceMode}
+						onClose={handleExitFullscreen}
+					/>
+				);
+			})()}
 		</div>
 	);
 }
