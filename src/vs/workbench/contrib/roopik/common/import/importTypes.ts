@@ -30,7 +30,10 @@ export type ImportErrorCode =
 	| 'MISSING_DEP'
 	| 'PARSE_ERROR'
 	| 'STAGING_ERROR'
-	| 'FILE_NOT_FOUND';
+	| 'FILE_NOT_FOUND'
+	| 'DUPLICATE_COMPONENT'
+	| 'ADAPTER_NOT_FOUND'
+	| 'NETWORK_ERROR';
 
 // ============================================
 // Component Metadata Types
@@ -120,9 +123,26 @@ export interface ImportError {
 }
 
 /**
+ * Duplicate detection info
+ */
+export interface DuplicateInfo {
+	isDuplicate: true;
+	existingName: string;
+	existingMeta: ComponentMeta;
+}
+
+/**
+ * Import error with duplicate information
+ */
+export interface ImportDuplicateError extends ImportError {
+	code: 'DUPLICATE_COMPONENT';
+	duplicateInfo: DuplicateInfo;
+}
+
+/**
  * Import result union type
  */
-export type ImportResult = ImportSuccess | ImportError;
+export type ImportResult = ImportSuccess | ImportError | ImportDuplicateError;
 
 // ============================================
 // Dependency Scan Types
@@ -181,11 +201,74 @@ export interface ExportResult {
 }
 
 // ============================================
+// Adapter Pattern Interfaces
+// ============================================
+
+/**
+ * Options passed to adapters
+ */
+export interface AdapterOptions {
+	/** Override framework detection */
+	framework?: Framework;
+	/** Override entry file detection */
+	entryFile?: string;
+	/** Additional dependencies to include */
+	dependencies?: Record<string, string>;
+	/** Canvas ID for staging */
+	canvasId?: string;
+	/** Force replace existing */
+	forceReplace?: boolean;
+}
+
+/**
+ * Adapter source types - used to identify adapters
+ */
+export type AdapterSourceType = 'local-file' | 'github' | 'figma' | 'ai-agent' | 'ui-library';
+
+/**
+ * Component Import Adapter Interface
+ *
+ * All import sources (local files, GitHub, Figma, AI, UI libraries)
+ * implement this interface to produce unified ComponentInput.
+ */
+export interface IComponentImportAdapter {
+	/** Unique adapter identifier */
+	readonly id: AdapterSourceType;
+
+	/** Human-readable name for UI */
+	readonly displayName: string;
+
+	/** Supported file extensions (for local adapter) or URL patterns */
+	readonly supportedTypes: string[];
+
+	/**
+	 * Import component from source and normalize to ComponentInput
+	 * @param source - Source-specific input (file path, URL, design ID, etc.)
+	 * @param options - Adapter-specific options
+	 * @returns Import result with ComponentInput if successful
+	 */
+	import(source: string, options?: AdapterOptions): Promise<ImportResult>;
+
+	/**
+	 * Check if the adapter can handle this source
+	 * @param source - Source path/URL to check
+	 */
+	canHandle(source: string): boolean;
+
+	/**
+	 * Check for duplicate import (same source already imported)
+	 * @param canvasId - Canvas to check
+	 * @param source - Original source path/URL
+	 */
+	checkForDuplicate?(canvasId: string, source: string): Promise<DuplicateInfo | null>;
+}
+
+// ============================================
 // Service Interface
 // ============================================
 
 /**
- * Import Service interface
+ * Import Service interface - Orchestrator that uses adapters
  */
 export interface IImportService {
 	/**

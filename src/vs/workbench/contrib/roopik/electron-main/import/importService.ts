@@ -4,161 +4,175 @@
  *--------------------------------------------------------------------------------------------*/
 
 /**
- * Import Service (Main Process)
+ * Import Service (Main Process) - ORCHESTRATOR
  *
- * Handles importing components from external files into the Canvas staging area.
- * - Validates file extensions
- * - Scans for dependencies
- * - Copies files to staging directory
- * - Manages _meta.json tracking
+ * This is the main orchestrator for the Import Pipeline using the Adapter Pattern.
+ * It coordinates between:
+ * - ImportAdapterRegistry (manages available adapters)
+ * - Individual adapters (LocalFileAdapter, GitHubAdapter, etc.)
+ * - Export functionality
+ *
+ * Architecture:
+ * ```
+ * ImportService (Orchestrator)
+ *      │
+ *      ├── ImportAdapterRegistry
+ *      │       ├── LocalFileAdapter
+ *      │       ├── GitHubAdapter (future)
+ *      │       ├── FigmaAdapter (future)
+ *      │       └── UILibraryAdapter (future)
+ *      │
+ *      └── Export functionality
+ * ```
+ *
+ * Key principle: Extension passes path, Core handles everything.
  */
 
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { existsSync } from 'fs';
 import { ILogService } from '../../../../../platform/log/common/log.js';
-import { ImportScanner } from '../../common/import/importScanner.js';
-import { ComponentParser } from '../../common/sandboxPipeline/componentParser.js';
+import { ImportAdapterRegistry } from './importAdapterRegistry.js';
+import { LocalFileAdapter } from './localFileAdapter.js';
 import type {
 	ImportRequest,
 	ImportResult,
-	ImportSuccess,
 	ImportError,
 	ComponentMeta,
 	ComponentStatus,
 	ExportRequest,
 	ExportResult,
-	IImportService
+	IImportService,
+	AdapterOptions,
+	AdapterSourceType
 } from '../../common/import/importTypes.js';
-import type { ComponentInput, Framework } from '../../common/sandboxPipeline/types.js';
 
 /**
- * Supported file extensions for import
+ * Supported file extensions for import (used by export)
  */
 const SUPPORTED_EXTENSIONS = ['.tsx', '.jsx', '.vue', '.svelte'];
 
 /**
- * ImportService implementation for main process
+ * ImportService - Orchestrator using Adapter Pattern
+ *
+ * This service coordinates imports from various sources by delegating
+ * to the appropriate adapter based on the source type.
  */
 export class ImportService implements IImportService {
-	private readonly scanner: ImportScanner;
-	private readonly parser: ComponentParser;
+	private readonly registry: ImportAdapterRegistry;
 
 	constructor(
 		private readonly workspacePath: string,
-		@ILogService private readonly logService: ILogService
+		private readonly logService: ILogService
 	) {
-		this.scanner = new ImportScanner();
-		this.parser = new ComponentParser();
+		// Initialize adapter registry
+		this.registry = new ImportAdapterRegistry();
+
+		// Register built-in adapters
+		this.registerBuiltInAdapters();
 	}
 
 	/**
-	 * Import a component from a file path
+	 * Register built-in adapters
+	 */
+	private registerBuiltInAdapters(): void {
+		// Register LocalFileAdapter
+		this.registry.register(new LocalFileAdapter(this.workspacePath, this.logService));
+
+		// Future adapters will be registered here:
+		// this.registry.register(new GitHubAdapter(httpService, this.logService));
+		// this.registry.register(new FigmaAdapter(figmaService, this.logService));
+		// this.registry.register(new UILibraryAdapter(libraryService, this.logService));
+
+		this.logService.info(`[ImportService] Registered ${this.registry.getAdapterIds().length} adapters`);
+	}
+
+	/**
+	 * Get the adapter registry (for external registration)
+	 */
+	getRegistry(): ImportAdapterRegistry {
+		return this.registry;
+	}
+
+	/**
+	 * Get available import sources for UI (source picker)
+	 */
+	getAvailableSources(): { id: AdapterSourceType; displayName: string }[] {
+		return this.registry.getAdapterDisplayNames();
+	}
+
+	/**
+	 * Import a component from a source path/URL
+	 *
+	 * This method delegates to the appropriate adapter based on the source.
+	 * The adapter handles all validation, file reading, dependency resolution,
+	 * and staging.
 	 */
 	async importComponent(request: ImportRequest): Promise<ImportResult> {
-		const { path: filePath, canvasId } = request;
+		const { path: source, canvasId, position } = request;
+		const forceReplace = (request as ImportRequest & { forceReplace?: boolean }).forceReplace ?? false;
 
-		this.logService.info(`[ImportService] Importing component: ${filePath}`);
+		this.logService.info(`[ImportService] Import request: ${source} -> canvas: ${canvasId}`);
 
-		// 1. Validate file exists
-		if (!existsSync(filePath)) {
-			return this.error('FILE_NOT_FOUND', `File not found: ${filePath}`);
-		}
+		// Find adapter that can handle this source
+		const adapter = this.registry.findAdapter(source);
 
-		// 2. Validate extension
-		const ext = path.extname(filePath).toLowerCase();
-		if (!SUPPORTED_EXTENSIONS.includes(ext)) {
+		if (!adapter) {
+			this.logService.warn(`[ImportService] No adapter found for: ${source}`);
 			return this.error(
-				'UNSUPPORTED_FORMAT',
-				`Only ${SUPPORTED_EXTENSIONS.join(', ')} files supported. Got: ${ext}`
+				'ADAPTER_NOT_FOUND',
+				`No import adapter found for this source. Supported types: ${this.registry.getAllAdapters().flatMap(a => a.supportedTypes).join(', ')}`
 			);
 		}
 
-		// 3. Read the file
-		let code: string;
-		try {
-			code = await fs.readFile(filePath, 'utf-8');
-		} catch (err) {
-			return this.error('PARSE_ERROR', `Failed to read file: ${(err as Error).message}`);
-		}
+		this.logService.info(`[ImportService] Using adapter: ${adapter.displayName} (${adapter.id})`);
 
-		// 4. Scan for imports
-		const categorized = this.scanner.scanAndCategorize(code);
-
-		// 5. Block if has component dependencies
-		if (categorized.components.length > 0) {
-			return this.error(
-				'HAS_COMPONENT_DEPS',
-				`Component imports other components: ${categorized.components.join(', ')}. Only self-contained components allowed.`,
-				{ dependencies: categorized.components }
-			);
-		}
-
-		// 6. Resolve local dependencies (.css, .js)
-		const componentDir = path.dirname(filePath);
-		const componentName = path.basename(filePath, ext);
-		const files: Record<string, string> = {};
-
-		// Add main file
-		const mainFileName = path.basename(filePath);
-		files[mainFileName] = code;
-
-		// Resolve CSS dependencies
-		for (const cssImport of categorized.css) {
-			const result = await this.resolveDependency(componentDir, cssImport);
-			if (!result.success) {
-				return this.error('MISSING_DEP', result.error!);
-			}
-			files[cssImport] = result.content!;
-		}
-
-		// Resolve JS dependencies
-		for (const jsImport of categorized.js) {
-			const result = await this.resolveDependency(componentDir, jsImport);
-			if (!result.success) {
-				return this.error('MISSING_DEP', result.error!);
-			}
-			files[jsImport] = result.content!;
-		}
-
-		// 7. Detect framework
-		const framework = this.parser.detectFramework(files);
-
-		// 8. Copy to staging directory
-		const stagingPath = await this.copyToStaging(canvasId, componentName, files);
-		if (!stagingPath) {
-			return this.error('STAGING_ERROR', 'Failed to copy files to staging directory');
-		}
-
-		// 9. Create and save metadata
-		const meta: ComponentMeta = {
-			originalPath: filePath,
-			importedAt: Date.now(),
-			dependencies: [...categorized.css, ...categorized.js],
-			framework,
-			status: 'imported',
-			canvasId
+		// Build adapter options
+		const options: AdapterOptions = {
+			canvasId,
+			forceReplace
 		};
 
-		await this.saveComponentMeta(canvasId, componentName, meta);
+		// Delegate to adapter
+		const result = await adapter.import(source, options);
 
-		// 10. Create ComponentInput for pipeline
-		const componentInput: ComponentInput = {
-			id: `import-${componentName}-${Date.now()}`,
-			source: 'import',
-			framework,
-			files,
-			entryFile: mainFileName
-		};
+		if (result.success) {
+			this.logService.info(`[ImportService] Import successful via ${adapter.id}: ${result.componentInput.id}`);
+		} else {
+			this.logService.warn(`[ImportService] Import failed via ${adapter.id}: ${result.code} - ${result.message}`);
+		}
 
-		this.logService.info(`[ImportService] Import successful: ${componentName} (${framework})`);
+		return result;
+	}
 
-		return {
-			success: true,
-			componentInput,
-			stagingPath,
-			meta
-		};
+	/**
+	 * Import with specific adapter (bypass auto-detection)
+	 */
+	async importWithAdapter(
+		adapterId: AdapterSourceType,
+		source: string,
+		options?: AdapterOptions
+	): Promise<ImportResult> {
+		const adapter = this.registry.getAdapter(adapterId);
+
+		if (!adapter) {
+			return this.error('ADAPTER_NOT_FOUND', `Adapter not found: ${adapterId}`);
+		}
+
+		return adapter.import(source, options);
+	}
+
+	/**
+	 * Check for duplicate before import
+	 */
+	async checkForDuplicate(source: string, canvasId: string): Promise<import('../../common/import/importTypes.js').DuplicateInfo | null> {
+		const adapter = this.registry.findAdapter(source);
+
+		if (!adapter || !adapter.checkForDuplicate) {
+			return null;
+		}
+
+		return adapter.checkForDuplicate(canvasId, source);
 	}
 
 	/**
@@ -309,68 +323,8 @@ export class ImportService implements IImportService {
 		return path.join(this.getRoopikDir(), canvasId, 'components', componentName);
 	}
 
-	/**
-	 * Resolve a local dependency file
-	 */
-	private async resolveDependency(
-		baseDir: string,
-		importPath: string
-	): Promise<{ success: boolean; content?: string; error?: string }> {
-		// Try direct path first
-		let resolvedPath = path.resolve(baseDir, importPath);
-
-		// If no extension, try common extensions
-		if (!path.extname(importPath)) {
-			const extensions = ['.ts', '.js', '.mjs'];
-			for (const ext of extensions) {
-				const tryPath = resolvedPath + ext;
-				if (existsSync(tryPath)) {
-					resolvedPath = tryPath;
-					break;
-				}
-			}
-		}
-
-		try {
-			if (!existsSync(resolvedPath)) {
-				return { success: false, error: `Dependency not found: ${importPath}` };
-			}
-
-			const content = await fs.readFile(resolvedPath, 'utf-8');
-			return { success: true, content };
-		} catch (err) {
-			return { success: false, error: `Failed to read dependency ${importPath}: ${(err as Error).message}` };
-		}
-	}
-
-	/**
-	 * Copy files to staging directory
-	 */
-	private async copyToStaging(
-		canvasId: string,
-		componentName: string,
-		files: Record<string, string>
-	): Promise<string | null> {
-		const stagingDir = this.getStagingDir(canvasId, componentName);
-
-		try {
-			// Create staging directory
-			await fs.mkdir(stagingDir, { recursive: true });
-
-			// Write each file
-			for (const [filename, content] of Object.entries(files)) {
-				const filePath = path.join(stagingDir, filename);
-				// Ensure subdirectories exist (for imports like ./utils/helper.js)
-				await fs.mkdir(path.dirname(filePath), { recursive: true });
-				await fs.writeFile(filePath, content, 'utf-8');
-			}
-
-			return stagingDir;
-		} catch (err) {
-			this.logService.error(`[ImportService] Failed to copy to staging: ${(err as Error).message}`);
-			return null;
-		}
-	}
+	// Note: resolveDependency and copyToStaging are now in LocalFileAdapter
+	// ImportService delegates import logic to adapters
 
 	/**
 	 * Copy files from staging to target directory

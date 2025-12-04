@@ -684,15 +684,67 @@ case 'importFile': {
 
 ## Implementation Roadmap
 
-### Phase 1: Local File Import (MVP)
-- [ ] Implement `ImportService` in Core
-- [ ] Implement import scanning (dependency resolution)
-- [ ] Staging directory management
-- [ ] `_meta.json` tracking
-- [ ] Add "Import" button to canvas toolbar
-- [ ] File picker with extension filter
-- [ ] Drag-and-drop support
-- [ ] Export functionality
+### Phase 1: Local File Import (MVP) ✅ COMPLETE
+
+**Core Architecture (Adapter Pattern):**
+- [x] `IComponentImportAdapter` interface - `common/import/importTypes.ts`
+- [x] `ImportService` orchestrator - `electron-main/import/importService.ts`
+- [x] `LocalFileAdapter` - `electron-main/import/localFileAdapter.ts`
+- [x] `ImportAdapterRegistry` - `electron-main/import/importAdapterRegistry.ts`
+- [x] `ImportScanner` (dependency resolution) - `common/import/importScanner.ts`
+- [x] `ImportServiceClient` (browser IPC proxy) - `browser/import/importServiceClient.ts`
+
+## Architecture Flow:
+
+```
+Import Request
+      │
+      ▼
+ImportService (Orchestrator)
+      │
+      ├── ImportAdapterRegistry.findAdapter(source)
+      │           │
+      │           ▼
+      │   LocalFileAdapter.canHandle(source)?
+      │           │
+      │           ▼ (Yes)
+      └── LocalFileAdapter.import(source, options)
+                  │
+                  ├── Validate file
+                  ├── Check duplicates
+                  ├── Scan dependencies
+                  ├── Block component imports
+                  ├── Resolve .css/.js
+                  ├── Copy to staging
+                  ├── Save _meta.json
+                  │
+                  ▼
+          ComponentInput (Unified Output)
+
+```
+
+**Functionality:**
+- [x] Staging directory management (`.roopik/{canvas}/components/`)
+- [x] `_meta.json` tracking (originalPath, status, dependencies)
+- [x] Duplicate detection with user prompt (Replace/Cancel)
+- [x] Add "Import" button to Activity Pane
+- [x] File picker with extension filter (.tsx, .jsx, .vue, .svelte)
+- [x] Canvas selector when importing from Activity Pane
+- [ ] Drag-and-drop support (deferred to Phase 1.5)
+- [x] Export functionality (replace, saveas, clipboard)
+
+**Extension Implementation:**
+The extension has its own import implementation (mirrors LocalFileAdapter) because:
+- Extension runs in extension host, Core services run in main process
+- IPC channel setup would be needed for cross-process communication
+
+When IPC is set up, the extension can use `ImportServiceClient` to delegate to Core.
+
+### Phase 1.5: Drag-and-Drop
+- [ ] Canvas drop zone detection
+- [ ] File path extraction from drag event
+- [ ] Position calculation from drop coordinates
+- [ ] Integration with import flow
 
 ### Phase 2: GitHub Import
 - [ ] Implement `GitHubAdapter`
@@ -718,6 +770,29 @@ case 'importFile': {
 
 ---
 
+## File Structure
+
+```
+src/vs/workbench/contrib/roopik/
+├── common/import/
+│   ├── importTypes.ts          # Types, interfaces, IComponentImportAdapter
+│   └── importScanner.ts        # Dependency scanning
+│
+├── browser/import/
+│   └── importServiceClient.ts  # IPC proxy for browser process
+│
+└── electron-main/import/
+    ├── importService.ts        # Orchestrator (uses adapters)
+    ├── importAdapterRegistry.ts # Manages available adapters
+    └── localFileAdapter.ts     # Local file import adapter
+
+extensions/roopik-extension/
+└── src/
+    └── extension.ts            # Contains import implementation (mirrors LocalFileAdapter)
+```
+
+---
+
 ## Benefits of This Architecture
 
 1. **Safety**: User's original files never touched until explicit export
@@ -732,4 +807,4 @@ case 'importFile': {
 ---
 
 *Last updated: December 2024*
-*Status: Architecture Finalized, Phase 1 Implementation Next*
+*Status: Phase 1 Architecture COMPLETE - Adapter Pattern implemented in Core*
