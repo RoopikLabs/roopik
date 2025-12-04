@@ -3,8 +3,9 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { InfiniteCanvas, FloatingToolbar, StatusPanel } from './components';
+import { DeviceSelector, GlobalDeviceToggle } from './components/DeviceToggle';
 import { gridManager } from './services/GridManager';
 import { SAMPLE_COMPONENTS, type SampleComponent } from './data/sampleComponents';
 import type {
@@ -16,8 +17,10 @@ import type {
 	WebviewMessage,
 	VSCodeAPI,
 	ComponentInput,
-	CanvasState
+	CanvasState,
+	DevicePreset
 } from './types';
+import { DEVICE_PRESETS, calculateDeviceScale } from './types';
 
 // Get VSCode API (only call once!)
 const vscode: VSCodeAPI = acquireVsCodeApi();
@@ -98,6 +101,14 @@ export function CanvasView() {
 	const [pattern, setPattern] = useState<BackgroundPattern>('dots');
 	const [backgroundColor] = useState('#1e1e1e');
 	const [exitingSandboxIds, setExitingSandboxIds] = useState<Set<string>>(new Set());
+
+	// Fullscreen mode state
+	const [fullscreenSandboxId, setFullscreenSandboxId] = useState<string | null>(null);
+
+	// Device emulation state
+	const [deviceMode, setDeviceMode] = useState<DevicePreset>('auto');
+	const fullscreenContainerRef = useRef<HTMLDivElement>(null);
+	const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
 	// Canvas metadata (set when state is loaded from extension)
 	const canvasIdRef = useRef<string>('');
@@ -637,6 +648,75 @@ export function CanvasView() {
 		});
 	}, []);
 
+	// Fullscreen mode handlers
+	const handleSandboxExpand = useCallback((id: string) => {
+		setFullscreenSandboxId(id);
+	}, []);
+
+	const handleExitFullscreen = useCallback(() => {
+		setFullscreenSandboxId(null);
+	}, []);
+
+	// Device mode change handler
+	const handleDeviceModeChange = useCallback((mode: DevicePreset) => {
+		setDeviceMode(mode);
+	}, []);
+
+	// Track container size for device frame scaling
+	useEffect(() => {
+		if (!fullscreenSandboxId || !fullscreenContainerRef.current) return;
+
+		const container = fullscreenContainerRef.current;
+		const updateSize = () => {
+			setContainerSize({
+				width: container.clientWidth,
+				height: container.clientHeight
+			});
+		};
+
+		// Initial size
+		updateSize();
+
+		// Watch for resize
+		const resizeObserver = new ResizeObserver(updateSize);
+		resizeObserver.observe(container);
+
+		return () => resizeObserver.disconnect();
+	}, [fullscreenSandboxId]);
+
+	// Calculate device frame dimensions and scale
+	const deviceFrameStyle = useMemo(() => {
+		const preset = DEVICE_PRESETS[deviceMode];
+
+		// Auto mode - fill container
+		if (preset.width === 'auto' || preset.height === 'auto') {
+			return {
+				width: '100%',
+				height: '100%',
+				transform: 'none'
+			};
+		}
+
+		// Fixed device dimensions with scaling
+		const deviceWidth = preset.width as number;
+		const deviceHeight = preset.height as number;
+		const padding = 60; // Padding around device frame
+
+		const scale = calculateDeviceScale(
+			deviceWidth,
+			deviceHeight,
+			containerSize.width,
+			containerSize.height,
+			padding
+		);
+
+		return {
+			width: `${deviceWidth}px`,
+			height: `${deviceHeight}px`,
+			transform: scale < 1 ? `scale(${scale})` : 'none'
+		};
+	}, [deviceMode, containerSize]);
+
 	// Keyboard shortcuts
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
@@ -648,14 +728,19 @@ export function CanvasView() {
 				handleResetView();
 			}
 			if (e.key === 'Escape') {
-				setSelectedSandboxId(null);
-				setFocusedSandboxId(null);
+				// Exit fullscreen first, then deselect
+				if (fullscreenSandboxId) {
+					handleExitFullscreen();
+				} else {
+					setSelectedSandboxId(null);
+					setFocusedSandboxId(null);
+				}
 			}
 		};
 
 		window.addEventListener('keydown', handleKeyDown);
 		return () => window.removeEventListener('keydown', handleKeyDown);
-	}, [selectedSandboxId, handleSandboxDelete, handleResetView]);
+	}, [selectedSandboxId, handleSandboxDelete, handleResetView, fullscreenSandboxId, handleExitFullscreen]);
 
 	return (
 		<>
@@ -681,12 +766,20 @@ export function CanvasView() {
 					backgroundColor={backgroundColor}
 					snapMode={snapMode}
 					exitingSandboxIds={exitingSandboxIds}
+					globalDeviceMode={deviceMode}
 					onTransformChange={handleTransformChange}
 					onSandboxClick={handleSandboxClick}
 					onSandboxDoubleClick={handleSandboxDoubleClick}
 					onSandboxUpdate={handleSandboxUpdate}
 					onSandboxDelete={handleSandboxDelete}
 					onCanvasClick={handleCanvasClick}
+					onSandboxExpand={handleSandboxExpand}
+				/>
+
+				{/* Global Device Mode Toggle - floating top-right */}
+				<GlobalDeviceToggle
+					deviceMode={deviceMode}
+					onDeviceModeChange={handleDeviceModeChange}
 				/>
 			</div>
 
@@ -703,6 +796,95 @@ export function CanvasView() {
 				onSnapModeChange={handleSnapModeChange}
 				onPatternChange={handlePatternChange}
 			/>
+
+			{/* Fullscreen Overlay with Device Emulation */}
+			{fullscreenSandboxId && (() => {
+				const sandbox = sandboxes.find(s => s.id === fullscreenSandboxId);
+				if (!sandbox) return null;
+
+				const preset = DEVICE_PRESETS[deviceMode];
+				const isAutoMode = preset.width === 'auto';
+
+				return (
+					<div className="fullscreen-overlay">
+						<div className="fullscreen-header">
+							<span className="fullscreen-title">
+								{sandbox.componentInput?.id.split('-')[1] || 'Component'}
+							</span>
+							<div className="fullscreen-header-controls">
+								<DeviceSelector
+									deviceMode={deviceMode}
+									onDeviceModeChange={handleDeviceModeChange}
+								/>
+								<button
+									className="fullscreen-close"
+									onClick={handleExitFullscreen}
+									title="Exit fullscreen (ESC)"
+								>
+									<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+										<path d="M18 6L6 18M6 6l12 12" />
+									</svg>
+								</button>
+							</div>
+						</div>
+						<div
+							ref={fullscreenContainerRef}
+							className="fullscreen-device-container"
+						>
+							<div
+								className={`fullscreen-device-frame ${isAutoMode ? 'fullscreen-device-frame--auto' : ''}`}
+								style={deviceFrameStyle}
+							>
+								<iframe
+									srcDoc={sandbox.bundledCode ? generateFullscreenHTML(sandbox.bundledCode) : ''}
+									sandbox="allow-scripts allow-same-origin"
+									title="Fullscreen Preview"
+								/>
+							</div>
+							{/* Device info badge */}
+							{!isAutoMode && (
+								<div className="fullscreen-device-info">
+									<span className="fullscreen-device-info__label">{preset.label}</span>
+									<span className="fullscreen-device-info__dimensions">
+										{preset.width} × {preset.height}
+									</span>
+								</div>
+							)}
+						</div>
+					</div>
+				);
+			})()}
 		</>
 	);
+}
+
+/**
+ * Generate HTML for fullscreen iframe
+ */
+function generateFullscreenHTML(bundledCode: string): string {
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Fullscreen Preview</title>
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+			background: #ffffff;
+			overflow: auto;
+		}
+		#root {
+			min-height: 100vh;
+		}
+	</style>
+</head>
+<body>
+	<div id="root"></div>
+	<script type="module">
+${bundledCode}
+	</script>
+</body>
+</html>`;
 }

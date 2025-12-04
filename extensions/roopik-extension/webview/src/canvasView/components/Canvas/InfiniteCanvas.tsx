@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useRef, useState, useEffect, useCallback } from 'react';
-import type { Sandbox, Transform, BackgroundPattern, Point, SnapMode } from '../../types';
+import type { Sandbox, Transform, BackgroundPattern, Point, SnapMode, DevicePreset } from '../../types';
 import { SandboxCard } from '../SandboxCard';
 import { gridManager } from '../../services/GridManager';
 import { isLightColor } from '../../utils';
@@ -18,12 +18,14 @@ interface InfiniteCanvasProps {
 	backgroundColor: string;
 	snapMode: SnapMode;
 	exitingSandboxIds?: Set<string>; // For smooth exit animations
+	globalDeviceMode: DevicePreset; // Global device emulation mode
 	onTransformChange: (transform: Transform) => void;
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
 	onSandboxUpdate: (id: string, updates: Partial<Sandbox>) => void;
 	onSandboxDelete: (id: string) => void;
 	onCanvasClick: () => void;
+	onSandboxExpand: (id: string) => void;
 }
 
 export function InfiniteCanvas({
@@ -35,12 +37,14 @@ export function InfiniteCanvas({
 	backgroundColor,
 	snapMode,
 	exitingSandboxIds = new Set(),
+	globalDeviceMode,
 	onTransformChange,
 	onSandboxClick,
 	onSandboxDoubleClick,
 	onSandboxUpdate,
 	onSandboxDelete,
-	onCanvasClick
+	onCanvasClick,
+	onSandboxExpand
 }: InfiniteCanvasProps) {
 	const canvasRef = useRef<HTMLDivElement>(null);
 	const [isPanning, setIsPanning] = useState(false);
@@ -316,10 +320,13 @@ export function InfiniteCanvas({
 							dragOffset={isDragging ? dragOffset : undefined}
 							isOverlapping={isDragging && isOverlapping}
 							isExiting={isExiting}
+							globalDeviceMode={globalDeviceMode}
 							onMouseDown={(e) => handleSandboxMouseDown(e, sandbox.id)}
 							onClick={() => onSandboxClick(sandbox.id)}
 							onDoubleClick={() => onSandboxDoubleClick(sandbox.id)}
 							onDelete={() => onSandboxDelete(sandbox.id)}
+							onExpand={() => onSandboxExpand(sandbox.id)}
+							onDeviceModeChange={(mode) => onSandboxUpdate(sandbox.id, { deviceMode: mode })}
 						/>
 					);
 				})}

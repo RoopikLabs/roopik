@@ -3,11 +3,6 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-/* Import all style modules */
-@import './variables.css';
-@import './infiniteCanvas.css';
-@import './floatingToolbar.css';
-@import './statusPanel.css';
-@import './sandboxCard.css';
-@import './fullscreen.css';
-@import './deviceEmulation.css';
+export { DeviceToggle, DeviceSelector } from './DeviceToggle';
+export { DeviceIcon, getDeviceIcon, AutoIcon, DesktopIcon, TabletIcon, MobileIcon } from './DeviceIcons';
+export { GlobalDeviceToggle } from './GlobalDeviceToggle';

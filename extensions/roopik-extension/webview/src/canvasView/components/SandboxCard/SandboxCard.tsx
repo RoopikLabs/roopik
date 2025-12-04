@@ -4,7 +4,9 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useRef, useState, useMemo } from 'react';
-import type { Sandbox, Point } from '../../types';
+import type { Sandbox, Point, DevicePreset } from '../../types';
+import { DEVICE_PRESETS, getNextDevicePreset } from '../../types';
+import { DeviceIcon } from '../DeviceToggle';
 
 interface SandboxCardProps {
 	sandbox: Sandbox;
@@ -14,10 +16,15 @@ interface SandboxCardProps {
 	dragOffset?: Point;
 	isOverlapping?: boolean;
 	isExiting?: boolean;
+	/** Global device mode from canvas */
+	globalDeviceMode: DevicePreset;
 	onMouseDown: (e: React.MouseEvent) => void;
 	onClick: () => void;
 	onDoubleClick: () => void;
 	onDelete: () => void;
+	onExpand: () => void;
+	/** Callback to update sandbox device mode */
+	onDeviceModeChange: (mode: DevicePreset | undefined) => void;
 }
 
 /**
@@ -299,13 +306,22 @@ export function SandboxCard({
 	dragOffset,
 	isOverlapping = false,
 	isExiting = false,
+	globalDeviceMode,
 	onMouseDown,
 	onClick,
 	onDoubleClick,
-	onDelete
+	onDelete,
+	onExpand,
+	onDeviceModeChange
 }: SandboxCardProps) {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [isHovered, setIsHovered] = useState(false);
+
+	// Effective device mode: sandbox override or global
+	const effectiveDeviceMode = sandbox.deviceMode ?? globalDeviceMode;
+	const hasOverride = sandbox.deviceMode !== undefined;
+	const preset = DEVICE_PRESETS[effectiveDeviceMode];
+	const isDeviceMode = preset.width !== 'auto';
 
 	// Generate srcDoc based on build status
 	const srcDoc = useMemo(() => {
@@ -357,13 +373,80 @@ export function SandboxCard({
 
 	const handleExpandClick = (e: React.MouseEvent) => {
 		e.stopPropagation();
-		// TODO: Implement fullscreen mode
+		onExpand();
 	};
 
 	const handleDeleteClick = (e: React.MouseEvent) => {
 		e.stopPropagation();
 		onDelete();
 	};
+
+	// Toggle device mode for this sandbox
+	const handleDeviceToggle = (e: React.MouseEvent) => {
+		e.stopPropagation();
+		if (hasOverride) {
+			// Cycle through modes, or reset to global if back to global mode
+			const nextMode = getNextDevicePreset(effectiveDeviceMode);
+			if (nextMode === globalDeviceMode) {
+				// Reset to follow global
+				onDeviceModeChange(undefined);
+			} else {
+				onDeviceModeChange(nextMode);
+			}
+		} else {
+			// Start override with next mode from current
+			const nextMode = getNextDevicePreset(effectiveDeviceMode);
+			onDeviceModeChange(nextMode);
+		}
+	};
+
+	// Constants for layout calculations
+	const HEADER_HEIGHT = 36; // card-header height
+	const BORDER_WIDTH = 2; // 1px border each side
+
+	// Calculate iframe container style for device mode
+	// Uses the Core implementation: fixed dimensions + scale transform + negative margins
+	const iframeContainerStyle = useMemo((): React.CSSProperties => {
+		if (!isDeviceMode) {
+			// Auto mode: fill available space
+			return {
+				width: '100%',
+				height: '100%',
+				transform: 'none',
+				margin: 0,
+			};
+		}
+
+		// Device mode: fixed device size, scaled to fit
+		const deviceWidth = preset.width as number;
+		const deviceHeight = preset.height as number;
+
+		// Available space in card-body
+		const availableWidth = sandbox.width - BORDER_WIDTH;
+		const availableHeight = sandbox.height - HEADER_HEIGHT - BORDER_WIDTH;
+
+		// Scale to fit while maintaining aspect ratio
+		const scaleX = availableWidth / deviceWidth;
+		const scaleY = availableHeight / deviceHeight;
+		const scale = Math.min(scaleX, scaleY);
+
+		// Calculate visual size after scaling
+		const scaledWidth = deviceWidth * scale;
+		const scaledHeight = deviceHeight * scale;
+
+		// Negative margins to collapse layout box for proper flexbox centering
+		const marginX = (deviceWidth - scaledWidth) / 2;
+		const marginY = (deviceHeight - scaledHeight) / 2;
+
+		return {
+			width: deviceWidth,
+			height: deviceHeight,
+			transform: `scale(${scale})`,
+			transformOrigin: 'center center',
+			margin: `-${marginY}px -${marginX}px`,
+			flexShrink: 0,
+		};
+	}, [isDeviceMode, preset, sandbox.width, sandbox.height]);
 
 	// Build className
 	const classNames = ['sandbox-card'];
@@ -372,6 +455,8 @@ export function SandboxCard({
 	if (isDragging) classNames.push('dragging');
 	if (isOverlapping) classNames.push('overlapping');
 	if (isExiting) classNames.push('exiting');
+	if (isDeviceMode) classNames.push('device-mode');
+	if (hasOverride) classNames.push('device-override');
 
 	// Add build status class for visual feedback
 	if (sandbox.buildStatus === 'building') classNames.push('building');
@@ -429,6 +514,14 @@ export function SandboxCard({
 				{/* Action buttons */}
 				{(isHovered || isSelected || isFocused) && (
 					<div className="card-actions">
+						{/* Device mode toggle */}
+						<button
+							className={`device-toggle-btn ${hasOverride ? 'has-override' : ''}`}
+							onClick={handleDeviceToggle}
+							title={`Device: ${preset.label}${hasOverride ? ' (custom)' : ' (global)'} - click to change`}
+						>
+							<DeviceIcon preset={effectiveDeviceMode} size={16} />
+						</button>
 						<button onClick={handleExpandClick} title="Expand to fullscreen">
 							<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="rgba(255, 255, 255, 0.9)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
 								<path d="M2 6 L2 2 L6 2" />
@@ -447,17 +540,24 @@ export function SandboxCard({
 				)}
 			</div>
 
-			{/* Iframe content */}
+			{/* Iframe content with device emulation */}
 			<div className="card-body">
-				<iframe
-					ref={iframeRef}
-					srcDoc={srcDoc}
-					sandbox="allow-scripts allow-same-origin"
-					title={displayName}
-					style={{
-						pointerEvents: isDragging ? 'none' : 'auto',
-					}}
-				/>
+				{/* Wrapper for flexbox centering */}
+				<div className="webview-wrapper">
+					{/* Container with device dimensions + scale transform */}
+					<div
+						className="webview-container"
+						style={iframeContainerStyle}
+					>
+						<iframe
+							ref={iframeRef}
+							srcDoc={srcDoc}
+							sandbox="allow-scripts allow-same-origin"
+							title={displayName}
+							style={{ pointerEvents: isDragging ? 'none' : 'auto' }}
+						/>
+					</div>
+				</div>
 			</div>
 		</div>
 	);

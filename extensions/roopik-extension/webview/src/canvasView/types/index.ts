@@ -3,6 +3,8 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
+import type { DevicePreset } from './device';
+
 // ============================================================================
 // Pipeline Types (Mirrors Core's sandboxPipeline/types.ts)
 // ============================================================================
@@ -75,6 +77,9 @@ export interface Sandbox {
 
 	/** Original ComponentInput (for rebuild/persistence) */
 	componentInput: ComponentInput;
+
+	/** Per-sandbox device mode override (undefined = use global) */
+	deviceMode?: DevicePreset;
 }
 
 /**
@@ -242,3 +247,8 @@ export interface VSCodeAPI {
 declare global {
 	function acquireVsCodeApi(): VSCodeAPI;
 }
+
+// ============================================================================
+// Re-export Device Types
+// ============================================================================
+export * from './device';

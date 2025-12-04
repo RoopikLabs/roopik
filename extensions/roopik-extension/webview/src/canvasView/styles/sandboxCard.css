@@ -155,6 +155,7 @@
 
 .sandbox-card .card-body {
 	flex: 1;
+	display: flex;
 	background: #ffffff;
 	border-radius: 8px;
 	overflow: hidden;
@@ -162,7 +163,24 @@
 	margin-top: 10px;
 }
 
-.sandbox-card .card-body iframe {
+/* Wrapper for flexbox centering of webview container */
+.sandbox-card .webview-wrapper {
+	position: relative;
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow: visible; /* Allow scaled content to be visible */
+}
+
+/* Container that holds the iframe - gets device dimensions + scale */
+.sandbox-card .webview-container {
+	border-radius: 8px;
+	overflow: hidden;
+	background: #ffffff;
+}
+
+.sandbox-card .webview-container iframe {
 	width: 100%;
 	height: 100%;
 	border: none;
