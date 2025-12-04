@@ -58,34 +58,28 @@ npm run dev      # Watch webview
 
 ---
 
-## 📂 Folder Structure Overview
+## Folder Structure Overview
 
-The extension is divided into 3 main logical parts:
+### Extension Source (`src/`)
 
-### 1. UI Controllers (The "Backend")
-Located in `src/`, these files manage the VS Code webview panels. They act as the bridge between VS Code and the React UI.
+*   **`extension.ts`**: Main entry point. Registers commands.
+*   **`canvasPanel.ts`**: Controls the Canvas webview panel. Loads the React-based canvas UI.
+*   **`config.ts`**: Configuration management.
+*   **`logger.ts`**: Logging utilities.
+*   **`services/`**: Business logic services.
+    *   **`CanvasStateManager.ts`**: Manages canvas state persistence to `.roopik/canvases/`.
+    *   **`CoreBridgeService.ts`**: Bridge to Core's sandbox build pipeline.
+*   **`types/`**: TypeScript type definitions.
 
-*   **`canvasPanel.ts`** (Mode 1): Controls the **Canvas Tab**. It loads the React-based Component Editor.
-*   **`projectPreviewPanel.ts`** (Mode 2): Controls the **Preview Tab**. It loads the full Browser Preview.
-*   **`dashboardPanel.ts`**: Controls the **Dashboard/Welcome** screen.
-*   **`extension.ts`**: The main entry point. Registers commands and panels.
+### Webview (`webview/`)
 
-### 2. The Engine (`src/projectRunner/`)
-Responsible for running the user's React project. It has no UI logic; it simply serves the user's app.
+Contains the React application that runs inside the VS Code webview.
 
-*   **`viteServerManager.ts`**: The "Boss". Starts, stops, and manages the Vite server instance.
-*   **`serverWorker.js`**: The "Worker". Runs the actual Vite process in a background thread to prevent freezing VS Code.
-*   **`plugins/`**: Custom Vite plugins injected into the user's project (e.g., for "click-to-source" functionality).
-
-### 3. Component Isolation (`src/componentIsolation/`)
-Specific to **Mode 1 (Canvas)**. Handles the logic for rendering *single components* in isolation.
-
-*   **`renderer/ComponentSandbox.ts`**: The "Wrapper". Generates an HTML sandbox to wrap a single component so it can run independently.
-*   **`core/PreviewManager.ts`**: The "State Manager". Tracks which component is currently selected and being previewed.
-
-### 4. The Frontend (`webview/`)
-Contains the actual React application that runs inside the VS Code webviews.
-
-*   **`src/componentView/`**: React code for the **Canvas UI** (Mode 1).
-*   **`src/projectView/`**: React code for the **Browser Preview UI** (Mode 2).
-*   **`src/components/`**: Shared UI components (e.g., `BottomActionBar`).
+*   **`src/componentView/`**: Main canvas UI (ComponentView.tsx).
+*   **`src/canvasView/`**: Canvas components and services.
+    *   **`components/`**: UI components (InfiniteCanvas, SandboxCard, StatusPanel, DeviceToggle, Toolbar, etc.)
+    *   **`services/`**: Grid management, positioning utilities.
+    *   **`types/`**: Type definitions for canvas state, sandboxes, messages.
+    *   **`data/`**: Sample component definitions.
+*   **`src/hooks/`**: Custom React hooks (useFPS).
+*   **`src/utils/`**: Utility functions (colors).

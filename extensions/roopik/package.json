@@ -18,7 +18,7 @@
     "commands": []
   },
   "scripts": {
-    "compile": "tsc -p ./ && node scripts/copyAssets.js",
+    "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "build": "npm run compile && npm run build:webview",
     "build:extension": "npm run compile",

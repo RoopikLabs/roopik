@@ -4,8 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useState } from 'react';
-import type { Transform } from '../../types';
-import type { Sandbox } from '../../../types';
+import type { Sandbox, Transform } from '../../types';
 
 // ============================================================
 // Types
