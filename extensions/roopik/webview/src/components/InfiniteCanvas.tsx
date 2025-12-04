@@ -7,6 +7,7 @@ import { useRef, useState, useEffect } from 'react';
 import type { Sandbox } from '../types';
 import { SandboxPreview } from './SandboxPreview';
 import { isLightColor } from '../utils/colors';
+import '../canvasView/styles/infiniteCanvas.css';
 
 type BackgroundPattern = 'grid' | 'dots' | 'plain';
 

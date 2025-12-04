@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { ColorPicker } from './ColorPicker';
+import '../canvasView/styles/statusPanel.css';
 
 type BackgroundPattern = 'grid' | 'dots' | 'plain';
 
@@ -13,7 +14,7 @@ interface Transform {
 	scale: number;
 }
 
-interface StatusBarProps {
+interface StatusPanelProps {
 	transform: Transform;
 	fps: number;
 	sandboxCount: number;
@@ -28,7 +29,7 @@ interface StatusBarProps {
 	onBackgroundColorChange: (color: string) => void;
 }
 
-export function StatusBar({
+export function StatusPanel({
 	transform,
 	fps,
 	sandboxCount,
@@ -41,7 +42,7 @@ export function StatusBar({
 	onResetView,
 	onTogglePattern,
 	onBackgroundColorChange
-}: StatusBarProps) {
+}: StatusPanelProps) {
 	return (
 		<div className="status-bar">
 			<div className="status-left">

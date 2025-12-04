@@ -1,0 +1,36 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ============================================================
+   Infinite Canvas
+   ============================================================ */
+
+.canvas {
+	flex: 1;
+	position: relative;
+	overflow: hidden;
+	background-color: #1a1a1a;
+	cursor: grab;
+	user-select: none;
+}
+
+.canvas.panning {
+	cursor: grabbing;
+}
+
+.canvas-content {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	will-change: transform;
+	transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Disable transition when manually dragging/zooming */
+.canvas.panning .canvas-content {
+	transition: none;
+}

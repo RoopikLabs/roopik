@@ -5,6 +5,7 @@
 
 import { useState, useRef } from 'react';
 import { SAMPLE_COMPONENTS } from '../data/sampleComponents';
+import '../canvasView/styles/floatingToolbar.css';
 
 interface FloatingToolbarProps {
 	tabName?: string;

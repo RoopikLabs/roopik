@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import type { Sandbox } from '../types';
 import { FloatingToolbar } from '../components/FloatingToolbar';
 import { InfiniteCanvas } from '../components/InfiniteCanvas';
-import { StatusBar } from '../components/StatusBar';
+import { StatusPanel } from '../components/StatusPanel';
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
 import { BottomActionBar } from '../components/BottomActionBar';
 import { useFPS } from '../hooks/useFPS';
@@ -579,7 +579,7 @@ function App() {
 				onSandboxDelete={handleSandboxDelete}
 			/>
 
-			<StatusBar
+			<StatusPanel
 				transform={transform}
 				fps={fps}
 				sandboxCount={sandboxes.length}
