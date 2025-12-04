@@ -17,7 +17,6 @@ export {
 	// Viewport calculations
 	calculateFitAllTransform,
 	calculateFocusTransform,
-	// Sandbox management
-	createSandbox,
+	// Z-Index management
 	bringToFront,
 } from './gridManager';

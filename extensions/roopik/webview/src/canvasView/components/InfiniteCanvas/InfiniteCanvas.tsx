@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useRef } from 'react';
-import type { Sandbox, Transform, BackgroundPattern } from '../../types';
+import type { Sandbox, Transform, BackgroundPattern, DevicePreset } from '../../types';
 import { SandboxCard } from '../SandboxCard';
 import { useCanvasZoom } from './useCanvasZoom';
 import { useCanvasDrag } from './useCanvasDrag';
@@ -22,11 +22,13 @@ export interface InfiniteCanvasProps {
 	transform: Transform;
 	pattern: BackgroundPattern;
 	backgroundColor: string;
+	globalDeviceMode: DevicePreset;
 	onTransformChange: (transform: Transform) => void;
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
 	onSandboxUpdate: (id: string, updates: Partial<Sandbox>) => void;
 	onSandboxDelete: (id: string) => void;
+	onSandboxExpand: (id: string) => void;
 }
 
 // ============================================================
@@ -39,10 +41,13 @@ interface SandboxLayerProps {
 	focusedSandboxId: string | null;
 	draggingSandboxId: string | null;
 	dragOffset: { x: number; y: number };
+	globalDeviceMode: DevicePreset;
 	onSandboxDragStart: (e: React.MouseEvent, sandboxId: string) => void;
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
 	onSandboxDelete: (id: string) => void;
+	onSandboxExpand: (id: string) => void;
+	onSandboxUpdate: (id: string, updates: Partial<Sandbox>) => void;
 }
 
 /**
@@ -54,10 +59,13 @@ function SandboxLayer({
 	focusedSandboxId,
 	draggingSandboxId,
 	dragOffset,
+	globalDeviceMode,
 	onSandboxDragStart,
 	onSandboxClick,
 	onSandboxDoubleClick,
 	onSandboxDelete,
+	onSandboxExpand,
+	onSandboxUpdate,
 }: SandboxLayerProps) {
 	return (
 		<>
@@ -71,10 +79,13 @@ function SandboxLayer({
 						isFocused={sandbox.id === focusedSandboxId}
 						isDragging={isDragging}
 						dragOffset={isDragging ? dragOffset : undefined}
+						globalDeviceMode={globalDeviceMode}
 						onMouseDown={(e) => onSandboxDragStart(e, sandbox.id)}
 						onClick={() => onSandboxClick(sandbox.id)}
 						onDoubleClick={() => onSandboxDoubleClick(sandbox.id)}
 						onDelete={() => onSandboxDelete(sandbox.id)}
+						onExpand={() => onSandboxExpand(sandbox.id)}
+						onDeviceModeChange={(mode) => onSandboxUpdate(sandbox.id, { deviceMode: mode })}
 					/>
 				);
 			})}
@@ -103,11 +114,13 @@ export function InfiniteCanvas({
 	transform,
 	pattern,
 	backgroundColor,
+	globalDeviceMode,
 	onTransformChange,
 	onSandboxClick,
 	onSandboxDoubleClick,
 	onSandboxUpdate,
 	onSandboxDelete,
+	onSandboxExpand,
 }: InfiniteCanvasProps) {
 	const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -165,10 +178,13 @@ export function InfiniteCanvas({
 					focusedSandboxId={focusedSandboxId}
 					draggingSandboxId={draggingSandboxId}
 					dragOffset={dragOffset}
+					globalDeviceMode={globalDeviceMode}
 					onSandboxDragStart={handleSandboxDragStart}
 					onSandboxClick={onSandboxClick}
 					onSandboxDoubleClick={onSandboxDoubleClick}
 					onSandboxDelete={onSandboxDelete}
+					onSandboxExpand={onSandboxExpand}
+					onSandboxUpdate={onSandboxUpdate}
 				/>
 			</div>
 		</div>

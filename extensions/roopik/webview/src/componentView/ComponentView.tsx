@@ -3,19 +3,34 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { useState, useEffect } from 'react';
-import type { Sandbox } from '../types';
-import { InfiniteCanvas } from '../components/InfiniteCanvas';
-import { StatusPanel } from '../components/StatusPanel';
-import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
-import { BottomActionBar } from '../components/BottomActionBar';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import type {
+	Sandbox,
+	Transform,
+	BackgroundPattern,
+	DevicePreset,
+	ComponentInput,
+	ExtensionMessage,
+	WebviewMessage
+} from '../canvasView/types';
+import { InfiniteCanvas } from '../canvasView/components/InfiniteCanvas';
+import { StatusPanel } from '../canvasView/components/StatusPanel';
+import { GlobalDeviceToggle } from '../canvasView/components/DeviceToggle';
 import { FloatingToolbar } from '../canvasView/components/Toolbar';
+import { BottomActionBar } from '../components/BottomActionBar';
 import { SAMPLE_COMPONENTS, type SampleComponent } from '../canvasView/data/sampleComponents';
+import {
+	getGridPosition,
+	reorganizeSandboxes,
+	calculateFitAllTransform,
+	calculateFocusTransform,
+	DEFAULT_CONFIG
+} from '../canvasView/services/gridManager';
 import { useFPS } from '../hooks/useFPS';
 import './ComponentView.css';
 
 // VS Code API
-declare const acquireVsCodeApi: () => any;
+declare const acquireVsCodeApi: () => { postMessage: (msg: WebviewMessage) => void };
 const vscode = acquireVsCodeApi();
 
 // Canvas state from extension (injected via window)
@@ -23,7 +38,7 @@ declare global {
 	interface Window {
 		CANVAS_STATE?: {
 			sandboxes?: Sandbox[];
-			viewport?: { x: number; y: number; scale: number };
+			viewport?: Transform;
 		};
 		SESSION_PREFERENCES?: {
 			backgroundColor?: string;
@@ -32,31 +47,28 @@ declare global {
 	}
 }
 
-// Transform matrix for pan/zoom
-interface Transform {
-	x: number;
-	y: number;
-	scale: number;
-}
-
-// Background pattern types
-type BackgroundPattern = 'grid' | 'dots' | 'plain';
-
 function App() {
+	// Canvas state
 	const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
 	const [pattern, setPattern] = useState<BackgroundPattern>('dots');
 	const [backgroundColor, setBackgroundColor] = useState<string>('#1a1a1a');
-	const [sandboxes, _setSandboxes] = useState<Sandbox[]>([]);
+	const [sandboxes, setSandboxes] = useState<Sandbox[]>([]);
 	const [selectedSandboxId, setSelectedSandboxId] = useState<string | null>(null);
 	const [focusedSandboxId, setFocusedSandboxId] = useState<string | null>(null);
-	const [_sandboxTemplate, setSandboxTemplate] = useState<string | null>(null);
-	const [showDeleteModal, setShowDeleteModal] = useState(false);
-	const fps = useFPS();
+
+	// Device mode state
+	const [globalDeviceMode, setGlobalDeviceMode] = useState<DevicePreset>('auto');
 
 	// Bottom Action Bar state
 	const [isSelectMode, setIsSelectMode] = useState(false);
 	const [isInspectMode, setIsInspectMode] = useState(false);
 	const [isRectangleMode, setIsRectangleMode] = useState(false);
+
+	// FPS counter
+	const fps = useFPS();
+
+	// Track pending builds
+	const pendingBuildsRef = useRef<Set<string>>(new Set());
 
 	// Load initial state from extension on mount
 	useEffect(() => {
@@ -67,13 +79,11 @@ function App() {
 			if (initialState) {
 				console.log('[Canvas] Loading initial state from extension:', initialState);
 
-				// Load sandboxes if present
 				if (initialState.sandboxes && initialState.sandboxes.length > 0) {
 					console.log('[Canvas] Restoring', initialState.sandboxes.length, 'sandboxes');
-					_setSandboxes(initialState.sandboxes);
+					setSandboxes(initialState.sandboxes);
 				}
 
-				// Load viewport transform if present
 				if (initialState.viewport) {
 					console.log('[Canvas] Restoring viewport:', initialState.viewport);
 					setTransform(initialState.viewport);
@@ -82,19 +92,15 @@ function App() {
 				console.log('[Canvas] No initial state found, starting with empty canvas');
 			}
 
-			// Load session preferences (backgroundColor, backgroundPattern)
 			if (preferences && typeof preferences === 'object') {
 				console.log('[Canvas] Loading session preferences:', preferences);
 
-				// Validate and apply backgroundColor
 				if (preferences.backgroundColor && typeof preferences.backgroundColor === 'string') {
-					// Basic validation: check if it's a hex color
 					if (/^#[0-9A-Fa-f]{6}$/.test(preferences.backgroundColor)) {
 						setBackgroundColor(preferences.backgroundColor);
 					}
 				}
 
-				// Validate and apply backgroundPattern
 				if (preferences.backgroundPattern && typeof preferences.backgroundPattern === 'string') {
 					const validPatterns: BackgroundPattern[] = ['grid', 'dots', 'plain'];
 					if (validPatterns.includes(preferences.backgroundPattern as BackgroundPattern)) {
@@ -104,99 +110,100 @@ function App() {
 			}
 		} catch (error) {
 			console.error('[Canvas] Failed to load initial state:', error);
-			// Gracefully continue with empty state
 		}
-	}, []); // Run only once on mount
+	}, []);
 
-	// Request sandbox template on mount
+	// Handle messages from Extension (Core pipeline responses)
 	useEffect(() => {
-		console.log('[Canvas] Requesting sandbox template from extension');
-		vscode.postMessage({ type: 'getSandboxTemplate' });
+		const handleMessage = (event: MessageEvent<ExtensionMessage>) => {
+			const msg = event.data;
+			console.log('[Canvas] Received message from extension:', msg.type);
 
-		// Listen for messages from extension
-		const handleMessage = (event: MessageEvent) => {
-			const message = event.data;
-			console.log('[Canvas] Received message from extension:', message.type);
+			switch (msg.type) {
+				case 'componentBuilt': {
+					// Component built successfully - update sandbox
+					const { componentId, result } = msg.payload;
+					pendingBuildsRef.current.delete(componentId);
 
-			switch (message.type) {
-				case 'sandboxTemplate':
-					console.log('[Canvas] Sandbox template received');
-					setSandboxTemplate(message.html);
-					break;
-
-				case 'componentReady':
-					console.log('[Canvas] Component ready:', message.componentId);
-
-					// Check for duplicate sandbox ID
-					const existingSandbox = sandboxes.find(s => s.id === message.componentId);
-					if (existingSandbox) {
-						console.warn('[Canvas] Sandbox with ID already exists, ignoring:', message.componentId);
-						vscode.postMessage({
-							type: 'error',
-							message: `Sandbox with ID "${message.componentId}" already exists on canvas`
-						});
-						break;
-					}
-
-					// Calculate grid position (4 per row)
-					const SANDBOX_WIDTH = 500;
-					const SANDBOX_HEIGHT = 500;
-					const GRID_COLUMNS = 4;
-					const CONTAINER_MARGIN = 20; // CSS margin on container
-					const CONTAINER_PADDING_LR = 100; // Left/right padding inside container
-					const CONTAINER_PADDING_TB = 20; // Top/bottom padding inside container
-
-					// Total space needed per sandbox (including all margins/paddings)
-					const TOTAL_WIDTH = SANDBOX_WIDTH + (CONTAINER_MARGIN * 2) + (CONTAINER_PADDING_LR * 2);
-					const TOTAL_HEIGHT = SANDBOX_HEIGHT + (CONTAINER_MARGIN * 2) + (CONTAINER_PADDING_TB * 2);
-
-					const GAP_X = 60; // Extra horizontal gap between sandboxes
-					const GAP_Y = 60; // Extra vertical gap between sandboxes
-					const START_X = 100;
-					const START_Y = 100;
-
-					const index = sandboxes.length;
-					const col = index % GRID_COLUMNS;
-					const row = Math.floor(index / GRID_COLUMNS);
-
-					// Create new sandbox on canvas with grid layout
-					const newSandbox: Sandbox = {
-						id: message.componentId,
-						x: START_X + (col * (TOTAL_WIDTH + GAP_X)),
-						y: START_Y + (row * (TOTAL_HEIGHT + GAP_Y)),
-						width: SANDBOX_WIDTH,
-						height: SANDBOX_HEIGHT,
-						zIndex: sandboxes.length, // Start with index-based z-index
-						sandboxMessage: message.sandboxMessage
-					};
-
-					_setSandboxes(prev => {
-						const updated = [...prev, newSandbox];
-
-						// Auto-zoom to fit all sandboxes after adding
-						setTimeout(() => {
-							fitAllSandboxes(updated);
-						}, 100);
-
-						return updated;
+					console.log('[Canvas] ✅ componentBuilt received:', {
+						componentId,
+						framework: result.framework,
+						bundledCodeLength: result.bundledCode?.length || 0,
+						cdnUrls: result.cdnUrls
 					});
-					console.log('[Canvas] Sandbox added to canvas:', newSandbox.id);
-					break;
 
-				case 'componentUpdate':
-					console.log('[Canvas] Component update:', message.componentId);
-					// TODO: Send update message to existing sandbox iframe
+					setSandboxes(prev => prev.map(sandbox => {
+						if (sandbox.id === componentId) {
+							return {
+								...sandbox,
+								buildStatus: 'ready' as const,
+								bundledCode: result.bundledCode,
+								cdnUrls: result.cdnUrls,
+								buildError: undefined
+							};
+						}
+						return sandbox;
+					}));
 					break;
+				}
+
+				case 'componentError': {
+					// Build failed - update sandbox with error
+					const { componentId, error } = msg.payload;
+					pendingBuildsRef.current.delete(componentId);
+
+					console.error('[Canvas] ❌ componentError received:', {
+						componentId,
+						error
+					});
+
+					setSandboxes(prev => prev.map(sandbox => {
+						if (sandbox.id === componentId) {
+							return {
+								...sandbox,
+								buildStatus: 'error' as const,
+								buildError: error,
+								bundledCode: undefined
+							};
+						}
+						return sandbox;
+					}));
+					break;
+				}
+
+				case 'canvasLoaded': {
+					// Restore canvas state
+					const { state } = msg.payload;
+					console.log('[Canvas] 📂 Canvas loaded:', {
+						id: state.id,
+						name: state.name,
+						sandboxCount: state.sandboxes.length
+					});
+
+					setSandboxes(state.sandboxes);
+					setSelectedSandboxId(state.selectedSandboxId);
+					setTransform(state.viewport);
+					break;
+				}
+
+				case 'themeChanged': {
+					// Handle theme change if needed
+					break;
+				}
 			}
 		};
 
 		window.addEventListener('message', handleMessage);
 		return () => window.removeEventListener('message', handleMessage);
-	}, [sandboxes.length]);
+	}, []);
+
+	// Notify extension that webview is ready
+	useEffect(() => {
+		vscode.postMessage({ type: 'ready' });
+	}, []);
 
 	// Auto-save canvas state when sandboxes or viewport changes
 	useEffect(() => {
-		// Skip saving on initial mount if state is empty
 		if (sandboxes.length === 0 && transform.x === 0 && transform.y === 0 && transform.scale === 1) {
 			return;
 		}
@@ -204,218 +211,153 @@ function App() {
 		const saveTimeout = setTimeout(() => {
 			console.log('[Canvas] Auto-saving canvas state');
 			vscode.postMessage({
-				type: 'saveSandboxes',
-				sandboxes: sandboxes,
-				viewport: transform
+				type: 'saveCanvas',
+				payload: {
+					canvasId: 'default',
+					state: {
+						id: 'default',
+						name: 'Canvas',
+						sandboxes,
+						selectedSandboxId,
+						viewport: transform,
+						createdAt: Date.now(),
+						updatedAt: Date.now()
+					}
+				}
 			});
-		}, 500); // Debounce 500ms
+		}, 500);
 
 		return () => clearTimeout(saveTimeout);
-	}, [sandboxes, transform]);
+	}, [sandboxes, transform, selectedSandboxId]);
+
+	/**
+	 * Request component build from Extension (via Core pipeline)
+	 */
+	const requestBuild = useCallback((componentId: string, input: ComponentInput) => {
+		pendingBuildsRef.current.add(componentId);
+
+		console.log('[Canvas] 📤 Sending buildComponent request:', {
+			componentId,
+			inputId: input.id,
+			files: Object.keys(input.files),
+			framework: input.framework
+		});
+
+		vscode.postMessage({
+			type: 'buildComponent',
+			payload: { componentId, input }
+		});
+	}, []);
+
+	/**
+	 * Create a new sandbox with ComponentInput
+	 * Starts in 'building' state and requests build from Extension
+	 */
+	const createSandbox = useCallback((input: ComponentInput): Sandbox => {
+		const position = getGridPosition(sandboxes.length, DEFAULT_CONFIG);
+		const timestamp = Date.now();
+		const uniqueId = `${input.id}-${timestamp}`;
+
+		const uniqueInput: ComponentInput = { ...input, id: uniqueId };
+
+		const sandbox: Sandbox = {
+			id: uniqueId,
+			x: position.x,
+			y: position.y,
+			width: DEFAULT_CONFIG.sandboxWidth,
+			height: DEFAULT_CONFIG.sandboxHeight,
+			zIndex: sandboxes.length + 1,
+			buildStatus: 'building',
+			componentInput: uniqueInput
+		};
+
+		// Request build from Extension
+		requestBuild(uniqueId, uniqueInput);
+
+		return sandbox;
+	}, [sandboxes.length, requestBuild]);
 
 	// Auto-zoom to fit all sandboxes
-	const fitAllSandboxes = (sandboxList: Sandbox[]) => {
-		if (sandboxList.length === 0) {return;}
+	const fitAllSandboxes = useCallback((sandboxList: Sandbox[]) => {
+		if (sandboxList.length === 0) return;
 
-		// Constants matching the grid calculation
-		const CONTAINER_MARGIN = 20;
-		const CONTAINER_PADDING_LR = 100;
-		const CONTAINER_PADDING_TB = 20;
+		const viewport = { width: window.innerWidth, height: window.innerHeight - 100 };
+		const newTransform = calculateFitAllTransform(sandboxList, viewport, DEFAULT_CONFIG);
+		if (newTransform) {
+			setTransform(newTransform);
+		}
+	}, []);
 
-		// Calculate bounding box of all sandboxes
-		let minX = Infinity, minY = Infinity;
-		let maxX = -Infinity, maxY = -Infinity;
-
-		sandboxList.forEach(sandbox => {
-			const totalWidth = sandbox.width + (CONTAINER_MARGIN * 2) + (CONTAINER_PADDING_LR * 2);
-			const totalHeight = sandbox.height + (CONTAINER_MARGIN * 2) + (CONTAINER_PADDING_TB * 2);
-
-			minX = Math.min(minX, sandbox.x);
-			minY = Math.min(minY, sandbox.y);
-			maxX = Math.max(maxX, sandbox.x + totalWidth);
-			maxY = Math.max(maxY, sandbox.y + totalHeight);
-		});
-
-		const contentWidth = maxX - minX;
-		const contentHeight = maxY - minY;
-
-		// Get viewport size (assume full window)
-		const viewportWidth = window.innerWidth;
-		const viewportHeight = window.innerHeight - 100; // Account for toolbar/statusbar
-
-		// Calculate scale to fit with some padding
-		const padding = 100;
-		const scaleX = (viewportWidth - padding * 2) / contentWidth;
-		const scaleY = (viewportHeight - padding * 2) / contentHeight;
-		const newScale = Math.min(scaleX, scaleY, 1); // Don't zoom in more than 100%
-
-		// Center the content
-		const centerX = (viewportWidth - contentWidth * newScale) / 2 - minX * newScale;
-		const centerY = (viewportHeight - contentHeight * newScale) / 2 - minY * newScale;
-
-		setTransform({
-			x: centerX,
-			y: centerY,
-			scale: newScale
-		});
-	};
-
-	// Toggle focus on a sandbox (double-click to focus/unfocus)
-	// When focused: Uses 80% of viewport height (10% margin top/bottom for toolbar and future options bar)
-	// When unfocused: Zooms out to show all sandboxes
-	const focusSandbox = (sandboxId: string, forceRefocus: boolean = false) => {
-		// If already focused and not forcing refocus, unfocus and zoom out to see all
-		if (focusedSandboxId === sandboxId && !forceRefocus) {
-			console.log('[Canvas] Unfocusing sandbox, zooming out to see all');
+	// Focus on a single sandbox (double-click)
+	const focusSandbox = useCallback((sandboxId: string) => {
+		if (focusedSandboxId === sandboxId) {
+			// Unfocus - zoom out to see all
 			setFocusedSandboxId(null);
 			fitAllSandboxes(sandboxes);
 			return;
 		}
 
 		const sandbox = sandboxes.find(s => s.id === sandboxId);
-		if (!sandbox) {return;}
+		if (!sandbox) return;
 
 		console.log('[Canvas] Focusing on sandbox:', sandboxId);
 		setFocusedSandboxId(sandboxId);
 
-		// Constants matching the container design
-		const CONTAINER_MARGIN = 20;
-		const CONTAINER_PADDING_LR = 120; // Updated to match user's adjustment
-		const CONTAINER_PADDING_TB = 40;  // Updated to match user's adjustment
+		const viewport = { width: window.innerWidth, height: window.innerHeight };
+		const newTransform = calculateFocusTransform(sandbox, viewport, DEFAULT_CONFIG);
+		setTransform(newTransform);
+	}, [focusedSandboxId, sandboxes, fitAllSandboxes]);
 
-		// Total visual area of the sandbox (including container padding/margin)
-		const totalWidth = sandbox.width + (CONTAINER_MARGIN * 2) + (CONTAINER_PADDING_LR * 2);
-		const totalHeight = sandbox.height + (CONTAINER_MARGIN * 2) + (CONTAINER_PADDING_TB * 2);
+	// Reorganize all sandboxes to grid
+	const reorganizeToGrid = useCallback((sandboxList?: Sandbox[]) => {
+		const current = sandboxList || sandboxes;
+		const reorganized = reorganizeSandboxes(current, DEFAULT_CONFIG);
+		setSandboxes(reorganized);
 
-		// Get viewport size
-		const viewportWidth = window.innerWidth;
-		const viewportHeight = window.innerHeight;
-
-		// Use 80% of viewport (10% margin top and bottom)
-		const usableHeight = viewportHeight * 0.8;
-		const usableWidth = viewportWidth * 0.9; // 90% width for some side breathing room
-
-		// Calculate scale to fit sandbox within 80% of viewport
-		const scaleX = usableWidth / totalWidth;
-		const scaleY = usableHeight / totalHeight;
-		const newScale = Math.min(scaleX, scaleY, 1.2); // Allow up to 120% zoom for small components
-
-		// Calculate center position
-		// We want the sandbox's visual center (including container) to be at viewport center
-		const sandboxVisualCenterX = sandbox.x + totalWidth / 2;
-		const sandboxVisualCenterY = sandbox.y + totalHeight / 2;
-
-		const viewportCenterX = viewportWidth / 2;
-		const viewportCenterY = viewportHeight / 2;
-
-		// Transform to center the sandbox
-		const centerX = viewportCenterX - sandboxVisualCenterX * newScale;
-		const centerY = viewportCenterY - sandboxVisualCenterY * newScale;
-
-		setTransform({
-			x: centerX,
-			y: centerY,
-			scale: newScale
-		});
-	};
-
-	// Zoom controls
-	const handleZoomIn = () => {
-		setTransform(prev => ({ ...prev, scale: Math.min(10, prev.scale * 1.2) }));
-	};
-
-	const handleZoomOut = () => {
-		setTransform(prev => ({ ...prev, scale: Math.max(0.1, prev.scale / 1.2) }));
-	};
-
-	const handleResetView = () => {
-		if (sandboxes.length === 0) {
-			// No sandboxes: reset to origin
-			setTransform({ x: 0, y: 0, scale: 1 });
-		} else {
-			// Has sandboxes: reorganize to grid and fit view
-			reorganizeToGrid();
-		}
-	};
-
-	// Reorganize all sandboxes to proper grid layout
-	const reorganizeToGrid = (sandboxList?: Sandbox[]) => {
-		// Use provided list or current sandboxes state
-		const currentSandboxes = sandboxList || sandboxes;
-
-		const SANDBOX_WIDTH = 500;
-		const SANDBOX_HEIGHT = 500;
-		const GRID_COLUMNS = 4;
-		const CONTAINER_MARGIN = 20;
-		const CONTAINER_PADDING_LR = 120;
-		const CONTAINER_PADDING_TB = 40;
-		const TOTAL_WIDTH = SANDBOX_WIDTH + (CONTAINER_MARGIN * 2) + (CONTAINER_PADDING_LR * 2);
-		const TOTAL_HEIGHT = SANDBOX_HEIGHT + (CONTAINER_MARGIN * 2) + (CONTAINER_PADDING_TB * 2);
-		const GAP_X = 60;
-		const GAP_Y = 60;
-		const START_X = 100;
-		const START_Y = 100;
-
-		// Reorganize sandboxes to grid positions
-		const reorganized = currentSandboxes.map((sandbox, index) => {
-			const col = index % GRID_COLUMNS;
-			const row = Math.floor(index / GRID_COLUMNS);
-			return {
-				...sandbox,
-				x: START_X + (col * (TOTAL_WIDTH + GAP_X)),
-				y: START_Y + (row * (TOTAL_HEIGHT + GAP_Y)),
-			};
-		});
-
-		_setSandboxes(reorganized);
-
-		// Fit view to show all sandboxes after reorganization
 		setTimeout(() => {
 			fitAllSandboxes(reorganized);
 		}, 100);
-	};
+	}, [sandboxes, fitAllSandboxes]);
+
+	// Zoom controls
+	const handleZoomIn = useCallback(() => {
+		setTransform(prev => ({ ...prev, scale: Math.min(10, prev.scale * 1.2) }));
+	}, []);
+
+	const handleZoomOut = useCallback(() => {
+		setTransform(prev => ({ ...prev, scale: Math.max(0.1, prev.scale / 1.2) }));
+	}, []);
+
+	const handleResetView = useCallback(() => {
+		if (sandboxes.length === 0) {
+			setTransform({ x: 0, y: 0, scale: 1 });
+		} else {
+			reorganizeToGrid();
+		}
+	}, [sandboxes.length, reorganizeToGrid]);
 
 	// Pattern toggle
-	const handleTogglePattern = () => {
+	const handleTogglePattern = useCallback(() => {
 		const patterns: BackgroundPattern[] = ['grid', 'dots', 'plain'];
-		const currentIndex = patterns.indexOf(pattern);
-		const nextIndex = (currentIndex + 1) % patterns.length;
-		const newPattern = patterns[nextIndex];
-		setPattern(newPattern);
-
-		// Save preference to session
-		vscode.postMessage({
-			type: 'savePreferences',
-			preferences: {
-				backgroundColor,
-				backgroundPattern: newPattern
-			}
+		setPattern(prev => {
+			const currentIndex = patterns.indexOf(prev);
+			const nextIndex = (currentIndex + 1) % patterns.length;
+			return patterns[nextIndex];
 		});
-	};
+	}, []);
 
-	// Background color change handler
-	const handleBackgroundColorChange = (color: string) => {
+	// Background color change
+	const handleBackgroundColorChange = useCallback((color: string) => {
 		setBackgroundColor(color);
+	}, []);
 
-		// Save preference to session
-		vscode.postMessage({
-			type: 'savePreferences',
-			preferences: {
-				backgroundColor: color,
-				backgroundPattern: pattern
-			}
-		});
-	};
-
-	// Component selection
-	const handleSandboxClick = (sandboxId: string) => {
+	// Sandbox click handler
+	const handleSandboxClick = useCallback((sandboxId: string) => {
 		setSelectedSandboxId(sandboxId);
 		console.log('[Canvas] Sandbox selected:', sandboxId);
 
-		// Keep focus persisted - only remove focus on double-click unfocus or Escape key
-
 		// Bring clicked sandbox to front
-		_setSandboxes(prev => {
+		setSandboxes(prev => {
 			const maxZIndex = Math.max(...prev.map(s => s.zIndex));
 			return prev.map(s =>
 				s.id === sandboxId
@@ -423,157 +365,197 @@ function App() {
 					: s
 			);
 		});
-	};
+	}, []);
 
-	// Component deletion - show modal
-	const handleDeleteSelected = () => {
-		if (!selectedSandboxId) {return;}
-		setShowDeleteModal(true);
-	};
+	// Sandbox delete handler
+	const handleSandboxDelete = useCallback((sandboxId: string) => {
+		console.log('[Canvas] Deleting sandbox:', sandboxId);
+		pendingBuildsRef.current.delete(sandboxId);
 
-	// Handle delete button click from sandbox
-	const handleSandboxDelete = (sandboxId: string) => {
-		setSelectedSandboxId(sandboxId);
-		setShowDeleteModal(true);
-	};
+		if (selectedSandboxId === sandboxId) setSelectedSandboxId(null);
+		if (focusedSandboxId === sandboxId) setFocusedSandboxId(null);
 
-	// Confirm deletion
-	const confirmDelete = () => {
-		if (!selectedSandboxId) {return;}
+		setSandboxes(prev => {
+			const remaining = prev.filter(s => s.id !== sandboxId);
+			if (remaining.length > 0) {
+				setTimeout(() => {
+					reorganizeToGrid(remaining);
+				}, 50);
+			}
+			return remaining;
+		});
+	}, [selectedSandboxId, focusedSandboxId, reorganizeToGrid]);
 
-		console.log('[Canvas] Deleting sandbox:', selectedSandboxId);
-		const updatedSandboxes = sandboxes.filter(s => s.id !== selectedSandboxId);
-		setSelectedSandboxId(null);
-		setShowDeleteModal(false);
+	// Sandbox expand (fullscreen) handler
+	const handleSandboxExpand = useCallback((sandboxId: string) => {
+		console.log('[Canvas] Expand sandbox:', sandboxId);
+		// TODO: Implement fullscreen mode
+	}, []);
 
-		// Auto-reorganize remaining sandboxes to fill the gap
-		if (updatedSandboxes.length > 0) {
-			setTimeout(() => {
-				reorganizeToGrid(updatedSandboxes);
-			}, 50);
-		} else {
-			// No sandboxes left, just clear the state
-			_setSandboxes([]);
-		}
-	};
-
-	// Cancel deletion
-	const cancelDelete = () => {
-		setShowDeleteModal(false);
-	};
+	// Sandbox update handler
+	const handleSandboxUpdate = useCallback((id: string, updates: Partial<Sandbox>) => {
+		setSandboxes(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+	}, []);
 
 	// Keyboard shortcuts
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
-			// Delete: Remove selected sandbox
-			if (e.key === 'Delete' && selectedSandboxId) {
-				handleDeleteSelected();
+			if ((e.key === 'Delete' || e.key === 'Backspace') && selectedSandboxId) {
+				handleSandboxDelete(selectedSandboxId);
 			}
-			// Escape: Deselect and unfocus
 			if (e.key === 'Escape') {
 				setSelectedSandboxId(null);
 				setFocusedSandboxId(null);
+			}
+			if (e.key === '0' && (e.ctrlKey || e.metaKey)) {
+				e.preventDefault();
+				handleResetView();
 			}
 		};
 
 		window.addEventListener('keydown', handleKeyDown);
 		return () => window.removeEventListener('keydown', handleKeyDown);
-	}, [selectedSandboxId]);
+	}, [selectedSandboxId, handleSandboxDelete, handleResetView]);
 
-	// Window resize handler - re-focus sandbox if one is focused
+	// Window resize handler
 	useEffect(() => {
 		const handleResize = () => {
 			if (focusedSandboxId) {
-				console.log('[Canvas] Window resized, re-focusing sandbox:', focusedSandboxId);
-				// Use setTimeout to debounce and ensure DOM is updated
 				setTimeout(() => {
-					focusSandbox(focusedSandboxId, true); // Force refocus, don't toggle
+					focusSandbox(focusedSandboxId);
 				}, 100);
 			}
 		};
 
 		window.addEventListener('resize', handleResize);
 		return () => window.removeEventListener('resize', handleResize);
-	}, [focusedSandboxId, sandboxes]);
+	}, [focusedSandboxId, focusSandbox]);
+
+	// FloatingToolbar handlers
+	const handleAddComponent = useCallback(() => {
+		console.log('[FloatingToolbar] Add component clicked');
+		// TODO: Implement add empty component
+	}, []);
+
+	const handleLoadSample = useCallback((sample: SampleComponent) => {
+		console.log('[FloatingToolbar] Loading sample:', sample.name);
+
+		// Check if already loaded
+		const existingSandbox = sandboxes.find(s =>
+			s.componentInput?.id.startsWith(sample.id + '-') ||
+			s.id.startsWith(sample.id + '-')
+		);
+
+		if (existingSandbox) {
+			setSelectedSandboxId(existingSandbox.id);
+			setSandboxes(prev => {
+				const maxZ = Math.max(...prev.map(s => s.zIndex));
+				return prev.map(s => s.id === existingSandbox.id ? { ...s, zIndex: maxZ + 1 } : s);
+			});
+			return;
+		}
+
+		const newSandbox = createSandbox(sample.input);
+		setSandboxes(prev => {
+			const updated = [...prev, newSandbox];
+			setTimeout(() => fitAllSandboxes(updated), 100);
+			return updated;
+		});
+		setSelectedSandboxId(newSandbox.id);
+	}, [sandboxes, createSandbox, fitAllSandboxes]);
+
+	const handleLoadAll = useCallback(() => {
+		console.log('[FloatingToolbar] Loading all samples');
+		const newSandboxes: Sandbox[] = [];
+
+		SAMPLE_COMPONENTS.forEach((sample, idx) => {
+			const alreadyLoaded = sandboxes.some(s =>
+				s.componentInput?.id.startsWith(sample.id + '-') ||
+				s.id.startsWith(sample.id + '-')
+			);
+			if (alreadyLoaded) return;
+
+			const position = getGridPosition(sandboxes.length + newSandboxes.length, DEFAULT_CONFIG);
+			const timestamp = Date.now();
+			const uniqueId = `${sample.id}-${timestamp}-${idx}`;
+			const uniqueInput: ComponentInput = { ...sample.input, id: uniqueId };
+
+			const sandbox: Sandbox = {
+				id: uniqueId,
+				x: position.x,
+				y: position.y,
+				width: DEFAULT_CONFIG.sandboxWidth,
+				height: DEFAULT_CONFIG.sandboxHeight,
+				zIndex: sandboxes.length + newSandboxes.length + 1,
+				buildStatus: 'building',
+				componentInput: uniqueInput
+			};
+
+			requestBuild(uniqueId, uniqueInput);
+			newSandboxes.push(sandbox);
+		});
+
+		if (newSandboxes.length > 0) {
+			setSandboxes(prev => {
+				const updated = [...prev, ...newSandboxes];
+				setTimeout(() => fitAllSandboxes(updated), 100);
+				return updated;
+			});
+		}
+	}, [sandboxes, requestBuild, fitAllSandboxes]);
+
+	const handleClearAll = useCallback(() => {
+		console.log('[FloatingToolbar] Clearing all sandboxes');
+		setSandboxes([]);
+		setSelectedSandboxId(null);
+		setFocusedSandboxId(null);
+		pendingBuildsRef.current.clear();
+		setTransform({ x: 0, y: 0, scale: 1 });
+	}, []);
+
+	const handleTidyUp = useCallback(() => {
+		console.log('[FloatingToolbar] Tidy up - reorganizing to grid');
+		reorganizeToGrid();
+	}, [reorganizeToGrid]);
 
 	// Bottom Action Bar handlers - Mutually exclusive modes
-	const handleSelectMode = () => {
+	const handleSelectMode = useCallback(() => {
 		const newState = !isSelectMode;
 		setIsSelectMode(newState);
-		// Only deactivate other modes when activating this mode
 		if (newState) {
 			setIsInspectMode(false);
 			setIsRectangleMode(false);
 		}
 		console.log('[BottomActionBar] Select mode:', newState);
-	};
+	}, [isSelectMode]);
 
-	const handleInspectMode = () => {
+	const handleInspectMode = useCallback(() => {
 		const newState = !isInspectMode;
 		setIsInspectMode(newState);
-		// Only deactivate other modes when activating this mode
 		if (newState) {
 			setIsSelectMode(false);
 			setIsRectangleMode(false);
 		}
 		console.log('[BottomActionBar] Inspect mode:', newState);
-	};
+	}, [isInspectMode]);
 
-	const handleRectangleSelection = () => {
+	const handleRectangleSelection = useCallback(() => {
 		const newState = !isRectangleMode;
 		setIsRectangleMode(newState);
-		// Only deactivate other modes when activating this mode
 		if (newState) {
 			setIsSelectMode(false);
 			setIsInspectMode(false);
 		}
 		console.log('[BottomActionBar] Rectangle mode:', newState);
-	};
+	}, [isRectangleMode]);
 
-	const handleAIChat = () => {
+	const handleAIChat = useCallback(() => {
 		console.log('[BottomActionBar] AI Chat toggled');
-	};
+	}, []);
 
-	const handleActionsPanel = () => {
+	const handleActionsPanel = useCallback(() => {
 		console.log('[BottomActionBar] Actions Panel toggled');
-	};
-
-	// FloatingToolbar handlers
-	const handleAddComponent = () => {
-		console.log('[FloatingToolbar] Add component clicked');
-		// TODO: Implement add empty component
-	};
-
-	const handleLoadSample = (sample: SampleComponent) => {
-		console.log('[FloatingToolbar] Loading sample:', sample.name);
-		// Send component to extension for processing via Core pipeline
-		vscode.postMessage({
-			type: 'loadComponent',
-			component: sample.input
-		});
-	};
-
-	const handleLoadAll = () => {
-		console.log('[FloatingToolbar] Loading all samples');
-		SAMPLE_COMPONENTS.forEach(sample => {
-			vscode.postMessage({
-				type: 'loadComponent',
-				component: sample.input
-			});
-		});
-	};
-
-	const handleClearAll = () => {
-		console.log('[FloatingToolbar] Clearing all sandboxes');
-		_setSandboxes([]);
-		setSelectedSandboxId(null);
-		setFocusedSandboxId(null);
-	};
-
-	const handleTidyUp = () => {
-		console.log('[FloatingToolbar] Tidy up - reorganizing to grid');
-		reorganizeToGrid();
-	};
+	}, []);
 
 	return (
 		<div className="app">
@@ -587,21 +569,28 @@ function App() {
 				sandboxCount={sandboxes.length}
 			/>
 
-			<InfiniteCanvas
-				sandboxes={sandboxes}
-				selectedSandboxId={selectedSandboxId}
-				focusedSandboxId={focusedSandboxId}
-				transform={transform}
-				pattern={pattern}
-				backgroundColor={backgroundColor}
-				onTransformChange={setTransform}
-				onSandboxClick={handleSandboxClick}
-				onSandboxDoubleClick={focusSandbox}
-				onSandboxUpdate={(id, updates) => {
-					_setSandboxes(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-				}}
-				onSandboxDelete={handleSandboxDelete}
-			/>
+			<div className="canvas-container">
+				<InfiniteCanvas
+					sandboxes={sandboxes}
+					selectedSandboxId={selectedSandboxId}
+					focusedSandboxId={focusedSandboxId}
+					transform={transform}
+					pattern={pattern}
+					backgroundColor={backgroundColor}
+					globalDeviceMode={globalDeviceMode}
+					onTransformChange={setTransform}
+					onSandboxClick={handleSandboxClick}
+					onSandboxDoubleClick={focusSandbox}
+					onSandboxUpdate={handleSandboxUpdate}
+					onSandboxDelete={handleSandboxDelete}
+					onSandboxExpand={handleSandboxExpand}
+				/>
+
+				<GlobalDeviceToggle
+					deviceMode={globalDeviceMode}
+					onDeviceModeChange={setGlobalDeviceMode}
+				/>
+			</div>
 
 			<StatusPanel
 				transform={transform}
@@ -628,17 +617,8 @@ function App() {
 				isSelectMode={isSelectMode}
 				isInspectMode={isInspectMode}
 				isRectangleMode={isRectangleMode}
-				selectedElementType={null} // TODO: Will be determined based on selection
+				selectedElementType={null}
 			/>
-
-			{/* Delete confirmation modal */}
-			{showDeleteModal && selectedSandboxId && (
-				<DeleteConfirmModal
-					sandboxId={selectedSandboxId}
-					onConfirm={confirmDelete}
-					onCancel={cancelDelete}
-				/>
-			)}
 		</div>
 	);
 }

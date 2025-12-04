@@ -9,8 +9,12 @@
  */
 export type {
 	Sandbox,
-	SandboxMessage,
+	SandboxBuildStatus,
 	CanvasState,
 	Transform,
 	BackgroundPattern,
+	ComponentInput,
+	DevicePreset,
+	ExtensionMessage,
+	WebviewMessage,
 } from './canvasView/types';

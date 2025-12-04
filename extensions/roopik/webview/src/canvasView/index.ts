@@ -9,10 +9,14 @@
 
 export type {
 	Sandbox,
-	SandboxMessage,
+	SandboxBuildStatus,
 	CanvasState,
 	Transform,
 	BackgroundPattern,
+	ComponentInput,
+	DevicePreset,
+	ExtensionMessage,
+	WebviewMessage,
 } from './types';
 
 // ============================================================
@@ -22,10 +26,13 @@ export type {
 export {
 	InfiniteCanvas,
 	SandboxCard,
-	SandboxPreview,
 	StatusPanel,
 	ColorPicker,
 	FloatingToolbar,
+	DeviceToggle,
+	DeviceSelector,
+	DeviceIcon,
+	GlobalDeviceToggle,
 	// Hooks
 	useCanvasZoom,
 	useCanvasDrag,
@@ -34,7 +41,6 @@ export {
 
 export type {
 	InfiniteCanvasProps,
-	SandboxCardProps,
 	StatusPanelProps,
 } from './components';
 
@@ -52,6 +58,5 @@ export {
 	getSandboxBoundingBox,
 	calculateFitAllTransform,
 	calculateFocusTransform,
-	createSandbox,
 	bringToFront,
 } from './services';

@@ -10,13 +10,14 @@
 export { InfiniteCanvas } from './InfiniteCanvas';
 export type { InfiniteCanvasProps } from './InfiniteCanvas';
 
-export { SandboxCard, SandboxPreview } from './SandboxCard';
-export type { SandboxCardProps } from './SandboxCard';
+export { SandboxCard } from './SandboxCard';
 
 export { StatusPanel, ColorPicker } from './StatusPanel';
 export type { StatusPanelProps } from './StatusPanel';
 
 export { FloatingToolbar } from './Toolbar';
+
+export { DeviceToggle, DeviceSelector, DeviceIcon, GlobalDeviceToggle } from './DeviceToggle';
 
 // ============================================================
 // Hook Exports (for advanced usage)

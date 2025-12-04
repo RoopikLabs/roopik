@@ -204,31 +204,6 @@ export function calculateFocusTransform(
 	return { x, y, scale };
 }
 
-// ============================================================
-// Sandbox Creation
-// ============================================================
-
-/**
- * Create a new sandbox with grid-calculated position.
- */
-export function createSandbox(
-	id: string,
-	sandboxMessage: Sandbox['sandboxMessage'],
-	existingCount: number,
-	config: GridConfig = DEFAULT_CONFIG
-): Sandbox {
-	const position = getGridPosition(existingCount, config);
-
-	return {
-		id,
-		x: position.x,
-		y: position.y,
-		width: config.sandboxWidth,
-		height: config.sandboxHeight,
-		zIndex: existingCount,
-		sandboxMessage,
-	};
-}
 
 // ============================================================
 // Z-Index Management
