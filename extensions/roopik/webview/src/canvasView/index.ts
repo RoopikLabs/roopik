@@ -36,7 +36,6 @@ export type {
 	InfiniteCanvasProps,
 	SandboxCardProps,
 	StatusPanelProps,
-	FloatingToolbarProps,
 } from './components';
 
 // ============================================================

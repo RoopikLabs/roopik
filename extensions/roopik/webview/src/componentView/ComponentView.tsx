@@ -5,13 +5,13 @@
 
 import { useState, useEffect } from 'react';
 import type { Sandbox } from '../types';
-import { FloatingToolbar } from '../components/FloatingToolbar';
 import { InfiniteCanvas } from '../components/InfiniteCanvas';
 import { StatusPanel } from '../components/StatusPanel';
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
 import { BottomActionBar } from '../components/BottomActionBar';
+import { FloatingToolbar } from '../canvasView/components/Toolbar';
+import { SAMPLE_COMPONENTS, type SampleComponent } from '../canvasView/data/sampleComponents';
 import { useFPS } from '../hooks/useFPS';
-import { SAMPLE_COMPONENTS } from '../data/sampleComponents';
 import './ComponentView.css';
 
 // VS Code API
@@ -407,27 +407,6 @@ function App() {
 		});
 	};
 
-	// Load sample component
-	const handleLoadSample = (sampleIndex: number) => {
-		const sample = SAMPLE_COMPONENTS[sampleIndex];
-		if (!sample) {
-			console.error('[Canvas] Sample not found:', sampleIndex);
-			return;
-		}
-
-		console.log('[Canvas] Loading sample component:', sample.name);
-
-		// Send component to extension for processing
-		vscode.postMessage({
-			type: 'loadComponent',
-			component: {
-				id: sample.id,
-				code: sample.code,
-				dependencies: sample.dependencies
-			}
-		});
-	};
-
 	// Component selection
 	const handleSandboxClick = (sandboxId: string) => {
 		setSelectedSandboxId(sandboxId);
@@ -559,9 +538,54 @@ function App() {
 		console.log('[BottomActionBar] Actions Panel toggled');
 	};
 
+	// FloatingToolbar handlers
+	const handleAddComponent = () => {
+		console.log('[FloatingToolbar] Add component clicked');
+		// TODO: Implement add empty component
+	};
+
+	const handleLoadSample = (sample: SampleComponent) => {
+		console.log('[FloatingToolbar] Loading sample:', sample.name);
+		// Send component to extension for processing via Core pipeline
+		vscode.postMessage({
+			type: 'loadComponent',
+			component: sample.input
+		});
+	};
+
+	const handleLoadAll = () => {
+		console.log('[FloatingToolbar] Loading all samples');
+		SAMPLE_COMPONENTS.forEach(sample => {
+			vscode.postMessage({
+				type: 'loadComponent',
+				component: sample.input
+			});
+		});
+	};
+
+	const handleClearAll = () => {
+		console.log('[FloatingToolbar] Clearing all sandboxes');
+		_setSandboxes([]);
+		setSelectedSandboxId(null);
+		setFocusedSandboxId(null);
+	};
+
+	const handleTidyUp = () => {
+		console.log('[FloatingToolbar] Tidy up - reorganizing to grid');
+		reorganizeToGrid();
+	};
+
 	return (
 		<div className="app">
-			<FloatingToolbar tabName="Canvas" onLoadSample={handleLoadSample} />
+			<FloatingToolbar
+				tabName="Canvas"
+				onAddComponent={handleAddComponent}
+				onLoadSample={handleLoadSample}
+				onLoadAll={handleLoadAll}
+				onClearAll={handleClearAll}
+				onTidyUp={handleTidyUp}
+				sandboxCount={sandboxes.length}
+			/>
 
 			<InfiniteCanvas
 				sandboxes={sandboxes}

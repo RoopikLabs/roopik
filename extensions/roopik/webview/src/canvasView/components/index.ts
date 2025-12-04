@@ -16,8 +16,7 @@ export type { SandboxCardProps } from './SandboxCard';
 export { StatusPanel, ColorPicker } from './StatusPanel';
 export type { StatusPanelProps } from './StatusPanel';
 
-export { FloatingToolbar } from './FloatingToolbar';
-export type { FloatingToolbarProps } from './FloatingToolbar';
+export { FloatingToolbar } from './Toolbar';
 
 // ============================================================
 // Hook Exports (for advanced usage)

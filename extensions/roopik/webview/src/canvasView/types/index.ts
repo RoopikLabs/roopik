@@ -4,6 +4,27 @@
  *--------------------------------------------------------------------------------------------*/
 
 // ============================================================
+// Pipeline Types (Mirrors Core's sandboxPipeline/types.ts)
+// ============================================================
+
+export type Framework = 'react' | 'vue' | 'svelte' | 'solid' | 'preact' | 'html';
+export type ComponentSource = 'ai' | 'user' | 'upload' | 'import' | 'sample';
+export type JobPriority = 'high' | 'normal' | 'low';
+
+/**
+ * Input to the Core build pipeline
+ */
+export interface ComponentInput {
+	id: string;
+	source: ComponentSource;
+	framework?: Framework;
+	files: { [filename: string]: string };
+	entryFile?: string;
+	priority?: JobPriority;
+	dependencies?: Record<string, string>;
+}
+
+// ============================================================
 // Canvas Types
 // ============================================================
 
