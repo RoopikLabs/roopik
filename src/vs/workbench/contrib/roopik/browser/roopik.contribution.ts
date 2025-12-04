@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Copyright (c) Roopik. All rights reserved.
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
@@ -26,7 +26,6 @@ import { RoopikWelcomeInput, RoopikWelcomeInputSerializer } from './welcomeInput
 import { RoopikViewsContribution } from './roopikViewPane.js';
 import { RoopikLogger } from '../common/roopikLogger.js';
 import { IOutputService } from '../../../services/output/common/output.js';
-import { ILoggerService } from '../../../../platform/log/common/log.js';
 import { Editor } from './projectMode/editor.js';
 import { EditorTabInput } from './projectMode/editorTabInput.js';
 import { EditorTabInputSerializer } from './projectMode/editorTabInputSerializer.js';
@@ -52,28 +51,6 @@ import './canvas/importCommands.js';
  * - AI agents (tool calling)
  * - API (external integrations)
  */
-
-// Test command
-registerAction2(class extends Action2 {
-	constructor() {
-		super({
-			id: 'roopik.test',
-			title: localize2('roopik.test', 'Test Core Integration'),
-			category: localize2('roopik.category', 'Roopik'),
-			f1: true
-		});
-	}
-
-	async run(accessor: ServicesAccessor): Promise<void> {
-		const loggerService = accessor.get(ILoggerService);
-		const logger = RoopikLogger.create(loggerService);
-
-		// Automatically logs to both Developer Console and Output Panel
-		logger.info('[Roopik] Core integration working! 🎨');
-
-		return Promise.resolve();
-	}
-});
 
 // Register Welcome Screen Editor
 Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(

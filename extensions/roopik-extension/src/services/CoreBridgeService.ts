@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Copyright (c) Roopik. All rights reserved.
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
@@ -20,7 +20,7 @@ import type { ComponentInput, TransformedComponent, SandboxJob, QueueStatus, Val
 export class CoreBridgeService {
 	private static instance: CoreBridgeService;
 
-	private constructor() {}
+	private constructor() { }
 
 	public static getInstance(): CoreBridgeService {
 		if (!CoreBridgeService.instance) {

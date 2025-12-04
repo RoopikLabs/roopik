@@ -1,12 +1,13 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Roopik. All rights reserved.
- *  Licensed under the MIT License.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { Logger } from './Logger';
+import * as fsSync from 'fs';
+import { Logger } from '../logger';
 
 /**
  * Canvas state types (mirrors webview/src/canvasView/types)
@@ -74,10 +75,12 @@ export interface CanvasMetadata {
  */
 export class CanvasStateManager {
 	private static instance: CanvasStateManager;
-	private readonly logger = Logger.getInstance().createScoped('CanvasStateManager');
+	private logger: ReturnType<typeof Logger.prototype.createScoped>;
 	private roopikDir: string | undefined;
 
-	private constructor() { }
+	private constructor() {
+		this.logger = Logger.getInstance().createScoped('CanvasStateManager');
+	}
 
 	public static getInstance(): CanvasStateManager {
 		if (!CanvasStateManager.instance) {
@@ -103,7 +106,7 @@ export class CanvasStateManager {
 			await fs.mkdir(this.roopikDir, { recursive: true });
 			this.logger.info(`Initialized: ${this.roopikDir}`);
 		} catch (error) {
-			this.logger.error('Failed to create .roopik directory', { error });
+			this.logger.error('Failed to create .roopik directory', error);
 		}
 	}
 
@@ -232,6 +235,73 @@ export class CanvasStateManager {
 	}
 
 	/**
+	 * Load canvas state synchronously (for initial panel creation)
+	 */
+	public loadCanvasSync(canvasName: string): CanvasState | null {
+		if (!this.roopikDir) {
+			return null;
+		}
+
+		const folderName = this.sanitizeFolderName(canvasName);
+		const canvasDir = path.join(this.roopikDir, folderName);
+		const statePath = path.join(canvasDir, 'canvas-state.json');
+
+		try {
+			if (fsSync.existsSync(statePath)) {
+				const content = fsSync.readFileSync(statePath, 'utf-8');
+				const state = JSON.parse(content) as CanvasState;
+				this.logger.info(`Loaded canvas (sync): ${canvasName}`, {
+					sandboxCount: state.sandboxes.length
+				});
+				return state;
+			}
+		} catch (error) {
+			this.logger.debug(`Canvas not found (sync): ${canvasName}`);
+		}
+		return null;
+	}
+
+	/**
+	 * Save canvas state synchronously
+	 */
+	public saveCanvasSync(canvasName: string, state: CanvasState): void {
+		if (!this.roopikDir) {
+			this.logger.warn('CanvasStateManager not initialized, cannot save');
+			return;
+		}
+
+		const folderName = this.sanitizeFolderName(canvasName);
+		const canvasDir = path.join(this.roopikDir, folderName);
+		const statePath = path.join(canvasDir, 'canvas-state.json');
+
+		try {
+			// Ensure directory exists
+			if (!fsSync.existsSync(canvasDir)) {
+				fsSync.mkdirSync(canvasDir, { recursive: true });
+			}
+
+			// Update timestamp
+			state.updatedAt = Date.now();
+
+			// Save state
+			fsSync.writeFileSync(statePath, JSON.stringify(state, null, 2), 'utf-8');
+
+			// Update index synchronously
+			this.updateCanvasIndexSync({
+				id: state.id,
+				name: canvasName,
+				folderPath: folderName,
+				createdAt: state.createdAt,
+				updatedAt: state.updatedAt
+			});
+
+			this.logger.debug(`Saved canvas (sync): ${canvasName}`);
+		} catch (error) {
+			this.logger.error(`Failed to save canvas (sync): ${canvasName}`, error);
+		}
+	}
+
+	/**
 	 * List all canvases
 	 */
 	public async listCanvases(): Promise<CanvasMetadata[]> {
@@ -271,7 +341,7 @@ export class CanvasStateManager {
 			this.logger.info(`Deleted canvas: ${canvasName}`);
 			return true;
 		} catch (error) {
-			this.logger.error(`Failed to delete canvas: ${canvasName}`, { error });
+			this.logger.error(`Failed to delete canvas: ${canvasName}`, error);
 			return false;
 		}
 	}
@@ -293,6 +363,20 @@ export class CanvasStateManager {
 		} catch {
 			return false;
 		}
+	}
+
+	/**
+	 * Check if a canvas exists (sync)
+	 */
+	public canvasExistsSync(canvasName: string): boolean {
+		if (!this.roopikDir) {
+			return false;
+		}
+
+		const folderName = this.sanitizeFolderName(canvasName);
+		const canvasDir = path.join(this.roopikDir, folderName);
+
+		return fsSync.existsSync(canvasDir);
 	}
 
 	// ============================================================================
@@ -347,6 +431,36 @@ export class CanvasStateManager {
 
 		// Save index
 		await fs.writeFile(indexPath, JSON.stringify(index, null, 2), 'utf-8');
+	}
+
+	/**
+	 * Update canvas index file (sync)
+	 */
+	private updateCanvasIndexSync(metadata: CanvasMetadata): void {
+		if (!this.roopikDir) return;
+
+		const indexPath = path.join(this.roopikDir, 'canvases.json');
+		let index: { canvases: CanvasMetadata[] } = { canvases: [] };
+
+		try {
+			if (fsSync.existsSync(indexPath)) {
+				const content = fsSync.readFileSync(indexPath, 'utf-8');
+				index = JSON.parse(content);
+			}
+		} catch {
+			// File doesn't exist, use empty index
+		}
+
+		// Update or add canvas
+		const existingIndex = index.canvases.findIndex(c => c.name === metadata.name);
+		if (existingIndex >= 0) {
+			index.canvases[existingIndex] = metadata;
+		} else {
+			index.canvases.push(metadata);
+		}
+
+		// Save index
+		fsSync.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf-8');
 	}
 
 	/**

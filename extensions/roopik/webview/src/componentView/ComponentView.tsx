@@ -18,7 +18,7 @@ import { StatusPanel } from '../canvasView/components/StatusPanel';
 import { GlobalDeviceToggle } from '../canvasView/components/DeviceToggle';
 import { FloatingToolbar } from '../canvasView/components/Toolbar';
 import { FullscreenOverlay } from '../canvasView/components/FullscreenOverlay';
-import { BottomActionBar } from '../components/BottomActionBar';
+import { BottomActionBar } from '../canvasView/components/Toolbar/BottomActionBar';
 import { SAMPLE_COMPONENTS, type SampleComponent } from '../canvasView/data/sampleComponents';
 import {
 	getGridPosition,
@@ -446,11 +446,6 @@ function App() {
 	}, [focusedSandboxId, focusSandbox]);
 
 	// FloatingToolbar handlers
-	const handleAddComponent = useCallback(() => {
-		console.log('[FloatingToolbar] Add component clicked');
-		// TODO: Implement add empty component
-	}, []);
-
 	const handleLoadSample = useCallback((sample: SampleComponent) => {
 		console.log('[FloatingToolbar] Loading sample:', sample.name);
 
@@ -567,15 +562,10 @@ function App() {
 		console.log('[BottomActionBar] AI Chat toggled');
 	}, []);
 
-	const handleActionsPanel = useCallback(() => {
-		console.log('[BottomActionBar] Actions Panel toggled');
-	}, []);
-
 	return (
 		<div className="app">
 			<FloatingToolbar
 				tabName="Canvas"
-				onAddComponent={handleAddComponent}
 				onLoadSample={handleLoadSample}
 				onLoadAll={handleLoadAll}
 				onClearAll={handleClearAll}
@@ -627,11 +617,9 @@ function App() {
 				onInspectMode={handleInspectMode}
 				onRectangleSelection={handleRectangleSelection}
 				onAIChat={handleAIChat}
-				onActionsPanel={handleActionsPanel}
 				isSelectMode={isSelectMode}
 				isInspectMode={isInspectMode}
 				isRectangleMode={isRectangleMode}
-				selectedElementType={null}
 			/>
 
 			{/* Fullscreen Overlay */}

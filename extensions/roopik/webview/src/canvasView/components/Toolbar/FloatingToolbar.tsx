@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Copyright (c) Roopik. All rights reserved.
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
@@ -9,7 +9,6 @@ import '../../styles/floatingToolbar.css';
 
 interface FloatingToolbarProps {
 	tabName?: string;
-	onAddComponent: () => void;
 	onLoadSample: (sample: SampleComponent) => void;
 	onLoadAll: () => void;
 	onClearAll: () => void;
@@ -19,11 +18,10 @@ interface FloatingToolbarProps {
 
 /**
  * FloatingToolbar - Top toolbar for canvas actions
- * Features: Add, Samples dropdown, Load All, Clear, Tidy Up
+ * Features: Samples dropdown, Load All, Clear, Tidy Up
  */
 export function FloatingToolbar({
 	tabName = 'Canvas',
-	onAddComponent,
 	onLoadSample,
 	onLoadAll,
 	onClearAll,
@@ -60,11 +58,6 @@ export function FloatingToolbar({
 		<div className="floating-toolbar">
 			<span style={{ fontSize: '12px', fontWeight: 600, marginRight: '8px' }}>{tabName}</span>
 			<div className="separator" />
-
-			{/* Add Component Button */}
-			<button onClick={onAddComponent} title="Add empty component">
-				+ Add
-			</button>
 
 			{/* Samples Dropdown */}
 			<div className="dropdown-container">

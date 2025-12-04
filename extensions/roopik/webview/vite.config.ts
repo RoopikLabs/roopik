@@ -9,7 +9,7 @@ export default defineConfig({
 		rollupOptions: {
 			input: {
 				componentView: resolve(__dirname, 'componentView.html'),
-				projectView: resolve(__dirname, 'projectView.html')
+				// projectView: resolve(__dirname, 'projectView.html')
 			},
 			output: {
 				entryFileNames: 'assets/[name].js',
@@ -19,7 +19,7 @@ export default defineConfig({
 		}
 	},
 	server: {
-		port: 3000,
+		port: 3001,
 		hmr: {
 			host: 'localhost'
 		}

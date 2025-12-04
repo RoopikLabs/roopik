@@ -9,9 +9,6 @@
 	"engines": {
 		"vscode": "^1.85.0"
 	},
-	"activationEvents": [
-		"onCommand:roopik.canvas.open"
-	],
 	"main": "./dist/extension.js",
 	"contributes": {},
 	"scripts": {

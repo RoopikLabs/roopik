@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Copyright (c) Roopik. All rights reserved.
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
@@ -18,40 +18,40 @@ import type { ComponentInput } from '../types';
  */
 
 export interface SampleComponent {
-	id: string;
-	name: string;
-	category: 'basic' | 'interactive' | 'layout' | 'form';
-	input: ComponentInput;
+  id: string;
+  name: string;
+  category: 'basic' | 'interactive' | 'layout' | 'form';
+  input: ComponentInput;
 }
 
 /**
  * Create a ComponentInput from React code
  */
 function createReactSample(
-	id: string,
-	code: string,
-	dependencies?: Record<string, string>
+  id: string,
+  code: string,
+  dependencies?: Record<string, string>
 ): ComponentInput {
-	return {
-		id,
-		source: 'sample',
-		framework: 'react',
-		files: {
-			[`${id}.jsx`]: code
-		},
-		dependencies: dependencies || {
-			'react': '18.2.0',
-			'react-dom': '18.2.0'
-		}
-	};
+  return {
+    id,
+    source: 'sample',
+    framework: 'react',
+    files: {
+      [`${id}.jsx`]: code
+    },
+    dependencies: dependencies || {
+      'react': '18.2.0',
+      'react-dom': '18.2.0'
+    }
+  };
 }
 
 export const SAMPLE_COMPONENTS: SampleComponent[] = [
-	{
-		id: 'counter',
-		name: 'Counter',
-		category: 'interactive',
-		input: createReactSample('counter', `import React, { useState } from 'react';
+  {
+    id: 'counter',
+    name: 'Counter',
+    category: 'interactive',
+    input: createReactSample('counter', `import React, { useState } from 'react';
 
 export default function Counter() {
   const [count, setCount] = useState(0);
@@ -123,12 +123,12 @@ export default function Counter() {
     </div>
   );
 }`)
-	},
-	{
-		id: 'todo-list',
-		name: 'Todo List',
-		category: 'interactive',
-		input: createReactSample('todo-list', `import React, { useState } from 'react';
+  },
+  {
+    id: 'todo-list',
+    name: 'Todo List',
+    category: 'interactive',
+    input: createReactSample('todo-list', `import React, { useState } from 'react';
 
 export default function TodoList() {
   const [todos, setTodos] = useState(['Learn React', 'Build awesome apps']);
@@ -222,12 +222,12 @@ export default function TodoList() {
     </div>
   );
 }`)
-	},
-	{
-		id: 'card',
-		name: 'Card',
-		category: 'layout',
-		input: createReactSample('card', `import React from 'react';
+  },
+  {
+    id: 'card',
+    name: 'Card',
+    category: 'layout',
+    input: createReactSample('card', `import React from 'react';
 
 export default function Card() {
   return (
@@ -278,12 +278,12 @@ export default function Card() {
     </div>
   );
 }`)
-	},
-	{
-		id: 'login-form',
-		name: 'Login Form',
-		category: 'form',
-		input: createReactSample('login-form', `import React, { useState } from 'react';
+  },
+  {
+    id: 'login-form',
+    name: 'Login Form',
+    category: 'form',
+    input: createReactSample('login-form', `import React, { useState } from 'react';
 
 export default function LoginForm() {
   const [email, setEmail] = useState('');
@@ -364,12 +364,12 @@ export default function LoginForm() {
     </div>
   );
 }`)
-	},
-	{
-		id: 'pricing-card',
-		name: 'Pricing Card',
-		category: 'layout',
-		input: createReactSample('pricing-card', `import React from 'react';
+  },
+  {
+    id: 'pricing-card',
+    name: 'Pricing Card',
+    category: 'layout',
+    input: createReactSample('pricing-card', `import React from 'react';
 
 export default function PricingCard() {
   const features = ['Unlimited Projects', 'AI Code Generation', 'Priority Support', 'Custom Domain'];
@@ -422,12 +422,12 @@ export default function PricingCard() {
     </div>
   );
 }`)
-	},
-	{
-		id: 'dashboard',
-		name: 'Dashboard',
-		category: 'layout',
-		input: createReactSample('dashboard', `import React from 'react';
+  },
+  {
+    id: 'dashboard',
+    name: 'Dashboard',
+    category: 'layout',
+    input: createReactSample('dashboard', `import React from 'react';
 
 export default function Dashboard() {
   const stats = [
@@ -477,24 +477,24 @@ export default function Dashboard() {
     </div>
   );
 }`)
-	}
+  }
 ];
 
 /**
  * Get sample component by ID
  */
 export function getSampleById(id: string): SampleComponent | undefined {
-	return SAMPLE_COMPONENTS.find(s => s.id === id);
+  return SAMPLE_COMPONENTS.find(s => s.id === id);
 }
 
 /**
  * Get component name from ComponentInput
  */
 export function getComponentName(input: ComponentInput): string {
-	// Use the first filename without extension
-	const filename = Object.keys(input.files)[0];
-	if (filename) {
-		return filename.replace(/\.(jsx|tsx|js|ts|vue|svelte)$/, '');
-	}
-	return input.id;
+  // Use the first filename without extension
+  const filename = Object.keys(input.files)[0];
+  if (filename) {
+    return filename.replace(/\.(jsx|tsx|js|ts|vue|svelte)$/, '');
+  }
+  return input.id;
 }

@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Copyright (c) Roopik. All rights reserved.
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
@@ -650,10 +650,7 @@ export class RoopikViewsContribution extends Disposable implements IWorkbenchCon
 			ctorDescriptor: new SyncDescriptor(RoopikDashboardView),
 			containerIcon: roopikViewIcon,
 			order: 1,
-			canToggleVisibility: false,
-			focusCommand: {
-				id: 'roopik.dashboardView.focus'
-			}
+			canToggleVisibility: false
 		};
 
 		viewsRegistry.registerViews([dashboardViewDescriptor], VIEW_CONTAINER);

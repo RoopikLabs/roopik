@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Copyright (c) Roopik. All rights reserved.
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
@@ -21,7 +21,7 @@ export class BrowserPause {
 
 	constructor(
 		private readonly browserService: ServiceBridge
-	) {}
+	) { }
 
 	/**
 	 * Check if browser is currently paused
