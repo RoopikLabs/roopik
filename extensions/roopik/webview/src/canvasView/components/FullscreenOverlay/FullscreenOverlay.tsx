@@ -78,25 +78,47 @@ const styles = {
 		display: 'flex',
 		flexDirection: 'column' as const,
 	},
-	header: {
+	content: {
+		flex: 1,
 		display: 'flex',
 		alignItems: 'center',
-		justifyContent: 'space-between',
+		justifyContent: 'center',
+		overflow: 'hidden',
+		padding: 20,
+		position: 'relative' as const,
+	},
+	// Floating device toggle (top-right, like canvas)
+	floatingDeviceToggle: {
+		position: 'absolute' as const,
+		top: 16,
+		right: 16,
+		zIndex: 100,
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'center',
+		width: 44,
+		height: 44,
+		background: 'rgba(40, 40, 40, 0.95)',
+		border: '1px solid rgba(255, 255, 255, 0.15)',
+		borderRadius: '50%',
+		color: 'rgba(255, 255, 255, 0.9)',
+		cursor: 'pointer',
+		backdropFilter: 'blur(12px)',
+		boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+		padding: 0,
+	},
+	// Bottom control bar
+	bottomBar: {
+		display: 'flex',
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: 16,
 		padding: '12px 16px',
 		background: 'var(--vscode-titleBar-activeBackground, #3c3c3c)',
-		borderBottom: '1px solid var(--vscode-titleBar-border, #454545)',
+		borderTop: '1px solid var(--vscode-titleBar-border, #454545)',
 		flexShrink: 0,
 	},
-	title: {
-		fontSize: 14,
-		fontWeight: 500,
-		color: 'var(--vscode-titleBar-activeForeground, #cccccc)',
-	},
-	headerControls: {
-		display: 'flex',
-		alignItems: 'center',
-		gap: 8,
-	},
+	// Device selector in bottom bar
 	deviceSelector: {
 		display: 'flex',
 		gap: 2,
@@ -121,33 +143,25 @@ const styles = {
 		background: 'rgba(59, 130, 246, 0.8)',
 		color: 'white',
 	},
+	// Close button in bottom bar
 	closeButton: {
 		display: 'flex',
 		alignItems: 'center',
 		justifyContent: 'center',
-		width: 32,
-		height: 32,
-		background: 'transparent',
+		gap: 6,
+		padding: '6px 12px',
+		background: 'rgba(255, 255, 255, 0.1)',
 		border: 'none',
-		borderRadius: 4,
+		borderRadius: 6,
 		cursor: 'pointer',
 		color: 'var(--vscode-titleBar-activeForeground, #cccccc)',
-		padding: 0,
-		marginLeft: 8,
-	},
-	content: {
-		flex: 1,
-		display: 'flex',
-		alignItems: 'center',
-		justifyContent: 'center',
-		overflow: 'hidden',
-		padding: 40,
-		position: 'relative' as const,
+		fontSize: 12,
+		fontWeight: 500,
 	},
 	deviceFrame: {
 		position: 'relative' as const,
 		background: '#ffffff',
-		borderRadius: 12,
+		borderRadius: 0,
 		boxShadow: '0 0 0 1px rgba(255, 255, 255, 0.1), 0 25px 50px -12px rgba(0, 0, 0, 0.5)',
 		overflow: 'hidden',
 		transformOrigin: 'center center',
@@ -164,27 +178,37 @@ const styles = {
 		border: 'none',
 		display: 'block',
 	},
-	deviceInfo: {
+	// Toast notification (top center)
+	toast: {
 		position: 'absolute' as const,
-		bottom: 20,
+		top: 16,
 		left: '50%',
 		transform: 'translateX(-50%)',
 		display: 'flex',
 		alignItems: 'center',
-		gap: 12,
-		padding: '8px 16px',
-		background: 'rgba(0, 0, 0, 0.75)',
-		borderRadius: 24,
+		gap: 10,
+		padding: '10px 16px',
+		background: 'rgba(0, 0, 0, 0.85)',
+		borderRadius: 8,
 		color: 'white',
-		fontSize: 12,
-		backdropFilter: 'blur(10px)',
-		zIndex: 10,
-	},
-	deviceInfoLabel: {
+		fontSize: 13,
 		fontWeight: 500,
+		backdropFilter: 'blur(12px)',
+		boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+		zIndex: 101,
+		transition: 'opacity 0.3s ease, transform 0.3s ease',
 	},
-	deviceInfoDimensions: {
+	toastHidden: {
+		opacity: 0,
+		transform: 'translateX(-50%) translateY(-10px)',
+		pointerEvents: 'none' as const,
+	},
+	toastLabel: {
+		fontWeight: 600,
+	},
+	toastDimensions: {
 		color: 'rgba(255, 255, 255, 0.6)',
+		fontWeight: 400,
 	},
 };
 
@@ -196,12 +220,33 @@ export function FullscreenOverlay({
 	onDeviceModeChange,
 	onClose,
 }: FullscreenOverlayProps) {
-	const displayName = sandbox.componentInput?.id.split('-')[0] || 'Component';
 	const containerRef = useRef<HTMLDivElement>(null);
 	const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+	const [showToast, setShowToast] = useState(false);
+	const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const preset = DEVICE_PRESETS[deviceMode];
 	const isAutoMode = preset.width === 'auto';
+
+	// Show toast when device mode changes
+	const showDeviceToast = () => {
+		setShowToast(true);
+		if (toastTimeoutRef.current) {
+			clearTimeout(toastTimeoutRef.current);
+		}
+		toastTimeoutRef.current = setTimeout(() => {
+			setShowToast(false);
+		}, 2000);
+	};
+
+	// Cleanup timeout on unmount
+	useEffect(() => {
+		return () => {
+			if (toastTimeoutRef.current) {
+				clearTimeout(toastTimeoutRef.current);
+			}
+		};
+	}, []);
 
 	// Track container size for device frame scaling
 	useEffect(() => {
@@ -253,44 +298,50 @@ export function FullscreenOverlay({
 		};
 	}, [isAutoMode, preset, containerSize]);
 
+	// Cycle to next device mode
+	const handleDeviceToggle = () => {
+		const currentIndex = DEVICE_MODES.indexOf(deviceMode);
+		const nextIndex = (currentIndex + 1) % DEVICE_MODES.length;
+		onDeviceModeChange(DEVICE_MODES[nextIndex]);
+		showDeviceToast();
+	};
+
+	// Handle device mode change from selector
+	const handleDeviceModeSelect = (mode: DevicePreset) => {
+		onDeviceModeChange(mode);
+		showDeviceToast();
+	};
+
 	return (
 		<div style={styles.overlay}>
-			{/* Header */}
-			<div style={styles.header}>
-				<span style={styles.title}>{displayName}</span>
-				<div style={styles.headerControls}>
-					{/* Device Mode Selector */}
-					<div style={styles.deviceSelector}>
-						{DEVICE_MODES.map((mode) => (
-							<button
-								key={mode}
-								onClick={() => onDeviceModeChange(mode)}
-								title={DEVICE_PRESETS[mode].label}
-								style={{
-									...styles.deviceButton,
-									...(deviceMode === mode ? styles.deviceButtonActive : {}),
-								}}
-							>
-								<DeviceIcon preset={mode} size={16} />
-							</button>
-						))}
-					</div>
-
-					{/* Close Button */}
-					<button
-						onClick={onClose}
-						title="Exit fullscreen (ESC)"
-						style={styles.closeButton}
-					>
-						<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-							<path d="M18 6L6 18M6 6l12 12" />
-						</svg>
-					</button>
-				</div>
-			</div>
-
-			{/* Content */}
+			{/* Content Area */}
 			<div ref={containerRef} style={styles.content}>
+				{/* Toast notification (top center) */}
+				<div
+					style={{
+						...styles.toast,
+						...(showToast ? {} : styles.toastHidden),
+					}}
+				>
+					<DeviceIcon preset={deviceMode} size={18} />
+					<span style={styles.toastLabel}>{preset.label}</span>
+					{!isAutoMode && (
+						<span style={styles.toastDimensions}>
+							{preset.width} × {preset.height}
+						</span>
+					)}
+				</div>
+
+				{/* Floating Device Toggle (top-right) */}
+				<button
+					onClick={handleDeviceToggle}
+					title={preset.label}
+					style={styles.floatingDeviceToggle}
+				>
+					<DeviceIcon preset={deviceMode} size={24} />
+				</button>
+
+				{/* Device Frame */}
 				<div style={deviceFrameStyle}>
 					<iframe
 						srcDoc={sandbox.bundledCode ? generateFullscreenHTML(sandbox.bundledCode) : ''}
@@ -299,16 +350,38 @@ export function FullscreenOverlay({
 						style={styles.iframe}
 					/>
 				</div>
+			</div>
 
-				{/* Device info badge */}
-				{!isAutoMode && (
-					<div style={styles.deviceInfo}>
-						<span style={styles.deviceInfoLabel}>{preset.label}</span>
-						<span style={styles.deviceInfoDimensions}>
-							{preset.width} × {preset.height}
-						</span>
-					</div>
-				)}
+			{/* Bottom Control Bar */}
+			<div style={styles.bottomBar}>
+				{/* Device Mode Selector */}
+				<div style={styles.deviceSelector}>
+					{DEVICE_MODES.map((mode) => (
+						<button
+							key={mode}
+							onClick={() => handleDeviceModeSelect(mode)}
+							title={DEVICE_PRESETS[mode].label}
+							style={{
+								...styles.deviceButton,
+								...(deviceMode === mode ? styles.deviceButtonActive : {}),
+							}}
+						>
+							<DeviceIcon preset={mode} size={16} />
+						</button>
+					))}
+				</div>
+
+				{/* Close Button */}
+				<button
+					onClick={onClose}
+					title="Exit fullscreen (ESC)"
+					style={styles.closeButton}
+				>
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+						<path d="M18 6L6 18M6 6l12 12" />
+					</svg>
+					<span>Exit</span>
+				</button>
 			</div>
 		</div>
 	);
