@@ -401,8 +401,9 @@ export function SandboxCard({
 	};
 
 	// Constants for layout calculations
-	const HEADER_HEIGHT = 36; // card-header height
-	const BORDER_WIDTH = 2; // 1px border each side
+	// Must match CSS: .sandbox-card { padding: 40px 120px; }
+	const PADDING_VERTICAL = 40; // top + bottom padding
+	const PADDING_HORIZONTAL = 120; // left + right padding
 
 	// Calculate iframe container style for device mode
 	// Uses the Core implementation: fixed dimensions + scale transform + negative margins
@@ -421,9 +422,11 @@ export function SandboxCard({
 		const deviceWidth = preset.width as number;
 		const deviceHeight = preset.height as number;
 
-		// Available space in card-body
-		const availableWidth = sandbox.width - BORDER_WIDTH;
-		const availableHeight = sandbox.height - HEADER_HEIGHT - BORDER_WIDTH;
+		// Available space in card-body (accounting for card padding)
+		// Horizontal: sandbox.width - left padding - right padding
+		// Vertical: sandbox.height - top padding - bottom padding
+		const availableWidth = sandbox.width - (PADDING_HORIZONTAL * 2);
+		const availableHeight = sandbox.height - (PADDING_VERTICAL * 2);
 
 		// Scale to fit while maintaining aspect ratio
 		const scaleX = availableWidth / deviceWidth;
