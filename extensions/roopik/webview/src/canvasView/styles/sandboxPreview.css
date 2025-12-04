@@ -1,0 +1,171 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ============================================================
+   Sandbox Preview Card
+   ============================================================ */
+
+.sandbox-preview {
+	position: absolute;
+	display: flex;
+	flex-direction: column;
+	padding: 40px 120px;
+	margin: 20px;
+	background: linear-gradient(135deg, rgba(40, 40, 45, 0.25) 0%, rgba(30, 30, 35, 0.25) 100%);
+	backdrop-filter: blur(60px) saturate(250%) brightness(1.1);
+	-webkit-backdrop-filter: blur(60px) saturate(250%) brightness(1.1);
+	border-radius: 20px;
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	box-shadow:
+		0 12px 48px rgba(0, 0, 0, 0.3),
+		0 4px 12px rgba(0, 0, 0, 0.2),
+		inset 0 2px 0 rgba(255, 255, 255, 0.15),
+		inset 0 -2px 0 rgba(255, 255, 255, 0.05);
+	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	cursor: pointer;
+}
+
+/* Hover state */
+.sandbox-preview:hover {
+	border-color: rgba(255, 165, 0, 0.45);
+	box-shadow:
+		0 0 0 4px rgba(255, 165, 0, 0.1),
+		0 24px 64px rgba(0, 0, 0, 0.35),
+		inset 0 2px 0 rgba(255, 255, 255, 0.2),
+		inset 0 -2px 0 rgba(255, 255, 255, 0.05),
+		0 0 32px rgba(255, 165, 0, 0.2);
+}
+
+/* Selected state */
+.sandbox-preview.selected {
+	background: linear-gradient(135deg, rgba(30, 30, 35, 0.35) 0%, rgba(20, 20, 25, 0.35) 100%);
+	border-color: rgba(75, 85, 190, 0.5);
+	box-shadow:
+		0 0 0 4px rgba(75, 85, 190, 0.15),
+		0 32px 80px rgba(0, 0, 0, 0.4),
+		inset 0 2px 0 rgba(255, 255, 255, 0.25),
+		inset 0 -2px 0 rgba(255, 255, 255, 0.05),
+		0 0 32px rgba(75, 85, 190, 0.2);
+}
+
+/* Focused state */
+.sandbox-preview.focused {
+	border-color: rgba(0, 122, 204, 0.5);
+	box-shadow:
+		0 0 0 4px rgba(0, 122, 204, 0.15),
+		0 32px 80px rgba(0, 0, 0, 0.4),
+		inset 0 2px 0 rgba(255, 255, 255, 0.25),
+		inset 0 -2px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Dragging state */
+.sandbox-preview.dragging {
+	backdrop-filter: none;
+	-webkit-backdrop-filter: none;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+	cursor: grabbing;
+	transition: none;
+}
+
+/* ============================================================
+   Header (Label + Actions)
+   ============================================================ */
+
+.sandbox-preview .sandbox-header {
+	position: absolute;
+	top: 16px;
+	left: 20px;
+	right: 20px;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	z-index: 10;
+}
+
+/* Label (drag handle + title) */
+.sandbox-preview .sandbox-label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	cursor: move;
+	user-select: none;
+}
+
+.sandbox-preview .sandbox-label .drag-icon {
+	opacity: 0.7;
+	flex-shrink: 0;
+	color: #ffffff;
+}
+
+.sandbox-preview .sandbox-label .title {
+	font-size: 12px;
+	font-weight: 700;
+	color: #ffffff;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Action buttons container */
+.sandbox-preview .sandbox-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	opacity: 0;
+	transition: opacity 0.2s ease;
+}
+
+.sandbox-preview:hover .sandbox-actions,
+.sandbox-preview.selected .sandbox-actions,
+.sandbox-preview.focused .sandbox-actions {
+	opacity: 1;
+}
+
+/* Action button base */
+.sandbox-preview .sandbox-actions button {
+	background: transparent;
+	border: none;
+	padding: 4px;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.2s ease;
+	opacity: 0.7;
+}
+
+.sandbox-preview .sandbox-actions button:hover {
+	opacity: 1;
+}
+
+/* Delete button hover - red */
+.sandbox-preview .sandbox-actions button.delete:hover svg {
+	stroke: #ef4444;
+}
+
+/* ============================================================
+   Content Area (iframe container)
+   ============================================================ */
+
+.sandbox-preview .sandbox-content {
+	flex: 1;
+	position: relative;
+	background: #ffffff;
+	border-radius: 8px;
+	overflow: hidden;
+	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+	margin-top: 10px;
+}
+
+.sandbox-preview .sandbox-content iframe {
+	width: 100%;
+	height: 100%;
+	border: none;
+	display: block;
+}
+
+.sandbox-preview.dragging .sandbox-content iframe {
+	pointer-events: none;
+}

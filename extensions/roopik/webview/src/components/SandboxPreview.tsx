@@ -3,8 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect } from 'react';
 import type { Sandbox } from '../types';
+import '../canvasView/styles/sandboxPreview.css';
 
 interface SandboxPreviewProps {
 	sandbox: Sandbox;
@@ -20,7 +21,6 @@ interface SandboxPreviewProps {
 
 export function SandboxPreview({ sandbox, isSelected, isFocused, isDragging = false, dragOffset, onMouseDown, onClick, onDoubleClick, onDelete }: SandboxPreviewProps) {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
-	const [isHovered, setIsHovered] = useState(false);
 
 	// Handler for expand button (TODO: implement fullscreen mode)
 	const handleExpandClick = () => {
@@ -177,48 +177,25 @@ export function SandboxPreview({ sandbox, isSelected, isFocused, isDragging = fa
 </html>
 	`;
 
+	// Build CSS class names based on state
+	const classNames = [
+		'sandbox-preview',
+		isSelected && 'selected',
+		isFocused && 'focused',
+		isDragging && 'dragging',
+	].filter(Boolean).join(' ');
+
 	return (
 		<div
-			className="sandbox"
+			className={classNames}
 			style={{
-				position: 'absolute',
 				left: sandbox.x,
 				top: sandbox.y,
 				width: sandbox.width,
 				height: sandbox.height,
 				zIndex: sandbox.zIndex,
-				padding: '40px 120px', // Less top/bottom, 5x more left/right
-				margin: '20px', // Add margin between containers
-				display: 'flex',
-				flexDirection: 'column',
-				background: isSelected
-					? 'linear-gradient(135deg, rgba(30, 30, 35, 0.35) 0%, rgba(20, 20, 25, 0.35) 100%)'
-					: 'linear-gradient(135deg, rgba(40, 40, 45, 0.25) 0%, rgba(30, 30, 35, 0.25) 100%)',
-				backdropFilter: isDragging ? 'none' : 'blur(60px) saturate(250%) brightness(1.1)',
-				WebkitBackdropFilter: isDragging ? 'none' : 'blur(60px) saturate(250%) brightness(1.1)',
-				borderRadius: '20px',
-				border: isFocused
-					? '1px solid rgba(0, 122, 204, 0.5)'
-					: isSelected
-					? '1px solid rgba(75, 85, 190, 0.5)'
-					: isHovered
-					? '1px solid rgba(255, 165, 0, 0.45)'
-					: '1px solid rgba(255, 255, 255, 0.2)',
-				boxShadow: isDragging
-					? '0 8px 32px rgba(0, 0, 0, 0.5)'
-					: isFocused
-					? '0 0 0 4px rgba(0, 122, 204, 0.15), 0 32px 80px rgba(0, 0, 0, 0.4), inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(255, 255, 255, 0.05)'
-					: isSelected
-					? '0 0 0 4px rgba(75, 85, 190, 0.15), 0 32px 80px rgba(0, 0, 0, 0.4), inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(255, 255, 255, 0.05), 0 0 32px rgba(75, 85, 190, 0.2)'
-					: isHovered
-					? '0 0 0 4px rgba(255, 165, 0, 0.1), 0 24px 64px rgba(0, 0, 0, 0.35), inset 0 2px 0 rgba(255, 255, 255, 0.2), inset 0 -2px 0 rgba(255, 255, 255, 0.05), 0 0 32px rgba(255, 165, 0, 0.2)'
-					: '0 12px 48px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2), inset 0 2px 0 rgba(255, 255, 255, 0.15), inset 0 -2px 0 rgba(255, 255, 255, 0.05)',
-				transition: isDragging ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-				cursor: isDragging ? 'grabbing' : 'pointer',
 				transform: dragOffset ? `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)` : 'none',
 			}}
-			onMouseEnter={() => setIsHovered(true)}
-			onMouseLeave={() => setIsHovered(false)}
 			onClick={(e) => {
 				// Select on click anywhere on container background (not label, not iframe)
 				if (e.target === e.currentTarget) {
@@ -232,94 +209,42 @@ export function SandboxPreview({ sandbox, isSelected, isFocused, isDragging = fa
 				}
 			}}
 		>
-			{/* Sandbox ID label - top left */}
-			<div
-				className="sandbox-label"
-				style={{
-					position: 'absolute',
-					top: '16px',
-					left: '20px',
-					display: 'flex',
-					alignItems: 'center',
-					gap: '8px',
-					cursor: 'move',
-					userSelect: 'none',
-					zIndex: 10,
-				}}
-				onMouseDown={(e) => {
-					e.stopPropagation();
-					onMouseDown(e);
-				}}
-			>
-				{/* Drag icon */}
-				<svg
-					width="14"
-					height="14"
-					viewBox="0 0 16 16"
-					fill="none"
-					style={{
-						opacity: 0.7,
-						flexShrink: 0,
-						color: '#ffffff'
-					}}
-				>
-					<circle cx="4" cy="4" r="1.5" fill="currentColor" />
-					<circle cx="12" cy="4" r="1.5" fill="currentColor" />
-					<circle cx="4" cy="8" r="1.5" fill="currentColor" />
-					<circle cx="12" cy="8" r="1.5" fill="currentColor" />
-					<circle cx="4" cy="12" r="1.5" fill="currentColor" />
-					<circle cx="12" cy="12" r="1.5" fill="currentColor" />
-				</svg>
-
-				<span
-					style={{
-						fontSize: '12px',
-						fontWeight: 700,
-						color: '#ffffff',
-						letterSpacing: '0.05em',
-						textTransform: 'uppercase',
-						textShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-					}}
-				>
-					{sandbox.id}
-				</span>
-			</div>
-
-			{/* Action buttons - top right (visible on hover, selected, or focused) */}
-			{(isHovered || isSelected || isFocused) && (
+			{/* Header with label and actions */}
+			<div className="sandbox-header">
+				{/* Sandbox ID label - left side */}
 				<div
-					style={{
-						position: 'absolute',
-						top: '16px',
-						right: '20px',
-						display: 'flex',
-						alignItems: 'center',
-						gap: '8px',
-						zIndex: 10,
+					className="sandbox-label"
+					onMouseDown={(e) => {
+						e.stopPropagation();
+						onMouseDown(e);
 					}}
 				>
+					{/* Drag icon */}
+					<svg
+						className="drag-icon"
+						width="14"
+						height="14"
+						viewBox="0 0 16 16"
+						fill="none"
+					>
+						<circle cx="4" cy="4" r="1.5" fill="currentColor" />
+						<circle cx="12" cy="4" r="1.5" fill="currentColor" />
+						<circle cx="4" cy="8" r="1.5" fill="currentColor" />
+						<circle cx="12" cy="8" r="1.5" fill="currentColor" />
+						<circle cx="4" cy="12" r="1.5" fill="currentColor" />
+						<circle cx="12" cy="12" r="1.5" fill="currentColor" />
+					</svg>
+
+					<span className="title">{sandbox.id}</span>
+				</div>
+
+				{/* Action buttons - right side */}
+				<div className="sandbox-actions">
 					{/* Expand button */}
 					<button
 						onClick={(e) => {
 							e.stopPropagation();
 							handleExpandClick();
-						}}
-						style={{
-							background: 'transparent',
-							border: 'none',
-							padding: '4px',
-							cursor: 'pointer',
-							display: 'flex',
-							alignItems: 'center',
-							justifyContent: 'center',
-							transition: 'all 0.2s ease',
-							opacity: 0.7,
-						}}
-						onMouseEnter={(e) => {
-							e.currentTarget.style.opacity = '1';
-						}}
-						onMouseLeave={(e) => {
-							e.currentTarget.style.opacity = '0.7';
 						}}
 						title="Expand to fullscreen (Coming soon)"
 					>
@@ -333,43 +258,19 @@ export function SandboxPreview({ sandbox, isSelected, isFocused, isDragging = fa
 							strokeLinecap="round"
 							strokeLinejoin="round"
 						>
-							{/* Top-left arrow */}
 							<path d="M2 6 L2 2 L6 2" />
-							{/* Top-right arrow */}
 							<path d="M10 2 L14 2 L14 6" />
-							{/* Bottom-right arrow */}
 							<path d="M14 10 L14 14 L10 14" />
-							{/* Bottom-left arrow */}
 							<path d="M6 14 L2 14 L2 10" />
 						</svg>
 					</button>
 
 					{/* Delete button */}
 					<button
+						className="delete"
 						onClick={(e) => {
 							e.stopPropagation();
 							handleDeleteClick();
-						}}
-						style={{
-							background: 'transparent',
-							border: 'none',
-							padding: '4px',
-							cursor: 'pointer',
-							display: 'flex',
-							alignItems: 'center',
-							justifyContent: 'center',
-							transition: 'all 0.2s ease',
-							opacity: 0.7,
-						}}
-						onMouseEnter={(e) => {
-							e.currentTarget.style.opacity = '1';
-							const svg = e.currentTarget.querySelector('svg');
-							if (svg) svg.setAttribute('stroke', '#ef4444');
-						}}
-						onMouseLeave={(e) => {
-							e.currentTarget.style.opacity = '0.7';
-							const svg = e.currentTarget.querySelector('svg');
-							if (svg) svg.setAttribute('stroke', 'rgba(255, 255, 255, 0.9)');
 						}}
 						title="Delete sandbox"
 					>
@@ -388,33 +289,15 @@ export function SandboxPreview({ sandbox, isSelected, isFocused, isDragging = fa
 						</svg>
 					</button>
 				</div>
-			)}
+			</div>
 
 			{/* Content area with iframe */}
-			<div
-				style={{
-					flex: 1,
-					position: 'relative',
-					background: '#ffffff',
-					borderRadius: '8px',
-					overflow: 'hidden',
-					boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.1)',
-					marginTop: '10px', // Space for label
-				}}
-			>
+			<div className="sandbox-content">
 				<iframe
 					ref={iframeRef}
-					className="sandbox-iframe"
 					srcDoc={sandboxHTML}
 					sandbox="allow-scripts allow-same-origin"
 					title={sandbox.id}
-					style={{
-						width: '100%',
-						height: '100%',
-						border: 'none',
-						display: 'block',
-						pointerEvents: isDragging ? 'none' : 'auto',
-					}}
 				/>
 			</div>
 		</div>
