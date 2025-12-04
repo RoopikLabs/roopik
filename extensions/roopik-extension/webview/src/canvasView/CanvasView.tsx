@@ -249,12 +249,89 @@ export function CanvasView() {
 					// Handle theme change if needed
 					break;
 				}
+
+				case 'addImportedComponent': {
+					// Handle imported component from extension
+					const { componentInput, position, replaceExisting, replaceName } = msg.payload;
+					console.log('[CanvasView] 📥 addImportedComponent received:', {
+						id: componentInput.id,
+						framework: componentInput.framework,
+						files: Object.keys(componentInput.files),
+						position,
+						replaceExisting,
+						replaceName
+					});
+
+					// If replacing, find and remove the existing sandbox first
+					let existingPosition: { x: number; y: number } | undefined;
+					if (replaceExisting && replaceName) {
+						// Find sandbox with matching component name (import-{name}-timestamp pattern)
+						const existingSandbox = sandboxes.find(s =>
+							s.componentInput?.id.includes(`import-${replaceName}-`)
+						);
+						if (existingSandbox) {
+							// Keep its position for the new one
+							existingPosition = { x: existingSandbox.x, y: existingSandbox.y };
+							// Remove it
+							setSandboxes(prev => prev.filter(s => s.id !== existingSandbox.id));
+							pendingBuildsRef.current.delete(existingSandbox.id);
+							console.log('[CanvasView] 🔄 Replacing existing sandbox:', existingSandbox.id);
+						}
+					}
+
+					// Create sandbox at specified position, existing position, or next available slot
+					const config = gridManager.getConfig();
+					const sandboxPosition = position || existingPosition || gridManager.getNextAvailableSlot(sandboxes);
+
+					const timestamp = Date.now();
+					const uniqueId = `${componentInput.id}-${timestamp}`;
+					const uniqueInput: ComponentInput = { ...componentInput, id: uniqueId };
+
+					const sandbox: Sandbox = {
+						id: uniqueId,
+						x: sandboxPosition.x,
+						y: sandboxPosition.y,
+						width: config.sandboxWidth,
+						height: config.sandboxHeight,
+						zIndex: sandboxes.length + 1,
+						buildStatus: 'building',
+						componentInput: uniqueInput
+					};
+
+					// Request build from Extension
+					pendingBuildsRef.current.add(uniqueId);
+					const buildMessage: WebviewMessage = {
+						type: 'buildComponent',
+						payload: { componentId: uniqueId, input: uniqueInput }
+					};
+					vscode.postMessage(buildMessage);
+
+					// Add sandbox to canvas
+					setSandboxes(prev => {
+						const updated = [...prev, sandbox];
+						// Fit viewport to show new component (skip if replacing - position stays same)
+						if (!replaceExisting) {
+							setTimeout(() => {
+								const viewport = gridManager.calculateFitViewport(
+									updated,
+									window.innerWidth,
+									window.innerHeight,
+									100
+								);
+								setTransform(viewport);
+							}, 100);
+						}
+						return updated;
+					});
+					setSelectedSandboxId(uniqueId);
+					break;
+				}
 			}
 		};
 
 		window.addEventListener('message', handleMessage);
 		return () => window.removeEventListener('message', handleMessage);
-	}, []);
+	}, [sandboxes]);
 
 	// Notify extension that webview is ready
 	useEffect(() => {

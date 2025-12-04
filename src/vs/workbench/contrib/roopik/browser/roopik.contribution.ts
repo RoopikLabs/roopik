@@ -41,6 +41,9 @@ import { SandboxPipelineClient } from './sandboxPipelineClient.js';
 // Import canvas commands (registers roopik.pipeline.* commands for extension use)
 import './canvas/canvasCommands.js';
 
+// Import import commands (registers roopik.import.* commands)
+import './canvas/importCommands.js';
+
 /**
  * Roopik Design IDE - Main Contribution
  *

@@ -8,10 +8,12 @@ import * as path from 'path';
 import { CanvasPanel } from './panels/CanvasPanel';
 import { Logger, LogLevel } from './services/Logger';
 import { CanvasStateManager } from './services/CanvasStateManager';
+import { ImportHandler } from './services/ImportHandler';
 
 /** Map of canvas name to panel instance */
 const canvasPanels = new Map<string, CanvasPanel>();
 let logger: Logger;
+let importHandler: ImportHandler;
 
 /**
  * Extension activation - called when Core triggers roopik.canvas.open
@@ -38,6 +40,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const stateManager = CanvasStateManager.getInstance();
 	await stateManager.initialize();
 	logger.info('Extension', `CanvasStateManager initialized: ${stateManager.getRoopikDir()}`);
+
+	// Initialize ImportHandler
+	importHandler = new ImportHandler();
+	if (workspaceFolders && workspaceFolders.length > 0) {
+		importHandler.initialize(workspaceFolders[0].uri.fsPath);
+	}
+	logger.info('Extension', 'ImportHandler initialized');
 
 	// Dispose logger on deactivation
 	context.subscriptions.push({
@@ -80,6 +89,78 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 				logger.info('Extension', `Canvas panel disposed: ${canvasName}`);
 				canvasPanels.delete(canvasName!);
 			});
+		})
+	);
+
+	// Import component command - called from Core's import commands
+	context.subscriptions.push(
+		vscode.commands.registerCommand('roopik.canvas.importComponent', async (request: {
+			path: string;
+			canvasId: string;
+			position?: { x: number; y: number };
+			forceReplace?: boolean;
+		}) => {
+			logger.info('Extension', `Import request received`, request);
+
+			// Track if we're replacing and what component name
+			let isReplacing = false;
+			let replaceComponentName: string | undefined;
+
+			// Process the import
+			let result = await importHandler.importComponent(request, request.forceReplace ?? false);
+
+			// Handle duplicate case - ask user what to do
+			if (!result.success && result.code === 'DUPLICATE_COMPONENT') {
+				const duplicateResult = result as import('./services/ImportHandler').ImportDuplicateError;
+				const componentName = duplicateResult.duplicateInfo.existingName;
+
+				logger.info('Extension', `Duplicate component found: ${componentName}`);
+
+				const choice = await vscode.window.showWarningMessage(
+					`Component "${componentName}" is already on this canvas. What would you like to do?`,
+					{ modal: true },
+					'Replace',
+					'Cancel'
+				);
+
+				if (choice === 'Replace') {
+					// Re-import with forceReplace = true
+					logger.info('Extension', `User chose to replace: ${componentName}`);
+					isReplacing = true;
+					replaceComponentName = componentName;
+					result = await importHandler.importComponent(request, true);
+				} else {
+					// User cancelled
+					return { success: false, error: 'Import cancelled - component already exists' };
+				}
+			}
+
+			if (!result.success) {
+				logger.error('Extension', `Import failed: ${result.message}`);
+				vscode.window.showErrorMessage(`Import failed: ${result.message}`);
+				return { success: false, error: result.message };
+			}
+
+			logger.info('Extension', `Import successful: ${result.componentInput.id}`);
+
+			// Find the canvas panel and send the component
+			const panel = canvasPanels.get(request.canvasId);
+			if (panel) {
+				// Send the imported component to the webview
+				// If replacing, tell webview to remove old sandbox first
+				panel.addImportedComponent(
+					result.componentInput,
+					request.position,
+					isReplacing,
+					replaceComponentName
+				);
+				return { success: true, componentInput: result.componentInput };
+			} else {
+				// No panel open for this canvas - open it first, then import
+				logger.warn('Extension', `No panel open for canvas: ${request.canvasId}`);
+				vscode.window.showWarningMessage('Please open a canvas first, then import.');
+				return { success: false, error: 'Canvas not open' };
+			}
 		})
 	);
 

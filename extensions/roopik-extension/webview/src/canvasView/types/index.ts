@@ -213,7 +213,9 @@ export type ExtensionMessage =
 	// Canvas state
 	| { type: 'canvasLoaded'; payload: { state: CanvasState } }
 	| { type: 'canvasSaved'; payload: { success: boolean } }
-	| { type: 'themeChanged'; payload: { theme: 'light' | 'dark' | 'high-contrast' } };
+	| { type: 'themeChanged'; payload: { theme: 'light' | 'dark' | 'high-contrast' } }
+	// Import
+	| { type: 'addImportedComponent'; payload: { componentInput: ComponentInput; position?: { x: number; y: number }; replaceExisting?: boolean; replaceName?: string } };
 
 /**
  * Message types from Webview to Extension

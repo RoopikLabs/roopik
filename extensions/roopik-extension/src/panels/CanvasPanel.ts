@@ -14,6 +14,7 @@ import type {
 	WebviewOpenFileMessage,
 	WebviewLogMessage
 } from '../types/messages';
+import type { ComponentInput } from '../types/pipeline';
 
 /** Save canvas message from webview */
 interface WebviewSaveCanvasMessage {
@@ -40,8 +41,21 @@ interface ExtensionCanvasSavedMessage {
 	};
 }
 
+/** Add imported component to canvas */
+interface ExtensionAddImportedComponentMessage {
+	type: 'addImportedComponent';
+	payload: {
+		componentInput: ComponentInput;
+		position?: { x: number; y: number };
+		/** If true, replace existing component with same originalPath */
+		replaceExisting?: boolean;
+		/** Component name being replaced */
+		replaceName?: string;
+	};
+}
+
 /** Extended message type including canvas messages */
-type CanvasExtensionMessage = ExtensionMessage | ExtensionCanvasLoadedMessage | ExtensionCanvasSavedMessage;
+type CanvasExtensionMessage = ExtensionMessage | ExtensionCanvasLoadedMessage | ExtensionCanvasSavedMessage | ExtensionAddImportedComponentMessage;
 
 /**
  * CanvasPanel - WebviewPanel wrapper for the infinite canvas
@@ -107,6 +121,36 @@ export class CanvasPanel {
 
 	onDidDispose(callback: () => void): void {
 		this.panel.onDidDispose(callback);
+	}
+
+	/**
+	 * Add an imported component to the canvas
+	 * Called from extension.ts after ImportHandler processes a file
+	 * @param replaceExisting If true, replace existing sandbox with same component name
+	 * @param replaceName Name of the component being replaced
+	 */
+	addImportedComponent(
+		componentInput: ComponentInput,
+		position?: { x: number; y: number },
+		replaceExisting?: boolean,
+		replaceName?: string
+	): void {
+		this.logger.info(`Adding imported component: ${componentInput.id}`, {
+			framework: componentInput.framework,
+			files: Object.keys(componentInput.files),
+			replaceExisting,
+			replaceName
+		});
+
+		this.postMessage({
+			type: 'addImportedComponent',
+			payload: {
+				componentInput,
+				position,
+				replaceExisting,
+				replaceName
+			}
+		});
 	}
 
 	/**

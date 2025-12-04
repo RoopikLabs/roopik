@@ -106,9 +106,11 @@ export class RoopikDashboardView extends ViewPane {
 		buttonsRow.style.flexWrap = 'wrap';
 
 		const newCanvasBtn = this.createPrimaryActionButton('Canvas', 'codicon-new-file', 'roopik.openCanvas');
+		const importBtn = this.createSecondaryActionButton('Import', 'codicon-cloud-download', 'roopik.import.showPicker');
 		const projectModeBtn = this.createSecondaryActionButton('Project', 'codicon-globe', 'roopik.openProjectPreview');
 
 		buttonsRow.appendChild(newCanvasBtn);
+		buttonsRow.appendChild(importBtn);
 		buttonsRow.appendChild(projectModeBtn);
 		actionsRow.appendChild(buttonsRow);
 
