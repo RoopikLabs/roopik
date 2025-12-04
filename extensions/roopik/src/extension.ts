@@ -76,10 +76,94 @@ export function activate(context: vscode.ExtensionContext) {
 		CanvasPanel.createOrShow(context.extensionUri, canvasId, canvasName);
 	});
 
-	// Register command
-	context.subscriptions.push(openCanvasCommand);
+	// Import component command (called from Core's import flow)
+	const importComponentCommand = vscode.commands.registerCommand(
+		'roopik.canvas.importComponent',
+		async (request: { path: string; canvasId: string; position?: { x: number; y: number } }) => {
+			const { path: filePath, canvasId, position } = request;
 
-	logger.info('Extension', 'roopik.canvas.open command registered');
+			logger.info('Extension', `Importing component from ${filePath} to canvas ${canvasId}`);
+
+			try {
+				// Read the file content
+				const fileUri = vscode.Uri.file(filePath);
+				const fileContent = await vscode.workspace.fs.readFile(fileUri);
+				const code = Buffer.from(fileContent).toString('utf-8');
+
+				// Determine framework from file extension
+				const ext = filePath.split('.').pop()?.toLowerCase() || 'tsx';
+				const framework = ext === 'vue' ? 'vue' : ext === 'svelte' ? 'svelte' : 'react';
+
+				// Extract filename for component name
+				const fileName = filePath.split(/[\\/]/).pop() || 'Component';
+				const componentName = fileName.replace(/\.[^/.]+$/, '');
+
+				// Create ComponentInput
+				const componentInput = {
+					id: `import-${Date.now()}`,
+					source: 'import' as const,
+					framework,
+					files: {
+						[fileName]: code
+					},
+					entryFile: fileName,
+					dependencies: {}
+				};
+
+				// Convert canvasId to slug format (same as in open command)
+				const canvasSlug = canvasId.toLowerCase()
+					.trim()
+					.replace(/\s+/g, '-')
+					.replace(/[^a-z0-9-]/g, '');
+
+				// Get the canvas panel
+				const panel = CanvasPanel.getPanel(canvasSlug);
+				if (!panel) {
+					// Canvas not open, try to open it first
+					await vscode.commands.executeCommand('roopik.canvas.open', canvasId);
+
+					// Wait a bit for panel to initialize
+					await new Promise(resolve => setTimeout(resolve, 500));
+
+					const newPanel = CanvasPanel.getPanel(canvasSlug);
+					if (!newPanel) {
+						throw new Error(`Canvas "${canvasId}" could not be opened`);
+					}
+
+					// Send the import message
+					newPanel.postMessage({
+						type: 'addImportedComponent',
+						payload: {
+							componentInput,
+							position
+						}
+					});
+				} else {
+					// Send the import message to existing panel
+					panel.postMessage({
+						type: 'addImportedComponent',
+						payload: {
+							componentInput,
+							position
+						}
+					});
+				}
+
+				logger.info('Extension', `Component ${componentName} sent to canvas ${canvasId}`);
+
+				return { success: true, componentInput };
+			} catch (err) {
+				const errorMsg = err instanceof Error ? err.message : String(err);
+				logger.error('Extension', `Import failed: ${errorMsg}`);
+				return { success: false, error: errorMsg };
+			}
+		}
+	);
+
+	// Register commands
+	context.subscriptions.push(openCanvasCommand, importComponentCommand);
+
+	logger.info('Extension', 'Commands registered: roopik.canvas.open, roopik.canvas.importComponent');
 }
 
 export function deactivate() {

@@ -194,6 +194,49 @@ function App() {
 					// Handle theme change if needed
 					break;
 				}
+
+				case 'addImportedComponent': {
+					// Import component from file
+					const { componentInput, position } = msg.payload;
+					console.log('[Canvas] 📥 Importing component:', {
+						id: componentInput.id,
+						framework: componentInput.framework,
+						files: Object.keys(componentInput.files)
+					});
+
+					// Create a new sandbox for the imported component
+					const newSandbox: Sandbox = {
+						id: componentInput.id,
+						x: position?.x ?? 100,
+						y: position?.y ?? 100,
+						width: DEFAULT_CONFIG.sandboxWidth,
+						height: DEFAULT_CONFIG.sandboxHeight,
+						zIndex: Date.now(),
+						buildStatus: 'pending',
+						componentInput
+					};
+
+					setSandboxes(prev => {
+						// Calculate position if not provided
+						if (!position) {
+							const gridPos = getGridPosition(prev.length, DEFAULT_CONFIG);
+							newSandbox.x = gridPos.x;
+							newSandbox.y = gridPos.y;
+						}
+						return [...prev, newSandbox];
+					});
+					setSelectedSandboxId(newSandbox.id);
+
+					// Request build for the imported component
+					vscode.postMessage({
+						type: 'buildComponent',
+						payload: {
+							componentId: newSandbox.id,
+							input: componentInput
+						}
+					});
+					break;
+				}
 			}
 		};
 

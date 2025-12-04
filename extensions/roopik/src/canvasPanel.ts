@@ -163,6 +163,20 @@ export class CanvasPanel {
 		return CanvasPanel.panels.size;
 	}
 
+	/**
+	 * Get a canvas panel by ID
+	 */
+	public static getPanel(canvasId: string): CanvasPanel | undefined {
+		return CanvasPanel.panels.get(canvasId);
+	}
+
+	/**
+	 * Send a message to this canvas's webview
+	 */
+	public postMessage(message: { type: string; payload: unknown }): void {
+		this._panel.webview.postMessage(message);
+	}
+
 	private constructor(
 		panel: vscode.WebviewPanel,
 		extensionUri: vscode.Uri,
