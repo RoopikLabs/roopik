@@ -417,7 +417,6 @@ export class CanvasPanel {
 		}
 	</style>
 	<link href="${styleUri}" rel="stylesheet">
-	<link href="${webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'webview', 'build', 'assets', 'BottomActionBar.css'))}" rel="stylesheet">
 	<title>Roopik Canvas - ${this.canvasState.name}</title>
 </head>
 <body>
