@@ -1,7 +1,7 @@
 {
   "name": "roopik",
-  "displayName": "Roopik",
-  "description": "AI-Native Canvas-First IDE",
+	"displayName": "Roopik Canvas",
+	"description": "Canvas webview for Roopik IDE",
   "version": "0.1.0",
   "publisher": "roopik",
   "engines": {
@@ -15,89 +15,22 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
-    "commands": [
-      {
-        "comment": "LEGACY EXTENSION COMMANDS - Migrating to core",
-        "command": "roopik.extension.openCanvas",
-        "title": "Roopik Extension: Dashboard",
-        "icon": "$(dashboard)"
-      },
-      {
-        "command": "roopik.extension.newCanvas",
-        "title": "Roopik Extension: New Canvas"
-      },
-      {
-        "command": "roopik.extension.showCanvases",
-        "title": "Roopik Extension: Show Open Canvases"
-      },
-      {
-        "command": "roopik.extension.closeAllCanvases",
-        "title": "Roopik Extension: Close All Canvases"
-      },
-      {
-        "command": "roopik.extension.deleteCanvas",
-        "title": "Roopik Extension: Delete Canvas",
-        "enablement": "false"
-      },
-      {
-        "command": "roopik.extension.renameCanvas",
-        "title": "Roopik Extension: Rename Canvas",
-        "enablement": "false"
-      },
-      {
-        "command": "roopik.extension.exportCanvas",
-        "title": "Roopik Extension: Export Canvas",
-        "enablement": "false"
-      },
-      {
-        "command": "roopik.extension.importCanvas",
-        "title": "Roopik Extension: Import Canvas"
-      },
-      {
-        "command": "roopik.extension.openProjectPreview",
-        "title": "Roopik Extension: Open Project Preview",
-        "category": "Roopik Extension"
-      }
-    ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "roopik-extension",
-          "title": "Roopik Extension",
-          "icon": "resources/roopik-icon.svg"
-        }
-      ]
-    },
-    "views": {
-      "roopik-extension": [
-        {
-          "id": "roopik.extension.dashboard",
-          "name": "Extension Dashboard",
-          "type": "webview"
-        }
-      ]
-    }
+    "commands": []
   },
   "scripts": {
-    "compile": "tsc -p ./ && node scripts/copyAssets.js",
+    "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "build": "npm run compile && npm run build:webview",
     "build:extension": "npm run compile",
     "build:webview": "npm run build --prefix webview",
     "watch:all": "npm-run-all -p watch watch:webview",
-    "watch:webview": "npm run dev --prefix webview"
+    "watch:webview": "npm run dev --prefix webview",
+    "postinstall": "cd webview && npm install"
+
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.0.0"
-  },
-  "dependencies": {
-    "@babel/core": "^7.28.5",
-    "@vitejs/plugin-react": "^5.1.1",
-    "@vue/compiler-sfc": "^3.5.24",
-    "html-minifier-terser": "^7.2.0",
-    "javascript-obfuscator": "^4.1.1",
-    "vite": "^7.2.2"
   }
-}
+ }

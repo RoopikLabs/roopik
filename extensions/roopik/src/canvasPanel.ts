@@ -4,77 +4,60 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import { ConfigManager } from './config';
-import { PreviewManager } from './componentIsolation/core/PreviewManager';
-import { ComponentSandbox } from './componentIsolation/renderer/ComponentSandbox';
-import type { ComponentSource } from './componentIsolation/core/types';
 import { Logger } from './logger';
+import { CoreBridgeService } from './services/CoreBridgeService';
+import { CanvasStateManager, type CanvasState } from './services/CanvasStateManager';
+import type { ComponentInput } from './types/pipeline';
 
-/**
- * Canvas State Interface
- * Represents the state of a single canvas instance
- */
-export interface CanvasState {
-	id: string;
-	name: string;
-	components: any[]; // Will be typed properly when we build component system
-	sandboxes: any[]; // Live sandbox instances on canvas
-	layout: any; // Will be typed properly later
-	viewport?: { x: number; y: number; scale: number }; // Canvas viewport transform
-	createdAt: number;
-	updatedAt: number;
-}
+// Re-export CanvasState for external use
+export type { CanvasState } from './services/CanvasStateManager';
 
 /**
  * Manages Canvas webview panels with ID-based singleton pattern
  * Each canvas ID can have only one panel, but multiple canvas IDs can exist simultaneously
  *
- * Examples:
- * - Canvas "login" can exist alongside canvas "onboarding"
- * - Opening "login" twice will focus the existing panel (ID-based singleton)
- * - Max canvases enforced by config (default: 5)
+ * Architecture:
+ * - Core handles: Activity pane, welcome screen, canvas name prompts, command palette
+ * - Extension handles: Canvas webview rendering, state management via CanvasStateManager
+ * - Communication: Core calls roopik.canvas.open with canvas name, extension renders
  */
 export class CanvasPanel {
 	// ID-based map instead of global singleton
 	private static panels: Map<string, CanvasPanel> = new Map();
 
-	// Preview Manager (Mode 1 - import/const translator)
-	private static previewManager: PreviewManager | null = null;
-
-	// Component Sandbox (Mode 1 - iframe renderer)
-	private static componentSandbox: ComponentSandbox | null = null;
-
-	// Session preferences (backgroundColor, backgroundPattern)
-	private static sessionPreferences: { backgroundColor?: string; backgroundPattern?: string } | null = null;
+	// State Manager (singleton for all canvases)
+	private static stateManager: CanvasStateManager | null = null;
 
 	// Event emitter for canvas open/close events
 	private static readonly onDidChangePanelsEmitter = new vscode.EventEmitter<void>();
 	public static readonly onDidChangePanels = CanvasPanel.onDidChangePanelsEmitter.event;
 
 	/**
-	 * Initialize the Mode 1 preview system
+	 * Initialize the canvas system
 	 * Called once during extension activation
 	 */
-	public static initializePreviewSystem(context: vscode.ExtensionContext) {
-		CanvasPanel.previewManager = new PreviewManager();
-		CanvasPanel.componentSandbox = new ComponentSandbox(context);
-		Logger.getInstance().info('CanvasPanel', 'Mode 1 preview system initialized');
+	public static initializePreviewSystem(_context: vscode.ExtensionContext) {
+		// Initialize state manager
+		CanvasPanel.stateManager = CanvasStateManager.getInstance();
+		CanvasPanel.stateManager.initialize();
+
+		Logger.getInstance().info('CanvasPanel', 'Canvas system initialized');
 	}
 
 	private readonly _panel: vscode.WebviewPanel;
 	private _disposables: vscode.Disposable[] = [];
 	private readonly canvasId: string;
+	private readonly canvasName: string;
 	private readonly extensionUri: vscode.Uri;
 	private canvasState: CanvasState;
-	private configManager: ConfigManager;
 	private logger: ReturnType<typeof Logger.prototype.createScoped>;
 
 	/**
-	 * Create or show a canvas panel by ID
+	 * Create or show a canvas panel by name
 	 * @param extensionUri - Extension URI for loading resources
-	 * @param canvasId - Unique canvas identifier (required)
-	 * @param canvasName - Display name for the canvas (optional)
+	 * @param canvasId - Unique canvas identifier (slug)
+	 * @param canvasName - Display name for the canvas
 	 */
 	public static createOrShow(
 		extensionUri: vscode.Uri,
@@ -95,31 +78,6 @@ export class CanvasPanel {
 			const workspaceRoot = workspaceFolders[0].uri.fsPath;
 			const configManager = ConfigManager.getInstance(workspaceRoot);
 			const config = configManager.getConfig();
-
-			// Load session preferences if not already loaded
-			if (!CanvasPanel.sessionPreferences) {
-				const sessionPath = configManager.getSessionPath();
-				try {
-					if (fs.existsSync(sessionPath)) {
-						const sessionFile = fs.readFileSync(sessionPath, 'utf8');
-						const session = JSON.parse(sessionFile);
-
-						// Validate preferences structure before using
-						if (session && typeof session === 'object' && session.preferences) {
-							const prefs = session.preferences;
-							// Only set if preferences is an object with valid structure
-							if (typeof prefs === 'object' && prefs !== null) {
-								CanvasPanel.sessionPreferences = prefs;
-								Logger.getInstance().info('CanvasPanel', 'Loaded session preferences', CanvasPanel.sessionPreferences);
-							}
-						}
-					}
-				} catch (error) {
-					// Silently ignore errors (file doesn't exist, corrupted JSON, etc.)
-					Logger.getInstance().debug('CanvasPanel', 'No valid session preferences found, using defaults');
-					CanvasPanel.sessionPreferences = null;
-				}
-			}
 
 			// If this specific canvas already exists, show it
 			const existingPanel = CanvasPanel.panels.get(canvasId);
@@ -151,9 +109,10 @@ export class CanvasPanel {
 			}
 
 			// Create new panel with unique viewType per canvas ID
+			const displayName = canvasName || canvasId;
 			const panel = vscode.window.createWebviewPanel(
 				`roopikCanvas-${canvasId}`,
-				canvasName || `Roopik Canvas - ${canvasId}`,
+				displayName,
 				column || vscode.ViewColumn.One,
 				{
 					enableScripts: true,
@@ -166,16 +125,13 @@ export class CanvasPanel {
 			);
 
 			// Create new canvas panel instance
-			const canvasPanel = new CanvasPanel(panel, extensionUri, canvasId, canvasName);
+			const canvasPanel = new CanvasPanel(panel, extensionUri, canvasId, displayName);
 			CanvasPanel.panels.set(canvasId, canvasPanel);
-
-			// Save session after creating canvas
-			CanvasPanel.saveSession(workspaceRoot);
 
 			// Notify listeners that panels changed
 			CanvasPanel.onDidChangePanelsEmitter.fire();
 
-			Logger.getInstance().info('CanvasPanel', `Canvas "${canvasId}" created. Total canvases: ${CanvasPanel.panels.size}`);
+			Logger.getInstance().info('CanvasPanel', `Canvas "${displayName}" created. Total canvases: ${CanvasPanel.panels.size}`);
 		} catch (error) {
 			Logger.getInstance().error('CanvasPanel', 'Error in createOrShow', error);
 			vscode.window.showErrorMessage(`Failed to create canvas: ${error}`);
@@ -194,87 +150,6 @@ export class CanvasPanel {
 	}
 
 	/**
-	 * Delete a canvas permanently (close panel + remove state file)
-	 * @param canvasId - Canvas ID to delete
-	 * @param workspaceRoot - Workspace root path
-	 */
-	public static deleteCanvas(canvasId: string, workspaceRoot: string): boolean {
-		try {
-			// Close panel if open
-			const panel = CanvasPanel.panels.get(canvasId);
-			if (panel) {
-				panel.dispose();
-			}
-
-			// Delete state file
-			const configManager = ConfigManager.getInstance(workspaceRoot);
-			const statePath = configManager.getCanvasStatePath(canvasId);
-
-			if (fs.existsSync(statePath)) {
-				fs.unlinkSync(statePath);
-				Logger.getInstance().info('CanvasPanel', `Canvas "${canvasId}" deleted from disk`);
-			}
-
-			// Save session to update list
-			CanvasPanel.saveSession(workspaceRoot);
-
-			// Notify listeners
-			CanvasPanel.onDidChangePanelsEmitter.fire();
-
-			return true;
-		} catch (error) {
-			Logger.getInstance().error('CanvasPanel', `Failed to delete canvas "${canvasId}"`, error);
-			return false;
-		}
-	}
-
-	/**
-	 * Rename a canvas
-	 * @param canvasId - Canvas ID to rename
-	 * @param newName - New display name
-	 * @param workspaceRoot - Workspace root path
-	 */
-	public static renameCanvas(canvasId: string, newName: string, workspaceRoot: string): boolean {
-		try {
-			const configManager = ConfigManager.getInstance(workspaceRoot);
-			const statePath = configManager.getCanvasStatePath(canvasId);
-
-			if (!fs.existsSync(statePath)) {
-				Logger.getInstance().error('CanvasPanel', `Canvas "${canvasId}" not found`);
-				return false;
-			}
-
-			// Load current state
-			const stateFile = fs.readFileSync(statePath, 'utf8');
-			const state = JSON.parse(stateFile) as CanvasState;
-
-			// Update name
-			state.name = newName;
-			state.updatedAt = Date.now();
-
-			// Save back
-			fs.writeFileSync(statePath, JSON.stringify(state, null, '\t'), 'utf8');
-
-			// Update panel title if open
-			const panel = CanvasPanel.panels.get(canvasId);
-			if (panel) {
-				panel._panel.title = `Roopik Canvas - ${newName}`;
-				panel.canvasState.name = newName;
-			}
-
-			Logger.getInstance().info('CanvasPanel', `Canvas "${canvasId}" renamed to "${newName}"`);
-
-			// Notify listeners
-			CanvasPanel.onDidChangePanelsEmitter.fire();
-
-			return true;
-		} catch (error) {
-			Logger.getInstance().error('CanvasPanel', `Failed to rename canvas "${canvasId}"`, error);
-			return false;
-		}
-	}
-
-	/**
 	 * Get all open canvas IDs
 	 */
 	public static getOpenCanvasIds(): string[] {
@@ -289,287 +164,34 @@ export class CanvasPanel {
 	}
 
 	/**
-	 * Save current session (list of open canvas IDs) to disk
+	 * Get a canvas panel by ID
 	 */
-	public static saveSession(workspaceRoot: string, preferences?: { backgroundColor?: string; backgroundPattern?: string }) {
-		const configManager = ConfigManager.getInstance(workspaceRoot);
-		const sessionPath = configManager.getSessionPath();
-
-		// Load existing session to preserve preferences if not provided
-		let existingPreferences = {};
-		try {
-			if (fs.existsSync(sessionPath)) {
-				const sessionFile = fs.readFileSync(sessionPath, 'utf8');
-				const existingSession = JSON.parse(sessionFile);
-				if (existingSession.preferences) {
-					existingPreferences = existingSession.preferences;
-				}
-			}
-		} catch (error) {
-			// Ignore read errors, will create new session
-		}
-
-		const session = {
-			canvasIds: Array.from(CanvasPanel.panels.keys()),
-			preferences: preferences || existingPreferences,
-			timestamp: Date.now()
-		};
-
-		try {
-			fs.writeFileSync(sessionPath, JSON.stringify(session, null, '\t'), 'utf8');
-			Logger.getInstance().debug('CanvasPanel', `Session saved: ${session.canvasIds.length} canvases`);
-		} catch (error) {
-			Logger.getInstance().error('CanvasPanel', 'Failed to save session', error);
-		}
+	public static getPanel(canvasId: string): CanvasPanel | undefined {
+		return CanvasPanel.panels.get(canvasId);
 	}
 
 	/**
-	 * Restore last session (reopen canvases from previous session)
-	 * Returns the session preferences (backgroundColor, backgroundPattern)
+	 * Send a message to this canvas's webview
 	 */
-	public static restoreSession(extensionUri: vscode.Uri, workspaceRoot: string): { backgroundColor?: string; backgroundPattern?: string } | null {
-		const configManager = ConfigManager.getInstance(workspaceRoot);
-		const config = configManager.getConfig();
-
-		if (!config.canvas.restoreLastSession) {
-			Logger.getInstance().info('CanvasPanel', 'Session restore disabled in config');
-			return null;
-		}
-
-		const sessionPath = configManager.getSessionPath();
-
-		try {
-			if (fs.existsSync(sessionPath)) {
-				const sessionFile = fs.readFileSync(sessionPath, 'utf8');
-				const session = JSON.parse(sessionFile);
-
-				if (session.canvasIds && Array.isArray(session.canvasIds) && session.canvasIds.length > 0) {
-					Logger.getInstance().info('CanvasPanel', `Restoring session: ${session.canvasIds.length} canvases`);
-
-					// Reopen each canvas
-					session.canvasIds.forEach((canvasId: string) => {
-						try {
-							// Load canvas state to get the name
-							const statePath = configManager.getCanvasStatePath(canvasId);
-							if (fs.existsSync(statePath)) {
-								const stateFile = fs.readFileSync(statePath, 'utf8');
-								const state = JSON.parse(stateFile);
-								CanvasPanel.createOrShow(extensionUri, canvasId, state.name);
-							}
-						} catch (canvasError) {
-							Logger.getInstance().error('CanvasPanel', `Failed to restore canvas "${canvasId}"`, canvasError);
-							// Continue with other canvases
-						}
-					});
-				}
-
-				// Store preferences in static property for all canvases (with validation)
-				if (session.preferences && typeof session.preferences === 'object' && session.preferences !== null) {
-					CanvasPanel.sessionPreferences = session.preferences;
-					Logger.getInstance().info('CanvasPanel', 'Session preferences restored', session.preferences);
-					return session.preferences;
-				} else {
-					CanvasPanel.sessionPreferences = null;
-				}
-			}
-		} catch (error) {
-			Logger.getInstance().debug('CanvasPanel', 'No valid session found, starting fresh');
-			CanvasPanel.sessionPreferences = null;
-		}
-
-		return null;
-	}	/**
-	 * Get list of all canvas states (for dashboard)
-	 */
-	public static getAllCanvasStates(workspaceRoot: string): CanvasState[] {
-		const states: CanvasState[] = [];
-		const roopikDir = require('path').join(workspaceRoot, '.roopik');
-
-		try {
-			if (fs.existsSync(roopikDir)) {
-				const files = fs.readdirSync(roopikDir);
-				files.forEach(file => {
-					if (file.startsWith('canvas-') && file.endsWith('.json')) {
-						const filePath = require('path').join(roopikDir, file);
-						const stateFile = fs.readFileSync(filePath, 'utf8');
-						const state = JSON.parse(stateFile) as CanvasState;
-						states.push(state);
-					}
-				});
-			}
-		} catch (error) {
-			Logger.getInstance().error('CanvasPanel', 'Failed to get canvas states', error);
-		}
-
-		// Sort by most recently updated
-		return states.sort((a, b) => b.updatedAt - a.updatedAt);
-	}
-
-	/**
-	 * Export a canvas to a JSON file
-	 * @param canvasId - Canvas ID to export
-	 * @param workspaceRoot - Workspace root path
-	 * @returns Export file path or null on failure
-	 */
-	public static async exportCanvas(canvasId: string, workspaceRoot: string): Promise<string | null> {
-		try {
-			const configManager = ConfigManager.getInstance(workspaceRoot);
-			const statePath = configManager.getCanvasStatePath(canvasId);
-
-			if (!fs.existsSync(statePath)) {
-				Logger.getInstance().error('CanvasPanel', `Canvas "${canvasId}" not found`);
-				return null;
-			}
-
-			// Load canvas state
-			const stateFile = fs.readFileSync(statePath, 'utf8');
-			const state = JSON.parse(stateFile) as CanvasState;
-
-			// Create export object with metadata
-			const exportData = {
-				version: '1.0',
-				exportedAt: Date.now(),
-				canvas: state
-			};
-
-			// Prompt user for save location
-			const uri = await vscode.window.showSaveDialog({
-				defaultUri: vscode.Uri.file(`${state.name}.roopik.json`),
-				filters: {
-					'Roopik Canvas': ['roopik.json'],
-					'JSON': ['json']
-				}
-			});
-
-			if (!uri) {
-				return null; // User cancelled
-			}
-
-			// Write export file
-			fs.writeFileSync(uri.fsPath, JSON.stringify(exportData, null, '\t'), 'utf8');
-			Logger.getInstance().info('CanvasPanel', `Canvas "${canvasId}" exported to ${uri.fsPath}`);
-
-			return uri.fsPath;
-		} catch (error) {
-			Logger.getInstance().error('CanvasPanel', `Failed to export canvas "${canvasId}"`, error);
-			return null;
-		}
-	}
-
-	/**
-	 * Import a canvas from a JSON file
-	 * @param workspaceRoot - Workspace root path
-	 * @param extensionUri - Extension URI for creating panels
-	 * @returns Imported canvas ID or null on failure
-	 */
-	public static async importCanvas(workspaceRoot: string, extensionUri: vscode.Uri): Promise<string | null> {
-		try {
-			// Prompt user for file
-			const uris = await vscode.window.showOpenDialog({
-				canSelectMany: false,
-				filters: {
-					'Roopik Canvas': ['roopik.json'],
-					'JSON': ['json']
-				}
-			});
-
-			if (!uris || uris.length === 0) {
-				return null; // User cancelled
-			}
-
-			// Read import file
-			const importFile = fs.readFileSync(uris[0].fsPath, 'utf8');
-			const importData = JSON.parse(importFile);
-
-			// Validate import format
-			if (!importData.canvas || !importData.canvas.id) {
-				vscode.window.showErrorMessage('Invalid canvas export file format');
-				return null;
-			}
-
-			const canvasState = importData.canvas as CanvasState;
-
-			// Check if canvas ID already exists
-			const configManager = ConfigManager.getInstance(workspaceRoot);
-			let finalCanvasId = canvasState.id;
-			let finalCanvasName = canvasState.name;
-
-			const existingStatePath = configManager.getCanvasStatePath(finalCanvasId);
-			if (fs.existsSync(existingStatePath)) {
-				// Canvas ID exists, prompt for new name
-				const newName = await vscode.window.showInputBox({
-					prompt: `Canvas "${finalCanvasId}" already exists. Enter a new name:`,
-					value: `${canvasState.name} (imported)`,
-					validateInput: (value) => {
-						if (!value || value.trim().length === 0) {
-							return 'Canvas name cannot be empty';
-						}
-						return null;
-					}
-				});
-
-				if (!newName) {
-					return null; // User cancelled
-				}
-
-				finalCanvasName = newName;
-				finalCanvasId = newName.toLowerCase()
-					.trim()
-					.replace(/\s+/g, '-')
-					.replace(/[^a-z0-9-]/g, '');
-			}
-
-			// Create new canvas state with updated ID and name
-			const newState: CanvasState = {
-				...canvasState,
-				id: finalCanvasId,
-				name: finalCanvasName,
-				createdAt: Date.now(),
-				updatedAt: Date.now()
-			};
-
-			// Save canvas state
-			const newStatePath = configManager.getCanvasStatePath(finalCanvasId);
-			const stateDir = require('path').dirname(newStatePath);
-			if (!fs.existsSync(stateDir)) {
-				fs.mkdirSync(stateDir, { recursive: true });
-			}
-			fs.writeFileSync(newStatePath, JSON.stringify(newState, null, '\t'), 'utf8');
-
-			Logger.getInstance().info('CanvasPanel', `Canvas imported as "${finalCanvasId}"`);
-
-			// Open the imported canvas
-			CanvasPanel.createOrShow(extensionUri, finalCanvasId, finalCanvasName);
-
-			// Notify listeners
-			CanvasPanel.onDidChangePanelsEmitter.fire();
-
-			return finalCanvasId;
-		} catch (error) {
-			Logger.getInstance().error('CanvasPanel', 'Failed to import canvas', error);
-			vscode.window.showErrorMessage(`Failed to import canvas: ${error}`);
-			return null;
-		}
+	public postMessage(message: { type: string; payload: unknown }): void {
+		this._panel.webview.postMessage(message);
 	}
 
 	private constructor(
 		panel: vscode.WebviewPanel,
 		extensionUri: vscode.Uri,
 		canvasId: string,
-		canvasName?: string
+		canvasName: string
 	) {
 		this._panel = panel;
 		this.extensionUri = extensionUri;
 		this.canvasId = canvasId;
+		this.canvasName = canvasName;
 
-		// Initialize config manager
-		const workspaceFolders = vscode.workspace.workspaceFolders;
-		const workspaceRoot = workspaceFolders![0].uri.fsPath;
-		this.configManager = ConfigManager.getInstance(workspaceRoot);
 		this.logger = Logger.getInstance().createScoped(`Canvas-${canvasId}`);
 
-		// Load or create canvas state
-		this.canvasState = this.loadOrCreateState(canvasName);
+		// Load or create canvas state using CanvasStateManager
+		this.canvasState = this.loadOrCreateState();
 
 		// Set the webview's initial html content
 		this._update();
@@ -581,32 +203,14 @@ export class CanvasPanel {
 		this._panel.webview.onDidReceiveMessage(
 			async message => {
 				switch (message.type) {
-					case 'alert':
-						vscode.window.showInformationMessage(message.text);
+					case 'saveCanvas':
+						await this.handleSaveCanvas(message.payload);
 						break;
-					case 'log':
-						this.logger.info(message.text);
-						break;
-					case 'saveState':
-						this.saveState(message.state);
-						break;
-					case 'savePreferences':
-						this.handleSavePreferences(message.preferences);
+					case 'buildComponent':
+						await this.handleBuildComponent(message.payload);
 						break;
 					case 'error':
 						this.handleError(message.message || message.error);
-						break;
-					case 'loadComponent':
-						await this.handleLoadComponent(message.component);
-						break;
-					case 'updateComponent':
-						await this.handleUpdateComponent(message.componentId, message.code);
-						break;
-					case 'getSandboxTemplate':
-						await this.handleGetSandboxTemplate();
-						break;
-					case 'saveSandboxes':
-						await this.handleSaveSandboxes(message.sandboxes);
 						break;
 				}
 			},
@@ -616,224 +220,136 @@ export class CanvasPanel {
 	}
 
 	/**
-	 * Load canvas state from disk or create new
+	 * Load canvas state from disk or create new using CanvasStateManager
 	 */
-	private loadOrCreateState(canvasName?: string): CanvasState {
-		const statePath = this.configManager.getCanvasStatePath(this.canvasId);
+	private loadOrCreateState(): CanvasState {
+		const stateManager = CanvasStateManager.getInstance();
 
-		try {
-			if (fs.existsSync(statePath)) {
-				const stateFile = fs.readFileSync(statePath, 'utf8');
-				const state = JSON.parse(stateFile) as CanvasState;
-				this.logger.info('State loaded from disk');
-				return state;
-			}
-		} catch (error) {
-			this.logger.error('Failed to load state', error);
+		// Try to load existing canvas
+		const existingState = stateManager.loadCanvasSync(this.canvasName);
+		if (existingState) {
+			this.logger.info('State loaded from disk');
+			return existingState;
 		}
 
-		// Create new state if doesn't exist
+		// Create new state
+		const now = Date.now();
 		const newState: CanvasState = {
-			id: this.canvasId,
-			name: canvasName || this.canvasId,
-			components: [],
+			id: `canvas-${now}`,
+			name: this.canvasName,
 			sandboxes: [],
-			layout: {},
-			createdAt: Date.now(),
-			updatedAt: Date.now()
+			selectedSandboxId: null,
+			viewport: { x: 0, y: 0, scale: 1 },
+			createdAt: now,
+			updatedAt: now
 		};
 
-		this.saveState(newState);
+		// Save new state
+		stateManager.saveCanvasSync(this.canvasName, newState);
 		this.logger.info('New state created');
+
 		return newState;
-	}
-
-	/**
-	 * Save canvas state to disk
-	 */
-	private saveState(state: Partial<CanvasState>) {
-		this.canvasState = {
-			...this.canvasState,
-			...state,
-			updatedAt: Date.now()
-		};
-
-		const statePath = this.configManager.getCanvasStatePath(this.canvasId);
-
-		try {
-			// Ensure directory exists
-			const stateDir = require('path').dirname(statePath);
-			if (!fs.existsSync(stateDir)) {
-				fs.mkdirSync(stateDir, { recursive: true });
-			}
-
-			fs.writeFileSync(statePath, JSON.stringify(this.canvasState, null, '\t'), 'utf8');
-			this.logger.debug('State saved to disk');
-		} catch (error) {
-			this.logger.error('Failed to save state', error);
-		}
-	}
-
-	/**
-	 * Handle saving preferences (backgroundColor, backgroundPattern)
-	 */
-	private handleSavePreferences(preferences: { backgroundColor?: string; backgroundPattern?: string }) {
-		this.logger.debug('Saving preferences', preferences);
-
-		// Save to session.json
-		const workspaceFolders = vscode.workspace.workspaceFolders;
-		if (workspaceFolders) {
-			CanvasPanel.saveSession(workspaceFolders[0].uri.fsPath, preferences);
-		}
 	}
 
 	/**
 	 * Handle errors from webview
 	 */
-	private handleError(error: any) {
+	private handleError(error: unknown) {
 		this.logger.error('Webview error', error);
 
 		// Extract error message
 		const errorMessage = typeof error === 'string'
 			? error
-			: error?.message || JSON.stringify(error);
+			: (error as Error)?.message || JSON.stringify(error);
 
 		// Show error message but don't crash
 		vscode.window.showErrorMessage(
 			`Error in canvas "${this.canvasState.name}": ${errorMessage}`
 		);
-
-		// Save state before potential crash
-		this.saveState(this.canvasState);
 	}
 
 	/**
-	 * Handle component load (Mode 1 - AI generated component)
-	 * Receives import-based code with manifest, transforms it, sends session code to webview
+	 * Handle saveCanvas message from webview (auto-save from React app)
+	 * This is the main save handler used by ComponentView.tsx
 	 */
-	private async handleLoadComponent(component: ComponentSource) {
-		if (!CanvasPanel.previewManager || !CanvasPanel.componentSandbox) {
-			this.logger.error('Preview system not initialized');
-			return;
-		}
-
+	private async handleSaveCanvas(payload: { canvasId: string; state: CanvasState }) {
 		try {
-			this.logger.info(`Loading component ${component.id}`);
+			const { state } = payload;
+			this.logger.debug(`Saving canvas state: ${state.sandboxes?.length || 0} sandboxes`);
 
-			// Parse dependency manifest from code
-			const dependencies = CanvasPanel.previewManager.parseDependencyManifest(component.code);
-			const componentSource: ComponentSource = {
-				...component,
-				dependencies
+			// Update canvas state
+			this.canvasState = {
+				...this.canvasState,
+				sandboxes: state.sandboxes || [],
+				selectedSandboxId: state.selectedSandboxId,
+				viewport: state.viewport || this.canvasState.viewport,
+				backgroundColor: state.backgroundColor,
+				backgroundPattern: state.backgroundPattern,
+				updatedAt: Date.now()
 			};
 
-			// Transform to session code (import → const)
-			const sessionCode = CanvasPanel.previewManager.transformToSessionCode(componentSource);
-
-			// Create init message for sandbox
-			const sandboxMessage = CanvasPanel.componentSandbox.createInitMessage(sessionCode);
-
-			this.logger.debug('Component transformed, sending to webview');
-
-			// Send session code to webview
-			this._panel.webview.postMessage({
-				type: 'componentReady',
-				componentId: component.id,
-				sandboxMessage: sandboxMessage
-			});
-		} catch (error) {
-			this.logger.error('Failed to load component', error);
-			this.handleError(error);
-		}
-	}
-
-	/**
-	 * Handle component update (Mode 1 - hot reload)
-	 * For live editing without reloading CDN scripts
-	 */
-	private async handleUpdateComponent(componentId: string, code: string) {
-		if (!CanvasPanel.componentSandbox) {
-			this.logger.error('Preview system not initialized');
-			return;
-		}
-
-		try {
-			this.logger.info(`Updating component ${componentId}`);
-
-			// Create update message (no CDN reload)
-			const sandboxMessage = CanvasPanel.componentSandbox.createUpdateMessage(code);
-
-			// Send update to webview
-			this._panel.webview.postMessage({
-				type: 'componentUpdate',
-				componentId: componentId,
-				sandboxMessage: sandboxMessage
-			});
-
-			this.logger.debug('Component update sent for hot-reload');
-		} catch (error) {
-			this.logger.error('Failed to update component', error);
-			this.handleError(error);
-		}
-	}
-
-	/**
-	 * Handle request for sandbox template
-	 * Sends the sandbox_template.html content to webview
-	 */
-	private async handleGetSandboxTemplate() {
-		if (!CanvasPanel.componentSandbox) {
-			this.logger.error('Preview system not initialized');
-			return;
-		}
-
-		try {
-			this.logger.debug('Fetching sandbox template');
-
-			// Get sandbox template HTML
-			const templateHtml = await CanvasPanel.componentSandbox.getSandboxTemplate();
-
-			// Send to webview
-			this._panel.webview.postMessage({
-				type: 'sandboxTemplate',
-				html: templateHtml
-			});
-
-			this.logger.debug('Sandbox template sent to webview');
-		} catch (error) {
-			this.logger.error('Failed to get sandbox template', error);
-			this.handleError(error);
-		}
-	}
-
-	/**
-	 * Handle sandbox state updates from webview
-	 * Saves sandbox positions, sizes, etc. to canvas state
-	 */
-	private async handleSaveSandboxes(data: { sandboxes: any[]; viewport?: any }) {
-		try {
-			const sandboxes = data.sandboxes || data; // Support both new and old format
-			this.logger.debug(`Saving ${Array.isArray(sandboxes) ? sandboxes.length : 0} sandboxes`);
-
-			// Update canvas state with new sandboxes
-			if (Array.isArray(sandboxes)) {
-				this.canvasState.sandboxes = sandboxes;
-			}
-
-			// Save viewport if provided
-			if (data.viewport) {
-				this.canvasState.viewport = data.viewport;
-			}
-
-			this.canvasState.updatedAt = Date.now();
-
 			// Persist to disk
-			this.saveState(this.canvasState);
+			const stateManager = CanvasStateManager.getInstance();
+			stateManager.saveCanvasSync(this.canvasName, this.canvasState);
 
-			this.logger.debug('State saved successfully');
+			this.logger.debug('Canvas state saved successfully');
 		} catch (error) {
-			this.logger.error('Failed to save state', error);
+			this.logger.error('Failed to save canvas state', error);
 			this.handleError(error);
+		}
+	}
+
+	/**
+	 * Handle build component request via Core's ESBuild pipeline
+	 */
+	private async handleBuildComponent(payload: { componentId: string; input: ComponentInput }) {
+		const { componentId, input } = payload;
+
+		this.logger.info(`📥 Build request received: ${componentId}`, {
+			inputId: input.id,
+			framework: input.framework,
+			files: Object.keys(input.files),
+			dependencies: input.dependencies
+		});
+
+		try {
+			// Build via Core pipeline
+			this.logger.debug(`🔨 Calling Core pipeline for: ${componentId}`);
+			const coreBridge = CoreBridgeService.getInstance();
+			const result = await coreBridge.buildComponent(input);
+
+			this.logger.info(`✅ Build success: ${componentId}`, {
+				framework: result.framework,
+				bundledCodeLength: result.bundledCode?.length || 0,
+				cdnUrls: result.cdnUrls,
+				transformTime: result.metadata?.transformTime
+			});
+
+			// Log first 300 chars of bundled code for debugging
+			if (result.bundledCode) {
+				this.logger.debug(`📦 Bundled code preview: ${result.bundledCode.substring(0, 300)}...`);
+			}
+
+			// Send success response to webview
+			this._panel.webview.postMessage({
+				type: 'componentBuilt',
+				payload: {
+					componentId,
+					result
+				}
+			});
+		} catch (error) {
+			const errorMsg = error instanceof Error ? error.message : String(error);
+			this.logger.error(`❌ Build failed: ${componentId}`, { error: errorMsg });
+
+			// Send error response to webview
+			this._panel.webview.postMessage({
+				type: 'componentError',
+				payload: {
+					componentId,
+					error: errorMsg
+				}
+			});
 		}
 	}
 
@@ -844,13 +360,8 @@ export class CanvasPanel {
 		CanvasPanel.panels.delete(this.canvasId);
 
 		// Save final state
-		this.saveState(this.canvasState);
-
-		// Save session (update list of open canvases)
-		const workspaceFolders = vscode.workspace.workspaceFolders;
-		if (workspaceFolders) {
-			CanvasPanel.saveSession(workspaceFolders[0].uri.fsPath);
-		}
+		const stateManager = CanvasStateManager.getInstance();
+		stateManager.saveCanvasSync(this.canvasName, this.canvasState);
 
 		// Notify listeners that panels changed (before disposing)
 		CanvasPanel.onDidChangePanelsEmitter.fire();
@@ -881,15 +392,15 @@ export class CanvasPanel {
 			vscode.Uri.joinPath(this.extensionUri, 'webview', 'build', 'assets', 'componentView.css')
 		);
 
-		// CSP updated to allow unpkg.com and unsafe-eval for Babel Standalone
+		// CSP: Allow esm.sh for CDN imports in sandbox iframes
 		const csp = `
 			default-src 'none';
 			style-src ${webview.cspSource} 'unsafe-inline';
-			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https://unpkg.com;
+			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https://esm.sh https://cdn.skypack.dev;
 			font-src ${webview.cspSource};
-			img-src ${webview.cspSource} data:;
-			connect-src ${webview.cspSource} https://unpkg.com;
-			frame-src ${webview.cspSource} data: blob:;
+			img-src ${webview.cspSource} data: https:;
+			connect-src https://esm.sh https://cdn.skypack.dev;
+			frame-src blob: data: https:;
 		`;
 
 		return `<!DOCTYPE html>
@@ -906,16 +417,14 @@ export class CanvasPanel {
 		}
 	</style>
 	<link href="${styleUri}" rel="stylesheet">
-	<link href="${webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'webview', 'build', 'assets', 'BottomActionBar.css'))}" rel="stylesheet">
 	<title>Roopik Canvas - ${this.canvasState.name}</title>
 </head>
 <body>
 	<div id="root"></div>
 	<script type="module" src="${scriptUri}"></script>
 	<script>
-		// Pass canvas state and preferences to React app
+		// Pass canvas state to React app
 		window.CANVAS_STATE = ${JSON.stringify(this.canvasState)};
-		window.SESSION_PREFERENCES = ${JSON.stringify(CanvasPanel.sessionPreferences || {})};
 	</script>
 </body>
 </html>`;

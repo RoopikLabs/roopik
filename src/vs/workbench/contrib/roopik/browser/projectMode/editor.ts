@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Copyright (c) Roopik. All rights reserved.
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
@@ -1328,26 +1328,26 @@ export class Editor extends EditorPane {
 				}));
 			}
 
-		// Initialize browser view if not already done
-		// This happens on:
-		// 1. First time opening the browser preview
-		// 2. After IDE reload (browser view was destroyed, needs to be recreated)
-		//    - EditorTabInputSerializer restores the URL
-		//    - setInput() is called with restored input
-		//    - Browser view is recreated and navigated to restored URL
-		if (!this.browserViewId) {
-			// Set URL bar to initial URL for first load
-			if (this.controlBar) {
-				this.controlBar.setUrl(initialUrl);
-			}
+			// Initialize browser view if not already done
+			// This happens on:
+			// 1. First time opening the browser preview
+			// 2. After IDE reload (browser view was destroyed, needs to be recreated)
+			//    - EditorTabInputSerializer restores the URL
+			//    - setInput() is called with restored input
+			//    - Browser view is recreated and navigated to restored URL
+			if (!this.browserViewId) {
+				// Set URL bar to initial URL for first load
+				if (this.controlBar) {
+					this.controlBar.setUrl(initialUrl);
+				}
 
-			await this.initializeBrowserView();
+				await this.initializeBrowserView();
 
-			// Navigate only on first initialization if we have a real URL
-			// This handles both fresh opens and restores after reload
-			if (this.browserViewId && initialUrl && initialUrl !== 'about:blank') {
-				await this.navigate(initialUrl);
-			}
+				// Navigate only on first initialization if we have a real URL
+				// This handles both fresh opens and restores after reload
+				if (this.browserViewId && initialUrl && initialUrl !== 'about:blank') {
+					await this.navigate(initialUrl);
+				}
 			} else {
 				// Browser view already exists (tab switch back)
 				// Just restore visibility - NO re-navigation needed!

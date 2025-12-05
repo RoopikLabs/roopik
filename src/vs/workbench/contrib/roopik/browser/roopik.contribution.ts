@@ -1,11 +1,12 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Copyright (c) Roopik. All rights reserved.
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { localize2 } from '../../../../nls.js';
+import { localize, localize2 } from '../../../../nls.js';
 import { registerAction2, Action2 } from '../../../../platform/actions/common/actions.js';
 import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
+import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { EditorPaneDescriptor, IEditorPaneRegistry } from '../../../browser/editor.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { EditorExtensions, IEditorFactoryRegistry } from '../../../common/editor.js';
@@ -19,12 +20,12 @@ import { ILifecycleService, LifecyclePhase, StartupKind } from '../../../service
 import { IWorkbenchLayoutService } from '../../../services/layout/browser/layoutService.js';
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
+import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
 import { RoopikWelcomeEditor } from './welcomeEditor.js';
 import { RoopikWelcomeInput, RoopikWelcomeInputSerializer } from './welcomeInput.js';
 import { RoopikViewsContribution } from './roopikViewPane.js';
 import { RoopikLogger } from '../common/roopikLogger.js';
 import { IOutputService } from '../../../services/output/common/output.js';
-import { ILoggerService } from '../../../../platform/log/common/log.js';
 import { Editor } from './projectMode/editor.js';
 import { EditorTabInput } from './projectMode/editorTabInput.js';
 import { EditorTabInputSerializer } from './projectMode/editorTabInputSerializer.js';
@@ -36,6 +37,12 @@ import { CanvasInput } from './canvas/canvasInput.js';
 import { ISandboxPipelineService } from '../common/sandboxPipeline/sandboxPipelineService.js';
 import { SandboxPipelineClient } from './sandboxPipelineClient.js';
 
+// Import canvas commands (registers roopik.pipeline.* commands for extension use)
+import './canvas/canvasCommands.js';
+
+// Import import commands (registers roopik.import.* commands)
+import './canvas/importCommands.js';
+
 /**
  * Roopik Design IDE - Main Contribution
  *
@@ -44,28 +51,6 @@ import { SandboxPipelineClient } from './sandboxPipelineClient.js';
  * - AI agents (tool calling)
  * - API (external integrations)
  */
-
-// Test command
-registerAction2(class extends Action2 {
-	constructor() {
-		super({
-			id: 'roopik.test',
-			title: localize2('roopik.test', 'Test Core Integration'),
-			category: localize2('roopik.category', 'Roopik'),
-			f1: true
-		});
-	}
-
-	async run(accessor: ServicesAccessor): Promise<void> {
-		const loggerService = accessor.get(ILoggerService);
-		const logger = RoopikLogger.create(loggerService);
-
-		// Automatically logs to both Developer Console and Output Panel
-		logger.info('[Roopik] Core integration working! 🎨');
-
-		return Promise.resolve();
-	}
-});
 
 // Register Welcome Screen Editor
 Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
@@ -149,6 +134,7 @@ registerAction2(class extends Action2 {
 });
 
 // Open Canvas (Mode 1: Component Canvas)
+// Prompts for canvas name, then delegates to roopik-extension for WebviewPanel
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
@@ -160,13 +146,34 @@ registerAction2(class extends Action2 {
 	}
 
 	async run(accessor: ServicesAccessor): Promise<void> {
-		const editorGroupsService = accessor.get(IEditorGroupsService);
+		const quickInputService = accessor.get(IQuickInputService);
+		const commandService = accessor.get(ICommandService);
 
-		// Get or create default canvas
-		const canvasInput = CanvasInput.getInstance('default', 'Component Canvas');
+		// Prompt for canvas name
+		const canvasName = await quickInputService.input({
+			title: localize('roopik.canvasName.title', 'New Canvas'),
+			prompt: localize('roopik.canvasName.prompt', 'Enter a name for your canvas'),
+			placeHolder: localize('roopik.canvasName.placeholder', 'e.g., Dashboard Components, Landing Page, etc.'),
+			validateInput: async (value: string) => {
+				if (!value || !value.trim()) {
+					return localize('roopik.canvasName.required', 'Canvas name is required');
+				}
+				// Validate for valid folder name (no special chars except - and _)
+				const invalidChars = /[<>:"/\\|?*]/;
+				if (invalidChars.test(value)) {
+					return localize('roopik.canvasName.invalidChars', 'Canvas name cannot contain: < > : " / \\ | ? *');
+				}
+				return undefined;
+			}
+		});
 
-		// Open canvas editor in active group
-		await editorGroupsService.activeGroup.openEditor(canvasInput, { pinned: true });
+		// User cancelled
+		if (!canvasName) {
+			return;
+		}
+
+		// Delegate to extension with canvas name - WebviewPanel persists across tab switches!
+		await commandService.executeCommand('roopik.canvas.open', canvasName.trim());
 	}
 });
 

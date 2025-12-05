@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Roopik Labs. All rights reserved.
+ *  Copyright (c) Roopik. All rights reserved.
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
