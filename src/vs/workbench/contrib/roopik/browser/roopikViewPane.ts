@@ -33,6 +33,8 @@ import { IFileService } from '../../../../platform/files/common/files.js';
 import { URI } from '../../../../base/common/uri.js';
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { VSBuffer } from '../../../../base/common/buffer.js';
+import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
+import { Action } from '../../../../base/common/actions.js';
 
 /**
  * Canvas metadata from .roopik/canvases.json
@@ -68,7 +70,7 @@ export class RoopikDashboardView extends ViewPane {
 	constructor(
 		options: { id: string; title: string },
 		@IKeybindingService keybindingService: IKeybindingService,
-		@IContextMenuService contextMenuService: IContextMenuService,
+		@IContextMenuService private readonly contextMenuService: IContextMenuService,
 		@IConfigurationService configurationService: IConfigurationService,
 		@IContextKeyService contextKeyService: IContextKeyService,
 		@IViewDescriptorService viewDescriptorService: IViewDescriptorService,
@@ -80,6 +82,7 @@ export class RoopikDashboardView extends ViewPane {
 		@IFileService private readonly fileService: IFileService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 		@INotificationService private readonly notificationService: INotificationService,
+		@IQuickInputService private readonly quickInputService: IQuickInputService,
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
 	}
@@ -182,6 +185,7 @@ export class RoopikDashboardView extends ViewPane {
 					label: canvas.name,
 					description: this.formatTimeAgo(canvas.updatedAt),
 					onClick: () => this.openCanvas(canvas.name),
+					onRename: () => this.renameCanvas(canvas),
 					onDelete: () => this.deleteCanvas(canvas)
 				}));
 				this.createSection(this.canvasesContainer, 'Canvases', items);
@@ -345,6 +349,95 @@ export class RoopikDashboardView extends ViewPane {
 	}
 
 	/**
+	 * Rename a canvas
+	 */
+	private async renameCanvas(canvas: CanvasMetadata): Promise<void> {
+		const workspace = this.workspaceContextService.getWorkspace();
+		if (!workspace.folders || workspace.folders.length === 0) {
+			return;
+		}
+
+		// Prompt for new name
+		const newName = await this.quickInputService.input({
+			title: localize('roopik.renameCanvas', 'Rename Canvas'),
+			value: canvas.name,
+			prompt: localize('roopik.renameCanvasPrompt', 'Enter a new name for the canvas'),
+			validateInput: async (value) => {
+				if (!value || value.trim().length === 0) {
+					return localize('roopik.renameCanvasEmpty', 'Canvas name cannot be empty');
+				}
+				if (value.trim() === canvas.name) {
+					return null; // Same name is OK (no-op)
+				}
+				// Check if name already exists
+				const sanitized = value.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+				const workspaceFolder = workspace.folders![0];
+				const existingCanvasUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', sanitized);
+				try {
+					await this.fileService.stat(existingCanvasUri);
+					return localize('roopik.renameCanvasExists', 'A canvas with this name already exists');
+				} catch {
+					return null; // Doesn't exist, OK
+				}
+			}
+		});
+
+		if (!newName || newName.trim() === canvas.name) {
+			return; // Cancelled or same name
+		}
+
+		const trimmedNewName = newName.trim();
+		const workspaceFolder = workspace.folders[0];
+		const oldFolderName = canvas.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+		const newFolderName = trimmedNewName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+
+		const oldCanvasFolderUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', oldFolderName);
+		const newCanvasFolderUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', newFolderName);
+		const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', 'canvases.json');
+
+		try {
+			// Close the editor tab if this canvas is open
+			await this.commandService.executeCommand('roopik.canvas.close', canvas.name);
+
+			// Rename the folder
+			await this.fileService.move(oldCanvasFolderUri, newCanvasFolderUri);
+
+			// Update canvases.json
+			const content = await this.fileService.readFile(canvasesJsonUri);
+			const data = JSON.parse(content.value.toString()) as { canvases: CanvasMetadata[] };
+
+			const canvasEntry = data.canvases.find(c => c.id === canvas.id);
+			if (canvasEntry) {
+				canvasEntry.name = trimmedNewName;
+				canvasEntry.folderPath = newFolderName;
+				canvasEntry.updatedAt = Date.now();
+			}
+
+			await this.fileService.writeFile(canvasesJsonUri, VSBuffer.fromString(JSON.stringify(data, null, 2)));
+
+			// Update canvas-state.json inside the folder
+			const canvasStateUri = URI.joinPath(newCanvasFolderUri, 'canvas-state.json');
+			try {
+				const stateContent = await this.fileService.readFile(canvasStateUri);
+				const stateData = JSON.parse(stateContent.value.toString());
+				stateData.name = trimmedNewName;
+				stateData.updatedAt = Date.now();
+				await this.fileService.writeFile(canvasStateUri, VSBuffer.fromString(JSON.stringify(stateData, null, 2)));
+			} catch {
+				// canvas-state.json might not exist yet
+			}
+
+			// Refresh the list
+			this.loadCanvases();
+
+			this.notificationService.info(`Canvas renamed to "${trimmedNewName}".`);
+		} catch (error) {
+			const errorMsg = error instanceof Error ? error.message : String(error);
+			this.notificationService.error(`Failed to rename canvas: ${errorMsg}`);
+		}
+	}
+
+	/**
 	 * Format timestamp to relative time (e.g., "2 days ago")
 	 */
 	private formatTimeAgo(timestamp: number): string {
@@ -367,7 +460,7 @@ export class RoopikDashboardView extends ViewPane {
 		return 'Just now';
 	}
 
-	private createSection(container: HTMLElement, title: string, items: Array<{ label: string; description: string; onClick?: () => void; onDelete?: () => void }>): HTMLElement {
+	private createSection(container: HTMLElement, title: string, items: Array<{ label: string; description: string; onClick?: () => void; onRename?: () => void; onDelete?: () => void }>): HTMLElement {
 		const section = document.createElement('div');
 		section.style.marginBottom = '16px';
 
@@ -417,110 +510,39 @@ export class RoopikDashboardView extends ViewPane {
 
 			itemEl.appendChild(contentEl);
 
-			// Delete button (trash icon, only if onDelete provided)
-			let deleteBtn: HTMLElement | null = null;
-			let deleteZone: HTMLElement | null = null;
-			let isConfirming = false;
-
-			if (item.onDelete) {
-				// Trash icon button (appears on hover with smooth fade-in)
-				deleteBtn = document.createElement('button');
-				deleteBtn.style.display = 'none';
-				deleteBtn.style.background = 'transparent';
-				deleteBtn.style.border = 'none';
-				deleteBtn.style.cursor = 'pointer';
-				deleteBtn.style.padding = '6px 8px';
-				deleteBtn.style.borderRadius = '4px';
-				deleteBtn.style.color = 'var(--vscode-descriptionForeground)';
-				deleteBtn.style.marginLeft = '8px';
-				deleteBtn.style.transition = 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)';
-				deleteBtn.style.opacity = '0.7';
-				deleteBtn.style.transform = 'scale(0.95)';
-				deleteBtn.title = 'Delete canvas';
-
-				const trashIcon = document.createElement('span');
-				trashIcon.classList.add('codicon', 'codicon-trash');
-				trashIcon.style.fontSize = '13px';
-				deleteBtn.appendChild(trashIcon);
-
-				deleteBtn.addEventListener('mouseenter', () => {
-					deleteBtn!.style.color = 'var(--vscode-errorForeground)';
-					deleteBtn!.style.opacity = '1';
-					deleteBtn!.style.transform = 'scale(1.05)';
-					deleteBtn!.style.background = 'var(--vscode-inputValidation-errorBackground, rgba(244, 67, 54, 0.1))';
-				});
-				deleteBtn.addEventListener('mouseleave', () => {
-					deleteBtn!.style.color = 'var(--vscode-descriptionForeground)';
-					deleteBtn!.style.opacity = '0.7';
-					deleteBtn!.style.transform = 'scale(0.95)';
-					deleteBtn!.style.background = 'transparent';
-				});
-
-				// Professional delete zone with smooth slide animation
-				deleteZone = document.createElement('div');
-				deleteZone.style.position = 'absolute';
-				deleteZone.style.right = '-33%';
-				deleteZone.style.top = '0';
-				deleteZone.style.bottom = '0';
-				deleteZone.style.width = '33%';
-				deleteZone.style.background = 'linear-gradient(135deg, var(--vscode-errorForeground) 0%, var(--vscode-inputValidation-errorBorder, #c62828) 100%)';
-				deleteZone.style.display = 'flex';
-				deleteZone.style.alignItems = 'center';
-				deleteZone.style.justifyContent = 'center';
-				deleteZone.style.cursor = 'pointer';
-				deleteZone.style.transition = 'right 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease';
-				deleteZone.style.borderRadius = '0 4px 4px 0';
-				deleteZone.style.boxShadow = 'inset 0 0 20px rgba(0, 0, 0, 0.2)';
-				deleteZone.style.zIndex = '10';
-
-				// Confirmation icon with better styling
-				const confirmIcon = document.createElement('span');
-				confirmIcon.classList.add('codicon', 'codicon-trash');
-				confirmIcon.style.color = 'white';
-				confirmIcon.style.fontSize = '16px';
-				confirmIcon.style.transition = 'transform 0.15s ease';
-				deleteZone.appendChild(confirmIcon);
-
-				// Click trash icon -> show delete zone with smooth animation
-				deleteBtn.addEventListener('click', (e) => {
+			// Context menu for rename/delete (if either action is provided)
+			if (item.onRename || item.onDelete) {
+				itemEl.addEventListener('contextmenu', (e) => {
+					e.preventDefault();
 					e.stopPropagation();
-					isConfirming = true;
-					deleteBtn!.style.display = 'none';
-					deleteZone!.style.right = '0';
-					deleteZone!.style.boxShadow = 'inset 0 0 30px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(244, 67, 54, 0.3)';
 
-					// Subtle pulse animation on confirm icon
-					confirmIcon.style.animation = 'roopik-pulse 0.3s ease';
-					setTimeout(() => {
-						confirmIcon.style.animation = '';
-					}, 300);
-				});
+					const actions: Action[] = [];
 
-				// Click delete zone -> confirm delete
-				deleteZone.addEventListener('click', (e) => {
-					e.stopPropagation();
-					// Add click feedback
-					deleteZone!.style.transform = 'scale(0.98)';
-					setTimeout(() => {
-						deleteZone!.style.transform = '';
-						item.onDelete!();
-					}, 100);
-				});
+					if (item.onRename) {
+						actions.push(new Action(
+							'roopik.renameCanvas',
+							localize('roopik.contextMenu.rename', 'Rename'),
+							'codicon-edit',
+							true,
+							async () => { item.onRename!(); }
+						));
+					}
 
-				// Enhanced hover effect on delete zone
-				deleteZone.addEventListener('mouseenter', () => {
-					deleteZone!.style.background = 'linear-gradient(135deg, var(--vscode-inputValidation-errorBackground, #5a1d1d) 0%, var(--vscode-errorForeground) 100%)';
-					deleteZone!.style.boxShadow = 'inset 0 0 30px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(244, 67, 54, 0.4)';
-					confirmIcon.style.transform = 'scale(1.1)';
-				});
-				deleteZone.addEventListener('mouseleave', () => {
-					deleteZone!.style.background = 'linear-gradient(135deg, var(--vscode-errorForeground) 0%, var(--vscode-inputValidation-errorBorder, #c62828) 100%)';
-					deleteZone!.style.boxShadow = 'inset 0 0 20px rgba(0, 0, 0, 0.2)';
-					confirmIcon.style.transform = 'scale(1)';
-				});
+					if (item.onDelete) {
+						actions.push(new Action(
+							'roopik.deleteCanvas',
+							localize('roopik.contextMenu.delete', 'Delete'),
+							'codicon-trash',
+							true,
+							async () => { item.onDelete!(); }
+						));
+					}
 
-				itemEl.appendChild(deleteBtn);
-				itemEl.appendChild(deleteZone);
+					this.contextMenuService.showContextMenu({
+						getAnchor: () => ({ x: e.clientX, y: e.clientY }),
+						getActions: () => actions
+					});
+				});
 			}
 
 			// Enhanced hover effect (only if clickable)
@@ -530,35 +552,14 @@ export class RoopikDashboardView extends ViewPane {
 				itemEl.addEventListener('mouseenter', () => {
 					itemEl.style.backgroundColor = 'var(--vscode-list-hoverBackground)';
 					itemEl.style.transform = 'translateX(2px)';
-					if (deleteBtn && !isConfirming) {
-						deleteBtn.style.display = 'block';
-						// Smooth fade-in for delete button
-						setTimeout(() => {
-							if (deleteBtn) {
-								deleteBtn.style.opacity = '0.7';
-								deleteBtn.style.transform = 'scale(0.95)';
-							}
-						}, 10);
-					}
 				});
 				itemEl.addEventListener('mouseleave', () => {
 					itemEl.style.backgroundColor = 'transparent';
 					itemEl.style.transform = 'translateX(0)';
-					if (deleteBtn) {
-						deleteBtn.style.display = 'none';
-						deleteBtn.style.opacity = '0';
-						deleteBtn.style.transform = 'scale(0.95)';
-					}
-					// Smooth reset of delete zone on mouse leave
-					if (isConfirming && deleteZone) {
-						isConfirming = false;
-						deleteZone.style.right = '-33%';
-						deleteZone.style.boxShadow = 'inset 0 0 20px rgba(0, 0, 0, 0.2)';
-					}
 				});
 
-				// Click handler (on content, not delete button)
-				contentEl.addEventListener('click', () => {
+				// Click handler
+				itemEl.addEventListener('click', () => {
 					item.onClick!();
 				});
 			}
