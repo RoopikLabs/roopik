@@ -208,6 +208,10 @@ export interface CanvasState {
 	sandboxes: Sandbox[];
 	selectedSandboxId: string | null;
 	viewport: Transform;
+	/** Background color hex value */
+	backgroundColor?: string;
+	/** Background pattern type */
+	backgroundPattern?: BackgroundPattern;
 	createdAt: number;
 	updatedAt: number;
 }

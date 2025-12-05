@@ -239,12 +239,6 @@ export class LocalFileAdapter implements IComponentImportAdapter {
 			meta
 		};
 
-		// Add replace info if applicable
-		if (forceReplace) {
-			result.replaced = true;
-			result.replacedName = componentName;
-		}
-
 		return result;
 	}
 

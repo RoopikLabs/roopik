@@ -10,6 +10,11 @@ import * as fsSync from 'fs';
 import { Logger } from '../logger';
 
 /**
+ * Background pattern types for the canvas
+ */
+export type BackgroundPattern = 'grid' | 'dots' | 'plain';
+
+/**
  * Canvas state types (mirrors webview/src/canvasView/types)
  */
 export interface CanvasState {
@@ -18,6 +23,10 @@ export interface CanvasState {
 	sandboxes: Sandbox[];
 	selectedSandboxId: string | null;
 	viewport: Transform;
+	/** Background color hex value */
+	backgroundColor?: string;
+	/** Background pattern type */
+	backgroundPattern?: BackgroundPattern;
 	createdAt: number;
 	updatedAt: number;
 }

@@ -109,7 +109,7 @@ export class ImportService implements IImportService {
 	 * and staging.
 	 */
 	async importComponent(request: ImportRequest): Promise<ImportResult> {
-		const { path: source, canvasId, position } = request;
+		const { path: source, canvasId, position: _position } = request;
 		const forceReplace = (request as ImportRequest & { forceReplace?: boolean }).forceReplace ?? false;
 
 		this.logService.info(`[ImportService] Import request: ${source} -> canvas: ${canvasId}`);

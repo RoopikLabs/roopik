@@ -89,13 +89,12 @@ function SelectionStatus({ selectedId, focusedId }: SelectionStatusProps) {
 
 	const isFocused = focusedId === selectedId;
 	const statusColor = isFocused ? '#4fc3f7' : '#7c87f7';
-	const statusText = isFocused ? 'Focused' : 'Selected';
 
 	return (
 		<>
 			<span>•</span>
 			<span style={{ color: statusColor, fontWeight: 600 }}>
-				{statusText}: {selectedId}
+				[ {selectedId} ]
 			</span>
 		</>
 	);

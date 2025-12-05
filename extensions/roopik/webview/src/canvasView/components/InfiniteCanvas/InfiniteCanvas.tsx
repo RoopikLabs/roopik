@@ -29,6 +29,8 @@ export interface InfiniteCanvasProps {
 	onSandboxUpdate: (id: string, updates: Partial<Sandbox>) => void;
 	onSandboxDelete: (id: string) => void;
 	onSandboxExpand: (id: string) => void;
+	/** Called when clicking on canvas background (not on a sandbox) */
+	onCanvasBackgroundClick?: () => void;
 }
 
 // ============================================================
@@ -121,6 +123,7 @@ export function InfiniteCanvas({
 	onSandboxUpdate,
 	onSandboxDelete,
 	onSandboxExpand,
+	onCanvasBackgroundClick,
 }: InfiniteCanvasProps) {
 	const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -146,6 +149,7 @@ export function InfiniteCanvas({
 		onTransformChange,
 		onSandboxUpdate,
 		onSandboxClick,
+		onCanvasBackgroundClick,
 	});
 
 	// Generate background pattern style

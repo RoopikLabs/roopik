@@ -40,10 +40,8 @@ declare global {
 		CANVAS_STATE?: {
 			sandboxes?: Sandbox[];
 			viewport?: Transform;
-		};
-		SESSION_PREFERENCES?: {
 			backgroundColor?: string;
-			backgroundPattern?: string;
+			backgroundPattern?: BackgroundPattern;
 		};
 	}
 }
@@ -78,7 +76,6 @@ function App() {
 	useEffect(() => {
 		try {
 			const initialState = window.CANVAS_STATE;
-			const preferences = window.SESSION_PREFERENCES;
 
 			if (initialState) {
 				console.log('[Canvas] Loading initial state from extension:', initialState);
@@ -92,25 +89,22 @@ function App() {
 					console.log('[Canvas] Restoring viewport:', initialState.viewport);
 					setTransform(initialState.viewport);
 				}
+
+				// Restore background preferences
+				if (initialState.backgroundColor && /^#[0-9A-Fa-f]{6}$/.test(initialState.backgroundColor)) {
+					console.log('[Canvas] Restoring background color:', initialState.backgroundColor);
+					setBackgroundColor(initialState.backgroundColor);
+				}
+
+				if (initialState.backgroundPattern) {
+					const validPatterns: BackgroundPattern[] = ['grid', 'dots', 'plain'];
+					if (validPatterns.includes(initialState.backgroundPattern)) {
+						console.log('[Canvas] Restoring background pattern:', initialState.backgroundPattern);
+						setPattern(initialState.backgroundPattern);
+					}
+				}
 			} else {
 				console.log('[Canvas] No initial state found, starting with empty canvas');
-			}
-
-			if (preferences && typeof preferences === 'object') {
-				console.log('[Canvas] Loading session preferences:', preferences);
-
-				if (preferences.backgroundColor && typeof preferences.backgroundColor === 'string') {
-					if (/^#[0-9A-Fa-f]{6}$/.test(preferences.backgroundColor)) {
-						setBackgroundColor(preferences.backgroundColor);
-					}
-				}
-
-				if (preferences.backgroundPattern && typeof preferences.backgroundPattern === 'string') {
-					const validPatterns: BackgroundPattern[] = ['grid', 'dots', 'plain'];
-					if (validPatterns.includes(preferences.backgroundPattern as BackgroundPattern)) {
-						setPattern(preferences.backgroundPattern as BackgroundPattern);
-					}
-				}
 			}
 		} catch (error) {
 			console.error('[Canvas] Failed to load initial state:', error);
@@ -181,12 +175,21 @@ function App() {
 					console.log('[Canvas] 📂 Canvas loaded:', {
 						id: state.id,
 						name: state.name,
-						sandboxCount: state.sandboxes.length
+						sandboxCount: state.sandboxes.length,
+						backgroundColor: state.backgroundColor,
+						backgroundPattern: state.backgroundPattern
 					});
 
 					setSandboxes(state.sandboxes);
 					setSelectedSandboxId(state.selectedSandboxId);
 					setTransform(state.viewport);
+					// Restore background preferences
+					if (state.backgroundColor) {
+						setBackgroundColor(state.backgroundColor);
+					}
+					if (state.backgroundPattern) {
+						setPattern(state.backgroundPattern);
+					}
 					break;
 				}
 
@@ -267,6 +270,8 @@ function App() {
 						sandboxes,
 						selectedSandboxId,
 						viewport: transform,
+						backgroundColor,
+						backgroundPattern: pattern,
 						createdAt: Date.now(),
 						updatedAt: Date.now()
 					}
@@ -275,7 +280,7 @@ function App() {
 		}, 500);
 
 		return () => clearTimeout(saveTimeout);
-	}, [sandboxes, transform, selectedSandboxId]);
+	}, [sandboxes, transform, selectedSandboxId, backgroundColor, pattern]);
 
 	/**
 	 * Request component build from Extension (via Core pipeline)
@@ -631,6 +636,7 @@ function App() {
 					onSandboxUpdate={handleSandboxUpdate}
 					onSandboxDelete={handleSandboxDelete}
 					onSandboxExpand={handleSandboxExpand}
+					onCanvasBackgroundClick={() => setSelectedSandboxId(null)}
 				/>
 
 				<GlobalDeviceToggle

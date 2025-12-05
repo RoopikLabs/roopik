@@ -283,6 +283,8 @@ export class CanvasPanel {
 				sandboxes: state.sandboxes || [],
 				selectedSandboxId: state.selectedSandboxId,
 				viewport: state.viewport || this.canvasState.viewport,
+				backgroundColor: state.backgroundColor,
+				backgroundPattern: state.backgroundPattern,
 				updatedAt: Date.now()
 			};
 
