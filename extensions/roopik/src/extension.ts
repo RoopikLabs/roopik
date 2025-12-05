@@ -8,6 +8,7 @@ import * as path from 'path';
 import { CanvasPanel } from './canvasPanel';
 import { ConfigManager } from './config';
 import { Logger, LogLevel } from './logger';
+import { BundleCacheService } from './services/BundleCacheService';
 
 /**
  * Roopik Canvas Extension
@@ -45,6 +46,11 @@ export function activate(context: vscode.ExtensionContext) {
 	const configManager = ConfigManager.getInstance(workspaceRoot);
 	const config = configManager.getConfig();
 	logger.setLevel(config.logging.level as LogLevel);
+
+	// Initialize BundleCacheService with VS Code storage
+	const bundleCacheService = BundleCacheService.getInstance();
+	bundleCacheService.initialize(context.storageUri);
+	logger.info('Extension', `Bundle cache initialized: ${context.storageUri?.fsPath || 'disabled'}`);
 
 	logger.info('Extension', 'Roopik Canvas extension activated');
 
