@@ -585,6 +585,9 @@ export function SandboxCard({
 					>
 						<iframe
 							ref={iframeRef}
+							// KEY FIX: Force iframe recreation when content changes
+							// Without this, srcDoc updates sometimes don't refresh the iframe content
+							key={`${sandbox.id}-${sandbox.buildStatus}-${sandbox.bundledCode?.length || 0}`}
 							srcDoc={srcDoc}
 							sandbox="allow-scripts allow-same-origin"
 							title={displayName}

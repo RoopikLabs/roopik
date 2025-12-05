@@ -372,6 +372,8 @@ export function FullscreenOverlay({
 				{/* Device Frame */}
 				<div style={deviceFrameStyle}>
 					<iframe
+						// KEY FIX: Force iframe recreation when content changes
+						key={`fullscreen-${sandbox.id}-${sandbox.bundledCode?.length || 0}`}
 						srcDoc={sandbox.bundledCode ? generateFullscreenHTML(sandbox.bundledCode) : ''}
 						sandbox="allow-scripts allow-same-origin"
 						title="Fullscreen Preview"
