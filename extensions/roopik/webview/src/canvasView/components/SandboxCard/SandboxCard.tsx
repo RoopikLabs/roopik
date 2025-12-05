@@ -401,21 +401,14 @@ export function SandboxCard({
 		}
 	};
 
-	// Constants for layout calculations
-	// Must match CSS: .sandbox-card { padding: 40px 120px; }
-	const PADDING_VERTICAL = 40; // top + bottom padding
-	const PADDING_HORIZONTAL = 120; // left + right padding
-
 	// Calculate iframe container style for device mode
-	// Uses the Core implementation: fixed dimensions + scale transform + negative margins
+	// Device mode: set container to device dimensions, scale to fit available space
 	const iframeContainerStyle = useMemo((): React.CSSProperties => {
 		if (!isDeviceMode) {
-			// Auto mode: fill available space
+			// Auto mode: fill available space (100% of parent)
 			return {
 				width: '100%',
 				height: '100%',
-				transform: 'none',
-				margin: 0,
 			};
 		}
 
@@ -423,22 +416,31 @@ export function SandboxCard({
 		const deviceWidth = preset.width as number;
 		const deviceHeight = preset.height as number;
 
-		// Available space in card-body (accounting for card padding)
-		// Horizontal: sandbox.width - left padding - right padding
-		// Vertical: sandbox.height - top padding - bottom padding
-		const availableWidth = sandbox.width - (PADDING_HORIZONTAL * 2);
-		const availableHeight = sandbox.height - (PADDING_VERTICAL * 2);
+		// Available space is the CONTENT area of sandbox card
+		// ⚠️ DON'T SUBTRACT PADDING HERE! ⚠️
+		//
+		// With CSS box-sizing: content-box (default), sandbox.width/height IS the content area.
+		// The CSS padding (40px 120px) is added OUTSIDE this content area, not inside.
+		//
+		// BUG FIX: Previously we subtracted padding (sandbox.width - 240), which made
+		// availableWidth tiny (260px instead of 500px), causing device previews to be
+		// scaled down to ~34% instead of filling the container properly.
+		//
+		// Correct: availableWidth = sandbox.width (the full content area)
+		const availableWidth = sandbox.width;
+		const availableHeight = sandbox.height;
 
-		// Scale to fit while maintaining aspect ratio
+		// Scale to fill available space while maintaining aspect ratio
 		const scaleX = availableWidth / deviceWidth;
 		const scaleY = availableHeight / deviceHeight;
 		const scale = Math.min(scaleX, scaleY);
 
-		// Calculate visual size after scaling
+		// Visual size after scaling
 		const scaledWidth = deviceWidth * scale;
 		const scaledHeight = deviceHeight * scale;
 
-		// Negative margins to collapse layout box for proper flexbox centering
+		// Negative margins collapse the layout box from deviceSize to scaledSize
+		// This allows flexbox centering to work correctly
 		const marginX = (deviceWidth - scaledWidth) / 2;
 		const marginY = (deviceHeight - scaledHeight) / 2;
 
@@ -448,7 +450,6 @@ export function SandboxCard({
 			transform: `scale(${scale})`,
 			transformOrigin: 'center center',
 			margin: `-${marginY}px -${marginX}px`,
-			flexShrink: 0,
 		};
 	}, [isDeviceMode, preset, sandbox.width, sandbox.height]);
 
