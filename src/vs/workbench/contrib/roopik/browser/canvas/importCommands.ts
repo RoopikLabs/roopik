@@ -45,7 +45,7 @@ async function getAvailableCanvases(
 	}
 
 	const workspaceFolder = workspace.folders[0];
-	const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvases.json');
+	const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', 'canvases.json');
 
 	try {
 		const content = await fileService.readFile(canvasesJsonUri);

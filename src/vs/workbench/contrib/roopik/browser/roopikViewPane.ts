@@ -165,7 +165,7 @@ export class RoopikDashboardView extends ViewPane {
 		}
 
 		const workspaceFolder = workspace.folders[0];
-		const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvases.json');
+		const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', 'canvases.json');
 
 		try {
 			const content = await this.fileService.readFile(canvasesJsonUri);
@@ -230,7 +230,7 @@ export class RoopikDashboardView extends ViewPane {
 		}
 
 		const workspaceFolder = workspace.folders[0];
-		const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvases.json');
+		const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', 'canvases.json');
 
 		// Dispose existing watcher if any
 		if (this.fileWatcher) {
@@ -291,7 +291,7 @@ export class RoopikDashboardView extends ViewPane {
 		}
 
 		const workspaceFolder = workspace.folders[0];
-		const canvasStateUri = URI.joinPath(workspaceFolder.uri, '.roopik', canvasName, 'canvas-state.json');
+		const canvasStateUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', canvasName, 'canvas-state.json');
 
 		try {
 			// Validate canvas exists before opening
@@ -315,8 +315,8 @@ export class RoopikDashboardView extends ViewPane {
 		}
 
 		const workspaceFolder = workspace.folders[0];
-		const canvasFolderUri = URI.joinPath(workspaceFolder.uri, '.roopik', canvas.name);
-		const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvases.json');
+		const canvasFolderUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', canvas.name);
+		const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', 'canvases.json');
 
 		try {
 			// Close the editor tab if this canvas is open (via extension command)
