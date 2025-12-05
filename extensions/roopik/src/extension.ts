@@ -9,6 +9,8 @@ import { CanvasPanel } from './canvasPanel';
 import { ConfigManager } from './config';
 import { Logger, LogLevel } from './logger';
 import { BundleCacheService } from './services/BundleCacheService';
+import { SourceFileWatcher } from './services/SourceFileWatcher';
+import { ComponentRebuildService } from './services/ComponentRebuildService';
 
 /**
  * Roopik Canvas Extension
@@ -51,6 +53,17 @@ export function activate(context: vscode.ExtensionContext) {
 	const bundleCacheService = BundleCacheService.getInstance();
 	bundleCacheService.initialize(context.storageUri);
 	logger.info('Extension', `Bundle cache initialized: ${context.storageUri?.fsPath || 'disabled'}`);
+
+	// Initialize SourceFileWatcher
+	const fileWatcher = SourceFileWatcher.getInstance();
+	fileWatcher.initialize(workspaceRoot);
+	context.subscriptions.push({ dispose: () => fileWatcher.dispose() });
+	logger.info('Extension', 'File watcher initialized');
+
+	// Initialize ComponentRebuildService (connects to FileWatcher)
+	const rebuildService = ComponentRebuildService.getInstance();
+	rebuildService.initialize(workspaceRoot);
+	logger.info('Extension', 'Component rebuild service initialized');
 
 	logger.info('Extension', 'Roopik Canvas extension activated');
 

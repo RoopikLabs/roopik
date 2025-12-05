@@ -66,6 +66,135 @@ Storage:   ~/.vscode/.../roopik/canvases/Login/components/LoginForm/
 
 ---
 
+## Architecture Decision: FileWatcher in Extension, Building in Core
+
+### The Problem
+
+We needed to decide where to place the FileWatcher:
+- **Option A**: FileWatcher in Extension
+- **Option B**: FileWatcher in Core
+
+### Constraints We Considered
+
+| Constraint | Implication |
+|------------|-------------|
+| VS Code Storage (`storageUri`) is **Extension-only** | Core cannot write bundle cache |
+| Core already reads files for import/build | Core has file reading infrastructure |
+| IPC should avoid large data transfers | Don't send file content over IPC |
+| Extension knows which canvases are open | Extension decides what needs rebuilding |
+| We don't want duplicate logic | One layer per responsibility |
+
+### Why FileWatcher in Core Doesn't Work
+
+If FileWatcher were in Core:
+1. Core detects file change ✓
+2. Core reads files and builds ✓
+3. Core needs to cache bundle... ❌ **Cannot access VS Code storage!**
+4. Core needs to know which canvases are open... ❌ **Only Extension knows this!**
+
+### The Solution: Hybrid Approach
+
+**FileWatcher in Extension (Lightweight Trigger)**
+- Detects file changes
+- Computes hash of changed file (fast, single file read)
+- Compares with cached hash
+- If different: tells Core "rebuild component at PATH"
+
+**Building in Core (Heavy Lifting)**
+- Receives component PATH (not content!)
+- Reads ALL files in component folder
+- Resolves dependencies, finds related CSS/utils
+- Runs ESBuild
+- Returns bundled code
+
+**Caching in Extension**
+- Receives bundled code from Core
+- Saves to VS Code storage
+- Updates hash
+- Sends to webview
+
+### The Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  EXTENSION (Lightweight - Trigger & Cache)                                  │
+│                                                                             │
+│  1. FileWatcher detects file change                                         │
+│  2. Read changed file → compute hash (fast, single file)                    │
+│  3. Compare with cached hash                                                │
+│      └── SAME? → Do nothing                                                 │
+│      └── DIFFERENT? → Tell Core: "rebuild component at PATH"                │
+│                           ↓                                                 │
+│                    Send PATH only, not file content!                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼ (IPC: just path string, tiny!)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  CORE (Heavy Lifting - Read & Build)                                        │
+│                                                                             │
+│  4. Receive path: "roopik-workspace/canvases/Login/components/LoginForm"    │
+│  5. Read ALL files in that folder (tsx, css, utils, etc.)                   │
+│  6. Resolve npm dependencies → CDN URLs                                     │
+│  7. Run ESBuild                                                             │
+│  8. Return bundled code + cdnUrls                                           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼ (IPC: bundled code back)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  EXTENSION (Cache & Render)                                                 │
+│                                                                             │
+│  9. Receive bundled code                                                    │
+│  10. Save to VS Code storage (bundle.js + new hash)                         │
+│  11. Send to webview → UI updates                                           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Why This Design is Best
+
+| Concern | How We Solved It |
+|---------|------------------|
+| **Large IPC transfers?** | ❌ No! Extension sends PATH to Core, not file content |
+| **Core reads files?** | ✅ Yes! Core reads directly from disk (same as import flow) |
+| **VS Code storage access?** | ✅ Extension-only, Extension manages cache |
+| **Duplicate logic?** | ❌ No! Extension: trigger/cache. Core: read/build |
+| **Core changes needed?** | Minimal - just accept path instead of content |
+| **Extension knows canvases?** | ✅ Yes, only rebuilds for open canvases |
+
+### Key Insight
+
+**FileWatcher is just a TRIGGER, not a builder.**
+
+- Extension reads ONE file for hash comparison (10KB, instant)
+- Core reads ALL files for building (same as existing import flow)
+- No duplication: different purposes, different scopes
+- Core logic remains unchanged - we just add a new trigger point
+
+### Comparison with Import Flow
+
+**Current import flow:**
+```
+Extension: Here's the file path
+Core: I'll read it, find deps, build it
+Core: Here's the bundle
+Extension: Saved to cache, sent to webview
+```
+
+**New file watcher flow:**
+```
+Extension: File at path X changed, hash is different
+Extension: Core, please rebuild path X
+Core: I'll read it, find deps, build it  ← SAME AS IMPORT!
+Core: Here's the bundle
+Extension: Saved to cache, sent to webview
+```
+
+Core's building logic is **completely unchanged**. We just added a new trigger mechanism in Extension.
+
+---
+
 ## Directory Structure
 
 ### User Workspace (Monitored by FileWatcher)
@@ -230,19 +359,28 @@ project/
 ### File Change Flow
 
 ```
+EXTENSION:
 1. FileWatcher detects change in roopik-workspace/
 2. Debounce 500ms (avoid rapid rebuilds while typing)
 3. Extract canvas name and component name from path
-4. Read all source files for that component
-5. Compute new hash
-6. Compare with stored sourceHash in bundle.meta.json
-7. If different:
-   a. Send source to Core pipeline
-   b. Receive bundled code
-   c. Save bundle.js to VS Code storage
-   d. Update bundle.meta.json with new sourceHash
-   e. Send componentBuilt message to webview
-   f. UI updates automatically
+4. Read changed file, compute new hash (lightweight)
+5. Compare with stored sourceHash in bundle.meta.json
+6. If SAME → Do nothing (no rebuild needed)
+7. If DIFFERENT:
+   a. Send component PATH to Core (not file content!)
+
+CORE:
+   b. Core reads ALL files from the path
+   c. Core resolves dependencies, finds related files
+   d. Core runs ESBuild
+   e. Core returns bundled code + cdnUrls
+
+EXTENSION:
+   f. Receive bundled code
+   g. Save bundle.js to VS Code storage
+   h. Update bundle.meta.json with new sourceHash
+   i. Send componentBuilt message to webview
+   j. UI updates automatically
 ```
 
 ### Force Rebuild Flow (Manual Reload Button)
