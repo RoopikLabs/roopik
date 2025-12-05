@@ -160,10 +160,34 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	);
 
-	// Register commands
-	context.subscriptions.push(openCanvasCommand, importComponentCommand);
+	// Close canvas command (called from Core when deleting a canvas)
+	const closeCanvasCommand = vscode.commands.registerCommand('roopik.canvas.close', (canvasName?: string) => {
+		if (!canvasName) {
+			logger.warn('Extension', 'No canvas name provided for close');
+			return;
+		}
 
-	logger.info('Extension', 'Commands registered: roopik.canvas.open, roopik.canvas.importComponent');
+		logger.info('Extension', `Closing canvas: ${canvasName}`);
+
+		// Convert to slug for ID (same as in open command)
+		const canvasId = canvasName.toLowerCase()
+			.trim()
+			.replace(/\s+/g, '-')
+			.replace(/[^a-z0-9-]/g, '');
+
+		const panel = CanvasPanel.getPanel(canvasId);
+		if (panel) {
+			panel.dispose();
+			logger.info('Extension', `Canvas "${canvasName}" closed`);
+		} else {
+			logger.info('Extension', `Canvas "${canvasName}" was not open`);
+		}
+	});
+
+	// Register commands
+	context.subscriptions.push(openCanvasCommand, importComponentCommand, closeCanvasCommand);
+
+	logger.info('Extension', 'Commands registered: roopik.canvas.open, roopik.canvas.close, roopik.canvas.importComponent');
 }
 
 export function deactivate() {

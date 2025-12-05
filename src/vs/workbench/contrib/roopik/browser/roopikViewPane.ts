@@ -319,6 +319,9 @@ export class RoopikDashboardView extends ViewPane {
 		const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvases.json');
 
 		try {
+			// Close the editor tab if this canvas is open (via extension command)
+			await this.commandService.executeCommand('roopik.canvas.close', canvas.name);
+
 			// Delete the canvas folder
 			await this.fileService.del(canvasFolderUri, { recursive: true });
 

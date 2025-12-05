@@ -54,6 +54,35 @@ function generateSandboxHTML(bundledCode: string): string {
 		#root {
 			min-height: 100vh;
 		}
+
+		/* VS Code-style thin dark scrollbar */
+		::-webkit-scrollbar {
+			width: 10px;
+			height: 10px;
+		}
+		::-webkit-scrollbar-track {
+			background: rgba(0, 0, 0, 0.1);
+		}
+		::-webkit-scrollbar-thumb {
+			background: rgba(60, 60, 60, 0.8);
+			border-radius: 5px;
+			border: 2px solid transparent;
+			background-clip: padding-box;
+		}
+		::-webkit-scrollbar-thumb:hover {
+			background: rgba(80, 80, 80, 0.9);
+			border: 2px solid transparent;
+			background-clip: padding-box;
+		}
+		::-webkit-scrollbar-corner {
+			background: transparent;
+		}
+		/* Firefox scrollbar */
+		* {
+			scrollbar-width: thin;
+			scrollbar-color: rgba(60, 60, 60, 0.8) rgba(0, 0, 0, 0.1);
+		}
+
 		.sandbox-error {
 			display: flex;
 			align-items: center;
