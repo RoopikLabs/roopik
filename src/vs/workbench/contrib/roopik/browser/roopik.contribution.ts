@@ -32,16 +32,14 @@ import { EditorTabInputSerializer } from './projectMode/editorTabInputSerializer
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { IRoopikEventService, RoopikEventService } from '../common/events/index.js';
 import { IRoopikSettingsService, RoopikSettingsService } from '../common/settings/index.js';
-import { CanvasEditor } from './canvas/canvasEditor.js';
-import { CanvasInput } from './canvas/canvasInput.js';
 import { ISandboxPipelineService } from '../common/sandboxPipeline/sandboxPipelineService.js';
 import { SandboxPipelineClient } from './sandboxPipelineClient.js';
 
-// Import canvas commands (registers roopik.pipeline.* commands for extension use)
-import './canvas/canvasCommands.js';
+// Import pipeline commands (registers roopik.pipeline.* commands for extension use)
+import './commands/pipelineCommands.js';
 
 // Import import commands (registers roopik.import.* commands)
-import './canvas/importCommands.js';
+import './commands/importCommands.js';
 
 /**
  * Roopik Design IDE - Main Contribution
@@ -85,15 +83,6 @@ Registry.as<IEditorFactoryRegistry>(EditorExtensions.EditorFactory).registerEdit
 	EditorTabInputSerializer
 );
 
-// Register Canvas Editor (Mode 1: Component Canvas)
-Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
-	EditorPaneDescriptor.create(
-		CanvasEditor,
-		CanvasEditor.ID,
-		'Component Canvas'
-	),
-	[new SyncDescriptor(CanvasInput)]
-);
 
 // Open Welcome Screen
 registerAction2(class extends Action2 {
