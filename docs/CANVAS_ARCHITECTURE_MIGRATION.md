@@ -25,8 +25,8 @@ Extension webviews use `WebviewView` or `WebviewPanel` which:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    extensions/roopik-extension/                  │
-│                    (NEW - Canvas UI + Real-time Logic)           │
+│                    extensions/roopik/                            │
+│                    (Canvas UI + Real-time Logic)                 │
 │  ┌─────────────────────────────────────────────────────────────┐│
 │  │  Webview Panel (persists across tab switches!)              ││
 │  │  • Infinite canvas rendering                                ││
@@ -79,31 +79,24 @@ Mouse move → GridManager.snap() → Render
 
 ---
 
-## New Extension Structure
+## Extension Structure
 
 ```
-extensions/roopik-extension/
+extensions/roopik/
 ├── package.json                    # Extension manifest
 ├── tsconfig.json                   # TypeScript config
-├── webpack.config.js               # Build config
+├── esbuild.js                      # Build config
 ├── .vscodeignore                   # Package exclusions
 │
 ├── src/
 │   ├── extension.ts                # Extension entry point
+│   ├── canvasPanel.ts              # Webview panel + message routing
+│   ├── config.ts                   # Configuration manager
+│   ├── logger.ts                   # Logging utility
 │   │
-│   ├── panels/
-│   │   └── CanvasPanel.ts          # WebviewViewProvider (main panel)
-│   │
-│   ├── commands/
-│   │   ├── canvasCommands.ts       # Canvas operations
-│   │   └── componentCommands.ts    # Component operations
-│   │
-│   ├── services/
-│   │   ├── CoreBridgeService.ts    # Bridge to core services (transform, save)
-│   │   └── GridManager.ts          # Grid snap, collision, layout (60fps)
-│   │
-│   └── types/
-│       └── index.ts                # Shared type definitions
+│   └── services/
+│       ├── CoreBridgeService.ts    # Bridge to core services (transform, save)
+│       └── CanvasStateManager.ts   # File-based canvas persistence
 │
 └── webview/                        # React webview application
     ├── index.html                  # Webview HTML entry
@@ -112,52 +105,15 @@ extensions/roopik-extension/
     │
     ├── App.tsx                     # Main app component
     │
-    ├── components/
-    │   ├── Canvas/
-    │   │   ├── Canvas.tsx          # Infinite canvas container
-    │   │   ├── CanvasBackground.tsx # Background patterns
-    │   │   └── CanvasGrid.tsx      # Grid overlay
-    │   │
-    │   ├── SandboxCard/
-    │   │   ├── SandboxCard.tsx     # Component card wrapper
-    │   │   ├── CardHeader.tsx      # Title, controls
-    │   │   ├── CardContent.tsx     # Iframe container
-    │   │   └── CardFooter.tsx      # Status, actions
-    │   │
-    │   ├── EditorFullscreen/
-    │   │   ├── EditorFullscreen.tsx # Fullscreen overlay
-    │   │   ├── CodeEditor.tsx      # Monaco integration
-    │   │   └── PreviewPane.tsx     # Live preview
-    │   │
-    │   ├── Toolbar/
-    │   │   ├── FloatingToolbar.tsx # Top toolbar
-    │   │   ├── BottomActionBar.tsx # Bottom actions
-    │   │   └── ToolbarButton.tsx   # Reusable button
-    │   │
-    │   └── StatusPanel/
-    │       ├── CanvasStatusPanel.tsx # Zoom, mode info
-    │       └── DeviceSelector.tsx  # Device presets
-    │
-    ├── hooks/
-    │   ├── useCanvas.ts            # Canvas state & operations
-    │   ├── useViewport.ts          # Pan/zoom logic
-    │   ├── useSandbox.ts           # Sandbox management
-    │   ├── useCoreBridge.ts        # Communication with core
-    │   └── useKeyboard.ts          # Keyboard shortcuts
-    │
-    ├── store/
-    │   ├── canvasStore.ts          # Zustand store
-    │   └── types.ts                # Store types
-    │
-    ├── utils/
-    │   ├── geometry.ts             # Grid calculations
-    │   ├── transforms.ts           # CSS transforms
-    │   └── messaging.ts            # PostMessage helpers
-    │
-    └── styles/
-        ├── canvas.css              # Canvas styles
-        ├── cards.css               # Card styles
-        └── variables.css           # CSS variables
+    └── src/
+        ├── canvasView/
+        │   ├── CanvasView.tsx      # Main canvas view
+        │   ├── StatusPanel.tsx     # Status display
+        │   └── FloatingToolbar.tsx # Toolbar component
+        │
+        └── sandboxCard/
+            ├── SandboxCard.tsx     # Component card wrapper
+            └── FullscreenOverlay.tsx # Fullscreen editor
 ```
 
 ---
@@ -427,69 +383,67 @@ export type ExtensionMessage =
 
 ## Implementation Phases
 
-### Phase 1: Extension Scaffold (Day 1)
+### Phase 1: Extension Scaffold ✅ COMPLETE
 
 **Tasks:**
-- [ ] Create `extensions/roopik-extension/` folder structure
-- [ ] Set up `package.json` with activation events
-- [ ] Configure `tsconfig.json` and `webpack.config.js`
-- [ ] Create basic `extension.ts` entry point
-- [ ] Create empty `CanvasPanel.ts` WebviewViewProvider
-- [ ] Test extension loads in VSCode
+- [x] Create `extensions/roopik/` folder structure
+- [x] Set up `package.json` with activation events
+- [x] Configure `tsconfig.json` and `esbuild.js`
+- [x] Create basic `extension.ts` entry point
+- [x] Create `canvasPanel.ts` WebviewViewProvider
+- [x] Test extension loads in VSCode
 
-**Files to create:**
+**Files created:**
 ```
-extensions/roopik-extension/
+extensions/roopik/
 ├── package.json
 ├── tsconfig.json
-├── webpack.config.js
+├── esbuild.js
 ├── src/
 │   ├── extension.ts
-│   └── panels/CanvasPanel.ts
+│   └── canvasPanel.ts
 ```
 
-### Phase 2: Webview Setup (Day 2)
+### Phase 2: Webview Setup ✅ COMPLETE
 
 **Tasks:**
-- [ ] Set up Vite for webview build
-- [ ] Create React app scaffold
-- [ ] Set up Zustand store
-- [ ] Create basic `App.tsx` and `Canvas.tsx`
-- [ ] Implement PostMessage communication
-- [ ] Test webview renders in panel
+- [x] Set up Vite for webview build
+- [x] Create React app scaffold
+- [x] Set up Zustand store
+- [x] Create basic `App.tsx` and `CanvasView.tsx`
+- [x] Implement PostMessage communication
+- [x] Test webview renders in panel
 
-**Files to create:**
+**Files created:**
 ```
-webview/
+extensions/roopik/webview/
 ├── index.html
 ├── index.tsx
 ├── vite.config.ts
 ├── App.tsx
-├── store/canvasStore.ts
-└── utils/messaging.ts
+└── src/
+    ├── canvasView/CanvasView.tsx
+    └── store/canvasStore.ts
 ```
 
-### Phase 3: Core Commands + GridManager (Day 3)
+### Phase 3: Core Commands + State Management ✅ COMPLETE
 
 **Tasks:**
-- [ ] Register `roopik.core.transformCode` command (heavy ESBuild)
-- [ ] Register `roopik.core.saveCanvasState` command (persistence)
-- [ ] Register `roopik.core.loadCanvasState` command (persistence)
-- [ ] Create `GridManager.ts` in extension (60fps snap/collision)
-- [ ] Create `CoreBridgeService.ts` in extension
-- [ ] Implement `useCoreBridge.ts` hook
-- [ ] Test command execution from webview
+- [x] Register canvas commands in Core (importCommands.ts)
+- [x] Create `CanvasStateManager.ts` in extension (persistence)
+- [x] Create `CoreBridgeService.ts` in extension
+- [x] Implement state loading/saving
+- [x] Test command execution from webview
 
-**Files to modify:**
+**Files modified:**
 ```
-src/vs/workbench/contrib/roopik/browser/roopik.contribution.ts  (add commands)
+src/vs/workbench/contrib/roopik/browser/canvas/importCommands.ts  (commands)
 ```
 
-**Files to create:**
+**Files created:**
 ```
-extensions/roopik-extension/src/services/CoreBridgeService.ts
-extensions/roopik-extension/src/services/GridManager.ts  ← LOCAL, not Core!
-extensions/roopik-extension/webview/hooks/useCoreBridge.ts
+extensions/roopik/src/services/CoreBridgeService.ts
+extensions/roopik/src/services/CanvasStateManager.ts
 ```
 
 ### Phase 4: Canvas Component (Day 4-5)
@@ -670,19 +624,30 @@ browser/canvas/services/gridManager.ts
 
 ## Notes
 
-### Why Not Touch Existing Extension?
-The existing `extensions/roopik/` has different architecture (projectPreviewPanel, etc.). Creating `roopik-extension` as a new folder allows:
-- Clean slate for canvas-specific code
-- No conflicts with existing extension
-- Easier to maintain and iterate
-- Can copy good patterns from existing code
+### Extension Architecture
+The `extensions/roopik/` extension uses a hybrid architecture:
+- **Extension host**: Canvas state management, Core bridge, file I/O
+- **Webview**: React-based canvas UI with Zustand state
+- **Core**: Heavy processing (ESBuild bundling) via commands
+
+### Storage Structure
+```
+.roopik/
+├── config.json              # IDE settings
+├── logs/                    # System logs
+└── canvas/                  # All canvas data nested here
+    ├── canvases.json        # Index of all canvases
+    └── {canvas-name}/       # Individual canvas folders
+        └── canvas-state.json  # Full canvas state with bundledCode
+```
 
 ### Future Considerations
-- Merge `roopik-extension` into main `roopik` extension later if needed
 - Consider using Turbopack/esbuild for faster webview builds
 - May want to expose canvas API for other extensions
+- GridManager for 60fps snapping (if drag-drop needed in future)
 
 ---
 
 *Document created: December 2024*
-*Status: Ready for implementation*
+*Last updated: December 2024 - Folder renamed from roopik-extension to roopik*
+*Status: Phases 1-3 COMPLETE, Phase 4+ in progress*

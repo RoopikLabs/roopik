@@ -226,7 +226,21 @@ Extension Webview: renders SandboxCard
 
 ## Canvas State Persistence
 
-### File: `.roopik/canvas-state.json` (per workspace)
+### Storage Structure (Updated)
+
+#### NOTE: Even this architecture for storage will be removed and updated. Refer CANVAS_STORAGE_ARCHITECTURE.md
+
+```
+.roopik/
+├── config.json              # IDE settings
+├── logs/                    # System logs
+└── canvas/                  # ← All canvas data nested here
+    ├── canvases.json        # Index of all canvases
+    └── {canvas-name}/       # Individual canvas folders
+        └── canvas-state.json  # Full canvas state with bundledCode
+```
+
+### File: `.roopik/canvas/{canvas-name}/canvas-state.json`
 
 ```typescript
 interface CanvasState {
@@ -368,23 +382,19 @@ interface SavedComponent {
 
 ## Folder Structure
 
-### Extension (`extensions/roopik-extension/`) - Current State
+### Extension (`extensions/roopik/`) - Current State
 
 ```
-extensions/roopik-extension/
+extensions/roopik/
 ├── src/
 │   ├── extension.ts                 # Entry point
+│   ├── canvasPanel.ts               # ✅ Webview panel + message routing
+│   ├── config.ts                    # Configuration manager
+│   ├── logger.ts                    # Logging utility
 │   │
-│   ├── panels/
-│   │   └── CanvasPanel.ts           # ✅ Webview panel + message routing
-│   │
-│   ├── services/
-│   │   ├── CoreBridgeService.ts     # ✅ Extension Host ↔ Core via commands
-│   │   └── Logger.ts                # Logging utility
-│   │
-│   └── types/
-│       ├── messages.ts              # ✅ Webview ↔ Extension messages
-│       └── pipeline.ts              # ✅ ComponentInput, TransformedComponent
+│   └── services/
+│       ├── CoreBridgeService.ts     # ✅ Extension Host ↔ Core via commands
+│       └── CanvasStateManager.ts    # ✅ File-based canvas persistence
 │
 └── webview/
     └── src/canvasView/
@@ -439,10 +449,10 @@ src/vs/workbench/contrib/roopik/
 ### Future Additions (Phase 2-4)
 
 ```
-extensions/roopik-extension/src/
-├── persistence/
-│   ├── canvasStateManager.ts    # Phase 2: Save/load canvas
-│   └── componentCache.ts        # Phase 2: Bundle caching
+extensions/roopik/src/
+├── services/
+│   ├── CanvasStateManager.ts    # ✅ Phase 2: Save/load canvas (COMPLETE)
+│   └── componentCache.ts        # Future: Bundle caching
 │
 └── sources/
     ├── fileImporter.ts          # Phase 3: Workspace file import
@@ -475,21 +485,28 @@ extensions/roopik-extension/src/
 
 ---
 
-### Phase 2: Canvas State Persistence
+### Phase 2: Canvas State Persistence ✅ COMPLETE
 
 **Goal:** Save/load canvas state for session continuity
 
 **Tasks:**
-1. Create `CanvasStateManager` in Extension Host
-2. Add save/load messages to webview
-3. Implement debounced auto-save
-4. Handle rebuild from cached `input`
+1. ✅ Create `CanvasStateManager` in Extension Host
+2. ✅ Add save/load messages to webview
+3. ✅ Implement debounced auto-save
+4. ✅ Handle rebuild from cached `input`
+5. ✅ Canvas rename functionality with context menu
+6. ✅ Canvas delete functionality
 
-**Files to Create:**
-- `extensions/roopik-extension/src/persistence/canvasStateManager.ts`
-- `extensions/roopik-extension/src/persistence/componentCache.ts`
+**Files Created:**
+- `extensions/roopik/src/services/CanvasStateManager.ts`
+- Core: `src/vs/workbench/contrib/roopik/browser/roopikViewPane.ts` (activity pane)
 
-**Success Criteria:** Close and reopen extension, canvas state restored
+**Storage Structure:**
+- Canvases stored in `.roopik/canvas/` subfolder
+- Each canvas has its own folder with `canvas-state.json`
+- Index file at `.roopik/canvas/canvases.json`
+
+**Success Criteria:** ✅ Close and reopen extension, canvas state restored
 
 ---
 
@@ -591,4 +608,4 @@ The key insight: **Extension Host stays lightweight** - it just routes messages.
 ---
 
 *Last Updated: December 2024*
-*Current Phase: Phase 1 Complete ✅ | Phase 2 Next*
+*Current Phase: Phase 1 & 2 Complete ✅ | Phase 3 Next*

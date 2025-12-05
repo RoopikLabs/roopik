@@ -786,7 +786,7 @@ src/vs/workbench/contrib/roopik/
     ├── importAdapterRegistry.ts # Manages available adapters
     └── localFileAdapter.ts     # Local file import adapter
 
-extensions/roopik-extension/
+extensions/roopik/
 └── src/
     └── extension.ts            # Contains import implementation (mirrors LocalFileAdapter)
 ```
