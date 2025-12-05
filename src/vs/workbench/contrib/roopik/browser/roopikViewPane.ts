@@ -59,8 +59,11 @@ export class RoopikDashboardView extends ViewPane {
 	static readonly NAME = localize2('roopikDashboard', "Dashboard");
 
 	private canvasesContainer: HTMLElement | undefined;
+	private projectsContainer: HTMLElement | undefined;
 	private fileWatcher: { dispose(): void } | undefined;
 	private static animationsInjected = false;
+	/** Track canvas signatures to detect actual list changes (not just timestamp updates) */
+	private lastCanvasSignature: string = '';
 
 	constructor(
 		options: { id: string; title: string },
@@ -86,6 +89,11 @@ export class RoopikDashboardView extends ViewPane {
 
 		// Inject CSS for professional animations
 		this.injectDeleteAnimations();
+
+		// Clear existing content to prevent duplicates on re-render
+		while (container.firstChild) {
+			container.removeChild(container.firstChild);
+		}
 
 		container.style.padding = '8px';
 		container.style.display = 'flex';
@@ -120,17 +128,18 @@ export class RoopikDashboardView extends ViewPane {
 		this.canvasesContainer = document.createElement('div');
 		container.appendChild(this.canvasesContainer);
 
+		// Projects Section (separate container for future dynamic loading)
+		this.projectsContainer = document.createElement('div');
+		container.appendChild(this.projectsContainer);
+
 		// Load canvases from file system
 		this.loadCanvases();
 
+		// Load projects (static for now)
+		this.loadProjects();
+
 		// Watch canvases.json for changes (auto-refresh on create/delete)
 		this.setupFileWatcher();
-
-		// Projects Section (placeholder for now)
-		this.createSection(container, 'Projects', [
-			{ label: 'E-commerce App', description: 'React + Vite', onClick: () => { } },
-			{ label: 'Dashboard UI', description: 'Next.js', onClick: () => { } }
-		]);
 	}
 
 	/**
@@ -148,6 +157,7 @@ export class RoopikDashboardView extends ViewPane {
 
 		const workspace = this.workspaceContextService.getWorkspace();
 		if (!workspace.folders || workspace.folders.length === 0) {
+			this.lastCanvasSignature = '';
 			this.createSection(this.canvasesContainer, 'Canvases', [
 				{ label: 'No workspace open', description: 'Open a folder to create canvases', onClick: () => { } }
 			]);
@@ -160,6 +170,12 @@ export class RoopikDashboardView extends ViewPane {
 		try {
 			const content = await this.fileService.readFile(canvasesJsonUri);
 			const data = JSON.parse(content.value.toString()) as { canvases: CanvasMetadata[] };
+
+			// Update signature for change detection
+			this.lastCanvasSignature = (data.canvases || [])
+				.map(c => `${c.id}:${c.name}`)
+				.sort()
+				.join('|');
 
 			if (data.canvases && data.canvases.length > 0) {
 				const items = data.canvases.map(canvas => ({
@@ -176,6 +192,7 @@ export class RoopikDashboardView extends ViewPane {
 			}
 		} catch {
 			// File doesn't exist or can't be read
+			this.lastCanvasSignature = '';
 			this.createSection(this.canvasesContainer, 'Canvases', [
 				{ label: 'No canvases yet', description: 'Click "Canvas" to create one', onClick: () => { } }
 			]);
@@ -183,8 +200,28 @@ export class RoopikDashboardView extends ViewPane {
 	}
 
 	/**
+	 * Load projects section (static placeholder for now)
+	 */
+	private loadProjects(): void {
+		if (!this.projectsContainer) {
+			return;
+		}
+
+		// Clear existing content
+		while (this.projectsContainer.firstChild) {
+			this.projectsContainer.removeChild(this.projectsContainer.firstChild);
+		}
+
+		// Static placeholder projects
+		this.createSection(this.projectsContainer, 'Projects', [
+			{ label: 'E-commerce App', description: 'React + Vite', onClick: () => { } },
+			{ label: 'Dashboard UI', description: 'Next.js', onClick: () => { } }
+		]);
+	}
+
+	/**
 	 * Setup file watcher for canvases.json
-	 * Auto-refreshes the canvas list when the file changes
+	 * Only refreshes when canvas list actually changes (add/delete/rename), not on timestamp updates
 	 */
 	private setupFileWatcher(): void {
 		const workspace = this.workspaceContextService.getWorkspace();
@@ -205,12 +242,42 @@ export class RoopikDashboardView extends ViewPane {
 		this._register({ dispose: () => this.fileWatcher?.dispose() });
 
 		// Listen for file changes
-		this._register(this.fileService.onDidFilesChange(e => {
+		this._register(this.fileService.onDidFilesChange(async e => {
 			// Check if canvases.json was affected
 			if (e.affects(canvasesJsonUri)) {
-				this.loadCanvases();
+				// Only refresh if the canvas list actually changed (not just timestamps)
+				await this.checkAndRefreshCanvases(canvasesJsonUri);
 			}
 		}));
+	}
+
+	/**
+	 * Check if canvas list changed and refresh only if needed
+	 * Compares canvas IDs and names, ignores timestamp changes
+	 */
+	private async checkAndRefreshCanvases(canvasesJsonUri: URI): Promise<void> {
+		try {
+			const content = await this.fileService.readFile(canvasesJsonUri);
+			const data = JSON.parse(content.value.toString()) as { canvases: CanvasMetadata[] };
+
+			// Create signature from canvas IDs and names only (ignore timestamps)
+			const newSignature = (data.canvases || [])
+				.map(c => `${c.id}:${c.name}`)
+				.sort()
+				.join('|');
+
+			// Only refresh if signature changed (canvas added, deleted, or renamed)
+			if (newSignature !== this.lastCanvasSignature) {
+				this.lastCanvasSignature = newSignature;
+				this.loadCanvases();
+			}
+		} catch {
+			// File might not exist yet - check if we had canvases before
+			if (this.lastCanvasSignature !== '') {
+				this.lastCanvasSignature = '';
+				this.loadCanvases();
+			}
+		}
 	}
 
 	/**
