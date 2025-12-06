@@ -136,6 +136,13 @@ import { CanvasService } from '../../workbench/contrib/roopik/electron-main/canv
 import { CanvasChannel } from '../../workbench/contrib/roopik/electron-main/channel/canvasChannel.js';
 import { CANVAS_CHANNEL_NAME } from '../../workbench/contrib/roopik/browser/canvasServiceClient.js';
 import { RoopikStorageService } from '../../workbench/contrib/roopik/electron-main/storage/storageService.js';
+// ROOPIK: Component Service - Component lifecycle, build queue, file watching
+import { ComponentService } from '../../workbench/contrib/roopik/electron-main/component/componentService.js';
+import { ComponentChannel } from '../../workbench/contrib/roopik/electron-main/channel/componentChannel.js';
+import { COMPONENT_CHANNEL_NAME } from '../../workbench/contrib/roopik/browser/componentServiceClient.js';
+import { BuildService } from '../../workbench/contrib/roopik/electron-main/build/buildService.js';
+import { ImportService } from '../../workbench/contrib/roopik/electron-main/import/importService.js';
+import { FileWatcher } from '../../workbench/contrib/roopik/electron-main/watch/fileWatcher.js';
 
 /**
  * The main VS Code application. There will only ever be one instance,
@@ -1267,6 +1274,14 @@ export class CodeApplication extends Disposable {
 		const canvasService = new CanvasService(roopikStorageService);
 		const canvasChannel = new CanvasChannel(canvasService);
 		mainProcessElectronServer.registerChannel(CANVAS_CHANNEL_NAME, canvasChannel);
+
+		// ROOPIK: Component Service - Component lifecycle, build queue, file watching
+		const buildService = new BuildService();
+		const importService = new ImportService();
+		const fileWatcher = new FileWatcher();
+		const componentService = new ComponentService(roopikStorageService, buildService, importService, fileWatcher);
+		const componentChannel = new ComponentChannel(componentService);
+		mainProcessElectronServer.registerChannel(COMPONENT_CHANNEL_NAME, componentChannel);
 		// ROOPIK END
 	}
 

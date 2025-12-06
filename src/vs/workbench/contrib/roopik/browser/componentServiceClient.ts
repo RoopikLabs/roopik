@@ -28,6 +28,11 @@ import {
 	CreateComponentRequest
 } from '../common/component/types.js';
 
+/**
+ * IPC Channel name for ComponentService communication
+ */
+export const COMPONENT_CHANNEL_NAME = 'roopikComponent';
+
 export class ComponentServiceClient implements IComponentService {
 	readonly _serviceBrand: undefined;
 
