@@ -13,10 +13,10 @@
 import { BaseInjector, InjectorContext } from './types.js';
 
 export class HmrBridgeInjector extends BaseInjector {
-	readonly name = 'hmr-bridge';
-	readonly priority = 90; // Run late, after other injectors
+	override readonly name = 'hmr-bridge';
+	override readonly priority = 90; // Run late, after other injectors
 
-	inject(code: string, context: InjectorContext): string {
+	override inject(code: string, context: InjectorContext): string {
 		const hmrScript = `
 // ===== Roopik HMR Bridge =====
 (function() {

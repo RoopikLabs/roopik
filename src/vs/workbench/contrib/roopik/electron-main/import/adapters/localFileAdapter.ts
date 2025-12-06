@@ -12,7 +12,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { ComponentSource, Framework } from '../../../common/storage/storageTypes.js';
+import { ComponentSource } from '../../../common/storage/storageTypes.js';
 import { SourceData, LocalFileSourceData, ImportResult } from '../../../common/component/types.js';
 import { BaseImportAdapter } from './types.js';
 import { ComponentParser } from '../../../common/sandboxPipeline/componentParser.js';

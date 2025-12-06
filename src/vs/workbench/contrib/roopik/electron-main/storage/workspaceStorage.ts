@@ -24,8 +24,8 @@ import {
 	getComponentsFolderPath,
 	getComponentIndexPath,
 	getComponentPath,
-	getComponentMetaPath,
-	CANVAS_INDEX_FILE
+	getComponentMetaPath
+	// CANVAS_INDEX_FILE - TODO: Use when needed for direct file path construction
 } from './paths.js';
 
 /**

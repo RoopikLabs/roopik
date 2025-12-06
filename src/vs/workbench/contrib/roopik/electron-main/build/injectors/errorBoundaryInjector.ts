@@ -13,10 +13,10 @@
 import { BaseInjector, InjectorContext } from './types.js';
 
 export class ErrorBoundaryInjector extends BaseInjector {
-	readonly name = 'error-boundary';
-	readonly priority = 10; // Run early to wrap everything
+	override readonly name = 'error-boundary';
+	override readonly priority = 10; // Run early to wrap everything
 
-	inject(code: string, context: InjectorContext): string {
+	override inject(code: string, context: InjectorContext): string {
 		const errorScript = `
 // ===== Roopik Error Boundary =====
 (function() {

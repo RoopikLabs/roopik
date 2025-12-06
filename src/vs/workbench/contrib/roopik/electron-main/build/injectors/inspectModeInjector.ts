@@ -13,10 +13,10 @@
 import { BaseInjector, InjectorContext } from './types.js';
 
 export class InspectModeInjector extends BaseInjector {
-	readonly name = 'inspect-mode';
-	readonly priority = 50; // Run after error boundary
+	override readonly name = 'inspect-mode';
+	override readonly priority = 50; // Run after error boundary
 
-	inject(code: string, context: InjectorContext): string {
+	override inject(code: string, context: InjectorContext): string {
 		const inspectScript = `
 // ===== Roopik Inspect Mode =====
 (function() {

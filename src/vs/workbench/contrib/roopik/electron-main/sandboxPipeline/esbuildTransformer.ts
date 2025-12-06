@@ -624,7 +624,7 @@ render(Component(), document.getElementById('root'));
 					}
 
 					// Get version: input deps -> stable fallback -> 'latest'
-					let version = dependencies[mainPkg];
+					let version: string | undefined = dependencies[mainPkg];
 					let versionSource = 'input';
 
 					if (!version) {

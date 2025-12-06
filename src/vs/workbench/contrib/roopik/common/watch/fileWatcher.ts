@@ -32,7 +32,7 @@ export interface FileChangeEvent {
 /**
  * File Watcher Interface
  *
- * Watches .roopik/canvases/*/components/* for file changes.
+ * Watches .roopik/canvases/{canvasId}/components/{componentId} for file changes.
  * Used to trigger automatic rebuilds when user edits source files.
  */
 export interface IFileWatcher {
