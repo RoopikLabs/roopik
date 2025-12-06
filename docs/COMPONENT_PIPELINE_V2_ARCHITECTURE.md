@@ -1133,53 +1133,122 @@ extensions/roopik/src/
 
 ---
 
+### Phase 0.5: Storage Service (Foundation)
+
+**Goal**: Implement the dual storage system - this is the FOUNDATION everything else builds on
+
+**Why First?**:
+- Every other service (Import, Build, Component) needs storage
+- Can't save components without knowing WHERE to save
+- Can't build without knowing where source and cache live
+- Storage structure defines the data model
+
+**Tasks**:
+
+1. **Define Storage Interface** (`common/storageService.ts`)
+   ```typescript
+   interface IStorageService {
+     // Workspace operations (source code)
+     saveComponentSource(canvasId: string, componentId: string, files: SourceFiles): Promise<string>;
+     loadComponentSource(canvasId: string, componentId: string): Promise<SourceFiles>;
+     deleteComponent(canvasId: string, componentId: string): Promise<void>;
+
+     // Cache operations (bundled output)
+     saveBundleCache(canvasId: string, componentId: string, bundle: BundledOutput): Promise<void>;
+     loadBundleCache(canvasId: string, componentId: string): Promise<BundledOutput | null>;
+     invalidateCache(canvasId: string, componentId: string): Promise<void>;
+
+     // Canvas operations
+     createCanvas(canvasId: string, name: string): Promise<void>;
+     getCanvases(): Promise<CanvasInfo[]>;
+     deleteCanvas(canvasId: string): Promise<void>;
+
+     // Paths
+     getWorkspacePath(): string;
+     getAppDataPath(): string;
+     getComponentPath(canvasId: string, componentId: string): string;
+     getCachePath(canvasId: string, componentId: string): string;
+   }
+   ```
+
+2. **Path Utilities** (`electron-main/storage/paths.ts`)
+   - Workspace path: `{workspaceRoot}/.roopik/`
+   - App data path (cross-platform):
+     - Windows: `%APPDATA%/roopik/workspaces/{hash}/`
+     - macOS: `~/Library/Application Support/roopik/workspaces/{hash}/`
+     - Linux: `~/.config/roopik/workspaces/{hash}/`
+   - Workspace hash generation (consistent across sessions)
+
+3. **Workspace Storage** (`electron-main/storage/workspaceStorage.ts`)
+   - Initialize `.roopik/` structure on first use
+   - Create canvas folders: `.roopik/canvases/{canvasId}/`
+   - Create component folders: `.roopik/canvases/{canvasId}/components/{componentId}/`
+   - Read/write component files
+   - Manage `index.json` registries
+
+4. **App Data Storage** (`electron-main/storage/appDataStorage.ts`)
+   - Initialize app data structure (mirrors workspace)
+   - Write bundled code: `{appData}/canvases/{canvasId}/components/{componentId}/bundle.js`
+   - Write build metadata: `{appData}/canvases/{canvasId}/components/{componentId}/build.json`
+   - Cache invalidation
+
+5. **Storage Service** (`electron-main/storage/storageService.ts`)
+   - Combines WorkspaceStorage + AppDataStorage
+   - Implements IStorageService
+   - Single entry point for all storage operations
+
+**Storage Structure Created**:
+
+```
+Workspace (.roopik/)                    App Data (cache)
+├── config.json                         ├── workspace.json
+├── canvases/                           └── canvases/
+│   ├── index.json                          ├── {canvasId}/
+│   └── {canvasId}/                         │   └── components/
+│       ├── canvas.json (Extension)         │       └── {componentId}/
+│       └── components/                     │           ├── bundle.js
+│           ├── index.json                  │           └── build.json
+│           └── {componentId}/
+│               ├── meta.json
+│               └── {source files}
+```
+
+**Deliverable**:
+- Can create/delete canvases
+- Can save/load component source files to workspace
+- Can save/load bundled code to app data cache
+- Cross-platform paths work correctly
+- Storage structure matches architecture diagram exactly
+
+**Test Checklist**:
+- [ ] Create canvas creates correct folder structure
+- [ ] Save component writes files to correct location
+- [ ] Load component reads files correctly
+- [ ] Delete component removes workspace AND cache files
+- [ ] App data mirrors workspace structure
+- [ ] Works on Windows, macOS, Linux
+
+---
+
 ### Phase 1: Core Types & Interfaces
 
-**Goal**: Define all types and service interfaces
+**Goal**: Define all types and service interfaces (now that we know storage structure)
 
 **Tasks**:
 1. Create `common/component.ts` - Component types
 2. Create `common/componentService.ts` - IComponentService interface
 3. Create `common/importService.ts` - IImportService, IImportAdapter interfaces
 4. Create `common/buildService.ts` - IBuildService interface
-5. Create `common/storageService.ts` - IStorageService interface
-6. Create `common/fileWatcher.ts` - IFileWatcher interface
-7. Create `common/events.ts` - All event types
+5. Create `common/fileWatcher.ts` - IFileWatcher interface
+6. Create `common/events.ts` - All event types
+
+**Note**: `IStorageService` already defined in Phase 0.5
 
 **Deliverable**: Complete type system, all interfaces defined
 
 ---
 
-### Phase 2: Storage Layer
-
-**Goal**: Implement all file storage operations
-
-**Tasks**:
-1. Create `electron-main/storage/paths.ts` - Path utilities
-   - Workspace path resolution
-   - App data path resolution (cross-platform)
-   - Workspace hash generation
-
-2. Create `electron-main/storage/workspaceStorage.ts`
-   - Initialize .roopik/ structure
-   - Canvas CRUD operations
-   - Component file operations
-   - Index management
-
-3. Create `electron-main/storage/appDataStorage.ts`
-   - Initialize app data structure
-   - Bundle cache operations
-   - Build metadata operations
-
-4. Create `electron-main/storage/storageService.ts`
-   - Combine workspace + app data
-   - Implement IStorageService
-
-**Deliverable**: Can read/write all files to both locations
-
----
-
-### Phase 3: Build Service
+### Phase 2: Build Service
 
 **Goal**: Implement component building with ESBuild
 
@@ -1202,7 +1271,7 @@ extensions/roopik/src/
 
 ---
 
-### Phase 4: Import Service & Adapters
+### Phase 3: Import Service & Adapters
 
 **Goal**: Implement all import sources
 
@@ -1232,7 +1301,7 @@ extensions/roopik/src/
 
 ---
 
-### Phase 5: File Watcher
+### Phase 4: File Watcher
 
 **Goal**: Watch component files for changes
 
@@ -1247,7 +1316,7 @@ extensions/roopik/src/
 
 ---
 
-### Phase 6: Component Service (Orchestrator)
+### Phase 5: Component Service (Orchestrator)
 
 **Goal**: Main service that ties everything together
 
@@ -1267,7 +1336,7 @@ extensions/roopik/src/
 
 ---
 
-### Phase 7: Browser Client & Commands
+### Phase 6: Browser Client & Commands
 
 **Goal**: Extension can call Core service
 
@@ -1285,7 +1354,7 @@ extensions/roopik/src/
 
 ---
 
-### Phase 8: Extension Integration
+### Phase 7: Extension Integration
 
 **Goal**: Canvas uses new service
 
@@ -1312,7 +1381,7 @@ extensions/roopik/src/
 
 ---
 
-### Phase 9: Polish & Testing
+### Phase 8: Polish & Testing
 
 **Goal**: Production ready
 
@@ -1344,35 +1413,35 @@ extensions/roopik/src/
 - [ ] Backup existing code
 - [ ] Create feature branch
 
-### Phase 0: Cleanup
-- [ ] Delete old sandboxPipeline files (except esbuildTransformer)
-- [ ] Delete old import files
-- [ ] Delete extension services (CoreBridge, BundleCache, etc.)
+### Phase 0: Cleanup ✅
+- [x] Delete old sandboxPipeline files (except esbuildTransformer)
+- [x] Delete old import files
+- [x] Delete extension services (CoreBridge, BundleCache, etc.)
 - [ ] Verify ESBuildTransformer still works standalone
 - [ ] Clean build outputs
 
-### Phase 1: Types
-- [ ] common/component.ts
-- [ ] common/componentService.ts
-- [ ] common/importService.ts
-- [ ] common/buildService.ts
-- [ ] common/storageService.ts
-- [ ] common/fileWatcher.ts
-- [ ] common/events.ts
-- [ ] TypeScript compiles without errors
-
-### Phase 2: Storage
-- [ ] storage/paths.ts
-- [ ] storage/workspaceStorage.ts
-- [ ] storage/appDataStorage.ts
-- [ ] storage/storageService.ts
+### Phase 0.5: Storage Service (Foundation)
+- [ ] common/storageService.ts (interface)
+- [ ] electron-main/storage/paths.ts
+- [ ] electron-main/storage/workspaceStorage.ts
+- [ ] electron-main/storage/appDataStorage.ts
+- [ ] electron-main/storage/storageService.ts
 - [ ] Can create .roopik/ structure
 - [ ] Can write/read component files
 - [ ] Can write/read cache files
 - [ ] Cross-platform paths work
 
-### Phase 3: Build
-- [ ] Move esbuildTransformer.ts
+### Phase 1: Core Types & Interfaces
+- [ ] common/component.ts
+- [ ] common/componentService.ts
+- [ ] common/importService.ts
+- [ ] common/buildService.ts
+- [ ] common/fileWatcher.ts
+- [ ] common/events.ts
+- [ ] TypeScript compiles without errors
+
+### Phase 2: Build Service
+- [ ] Move esbuildTransformer.ts to build/
 - [ ] build/scriptInjector.ts
 - [ ] build/buildService.ts
 - [ ] Can build React component
@@ -1381,7 +1450,7 @@ extensions/roopik/src/
 - [ ] Cache works correctly
 - [ ] Script injection works
 
-### Phase 4: Import
+### Phase 3: Import Service & Adapters
 - [ ] import/importService.ts
 - [ ] adapters/aiAgentAdapter.ts
 - [ ] adapters/localFileAdapter.ts
@@ -1391,13 +1460,13 @@ extensions/roopik/src/
 - [ ] Dependency scanning works
 - [ ] Framework detection works
 
-### Phase 5: File Watcher
+### Phase 4: File Watcher
 - [ ] watch/fileWatcher.ts
 - [ ] Detects file changes
 - [ ] Debouncing works
 - [ ] No duplicate events
 
-### Phase 6: Component Service
+### Phase 5: Component Service (Orchestrator)
 - [ ] componentService.ts
 - [ ] channel/componentChannel.ts
 - [ ] Create component works
@@ -1406,20 +1475,20 @@ extensions/roopik/src/
 - [ ] Events fire correctly
 - [ ] File watcher triggers rebuild
 
-### Phase 7: Browser Client
+### Phase 6: Browser Client & Commands
 - [ ] componentServiceClient.ts
 - [ ] IPC calls work
 - [ ] Events received in browser
 - [ ] Commands registered
 
-### Phase 8: Extension
+### Phase 7: Extension Integration
 - [ ] extension.ts updated
 - [ ] canvasPanel.ts updated
 - [ ] canvasStateManager.ts updated
 - [ ] Webview updated
 - [ ] Full flow works end-to-end
 
-### Phase 9: Polish
+### Phase 8: Polish & Testing
 - [ ] Error handling complete
 - [ ] Logging added
 - [ ] Performance optimized
