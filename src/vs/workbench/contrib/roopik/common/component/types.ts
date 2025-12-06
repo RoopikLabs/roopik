@@ -183,11 +183,11 @@ export interface ImportResult {
 }
 
 // ============================================================================
-// Build Result
+// Build Result & Errors
 // ============================================================================
 
 /**
- * Result from BuildService after building a component
+ * Result from BuildService after building a component (success case)
  */
 export interface BuildResult {
 	/** Bundled JavaScript code */
@@ -201,4 +201,64 @@ export interface BuildResult {
 
 	/** Bundle size in bytes */
 	bundleSize: number;
+}
+
+/**
+ * Location of an error in source code
+ */
+export interface BuildErrorLocation {
+	/** File path (relative to component folder) */
+	file: string;
+
+	/** Line number (1-indexed) */
+	line: number;
+
+	/** Column number (1-indexed) */
+	column: number;
+
+	/** Length of the error span */
+	length?: number;
+
+	/** The source line text */
+	lineText?: string;
+}
+
+/**
+ * Structured build error with source location
+ *
+ * Used for displaying errors on component cards and in editor.
+ * ESBuild provides rich error info that we preserve.
+ */
+export interface BuildError {
+	/** Error message (human readable) */
+	message: string;
+
+	/** Error category */
+	category: 'syntax' | 'type' | 'import' | 'transform' | 'unknown';
+
+	/** Location in source code (if available) */
+	location?: BuildErrorLocation;
+
+	/** Additional notes/hints from ESBuild */
+	notes?: string[];
+
+	/** Stack trace (for runtime errors during transform) */
+	stack?: string;
+}
+
+/**
+ * Full error info for a failed build
+ *
+ * A build can have multiple errors (e.g., multiple syntax errors).
+ * The primary error is first, additional errors follow.
+ */
+export interface BuildErrorInfo {
+	/** Primary error message (for quick display) */
+	message: string;
+
+	/** All errors encountered */
+	errors: BuildError[];
+
+	/** Build time before failure (ms) */
+	buildTime: number;
 }

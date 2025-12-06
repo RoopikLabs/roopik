@@ -18,8 +18,17 @@ export {
 	FigmaSourceData,
 	ManualSourceData,
 	ImportResult,
-	BuildResult
+	BuildResult,
+	BuildError,
+	BuildErrorInfo,
+	BuildErrorLocation
 } from './types.js';
 
-// Service
-export { IComponentService } from './componentService.js';
+// Service Interface & Events
+export {
+	IComponentService,
+	ComponentCreatedEvent,
+	ComponentBuildEvent,
+	ComponentDeletedEvent,
+	ComponentUpdatedEvent
+} from './componentService.js';

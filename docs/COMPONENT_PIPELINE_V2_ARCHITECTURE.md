@@ -1029,7 +1029,10 @@ roopik/
 │   └── events.ts                       # Event types
 │
 ├── electron-main/
-│   ├── componentService.ts             # ComponentService implementation (Phase 5)
+│   ├── component/
+│   │   ├── componentService.ts         # ComponentService implementation (Phase 5)
+│   │   ├── buildQueue.ts               # Build queue with deduplication
+│   │   └── index.ts                    # Re-exports
 │   │
 │   ├── import/
 │   │   ├── importService.ts            # ImportService implementation
@@ -1498,15 +1501,23 @@ The caller (ComponentService in Phase 5) is responsible for:
 - [x] Debouncing (300ms per component)
 - [x] Filters source files only (ignores meta.json, index.json)
 - [x] Maps fs.watch events to create/change/delete
+- [x] Enable/disable master switch
+- [x] Pause/resume with queued changes
+- [x] Per-component ignore for agent writes
 
-### Phase 5: Component Service (Orchestrator)
-- [ ] componentService.ts
-- [ ] channel/componentChannel.ts
-- [ ] Create component works
-- [ ] Delete component works
-- [ ] Update component works
-- [ ] Events fire correctly
-- [ ] File watcher triggers rebuild
+### Phase 5: Component Service (Orchestrator) ✅
+- [x] common/component/componentService.ts (IComponentService interface with events)
+- [x] electron-main/component/buildQueue.ts (deduplication, concurrency, priority)
+- [x] electron-main/component/componentService.ts (full implementation)
+- [x] Create component works
+- [x] Delete component works
+- [x] Update component works
+- [x] Events fire correctly (onComponentCreated, onComponentBuilt, onComponentDeleted, onComponentUpdated)
+- [x] File watcher triggers rebuild
+- [x] BuildQueue with deduplication (same component = 1 build)
+- [x] Concurrency limiting (max 3 parallel builds)
+- [x] Priority support (high = user-triggered, normal = file-watcher)
+- [ ] channel/componentChannel.ts (Phase 6 - IPC)
 
 ### Phase 6: Browser Client & Commands
 - [ ] componentServiceClient.ts
