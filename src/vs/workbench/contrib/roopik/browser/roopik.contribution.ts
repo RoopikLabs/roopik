@@ -32,8 +32,8 @@ import { EditorTabInputSerializer } from './projectMode/editorTabInputSerializer
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { IRoopikEventService, RoopikEventService } from '../common/events/index.js';
 import { IRoopikSettingsService, RoopikSettingsService } from '../common/settings/index.js';
-
-// TODO: Component Pipeline V2 will register new services here
+import { ICanvasService } from '../common/canvas/index.js';
+import { CanvasServiceClient } from './canvasServiceClient.js';
 
 /**
  * Roopik Design IDE - Main Contribution
@@ -117,7 +117,7 @@ registerAction2(class extends Action2 {
 });
 
 // Open Canvas (Mode 1: Component Canvas)
-// Prompts for canvas name, then delegates to roopik-extension for WebviewPanel
+// Creates canvas via CanvasService, which handles everything (create + open)
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
@@ -130,7 +130,8 @@ registerAction2(class extends Action2 {
 
 	async run(accessor: ServicesAccessor): Promise<void> {
 		const quickInputService = accessor.get(IQuickInputService);
-		const commandService = accessor.get(ICommandService);
+		const canvasService = accessor.get(ICanvasService);
+		const notificationService = accessor.get(INotificationService);
 
 		// Prompt for canvas name
 		const canvasName = await quickInputService.input({
@@ -155,8 +156,24 @@ registerAction2(class extends Action2 {
 			return;
 		}
 
-		// Delegate to extension with canvas name - WebviewPanel persists across tab switches!
-		await commandService.executeCommand('roopik.canvas.open', canvasName.trim());
+		try {
+			// Single call: CanvasService handles create + triggers extension to open
+			const result = await canvasService.createCanvas(canvasName);
+
+			// Just show notification based on result
+			if (!result.isNew) {
+				notificationService.info(
+					localize('roopik.canvas.exists', 'Opening existing canvas: {0}', result.canvas.name)
+				);
+			}
+			// Canvas is opened via onCanvasCreated event subscription (see below)
+
+		} catch (err) {
+			const errorMsg = err instanceof Error ? err.message : String(err);
+			notificationService.error(
+				localize('roopik.canvas.createError', 'Failed to create canvas: {0}', errorMsg)
+			);
+		}
 	}
 });
 
@@ -278,6 +295,43 @@ class RoopikStartupContribution extends Disposable implements IWorkbenchContribu
 
 registerWorkbenchContribution2(RoopikStartupContribution.ID, RoopikStartupContribution, WorkbenchPhase.AfterRestored);
 
+// Canvas event handler - bridges CanvasService events to Extension commands
+class RoopikCanvasContribution extends Disposable implements IWorkbenchContribution {
+	static readonly ID = 'roopik.canvasContribution';
+
+	constructor(
+		@ICanvasService private readonly canvasService: ICanvasService,
+		@ICommandService private readonly commandService: ICommandService
+	) {
+		super();
+
+		// Open panel when canvas is created (or existing canvas requested)
+		this._register(this.canvasService.onCanvasCreated(async (event) => {
+			await this.commandService.executeCommand('roopik.canvas.open', {
+				canvasId: event.canvasId,
+				canvasName: event.canvas.name
+			});
+		}));
+
+		// Close panel when canvas is deleted
+		this._register(this.canvasService.onCanvasDeleted(async (event) => {
+			await this.commandService.executeCommand('roopik.canvas.close', event.canvasId);
+		}));
+
+		// Update panel title when canvas is renamed
+		this._register(this.canvasService.onCanvasUpdated(async (event) => {
+			if (event.changes.includes('name')) {
+				await this.commandService.executeCommand('roopik.canvas.update', {
+					canvasId: event.canvasId,
+					canvasName: event.canvas.name
+				});
+			}
+		}));
+	}
+}
+
+registerWorkbenchContribution2(RoopikCanvasContribution.ID, RoopikCanvasContribution, WorkbenchPhase.AfterRestored);
+
 // Register Roopik views (Activity Bar)
 registerWorkbenchContribution2(RoopikViewsContribution.ID, RoopikViewsContribution, WorkbenchPhase.BlockStartup);
 
@@ -291,4 +345,8 @@ registerSingleton(IRoopikEventService, RoopikEventService, InstantiationType.Del
 // Register Settings Service (persistence + configuration management)
 registerSingleton(IRoopikSettingsService, RoopikSettingsService, InstantiationType.Delayed);
 
-// TODO: Component Pipeline V2 services will be registered here
+// Register Canvas Service (canvas CRUD, panel state tracking)
+// This is the browser-side client that communicates with CanvasService in main process via IPC
+registerSingleton(ICanvasService, CanvasServiceClient, InstantiationType.Delayed);
+
+// TODO: Component Pipeline V2 - more services will be registered here

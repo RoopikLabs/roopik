@@ -61,22 +61,18 @@ export function activate(context: vscode.ExtensionContext) {
 	CanvasPanel.initializePreviewSystem(context);
 	logger.info('Extension', 'Preview system initialized');
 
-	// Main command: Open canvas by name (called from Core)
-	// Core handles the name prompt and passes the name here
-	const openCanvasCommand = vscode.commands.registerCommand('roopik.canvas.open', (canvasName?: string) => {
-		if (!canvasName) {
-			logger.warn('Extension', 'No canvas name provided');
+	// Main command: Open canvas (called from Core after CanvasService.createCanvas)
+	// Core handles: name prompt -> CanvasService.createCanvas() -> passes {canvasId, canvasName} here
+	const openCanvasCommand = vscode.commands.registerCommand('roopik.canvas.open', (arg: { canvasId: string; canvasName?: string }) => {
+		if (!arg || !arg.canvasId) {
+			logger.warn('Extension', 'No canvas ID provided');
 			return;
 		}
 
-		logger.info('Extension', `Opening canvas: ${canvasName}`);
+		const canvasId = arg.canvasId;
+		const canvasName = arg.canvasName || canvasId; // Use canvasId as fallback if name not provided
 
-		// Convert to slug for ID (e.g., "Login Components" -> "login-components")
-		const canvasId = canvasName.toLowerCase()
-			.trim()
-			.replace(/\s+/g, '-')
-			.replace(/[^a-z0-9-]/g, '');
-
+		logger.info('Extension', `Opening canvas: ${canvasId} (${canvasName})`);
 		CanvasPanel.createOrShow(context.extensionUri, canvasId, canvasName);
 	});
 
@@ -165,31 +161,41 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	// Close canvas command (called from Core when deleting a canvas)
-	const closeCanvasCommand = vscode.commands.registerCommand('roopik.canvas.close', (canvasName?: string) => {
-		if (!canvasName) {
-			logger.warn('Extension', 'No canvas name provided for close');
+	const closeCanvasCommand = vscode.commands.registerCommand('roopik.canvas.close', (canvasId: string) => {
+		if (!canvasId) {
+			logger.warn('Extension', 'No canvas ID provided for close');
 			return;
 		}
 
-		logger.info('Extension', `Closing canvas: ${canvasName}`);
-
-		// Convert to slug for ID (same as in open command)
-		const canvasId = canvasName.toLowerCase()
-			.trim()
-			.replace(/\s+/g, '-')
-			.replace(/[^a-z0-9-]/g, '');
+		logger.info('Extension', `Closing canvas: ${canvasId}`);
 
 		const panel = CanvasPanel.getPanel(canvasId);
 		if (panel) {
 			panel.dispose();
-			logger.info('Extension', `Canvas "${canvasName}" closed`);
+			logger.info('Extension', `Canvas "${canvasId}" closed`);
 		} else {
-			logger.info('Extension', `Canvas "${canvasName}" was not open`);
+			logger.info('Extension', `Canvas "${canvasId}" was not open`);
+		}
+	});
+
+	// Update canvas command (called from Core when canvas is renamed)
+	const updateCanvasCommand = vscode.commands.registerCommand('roopik.canvas.update', (arg: { canvasId: string; canvasName: string }) => {
+		if (!arg || !arg.canvasId) {
+			logger.warn('Extension', 'No canvas ID provided for update');
+			return;
+		}
+
+		logger.info('Extension', `Updating canvas: ${arg.canvasId} -> ${arg.canvasName}`);
+
+		const panel = CanvasPanel.getPanel(arg.canvasId);
+		if (panel) {
+			panel.updateTitle(arg.canvasName);
+			logger.info('Extension', `Canvas "${arg.canvasId}" title updated to "${arg.canvasName}"`);
 		}
 	});
 
 	// Register commands
-	context.subscriptions.push(openCanvasCommand, importComponentCommand, closeCanvasCommand);
+	context.subscriptions.push(openCanvasCommand, importComponentCommand, closeCanvasCommand, updateCanvasCommand);
 
 	logger.info('Extension', 'Commands registered: roopik.canvas.open, roopik.canvas.close, roopik.canvas.importComponent');
 }

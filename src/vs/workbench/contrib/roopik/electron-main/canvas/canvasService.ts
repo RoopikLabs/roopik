@@ -129,18 +129,28 @@ export class CanvasService implements ICanvasService {
 	// ========================================================================
 
 	async createCanvas(name: string): Promise<CreateCanvasResult> {
-		const canvasId = this.nameToId(name);
+		const baseCanvasId = this.nameToId(name);
 
-		// Check if canvas already exists
-		const existing = this.canvases.get(canvasId);
-		if (existing) {
-			console.log('[CanvasService] Canvas already exists:', canvasId);
+		// Check if a canvas with the SAME NAME already exists (case-insensitive)
+		// This handles the "user already has this exact canvas" case
+		const existingByName = this.findCanvasByName(name.trim());
+		if (existingByName) {
+			console.log('[CanvasService] Canvas with same name already exists:', existingByName.id);
+			const meta = this.toCanvasMeta(existingByName);
+
+			// Fire event to open the existing canvas
+			this._onCanvasCreated.fire({ canvasId: existingByName.id, canvas: meta });
+
 			return {
-				canvasId,
+				canvasId: existingByName.id,
 				isNew: false,
-				canvas: this.toCanvasMeta(existing)
+				canvas: meta
 			};
 		}
+
+		// Generate unique canvasId (handles the rename conflict case)
+		// If "xyz" folder exists but it's a different canvas (was renamed), create "xyz-2"
+		const canvasId = this.generateUniqueId(baseCanvasId);
 
 		// Create new canvas
 		const now = Date.now();
@@ -171,6 +181,39 @@ export class CanvasService implements ICanvasService {
 			isNew: true,
 			canvas: meta
 		};
+	}
+
+	/**
+	 * Find canvas by display name (case-insensitive)
+	 */
+	private findCanvasByName(name: string): Canvas | undefined {
+		const lowerName = name.toLowerCase();
+		for (const canvas of this.canvases.values()) {
+			if (canvas.name.toLowerCase() === lowerName) {
+				return canvas;
+			}
+		}
+		return undefined;
+	}
+
+	/**
+	 * Generate a unique canvas ID by appending suffix if needed
+	 * e.g., "xyz" exists -> try "xyz-2" -> "xyz-3" etc.
+	 */
+	private generateUniqueId(baseId: string): string {
+		if (!this.canvases.has(baseId)) {
+			return baseId;
+		}
+
+		// Find next available suffix
+		let suffix = 2;
+		while (this.canvases.has(`${baseId}-${suffix}`)) {
+			suffix++;
+		}
+
+		const uniqueId = `${baseId}-${suffix}`;
+		console.log('[CanvasService] ID conflict resolved:', baseId, '->', uniqueId);
+		return uniqueId;
 	}
 
 	getCanvas(canvasId: string): Canvas | undefined {

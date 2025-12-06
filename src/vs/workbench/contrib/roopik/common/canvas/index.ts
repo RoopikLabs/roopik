@@ -18,9 +18,9 @@ export {
 	CanvasPanelState
 } from './types.js';
 
-// Service Interface & Events
+// Service Decorator & Interface & Events
 export {
-	ICanvasService,
+	ICanvasService,  // Also serves as DI decorator via createDecorator
 	CanvasCreatedEvent,
 	CanvasDeletedEvent,
 	CanvasUpdatedEvent,

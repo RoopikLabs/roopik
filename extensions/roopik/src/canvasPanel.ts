@@ -177,6 +177,13 @@ export class CanvasPanel {
 		this._panel.webview.postMessage(message);
 	}
 
+	/**
+	 * Update the panel title (for rename)
+	 */
+	public updateTitle(newTitle: string): void {
+		this._panel.title = `🎨 ${newTitle}`;
+	}
+
 	private constructor(
 		panel: vscode.WebviewPanel,
 		extensionUri: vscode.Uri,

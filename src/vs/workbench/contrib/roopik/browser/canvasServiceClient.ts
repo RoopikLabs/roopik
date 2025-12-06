@@ -16,6 +16,7 @@
 
 import { Event } from '../../../../base/common/event.js';
 import { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
+import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 import {
 	ICanvasService,
 	CanvasCreatedEvent,
@@ -31,8 +32,15 @@ import {
 	CanvasPanelState
 } from '../common/canvas/types.js';
 
+/**
+ * IPC Channel name for CanvasService communication
+ */
+export const CANVAS_CHANNEL_NAME = 'roopikCanvas';
+
 export class CanvasServiceClient implements ICanvasService {
 	readonly _serviceBrand: undefined;
+
+	private readonly channel: IChannel;
 
 	// ========================================================================
 	// Events (proxied from main process)
@@ -47,7 +55,12 @@ export class CanvasServiceClient implements ICanvasService {
 	// Constructor
 	// ========================================================================
 
-	constructor(private readonly channel: IChannel) {
+	constructor(
+		@IMainProcessService mainProcessService: IMainProcessService
+	) {
+		// Get the canvas channel from main process
+		this.channel = mainProcessService.getChannel(CANVAS_CHANNEL_NAME);
+
 		// Subscribe to events from main process
 		this.onCanvasCreated = this.channel.listen<CanvasCreatedEvent>('onCanvasCreated');
 		this.onCanvasDeleted = this.channel.listen<CanvasDeletedEvent>('onCanvasDeleted');
