@@ -256,6 +256,7 @@ export class ESBuildTransformer {
 				framework,
 				bundledCode: result.code,
 				cdnUrls: [],
+				resolvedDependencies: {}, // No dependencies for vanilla HTML
 				metadata: {
 					size: result.code.length,
 					transformTime: Date.now() - startTime
@@ -263,22 +264,28 @@ export class ESBuildTransformer {
 			};
 		}
 
-		// 7. Transform with ESBuild (disk-based or virtual)
+		// 7. Normalize and track resolved dependencies
+		const resolvedDeps: Record<string, string> = {};
+		const normalizedDeps = this.normalizeAndValidateDependencies(input.dependencies || {});
+
+		// 8. Transform with ESBuild (disk-based or virtual)
 		let result: { code: string; metafile: esbuild.Metafile };
 
 		if (buildConfig.mode === 'disk') {
 			result = await this.transformWithDiskBuild(
 				syntheticEntryPath,
 				allFiles,
-				input.dependencies || {},
-				buildConfig
+				normalizedDeps,
+				buildConfig,
+				resolvedDeps
 			);
 		} else {
 			result = await this.transformWithVirtualBuild(
 				syntheticEntryPath,
 				allFiles,
-				input.dependencies || {},
-				buildConfig
+				normalizedDeps,
+				buildConfig,
+				resolvedDeps
 			);
 		}
 
@@ -287,6 +294,7 @@ export class ESBuildTransformer {
 			framework,
 			bundledCode: result.code,
 			cdnUrls: this.extractImportsFromMeta(result.metafile),
+			resolvedDependencies: resolvedDeps,
 			metadata: {
 				size: result.code.length,
 				transformTime: Date.now() - startTime
@@ -355,7 +363,8 @@ export class ESBuildTransformer {
 		entryPath: string,
 		files: { [filename: string]: string },
 		dependencies: Record<string, string>,
-		buildConfig: FrameworkBuildConfig
+		buildConfig: FrameworkBuildConfig,
+		resolvedDeps: Record<string, string>
 	): Promise<{ code: string; metafile: esbuild.Metafile }> {
 		// Create temp directory
 		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'roopik-sandbox-'));
@@ -392,7 +401,7 @@ export class ESBuildTransformer {
 				absWorkingDir: tempDir,
 				plugins: [
 					...buildConfig.getPlugins(),
-					this.createCDNResolverPlugin(dependencies, localFiles)
+					this.createCDNResolverPlugin(dependencies, resolvedDeps, localFiles)
 				]
 			});
 
@@ -418,7 +427,8 @@ export class ESBuildTransformer {
 		entryPath: string,
 		files: { [filename: string]: string },
 		dependencies: Record<string, string>,
-		buildConfig: FrameworkBuildConfig
+		buildConfig: FrameworkBuildConfig,
+		resolvedDeps: Record<string, string>
 	): Promise<{ code: string; metafile: esbuild.Metafile }> {
 		const result = await esbuild.build({
 			entryPoints: [entryPath],
@@ -431,7 +441,7 @@ export class ESBuildTransformer {
 			plugins: [
 				...buildConfig.getPlugins(),
 				this.createVirtualFSPlugin(files),
-				this.createCDNResolverPlugin(dependencies)
+				this.createCDNResolverPlugin(dependencies, resolvedDeps)
 			]
 		});
 
@@ -550,14 +560,19 @@ render(Component(), document.getElementById('root'));
 	 * 1. Use AI-provided version if exists
 	 * 2. Validate version pairs (react must match react-dom)
 	 * 3. Fallback to stable version if available
-	 * 4. Otherwise let CDN resolve to latest
+	 * 4. Otherwise let CDN resolve to latest (marked as 'latest' in resolvedDeps)
 	 *
 	 * Uses configurable CDN_PROVIDER (esm.sh, unpkg, skypack, jsdelivr)
+	 *
+	 * @param dependencies Input dependencies (may be empty or partial)
+	 * @param resolvedDeps Output object - will be populated with actual versions used
+	 * @param localFiles Optional set of local files to skip (for disk builds)
 	 */
-	private createCDNResolverPlugin(dependencies: Record<string, string>, localFiles?: Set<string>): esbuild.Plugin {
-		// Normalize and validate dependencies before processing
-		const normalizedDeps = this.normalizeAndValidateDependencies(dependencies);
-
+	private createCDNResolverPlugin(
+		dependencies: Record<string, string>,
+		resolvedDeps: Record<string, string>,
+		localFiles?: Set<string>
+	): esbuild.Plugin {
 		// Helper to check if path is absolute (works on both Windows and Unix)
 		const isAbsolutePath = (p: string): boolean => {
 			// Windows: C:\, D:\, etc. or \\network\path
@@ -608,8 +623,20 @@ render(Component(), document.getElementById('root'));
 						subpath = parts.length > 1 ? '/' + parts.slice(1).join('/') : '';
 					}
 
-					// Get version from normalized dependencies or fallback to stable
-					const version = normalizedDeps[mainPkg] || getStableVersion(mainPkg);
+					// Get version: input deps -> stable fallback -> 'latest'
+					let version = dependencies[mainPkg];
+					let versionSource = 'input';
+
+					if (!version) {
+						version = getStableVersion(mainPkg);
+						versionSource = version ? 'stable-fallback' : 'latest';
+					}
+
+					// Track the resolved version (only track main package, not subpaths)
+					if (!resolvedDeps[mainPkg]) {
+						resolvedDeps[mainPkg] = version || 'latest';
+						console.log(`[CDN] Resolved ${mainPkg} -> ${resolvedDeps[mainPkg]} (${versionSource})`);
+					}
 
 					// Generate CDN URL using configurable provider
 					const url = getCDNUrl(mainPkg, version, subpath || undefined);

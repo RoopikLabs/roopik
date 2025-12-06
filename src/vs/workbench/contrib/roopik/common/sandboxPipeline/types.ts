@@ -3,24 +3,33 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
+/**
+ * Sandbox Pipeline Types
+ *
+ * Types used by the ESBuild transformer and component parser.
+ * These are internal types for the build process.
+ */
+
 import { Framework } from '../storage/storageTypes.js';
 
+// Re-export Framework for convenience
+export { Framework };
+
 // ============================================================================
-// Build Input/Output Types
+// Component Input/Output Types
 // ============================================================================
 
 /**
- * Input for building a component
+ * Input for the transformer
  */
-export interface BuildInput {
-	/** Component ID (for logging) */
+export interface ComponentInput {
+	/** Component ID (for logging/tracking) */
 	id: string;
 
 	/** Source files (filename → content) */
 	files: Record<string, string>;
 
-	/** Entry file (relative) */
+	/** Entry file (relative, auto-detected if not provided) */
 	entryFile?: string;
 
 	/** Framework (auto-detected if not provided) */
@@ -31,17 +40,20 @@ export interface BuildInput {
 }
 
 /**
- * Result from building a component
+ * Output from the transformer
  */
-export interface BuildOutput {
+export interface TransformedComponent {
+	/** Component ID */
+	id: string;
+
+	/** Detected/used framework */
+	framework: Framework;
+
 	/** Bundled JavaScript code */
 	bundledCode: string;
 
 	/** CDN URLs for external dependencies */
 	cdnUrls: string[];
-
-	/** Detected/used framework */
-	framework: Framework;
 
 	/**
 	 * Resolved dependencies with actual versions used
@@ -55,43 +67,48 @@ export interface BuildOutput {
 	 */
 	resolvedDependencies: Record<string, string>;
 
-	/** Build time in ms */
-	buildTime: number;
+	/** Build metadata */
+	metadata: {
+		/** Bundle size in bytes */
+		size: number;
 
-	/** Bundle size in bytes */
-	bundleSize: number;
+		/** Transform time in ms */
+		transformTime: number;
+	};
 }
 
 // ============================================================================
-// Service Interface
+// Validation Types
 // ============================================================================
-
-export const IBuildService = createDecorator<IBuildService>('roopikBuildService');
 
 /**
- * Build Service Interface
- *
- * Pure build service - takes source files, returns bundled code.
- * Does NOT handle storage - caller decides what to do with output.
- *
- * Responsibilities:
- * - Bundle source files with ESBuild
- * - Apply script injectors (error boundary, inspect mode, etc.)
- * - Resolve CDN URLs for dependencies
+ * Validation result from component parser
  */
-export interface IBuildService {
-	readonly _serviceBrand: undefined;
-
-	/**
-	 * Build component from source files
-	 *
-	 * Flow:
-	 * 1. Detect framework (if not provided)
-	 * 2. Bundle with ESBuild
-	 * 3. Apply script injectors
-	 * 4. Return BuildOutput
-	 *
-	 * Caller is responsible for storing the output.
-	 */
-	build(input: BuildInput): Promise<BuildOutput>;
+export interface ValidationResult {
+	valid: boolean;
+	errors: string[];
+	warnings: string[];
 }
+
+// ============================================================================
+// Framework Configuration Types
+// ============================================================================
+
+/**
+ * Framework-specific build configuration
+ */
+export interface FrameworkConfig {
+	/** File extensions this framework uses */
+	extensions: string[];
+
+	/** ESBuild loader to use */
+	loader: string;
+
+	/** Common entry file names */
+	entryFileNames: string[];
+}
+
+/**
+ * Map of all framework configurations
+ */
+export type FrameworkConfigMap = Record<Framework, FrameworkConfig>;
