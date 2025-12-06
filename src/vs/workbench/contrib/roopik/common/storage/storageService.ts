@@ -13,6 +13,7 @@ import {
 	ComponentIndexEntry,
 	WorkspaceConfig
 } from './storageTypes.js';
+import { CanvasMeta } from '../canvas/types.js';
 
 // ============================================================================
 // Service Interface
@@ -84,6 +85,21 @@ export interface IRoopikStorageService {
 	 * Delete a canvas and all its components
 	 */
 	deleteCanvas(canvasId: string): Promise<void>;
+
+	/**
+	 * List all canvas IDs
+	 */
+	listCanvases(): Promise<string[]>;
+
+	/**
+	 * Load canvas metadata
+	 */
+	loadCanvasMeta(canvasId: string): Promise<CanvasMeta | null>;
+
+	/**
+	 * Save canvas metadata
+	 */
+	saveCanvasMeta(canvasId: string, meta: CanvasMeta): Promise<void>;
 
 	// ========================================================================
 	// Component Source (Workspace)

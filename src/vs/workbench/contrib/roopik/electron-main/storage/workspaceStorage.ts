@@ -15,6 +15,7 @@ import {
 	WorkspaceConfig,
 	DEFAULT_WORKSPACE_CONFIG
 } from '../../common/storage/storageTypes.js';
+import { CanvasMeta } from '../../common/canvas/types.js';
 import {
 	getWorkspaceRoopikPath,
 	getConfigPath,
@@ -182,6 +183,68 @@ export class WorkspaceStorage {
 		const canvasIndex = await this.getCanvasIndex();
 		canvasIndex.canvases = canvasIndex.canvases.filter(c => c.id !== canvasId);
 		await this.writeJson(getCanvasIndexPath(this.workspacePath), canvasIndex);
+	}
+
+	/**
+	 * List all canvas IDs by scanning the canvases folder
+	 */
+	async listCanvases(): Promise<string[]> {
+		this.ensureInitialized();
+
+		const canvasesPath = getCanvasesFolderPath(this.workspacePath);
+		try {
+			const entries = await fs.promises.readdir(canvasesPath, { withFileTypes: true });
+			return entries
+				.filter(entry => entry.isDirectory() && entry.name !== 'index.json')
+				.map(entry => entry.name);
+		} catch {
+			return [];
+		}
+	}
+
+	/**
+	 * Load canvas metadata from meta.json
+	 */
+	async loadCanvasMeta(canvasId: string): Promise<CanvasMeta | null> {
+		this.ensureInitialized();
+
+		const canvasPath = getCanvasPath(this.workspacePath, canvasId);
+		const metaPath = path.join(canvasPath, 'meta.json');
+
+		try {
+			return await this.readJson<CanvasMeta>(metaPath);
+		} catch {
+			// If meta.json doesn't exist, try to construct from canvas index
+			const canvasIndex = await this.getCanvasIndex();
+			const info = canvasIndex.canvases.find(c => c.id === canvasId);
+			if (info) {
+				// Create a minimal CanvasMeta from CanvasInfo
+				const meta: CanvasMeta = {
+					id: info.id,
+					name: info.name,
+					createdAt: info.createdAt,
+					updatedAt: info.createdAt,
+					componentCount: 0
+				};
+				// Save it for future use
+				await this.saveCanvasMeta(canvasId, meta);
+				return meta;
+			}
+			return null;
+		}
+	}
+
+	/**
+	 * Save canvas metadata to meta.json
+	 */
+	async saveCanvasMeta(canvasId: string, meta: CanvasMeta): Promise<void> {
+		this.ensureInitialized();
+
+		const canvasPath = getCanvasPath(this.workspacePath, canvasId);
+		await this.ensureDir(canvasPath);
+
+		const metaPath = path.join(canvasPath, 'meta.json');
+		await this.writeJson(metaPath, meta);
 	}
 
 	// ========================================================================

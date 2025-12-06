@@ -15,6 +15,7 @@ import {
 	ComponentIndexEntry,
 	WorkspaceConfig
 } from '../../common/storage/storageTypes.js';
+import { CanvasMeta } from '../../common/canvas/types.js';
 import { WorkspaceStorage } from './workspaceStorage.js';
 import { AppDataStorage } from './appDataStorage.js';
 import {
@@ -101,6 +102,18 @@ export class RoopikStorageService implements IRoopikStorageService {
 
 		// Delete from cache
 		await this.appDataStorage.deleteCanvasCache(canvasId);
+	}
+
+	async listCanvases(): Promise<string[]> {
+		return this.workspaceStorage.listCanvases();
+	}
+
+	async loadCanvasMeta(canvasId: string): Promise<CanvasMeta | null> {
+		return this.workspaceStorage.loadCanvasMeta(canvasId);
+	}
+
+	async saveCanvasMeta(canvasId: string, meta: CanvasMeta): Promise<void> {
+		return this.workspaceStorage.saveCanvasMeta(canvasId, meta);
 	}
 
 	// ========================================================================

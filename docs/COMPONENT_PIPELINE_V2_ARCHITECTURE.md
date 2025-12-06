@@ -1526,6 +1526,18 @@ The caller (ComponentService in Phase 5) is responsible for:
 - [x] Async alternatives for sync methods (getComponentAsync, etc.)
 - [ ] Commands registered (Phase 7 - with Extension integration)
 
+### Phase 6.5: Canvas Service ✅
+- [x] common/canvas/types.ts (CanvasMeta, Canvas, CreateCanvasResult, CanvasPanelState)
+- [x] common/canvas/canvasService.ts (ICanvasService interface with events)
+- [x] electron-main/canvas/canvasService.ts (implementation)
+- [x] electron-main/channel/canvasChannel.ts (IPC server side)
+- [x] browser/canvasServiceClient.ts (IPC client side)
+- [x] Canvas ID generation (slug format)
+- [x] Duplicate prevention (returns existing canvas if name matches)
+- [x] Panel state tracking (open, closed, focused)
+- [x] onCanvasFocusChanged event (for AI agents to know active canvas)
+- [x] Storage methods added (listCanvases, loadCanvasMeta, saveCanvasMeta)
+
 ### Phase 7: Extension Integration
 - [ ] extension.ts updated
 - [ ] canvasPanel.ts updated
