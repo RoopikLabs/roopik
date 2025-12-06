@@ -14,14 +14,6 @@ import { Framework, ComponentInput, ValidationResult, FrameworkConfigMap, Framew
  */
 export class ComponentParser {
 
-	/**
-	 * TODO: Recommendation
-	 * You should delete defaultCDNs from your ComponentParser entirely. It is technical debt.
-	 * Clean up types.ts: Remove defaultCDNs from the FrameworkConfig interface.
-	 * Clean up ComponentParser.ts: Remove the arrays from the config object.
-	 * This keeps your codebase clean and focused on the "Virtual Bundler" philosophy
-	 */
-
 	private readonly frameworkConfigs: FrameworkConfigMap = {
 		react: {
 			extensions: ['.jsx', '.tsx', '.js', '.ts'],

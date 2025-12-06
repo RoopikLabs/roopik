@@ -1491,11 +1491,13 @@ The caller (ComponentService in Phase 5) is responsible for:
 - [x] Dependency scanning (in BaseImportAdapter)
 - [x] Framework detection (uses ComponentParser)
 
-### Phase 4: File Watcher
-- [ ] watch/fileWatcher.ts
-- [ ] Detects file changes
-- [ ] Debouncing works
-- [ ] No duplicate events
+### Phase 4: File Watcher ✅
+- [x] common/watch/fileWatcher.ts (IFileWatcher interface)
+- [x] electron-main/watch/fileWatcher.ts (implementation)
+- [x] Parses path to extract canvasId/componentId
+- [x] Debouncing (300ms per component)
+- [x] Filters source files only (ignores meta.json, index.json)
+- [x] Maps fs.watch events to create/change/delete
 
 ### Phase 5: Component Service (Orchestrator)
 - [ ] componentService.ts
