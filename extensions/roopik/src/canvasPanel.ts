@@ -6,9 +6,9 @@
 import * as vscode from 'vscode';
 import { ConfigManager } from './config';
 import { Logger } from './logger';
-import { CoreBridgeService } from './services/CoreBridgeService';
-import { CanvasStateManager, type CanvasState } from './services/CanvasStateManager';
-import type { ComponentInput } from './types/pipeline';
+import { CanvasStateManager, type CanvasState, type ComponentInput } from './services/CanvasStateManager';
+
+// TODO: Component Pipeline V2 will provide new build service
 
 // Re-export CanvasState for external use
 export type { CanvasState } from './services/CanvasStateManager';
@@ -301,6 +301,7 @@ export class CanvasPanel {
 
 	/**
 	 * Handle build component request via Core's ESBuild pipeline
+	 * TODO: Component Pipeline V2 will implement this
 	 */
 	private async handleBuildComponent(payload: { componentId: string; input: ComponentInput }) {
 		const { componentId, input } = payload;
@@ -312,45 +313,15 @@ export class CanvasPanel {
 			dependencies: input.dependencies
 		});
 
-		try {
-			// Build via Core pipeline
-			this.logger.debug(`🔨 Calling Core pipeline for: ${componentId}`);
-			const coreBridge = CoreBridgeService.getInstance();
-			const result = await coreBridge.buildComponent(input);
-
-			this.logger.info(`✅ Build success: ${componentId}`, {
-				framework: result.framework,
-				bundledCodeLength: result.bundledCode?.length || 0,
-				cdnUrls: result.cdnUrls,
-				transformTime: result.metadata?.transformTime
-			});
-
-			// Log first 300 chars of bundled code for debugging
-			if (result.bundledCode) {
-				this.logger.debug(`📦 Bundled code preview: ${result.bundledCode.substring(0, 300)}...`);
+		// TODO: Component Pipeline V2 will provide new build service
+		// For now, send error indicating pipeline is being rebuilt
+		this._panel.webview.postMessage({
+			type: 'componentError',
+			payload: {
+				componentId,
+				error: 'Component build pipeline is being redesigned. Build functionality temporarily unavailable.'
 			}
-
-			// Send success response to webview
-			this._panel.webview.postMessage({
-				type: 'componentBuilt',
-				payload: {
-					componentId,
-					result
-				}
-			});
-		} catch (error) {
-			const errorMsg = error instanceof Error ? error.message : String(error);
-			this.logger.error(`❌ Build failed: ${componentId}`, { error: errorMsg });
-
-			// Send error response to webview
-			this._panel.webview.postMessage({
-				type: 'componentError',
-				payload: {
-					componentId,
-					error: errorMsg
-				}
-			});
-		}
+		});
 	}
 
 	public dispose() {
