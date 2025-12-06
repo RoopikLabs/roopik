@@ -1065,10 +1065,10 @@ roopik/
 │   │   └── fileWatcher.ts              # File watching implementation (Phase 4)
 │   │
 │   └── channel/
-│       └── componentChannel.ts         # IPC channel registration (Phase 5)
+│       └── componentChannel.ts         # IPC channel - main process side (Phase 6)
 │
 └── browser/
-    ├── componentServiceClient.ts       # IPC proxy for extension (Phase 6)
+    ├── componentServiceClient.ts       # IPC proxy - renderer side (Phase 6)
     └── roopik.contribution.ts          # Register client, commands
 ```
 
@@ -1517,13 +1517,14 @@ The caller (ComponentService in Phase 5) is responsible for:
 - [x] BuildQueue with deduplication (same component = 1 build)
 - [x] Concurrency limiting (max 3 parallel builds)
 - [x] Priority support (high = user-triggered, normal = file-watcher)
-- [ ] channel/componentChannel.ts (Phase 6 - IPC)
 
-### Phase 6: Browser Client & Commands
-- [ ] componentServiceClient.ts
-- [ ] IPC calls work
-- [ ] Events received in browser
-- [ ] Commands registered
+### Phase 6: Browser Client & IPC ✅
+- [x] electron-main/channel/componentChannel.ts (IPC server side)
+- [x] browser/componentServiceClient.ts (IPC client side)
+- [x] All methods mapped to IPC calls
+- [x] All 4 events forwarded (created, built, deleted, updated)
+- [x] Async alternatives for sync methods (getComponentAsync, etc.)
+- [ ] Commands registered (Phase 7 - with Extension integration)
 
 ### Phase 7: Extension Integration
 - [ ] extension.ts updated
