@@ -16,8 +16,8 @@
  */
 
 import { IBuildService, BuildInput, BuildOutput } from '../../common/build/buildService.js';
-import { ESBuildTransformer } from '../sandboxPipeline/esbuildTransformer.js';
-import { ComponentParser } from '../../common/sandboxPipeline/componentParser.js';
+import { ESBuildTransformer } from './esbuildTransformer.js';
+import { ComponentParser } from '../../common/build/componentParser.js';
 import { InjectorPipeline, createDefaultPipeline, IScriptInjector } from './injectors/index.js';
 
 export class BuildService implements IBuildService {

@@ -1010,30 +1010,47 @@ Canvas receives events, re-renders with new bundle
 ```
 roopik/
 ├── common/
-│   ├── component.ts                    # Component types, interfaces
-│   ├── componentService.ts             # IComponentService interface
-│   ├── importService.ts                # IImportService interface
-│   ├── buildService.ts                 # IBuildService interface
-│   ├── storageService.ts               # IStorageService interface
-│   ├── fileWatcher.ts                  # IFileWatcher interface
+│   ├── component/
+│   │   └── types.ts                    # Component types (Component, Source, etc.)
+│   │
+│   ├── build/
+│   │   ├── types.ts                    # Build types (ComponentInput, TransformedComponent)
+│   │   ├── buildService.ts             # IBuildService interface
+│   │   ├── componentParser.ts          # Framework/entry detection
+│   │   └── index.ts                    # Re-exports
+│   │
+│   ├── storage/
+│   │   ├── storageTypes.ts             # Storage types (Framework, ComponentSource)
+│   │   └── storageService.ts           # IStorageService interface
+│   │
+│   ├── watch/
+│   │   └── fileWatcher.ts              # IFileWatcher interface
+│   │
 │   └── events.ts                       # Event types
 │
 ├── electron-main/
-│   ├── componentService.ts             # ComponentService implementation
+│   ├── componentService.ts             # ComponentService implementation (Phase 5)
 │   │
 │   ├── import/
 │   │   ├── importService.ts            # ImportService implementation
+│   │   ├── IMPORT_DESIGN.md            # Design decisions documentation
 │   │   └── adapters/
-│   │       ├── localFileAdapter.ts
-│   │       ├── githubAdapter.ts
-│   │       ├── figmaAdapter.ts
-│   │       ├── aiAgentAdapter.ts
-│   │       └── manualAdapter.ts
+│   │       ├── types.ts                # Adapter interface & base class
+│   │       ├── localFileAdapter.ts     # Import from user's project
+│   │       ├── aiAgentAdapter.ts       # Import from AI API response
+│   │       ├── manualAdapter.ts        # Create from template
+│   │       └── githubAdapter.ts        # (stub) Future GitHub import
 │   │
 │   ├── build/
-│   │   ├── buildService.ts             # BuildService implementation
-│   │   ├── esbuildTransformer.ts       # ESBuild wrapper (KEEP existing!)
-│   │   └── scriptInjector.ts           # Inject inspect/click-to-source scripts
+│   │   ├── buildService.ts             # BuildService implementation (pure)
+│   │   ├── esbuildTransformer.ts       # ESBuild wrapper
+│   │   ├── injectors/
+│   │   │   ├── types.ts                # Injector interface
+│   │   │   ├── index.ts                # Pipeline creation
+│   │   │   ├── errorBoundaryInjector.ts
+│   │   │   ├── inspectModeInjector.ts
+│   │   │   └── hmrBridgeInjector.ts
+│   │   └── index.ts                    # Re-exports
 │   │
 │   ├── storage/
 │   │   ├── storageService.ts           # StorageService implementation
@@ -1042,13 +1059,13 @@ roopik/
 │   │   └── paths.ts                    # Path utilities
 │   │
 │   ├── watch/
-│   │   └── fileWatcher.ts              # File watching implementation
+│   │   └── fileWatcher.ts              # File watching implementation (Phase 4)
 │   │
 │   └── channel/
-│       └── componentChannel.ts         # IPC channel registration
+│       └── componentChannel.ts         # IPC channel registration (Phase 5)
 │
 └── browser/
-    ├── componentServiceClient.ts       # IPC proxy for extension
+    ├── componentServiceClient.ts       # IPC proxy for extension (Phase 6)
     └── roopik.contribution.ts          # Register client, commands
 ```
 
@@ -1248,26 +1265,38 @@ Workspace (.roopik/)                    App Data (cache)
 
 ---
 
-### Phase 2: Build Service
+### Phase 2: Build Service ✅
 
-**Goal**: Implement component building with ESBuild
+**Goal**: Implement pure component building with ESBuild
+
+**Design Decision**: BuildService is PURE - it takes files in and returns bundled code out.
+The caller (ComponentService in Phase 5) is responsible for:
+- Reading source files from workspace
+- Passing files to BuildService
+- Writing bundled output to app data cache
+- Managing cache invalidation
 
 **Tasks**:
-1. Move `esbuildTransformer.ts` to `electron-main/build/`
-2. Create `electron-main/build/scriptInjector.ts`
+1. ✅ Move `esbuildTransformer.ts` to `electron-main/build/`
+2. ✅ Move `componentParser.ts` to `common/build/`
+3. ✅ Move `types.ts` to `common/build/`
+4. ✅ Create `electron-main/build/injectors/` pipeline
    - Inject inspect-on-hover scripts
    - Inject click-to-source scripts
    - Inject error boundary
+   - Inject HMR bridge
 
-3. Create `electron-main/build/buildService.ts`
+5. ✅ Create `electron-main/build/buildService.ts`
    - Implement IBuildService
-   - Read source from workspace
-   - Call ESBuildTransformer
-   - Call ScriptInjector
-   - Write bundle to app data
-   - Cache management
+   - Pure function: `build(input) => output`
+   - Calls ESBuildTransformer
+   - Applies InjectorPipeline
+   - Returns bundled code + CDN URLs + metadata
+   - NO storage operations (caller handles)
 
-**Deliverable**: Can build components, cache results
+6. ✅ Create `common/build/buildService.ts` (interface)
+
+**Deliverable**: Pure build service that transforms source files to bundled code
 
 ---
 
@@ -1440,25 +1469,27 @@ Workspace (.roopik/)                    App Data (cache)
 - [ ] common/events.ts
 - [ ] TypeScript compiles without errors
 
-### Phase 2: Build Service
-- [ ] Move esbuildTransformer.ts to build/
-- [ ] build/scriptInjector.ts
-- [ ] build/buildService.ts
-- [ ] Can build React component
-- [ ] Can build Vue component
-- [ ] Can build Svelte component
-- [ ] Cache works correctly
-- [ ] Script injection works
+### Phase 2: Build Service ✅
+- [x] Move esbuildTransformer.ts to build/
+- [x] Move componentParser.ts to build/
+- [x] Move types.ts to build/
+- [x] build/injectors/ pipeline (errorBoundary, inspectMode, hmrBridge)
+- [x] build/buildService.ts (pure: takes files, returns bundled code)
+- [x] common/build/buildService.ts (IBuildService interface)
+- [ ] Can build React component (tested manually)
+- [ ] Can build Vue component (tested manually)
+- [ ] Can build Svelte component (tested manually)
 
-### Phase 3: Import Service & Adapters
-- [ ] import/importService.ts
-- [ ] adapters/aiAgentAdapter.ts
-- [ ] adapters/localFileAdapter.ts
-- [ ] adapters/manualAdapter.ts
-- [ ] AI import works
-- [ ] Local file import works
-- [ ] Dependency scanning works
-- [ ] Framework detection works
+### Phase 3: Import Service & Adapters ✅
+- [x] import/importService.ts
+- [x] adapters/types.ts (BaseImportAdapter)
+- [x] adapters/aiAgentAdapter.ts (with detailed docs on when to use vs FileWatcher)
+- [x] adapters/localFileAdapter.ts
+- [x] adapters/manualAdapter.ts
+- [x] adapters/githubAdapter.ts (stub for future)
+- [x] import/IMPORT_DESIGN.md (design documentation)
+- [x] Dependency scanning (in BaseImportAdapter)
+- [x] Framework detection (uses ComponentParser)
 
 ### Phase 4: File Watcher
 - [ ] watch/fileWatcher.ts

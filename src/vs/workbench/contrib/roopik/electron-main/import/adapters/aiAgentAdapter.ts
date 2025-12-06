@@ -78,7 +78,7 @@
 import { ComponentSource } from '../../../common/storage/storageTypes.js';
 import { SourceData, AIAgentSourceData, ImportResult } from '../../../common/component/types.js';
 import { BaseImportAdapter } from './types.js';
-import { ComponentParser } from '../../../common/sandboxPipeline/componentParser.js';
+import { ComponentParser } from '../../../common/build/componentParser.js';
 
 export class AIAgentAdapter extends BaseImportAdapter {
 	readonly sourceType: ComponentSource = 'ai-agent';

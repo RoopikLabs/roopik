@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 /**
- * Sandbox Pipeline Types
+ * Build Types
  *
  * Types used by the ESBuild transformer and component parser.
  * These are internal types for the build process.

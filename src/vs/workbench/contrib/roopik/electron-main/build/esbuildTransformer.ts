@@ -9,8 +9,8 @@ import vuePlugin from 'esbuild-plugin-vue3';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { Framework, ComponentInput, TransformedComponent } from '../../common/sandboxPipeline/types.js';
-import { ComponentParser } from '../../common/sandboxPipeline/componentParser.js';
+import { Framework, ComponentInput, TransformedComponent } from '../../common/build/types.js';
+import { ComponentParser } from '../../common/build/componentParser.js';
 
 // ============================================
 // CDN Configuration
