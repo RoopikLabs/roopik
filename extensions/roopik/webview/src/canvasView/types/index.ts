@@ -221,6 +221,15 @@ export interface CanvasState {
 // ============================================================
 
 /**
+ * Canvas preferences (matches Core's storageTypes.ts)
+ */
+export interface CanvasPreferences {
+	backgroundColor: string;
+	backgroundPattern: BackgroundPattern;
+	viewport: Transform;
+}
+
+/**
  * Message types from Extension to Webview
  */
 export type ExtensionMessage =
@@ -231,6 +240,8 @@ export type ExtensionMessage =
 	| { type: 'canvasLoaded'; payload: { state: CanvasState } }
 	| { type: 'canvasSaved'; payload: { success: boolean } }
 	| { type: 'themeChanged'; payload: { theme: 'light' | 'dark' | 'high-contrast' } }
+	// Canvas preferences loaded from file
+	| { type: 'canvasPreferencesLoaded'; payload: { preferences: CanvasPreferences } }
 	// Import
 	| { type: 'addImportedComponent'; payload: { componentInput: ComponentInput; position?: { x: number; y: number }; replaceExisting?: boolean; replaceName?: string } };
 

@@ -4,6 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ConfigManager } from './config';
 import { Logger } from './logger';
 import type { RoopikExtensionManager } from './roopikExtensionManager';
@@ -13,6 +15,27 @@ import type {
 	ComponentDeletedEvent,
 	ComponentUpdatedEvent
 } from './types/componentEvents';
+
+// ============================================================================
+// Canvas Preferences (matches Core's storageTypes.ts)
+// ============================================================================
+
+interface CanvasPreferences {
+	backgroundColor: string;
+	backgroundPattern: 'grid' | 'dots' | 'plain';
+	viewport: { x: number; y: number; scale: number };
+}
+
+const DEFAULT_CANVAS_PREFERENCES: CanvasPreferences = {
+	backgroundColor: '#1e1e1e',
+	backgroundPattern: 'dots',
+	viewport: { x: 0, y: 0, scale: 1 }
+};
+
+interface ComponentIndex {
+	components: Record<string, unknown>;
+	preferences: CanvasPreferences;
+}
 
 /**
  * CanvasPanel - Dumb UI Component
@@ -43,11 +66,25 @@ export class CanvasPanel implements vscode.Disposable {
 	// Extension URI for resources
 	private readonly extensionUri: vscode.Uri;
 
+	// Workspace path
+	private readonly workspacePath: string;
+
 	// Logger
 	private readonly logger: ReturnType<typeof Logger.prototype.createScoped>;
 
 	// Disposables
 	private readonly disposables: vscode.Disposable[] = [];
+
+	// ============================================================================
+	// Canvas Preferences (file-based, direct read/write to index.json)
+	// ============================================================================
+	// In-memory cache of preferences
+	private currentPreferences: CanvasPreferences = { ...DEFAULT_CANVAS_PREFERENCES };
+	// Track last saved values to detect changes
+	private lastSavedBackgroundColor: string = DEFAULT_CANVAS_PREFERENCES.backgroundColor;
+	private lastSavedBackgroundPattern: 'grid' | 'dots' | 'plain' = DEFAULT_CANVAS_PREFERENCES.backgroundPattern;
+	// Timer for debounced viewport saves (viewport changes frequently during pan/zoom)
+	private viewportSaveTimer: ReturnType<typeof setTimeout> | undefined;
 
 	// ============================================================================
 	// Static Factory (called by manager)
@@ -93,7 +130,7 @@ export class CanvasPanel implements vscode.Disposable {
 			}
 		);
 
-		return new CanvasPanel(panel, extensionUri, canvasId, canvasName, manager);
+		return new CanvasPanel(panel, extensionUri, canvasId, canvasName, workspaceRoot, manager);
 	}
 
 	// ============================================================================
@@ -105,12 +142,14 @@ export class CanvasPanel implements vscode.Disposable {
 		extensionUri: vscode.Uri,
 		canvasId: string,
 		canvasName: string,
+		workspacePath: string,
 		manager: RoopikExtensionManager
 	) {
 		this.panel = panel;
 		this.extensionUri = extensionUri;
 		this.canvasId = canvasId;
 		this.canvasName = canvasName;
+		this.workspacePath = workspacePath;
 		this.manager = manager;
 
 		this.logger = Logger.getInstance().createScoped(`Canvas-${canvasId}`);
@@ -138,6 +177,9 @@ export class CanvasPanel implements vscode.Disposable {
 			null,
 			this.disposables
 		);
+
+		// Load preferences from file on init
+		this.loadPreferencesFromFile();
 
 		this.logger.info(`Panel created for canvas: ${canvasName}`);
 	}
@@ -242,6 +284,12 @@ export class CanvasPanel implements vscode.Disposable {
 
 		try {
 			switch (message.type) {
+				case 'ready':
+					// Webview is ready, send preferences
+					this.logger.debug('Webview ready, sending preferences');
+					this.sendPreferencesToWebview();
+					break;
+
 				case 'createComponent':
 					await this.handleCreateComponent(message.payload as {
 						name: string;
@@ -270,9 +318,15 @@ export class CanvasPanel implements vscode.Disposable {
 					break;
 
 				case 'saveCanvas':
-					// Canvas state is now managed by Core, but we might still need
-					// to save viewport position locally
-					this.logger.debug('Canvas save requested (viewport state)');
+					// Handle canvas state save from webview
+					await this.handleSaveCanvas(message.payload as {
+						canvasId: string;
+						state: {
+							backgroundColor?: string;
+							backgroundPattern?: 'grid' | 'dots' | 'plain';
+							viewport?: { x: number; y: number; scale: number };
+						};
+					});
 					break;
 
 				case 'error':
@@ -370,6 +424,161 @@ export class CanvasPanel implements vscode.Disposable {
 	}
 
 	// ============================================================================
+	// Canvas Preferences (file-based, direct read/write to index.json)
+	// ============================================================================
+
+	/**
+	 * Get the path to the canvas index.json file
+	 */
+	private getIndexJsonPath(): string {
+		return path.join(this.workspacePath, '.roopik', 'canvases', this.canvasId, 'components', 'index.json');
+	}
+
+	/**
+	 * Load preferences from index.json on panel init
+	 * If file doesn't exist or preferences missing, uses defaults
+	 * Does NOT send to webview - call sendPreferencesToWebview() after webview is ready
+	 */
+	private loadPreferencesFromFile(): void {
+		const indexPath = this.getIndexJsonPath();
+		this.logger.debug(`Loading preferences from: ${indexPath}`);
+
+		try {
+			if (fs.existsSync(indexPath)) {
+				const content = fs.readFileSync(indexPath, 'utf-8');
+				const index: ComponentIndex = JSON.parse(content);
+
+				if (index.preferences) {
+					this.currentPreferences = {
+						backgroundColor: index.preferences.backgroundColor || DEFAULT_CANVAS_PREFERENCES.backgroundColor,
+						backgroundPattern: index.preferences.backgroundPattern || DEFAULT_CANVAS_PREFERENCES.backgroundPattern,
+						viewport: index.preferences.viewport || { ...DEFAULT_CANVAS_PREFERENCES.viewport }
+					};
+					this.lastSavedBackgroundColor = this.currentPreferences.backgroundColor;
+					this.lastSavedBackgroundPattern = this.currentPreferences.backgroundPattern;
+					this.logger.debug('Preferences loaded from file:', this.currentPreferences);
+				} else {
+					// File exists but no preferences - add defaults
+					this.logger.debug('No preferences in file, using defaults');
+					this.savePreferencesToFile();
+				}
+			} else {
+				// File doesn't exist - will be created by Core on canvas creation
+				// Use defaults for now
+				this.logger.debug('Index file not found, using defaults');
+			}
+		} catch (error) {
+			this.logger.error(`Failed to load preferences: ${error}`);
+			// Use defaults on error
+		}
+	}
+
+	/**
+	 * Send current preferences to webview
+	 * Called when webview sends 'ready' message
+	 */
+	private sendPreferencesToWebview(): void {
+		this.logger.debug('Sending preferences to webview:', this.currentPreferences);
+		this.postToWebview('canvasPreferencesLoaded', {
+			preferences: this.currentPreferences
+		});
+	}
+
+	/**
+	 * Save preferences to index.json
+	 * Preserves existing components data, only updates preferences
+	 */
+	private savePreferencesToFile(): void {
+		const indexPath = this.getIndexJsonPath();
+		this.logger.debug(`Saving preferences to: ${indexPath}`);
+
+		try {
+			let index: ComponentIndex = { components: {}, preferences: { ...DEFAULT_CANVAS_PREFERENCES } };
+
+			// Read existing file to preserve components
+			if (fs.existsSync(indexPath)) {
+				const content = fs.readFileSync(indexPath, 'utf-8');
+				index = JSON.parse(content);
+			}
+
+			// Update preferences
+			index.preferences = { ...this.currentPreferences };
+
+			// Ensure directory exists
+			const dir = path.dirname(indexPath);
+			if (!fs.existsSync(dir)) {
+				fs.mkdirSync(dir, { recursive: true });
+			}
+
+			// Write file
+			fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf-8');
+			this.logger.debug('Preferences saved to file');
+		} catch (error) {
+			this.logger.error(`Failed to save preferences: ${error}`);
+		}
+	}
+
+	/**
+	 * Handle saveCanvas message from webview
+	 * - backgroundColor/backgroundPattern: Save immediately
+	 * - viewport: Only update in-memory (saved on dispose)
+	 */
+	private async handleSaveCanvas(payload: {
+		canvasId: string;
+		state: {
+			backgroundColor?: string;
+			backgroundPattern?: 'grid' | 'dots' | 'plain';
+			viewport?: { x: number; y: number; scale: number };
+		};
+	}): Promise<void> {
+		const state = payload.state;
+		let needsSave = false;
+
+		// Update backgroundColor (immediate save if changed)
+		if (state.backgroundColor !== undefined) {
+			this.currentPreferences.backgroundColor = state.backgroundColor;
+			if (state.backgroundColor !== this.lastSavedBackgroundColor) {
+				this.lastSavedBackgroundColor = state.backgroundColor;
+				needsSave = true;
+				this.logger.debug(`Background color changed to: ${state.backgroundColor}`);
+			}
+		}
+
+		// Update backgroundPattern (immediate save if changed)
+		if (state.backgroundPattern !== undefined) {
+			this.currentPreferences.backgroundPattern = state.backgroundPattern;
+			if (state.backgroundPattern !== this.lastSavedBackgroundPattern) {
+				this.lastSavedBackgroundPattern = state.backgroundPattern;
+				needsSave = true;
+				this.logger.debug(`Background pattern changed to: ${state.backgroundPattern}`);
+			}
+		}
+
+		// Update viewport (debounced save to avoid excessive writes during pan/zoom)
+		if (state.viewport !== undefined) {
+			this.currentPreferences.viewport = state.viewport;
+			// Debounce viewport saves - wait 500ms after last change
+			if (this.viewportSaveTimer) {
+				clearTimeout(this.viewportSaveTimer);
+			}
+			this.viewportSaveTimer = setTimeout(() => {
+				this.savePreferencesToFile();
+				this.viewportSaveTimer = undefined;
+			}, 500);
+		}
+
+		// Save immediately if color or pattern changed
+		if (needsSave) {
+			// Clear pending viewport timer since we're saving now anyway
+			if (this.viewportSaveTimer) {
+				clearTimeout(this.viewportSaveTimer);
+				this.viewportSaveTimer = undefined;
+			}
+			this.savePreferencesToFile();
+		}
+	}
+
+	// ============================================================================
 	// Webview HTML
 	// ============================================================================
 
@@ -445,6 +654,15 @@ export class CanvasPanel implements vscode.Disposable {
 	 */
 	private handleDispose(): void {
 		this.logger.debug('Panel disposing...');
+
+		// Clear any pending viewport save timer
+		if (this.viewportSaveTimer) {
+			clearTimeout(this.viewportSaveTimer);
+			this.viewportSaveTimer = undefined;
+		}
+
+		// Note: We do NOT save on dispose to avoid recreating deleted canvas folders
+		// All preferences (including viewport) are saved via debounced handleSaveCanvas
 
 		// Notify manager
 		this.manager.onPanelDisposed(this.canvasId);

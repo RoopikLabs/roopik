@@ -240,6 +240,23 @@ function App() {
 					});
 					break;
 				}
+
+				case 'canvasPreferencesLoaded': {
+					// Preferences loaded from file by extension
+					const { preferences } = msg.payload;
+					console.log('[Canvas] 🎨 Preferences loaded from file:', preferences);
+
+					if (preferences.backgroundColor) {
+						setBackgroundColor(preferences.backgroundColor);
+					}
+					if (preferences.backgroundPattern) {
+						setPattern(preferences.backgroundPattern);
+					}
+					if (preferences.viewport) {
+						setTransform(preferences.viewport);
+					}
+					break;
+				}
 			}
 		};
 

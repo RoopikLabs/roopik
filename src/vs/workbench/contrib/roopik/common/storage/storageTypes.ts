@@ -138,6 +138,40 @@ export interface BuildMeta {
 }
 
 // ============================================================================
+// Canvas Preferences (UI State - managed by Extension)
+// ============================================================================
+
+/**
+ * Canvas UI preferences
+ * These are stored per-canvas in index.json and managed by the Extension.
+ * Core only sets default values on canvas creation.
+ */
+export interface CanvasPreferences {
+	/** Background color (hex) */
+	backgroundColor: string;
+
+	/** Background pattern */
+	backgroundPattern: 'grid' | 'dots' | 'plain';
+
+	/** Viewport state (pan and zoom) */
+	viewport: {
+		x: number;
+		y: number;
+		scale: number;
+	};
+}
+
+/**
+ * Default canvas preferences
+ * Used when creating a new canvas
+ */
+export const DEFAULT_CANVAS_PREFERENCES: CanvasPreferences = {
+	backgroundColor: '#1e1e1e',
+	backgroundPattern: 'dots',
+	viewport: { x: 0, y: 0, scale: 1 }
+};
+
+// ============================================================================
 // Canvas & Index Types
 // ============================================================================
 
@@ -175,9 +209,14 @@ export interface ComponentIndexEntry {
 
 /**
  * Component registry (.roopik/canvases/{id}/components/index.json)
+ * Also contains canvas UI preferences (managed by Extension after creation)
  */
 export interface ComponentIndex {
+	/** Component entries */
 	components: Record<string, ComponentIndexEntry>;
+
+	/** Canvas UI preferences (set by Core on creation, updated by Extension) */
+	preferences: CanvasPreferences;
 }
 
 /**

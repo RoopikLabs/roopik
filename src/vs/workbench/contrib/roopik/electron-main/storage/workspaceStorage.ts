@@ -13,7 +13,8 @@ import {
 	ComponentIndex,
 	ComponentIndexEntry,
 	WorkspaceConfig,
-	DEFAULT_WORKSPACE_CONFIG
+	DEFAULT_WORKSPACE_CONFIG,
+	DEFAULT_CANVAS_PREFERENCES
 } from '../../common/storage/storageTypes.js';
 import { CanvasMeta } from '../../common/canvas/types.js';
 import {
@@ -145,9 +146,12 @@ export class WorkspaceStorage {
 		const componentsPath = getComponentsFolderPath(this.workspacePath, id);
 		await this.ensureDir(componentsPath);
 
-		// Create components/index.json
+		// Create components/index.json with default preferences
 		const componentIndexPath = getComponentIndexPath(this.workspacePath, id);
-		const emptyIndex: ComponentIndex = { components: {} };
+		const emptyIndex: ComponentIndex = {
+			components: {},
+			preferences: { ...DEFAULT_CANVAS_PREFERENCES }
+		};
 		await this.writeJson(componentIndexPath, emptyIndex);
 
 		// Update canvas registry
@@ -391,15 +395,21 @@ export class WorkspaceStorage {
 
 	/**
 	 * Get component index for a canvas
+	 * Ensures preferences field exists (backwards compatibility)
 	 */
 	async getComponentIndex(canvasId: string): Promise<ComponentIndex> {
 		this.ensureInitialized();
 
 		const indexPath = getComponentIndexPath(this.workspacePath, canvasId);
 		try {
-			return await this.readJson<ComponentIndex>(indexPath);
+			const index = await this.readJson<ComponentIndex>(indexPath);
+			// Ensure preferences exists (backwards compatibility for existing canvases)
+			if (!index.preferences) {
+				index.preferences = { ...DEFAULT_CANVAS_PREFERENCES };
+			}
+			return index;
 		} catch {
-			return { components: {} };
+			return { components: {}, preferences: { ...DEFAULT_CANVAS_PREFERENCES } };
 		}
 	}
 
