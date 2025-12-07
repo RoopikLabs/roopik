@@ -1,0 +1,318 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ============================================================
+   Code Popup Overlay
+   ============================================================ */
+
+.code-popup-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.7);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 10000;
+	backdrop-filter: blur(4px);
+}
+
+.code-popup {
+	width: 85vw;
+	height: 85vh;
+	max-width: 1400px;
+	max-height: 900px;
+	background: var(--vscode-editor-background, #1e1e1e);
+	border: 1px solid var(--vscode-panel-border, #3c3c3c);
+	border-radius: 8px;
+	display: flex;
+	flex-direction: column;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+	overflow: hidden;
+}
+
+/* ============================================================
+   Header
+   ============================================================ */
+
+.code-popup-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 8px 12px;
+	background: var(--vscode-titleBar-activeBackground, #323232);
+	border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c);
+	flex-shrink: 0;
+	position: relative;
+	z-index: 1;
+}
+
+.code-popup-title {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--vscode-titleBar-activeForeground, #cccccc);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+.code-popup-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.code-popup-save-all {
+	background: transparent;
+	color: var(--vscode-foreground, #cccccc);
+	border: none;
+	border-radius: 3px;
+	padding: 4px 8px;
+	font-size: 11px;
+	cursor: pointer;
+	opacity: 0.7;
+	transition: opacity 0.15s;
+}
+
+.code-popup-save-all:hover {
+	opacity: 1;
+}
+
+.code-popup-close {
+	background: transparent;
+	border: none;
+	outline: none;
+	color: var(--vscode-foreground, #808080);
+	font-size: 16px;
+	line-height: 1;
+	cursor: pointer;
+	padding: 4px 6px;
+	border-radius: 3px;
+	transition: color 0.15s;
+}
+
+.code-popup-close:hover,
+.code-popup-close:focus {
+	background: transparent;
+	outline: none;
+	color: var(--vscode-foreground, #ffffff);
+}
+
+/* ============================================================
+   Tabs
+   ============================================================ */
+
+.code-popup-tabs {
+	display: flex;
+	align-items: stretch;
+	background: var(--vscode-editorGroupHeader-tabsBackground, #252526);
+	border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c);
+	overflow-x: auto;
+	flex-shrink: 0;
+	height: 35px;
+	position: relative;
+	z-index: 1;
+}
+
+.code-popup-tabs::-webkit-scrollbar {
+	height: 0;
+}
+
+.code-popup-tab {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 0 12px;
+	background: transparent;
+	border: none;
+	border-right: 1px solid var(--vscode-panel-border, #3c3c3c);
+	color: var(--vscode-tab-inactiveForeground, #808080);
+	font-size: 12px;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: color 0.1s;
+	position: relative;
+}
+
+.code-popup-tab:hover {
+	color: var(--vscode-tab-activeForeground, #cccccc);
+}
+
+.code-popup-tab.active {
+	background: var(--vscode-editor-background, #1e1e1e);
+	color: var(--vscode-tab-activeForeground, #ffffff);
+}
+
+.code-popup-tab.active::after {
+	content: '';
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	height: 1px;
+	background: var(--vscode-editor-background, #1e1e1e);
+}
+
+.code-popup-tab.entry .tab-name {
+	font-weight: 500;
+}
+
+.tab-icon {
+	font-size: 11px;
+}
+
+.tab-name {
+	max-width: 140px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.tab-dirty {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--vscode-editorGutter-modifiedBackground, #0c7d9d);
+	margin-left: 4px;
+}
+
+/* ============================================================
+   Editor
+   ============================================================ */
+
+.code-popup-editor {
+	flex: 1;
+	overflow: hidden;
+	position: relative;
+	z-index: 10;
+}
+
+/* Ensure Monaco widgets (find bar, suggestions, hints) appear above header/tabs */
+.code-popup-editor .monaco-editor .overflow-guard {
+	z-index: 10 !important;
+}
+
+.code-popup-editor .monaco-editor .find-widget,
+.code-popup-editor .monaco-editor .suggest-widget,
+.code-popup-editor .monaco-editor .parameter-hints-widget,
+.code-popup-editor .monaco-editor .monaco-hover,
+.code-popup-editor .monaco-editor .editor-widget {
+	z-index: 100 !important;
+}
+
+/* Line highlight decoration for initial scroll-to-line */
+.code-popup-line-highlight {
+	background: rgba(255, 213, 0, 0.15) !important;
+	border-left: 3px solid #ffd500 !important;
+}
+
+/* ============================================================
+   Footer
+   ============================================================ */
+
+.code-popup-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 6px 16px;
+	background: var(--vscode-statusBar-background, #007acc);
+	color: var(--vscode-statusBar-foreground, #ffffff);
+	font-size: 11px;
+	flex-shrink: 0;
+}
+
+.code-popup-hint {
+	opacity: 0.8;
+}
+
+.code-popup-language {
+	text-transform: uppercase;
+	font-weight: 500;
+}
+
+/* ============================================================
+   Empty State
+   ============================================================ */
+
+.code-popup-empty {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--vscode-descriptionForeground, #969696);
+	font-size: 14px;
+}
+
+/* ============================================================
+   Close Confirmation Modal
+   ============================================================ */
+
+.code-popup-confirm-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.6);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 100;
+}
+
+.code-popup-confirm {
+	background: var(--vscode-editorWidget-background, #252526);
+	border: 1px solid var(--vscode-editorWidget-border, #454545);
+	border-radius: 6px;
+	padding: 20px 24px;
+	max-width: 320px;
+	text-align: center;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.code-popup-confirm p {
+	margin: 0 0 12px 0;
+	color: var(--vscode-foreground, #cccccc);
+	font-size: 13px;
+}
+
+.code-popup-confirm p:first-child {
+	font-weight: 500;
+}
+
+.code-popup-confirm-actions {
+	display: flex;
+	gap: 10px;
+	justify-content: center;
+	margin-top: 16px;
+}
+
+.confirm-btn {
+	padding: 6px 16px;
+	border-radius: 4px;
+	font-size: 12px;
+	cursor: pointer;
+	border: none;
+	transition: background 0.15s;
+}
+
+.confirm-btn.cancel {
+	background: var(--vscode-button-secondaryBackground, #3a3d41);
+	color: var(--vscode-button-secondaryForeground, #cccccc);
+}
+
+.confirm-btn.cancel:hover {
+	background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+.confirm-btn.discard {
+	background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+	color: var(--vscode-inputValidation-errorForeground, #f48771);
+	border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+}
+
+.confirm-btn.discard:hover {
+	background: #6b2222;
+}

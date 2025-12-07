@@ -16,6 +16,7 @@ export type JobPriority = 'high' | 'normal' | 'low';
  */
 export interface ComponentInput {
 	id: string;
+	name?: string;
 	source: ComponentSource;
 	framework?: Framework;
 	files: { [filename: string]: string };
@@ -224,7 +225,7 @@ export type SandboxPositions = Record<string, SandboxPosition>;
  */
 export type ExtensionMessage =
 	// Core pipeline responses
-	| { type: 'componentCreated'; payload: { componentId: string; canvasId: string } }
+	| { type: 'componentCreated'; payload: { componentId: string; canvasId: string; name?: string } }
 	| { type: 'componentBuilt'; payload: { componentId: string; result: TransformedComponent } }
 	| { type: 'componentError'; payload: { componentId: string; error: string } }
 	// Canvas state
@@ -237,7 +238,11 @@ export type ExtensionMessage =
 	| { type: 'canvasLoadingStarted'; payload: { componentCount: number } }
 	| { type: 'canvasLoadingComplete'; payload: { componentCount: number } }
 	// Import
-	| { type: 'addImportedComponent'; payload: { componentInput: ComponentInput; position?: { x: number; y: number }; replaceExisting?: boolean; replaceName?: string } };
+	| { type: 'addImportedComponent'; payload: { componentInput: ComponentInput; position?: { x: number; y: number }; replaceExisting?: boolean; replaceName?: string } }
+	// Code editor - files loaded from workspace
+	| { type: 'componentFilesLoaded'; payload: { componentId: string; componentName?: string; files: Array<{ filename: string; content: string; isEntry?: boolean }> } }
+	// Code editor - file saved confirmation
+	| { type: 'componentFileSaved'; payload: { componentId: string; filename: string; success: boolean } };
 
 /**
  * Message types from Webview to Extension
@@ -250,7 +255,11 @@ export type WebviewMessage =
 	| { type: 'saveCanvas'; payload: { canvasId: string; state: CanvasState } }
 	| { type: 'loadCanvas'; payload: { canvasId: string } }
 	| { type: 'openFile'; payload: { filePath: string; line?: number; column?: number } }
-	| { type: 'log'; payload: { level: 'debug' | 'info' | 'warn' | 'error'; message: string; data?: unknown } };
+	| { type: 'log'; payload: { level: 'debug' | 'info' | 'warn' | 'error'; message: string; data?: unknown } }
+	// Code editor - request to load component files from workspace
+	| { type: 'loadComponentFiles'; payload: { componentId: string } }
+	// Code editor - save file to workspace
+	| { type: 'saveComponentFile'; payload: { componentId: string; filename: string; content: string } };
 
 /**
  * VSCode API interface

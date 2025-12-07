@@ -59,6 +59,7 @@ interface SandboxData {
  */
 interface ComponentIndexEntry {
 	contentHash: string;
+	name?: string;
 	sandboxPosition?: SandboxPosition;
 	// Other fields exist but we only care about these here
 	[key: string]: unknown;
@@ -397,10 +398,6 @@ export class CanvasPanel implements vscode.Disposable {
 					});
 					break;
 
-				case 'getComponentSource':
-					await this.handleGetComponentSource(message.payload as { componentId: string });
-					break;
-
 				case 'saveCanvas':
 					// Handle canvas state save from webview
 					await this.handleSaveCanvas(message.payload as {
@@ -410,6 +407,18 @@ export class CanvasPanel implements vscode.Disposable {
 							backgroundPattern?: 'grid' | 'dots' | 'plain';
 							viewport?: { x: number; y: number; scale: number };
 						};
+					});
+					break;
+
+				case 'loadComponentFiles':
+					await this.handleLoadComponentFiles(message.payload as { componentId: string });
+					break;
+
+				case 'saveComponentFile':
+					await this.handleSaveComponentFile(message.payload as {
+						componentId: string;
+						filename: string;
+						content: string;
 					});
 					break;
 
@@ -483,17 +492,199 @@ export class CanvasPanel implements vscode.Disposable {
 		// This triggers rebuild, onComponentBuilt event will be routed back
 	}
 
+	// ============================================================================
+	// Code Editor Popup - File Operations
+	// ============================================================================
+
 	/**
-	 * Handle get component source request from webview
+	 * Handle load component files request from webview (for code editor popup)
+	 * Returns all source files in the component directory, excluding metadata files
 	 */
-	private async handleGetComponentSource(payload: { componentId: string }): Promise<void> {
-		this.logger.info(`Getting component source: ${payload.componentId}`);
-		const source = await this.manager.getComponentSource(payload.componentId);
-		this.postToWebview('componentSource', {
-			componentId: payload.componentId,
-			files: source
-		});
+	private async handleLoadComponentFiles(payload: { componentId: string }): Promise<void> {
+		this.logger.info(`Loading component files for editor: ${payload.componentId}`);
+
+		try {
+			// Build the component directory path
+			// Structure: .roopik/canvases/{canvasId}/components/{componentId}/
+			const componentDir = path.join(
+				this.workspacePath,
+				'.roopik',
+				'canvases',
+				this.canvasId,
+				'components',
+				payload.componentId
+			);
+
+			this.logger.info(`[CodePopup] Reading files from: ${componentDir}`);
+
+			// Check if directory exists
+			if (!fs.existsSync(componentDir)) {
+				this.logger.warn(`[CodePopup] Component directory does not exist: ${componentDir}`);
+				this.postToWebview('componentFilesLoaded', {
+					componentId: payload.componentId,
+					files: []
+				});
+				return;
+			}
+
+			// Read component name from meta.json if it exists
+			let componentName: string | undefined;
+			const metaJsonPath = path.join(componentDir, 'meta.json');
+			if (fs.existsSync(metaJsonPath)) {
+				try {
+					const metaContent = fs.readFileSync(metaJsonPath, 'utf-8');
+					const meta = JSON.parse(metaContent);
+					componentName = meta.name;
+					this.logger.debug(`[CodePopup] Found component name: ${componentName}`);
+				} catch (metaError) {
+					this.logger.warn(`[CodePopup] Failed to read meta.json: ${metaError}`);
+				}
+			}
+
+			// Read all files in the component directory
+			const allFiles = fs.readdirSync(componentDir);
+			this.logger.info(`[CodePopup] Found files in directory: ${JSON.stringify(allFiles)}`);
+
+			// Read source files (exclude metadata and non-source files)
+			const source: Record<string, string> = {};
+			const sourceExtensions = ['.tsx', '.jsx', '.ts', '.js', '.css', '.scss', '.less', '.html', '.vue', '.svelte', '.json', '.md'];
+
+			for (const filename of allFiles) {
+				const ext = path.extname(filename).toLowerCase();
+				if (sourceExtensions.includes(ext)) {
+					const filePath = path.join(componentDir, filename);
+					try {
+						const content = fs.readFileSync(filePath, 'utf-8');
+						source[filename] = content;
+					} catch (readError) {
+						this.logger.warn(`[CodePopup] Failed to read file: ${filePath}`);
+					}
+				}
+			}
+
+			this.logger.info(`[CodePopup] Loaded ${Object.keys(source).length} source files: ${JSON.stringify(Object.keys(source))}`);
+
+			// Transform to array format with metadata
+			const sourceFiles = Object.entries(source)
+				.filter(([filename]) => {
+					// Exclude metadata files
+					const excludePatterns = ['component.json', 'component.meta.json', '.meta.json', 'meta.json', 'index.json'];
+					return !excludePatterns.some(pattern => filename.endsWith(pattern));
+				});
+
+			// Detect entry file by common patterns (index.tsx, index.jsx, Component.tsx, etc.)
+			const entryPriority = ['.tsx', '.jsx', '.ts', '.js', '.vue', '.svelte'];
+			let detectedEntryFile: string | undefined;
+
+			// First try: look for index.* or main.*
+			for (const ext of entryPriority) {
+				const indexFile = sourceFiles.find(([f]) => f === `index${ext}` || f === `main${ext}`);
+				if (indexFile) {
+					detectedEntryFile = indexFile[0];
+					break;
+				}
+			}
+
+			// Second try: look for file matching component ID name
+			if (!detectedEntryFile) {
+				for (const ext of entryPriority) {
+					const namedFile = sourceFiles.find(([f]) =>
+						f.toLowerCase() === `${payload.componentId.toLowerCase()}${ext}`
+					);
+					if (namedFile) {
+						detectedEntryFile = namedFile[0];
+						break;
+					}
+				}
+			}
+
+			// Third try: first .tsx/.jsx file
+			if (!detectedEntryFile) {
+				const firstComponent = sourceFiles.find(([f]) =>
+					f.endsWith('.tsx') || f.endsWith('.jsx')
+				);
+				if (firstComponent) {
+					detectedEntryFile = firstComponent[0];
+				}
+			}
+
+			const files = sourceFiles.map(([filename, content]) => ({
+				filename,
+				content,
+				isEntry: filename === detectedEntryFile
+			}));
+
+			// Sort: entry file first, then alphabetically
+			files.sort((a, b) => {
+				if (a.isEntry && !b.isEntry) return -1;
+				if (!a.isEntry && b.isEntry) return 1;
+				return a.filename.localeCompare(b.filename);
+			});
+
+			this.postToWebview('componentFilesLoaded', {
+				componentId: payload.componentId,
+				componentName,
+				files
+			});
+
+			this.logger.debug(`Loaded ${files.length} files for component ${payload.componentId} (name: ${componentName})`);
+		} catch (error) {
+			this.logger.error(`Failed to load component files: ${error}`);
+			this.postToWebview('componentFilesLoaded', {
+				componentId: payload.componentId,
+				files: []
+		}
 	}
+
+	/**
+	 * Handle save component file request from webview (from code editor popup)
+	 * Saves a single file and triggers rebuild via file watcher
+	 */
+	private async handleSaveComponentFile(payload: {
+		componentId: string;
+		filename: string;
+		content: string;
+	}): Promise<void> {
+		this.logger.info(`Saving component file: ${payload.componentId}/${payload.filename}`);
+
+		try {
+			// Build the file path
+			// Structure: .roopik/canvases/{canvasId}/components/{componentId}/{filename}
+			const filePath = path.join(
+				this.workspacePath,
+				'.roopik',
+				'canvases',
+				this.canvasId,
+				'components',
+				payload.componentId,
+				payload.filename
+			);
+
+			this.logger.info(`[CodePopup] Writing file to: ${filePath}`);
+
+			// Write the file directly
+			fs.writeFileSync(filePath, payload.content, 'utf-8');
+
+			this.postToWebview('componentFileSaved', {
+				componentId: payload.componentId,
+				filename: payload.filename,
+				success: true
+			});
+
+			this.logger.debug(`Saved file ${payload.filename} for component ${payload.componentId}`);
+		} catch (error) {
+			this.logger.error(`Failed to save component file: ${error}`);
+			this.postToWebview('componentFileSaved', {
+				componentId: payload.componentId,
+				filename: payload.filename,
+				success: false
+			});
+		}
+	}
+
+	// ============================================================================
+	// End Code Editor Popup - File Operations
+	// ============================================================================
 
 	/**
 	 * Handle error from webview
@@ -560,11 +751,12 @@ export class CanvasPanel implements vscode.Disposable {
 						if (entry.sandboxPosition) {
 							this.loadedSandboxPositions[componentId] = entry.sandboxPosition;
 						}
-						// Extract component info for loading (need contentHash for cache validation)
+						// Extract component info for loading (need contentHash for cache validation, name for display)
 						if (entry.contentHash) {
 							this.loadedComponents.push({
 								componentId,
-								contentHash: entry.contentHash
+								contentHash: entry.contentHash,
+								name: entry.name
 							});
 						}
 					}
@@ -615,12 +807,13 @@ export class CanvasPanel implements vscode.Disposable {
 		this.logger.info(`Loading ${this.loadedComponents.length} existing components`);
 
 		for (const component of this.loadedComponents) {
-			const { componentId, contentHash } = component;
+			const { componentId, contentHash, name } = component;
 
 			// 1. Notify webview that component exists (shows loading spinner)
 			this.postToWebview('componentCreated', {
 				componentId,
-				canvasId: this.canvasId
+				canvasId: this.canvasId,
+				name
 			});
 
 			// 2. Load component (checks cache, rebuilds if needed)
@@ -863,11 +1056,12 @@ export class CanvasPanel implements vscode.Disposable {
 		);
 
 		// CSP: Allow esm.sh for CDN imports in sandbox iframes
+		// font-src includes data: for Monaco's inline codicon font
 		const csp = `
 			default-src 'none';
 			style-src ${webview.cspSource} 'unsafe-inline';
 			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https://esm.sh https://cdn.skypack.dev;
-			font-src ${webview.cspSource};
+			font-src ${webview.cspSource} data:;
 			img-src ${webview.cspSource} data: https:;
 			connect-src https://esm.sh https://cdn.skypack.dev;
 			frame-src blob: data: https:;

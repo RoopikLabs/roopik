@@ -56,6 +56,7 @@ export interface Transform {
 
 export interface ComponentInput {
 	id: string;
+	name?: string;
 	source: 'ai' | 'user' | 'upload' | 'import' | 'sample';
 	framework?: 'react' | 'vue' | 'svelte' | 'solid' | 'preact' | 'html';
 	files: { [filename: string]: string };

@@ -18,6 +18,9 @@ export default defineConfig({
 			}
 		}
 	},
+	optimizeDeps: {
+		include: ['monaco-editor']
+	},
 	server: {
 		port: 3001,
 		hmr: {

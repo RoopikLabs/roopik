@@ -399,12 +399,17 @@ export function SandboxCard({
 		}
 	}, [sandbox.buildStatus, sandbox.buildError, sandbox.bundledCode, sandbox.id]);
 
-	// Get display name from componentInput
+	// Get display name from componentInput (prefer name, fallback to filename)
 	const displayName = useMemo(() => {
 		const input = sandbox.componentInput;
 		if (!input) return sandbox.id;
 
-		// Use the first filename without extension
+		// Prefer the name field if available
+		if (input.name) {
+			return input.name;
+		}
+
+		// Fallback: use the first filename without extension
 		const filename = Object.keys(input.files)[0];
 		if (filename) {
 			return filename.replace(/\.(jsx|tsx|js|ts|vue|svelte)$/, '');

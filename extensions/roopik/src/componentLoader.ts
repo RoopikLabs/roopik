@@ -62,6 +62,7 @@ export interface LoadResult {
 export interface ComponentLoadInfo {
 	componentId: string;
 	contentHash: string;
+	name?: string;
 }
 
 // ============================================================================

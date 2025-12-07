@@ -18,6 +18,7 @@ import { InfiniteCanvas } from "../canvasView/components/InfiniteCanvas";
 import { StatusPanel } from "../canvasView/components/StatusPanel";
 import { GlobalDeviceToggle } from "../canvasView/components/DeviceToggle";
 import { BottomActionBar } from "../canvasView/components/Toolbar/BottomActionBar";
+import { CodePopup, type CodeFile } from "../canvasView/components/CodePopup";
 import {
 	reorganizeSandboxes,
 	calculateFitAllTransform,
@@ -28,6 +29,26 @@ import {
 } from "../canvasView/services/gridManager";
 import { useFPS } from "../hooks/useFPS";
 import "./ComponentView.css";
+
+// Helper: Get Monaco language from filename
+function getLanguageFromFilename(filename: string): string {
+	const ext = filename.split('.').pop()?.toLowerCase() || '';
+	const languageMap: Record<string, string> = {
+		'tsx': 'typescript',
+		'ts': 'typescript',
+		'jsx': 'javascript',
+		'js': 'javascript',
+		'css': 'css',
+		'scss': 'scss',
+		'less': 'less',
+		'html': 'html',
+		'json': 'json',
+		'md': 'markdown',
+		'vue': 'vue',
+		'svelte': 'svelte',
+	};
+	return languageMap[ext] || 'plaintext';
+}
 
 // VS Code API
 declare const acquireVsCodeApi: () => {
@@ -81,6 +102,11 @@ function App() {
 	// Grid positioning mode state
 	const [snapMode, setSnapMode] = useState<SnapMode>("free");
 
+	// Code popup state
+	const [codePopupSandboxId, setCodePopupSandboxId] = useState<string | null>(null);
+	const [codePopupName, setCodePopupName] = useState<string | null>(null);
+	const [codePopupFiles, setCodePopupFiles] = useState<CodeFile[]>([]);
+
 	// FPS counter
 	const fps = useFPS();
 
@@ -98,9 +124,6 @@ function App() {
 
 	// Track if we're in initial loading state (disable auto-fit during bulk load)
 	const isInitialLoadingRef = useRef<boolean>(false);
-
-	// Track last ESC press time for double-ESC to exit focused mode
-	const lastEscPressRef = useRef<number>(0);
 
 	// Ref to store fitAllSandboxes (defined later, used in message handler)
 	const fitAllSandboxesRef = useRef<((sandboxList: Sandbox[]) => void) | null>(
@@ -213,10 +236,11 @@ function App() {
 
 				case "componentCreated": {
 					// Component created - create sandbox with 'building' status (loading spinner)
-					const { componentId, canvasId } = msg.payload;
+					const { componentId, canvasId, name } = msg.payload;
 					console.log("[Canvas] 🆕 componentCreated received:", {
 						componentId,
 						canvasId,
+						name,
 					});
 
 					// Check if sandbox already exists (e.g., from addImportedComponent)
@@ -267,6 +291,7 @@ function App() {
 								buildStatus: "building",
 								componentInput: {
 									id: componentId,
+									name,
 									source: "import",
 									files: {},
 								},
@@ -449,6 +474,32 @@ function App() {
 
 						return updated;
 					});
+					break;
+				}
+
+				case "componentFilesLoaded": {
+					// Files loaded for code editor popup
+					const { componentId, componentName, files } = msg.payload;
+					console.log("[Canvas] 📄 Component files loaded:", componentId, componentName, files.length, "files");
+
+					// Transform to CodeFile format with language detection
+					const codeFiles: CodeFile[] = files.map((f: { filename: string; content: string; isEntry?: boolean }) => ({
+						filename: f.filename,
+						content: f.content,
+						language: getLanguageFromFilename(f.filename),
+						isEntry: f.isEntry,
+					}));
+
+					setCodePopupFiles(codeFiles);
+					setCodePopupName(componentName || null);
+					setCodePopupSandboxId(componentId);
+					break;
+				}
+
+				case "componentFileSaved": {
+					// File saved confirmation
+					const { componentId, filename, success } = msg.payload;
+					console.log("[Canvas] 💾 Component file saved:", componentId, filename, success ? "✓" : "✗");
 					break;
 				}
 
@@ -758,10 +809,30 @@ function App() {
 		]
 	);
 
-	// Sandbox code view handler (TODO: will show tabbed code editor)
+	// Sandbox code view handler - opens Monaco editor popup
 	const handleSandboxShowCode = useCallback((sandboxId: string) => {
-		// TODO coming soon! - Will show tabbed code view for this sandbox
-		console.log("[Canvas] Show code for sandbox:", sandboxId);
+		console.log("[Canvas] Requesting files for code view:", sandboxId);
+		// Request files from extension - will receive componentFilesLoaded message
+		vscode.postMessage({
+			type: "loadComponentFiles",
+			payload: { componentId: sandboxId },
+		});
+	}, []);
+
+	// Close code popup
+	const handleCloseCodePopup = useCallback(() => {
+		setCodePopupSandboxId(null);
+		setCodePopupName(null);
+		setCodePopupFiles([]);
+	}, []);
+
+	// Save file from code popup
+	const handleSaveCodeFile = useCallback((sandboxId: string, filename: string, content: string) => {
+		console.log("[Canvas] Saving file:", sandboxId, filename);
+		vscode.postMessage({
+			type: "saveComponentFile",
+			payload: { componentId: sandboxId, filename, content },
+		});
 	}, []);
 
 	// Sandbox rebuild handler (TODO: force rebuild bypassing cache)
@@ -787,21 +858,13 @@ function App() {
 				handleSandboxDelete(selectedSandboxId);
 			}
 			if (e.key === "Escape") {
-				// Double-ESC to exit focused mode (within 500ms)
-				// Single ESC deselects when not focused
-				const now = Date.now();
-				const timeSinceLastEsc = now - lastEscPressRef.current;
-				lastEscPressRef.current = now;
-
 				if (focusedSandboxId) {
-					// Require double-ESC to exit focused mode
-					if (timeSinceLastEsc < 500) {
-						console.log("[Canvas] Double-ESC: Exiting focused mode");
-						setFocusedSandboxId(null);
-						fitAllSandboxes(sandboxes);
-						lastEscPressRef.current = 0; // Reset to prevent triple-ESC issues
-					}
+					// Exit focused mode
+					console.log("[Canvas] ESC: Exiting focused mode");
+					setFocusedSandboxId(null);
+					fitAllSandboxes(sandboxes);
 				} else {
+					// Deselect when not focused
 					setSelectedSandboxId(null);
 				}
 			}
@@ -947,6 +1010,18 @@ function App() {
 				isInspectMode={isInspectMode}
 				isRectangleMode={isRectangleMode}
 			/>
+
+			{/* Code Popup - Monaco editor overlay for viewing/editing component files */}
+			{codePopupSandboxId && (
+				<CodePopup
+					sandboxId={codePopupSandboxId}
+					sandboxName={codePopupName || codePopupSandboxId}
+					files={codePopupFiles}
+					entryFile={codePopupFiles.find(f => f.isEntry)?.filename}
+					onClose={handleCloseCodePopup}
+					onSave={handleSaveCodeFile}
+				/>
+			)}
 		</div>
 	);
 }
