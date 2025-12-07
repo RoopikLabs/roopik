@@ -259,7 +259,11 @@ export type WebviewMessage =
 	// Code editor - request to load component files from workspace
 	| { type: 'loadComponentFiles'; payload: { componentId: string } }
 	// Code editor - save file to workspace
-	| { type: 'saveComponentFile'; payload: { componentId: string; filename: string; content: string } };
+	| { type: 'saveComponentFile'; payload: { componentId: string; filename: string; content: string } }
+	// Drag-drop import from OS file manager
+	| { type: 'dropComponent'; payload: { fileName: string; content: string; componentName: string } }
+	// Show notification in VSCode
+	| { type: 'showNotification'; payload: { level: 'info' | 'warning' | 'error'; message: string } };
 
 /**
  * VSCode API interface

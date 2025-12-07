@@ -107,6 +107,9 @@ function App() {
 	const [codePopupName, setCodePopupName] = useState<string | null>(null);
 	const [codePopupFiles, setCodePopupFiles] = useState<CodeFile[]>([]);
 
+	// Drag-drop state
+	const [isDragOver, setIsDragOver] = useState(false);
+
 	// FPS counter
 	const fps = useFPS();
 
@@ -954,8 +957,152 @@ function App() {
 		console.log("[BottomActionBar] AI Chat toggled");
 	}, []);
 
+	// ========================================================================
+	// Drag-and-Drop Handlers (for importing components from OS file manager)
+	// ========================================================================
+
+	// Supported file extensions for component import
+	const SUPPORTED_EXTENSIONS = ['.tsx', '.jsx', '.ts', '.js', '.vue', '.svelte'];
+
+	// Timeout ref for auto-closing drag overlay (safety net)
+	const dragTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	// Reset drag timeout - called on every drag event to keep overlay open
+	const resetDragTimeout = useCallback(() => {
+		if (dragTimeoutRef.current) {
+			clearTimeout(dragTimeoutRef.current);
+		}
+		// Auto-close after 500ms of no drag activity (safety net)
+		dragTimeoutRef.current = setTimeout(() => {
+			setIsDragOver(false);
+		}, 500);
+	}, []);
+
+	// Cleanup timeout on unmount
+	useEffect(() => {
+		return () => {
+			if (dragTimeoutRef.current) {
+				clearTimeout(dragTimeoutRef.current);
+			}
+		};
+	}, []);
+
+	const handleDragOver = useCallback((e: React.DragEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+
+		// Check if it's a file drag (from OS file manager)
+		if (e.dataTransfer.types.includes('Files')) {
+			e.dataTransfer.dropEffect = 'copy';
+			setIsDragOver(true);
+			resetDragTimeout(); // Keep alive while dragging
+		}
+	}, [resetDragTimeout]);
+
+	const handleDragLeave = useCallback((e: React.DragEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+
+		// Only hide overlay if leaving the container (not entering a child)
+		const rect = e.currentTarget.getBoundingClientRect();
+		const x = e.clientX;
+		const y = e.clientY;
+		if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
+			setIsDragOver(false);
+			if (dragTimeoutRef.current) {
+				clearTimeout(dragTimeoutRef.current);
+				dragTimeoutRef.current = null;
+			}
+		}
+	}, []);
+
+	// Handle dragend - fires when drag operation ends (drop or cancel)
+	const handleDragEnd = useCallback(() => {
+		setIsDragOver(false);
+		if (dragTimeoutRef.current) {
+			clearTimeout(dragTimeoutRef.current);
+			dragTimeoutRef.current = null;
+		}
+	}, []);
+
+	const handleDrop = useCallback(async (e: React.DragEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+		setIsDragOver(false);
+
+		// Clear the safety timeout
+		if (dragTimeoutRef.current) {
+			clearTimeout(dragTimeoutRef.current);
+			dragTimeoutRef.current = null;
+		}
+
+		const files = e.dataTransfer.files;
+		if (files.length === 0) {
+			console.log('[DragDrop] No files in drop - might be from VSCode Explorer (not supported)');
+			return;
+		}
+
+		// Process each dropped file
+		for (let i = 0; i < files.length; i++) {
+			const file = files[i];
+			const fileName = file.name;
+			const ext = '.' + fileName.split('.').pop()?.toLowerCase();
+
+			// Check if file type is supported
+			if (!SUPPORTED_EXTENSIONS.includes(ext)) {
+				console.log(`[DragDrop] Skipping unsupported file: ${fileName}`);
+				vscode.postMessage({
+					type: 'showNotification',
+					payload: {
+						level: 'warning',
+						message: `Skipping unsupported file: ${fileName}`
+					}
+				});
+				continue;
+			}
+
+			try {
+				// Read file content
+				const content = await file.text();
+				const componentName = fileName.replace(/\.[^/.]+$/, ''); // Remove extension
+
+				console.log(`[DragDrop] Importing component: ${componentName} (${fileName})`);
+
+				// Send to extension for import
+				// Extension will add canvasId and forward to Core
+				vscode.postMessage({
+					type: 'dropComponent',
+					payload: {
+						fileName,
+						content,
+						componentName
+					}
+				});
+			} catch (err) {
+				console.error(`[DragDrop] Failed to read file: ${fileName}`, err);
+			}
+		}
+	}, []);
+
 	return (
-		<div className="app">
+		<div
+			className="app"
+			onDragOver={handleDragOver}
+			onDragLeave={handleDragLeave}
+			onDragEnd={handleDragEnd}
+			onDrop={handleDrop}
+		>
+			{/* Drop zone overlay */}
+			{isDragOver && (
+				<div className="drop-zone-overlay">
+					<div className="drop-zone-content">
+						<div className="drop-zone-icon">📦</div>
+						<div className="drop-zone-text">Drop component file here</div>
+						<div className="drop-zone-hint">.tsx, .jsx, .ts, .js, .vue, .svelte</div>
+					</div>
+				</div>
+			)}
+
 			<div className="canvas-container">
 				<InfiniteCanvas
 					sandboxes={sandboxes}

@@ -13,7 +13,7 @@
 /**
  * Component source type
  */
-export type ComponentSource = 'ai-agent' | 'local-file' | 'github' | 'manual';
+export type ComponentSource = 'ai-agent' | 'local-file' | 'drag-drop' | 'github' | 'manual';
 
 /**
  * Component framework
@@ -78,6 +78,12 @@ export interface SourceData {
 
 	/** Local file path (for local-file source) */
 	filePath?: string;
+
+	/** File name with extension (for drag-drop source) */
+	fileName?: string;
+
+	/** File content (for drag-drop source) */
+	content?: string;
 
 	/** GitHub URL (for github source) */
 	githubUrl?: string;

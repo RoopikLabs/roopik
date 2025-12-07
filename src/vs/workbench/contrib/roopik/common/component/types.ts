@@ -95,6 +95,7 @@ export interface CreateComponentRequest {
 export type SourceData =
 	| AIAgentSourceData
 	| LocalFileSourceData
+	| DragDropSourceData
 	| GitHubSourceData
 	| FigmaSourceData
 	| ManualSourceData;
@@ -121,6 +122,23 @@ export interface LocalFileSourceData {
 	type: 'local-file';
 	/** Absolute path to file */
 	filePath: string;
+}
+
+/**
+ * Drag-and-drop from OS file manager onto canvas
+ *
+ * Unlike local-file, we don't have the file path (browser security).
+ * Instead, we receive the file content directly from the webview.
+ * Supports single file now, can be extended to multiple files in future.
+ */
+export interface DragDropSourceData {
+	type: 'drag-drop';
+	/** File name with extension (e.g., "Button.tsx") */
+	fileName: string;
+	/** File content as string */
+	content: string;
+	/** For future: multiple files support */
+	files?: Record<string, string>;
 }
 
 /**

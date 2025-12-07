@@ -18,6 +18,7 @@ import { IImportService, IImportAdapter } from '../../common/import/importServic
 import {
 	AIAgentAdapter,
 	LocalFileAdapter,
+	DragDropAdapter,
 	GitHubAdapter,
 	ManualAdapter
 } from './adapters/index.js';
@@ -31,6 +32,7 @@ export class ImportService implements IImportService {
 		// Register default adapters
 		this.registerAdapter(new AIAgentAdapter());
 		this.registerAdapter(new LocalFileAdapter());
+		this.registerAdapter(new DragDropAdapter());
 		this.registerAdapter(new GitHubAdapter());
 		this.registerAdapter(new ManualAdapter());
 	}

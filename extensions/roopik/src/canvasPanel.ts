@@ -383,6 +383,14 @@ export class CanvasPanel implements vscode.Disposable {
 					});
 					break;
 
+				case 'dropComponent':
+					await this.handleDropComponent(message.payload as {
+						fileName: string;
+						content: string;
+						componentName: string;
+					});
+					break;
+
 				case 'rebuildComponent':
 					await this.handleRebuildComponent(message.payload as { componentId: string });
 					break;
@@ -422,6 +430,13 @@ export class CanvasPanel implements vscode.Disposable {
 					});
 					break;
 
+				case 'showNotification':
+					this.handleShowNotification(message.payload as {
+						level: 'info' | 'warning' | 'error';
+						message: string;
+					});
+					break;
+
 				case 'error':
 					this.handleWebviewError(message.payload);
 					break;
@@ -456,6 +471,30 @@ export class CanvasPanel implements vscode.Disposable {
 
 		// Component created - onComponentCreated event will be routed back
 		this.logger.info(`Component creation initiated: ${component.id}`);
+	}
+
+	/**
+	 * Handle drop component request from webview (drag-drop from OS file manager)
+	 */
+	private async handleDropComponent(payload: {
+		fileName: string;
+		content: string;
+		componentName: string;
+	}): Promise<void> {
+		this.logger.info(`Dropping component: ${payload.componentName} (${payload.fileName})`);
+
+		const component = await this.manager.createComponent({
+			canvasId: this.canvasId,
+			name: payload.componentName,
+			sourceData: {
+				type: 'drag-drop',
+				fileName: payload.fileName,
+				content: payload.content
+			}
+		});
+
+		// Component created - onComponentCreated event will be routed back
+		this.logger.info(`Component drop initiated: ${component.id}`);
 	}
 
 	/**
@@ -686,6 +725,26 @@ export class CanvasPanel implements vscode.Disposable {
 	// ============================================================================
 	// End Code Editor Popup - File Operations
 	// ============================================================================
+
+	/**
+	 * Handle show notification request from webview
+	 */
+	private handleShowNotification(payload: {
+		level: 'info' | 'warning' | 'error';
+		message: string;
+	}): void {
+		switch (payload.level) {
+			case 'info':
+				vscode.window.showInformationMessage(payload.message);
+				break;
+			case 'warning':
+				vscode.window.showWarningMessage(payload.message);
+				break;
+			case 'error':
+				vscode.window.showErrorMessage(payload.message);
+				break;
+		}
+	}
 
 	/**
 	 * Handle error from webview
