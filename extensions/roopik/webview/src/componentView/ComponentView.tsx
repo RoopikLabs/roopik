@@ -11,7 +11,8 @@ import type {
 	DevicePreset,
 	ComponentInput,
 	ExtensionMessage,
-	WebviewMessage
+	WebviewMessage,
+	SnapMode
 } from '../canvasView/types';
 import { InfiniteCanvas } from '../canvasView/components/InfiniteCanvas';
 import { StatusPanel } from '../canvasView/components/StatusPanel';
@@ -21,10 +22,10 @@ import { FullscreenOverlay } from '../canvasView/components/FullscreenOverlay';
 import { BottomActionBar } from '../canvasView/components/Toolbar/BottomActionBar';
 import { SAMPLE_COMPONENTS, type SampleComponent } from '../canvasView/data/sampleComponents';
 import {
-	getGridPosition,
 	reorganizeSandboxes,
 	calculateFitAllTransform,
 	calculateFocusTransform,
+	getNextAvailableGridPosition,
 	DEFAULT_CONFIG
 } from '../canvasView/services/gridManager';
 import { useFPS } from '../hooks/useFPS';
@@ -66,11 +67,30 @@ function App() {
 	const [isInspectMode, setIsInspectMode] = useState(false);
 	const [isRectangleMode, setIsRectangleMode] = useState(false);
 
+	// Grid positioning mode state
+	const [snapMode, setSnapMode] = useState<SnapMode>('free');
+
 	// FPS counter
 	const fps = useFPS();
 
 	// Track pending builds
 	const pendingBuildsRef = useRef<Set<string>>(new Set());
+
+	// Track previous sandbox count for auto-fit on new additions
+	const prevSandboxCountRef = useRef<number>(0);
+
+	// Track fullscreen and focused states for auto-fit logic
+	const fullscreenSandboxIdRef = useRef<string | null>(null);
+	const focusedSandboxIdRef = useRef<string | null>(null);
+
+	// Update refs when state changes
+	useEffect(() => {
+		fullscreenSandboxIdRef.current = fullscreenSandboxId;
+	}, [fullscreenSandboxId]);
+
+	useEffect(() => {
+		focusedSandboxIdRef.current = focusedSandboxId;
+	}, [focusedSandboxId]);
 
 	// Load initial state from extension on mount
 	useEffect(() => {
@@ -83,6 +103,8 @@ function App() {
 				if (initialState.sandboxes && initialState.sandboxes.length > 0) {
 					console.log('[Canvas] Restoring', initialState.sandboxes.length, 'sandboxes');
 					setSandboxes(initialState.sandboxes);
+					// Sync ref to avoid auto-fit on initial load
+					prevSandboxCountRef.current = initialState.sandboxes.length;
 				}
 
 				if (initialState.viewport) {
@@ -124,35 +146,45 @@ function App() {
 					console.log('[Canvas] 🆕 componentCreated received:', { componentId, canvasId });
 
 					// Check if sandbox already exists (e.g., from addImportedComponent)
-					const existingSandbox = sandboxes.find(s => s.id === componentId);
-					if (existingSandbox) {
-						console.log('[Canvas] Sandbox already exists, updating to building status');
-						setSandboxes(prev => prev.map(sandbox => {
-							if (sandbox.id === componentId) {
-								return { ...sandbox, buildStatus: 'building' as const };
-							}
-							return sandbox;
-						}));
-					} else {
-						// Create new sandbox with building status
-						console.log('[Canvas] Creating new sandbox with building status');
-						const position = getGridPosition(sandboxes.length, DEFAULT_CONFIG);
-						const newSandbox: Sandbox = {
-							id: componentId,
-							x: position.x,
-							y: position.y,
-							width: DEFAULT_CONFIG.sandboxWidth,
-							height: DEFAULT_CONFIG.sandboxHeight,
-							zIndex: sandboxes.length + 1,
-							buildStatus: 'building',
-							componentInput: {
+					setSandboxes(prev => {
+						const existingSandbox = prev.find(s => s.id === componentId);
+						if (existingSandbox) {
+							console.log('[Canvas] Sandbox already exists, updating to building status');
+							return prev.map(sandbox =>
+								sandbox.id === componentId
+									? { ...sandbox, buildStatus: 'building' as const }
+									: sandbox
+							);
+						} else {
+							// Create new sandbox with building status at next available position
+							console.log('[Canvas] Creating new sandbox with building status');
+							const position = getNextAvailableGridPosition(prev, DEFAULT_CONFIG);
+							const newSandbox: Sandbox = {
 								id: componentId,
-								source: 'import',
-								files: {}
-							}
-						};
-						setSandboxes(prev => [...prev, newSandbox]);
-					}
+								x: position.x,
+								y: position.y,
+								width: DEFAULT_CONFIG.sandboxWidth,
+								height: DEFAULT_CONFIG.sandboxHeight,
+								zIndex: prev.length + 1,
+								buildStatus: 'building',
+								componentInput: {
+									id: componentId,
+									source: 'import',
+									files: {}
+								}
+							};
+							const updated = [...prev, newSandbox];
+
+							// Trigger auto-fit after state update
+							setTimeout(() => {
+								if (!fullscreenSandboxIdRef.current && !focusedSandboxIdRef.current) {
+									fitAllSandboxes(updated);
+								}
+							}, 350);
+
+							return updated;
+						}
+					});
 					break;
 				}
 
@@ -219,6 +251,8 @@ function App() {
 					});
 
 					setSandboxes(state.sandboxes);
+					// Sync ref to avoid auto-fit on canvas load
+					prevSandboxCountRef.current = state.sandboxes.length;
 					setSelectedSandboxId(state.selectedSandboxId);
 					setTransform(state.viewport);
 					// Restore background preferences
@@ -245,36 +279,42 @@ function App() {
 						files: Object.keys(componentInput.files)
 					});
 
-					// Create a new sandbox for the imported component
-					const newSandbox: Sandbox = {
-						id: componentInput.id,
-						x: position?.x ?? 100,
-						y: position?.y ?? 100,
-						width: DEFAULT_CONFIG.sandboxWidth,
-						height: DEFAULT_CONFIG.sandboxHeight,
-						zIndex: Date.now(),
-						buildStatus: 'pending',
-						componentInput
-					};
-
 					setSandboxes(prev => {
-						// Calculate position if not provided
-						if (!position) {
-							const gridPos = getGridPosition(prev.length, DEFAULT_CONFIG);
-							newSandbox.x = gridPos.x;
-							newSandbox.y = gridPos.y;
-						}
-						return [...prev, newSandbox];
-					});
-					setSelectedSandboxId(newSandbox.id);
+						// Calculate position: use provided or find next available grid slot
+						const gridPos = position ?? getNextAvailableGridPosition(prev, DEFAULT_CONFIG);
 
-					// Request build for the imported component
-					vscode.postMessage({
-						type: 'buildComponent',
-						payload: {
-							componentId: newSandbox.id,
-							input: componentInput
-						}
+						const newSandbox: Sandbox = {
+							id: componentInput.id,
+							x: gridPos.x,
+							y: gridPos.y,
+							width: DEFAULT_CONFIG.sandboxWidth,
+							height: DEFAULT_CONFIG.sandboxHeight,
+							zIndex: Date.now(),
+							buildStatus: 'pending',
+							componentInput
+						};
+
+						const updated = [...prev, newSandbox];
+
+						// Request build for the imported component
+						vscode.postMessage({
+							type: 'buildComponent',
+							payload: {
+								componentId: newSandbox.id,
+								input: componentInput
+							}
+						});
+
+						setSelectedSandboxId(newSandbox.id);
+
+						// Trigger auto-fit after state update
+						setTimeout(() => {
+							if (!fullscreenSandboxIdRef.current && !focusedSandboxIdRef.current) {
+								fitAllSandboxes(updated);
+							}
+						}, 350);
+
+						return updated;
 					});
 					break;
 				}
@@ -361,7 +401,7 @@ function App() {
 	 * Starts in 'building' state and requests build from Extension
 	 */
 	const createSandbox = useCallback((input: ComponentInput): Sandbox => {
-		const position = getGridPosition(sandboxes.length, DEFAULT_CONFIG);
+		const position = getNextAvailableGridPosition(sandboxes, DEFAULT_CONFIG);
 		const timestamp = Date.now();
 		const uniqueId = `${input.id}-${timestamp}`;
 
@@ -382,18 +422,65 @@ function App() {
 		requestBuild(uniqueId, uniqueInput);
 
 		return sandbox;
-	}, [sandboxes.length, requestBuild]);
+	}, [sandboxes, requestBuild]);
 
 	// Auto-zoom to fit all sandboxes
 	const fitAllSandboxes = useCallback((sandboxList: Sandbox[]) => {
 		if (sandboxList.length === 0) return;
 
-		const viewport = { width: window.innerWidth, height: window.innerHeight - 100 };
-		const newTransform = calculateFitAllTransform(sandboxList, viewport, DEFAULT_CONFIG);
-		if (newTransform) {
-			setTransform(newTransform);
-		}
+		// Use requestAnimationFrame to ensure DOM is updated
+		requestAnimationFrame(() => {
+			const viewport = { width: window.innerWidth, height: window.innerHeight - 100 };
+			const newTransform = calculateFitAllTransform(sandboxList, viewport, DEFAULT_CONFIG);
+			if (newTransform) {
+				console.log('[Canvas] Auto-fitting to viewport:', {
+					sandboxCount: sandboxList.length,
+					transform: newTransform
+				});
+				setTransform(newTransform);
+			}
+		});
 	}, []);
+
+	// Auto-fit when sandbox count changes (additions or deletions)
+	const sandboxCount = sandboxes.length;
+	useEffect(() => {
+		const prevCount = prevSandboxCountRef.current;
+
+		// Always update ref for next comparison
+		prevSandboxCountRef.current = sandboxCount;
+
+		// Skip on initial mount (prevCount is 0 and we're loading from storage)
+		// or if count didn't change
+		if (sandboxCount === prevCount) {
+			return;
+		}
+
+		// Skip if no sandboxes (all deleted)
+		if (sandboxCount === 0) {
+			return;
+		}
+
+		// === DISABLE CONDITIONS (easily extendable) ===
+		const shouldSkipAutoFit =
+			fullscreenSandboxId !== null ||  // User in fullscreen mode
+			focusedSandboxId !== null;        // User focused on a sandbox
+			// Future: || isEditingComponent || isUserDragging etc.
+
+		if (shouldSkipAutoFit) {
+			console.log('[Canvas] Skipping auto-fit (user interaction mode)');
+			return;
+		}
+
+		// Use longer delay to ensure DOM is fully updated
+		// Also use requestAnimationFrame for smoother animation
+		const timer = setTimeout(() => {
+			console.log('[Canvas] Auto-fitting after count change:', prevCount, '->', sandboxCount);
+			fitAllSandboxes(sandboxes);
+		}, 300);
+
+		return () => clearTimeout(timer);
+	}, [sandboxCount, sandboxes, fullscreenSandboxId, focusedSandboxId, fitAllSandboxes]);
 
 	// Focus on a single sandbox (double-click)
 	const focusSandbox = useCallback((sandboxId: string) => {
@@ -485,13 +572,24 @@ function App() {
 		setSandboxes(prev => {
 			const remaining = prev.filter(s => s.id !== sandboxId);
 			if (remaining.length > 0) {
+				// Reorganize and auto-fit after deletion
 				setTimeout(() => {
-					reorganizeToGrid(remaining);
-				}, 50);
+					if (!fullscreenSandboxIdRef.current && !focusedSandboxIdRef.current) {
+						reorganizeToGrid(remaining);
+					} else {
+						// Just fit without reorganizing if user is focused
+						fitAllSandboxes(remaining);
+					}
+				}, 100);
+			} else {
+				// All deleted - reset view
+				setTimeout(() => {
+					setTransform({ x: 0, y: 0, scale: 1 });
+				}, 100);
 			}
 			return remaining;
 		});
-	}, [selectedSandboxId, focusedSandboxId, reorganizeToGrid]);
+	}, [selectedSandboxId, focusedSandboxId, reorganizeToGrid, fullscreenSandboxId, fitAllSandboxes]);
 
 	// Sandbox expand (fullscreen) handler
 	const handleSandboxExpand = useCallback((sandboxId: string) => {
@@ -570,51 +668,66 @@ function App() {
 		const newSandbox = createSandbox(sample.input);
 		setSandboxes(prev => {
 			const updated = [...prev, newSandbox];
-			setTimeout(() => fitAllSandboxes(updated), 100);
+			// Trigger auto-fit after state update
+			setTimeout(() => {
+				if (!fullscreenSandboxIdRef.current && !focusedSandboxIdRef.current) {
+					fitAllSandboxes(updated);
+				}
+			}, 350);
 			return updated;
 		});
 		setSelectedSandboxId(newSandbox.id);
-	}, [sandboxes, createSandbox, fitAllSandboxes]);
+	}, [sandboxes, createSandbox, fitAllSandboxes, fullscreenSandboxId, focusedSandboxId]);
 
 	const handleLoadAll = useCallback(() => {
 		console.log('[FloatingToolbar] Loading all samples');
-		const newSandboxes: Sandbox[] = [];
 
-		SAMPLE_COMPONENTS.forEach((sample, idx) => {
-			const alreadyLoaded = sandboxes.some(s =>
-				s.componentInput?.id.startsWith(sample.id + '-') ||
-				s.id.startsWith(sample.id + '-')
-			);
-			if (alreadyLoaded) return;
+		setSandboxes(prev => {
+			const newSandboxes: Sandbox[] = [];
+			let currentSandboxes = [...prev];
 
-			const position = getGridPosition(sandboxes.length + newSandboxes.length, DEFAULT_CONFIG);
-			const timestamp = Date.now();
-			const uniqueId = `${sample.id}-${timestamp}-${idx}`;
-			const uniqueInput: ComponentInput = { ...sample.input, id: uniqueId };
+			SAMPLE_COMPONENTS.forEach((sample, idx) => {
+				const alreadyLoaded = currentSandboxes.some(s =>
+					s.componentInput?.id.startsWith(sample.id + '-') ||
+					s.id.startsWith(sample.id + '-')
+				);
+				if (alreadyLoaded) return;
 
-			const sandbox: Sandbox = {
-				id: uniqueId,
-				x: position.x,
-				y: position.y,
-				width: DEFAULT_CONFIG.sandboxWidth,
-				height: DEFAULT_CONFIG.sandboxHeight,
-				zIndex: sandboxes.length + newSandboxes.length + 1,
-				buildStatus: 'building',
-				componentInput: uniqueInput
-			};
+				// Get next available position considering already-added sandboxes
+				const position = getNextAvailableGridPosition(currentSandboxes, DEFAULT_CONFIG);
+				const timestamp = Date.now();
+				const uniqueId = `${sample.id}-${timestamp}-${idx}`;
+				const uniqueInput: ComponentInput = { ...sample.input, id: uniqueId };
 
-			requestBuild(uniqueId, uniqueInput);
-			newSandboxes.push(sandbox);
-		});
+				const sandbox: Sandbox = {
+					id: uniqueId,
+					x: position.x,
+					y: position.y,
+					width: DEFAULT_CONFIG.sandboxWidth,
+					height: DEFAULT_CONFIG.sandboxHeight,
+					zIndex: currentSandboxes.length + 1,
+					buildStatus: 'building',
+					componentInput: uniqueInput
+				};
 
-		if (newSandboxes.length > 0) {
-			setSandboxes(prev => {
-				const updated = [...prev, ...newSandboxes];
-				setTimeout(() => fitAllSandboxes(updated), 100);
-				return updated;
+				requestBuild(uniqueId, uniqueInput);
+				newSandboxes.push(sandbox);
+				currentSandboxes = [...currentSandboxes, sandbox];
 			});
-		}
-	}, [sandboxes, requestBuild, fitAllSandboxes]);
+
+			if (newSandboxes.length > 0) {
+				const updated = [...prev, ...newSandboxes];
+				// Trigger auto-fit after state update
+				setTimeout(() => {
+					if (!fullscreenSandboxId && !focusedSandboxId) {
+						fitAllSandboxes(updated);
+					}
+				}, 350);
+				return updated;
+			}
+			return prev;
+		});
+	}, [requestBuild, fitAllSandboxes, fullscreenSandboxId, focusedSandboxId]);
 
 	const handleClearAll = useCallback(() => {
 		console.log('[FloatingToolbar] Clearing all sandboxes');
@@ -629,6 +742,15 @@ function App() {
 		console.log('[FloatingToolbar] Tidy up - reorganizing to grid');
 		reorganizeToGrid();
 	}, [reorganizeToGrid]);
+
+	// Snap mode change handler - auto-reorganize when switching to grid mode
+	const handleSnapModeChange = useCallback((mode: SnapMode) => {
+		setSnapMode(mode);
+		if (mode === 'grid' && sandboxes.length > 0) {
+			console.log('[StatusPanel] Switching to Grid mode - reorganizing sandboxes');
+			reorganizeToGrid();
+		}
+	}, [sandboxes.length, reorganizeToGrid]);
 
 	// Bottom Action Bar handlers - Mutually exclusive modes
 	const handleSelectMode = useCallback(() => {
@@ -685,6 +807,7 @@ function App() {
 					pattern={pattern}
 					backgroundColor={backgroundColor}
 					globalDeviceMode={globalDeviceMode}
+					snapMode={snapMode}
 					onTransformChange={setTransform}
 					onSandboxClick={handleSandboxClick}
 					onSandboxDoubleClick={focusSandbox}
@@ -708,11 +831,13 @@ function App() {
 				backgroundColor={backgroundColor}
 				selectedSandboxId={selectedSandboxId}
 				focusedSandboxId={focusedSandboxId}
+				snapMode={snapMode}
 				onZoomIn={handleZoomIn}
 				onZoomOut={handleZoomOut}
 				onResetView={handleResetView}
 				onTogglePattern={handleTogglePattern}
 				onBackgroundColorChange={handleBackgroundColorChange}
+				onSnapModeChange={handleSnapModeChange}
 			/>
 
 			{/* Bottom Action Bar - Professional toolbar for element selection and actions */}
