@@ -129,6 +129,10 @@ export class CanvasService implements ICanvasService {
 		return this.initialized;
 	}
 
+	async isInitializedAsync(): Promise<boolean> {
+		return this.initialized;
+	}
+
 	dispose(): void {
 		this._onDidInitialize.dispose();
 		this._onCanvasCreated.dispose();
@@ -278,10 +282,19 @@ export class CanvasService implements ICanvasService {
 	}
 
 	async listCanvasesAsync(options?: ListCanvasOptions): Promise<CanvasMeta[]> {
-		console.log('[CanvasService] listCanvasesAsync called, fetching from storage directly...');
+		// When initialized, use in-memory cache (Map is always in sync with disk)
+		// This avoids redundant filesystem reads since:
+		// - loadAllCanvases() populates Map during initialize()
+		// - createCanvas(), deleteCanvas(), updateCanvas() keep Map in sync
+		if (this.initialized) {
+			console.log('[CanvasService] listCanvasesAsync: returning from cache (initialized)');
+			return this.listCanvases(options);
+		}
 
-		// Always read directly from filesystem - don't rely on in-memory cache
-		// This ensures we always have the latest data from index.json
+		// Not initialized yet - try reading from storage directly
+		// This is a fallback for edge cases (shouldn't happen in normal flow)
+		console.log('[CanvasService] listCanvasesAsync called, fetching from storage (not initialized)...');
+
 		try {
 			const canvasIds = await this.storageService.listCanvases();
 			console.log('[CanvasService] listCanvasesAsync: storage returned canvas IDs:', canvasIds);

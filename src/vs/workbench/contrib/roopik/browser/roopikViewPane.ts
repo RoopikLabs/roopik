@@ -52,6 +52,15 @@ export class RoopikDashboardView extends ViewPane {
 	private projectsContainer: HTMLElement | undefined;
 	private static animationsInjected = false;
 
+	/** Timeout handle for loading state */
+	private loadingTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+	/** Whether we've received the initialization event */
+	private serviceInitialized: boolean = false;
+
+	/** Loading timeout in milliseconds (5 seconds) */
+	private static readonly LOADING_TIMEOUT_MS = 5000;
+
 	constructor(
 		options: { id: string; title: string },
 		@IKeybindingService keybindingService: IKeybindingService,
@@ -73,9 +82,11 @@ export class RoopikDashboardView extends ViewPane {
 		console.log('[RoopikDashboardView] Constructor called');
 
 		// Subscribe to onDidInitialize - this fires when CanvasService is fully ready
-		// This is the proper way to load canvases: wait for service initialization, not timers!
+		// This is the ONLY trigger for loading canvases - no premature attempts!
 		this._register(this.canvasService.onDidInitialize(() => {
 			console.log('[RoopikDashboardView] EVENT: onDidInitialize received - CanvasService is ready');
+			this.serviceInitialized = true;
+			this.clearLoadingTimeout();
 			this.loadCanvasesNow();
 		}));
 
@@ -92,6 +103,82 @@ export class RoopikDashboardView extends ViewPane {
 			console.log('[RoopikDashboardView] EVENT: onCanvasUpdated received', event);
 			this.loadCanvasesNow();
 		}));
+	}
+
+	/**
+	 * Clear the loading timeout if it exists
+	 */
+	private clearLoadingTimeout(): void {
+		if (this.loadingTimeoutHandle) {
+			clearTimeout(this.loadingTimeoutHandle);
+			this.loadingTimeoutHandle = undefined;
+		}
+	}
+
+	/**
+	 * Start loading timeout - shows error state if onDidInitialize never fires
+	 */
+	private startLoadingTimeout(): void {
+		this.clearLoadingTimeout();
+		this.loadingTimeoutHandle = setTimeout(() => {
+			if (!this.serviceInitialized) {
+				console.warn('[RoopikDashboardView] Loading timeout - service initialization took too long');
+				this.showTimeoutState();
+			}
+		}, RoopikDashboardView.LOADING_TIMEOUT_MS);
+	}
+
+	/**
+	 * Show timeout/error state when initialization takes too long
+	 */
+	private showTimeoutState(): void {
+		if (!this.canvasesContainer) {
+			return;
+		}
+
+		while (this.canvasesContainer.firstChild) {
+			this.canvasesContainer.removeChild(this.canvasesContainer.firstChild);
+		}
+
+		this.createSection(this.canvasesContainer, 'Canvases', [
+			{
+				label: 'Service unavailable',
+				description: 'Click to retry',
+				onClick: () => {
+					this.showLoadingState();
+					this.startLoadingTimeout();
+				}
+			}
+		]);
+	}
+
+	/**
+	 * Check if service is already initialized and load canvases
+	 * This handles the IDE reload case where onDidInitialize already fired
+	 */
+	private async checkAndLoadCanvases(): Promise<void> {
+		console.log('[RoopikDashboardView] checkAndLoadCanvases: checking if service is already initialized...');
+
+		try {
+			const isInitialized = await this.canvasService.isInitializedAsync();
+			console.log('[RoopikDashboardView] checkAndLoadCanvases: isInitialized =', isInitialized);
+
+			if (isInitialized) {
+				// Service already initialized (IDE reload case) - load immediately
+				console.log('[RoopikDashboardView] Service already initialized, loading canvases now');
+				this.serviceInitialized = true;
+				this.clearLoadingTimeout();
+				this.loadCanvasesNow();
+			} else {
+				// Not initialized yet - start timeout, wait for onDidInitialize event
+				console.log('[RoopikDashboardView] Service not initialized yet, waiting for event...');
+				this.startLoadingTimeout();
+			}
+		} catch (err) {
+			console.error('[RoopikDashboardView] checkAndLoadCanvases: error checking initialization:', err);
+			// Start timeout as fallback
+			this.startLoadingTimeout();
+		}
 	}
 
 	protected override renderBody(container: HTMLElement): void {
@@ -146,11 +233,9 @@ export class RoopikDashboardView extends ViewPane {
 		// Show loading state initially
 		this.showLoadingState();
 
-		// Try to load canvases immediately - this handles the case where
-		// CanvasService is already initialized (onDidInitialize already fired before we subscribed)
-		// If it fails, the onDidInitialize event subscription will catch it when service initializes
-		console.log('[RoopikDashboardView] renderBody: attempting immediate canvas load');
-		this.loadCanvasesNow();
+		// Check if service is already initialized (handles IDE reload case)
+		// If already initialized, load immediately; otherwise wait for event
+		this.checkAndLoadCanvases();
 
 		// Load projects (static for now)
 		this.loadProjects();

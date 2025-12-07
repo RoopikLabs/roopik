@@ -80,7 +80,14 @@ export class CanvasServiceClient implements ICanvasService {
 
 	isInitialized(): boolean {
 		// Note: This is sync in interface but async over IPC
-		throw new Error('CanvasServiceClient: isInitialized() is not supported over IPC. Use async pattern.');
+		throw new Error('CanvasServiceClient: isInitialized() is not supported over IPC. Use isInitializedAsync().');
+	}
+
+	/**
+	 * Async version of isInitialized for IPC
+	 */
+	async isInitializedAsync(): Promise<boolean> {
+		return this.channel.call('isInitialized');
 	}
 
 	dispose(): void {

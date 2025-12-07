@@ -102,9 +102,14 @@ export interface ICanvasService {
 	initialize(workspacePath: string): Promise<void>;
 
 	/**
-	 * Check if the service is initialized
+	 * Check if the service is initialized (sync - main process only)
 	 */
 	isInitialized(): boolean;
+
+	/**
+	 * Check if the service is initialized (async - works over IPC)
+	 */
+	isInitializedAsync(): Promise<boolean>;
 
 	/**
 	 * Dispose the service
