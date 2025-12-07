@@ -130,6 +130,9 @@ export interface BuildResult {
 
 	/** Bundle size in bytes */
 	bundleSize: number;
+
+	/** Path to the bundle file (for extension to read directly) */
+	bundlePath?: string;
 }
 
 /**

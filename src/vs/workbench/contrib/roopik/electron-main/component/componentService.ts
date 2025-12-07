@@ -36,6 +36,7 @@ import { IBuildService, BuildInput, BuildOutput } from '../../common/build/build
 import { IImportService } from '../../common/import/importService.js';
 import { IFileWatcher, FileChangeEvent } from '../../common/watch/fileWatcher.js';
 import { BuildQueue, BuildRequest, QueueBuildResult } from './buildQueue.js';
+import { getBundlePath } from '../storage/paths.js';
 
 // ============================================================================
 // Helper Functions
@@ -554,6 +555,7 @@ export class ComponentService extends Disposable implements IComponentService {
 	private async executeBuild(request: BuildRequest): Promise<QueueBuildResult> {
 		const { componentId, canvasId, trigger } = request;
 		const startTime = Date.now();
+		console.log(`[ComponentService] 🔨 Build started: ${componentId} (trigger: ${trigger})`);
 
 		try {
 			// Get component
@@ -599,6 +601,7 @@ export class ComponentService extends Disposable implements IComponentService {
 					builtAt: Date.now()
 				}
 			});
+			console.log(`[ComponentService] 💾 Bundle saved: ${componentId} (${buildOutput.bundleSize} bytes)`);
 
 			// Update component state
 			component.buildState = { status: 'ready' };
@@ -712,11 +715,13 @@ export class ComponentService extends Disposable implements IComponentService {
 		};
 
 		if (result.success) {
-			// Success: include build stats (but not bundledCode - too large)
+			// Success: include build stats and bundle path (Extension reads file directly)
+			const bundlePath = getBundlePath(this._workspacePath, result.canvasId, result.componentId);
 			event.result = {
 				cdnUrls: result.cdnUrls || [],
 				buildTime: result.buildTime || 0,
-				bundleSize: result.bundleSize || 0
+				bundleSize: result.bundleSize || 0,
+				bundlePath
 			};
 		} else {
 			// Failure: include structured error info

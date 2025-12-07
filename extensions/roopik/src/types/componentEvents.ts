@@ -24,19 +24,19 @@ export interface ComponentCreatedEvent {
 /**
  * Event fired when a component build completes (success or failure)
  *
- * On success: `success=true`, `result` contains build metadata
+ * On success: `success=true`, `result` contains build metadata + bundlePath
  * On failure: `success=false`, `errorInfo` contains structured error details
  *
  * Note: `result.bundledCode` is NOT included in the event (too large).
- * Use `componentService.getBundledCode(id)` to get the actual code.
+ * Extension reads from `result.bundlePath` directly.
  */
 export interface ComponentBuildEvent {
 	componentId: string;
 	canvasId: string;
 	success: boolean;
 
-	/** Build result (success case) - bundledCode omitted, use getBundledCode() */
-	result?: Omit<BuildResult, 'bundledCode'>;
+	/** Build result (success case) - includes bundlePath for direct file read */
+	result?: Omit<BuildResult, 'bundledCode'> & { bundlePath?: string };
 
 	/** Structured error info (failure case) */
 	errorInfo?: BuildErrorInfo;

@@ -227,21 +227,39 @@ export class CanvasPanel implements vscode.Disposable {
 	public onComponentBuilt(event: ComponentBuildEvent): void {
 		this.logger.debug(`Component built: ${event.componentId}, success: ${event.success}`);
 
-		if (event.success) {
-			// Fetch bundled code and send to webview
-			this.manager.getBundledCode(event.componentId).then(bundledCode => {
+		if (event.success && event.result?.bundlePath) {
+			// Read bundled code directly from file (no IPC needed)
+			try {
+				const bundledCode = fs.readFileSync(event.result.bundlePath, 'utf-8');
+				this.logger.debug(`Bundle loaded from: ${event.result.bundlePath} (${bundledCode.length} bytes)`);
+
 				this.postToWebview('componentBuilt', {
-					...event,
-					bundledCode
+					componentId: event.componentId,
+					result: {
+						bundledCode,
+						cdnUrls: event.result.cdnUrls || [],
+						framework: 'react', // TODO: Get from event
+						resolvedDependencies: {},
+						buildTime: event.result.buildTime || 0,
+						bundleSize: event.result.bundleSize || 0
+					}
 				});
-			}).catch(err => {
-				this.logger.error(`Failed to get bundled code: ${err}`);
+			} catch (err) {
+				this.logger.error(`Failed to read bundle from ${event.result.bundlePath}: ${err}`);
 				this.postToWebview('componentError', {
 					componentId: event.componentId,
-					error: `Failed to get bundled code: ${err.message}`
+					error: `Failed to read bundle: ${err instanceof Error ? err.message : String(err)}`
 				});
+			}
+		} else if (event.success) {
+			// Success but no bundlePath - shouldn't happen
+			this.logger.error(`Component built but no bundlePath provided: ${event.componentId}`);
+			this.postToWebview('componentError', {
+				componentId: event.componentId,
+				error: 'Build succeeded but bundle path not provided'
 			});
 		} else {
+			// Build failed
 			this.postToWebview('componentError', {
 				componentId: event.componentId,
 				error: event.errorInfo?.message || 'Build failed'

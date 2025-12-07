@@ -118,6 +118,44 @@ function App() {
 			console.log('[Canvas] Received message from extension:', msg.type);
 
 			switch (msg.type) {
+				case 'componentCreated': {
+					// Component created - create sandbox with 'building' status (loading spinner)
+					const { componentId, canvasId } = msg.payload;
+					console.log('[Canvas] 🆕 componentCreated received:', { componentId, canvasId });
+
+					// Check if sandbox already exists (e.g., from addImportedComponent)
+					const existingSandbox = sandboxes.find(s => s.id === componentId);
+					if (existingSandbox) {
+						console.log('[Canvas] Sandbox already exists, updating to building status');
+						setSandboxes(prev => prev.map(sandbox => {
+							if (sandbox.id === componentId) {
+								return { ...sandbox, buildStatus: 'building' as const };
+							}
+							return sandbox;
+						}));
+					} else {
+						// Create new sandbox with building status
+						console.log('[Canvas] Creating new sandbox with building status');
+						const position = getGridPosition(sandboxes.length, DEFAULT_CONFIG);
+						const newSandbox: Sandbox = {
+							id: componentId,
+							x: position.x,
+							y: position.y,
+							width: DEFAULT_CONFIG.sandboxWidth,
+							height: DEFAULT_CONFIG.sandboxHeight,
+							zIndex: sandboxes.length + 1,
+							buildStatus: 'building',
+							componentInput: {
+								id: componentId,
+								source: 'import',
+								files: {}
+							}
+						};
+						setSandboxes(prev => [...prev, newSandbox]);
+					}
+					break;
+				}
+
 				case 'componentBuilt': {
 					// Component built successfully - update sandbox
 					const { componentId, result } = msg.payload;

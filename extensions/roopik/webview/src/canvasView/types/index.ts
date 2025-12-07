@@ -234,6 +234,7 @@ export interface CanvasPreferences {
  */
 export type ExtensionMessage =
 	// Core pipeline responses
+	| { type: 'componentCreated'; payload: { componentId: string; canvasId: string } }
 	| { type: 'componentBuilt'; payload: { componentId: string; result: TransformedComponent } }
 	| { type: 'componentError'; payload: { componentId: string; error: string } }
 	// Canvas state
