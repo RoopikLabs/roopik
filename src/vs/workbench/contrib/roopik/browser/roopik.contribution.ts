@@ -34,6 +34,8 @@ import { IRoopikEventService, RoopikEventService } from '../common/events/index.
 import { IRoopikSettingsService, RoopikSettingsService } from '../common/settings/index.js';
 import { ICanvasService } from '../common/canvas/index.js';
 import { CanvasServiceClient } from './canvasServiceClient.js';
+import { IComponentService } from '../common/component/componentService.js';
+import { ComponentServiceClient } from './componentServiceClient.js';
 
 /**
  * Roopik Design IDE - Main Contribution
@@ -332,6 +334,59 @@ class RoopikCanvasContribution extends Disposable implements IWorkbenchContribut
 
 registerWorkbenchContribution2(RoopikCanvasContribution.ID, RoopikCanvasContribution, WorkbenchPhase.AfterRestored);
 
+// Component event handler - bridges ComponentService events to Extension commands
+class RoopikComponentContribution extends Disposable implements IWorkbenchContribution {
+	static readonly ID = 'roopik.componentContribution';
+
+	constructor(
+		@IComponentService private readonly componentService: IComponentService,
+		@ICommandService private readonly commandService: ICommandService
+	) {
+		super();
+
+		// Route component created events to extension
+		this._register(this.componentService.onComponentCreated(async (event) => {
+			await this.commandService.executeCommand('roopik.component.created', {
+				componentId: event.component.id,
+				canvasId: event.component.canvasId,
+				component: event.component
+			});
+		}));
+
+		// Route component built events to extension
+		this._register(this.componentService.onComponentBuilt(async (event) => {
+			await this.commandService.executeCommand('roopik.component.built', {
+				componentId: event.componentId,
+				canvasId: event.canvasId,
+				success: event.success,
+				result: event.result,
+				errorInfo: event.errorInfo,
+				trigger: event.trigger
+			});
+		}));
+
+		// Route component deleted events to extension
+		this._register(this.componentService.onComponentDeleted(async (event) => {
+			await this.commandService.executeCommand('roopik.component.deleted', {
+				componentId: event.componentId,
+				canvasId: event.canvasId
+			});
+		}));
+
+		// Route component updated events to extension
+		this._register(this.componentService.onComponentUpdated(async (event) => {
+			await this.commandService.executeCommand('roopik.component.updated', {
+				componentId: event.component.id,
+				canvasId: event.component.canvasId,
+				component: event.component,
+				changes: event.changes
+			});
+		}));
+	}
+}
+
+registerWorkbenchContribution2(RoopikComponentContribution.ID, RoopikComponentContribution, WorkbenchPhase.AfterRestored);
+
 // Register Roopik views (Activity Bar)
 registerWorkbenchContribution2(RoopikViewsContribution.ID, RoopikViewsContribution, WorkbenchPhase.BlockStartup);
 
@@ -349,4 +404,6 @@ registerSingleton(IRoopikSettingsService, RoopikSettingsService, InstantiationTy
 // This is the browser-side client that communicates with CanvasService in main process via IPC
 registerSingleton(ICanvasService, CanvasServiceClient, InstantiationType.Delayed);
 
-// TODO: Component Pipeline V2 - more services will be registered here
+// Register Component Service (component CRUD, build, file watching)
+// This is the browser-side client that communicates with ComponentService in main process via IPC
+registerSingleton(IComponentService, ComponentServiceClient, InstantiationType.Delayed);

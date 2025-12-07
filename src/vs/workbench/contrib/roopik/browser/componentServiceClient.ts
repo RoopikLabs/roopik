@@ -16,6 +16,7 @@
 
 import { Event } from '../../../../base/common/event.js';
 import { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
+import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 import {
 	IComponentService,
 	ComponentCreatedEvent,
@@ -36,6 +37,8 @@ export const COMPONENT_CHANNEL_NAME = 'roopikComponent';
 export class ComponentServiceClient implements IComponentService {
 	readonly _serviceBrand: undefined;
 
+	private readonly channel: IChannel;
+
 	// ========================================================================
 	// Events (proxied from main process)
 	// ========================================================================
@@ -49,7 +52,12 @@ export class ComponentServiceClient implements IComponentService {
 	// Constructor
 	// ========================================================================
 
-	constructor(private readonly channel: IChannel) {
+	constructor(
+		@IMainProcessService mainProcessService: IMainProcessService
+	) {
+		// Get the component channel from main process
+		this.channel = mainProcessService.getChannel(COMPONENT_CHANNEL_NAME);
+
 		// Subscribe to events from main process
 		this.onComponentCreated = this.channel.listen<ComponentCreatedEvent>('onComponentCreated');
 		this.onComponentBuilt = this.channel.listen<ComponentBuildEvent>('onComponentBuilt');
