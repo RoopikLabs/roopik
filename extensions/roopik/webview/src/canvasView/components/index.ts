@@ -15,8 +15,6 @@ export { SandboxCard } from './SandboxCard';
 export { StatusPanel, ColorPicker } from './StatusPanel';
 export type { StatusPanelProps } from './StatusPanel';
 
-export { FloatingToolbar } from './Toolbar';
-
 export { DeviceToggle, DeviceSelector, DeviceIcon, GlobalDeviceToggle } from './DeviceToggle';
 
 // ============================================================

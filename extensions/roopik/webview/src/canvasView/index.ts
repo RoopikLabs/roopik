@@ -28,7 +28,6 @@ export {
 	SandboxCard,
 	StatusPanel,
 	ColorPicker,
-	FloatingToolbar,
 	DeviceToggle,
 	DeviceSelector,
 	DeviceIcon,

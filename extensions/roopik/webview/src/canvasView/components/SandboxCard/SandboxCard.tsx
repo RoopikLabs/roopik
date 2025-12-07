@@ -7,6 +7,7 @@ import { useRef, useState, useMemo } from 'react';
 import type { Sandbox, Point, DevicePreset } from '../../types';
 import { DEVICE_PRESETS, getNextDevicePreset } from '../../types';
 import { DeviceIcon } from '../DeviceToggle';
+import { DEFAULT_CONFIG } from '../../services/gridManager';
 import '../../styles/sandboxCard.css';
 
 interface SandboxCardProps {
@@ -446,18 +447,9 @@ export function SandboxCard({
 		const deviceHeight = preset.height as number;
 
 		// Available space is the CONTENT area of sandbox card
-		// ⚠️ DON'T SUBTRACT PADDING HERE! ⚠️
-		//
-		// With CSS box-sizing: content-box (default), sandbox.width/height IS the content area.
-		// The CSS padding (40px 120px) is added OUTSIDE this content area, not inside.
-		//
-		// BUG FIX: Previously we subtracted padding (sandbox.width - 240), which made
-		// availableWidth tiny (260px instead of 500px), causing device previews to be
-		// scaled down to ~34% instead of filling the container properly.
-		//
-		// Correct: availableWidth = sandbox.width (the full content area)
-		const availableWidth = sandbox.width;
-		const availableHeight = sandbox.height;
+		// All sandboxes use the same dimensions from DEFAULT_CONFIG
+		const availableWidth = DEFAULT_CONFIG.sandboxWidth;
+		const availableHeight = DEFAULT_CONFIG.sandboxHeight;
 
 		// Scale to fill available space while maintaining aspect ratio
 		const scaleX = availableWidth / deviceWidth;
@@ -480,7 +472,7 @@ export function SandboxCard({
 			transformOrigin: 'center center',
 			margin: `-${marginY}px -${marginX}px`,
 		};
-	}, [isDeviceMode, preset, sandbox.width, sandbox.height]);
+	}, [isDeviceMode, preset]);
 
 	// Build className
 	const classNames = ['sandbox-card'];
@@ -502,8 +494,8 @@ export function SandboxCard({
 			style={{
 				left: sandbox.x,
 				top: sandbox.y,
-				width: sandbox.width,
-				height: sandbox.height,
+				width: DEFAULT_CONFIG.sandboxWidth,
+				height: DEFAULT_CONFIG.sandboxHeight,
 				zIndex: sandbox.zIndex,
 				transform: dragOffset ? `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)` : 'none',
 			}}

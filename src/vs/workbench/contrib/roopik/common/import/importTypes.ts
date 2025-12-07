@@ -7,9 +7,11 @@
  * Import Pipeline Types
  *
  * Types for importing components from external sources into the Canvas.
+ * Used by ImportScanner and ImportService.
  */
 
-import type { Framework, ComponentInput } from '../sandboxPipeline/types.js';
+import type { Framework } from '../build/types.js';
+import type { Component } from '../component/types.js';
 
 // ============================================
 // Import Status Types
@@ -96,8 +98,8 @@ export interface ImportRequest {
 export interface ImportSuccess {
 	success: true;
 
-	/** Generated component input for sandbox pipeline */
-	componentInput: ComponentInput;
+	/** Generated component */
+	component: Component;
 
 	/** Path to staging directory */
 	stagingPath: string;
@@ -142,10 +144,10 @@ export interface ImportDuplicateError extends ImportError {
 /**
  * Import result union type
  */
-export type ImportResult = ImportSuccess | ImportError | ImportDuplicateError;
+export type ImportResultFull = ImportSuccess | ImportError | ImportDuplicateError;
 
 // ============================================
-// Dependency Scan Types
+// Dependency Scan Types (used by ImportScanner)
 // ============================================
 
 /**
@@ -229,7 +231,7 @@ export type AdapterSourceType = 'local-file' | 'github' | 'figma' | 'ai-agent' |
  * Component Import Adapter Interface
  *
  * All import sources (local files, GitHub, Figma, AI, UI libraries)
- * implement this interface to produce unified ComponentInput.
+ * implement this interface to produce unified Component.
  */
 export interface IComponentImportAdapter {
 	/** Unique adapter identifier */
@@ -242,12 +244,12 @@ export interface IComponentImportAdapter {
 	readonly supportedTypes: string[];
 
 	/**
-	 * Import component from source and normalize to ComponentInput
+	 * Import component from source and normalize to Component
 	 * @param source - Source-specific input (file path, URL, design ID, etc.)
 	 * @param options - Adapter-specific options
-	 * @returns Import result with ComponentInput if successful
+	 * @returns Import result with Component if successful
 	 */
-	import(source: string, options?: AdapterOptions): Promise<ImportResult>;
+	import(source: string, options?: AdapterOptions): Promise<ImportResultFull>;
 
 	/**
 	 * Check if the adapter can handle this source
@@ -270,11 +272,11 @@ export interface IComponentImportAdapter {
 /**
  * Import Service interface - Orchestrator that uses adapters
  */
-export interface IImportService {
+export interface IImportServiceFull {
 	/**
 	 * Import a component from a file path
 	 */
-	importComponent(request: ImportRequest): Promise<ImportResult>;
+	importComponent(request: ImportRequest): Promise<ImportResultFull>;
 
 	/**
 	 * Export a component from staging

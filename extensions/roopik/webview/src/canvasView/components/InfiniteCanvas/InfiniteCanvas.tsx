@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useRef } from 'react';
-import type { Sandbox, Transform, BackgroundPattern, DevicePreset } from '../../types';
+import type { Sandbox, Transform, BackgroundPattern, DevicePreset, SnapMode } from '../../types';
 import { SandboxCard } from '../SandboxCard';
 import { useCanvasZoom } from './useCanvasZoom';
 import { useCanvasDrag } from './useCanvasDrag';
@@ -23,6 +23,8 @@ export interface InfiniteCanvasProps {
 	pattern: BackgroundPattern;
 	backgroundColor: string;
 	globalDeviceMode: DevicePreset;
+	/** Grid positioning mode: 'free' allows overlap, 'grid' snaps to nearest available slot */
+	snapMode?: SnapMode;
 	onTransformChange: (transform: Transform) => void;
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
@@ -117,6 +119,7 @@ export function InfiniteCanvas({
 	pattern,
 	backgroundColor,
 	globalDeviceMode,
+	snapMode = 'free',
 	onTransformChange,
 	onSandboxClick,
 	onSandboxDoubleClick,
@@ -146,6 +149,7 @@ export function InfiniteCanvas({
 	} = useCanvasDrag({
 		transform,
 		sandboxes,
+		snapMode,
 		onTransformChange,
 		onSandboxUpdate,
 		onSandboxClick,

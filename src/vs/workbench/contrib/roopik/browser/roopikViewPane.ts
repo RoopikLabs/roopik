@@ -29,23 +29,11 @@ import { IWorkspaceContextService } from '../../../../platform/workspace/common/
 import { IExtensionService } from '../../../services/extensions/common/extensions.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
-import { IFileService } from '../../../../platform/files/common/files.js';
-import { URI } from '../../../../base/common/uri.js';
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
-import { VSBuffer } from '../../../../base/common/buffer.js';
-import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
 import { Action } from '../../../../base/common/actions.js';
-
-/**
- * Canvas metadata from .roopik/canvases.json
- */
-interface CanvasMetadata {
-	id: string;
-	name: string;
-	folderPath: string;
-	createdAt: number;
-	updatedAt: number;
-}
+import { ICanvasService } from '../common/canvas/index.js';
+import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
+import type { CanvasMeta } from '../common/canvas/types.js';
 
 const roopikViewIcon = registerIcon('roopik-view-icon', Codicon.paintcan, localize('roopikViewIcon', 'View icon of the Roopik view.'));
 
@@ -62,15 +50,21 @@ export class RoopikDashboardView extends ViewPane {
 
 	private canvasesContainer: HTMLElement | undefined;
 	private projectsContainer: HTMLElement | undefined;
-	private fileWatcher: { dispose(): void } | undefined;
 	private static animationsInjected = false;
-	/** Track canvas signatures to detect actual list changes (not just timestamp updates) */
-	private lastCanvasSignature: string = '';
+
+	/** Timeout handle for loading state */
+	private loadingTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+	/** Whether we've received the initialization event */
+	private serviceInitialized: boolean = false;
+
+	/** Loading timeout in milliseconds (5 seconds) */
+	private static readonly LOADING_TIMEOUT_MS = 5000;
 
 	constructor(
 		options: { id: string; title: string },
 		@IKeybindingService keybindingService: IKeybindingService,
-		@IContextMenuService private readonly contextMenuService: IContextMenuService,
+		@IContextMenuService contextMenuService: IContextMenuService,
 		@IConfigurationService configurationService: IConfigurationService,
 		@IContextKeyService contextKeyService: IContextKeyService,
 		@IViewDescriptorService viewDescriptorService: IViewDescriptorService,
@@ -79,16 +73,117 @@ export class RoopikDashboardView extends ViewPane {
 		@IThemeService themeService: IThemeService,
 		@IHoverService hoverService: IHoverService,
 		@ICommandService private readonly commandService: ICommandService,
-		@IFileService private readonly fileService: IFileService,
-		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 		@INotificationService private readonly notificationService: INotificationService,
+		@ICanvasService private readonly canvasService: ICanvasService,
 		@IQuickInputService private readonly quickInputService: IQuickInputService,
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
+
+		console.log('[RoopikDashboardView] Constructor called');
+
+		// Subscribe to onDidInitialize - this fires when CanvasService is fully ready
+		// This is the ONLY trigger for loading canvases - no premature attempts!
+		this._register(this.canvasService.onDidInitialize(() => {
+			console.log('[RoopikDashboardView] EVENT: onDidInitialize received - CanvasService is ready');
+			this.serviceInitialized = true;
+			this.clearLoadingTimeout();
+			this.loadCanvasesNow();
+		}));
+
+		// Subscribe to canvas events to auto-refresh the list
+		this._register(this.canvasService.onCanvasCreated((event) => {
+			console.log('[RoopikDashboardView] EVENT: onCanvasCreated received', event);
+			this.loadCanvasesNow();
+		}));
+		this._register(this.canvasService.onCanvasDeleted((event) => {
+			console.log('[RoopikDashboardView] EVENT: onCanvasDeleted received', event);
+			this.loadCanvasesNow();
+		}));
+		this._register(this.canvasService.onCanvasUpdated((event) => {
+			console.log('[RoopikDashboardView] EVENT: onCanvasUpdated received', event);
+			this.loadCanvasesNow();
+		}));
+	}
+
+	/**
+	 * Clear the loading timeout if it exists
+	 */
+	private clearLoadingTimeout(): void {
+		if (this.loadingTimeoutHandle) {
+			clearTimeout(this.loadingTimeoutHandle);
+			this.loadingTimeoutHandle = undefined;
+		}
+	}
+
+	/**
+	 * Start loading timeout - shows error state if onDidInitialize never fires
+	 */
+	private startLoadingTimeout(): void {
+		this.clearLoadingTimeout();
+		this.loadingTimeoutHandle = setTimeout(() => {
+			if (!this.serviceInitialized) {
+				console.warn('[RoopikDashboardView] Loading timeout - service initialization took too long');
+				this.showTimeoutState();
+			}
+		}, RoopikDashboardView.LOADING_TIMEOUT_MS);
+	}
+
+	/**
+	 * Show timeout/error state when initialization takes too long
+	 */
+	private showTimeoutState(): void {
+		if (!this.canvasesContainer) {
+			return;
+		}
+
+		while (this.canvasesContainer.firstChild) {
+			this.canvasesContainer.removeChild(this.canvasesContainer.firstChild);
+		}
+
+		this.createSection(this.canvasesContainer, 'Canvases', [
+			{
+				label: 'Service unavailable',
+				description: 'Click to retry',
+				onClick: () => {
+					this.showLoadingState();
+					this.startLoadingTimeout();
+				}
+			}
+		]);
+	}
+
+	/**
+	 * Check if service is already initialized and load canvases
+	 * This handles the IDE reload case where onDidInitialize already fired
+	 */
+	private async checkAndLoadCanvases(): Promise<void> {
+		console.log('[RoopikDashboardView] checkAndLoadCanvases: checking if service is already initialized...');
+
+		try {
+			const isInitialized = await this.canvasService.isInitializedAsync();
+			console.log('[RoopikDashboardView] checkAndLoadCanvases: isInitialized =', isInitialized);
+
+			if (isInitialized) {
+				// Service already initialized (IDE reload case) - load immediately
+				console.log('[RoopikDashboardView] Service already initialized, loading canvases now');
+				this.serviceInitialized = true;
+				this.clearLoadingTimeout();
+				this.loadCanvasesNow();
+			} else {
+				// Not initialized yet - start timeout, wait for onDidInitialize event
+				console.log('[RoopikDashboardView] Service not initialized yet, waiting for event...');
+				this.startLoadingTimeout();
+			}
+		} catch (err) {
+			console.error('[RoopikDashboardView] checkAndLoadCanvases: error checking initialization:', err);
+			// Start timeout as fallback
+			this.startLoadingTimeout();
+		}
 	}
 
 	protected override renderBody(container: HTMLElement): void {
 		super.renderBody(container);
+		console.log('[RoopikDashboardView] renderBody called');
 
 		// Inject CSS for professional animations
 		this.injectDeleteAnimations();
@@ -103,29 +198,47 @@ export class RoopikDashboardView extends ViewPane {
 		container.style.flexDirection = 'column';
 		container.style.gap = '8px';
 
-		// Top action bar (New Canvas, Project Mode)
-		const actionsRow = document.createElement('div');
-		actionsRow.style.display = 'flex';
-		actionsRow.style.alignItems = 'center';
-		actionsRow.style.justifyContent = 'flex-start';
-		actionsRow.style.gap = '6px';
-		actionsRow.style.marginBottom = '8px';
+		// Top action bar container
+		const actionsContainer = document.createElement('div');
+		actionsContainer.style.display = 'flex';
+		actionsContainer.style.flexDirection = 'column';
+		actionsContainer.style.gap = '6px';
+		actionsContainer.style.marginBottom = '8px';
 
-		const buttonsRow = document.createElement('div');
-		buttonsRow.style.display = 'flex';
-		buttonsRow.style.gap = '4px';
-		buttonsRow.style.flexWrap = 'wrap';
+		// First row: Mode buttons (Canvas and Project) - larger icons
+		const modeButtonsRow = document.createElement('div');
+		modeButtonsRow.style.display = 'flex';
+		modeButtonsRow.style.alignItems = 'center';
+		modeButtonsRow.style.gap = '4px';
+		modeButtonsRow.style.flexWrap = 'wrap'; // Allow wrapping when space is limited
 
-		const newCanvasBtn = this.createPrimaryActionButton('Canvas', 'codicon-new-file', 'roopik.openCanvas');
-		const importBtn = this.createSecondaryActionButton('Import', 'codicon-cloud-download', 'roopik.import.showPicker');
-		const projectModeBtn = this.createSecondaryActionButton('Project', 'codicon-globe', 'roopik.openProjectPreview');
+		const newCanvasBtn = this.createPrimaryActionButton('Canvas', 'codicon-new-file', 'roopik.openCanvas', true, true);
+		const projectModeBtn = this.createSecondaryActionButton('Project', 'codicon-globe', 'roopik.openProjectPreview', true, true);
 
-		buttonsRow.appendChild(newCanvasBtn);
-		buttonsRow.appendChild(importBtn);
-		buttonsRow.appendChild(projectModeBtn);
-		actionsRow.appendChild(buttonsRow);
+		modeButtonsRow.appendChild(newCanvasBtn);
+		modeButtonsRow.appendChild(projectModeBtn);
 
-		container.appendChild(actionsRow);
+		// Separator line between mode buttons and import
+		const separator = document.createElement('div');
+		separator.style.width = '100%';
+		separator.style.height = '1px';
+		separator.style.background = 'var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
+		separator.style.margin = '4px 0';
+
+		// Second row: Import button (always on separate row)
+		const importButtonsRow = document.createElement('div');
+		importButtonsRow.style.display = 'flex';
+		importButtonsRow.style.alignItems = 'center';
+		importButtonsRow.style.gap = '4px';
+
+		const importBtn = this.createSecondaryActionButton('Import', 'codicon-cloud-download', 'roopik.import.showPicker', true, false);
+		importButtonsRow.appendChild(importBtn);
+
+		actionsContainer.appendChild(modeButtonsRow);
+		actionsContainer.appendChild(separator);
+		actionsContainer.appendChild(importButtonsRow);
+
+		container.appendChild(actionsContainer);
 
 		// Canvases Section (will be populated dynamically)
 		this.canvasesContainer = document.createElement('div');
@@ -135,8 +248,12 @@ export class RoopikDashboardView extends ViewPane {
 		this.projectsContainer = document.createElement('div');
 		container.appendChild(this.projectsContainer);
 
-		// Load canvases from file system
-		this.loadCanvases();
+		// Show loading state initially
+		this.showLoadingState();
+
+		// Check if service is already initialized (handles IDE reload case)
+		// If already initialized, load immediately; otherwise wait for event
+		this.checkAndLoadCanvases();
 
 		// Load projects (static for now)
 		this.loadProjects();
@@ -146,10 +263,34 @@ export class RoopikDashboardView extends ViewPane {
 	}
 
 	/**
-	 * Load canvases from .roopik/canvases.json
+	 * Show loading state in canvases section
+	 * Called during renderBody before onDidInitialize fires
 	 */
-	private async loadCanvases(): Promise<void> {
+	private showLoadingState(): void {
 		if (!this.canvasesContainer) {
+			return;
+		}
+
+		// Clear existing content
+		while (this.canvasesContainer.firstChild) {
+			this.canvasesContainer.removeChild(this.canvasesContainer.firstChild);
+		}
+
+		this.createSection(this.canvasesContainer, 'Canvases', [
+			{ label: 'Loading...', description: 'Waiting for services...', onClick: () => { } }
+		]);
+	}
+
+	/**
+	 * Load canvases from CanvasService immediately
+	 * Called when onDidInitialize fires (service is ready) or on canvas events
+	 * No timers, no waiting - proper event-based loading!
+	 */
+	private async loadCanvasesNow(): Promise<void> {
+		console.log('[RoopikDashboardView] loadCanvasesNow called');
+
+		if (!this.canvasesContainer) {
+			console.warn('[RoopikDashboardView] loadCanvasesNow: canvasesContainer is null');
 			return;
 		}
 
@@ -158,48 +299,137 @@ export class RoopikDashboardView extends ViewPane {
 			this.canvasesContainer.removeChild(this.canvasesContainer.firstChild);
 		}
 
-		const workspace = this.workspaceContextService.getWorkspace();
-		if (!workspace.folders || workspace.folders.length === 0) {
-			this.lastCanvasSignature = '';
-			this.createSection(this.canvasesContainer, 'Canvases', [
-				{ label: 'No workspace open', description: 'Open a folder to create canvases', onClick: () => { } }
-			]);
-			return;
-		}
-
-		const workspaceFolder = workspace.folders[0];
-		const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', 'canvases.json');
-
 		try {
-			const content = await this.fileService.readFile(canvasesJsonUri);
-			const data = JSON.parse(content.value.toString()) as { canvases: CanvasMetadata[] };
+			console.log('[RoopikDashboardView] Calling canvasService.listCanvasesAsync()...');
+			const canvases = await this.canvasService.listCanvasesAsync();
+			console.log(`[RoopikDashboardView] listCanvasesAsync returned ${canvases.length} canvases:`, canvases);
 
-			// Update signature for change detection
-			this.lastCanvasSignature = (data.canvases || [])
-				.map(c => `${c.id}:${c.name}`)
-				.sort()
-				.join('|');
-
-			if (data.canvases && data.canvases.length > 0) {
-				const items = data.canvases.map(canvas => ({
-					label: canvas.name,
-					description: this.formatTimeAgo(canvas.updatedAt),
-					onClick: () => this.openCanvas(canvas.name),
-					onRename: () => this.renameCanvas(canvas),
-					onDelete: () => this.deleteCanvas(canvas)
-				}));
-				this.createSection(this.canvasesContainer, 'Canvases', items);
-			} else {
+			if (canvases.length === 0) {
+				console.log('[RoopikDashboardView] No canvases found, showing empty state');
 				this.createSection(this.canvasesContainer, 'Canvases', [
 					{ label: 'No canvases yet', description: 'Click "Canvas" to create one', onClick: () => { } }
 				]);
+				return;
 			}
-		} catch {
-			// File doesn't exist or can't be read
-			this.lastCanvasSignature = '';
+
+			// Convert to section items
+			const items = canvases.map((canvas: CanvasMeta) => ({
+				label: canvas.name,
+				description: this.formatTimeAgo(canvas.updatedAt),
+				onClick: () => this.openCanvas(canvas.id),
+				onDelete: () => this.deleteCanvas(canvas.id, canvas.name),
+				onRename: () => this.renameCanvas(canvas.id, canvas.name)
+			}));
+
+			console.log(`[RoopikDashboardView] Rendering ${items.length} canvas items`);
+			this.createSection(this.canvasesContainer, 'Canvases', items);
+		} catch (err) {
+			console.error('[RoopikDashboardView] Failed to load canvases:', err);
 			this.createSection(this.canvasesContainer, 'Canvases', [
-				{ label: 'No canvases yet', description: 'Click "Canvas" to create one', onClick: () => { } }
+				{ label: 'Failed to load canvases', description: 'Check console for details', onClick: () => { } }
 			]);
+		}
+	}
+
+	/**
+	 * Open a canvas by ID
+	 */
+	private async openCanvas(canvasId: string): Promise<void> {
+		try {
+			// Get canvas metadata
+			const canvas = await this.canvasService.getCanvasAsync(canvasId);
+			if (!canvas) {
+				this.notificationService.error(localize('roopik.openCanvas.notFound', 'Canvas not found'));
+				return;
+			}
+
+			// Directly call the extension command to open the canvas panel
+			// This will activate the extension if needed
+			await this.commandService.executeCommand('roopik.canvas.open', {
+				canvasId: canvas.id,
+				canvasName: canvas.name
+			});
+		} catch (err) {
+			const errorMsg = err instanceof Error ? err.message : String(err);
+			this.notificationService.error(localize('roopik.openCanvas.error', 'Failed to open canvas: {0}', errorMsg));
+		}
+	}
+
+	/**
+	 * Delete a canvas
+	 */
+	private async deleteCanvas(canvasId: string, canvasName: string): Promise<void> {
+		// Confirm deletion
+		const confirmed = await this.quickInputService.input({
+			title: localize('roopik.deleteCanvas.title', 'Delete Canvas'),
+			prompt: localize('roopik.deleteCanvas.prompt', 'Type "{0}" to confirm deletion', canvasName),
+			placeHolder: canvasName,
+			validateInput: async (value: string) => {
+				if (value !== canvasName) {
+					return localize('roopik.deleteCanvas.mismatch', 'Name does not match');
+				}
+				return undefined;
+			}
+		});
+
+		if (confirmed === canvasName) {
+			try {
+				await this.canvasService.deleteCanvas(canvasId);
+				this.notificationService.info(localize('roopik.deleteCanvas.success', 'Canvas "{0}" deleted', canvasName));
+			} catch (err) {
+				const errorMsg = err instanceof Error ? err.message : String(err);
+				this.notificationService.error(localize('roopik.deleteCanvas.error', 'Failed to delete canvas: {0}', errorMsg));
+			}
+		}
+	}
+
+	/**
+	 * Rename a canvas
+	 */
+	private async renameCanvas(canvasId: string, currentName: string): Promise<void> {
+		const newName = await this.quickInputService.input({
+			title: localize('roopik.renameCanvas.title', 'Rename Canvas'),
+			prompt: localize('roopik.renameCanvas.prompt', 'Enter new name for the canvas'),
+			value: currentName,
+			validateInput: async (value: string) => {
+				if (!value || !value.trim()) {
+					return localize('roopik.renameCanvas.required', 'Canvas name is required');
+				}
+				return undefined;
+			}
+		});
+
+		if (newName && newName !== currentName) {
+			try {
+				await this.canvasService.updateCanvas(canvasId, { name: newName });
+				this.notificationService.info(localize('roopik.renameCanvas.success', 'Canvas renamed to "{0}"', newName));
+			} catch (err) {
+				const errorMsg = err instanceof Error ? err.message : String(err);
+				this.notificationService.error(localize('roopik.renameCanvas.error', 'Failed to rename canvas: {0}', errorMsg));
+			}
+		}
+	}
+
+	/**
+	 * Format timestamp as "X ago"
+	 */
+	private formatTimeAgo(timestamp: number): string {
+		const now = Date.now();
+		const diff = now - timestamp;
+
+		const seconds = Math.floor(diff / 1000);
+		const minutes = Math.floor(seconds / 60);
+		const hours = Math.floor(minutes / 60);
+		const days = Math.floor(hours / 24);
+
+		if (days > 0) {
+			return `${days}d ago`;
+		} else if (hours > 0) {
+			return `${hours}h ago`;
+		} else if (minutes > 0) {
+			return `${minutes}m ago`;
+		} else {
+			return 'Just now';
 		}
 	}
 
@@ -224,243 +454,14 @@ export class RoopikDashboardView extends ViewPane {
 	}
 
 	/**
-	 * Setup file watcher for canvases.json
-	 * Only refreshes when canvas list actually changes (add/delete/rename), not on timestamp updates
+	 * Setup file watcher (placeholder for future file-based watching if needed)
+	 * Note: Event subscriptions are handled in constructor via onCanvasCreated/Deleted/Updated
 	 */
 	private setupFileWatcher(): void {
-		const workspace = this.workspaceContextService.getWorkspace();
-		if (!workspace.folders || workspace.folders.length === 0) {
-			return;
-		}
-
-		const workspaceFolder = workspace.folders[0];
-		const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', 'canvases.json');
-
-		// Dispose existing watcher if any
-		if (this.fileWatcher) {
-			this.fileWatcher.dispose();
-		}
-
-		// Watch for changes to canvases.json
-		this.fileWatcher = this.fileService.watch(canvasesJsonUri);
-		this._register({ dispose: () => this.fileWatcher?.dispose() });
-
-		// Listen for file changes
-		this._register(this.fileService.onDidFilesChange(async e => {
-			// Check if canvases.json was affected
-			if (e.affects(canvasesJsonUri)) {
-				// Only refresh if the canvas list actually changed (not just timestamps)
-				await this.checkAndRefreshCanvases(canvasesJsonUri);
-			}
-		}));
+		// Event subscriptions are now in constructor - no duplicate subscriptions here
 	}
 
-	/**
-	 * Check if canvas list changed and refresh only if needed
-	 * Compares canvas IDs and names, ignores timestamp changes
-	 */
-	private async checkAndRefreshCanvases(canvasesJsonUri: URI): Promise<void> {
-		try {
-			const content = await this.fileService.readFile(canvasesJsonUri);
-			const data = JSON.parse(content.value.toString()) as { canvases: CanvasMetadata[] };
-
-			// Create signature from canvas IDs and names only (ignore timestamps)
-			const newSignature = (data.canvases || [])
-				.map(c => `${c.id}:${c.name}`)
-				.sort()
-				.join('|');
-
-			// Only refresh if signature changed (canvas added, deleted, or renamed)
-			if (newSignature !== this.lastCanvasSignature) {
-				this.lastCanvasSignature = newSignature;
-				this.loadCanvases();
-			}
-		} catch {
-			// File might not exist yet - check if we had canvases before
-			if (this.lastCanvasSignature !== '') {
-				this.lastCanvasSignature = '';
-				this.loadCanvases();
-			}
-		}
-	}
-
-	/**
-	 * Open an existing canvas by name (bypasses name prompt)
-	 * First validates that the canvas still exists on disk
-	 */
-	private async openCanvas(canvasName: string): Promise<void> {
-		const workspace = this.workspaceContextService.getWorkspace();
-		if (!workspace.folders || workspace.folders.length === 0) {
-			return;
-		}
-
-		const workspaceFolder = workspace.folders[0];
-		const canvasStateUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', canvasName, 'canvas-state.json');
-
-		try {
-			// Validate canvas exists before opening
-			await this.fileService.stat(canvasStateUri);
-			// Canvas exists, open it
-			this.commandService.executeCommand('roopik.canvas.open', canvasName);
-		} catch {
-			// Canvas doesn't exist anymore - refresh the list
-			this.notificationService.warn(`Canvas "${canvasName}" no longer exists. Refreshing list...`);
-			this.loadCanvases();
-		}
-	}
-
-	/**
-	 * Delete a canvas and its folder
-	 */
-	private async deleteCanvas(canvas: CanvasMetadata): Promise<void> {
-		const workspace = this.workspaceContextService.getWorkspace();
-		if (!workspace.folders || workspace.folders.length === 0) {
-			return;
-		}
-
-		const workspaceFolder = workspace.folders[0];
-		const canvasFolderUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', canvas.name);
-		const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', 'canvases.json');
-
-		try {
-			// Close the editor tab if this canvas is open (via extension command)
-			await this.commandService.executeCommand('roopik.canvas.close', canvas.name);
-
-			// Delete the canvas folder
-			await this.fileService.del(canvasFolderUri, { recursive: true });
-
-			// Update canvases.json to remove this canvas
-			const content = await this.fileService.readFile(canvasesJsonUri);
-			const data = JSON.parse(content.value.toString()) as { canvases: CanvasMetadata[] };
-
-			data.canvases = data.canvases.filter(c => c.id !== canvas.id);
-
-			// Write updated canvases.json
-			await this.fileService.writeFile(canvasesJsonUri, VSBuffer.fromString(JSON.stringify(data, null, 2)));
-
-			// Refresh the list
-			this.loadCanvases();
-
-			this.notificationService.info(`Canvas "${canvas.name}" deleted.`);
-		} catch (error) {
-			const errorMsg = error instanceof Error ? error.message : String(error);
-			this.notificationService.error(`Failed to delete canvas: ${errorMsg}`);
-		}
-	}
-
-	/**
-	 * Rename a canvas
-	 */
-	private async renameCanvas(canvas: CanvasMetadata): Promise<void> {
-		const workspace = this.workspaceContextService.getWorkspace();
-		if (!workspace.folders || workspace.folders.length === 0) {
-			return;
-		}
-
-		// Prompt for new name
-		const newName = await this.quickInputService.input({
-			title: localize('roopik.renameCanvas', 'Rename Canvas'),
-			value: canvas.name,
-			prompt: localize('roopik.renameCanvasPrompt', 'Enter a new name for the canvas'),
-			validateInput: async (value) => {
-				if (!value || value.trim().length === 0) {
-					return localize('roopik.renameCanvasEmpty', 'Canvas name cannot be empty');
-				}
-				if (value.trim() === canvas.name) {
-					return null; // Same name is OK (no-op)
-				}
-				// Check if name already exists
-				const sanitized = value.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-				const workspaceFolder = workspace.folders![0];
-				const existingCanvasUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', sanitized);
-				try {
-					await this.fileService.stat(existingCanvasUri);
-					return localize('roopik.renameCanvasExists', 'A canvas with this name already exists');
-				} catch {
-					return null; // Doesn't exist, OK
-				}
-			}
-		});
-
-		if (!newName || newName.trim() === canvas.name) {
-			return; // Cancelled or same name
-		}
-
-		const trimmedNewName = newName.trim();
-		const workspaceFolder = workspace.folders[0];
-		const oldFolderName = canvas.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-		const newFolderName = trimmedNewName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-
-		const oldCanvasFolderUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', oldFolderName);
-		const newCanvasFolderUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', newFolderName);
-		const canvasesJsonUri = URI.joinPath(workspaceFolder.uri, '.roopik', 'canvas', 'canvases.json');
-
-		try {
-			// Close the editor tab if this canvas is open
-			await this.commandService.executeCommand('roopik.canvas.close', canvas.name);
-
-			// Rename the folder
-			await this.fileService.move(oldCanvasFolderUri, newCanvasFolderUri);
-
-			// Update canvases.json
-			const content = await this.fileService.readFile(canvasesJsonUri);
-			const data = JSON.parse(content.value.toString()) as { canvases: CanvasMetadata[] };
-
-			const canvasEntry = data.canvases.find(c => c.id === canvas.id);
-			if (canvasEntry) {
-				canvasEntry.name = trimmedNewName;
-				canvasEntry.folderPath = newFolderName;
-				canvasEntry.updatedAt = Date.now();
-			}
-
-			await this.fileService.writeFile(canvasesJsonUri, VSBuffer.fromString(JSON.stringify(data, null, 2)));
-
-			// Update canvas-state.json inside the folder
-			const canvasStateUri = URI.joinPath(newCanvasFolderUri, 'canvas-state.json');
-			try {
-				const stateContent = await this.fileService.readFile(canvasStateUri);
-				const stateData = JSON.parse(stateContent.value.toString());
-				stateData.name = trimmedNewName;
-				stateData.updatedAt = Date.now();
-				await this.fileService.writeFile(canvasStateUri, VSBuffer.fromString(JSON.stringify(stateData, null, 2)));
-			} catch {
-				// canvas-state.json might not exist yet
-			}
-
-			// Refresh the list
-			this.loadCanvases();
-
-			this.notificationService.info(`Canvas renamed to "${trimmedNewName}".`);
-		} catch (error) {
-			const errorMsg = error instanceof Error ? error.message : String(error);
-			this.notificationService.error(`Failed to rename canvas: ${errorMsg}`);
-		}
-	}
-
-	/**
-	 * Format timestamp to relative time (e.g., "2 days ago")
-	 */
-	private formatTimeAgo(timestamp: number): string {
-		const now = Date.now();
-		const diff = now - timestamp;
-		const seconds = Math.floor(diff / 1000);
-		const minutes = Math.floor(seconds / 60);
-		const hours = Math.floor(minutes / 60);
-		const days = Math.floor(hours / 24);
-
-		if (days > 0) {
-			return days === 1 ? '1 day ago' : `${days} days ago`;
-		}
-		if (hours > 0) {
-			return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
-		}
-		if (minutes > 0) {
-			return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
-		}
-		return 'Just now';
-	}
-
-	private createSection(container: HTMLElement, title: string, items: Array<{ label: string; description: string; onClick?: () => void; onRename?: () => void; onDelete?: () => void }>): HTMLElement {
+	private createSection(container: HTMLElement, title: string, items: Array<{ label: string; description: string; onClick?: () => void; onDelete?: () => void; onRename?: () => void }>): HTMLElement {
 		const section = document.createElement('div');
 		section.style.marginBottom = '16px';
 
@@ -510,7 +511,7 @@ export class RoopikDashboardView extends ViewPane {
 
 			itemEl.appendChild(contentEl);
 
-			// Context menu for rename/delete (if either action is provided)
+			// Context menu for rename and delete
 			if (item.onRename || item.onDelete) {
 				itemEl.addEventListener('contextmenu', (e) => {
 					e.preventDefault();
@@ -518,6 +519,7 @@ export class RoopikDashboardView extends ViewPane {
 
 					const actions: Action[] = [];
 
+					// Rename action
 					if (item.onRename) {
 						actions.push(new Action(
 							'roopik.renameCanvas',
@@ -528,6 +530,7 @@ export class RoopikDashboardView extends ViewPane {
 						));
 					}
 
+					// Delete action
 					if (item.onDelete) {
 						actions.push(new Action(
 							'roopik.deleteCanvas',
@@ -571,16 +574,20 @@ export class RoopikDashboardView extends ViewPane {
 		return section;
 	}
 
-	private createPrimaryActionButton(label: string, codiconClass: string, commandId: string): HTMLElement {
+	private createPrimaryActionButton(label: string, codiconClass: string, commandId: string, largeButton: boolean = false, extraLarge: boolean = false): HTMLElement {
 		const btn = document.createElement('button');
 		btn.style.display = 'inline-flex';
 		btn.style.alignItems = 'center';
 		btn.style.justifyContent = 'center';
-		btn.style.padding = '3px 10px';
+		// Extra large for mode buttons, large for import, small for others
+		btn.style.padding = extraLarge ? '8px 18px' : (largeButton ? '6px 14px' : '3px 10px');
 		btn.style.borderRadius = '999px';
 		btn.style.border = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
+		// Subtle outline for better visibility
+		btn.style.boxShadow = '0 0 0 1px var(--vscode-button-border, rgba(96, 165, 250, 0.3))';
 		btn.style.cursor = 'pointer';
-		btn.style.fontSize = '11px';
+		// Extra large font for mode buttons, large for import, small for others
+		btn.style.fontSize = extraLarge ? '13px' : (largeButton ? '12px' : '11px');
 		btn.style.fontWeight = '500';
 		btn.style.fontFamily = 'inherit';
 		btn.style.background = 'var(--vscode-sideBarSectionHeader-background, rgba(15, 23, 42, 0.8))';
@@ -596,11 +603,13 @@ export class RoopikDashboardView extends ViewPane {
 
 		const icon = document.createElement('span');
 		icon.classList.add('codicon', codiconClass);
+		// Extra large icon for mode buttons, large for import, small for others
+		icon.style.fontSize = extraLarge ? '18px' : (largeButton ? '16px' : '12px');
 		btn.appendChild(icon);
 
 		const text = document.createElement('span');
 		text.textContent = label;
-		text.style.marginLeft = '4px';
+		text.style.marginLeft = extraLarge ? '8px' : (largeButton ? '6px' : '4px');
 		btn.appendChild(text);
 
 		btn.onclick = () => {
@@ -610,16 +619,20 @@ export class RoopikDashboardView extends ViewPane {
 		return btn;
 	}
 
-	private createSecondaryActionButton(label: string, codiconClass: string, commandId: string): HTMLElement {
+	private createSecondaryActionButton(label: string, codiconClass: string, commandId: string, largeButton: boolean = false, extraLarge: boolean = false): HTMLElement {
 		const btn = document.createElement('button');
 		btn.style.display = 'inline-flex';
 		btn.style.alignItems = 'center';
 		btn.style.justifyContent = 'center';
-		btn.style.padding = '3px 10px';
+		// Extra large for mode buttons, large for import, small for others
+		btn.style.padding = extraLarge ? '8px 18px' : (largeButton ? '6px 14px' : '3px 10px');
 		btn.style.borderRadius = '999px';
 		btn.style.border = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
+		// Subtle outline for better visibility
+		btn.style.boxShadow = '0 0 0 1px var(--vscode-button-border, rgba(96, 165, 250, 0.3))';
 		btn.style.cursor = 'pointer';
-		btn.style.fontSize = '11px';
+		// Extra large font for mode buttons, large for import, small for others
+		btn.style.fontSize = extraLarge ? '13px' : (largeButton ? '12px' : '11px');
 		btn.style.fontWeight = '500';
 		btn.style.fontFamily = 'inherit';
 		btn.style.background = 'transparent';
@@ -635,11 +648,13 @@ export class RoopikDashboardView extends ViewPane {
 
 		const icon = document.createElement('span');
 		icon.classList.add('codicon', codiconClass);
+		// Extra large icon for mode buttons, large for import, small for others
+		icon.style.fontSize = extraLarge ? '18px' : (largeButton ? '16px' : '12px');
 		btn.appendChild(icon);
 
 		const text = document.createElement('span');
 		text.textContent = label;
-		text.style.marginLeft = '4px';
+		text.style.marginLeft = extraLarge ? '8px' : (largeButton ? '6px' : '4px');
 		btn.appendChild(text);
 
 		btn.onclick = () => {

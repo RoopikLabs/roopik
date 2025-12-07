@@ -72,13 +72,15 @@ export type SandboxBuildStatus = 'pending' | 'building' | 'ready' | 'error';
  *
  * All components are built via Core's ESBuild pipeline.
  * The bundledCode is pre-built ESM ready for execution in the iframe.
+ *
+ * Note: width/height are NOT stored per-sandbox - all sandboxes use
+ * DEFAULT_CONFIG.sandboxWidth/Height from gridManager.ts for consistency.
+ * This keeps storage lean (only x, y, zIndex for position).
  */
 export interface Sandbox {
 	id: string;
 	x: number;
 	y: number;
-	width: number;
-	height: number;
 	zIndex: number;
 
 	/** Build status */
@@ -139,35 +141,9 @@ export interface SnapResult {
 
 /**
  * Grid layout configuration
+ * Note: The authoritative GridConfig and DEFAULT_CONFIG are in gridManager.ts
+ * Import from there: import { DEFAULT_CONFIG, GridConfig } from '../services/gridManager';
  */
-export interface GridConfig {
-	columns: number;
-	sandboxWidth: number;
-	sandboxHeight: number;
-	gapX: number;
-	gapY: number;
-	startX: number;
-	startY: number;
-	containerPaddingX: number;
-	containerPaddingY: number;
-	containerMargin: number;
-}
-
-/**
- * Default grid configuration - 4 columns, 500x500 sandboxes
- */
-export const DEFAULT_GRID_CONFIG: GridConfig = {
-	columns: 4,
-	sandboxWidth: 500,
-	sandboxHeight: 500,
-	gapX: 60,
-	gapY: 60,
-	startX: 100,
-	startY: 100,
-	containerPaddingX: 120,
-	containerPaddingY: 40,
-	containerMargin: 20
-};
 
 /**
  * Canvas viewport for zoom/pan calculations
@@ -221,16 +197,42 @@ export interface CanvasState {
 // ============================================================
 
 /**
+ * Canvas preferences (matches Core's storageTypes.ts)
+ */
+export interface CanvasPreferences {
+	backgroundColor: string;
+	backgroundPattern: BackgroundPattern;
+	viewport: Transform;
+}
+
+/**
+ * Sandbox position on canvas (matches Core's storageTypes.ts SandboxPosition)
+ */
+export interface SandboxPosition {
+	x: number;
+	y: number;
+	zIndex: number;
+}
+
+/**
+ * Map of component IDs to their sandbox positions
+ */
+export type SandboxPositions = Record<string, SandboxPosition>;
+
+/**
  * Message types from Extension to Webview
  */
 export type ExtensionMessage =
 	// Core pipeline responses
+	| { type: 'componentCreated'; payload: { componentId: string; canvasId: string } }
 	| { type: 'componentBuilt'; payload: { componentId: string; result: TransformedComponent } }
 	| { type: 'componentError'; payload: { componentId: string; error: string } }
 	// Canvas state
 	| { type: 'canvasLoaded'; payload: { state: CanvasState } }
 	| { type: 'canvasSaved'; payload: { success: boolean } }
 	| { type: 'themeChanged'; payload: { theme: 'light' | 'dark' | 'high-contrast' } }
+	// Canvas preferences loaded from file (includes sandbox positions for restoration)
+	| { type: 'canvasPreferencesLoaded'; payload: { preferences: CanvasPreferences; sandboxPositions?: SandboxPositions } }
 	// Import
 	| { type: 'addImportedComponent'; payload: { componentInput: ComponentInput; position?: { x: number; y: number }; replaceExisting?: boolean; replaceName?: string } };
 

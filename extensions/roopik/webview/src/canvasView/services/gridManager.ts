@@ -206,6 +206,206 @@ export function calculateFocusTransform(
 
 
 // ============================================================
+// Smart Grid Positioning
+// ============================================================
+
+/**
+ * Get slot index from pixel position.
+ * Returns the grid slot (column, row) for a given x,y position.
+ */
+export function getSlotFromPosition(
+	x: number,
+	y: number,
+	config: GridConfig = DEFAULT_CONFIG
+): { col: number; row: number; slotIndex: number } {
+	const { totalWidth, totalHeight } = getSandboxTotalDimensions(config);
+
+	const col = Math.round((x - config.startX) / (totalWidth + config.gapX));
+	const row = Math.round((y - config.startY) / (totalHeight + config.gapY));
+
+	// Clamp to valid range
+	const clampedCol = Math.max(0, Math.min(col, config.gridColumns - 1));
+	const clampedRow = Math.max(0, row);
+
+	return {
+		col: clampedCol,
+		row: clampedRow,
+		slotIndex: clampedRow * config.gridColumns + clampedCol,
+	};
+}
+
+/**
+ * Get all occupied slot indices from sandboxes.
+ */
+export function getOccupiedSlots(
+	sandboxes: Sandbox[],
+	config: GridConfig = DEFAULT_CONFIG
+): Set<number> {
+	const occupied = new Set<number>();
+
+	sandboxes.forEach(sandbox => {
+		const slot = getSlotFromPosition(sandbox.x, sandbox.y, config);
+		occupied.add(slot.slotIndex);
+	});
+
+	return occupied;
+}
+
+/**
+ * Find the next available grid position.
+ * Scans slots in order (left-to-right, top-to-bottom) to find the first empty slot.
+ */
+export function getNextAvailableGridPosition(
+	sandboxes: Sandbox[],
+	config: GridConfig = DEFAULT_CONFIG
+): { x: number; y: number; slotIndex: number } {
+	const occupied = getOccupiedSlots(sandboxes, config);
+
+	// Find first unoccupied slot
+	let slotIndex = 0;
+	while (occupied.has(slotIndex)) {
+		slotIndex++;
+	}
+
+	const position = getGridPosition(slotIndex, config);
+	return { ...position, slotIndex };
+}
+
+/**
+ * Find the nearest available slot to a given position.
+ * Used for Grid mode snapping.
+ */
+export function findNearestAvailableSlot(
+	x: number,
+	y: number,
+	sandboxes: Sandbox[],
+	excludeSandboxId?: string,
+	config: GridConfig = DEFAULT_CONFIG
+): { x: number; y: number; slotIndex: number } {
+	// Get occupied slots, excluding the sandbox being dragged
+	const occupied = new Set<number>();
+	sandboxes.forEach(sandbox => {
+		if (sandbox.id !== excludeSandboxId) {
+			const slot = getSlotFromPosition(sandbox.x, sandbox.y, config);
+			occupied.add(slot.slotIndex);
+		}
+	});
+
+	// Get the slot closest to the drop position
+	const targetSlot = getSlotFromPosition(x, y, config);
+
+	// If target slot is available, use it
+	if (!occupied.has(targetSlot.slotIndex)) {
+		const position = getGridPosition(targetSlot.slotIndex, config);
+		return { ...position, slotIndex: targetSlot.slotIndex };
+	}
+
+	// Otherwise, search outward in a spiral pattern for nearest available
+	const maxSearchRadius = 50; // Max slots to search
+	let bestSlot = -1;
+	let bestDistance = Infinity;
+
+	for (let radius = 1; radius <= maxSearchRadius; radius++) {
+		// Check slots in a square ring around the target
+		for (let dr = -radius; dr <= radius; dr++) {
+			for (let dc = -radius; dc <= radius; dc++) {
+				// Only check the perimeter of the ring
+				if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) continue;
+
+				const testRow = targetSlot.row + dr;
+				const testCol = targetSlot.col + dc;
+
+				// Skip invalid positions
+				if (testRow < 0 || testCol < 0 || testCol >= config.gridColumns) continue;
+
+				const testSlotIndex = testRow * config.gridColumns + testCol;
+
+				if (!occupied.has(testSlotIndex)) {
+					// Calculate distance to target position
+					const testPos = getGridPosition(testSlotIndex, config);
+					const distance = Math.sqrt(
+						Math.pow(testPos.x - x, 2) + Math.pow(testPos.y - y, 2)
+					);
+
+					if (distance < bestDistance) {
+						bestDistance = distance;
+						bestSlot = testSlotIndex;
+					}
+				}
+			}
+		}
+
+		// If we found a slot in this ring, use it
+		if (bestSlot !== -1) {
+			const position = getGridPosition(bestSlot, config);
+			return { ...position, slotIndex: bestSlot };
+		}
+	}
+
+	// Fallback: find first available slot
+	return getNextAvailableGridPosition(sandboxes, config);
+}
+
+/**
+ * Snap position to nearest grid slot.
+ * Returns the snapped position and whether it's available.
+ */
+export function snapToGridSlot(
+	x: number,
+	y: number,
+	sandboxes: Sandbox[],
+	excludeSandboxId?: string,
+	config: GridConfig = DEFAULT_CONFIG
+): { x: number; y: number; slotIndex: number; isOccupied: boolean } {
+	const slot = getSlotFromPosition(x, y, config);
+	const position = getGridPosition(slot.slotIndex, config);
+
+	// Check if this slot is occupied by another sandbox
+	const isOccupied = sandboxes.some(sandbox => {
+		if (sandbox.id === excludeSandboxId) return false;
+		const sandboxSlot = getSlotFromPosition(sandbox.x, sandbox.y, config);
+		return sandboxSlot.slotIndex === slot.slotIndex;
+	});
+
+	return {
+		...position,
+		slotIndex: slot.slotIndex,
+		isOccupied,
+	};
+}
+
+/**
+ * Check if a position would overlap with existing sandboxes.
+ */
+export function checkOverlap(
+	x: number,
+	y: number,
+	sandboxes: Sandbox[],
+	excludeSandboxId?: string,
+	config: GridConfig = DEFAULT_CONFIG
+): { isOverlapping: boolean; overlappingWith: string[] } {
+	const { totalWidth, totalHeight } = getSandboxTotalDimensions(config);
+	const overlappingWith: string[] = [];
+
+	sandboxes.forEach(sandbox => {
+		if (sandbox.id === excludeSandboxId) return;
+
+		// Check bounding box overlap
+		const overlapX = x < sandbox.x + totalWidth && x + totalWidth > sandbox.x;
+		const overlapY = y < sandbox.y + totalHeight && y + totalHeight > sandbox.y;
+
+		if (overlapX && overlapY) {
+			overlappingWith.push(sandbox.id);
+		}
+	});
+
+	return {
+		isOverlapping: overlappingWith.length > 0,
+		overlappingWith,
+	};
+}
+
+// ============================================================
 // Z-Index Management
 // ============================================================
 

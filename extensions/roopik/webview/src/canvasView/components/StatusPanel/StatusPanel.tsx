@@ -3,7 +3,7 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import type { Transform, BackgroundPattern } from '../../types';
+import type { Transform, BackgroundPattern, SnapMode } from '../../types';
 import { ColorPicker } from './ColorPicker';
 import '../../styles/statusPanel.css';
 
@@ -19,11 +19,13 @@ export interface StatusPanelProps {
 	backgroundColor: string;
 	selectedSandboxId: string | null;
 	focusedSandboxId: string | null;
+	snapMode: SnapMode;
 	onZoomIn: () => void;
 	onZoomOut: () => void;
 	onResetView: () => void;
 	onTogglePattern: () => void;
 	onBackgroundColorChange: (color: string) => void;
+	onSnapModeChange: (mode: SnapMode) => void;
 }
 
 // ============================================================
@@ -100,6 +102,23 @@ function SelectionStatus({ selectedId, focusedId }: SelectionStatusProps) {
 	);
 }
 
+interface SnapModeToggleProps {
+	snapMode: SnapMode;
+	onSnapModeChange: (mode: SnapMode) => void;
+}
+
+function SnapModeToggle({ snapMode, onSnapModeChange }: SnapModeToggleProps) {
+	return (
+		<button
+			onClick={() => onSnapModeChange(snapMode === 'free' ? 'grid' : 'free')}
+			className={`snap-mode-btn ${snapMode === 'grid' ? 'snap-mode-grid' : 'snap-mode-free'}`}
+			title={snapMode === 'free' ? 'Switch to Grid Mode (snap to grid)' : 'Switch to Free Mode (free positioning)'}
+		>
+			{snapMode === 'grid' ? '⊞ Grid' : '⟡ Free'}
+		</button>
+	);
+}
+
 // ============================================================
 // Main Component
 // ============================================================
@@ -112,11 +131,13 @@ export function StatusPanel({
 	backgroundColor,
 	selectedSandboxId,
 	focusedSandboxId,
+	snapMode,
 	onZoomIn,
 	onZoomOut,
 	onResetView,
 	onTogglePattern,
 	onBackgroundColorChange,
+	onSnapModeChange,
 }: StatusPanelProps) {
 	return (
 		<div className="status-bar">
@@ -139,8 +160,13 @@ export function StatusPanel({
 				/>
 			</div>
 
-			{/* Right side - Background Controls */}
+			{/* Right side - Mode Toggle & Background Controls */}
 			<div className="status-right">
+				<SnapModeToggle
+					snapMode={snapMode}
+					onSnapModeChange={onSnapModeChange}
+				/>
+				<span className="status-divider">|</span>
 				<ColorPicker
 					currentColor={backgroundColor}
 					onColorChange={onBackgroundColorChange}

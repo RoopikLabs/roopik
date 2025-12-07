@@ -5,23 +5,27 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { CanvasPanel } from './canvasPanel';
-import { ConfigManager } from './config';
+import { RoopikExtensionManager } from './roopikExtensionManager';
 import { Logger, LogLevel } from './logger';
 
 /**
  * Roopik Canvas Extension
  *
  * This extension provides the canvas webview panel for visual component design.
- * It receives commands from the Core (activity pane, command palette) and renders the UI.
+ * It uses RoopikExtensionManager as the central coordinator for:
+ * - Communication with Core services (ComponentService, CanvasService)
+ * - Event routing to correct CanvasPanel by canvasId
+ * - Panel lifecycle management
  *
  * Architecture:
- * - Core handles: Activity pane, welcome screen, canvas name prompts, command palette
- * - Extension handles: Canvas webview rendering, state management, preview system
- * - Communication: Core calls roopik.canvas.open with canvas name, extension renders
+ * - Core handles: Component/Canvas CRUD, build pipeline, storage
+ * - Extension handles: Canvas webview rendering, event routing
+ * - Manager: Single point of contact between Core and panels
  */
 
-export function activate(context: vscode.ExtensionContext) {
+let manager: RoopikExtensionManager | null = null;
+
+export async function activate(context: vscode.ExtensionContext) {
 	const workspaceFolders = vscode.workspace.workspaceFolders;
 	if (!workspaceFolders) {
 		vscode.window.showErrorMessage('Please open a workspace folder to use Roopik.');
@@ -41,40 +45,82 @@ export function activate(context: vscode.ExtensionContext) {
 		showOutputChannel: false
 	});
 
-	// Initialize ConfigManager
-	const configManager = ConfigManager.getInstance(workspaceRoot);
-	const config = configManager.getConfig();
-	logger.setLevel(config.logging.level as LogLevel);
+	logger.info('Extension', 'Roopik Canvas extension activating...');
 
-	logger.info('Extension', 'Roopik Canvas extension activated');
+	// Initialize RoopikExtensionManager (singleton)
+	manager = RoopikExtensionManager.getInstance();
 
-	// Dispose logger on deactivation
+	try {
+		await manager.initialize(context);
+		logger.info('Extension', 'RoopikExtensionManager initialized');
+	} catch (error) {
+		logger.error('Extension', 'Failed to initialize RoopikExtensionManager', error);
+		vscode.window.showErrorMessage(`Roopik initialization failed: ${error}`);
+		return;
+	}
+
+	// Dispose manager and logger on deactivation
 	context.subscriptions.push({
-		dispose: () => logger.dispose()
-	});
-
-	// Initialize Mode 1 Preview System (client-side transpilation)
-	CanvasPanel.initializePreviewSystem(context);
-	logger.info('Extension', 'Preview system initialized');
-
-	// Main command: Open canvas by name (called from Core)
-	// Core handles the name prompt and passes the name here
-	const openCanvasCommand = vscode.commands.registerCommand('roopik.canvas.open', (canvasName?: string) => {
-		if (!canvasName) {
-			logger.warn('Extension', 'No canvas name provided');
-			return;
+		dispose: () => {
+			manager?.dispose();
+			logger.dispose();
 		}
-
-		logger.info('Extension', `Opening canvas: ${canvasName}`);
-
-		// Convert to slug for ID (e.g., "Login Components" -> "login-components")
-		const canvasId = canvasName.toLowerCase()
-			.trim()
-			.replace(/\s+/g, '-')
-			.replace(/[^a-z0-9-]/g, '');
-
-		CanvasPanel.createOrShow(context.extensionUri, canvasId, canvasName);
 	});
+
+	// ============================================================================
+	// Commands
+	// ============================================================================
+
+	// Main command: Open canvas (called from Core after CanvasService.createCanvas)
+	// Core handles: name prompt -> CanvasService.createCanvas() -> passes {canvasId, canvasName} here
+	const openCanvasCommand = vscode.commands.registerCommand(
+		'roopik.canvas.open',
+		(arg: { canvasId: string; canvasName?: string }) => {
+			if (!arg || !arg.canvasId) {
+				logger.warn('Extension', 'No canvas ID provided');
+				return;
+			}
+
+			const canvasId = arg.canvasId;
+			const canvasName = arg.canvasName || canvasId;
+
+			logger.info('Extension', `Opening canvas: ${canvasId} (${canvasName})`);
+			manager!.openCanvas(canvasId, canvasName, context.extensionUri);
+		}
+	);
+
+	// Close canvas command (called from Core when deleting a canvas)
+	const closeCanvasCommand = vscode.commands.registerCommand(
+		'roopik.canvas.close',
+		(canvasId: string) => {
+			if (!canvasId) {
+				logger.warn('Extension', 'No canvas ID provided for close');
+				return;
+			}
+
+			logger.info('Extension', `Closing canvas: ${canvasId}`);
+			manager!.closeCanvas(canvasId);
+		}
+	);
+
+	// Update canvas command (called from Core when canvas is renamed)
+	const updateCanvasCommand = vscode.commands.registerCommand(
+		'roopik.canvas.update',
+		(arg: { canvasId: string; canvasName: string }) => {
+			if (!arg || !arg.canvasId) {
+				logger.warn('Extension', 'No canvas ID provided for update');
+				return;
+			}
+
+			logger.info('Extension', `Updating canvas: ${arg.canvasId} -> ${arg.canvasName}`);
+
+			const panel = manager!.getPanel(arg.canvasId);
+			if (panel) {
+				panel.updateTitle(arg.canvasName);
+				logger.info('Extension', `Canvas "${arg.canvasId}" title updated to "${arg.canvasName}"`);
+			}
+		}
+	);
 
 	// Import component command (called from Core's import flow)
 	const importComponentCommand = vscode.commands.registerCommand(
@@ -90,68 +136,38 @@ export function activate(context: vscode.ExtensionContext) {
 				const fileContent = await vscode.workspace.fs.readFile(fileUri);
 				const code = Buffer.from(fileContent).toString('utf-8');
 
-				// Determine framework from file extension
-				const ext = filePath.split('.').pop()?.toLowerCase() || 'tsx';
-				const framework = ext === 'vue' ? 'vue' : ext === 'svelte' ? 'svelte' : 'react';
-
 				// Extract filename for component name
 				const fileName = filePath.split(/[\\/]/).pop() || 'Component';
 				const componentName = fileName.replace(/\.[^/.]+$/, '');
 
-				// Create ComponentInput
-				const componentInput = {
-					id: `import-${Date.now()}`,
-					source: 'import' as const,
-					framework,
-					files: {
-						[fileName]: code
-					},
-					entryFile: fileName,
-					dependencies: {}
-				};
-
-				// Convert canvasId to slug format (same as in open command)
-				const canvasSlug = canvasId.toLowerCase()
-					.trim()
-					.replace(/\s+/g, '-')
-					.replace(/[^a-z0-9-]/g, '');
-
-				// Get the canvas panel
-				const panel = CanvasPanel.getPanel(canvasSlug);
+				// Ensure canvas is open
+				let panel = manager!.getPanel(canvasId);
 				if (!panel) {
-					// Canvas not open, try to open it first
-					await vscode.commands.executeCommand('roopik.canvas.open', canvasId);
-
-					// Wait a bit for panel to initialize
+					// Open canvas first
+					manager!.openCanvas(canvasId, canvasId, context.extensionUri);
 					await new Promise(resolve => setTimeout(resolve, 500));
-
-					const newPanel = CanvasPanel.getPanel(canvasSlug);
-					if (!newPanel) {
-						throw new Error(`Canvas "${canvasId}" could not be opened`);
-					}
-
-					// Send the import message
-					newPanel.postMessage({
-						type: 'addImportedComponent',
-						payload: {
-							componentInput,
-							position
-						}
-					});
-				} else {
-					// Send the import message to existing panel
-					panel.postMessage({
-						type: 'addImportedComponent',
-						payload: {
-							componentInput,
-							position
-						}
-					});
+					panel = manager!.getPanel(canvasId);
 				}
 
-				logger.info('Extension', `Component ${componentName} sent to canvas ${canvasId}`);
+				if (!panel) {
+					throw new Error(`Canvas "${canvasId}" could not be opened`);
+				}
 
-				return { success: true, componentInput };
+				// Create component via manager (which calls Core)
+				await manager!.createComponent({
+					canvasId,
+					name: componentName,
+					sourceData: {
+						type: 'local-file',
+						filePath,
+						files: { [fileName]: code }
+					},
+					position
+				});
+
+				logger.info('Extension', `Component ${componentName} import initiated for canvas ${canvasId}`);
+
+				return { success: true };
 			} catch (err) {
 				const errorMsg = err instanceof Error ? err.message : String(err);
 				logger.error('Extension', `Import failed: ${errorMsg}`);
@@ -160,34 +176,77 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	);
 
-	// Close canvas command (called from Core when deleting a canvas)
-	const closeCanvasCommand = vscode.commands.registerCommand('roopik.canvas.close', (canvasName?: string) => {
-		if (!canvasName) {
-			logger.warn('Extension', 'No canvas name provided for close');
-			return;
+	// ============================================================================
+	// Component Event Commands (received from Core via RoopikComponentContribution)
+	// ============================================================================
+
+	// Handle component created event from Core
+	const componentCreatedCommand = vscode.commands.registerCommand(
+		'roopik.component.created',
+		(event: { componentId: string; canvasId: string; component: unknown }) => {
+			logger.debug('Extension', `Component created event: ${event.componentId} in ${event.canvasId}`);
+			manager!.handleComponentCreatedFromCore({
+				componentId: event.componentId,
+				canvasId: event.canvasId,
+				component: event.component as any
+			});
 		}
+	);
 
-		logger.info('Extension', `Closing canvas: ${canvasName}`);
-
-		// Convert to slug for ID (same as in open command)
-		const canvasId = canvasName.toLowerCase()
-			.trim()
-			.replace(/\s+/g, '-')
-			.replace(/[^a-z0-9-]/g, '');
-
-		const panel = CanvasPanel.getPanel(canvasId);
-		if (panel) {
-			panel.dispose();
-			logger.info('Extension', `Canvas "${canvasName}" closed`);
-		} else {
-			logger.info('Extension', `Canvas "${canvasName}" was not open`);
+	// Handle component built event from Core
+	const componentBuiltCommand = vscode.commands.registerCommand(
+		'roopik.component.built',
+		(event: { componentId: string; canvasId: string; success: boolean; result?: unknown; errorInfo?: unknown; trigger: string }) => {
+			logger.debug('Extension', `Component built event: ${event.componentId}, success: ${event.success}`);
+			manager!.handleComponentBuiltFromCore({
+				componentId: event.componentId,
+				canvasId: event.canvasId,
+				success: event.success,
+				result: event.result as any,
+				errorInfo: event.errorInfo as any,
+				trigger: event.trigger as any
+			});
 		}
-	});
+	);
+
+	// Handle component deleted event from Core
+	const componentDeletedCommand = vscode.commands.registerCommand(
+		'roopik.component.deleted',
+		(event: { componentId: string; canvasId: string }) => {
+			logger.debug('Extension', `Component deleted event: ${event.componentId}`);
+			manager!.handleComponentDeletedFromCore(event);
+		}
+	);
+
+	// Handle component updated event from Core
+	const componentUpdatedCommand = vscode.commands.registerCommand(
+		'roopik.component.updated',
+		(event: { componentId: string; canvasId: string; component: unknown; changes: string[] }) => {
+			logger.debug('Extension', `Component updated event: ${event.componentId}`);
+			manager!.handleComponentUpdatedFromCore({
+				componentId: event.componentId,
+				canvasId: event.canvasId,
+				component: event.component as any,
+				changes: event.changes as any
+			});
+		}
+	);
 
 	// Register commands
-	context.subscriptions.push(openCanvasCommand, importComponentCommand, closeCanvasCommand);
+	context.subscriptions.push(
+		openCanvasCommand,
+		closeCanvasCommand,
+		updateCanvasCommand,
+		importComponentCommand,
+		componentCreatedCommand,
+		componentBuiltCommand,
+		componentDeletedCommand,
+		componentUpdatedCommand
+	);
 
-	logger.info('Extension', 'Commands registered: roopik.canvas.open, roopik.canvas.close, roopik.canvas.importComponent');
+	logger.info('Extension', 'Roopik Canvas extension activated');
+	logger.info('Extension', 'Canvas commands: roopik.canvas.open, roopik.canvas.close, roopik.canvas.update, roopik.canvas.importComponent');
+	logger.info('Extension', 'Component event commands: roopik.component.created, roopik.component.built, roopik.component.deleted, roopik.component.updated');
 }
 
 export function deactivate() {

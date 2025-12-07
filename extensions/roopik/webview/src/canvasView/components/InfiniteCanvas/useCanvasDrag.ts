@@ -4,7 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useState } from 'react';
-import type { Sandbox, Transform } from '../../types';
+import type { Sandbox, Transform, SnapMode } from '../../types';
+import { findNearestAvailableSlot, DEFAULT_CONFIG } from '../../services/gridManager';
 
 // ============================================================
 // Types
@@ -28,6 +29,7 @@ interface UseCanvasDragReturn {
 interface UseCanvasDragProps {
 	transform: Transform;
 	sandboxes: Sandbox[];
+	snapMode: SnapMode;
 	onTransformChange: (transform: Transform) => void;
 	onSandboxUpdate: (id: string, updates: Partial<Sandbox>) => void;
 	onSandboxClick: (id: string) => void;
@@ -44,6 +46,7 @@ interface UseCanvasDragProps {
 export function useCanvasDrag({
 	transform,
 	sandboxes,
+	snapMode,
 	onTransformChange,
 	onSandboxUpdate,
 	onSandboxClick,
@@ -92,10 +95,29 @@ export function useCanvasDrag({
 		if (draggingSandboxId && (dragOffset.x !== 0 || dragOffset.y !== 0)) {
 			const sandbox = sandboxes.find(s => s.id === draggingSandboxId);
 			if (sandbox) {
-				onSandboxUpdate(draggingSandboxId, {
-					x: sandbox.x + dragOffset.x,
-					y: sandbox.y + dragOffset.y,
-				});
+				const newX = sandbox.x + dragOffset.x;
+				const newY = sandbox.y + dragOffset.y;
+
+				if (snapMode === 'grid') {
+					// Grid mode: snap to nearest available grid slot
+					const snappedPosition = findNearestAvailableSlot(
+						newX,
+						newY,
+						sandboxes,
+						draggingSandboxId,
+						DEFAULT_CONFIG
+					);
+					onSandboxUpdate(draggingSandboxId, {
+						x: snappedPosition.x,
+						y: snappedPosition.y,
+					});
+				} else {
+					// Free mode: allow any position
+					onSandboxUpdate(draggingSandboxId, {
+						x: newX,
+						y: newY,
+					});
+				}
 			}
 		}
 
