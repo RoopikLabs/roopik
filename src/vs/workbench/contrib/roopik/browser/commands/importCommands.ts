@@ -169,10 +169,7 @@ export function registerImportCommands(): void {
 				canSelectMany: false,
 				openLabel: localize('roopik.import.localFile.openLabel', 'Import'),
 				filters: [
-					{ name: localize('roopik.import.filter.react', 'React Components'), extensions: ['tsx', 'jsx'] },
-					{ name: localize('roopik.import.filter.vue', 'Vue Components'), extensions: ['vue'] },
-					{ name: localize('roopik.import.filter.svelte', 'Svelte Components'), extensions: ['svelte'] },
-					{ name: localize('roopik.import.filter.all', 'All Components'), extensions: ['tsx', 'jsx', 'vue', 'svelte', 'ts', 'js'] }
+					{ name: localize('roopik.import.filter.all', 'All Components (*.tsx, *.jsx, *.vue, *.svelte, *.ts, *.js)'), extensions: ['tsx', 'jsx', 'vue', 'svelte', 'ts', 'js'] }
 				]
 			});
 

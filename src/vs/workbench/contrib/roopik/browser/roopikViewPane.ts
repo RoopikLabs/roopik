@@ -198,41 +198,47 @@ export class RoopikDashboardView extends ViewPane {
 		container.style.flexDirection = 'column';
 		container.style.gap = '8px';
 
-		// Top action bar (New Canvas, Project Mode)
-		const actionsRow = document.createElement('div');
-		actionsRow.style.display = 'flex';
-		actionsRow.style.alignItems = 'center';
-		actionsRow.style.justifyContent = 'flex-start';
-		actionsRow.style.gap = '6px';
-		actionsRow.style.marginBottom = '8px';
+		// Top action bar container
+		const actionsContainer = document.createElement('div');
+		actionsContainer.style.display = 'flex';
+		actionsContainer.style.flexDirection = 'column';
+		actionsContainer.style.gap = '6px';
+		actionsContainer.style.marginBottom = '8px';
 
-		const buttonsRow = document.createElement('div');
-		buttonsRow.style.display = 'flex';
-		buttonsRow.style.alignItems = 'center';
-		buttonsRow.style.gap = '4px';
-		buttonsRow.style.flexWrap = 'wrap';
+		// First row: Mode buttons (Canvas and Project) - larger icons
+		const modeButtonsRow = document.createElement('div');
+		modeButtonsRow.style.display = 'flex';
+		modeButtonsRow.style.alignItems = 'center';
+		modeButtonsRow.style.gap = '4px';
+		modeButtonsRow.style.flexWrap = 'wrap'; // Allow wrapping when space is limited
 
-		// Mode buttons (Canvas and Project) - larger icons
-		const newCanvasBtn = this.createPrimaryActionButton('Canvas', 'codicon-new-file', 'roopik.openCanvas', true);
-		const projectModeBtn = this.createSecondaryActionButton('Project', 'codicon-globe', 'roopik.openProjectPreview', true);
+		const newCanvasBtn = this.createPrimaryActionButton('Canvas', 'codicon-new-file', 'roopik.openCanvas', true, true);
+		const projectModeBtn = this.createSecondaryActionButton('Project', 'codicon-globe', 'roopik.openProjectPreview', true, true);
 
-		// Separator
+		modeButtonsRow.appendChild(newCanvasBtn);
+		modeButtonsRow.appendChild(projectModeBtn);
+
+		// Separator line between mode buttons and import
 		const separator = document.createElement('div');
-		separator.style.width = '1px';
-		separator.style.height = '16px';
+		separator.style.width = '100%';
+		separator.style.height = '1px';
 		separator.style.background = 'var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
-		separator.style.margin = '0 4px';
+		separator.style.margin = '4px 0';
 
-		// Import button (smaller icon)
-		const importBtn = this.createSecondaryActionButton('Import', 'codicon-cloud-download', 'roopik.import.showPicker', false);
+		// Second row: Import button (always on separate row)
+		const importButtonsRow = document.createElement('div');
+		importButtonsRow.style.display = 'flex';
+		importButtonsRow.style.alignItems = 'center';
+		importButtonsRow.style.gap = '4px';
 
-		buttonsRow.appendChild(newCanvasBtn);
-		buttonsRow.appendChild(projectModeBtn);
-		buttonsRow.appendChild(separator);
-		buttonsRow.appendChild(importBtn);
-		actionsRow.appendChild(buttonsRow);
+		const importBtn = this.createSecondaryActionButton('Import', 'codicon-cloud-download', 'roopik.import.showPicker', true, false);
+		importButtonsRow.appendChild(importBtn);
 
-		container.appendChild(actionsRow);
+		actionsContainer.appendChild(modeButtonsRow);
+		actionsContainer.appendChild(separator);
+		actionsContainer.appendChild(importButtonsRow);
+
+		container.appendChild(actionsContainer);
 
 		// Canvases Section (will be populated dynamically)
 		this.canvasesContainer = document.createElement('div');
@@ -568,16 +574,20 @@ export class RoopikDashboardView extends ViewPane {
 		return section;
 	}
 
-	private createPrimaryActionButton(label: string, codiconClass: string, commandId: string, largeIcon: boolean = false): HTMLElement {
+	private createPrimaryActionButton(label: string, codiconClass: string, commandId: string, largeButton: boolean = false, extraLarge: boolean = false): HTMLElement {
 		const btn = document.createElement('button');
 		btn.style.display = 'inline-flex';
 		btn.style.alignItems = 'center';
 		btn.style.justifyContent = 'center';
-		btn.style.padding = '3px 10px';
+		// Extra large for mode buttons, large for import, small for others
+		btn.style.padding = extraLarge ? '8px 18px' : (largeButton ? '6px 14px' : '3px 10px');
 		btn.style.borderRadius = '999px';
 		btn.style.border = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
+		// Subtle outline for better visibility
+		btn.style.boxShadow = '0 0 0 1px var(--vscode-button-border, rgba(96, 165, 250, 0.3))';
 		btn.style.cursor = 'pointer';
-		btn.style.fontSize = '11px';
+		// Extra large font for mode buttons, large for import, small for others
+		btn.style.fontSize = extraLarge ? '13px' : (largeButton ? '12px' : '11px');
 		btn.style.fontWeight = '500';
 		btn.style.fontFamily = 'inherit';
 		btn.style.background = 'var(--vscode-sideBarSectionHeader-background, rgba(15, 23, 42, 0.8))';
@@ -593,14 +603,13 @@ export class RoopikDashboardView extends ViewPane {
 
 		const icon = document.createElement('span');
 		icon.classList.add('codicon', codiconClass);
-		if (largeIcon) {
-			icon.style.fontSize = '14px'; // Slightly larger for mode buttons
-		}
+		// Extra large icon for mode buttons, large for import, small for others
+		icon.style.fontSize = extraLarge ? '18px' : (largeButton ? '16px' : '12px');
 		btn.appendChild(icon);
 
 		const text = document.createElement('span');
 		text.textContent = label;
-		text.style.marginLeft = '4px';
+		text.style.marginLeft = extraLarge ? '8px' : (largeButton ? '6px' : '4px');
 		btn.appendChild(text);
 
 		btn.onclick = () => {
@@ -610,16 +619,20 @@ export class RoopikDashboardView extends ViewPane {
 		return btn;
 	}
 
-	private createSecondaryActionButton(label: string, codiconClass: string, commandId: string, largeIcon: boolean = false): HTMLElement {
+	private createSecondaryActionButton(label: string, codiconClass: string, commandId: string, largeButton: boolean = false, extraLarge: boolean = false): HTMLElement {
 		const btn = document.createElement('button');
 		btn.style.display = 'inline-flex';
 		btn.style.alignItems = 'center';
 		btn.style.justifyContent = 'center';
-		btn.style.padding = '3px 10px';
+		// Extra large for mode buttons, large for import, small for others
+		btn.style.padding = extraLarge ? '8px 18px' : (largeButton ? '6px 14px' : '3px 10px');
 		btn.style.borderRadius = '999px';
 		btn.style.border = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
+		// Subtle outline for better visibility
+		btn.style.boxShadow = '0 0 0 1px var(--vscode-button-border, rgba(96, 165, 250, 0.3))';
 		btn.style.cursor = 'pointer';
-		btn.style.fontSize = '11px';
+		// Extra large font for mode buttons, large for import, small for others
+		btn.style.fontSize = extraLarge ? '13px' : (largeButton ? '12px' : '11px');
 		btn.style.fontWeight = '500';
 		btn.style.fontFamily = 'inherit';
 		btn.style.background = 'transparent';
@@ -635,14 +648,13 @@ export class RoopikDashboardView extends ViewPane {
 
 		const icon = document.createElement('span');
 		icon.classList.add('codicon', codiconClass);
-		if (largeIcon) {
-			icon.style.fontSize = '14px'; // Slightly larger for mode buttons
-		}
+		// Extra large icon for mode buttons, large for import, small for others
+		icon.style.fontSize = extraLarge ? '18px' : (largeButton ? '16px' : '12px');
 		btn.appendChild(icon);
 
 		const text = document.createElement('span');
 		text.textContent = label;
-		text.style.marginLeft = '4px';
+		text.style.marginLeft = extraLarge ? '8px' : (largeButton ? '6px' : '4px');
 		btn.appendChild(text);
 
 		btn.onclick = () => {
