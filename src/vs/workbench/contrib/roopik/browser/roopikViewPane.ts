@@ -70,14 +70,33 @@ export class RoopikDashboardView extends ViewPane {
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
 
+		console.log('[RoopikDashboardView] Constructor called');
+
+		// Subscribe to onDidInitialize - this fires when CanvasService is fully ready
+		// This is the proper way to load canvases: wait for service initialization, not timers!
+		this._register(this.canvasService.onDidInitialize(() => {
+			console.log('[RoopikDashboardView] EVENT: onDidInitialize received - CanvasService is ready');
+			this.loadCanvasesNow();
+		}));
+
 		// Subscribe to canvas events to auto-refresh the list
-		this._register(this.canvasService.onCanvasCreated(() => this.loadCanvases()));
-		this._register(this.canvasService.onCanvasDeleted(() => this.loadCanvases()));
-		this._register(this.canvasService.onCanvasUpdated(() => this.loadCanvases()));
+		this._register(this.canvasService.onCanvasCreated((event) => {
+			console.log('[RoopikDashboardView] EVENT: onCanvasCreated received', event);
+			this.loadCanvasesNow();
+		}));
+		this._register(this.canvasService.onCanvasDeleted((event) => {
+			console.log('[RoopikDashboardView] EVENT: onCanvasDeleted received', event);
+			this.loadCanvasesNow();
+		}));
+		this._register(this.canvasService.onCanvasUpdated((event) => {
+			console.log('[RoopikDashboardView] EVENT: onCanvasUpdated received', event);
+			this.loadCanvasesNow();
+		}));
 	}
 
 	protected override renderBody(container: HTMLElement): void {
 		super.renderBody(container);
+		console.log('[RoopikDashboardView] renderBody called');
 
 		// Inject CSS for professional animations
 		this.injectDeleteAnimations();
@@ -124,8 +143,14 @@ export class RoopikDashboardView extends ViewPane {
 		this.projectsContainer = document.createElement('div');
 		container.appendChild(this.projectsContainer);
 
-		// Load canvases from file system
-		this.loadCanvases();
+		// Show loading state initially
+		this.showLoadingState();
+
+		// Try to load canvases immediately - this handles the case where
+		// CanvasService is already initialized (onDidInitialize already fired before we subscribed)
+		// If it fails, the onDidInitialize event subscription will catch it when service initializes
+		console.log('[RoopikDashboardView] renderBody: attempting immediate canvas load');
+		this.loadCanvasesNow();
 
 		// Load projects (static for now)
 		this.loadProjects();
@@ -135,11 +160,34 @@ export class RoopikDashboardView extends ViewPane {
 	}
 
 	/**
-	 * Load canvases from CanvasService
-	 * Includes retry logic for when service is not yet initialized
+	 * Show loading state in canvases section
+	 * Called during renderBody before onDidInitialize fires
 	 */
-	private async loadCanvases(retryCount: number = 0): Promise<void> {
+	private showLoadingState(): void {
 		if (!this.canvasesContainer) {
+			return;
+		}
+
+		// Clear existing content
+		while (this.canvasesContainer.firstChild) {
+			this.canvasesContainer.removeChild(this.canvasesContainer.firstChild);
+		}
+
+		this.createSection(this.canvasesContainer, 'Canvases', [
+			{ label: 'Loading...', description: 'Waiting for services...', onClick: () => { } }
+		]);
+	}
+
+	/**
+	 * Load canvases from CanvasService immediately
+	 * Called when onDidInitialize fires (service is ready) or on canvas events
+	 * No timers, no waiting - proper event-based loading!
+	 */
+	private async loadCanvasesNow(): Promise<void> {
+		console.log('[RoopikDashboardView] loadCanvasesNow called');
+
+		if (!this.canvasesContainer) {
+			console.warn('[RoopikDashboardView] loadCanvasesNow: canvasesContainer is null');
 			return;
 		}
 
@@ -149,19 +197,12 @@ export class RoopikDashboardView extends ViewPane {
 		}
 
 		try {
+			console.log('[RoopikDashboardView] Calling canvasService.listCanvasesAsync()...');
 			const canvases = await this.canvasService.listCanvasesAsync();
+			console.log(`[RoopikDashboardView] listCanvasesAsync returned ${canvases.length} canvases:`, canvases);
 
 			if (canvases.length === 0) {
-				// If no canvases and we haven't retried yet, wait and retry
-				// This handles race condition where ViewPane loads before CanvasService is initialized
-				if (retryCount < 3) {
-					this.createSection(this.canvasesContainer, 'Canvases', [
-						{ label: 'Loading...', description: 'Checking workspace for canvases', onClick: () => { } }
-					]);
-					setTimeout(() => this.loadCanvases(retryCount + 1), 500);
-					return;
-				}
-
+				console.log('[RoopikDashboardView] No canvases found, showing empty state');
 				this.createSection(this.canvasesContainer, 'Canvases', [
 					{ label: 'No canvases yet', description: 'Click "Canvas" to create one', onClick: () => { } }
 				]);
@@ -177,19 +218,10 @@ export class RoopikDashboardView extends ViewPane {
 				onRename: () => this.renameCanvas(canvas.id, canvas.name)
 			}));
 
+			console.log(`[RoopikDashboardView] Rendering ${items.length} canvas items`);
 			this.createSection(this.canvasesContainer, 'Canvases', items);
 		} catch (err) {
 			console.error('[RoopikDashboardView] Failed to load canvases:', err);
-
-			// Retry on error (service might not be initialized yet)
-			if (retryCount < 3) {
-				this.createSection(this.canvasesContainer, 'Canvases', [
-					{ label: 'Loading...', description: 'Waiting for services...', onClick: () => { } }
-				]);
-				setTimeout(() => this.loadCanvases(retryCount + 1), 500);
-				return;
-			}
-
 			this.createSection(this.canvasesContainer, 'Canvases', [
 				{ label: 'Failed to load canvases', description: 'Check console for details', onClick: () => { } }
 			]);
@@ -319,13 +351,11 @@ export class RoopikDashboardView extends ViewPane {
 	}
 
 	/**
-	 * Subscribe to CanvasService events for auto-refresh
+	 * Setup file watcher (placeholder for future file-based watching if needed)
+	 * Note: Event subscriptions are handled in constructor via onCanvasCreated/Deleted/Updated
 	 */
 	private setupFileWatcher(): void {
-		// Auto-refresh when canvases change
-		this._register(this.canvasService.onCanvasCreated(() => this.loadCanvases()));
-		this._register(this.canvasService.onCanvasDeleted(() => this.loadCanvases()));
-		this._register(this.canvasService.onCanvasUpdated(() => this.loadCanvases()));
+		// Event subscriptions are now in constructor - no duplicate subscriptions here
 	}
 
 	private createSection(container: HTMLElement, title: string, items: Array<{ label: string; description: string; onClick?: () => void; onDelete?: () => void; onRename?: () => void }>): HTMLElement {

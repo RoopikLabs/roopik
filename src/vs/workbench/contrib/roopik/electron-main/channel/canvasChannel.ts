@@ -27,6 +27,8 @@ export class CanvasChannel implements IServerChannel {
 	 */
 	listen(_context: unknown, event: string): Event<any> {
 		switch (event) {
+			case 'onDidInitialize':
+				return this.service.onDidInitialize;
 			case 'onCanvasCreated':
 				return this.service.onCanvasCreated;
 			case 'onCanvasDeleted':
@@ -44,6 +46,7 @@ export class CanvasChannel implements IServerChannel {
 	 * Handle method calls from renderer
 	 */
 	call(_context: unknown, command: string, arg?: any): Promise<any> {
+		console.log('[CanvasChannel] Received call:', command, 'arg:', arg);
 		switch (command) {
 			// ================================================================
 			// Lifecycle
@@ -61,6 +64,7 @@ export class CanvasChannel implements IServerChannel {
 			case 'getCanvas':
 				return this.service.getCanvasAsync(arg as string);
 			case 'listCanvases':
+				console.log('[CanvasChannel] Calling listCanvasesAsync on service');
 				return this.service.listCanvasesAsync(arg as ListCanvasOptions | undefined);
 			case 'updateCanvas': {
 				const { canvasId, updates } = arg as { canvasId: string; updates: any };

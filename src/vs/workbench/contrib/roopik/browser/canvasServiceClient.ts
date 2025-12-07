@@ -46,6 +46,7 @@ export class CanvasServiceClient implements ICanvasService {
 	// Events (proxied from main process)
 	// ========================================================================
 
+	readonly onDidInitialize: Event<void>;
 	readonly onCanvasCreated: Event<CanvasCreatedEvent>;
 	readonly onCanvasDeleted: Event<CanvasDeletedEvent>;
 	readonly onCanvasUpdated: Event<CanvasUpdatedEvent>;
@@ -62,6 +63,7 @@ export class CanvasServiceClient implements ICanvasService {
 		this.channel = mainProcessService.getChannel(CANVAS_CHANNEL_NAME);
 
 		// Subscribe to events from main process
+		this.onDidInitialize = this.channel.listen<void>('onDidInitialize');
 		this.onCanvasCreated = this.channel.listen<CanvasCreatedEvent>('onCanvasCreated');
 		this.onCanvasDeleted = this.channel.listen<CanvasDeletedEvent>('onCanvasDeleted');
 		this.onCanvasUpdated = this.channel.listen<CanvasUpdatedEvent>('onCanvasUpdated');
@@ -108,7 +110,10 @@ export class CanvasServiceClient implements ICanvasService {
 	}
 
 	async listCanvasesAsync(options?: ListCanvasOptions): Promise<CanvasMeta[]> {
-		return this.channel.call('listCanvases', options);
+		console.log('[CanvasServiceClient] listCanvasesAsync called, options:', options);
+		const result = await this.channel.call<CanvasMeta[]>('listCanvases', options);
+		console.log('[CanvasServiceClient] listCanvasesAsync returned:', result);
+		return result;
 	}
 
 	async updateCanvas(

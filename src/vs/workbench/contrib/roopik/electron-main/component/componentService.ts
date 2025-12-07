@@ -157,8 +157,12 @@ export class ComponentService extends Disposable implements IComponentService {
 		this._workspacePath = workspacePath;
 		console.log('[ComponentService] Workspace path:', this._workspacePath);
 
-		// Initialize storage
-		await this.storageService.initialize(workspacePath);
+		// Initialize storage if not already initialized
+		if (!this.storageService.isInitialized()) {
+			console.log('[ComponentService] Initializing storage service...');
+			await this.storageService.initialize(workspacePath);
+			console.log('[ComponentService] Storage service initialized');
+		}
 
 		// Load all components from storage
 		await this.loadAllComponents();

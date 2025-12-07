@@ -76,6 +76,9 @@ export interface ICanvasService {
 	// Events
 	// ========================================================================
 
+	/** Fired when the service is initialized and ready */
+	readonly onDidInitialize: Event<void>;
+
 	/** Fired when a canvas is created */
 	readonly onCanvasCreated: Event<CanvasCreatedEvent>;
 
