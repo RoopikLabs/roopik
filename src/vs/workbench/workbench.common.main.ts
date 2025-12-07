@@ -115,7 +115,6 @@ import './services/authentication/browser/authenticationMcpAccessService.js';
 import './services/authentication/browser/authenticationMcpService.js';
 import './services/authentication/browser/dynamicAuthenticationProviderStorageService.js';
 import './services/authentication/browser/authenticationQueryService.js';
-import './services/accounts/common/defaultAccount.js';
 import '../platform/hover/browser/hoverService.js';
 import './services/assignment/common/assignmentService.js';
 import './services/outline/browser/outlineService.js';
@@ -184,6 +183,9 @@ registerSingleton(IAllowedMcpServersService, AllowedMcpServersService, Instantia
 
 //#region --- workbench contributions
 
+// Default Account
+import './services/accounts/common/defaultAccount.js';
+
 // Telemetry
 import './contrib/telemetry/browser/telemetry.contribution.js';
 
@@ -200,6 +202,9 @@ import './contrib/notebook/browser/notebook.contribution.js';
 
 // Speech
 import './contrib/speech/browser/speech.contribution.js';
+
+// Roopik Design IDE
+import './contrib/roopik/browser/roopik.contribution.js';
 
 // Chat
 import './contrib/chat/browser/chat.contribution.js';

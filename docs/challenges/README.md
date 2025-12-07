@@ -1,176 +1,206 @@
-# Challenges & Solutions
+# Roopik Development Challenges
 
-This directory contains detailed documentation of problems we encountered and how we solved them.
-
-## Purpose
-
-When you hit a problem that takes significant time and efforts and specific hacks to solve, document it here so we:
-- Remember the solution if it happens again
-- Help future contributors who hit the same issue
-- Build a knowledge base of common problems
-
-## Format
-
-Each challenge gets its own file: `challenge-name.md`
-
-### Template
-
-```markdown
-# Challenge: [Brief Title]
-
-**Date Encountered**: YYYY-MM-DD
-**Phase**: [Which phase of project]
-**Status**: [Solved / Workaround / Unsolved]
+> Collection of technical challenges encountered during Roopik development and their solutions.
 
 ---
 
-## Problem Description
+## Browser Preview V2 (WebContentsView) Challenges
 
-[Clear description of what went wrong]
+These documents cover challenges faced while implementing the Browser Preview V2 feature using Electron's WebContentsView.
 
-### Symptoms
-- Symptom 1
-- Symptom 2
+### Core Issues Resolved
 
-### Error Messages
+| Challenge | Status | Document |
+|-----------|--------|----------|
+| Website reloads on tab switch | RESOLVED | [Tab Switching](./BROWSER_VIEW_TAB_SWITCHING.md) |
+| Ghost browser views on IDE reload | RESOLVED | [Ghost Process](./BROWSER_VIEW_GHOST_PROCESS.md) |
+| Browser views destroyed on extension activity | RESOLVED | [Reload Lifecycle](./BROWSER_VIEW_RELOAD_LIFECYCLE.md) |
+| Double browser view creation | RESOLVED | [Double Initialization](./BROWSER_VIEW_DOUBLE_INITIALIZATION.md) |
+| Placeholder hidden by native view | RESOLVED | [Visibility](./WEBCONTENTSVIEW_VISIBILITY.md) |
+| Localhost/dev server not loading | RESOLVED | [Localhost Loading](./LOCALHOST_LOADING.md) |
+| UI overlays hidden behind browser | RESOLVED | [Overlay UI](./OVERLAY_UI_ON_WEBCONTENTSVIEW.md) |
+
+### Implementation Guides
+
+| Feature | Document |
+|---------|----------|
+| Chrome DevTools Integration | [DevTools Implementation](./DEVTOOLS_IMPLEMENTATION.md) |
+
+---
+
+## Quick Reference
+
+### The Tab Switch Problem
+**Issue**: Browser view destroyed on tab switch, causing page reload.
+**Solution**: Only hide in `clearInput()`, destroy only in `dispose()`.
+**File**: [BROWSER_VIEW_TAB_SWITCHING.md](./BROWSER_VIEW_TAB_SWITCHING.md)
+
+### The Ghost Process Problem
+**Issue**: Browser view persists after IDE reload as uncontrollable "ghost".
+**Solution**: Safety Leash pattern - attach window lifecycle listeners to auto-destroy.
+**File**: [BROWSER_VIEW_GHOST_PROCESS.md](./BROWSER_VIEW_GHOST_PROCESS.md)
+
+### The Reload Lifecycle Problem
+**Issue**: Browser views destroyed on extension activity due to false positives from `did-start-loading` event.
+**Solution**: Use VS Code's `ILifecycleMainService.onWillLoadWindow` with `LoadReason.RELOAD` for semantic, reliable reload detection.
+**File**: [BROWSER_VIEW_RELOAD_LIFECYCLE.md](./BROWSER_VIEW_RELOAD_LIFECYCLE.md)
+
+### The Double Initialization Problem
+**Issue**: Race condition creates two browser views simultaneously.
+**Solution**: Single entry point - only initialize in `setInput()`, not `createEditor()`.
+**File**: [BROWSER_VIEW_DOUBLE_INITIALIZATION.md](./BROWSER_VIEW_DOUBLE_INITIALIZATION.md)
+
+### The Visibility Problem
+**Issue**: WebContentsView renders above all DOM elements, hiding placeholder.
+**Solution**: Use native `setVisible()` API instead of CSS.
+**File**: [WEBCONTENTSVIEW_VISIBILITY.md](./WEBCONTENTSVIEW_VISIBILITY.md)
+
+### The Localhost Loading Problem
+**Issue**: `http://localhost:5173` shows white screen with no errors (silent failure).
+**Solution**: Configure session with proxy bypass, certificate verification, and permission handlers.
+**File**: [LOCALHOST_LOADING.md](./LOCALHOST_LOADING.md)
+
+### The Overlay UI Problem
+**Issue**: Floating toolbars, dropdown menus, and overlays hidden behind WebContentsView.
+**Solution**: Stacking Strategy - create additional WebContentsView layers with transparent backgrounds.
+**File**: [OVERLAY_UI_ON_WEBCONTENTSVIEW.md](./OVERLAY_UI_ON_WEBCONTENTSVIEW.md)
+
+---
+
+## Key Files
+
 ```
-[Paste exact error messages]
+src/vs/workbench/contrib/roopik/
+├── browser/
+│   └── projectModeV2/
+│       └── projectModeV2Editor.ts    # Editor lifecycle, visibility
+│
+└── electron-main/
+    └── projectModeV2/
+        └── browserViewServiceV2.ts   # Native view management, Safety Leash
 ```
 
-### Environment
-- OS: Windows/Mac/Linux
-- Node version: X.X.X
-- VS Code version: X.X.X
-- Other relevant info
-
 ---
 
-## Attempted Solutions
+## Patterns Learned
 
-### Attempt 1: [What we tried]
-**Result**: [Didn't work / Partial fix / Worked]
-**Why it failed**: [Explanation]
-
-### Attempt 2: [What we tried]
-...
-
----
-
-## Solution
-
-[Detailed explanation of what fixed it]
-
-### Steps
-1. Step 1
-2. Step 2
-3. Step 3
-
-### Code Changes
+### 1. Visibility Toggle Pattern (from Cursor IDE)
 ```typescript
-// Before
-...
+// Tab switch away: HIDE, don't destroy
+clearInput() → setBrowserVisible(false)
 
-// After
-...
+// Tab switch back: SHOW, don't recreate
+setInput() → setBrowserVisible(true)
+
+// Tab close: DESTROY
+dispose() → destroyBrowserView()
 ```
 
-### Verification
-How we verified the fix works:
-- Test 1
-- Test 2
+### 2. Safety Leash Pattern (Legacy - see Reload Lifecycle doc for modern approach)
+```typescript
+// OLD: Too broad - fires on extension activity
+window.webContents.once('did-start-loading', autoDestroy);
 
----
-
-## Root Cause
-
-[What was the underlying cause?]
-
----
-
-## Prevention
-
-How to avoid this in the future:
-- Prevention measure 1
-- Prevention measure 2
-
----
-
-## Related Issues
-
-- Related challenge: [Link]
-- GitHub issue: [Link if applicable]
-- Stack Overflow: [Link if we found help there]
-
----
-
-## References
-
-- Documentation link
-- Blog post that helped
-- Expert who helped
+// NEW: Semantic - only fires on actual reloads
+lifecycleMainService.onWillLoadWindow(e => {
+    if (e.reason === LoadReason.RELOAD) {
+        destroyAllBrowserViewsForWindow(e.window.win?.id);
+    }
+});
 ```
 
-## Index
+### 3. Single Entry Point Pattern
+```typescript
+// DON'T: Multiple initialization points
+createEditor() → initializeBrowserView()  // Call 1
+setInput() → initializeBrowserView()      // Call 2 (race!)
 
-| Challenge | Status | Date |
-|-----------|--------|------|
-| Native module binding error after antivirus interruption | Solved | 2025-11-15 |
-
-### Native Module Binding Error (2025-11-15)
-
-**Problem**: VS Code failed to launch with "Could not locate the bindings file" error for `@vscode/policy-watcher` after antivirus interrupted the build process.
-
-**Solution**: Rebuild the native module for Electron target:
-```bash
-cd node_modules/@vscode/policy-watcher
-npx node-gyp rebuild --target=39.1.2 --dist-url=https://electronjs.org/headers
+// DO: Single initialization point
+createEditor() → DOM only
+setInput() → initializeBrowserView()      // Only call site
 ```
 
-**Root Cause**: Antivirus interruption during npm install left native modules compiled for wrong Node version instead of Electron runtime.
+### 4. State Sync Pattern
+```typescript
+// DON'T: Use stale input URL
+controlBar.setUrl(input.url);  // Original URL, not current!
 
-## Common Challenge Categories
+// DO: Get current state from browser
+const state = await browserService.getNavigationState(viewId);
+controlBar.setUrl(state.url);  // Actual current URL
+```
 
-Organize challenges by category:
+### 5. Localhost Session Pattern
+```typescript
+// Configure session BEFORE creating browser view
+const browserSession = session.fromPartition('persist:roopik-browser');
 
-### Build System
-- `build-npm-install-fails.md`
-- `build-compilation-errors.md`
-- `build-windows-specific.md`
+// Bypass proxy for localhost
+await browserSession.setProxy({
+    mode: 'direct',
+    proxyBypassRules: 'localhost;127.0.0.1;[::1];*.local'
+});
 
-### Extension Development
-- `extension-not-loading.md`
-- `webview-not-rendering.md`
-- `postmessage-communication-failing.md`
+// Trust all certificates (dev servers use self-signed)
+browserSession.setCertificateVerifyProc((_request, callback) => callback(0));
 
-### Canvas Performance
-- `canvas-fps-drops.md`
-- `canvas-memory-leak.md`
-- `canvas-transform-math-issues.md`
+// Auto-grant permissions
+browserSession.setPermissionRequestHandler((_, permission, callback) => {
+    callback(['media', 'clipboard-read', 'clipboard-write'].includes(permission));
+});
+```
 
-### Preview Engine
-- `iframe-sandbox-csp-errors.md`
-- `esbuild-bundling-fails.md`
-- `hmr-not-updating.md`
+### 6. Stacking Strategy Pattern (Overlay UI)
+```typescript
+// Problem: DOM elements CANNOT appear above WebContentsView
+// Solution: Stack multiple WebContentsViews
 
-### Code Sync
-- `ast-parsing-edge-cases.md`
-- `sync-infinite-loop.md`
-- `conflict-resolution-bugs.md`
+// Browser view (bottom layer)
+window.contentView.addChildView(browserView);
 
-### AI Integration
-- `claude-api-timeout.md`
-- `tool-call-parsing-errors.md`
-- `context-exceeds-token-limit.md`
+// Overlay view with transparent background (top layer)
+const overlayView = new WebContentsView({ /* ... */ });
+overlayView.setBackgroundColor('#00000000');  // Transparent!
+window.contentView.addChildView(overlayView);  // Added later = on top
 
-### Upstream Sync
-- `rebase-conflicts.md`
-- `upstream-api-breaking-changes.md`
-- `build-broken-after-sync.md`
+// Load HTML with transparent background
+const html = `<html><body style="background:transparent">
+    <div class="floating-toolbar">...</div>
+</body></html>`;
+overlayView.webContents.loadURL(`data:text/html,${encodeURIComponent(html)}`);
 
-## Tips for Documenting
+// Bring to top when showing
+window.contentView.removeChildView(overlayView);
+window.contentView.addChildView(overlayView);  // Re-add = topmost
+```
 
-1. **Be Specific**: Include exact error messages, stack traces
-2. **Be Complete**: Document environment, versions, steps to reproduce
-3. **Be Clear**: Write for someone who hasn't seen the problem
-4. **Be Helpful**: Include what didn't work (saves others time)
-5. **Be Timely**: Document while it's fresh in your mind
+---
+
+## Debugging Tips
+
+### Enable Logging
+All challenges were debugged using strategic logging:
+```typescript
+this.logger.info(`[ProjectModeV2] #${this.instanceId} clearInput: browser view preserved (viewId=${this.browserViewId})`);
+```
+
+### Instance Counter
+Track which editor instance is logging:
+```typescript
+private static instanceCounter = 0;
+private readonly instanceId = ++ProjectModeV2Editor.instanceCounter;
+```
+
+### Main Process Logs
+Check main process console for native view operations:
+```
+[ProjectModeV2] SAFETY LEASH TRIGGERED - Auto-destroying browser view 2
+```
+
+---
+
+## Related Documentation
+
+- [WebContentsView Browser Ghost](../WebcontentsView%20Browser%20Ghost.md)
+- [Mode 2 Security](../MODE2_SECURITY.md)
+- [Core Migration Architecture](../CORE_MIGRATION_ARCHITECTURE.md)

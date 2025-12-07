@@ -1,0 +1,63 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ============================================================
+   App Container - Full viewport
+   ============================================================ */
+
+.app {
+	width: 100vw;
+	height: 100vh;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	font-family: var(--vscode-font-family);
+	color: var(--vscode-foreground);
+	background-color: #1a1a1a;
+	margin: 0;
+	padding: 0;
+	position: relative;
+}
+
+/* ============================================================
+   Canvas Container - Takes up all remaining space
+   ============================================================ */
+
+.canvas-container {
+	flex: 1;
+	position: relative;
+	overflow: hidden;
+	min-height: 0;
+}
+
+/* ============================================================
+   Global Scrollbars
+   ============================================================ */
+
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+::-webkit-scrollbar-track {
+	background: var(--vscode-editor-background);
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--vscode-scrollbarSlider-background);
+	border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+/* ============================================================
+   Component styles are now in separate files:
+   - canvasView/styles/floatingToolbar.css
+   - canvasView/styles/infiniteCanvas.css
+   - canvasView/styles/statusPanel.css
+   - canvasView/styles/sandboxPreview.css
+   ============================================================ */

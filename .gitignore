@@ -30,8 +30,16 @@ CLAUDE.md
 COPILOT-INSTRUCTIONS.md
 .cursorrules
 .claude/*
+/branding
 
 # Roopik Canvas State (user-specific, not committed)
 .roopik/canvas-*.json
 .roopik/ai-contexts/*.json
 .roopik/session.json
+
+# DevTools Extensions (extracted CRX files - not committed due to licensing)
+# Keep manifest.json and README.md, ignore the actual extension folders
+resources/devtools-extensions/react-devtools/
+resources/devtools-extensions/vue-devtools/
+resources/devtools-extensions/redux-devtools/
+resources/devtools-extensions/*/
