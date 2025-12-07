@@ -18,6 +18,7 @@ import { InfiniteCanvas } from "../canvasView/components/InfiniteCanvas";
 import { StatusPanel } from "../canvasView/components/StatusPanel";
 import { GlobalDeviceToggle } from "../canvasView/components/DeviceToggle";
 import { BottomActionBar } from "../canvasView/components/Toolbar/BottomActionBar";
+import { DeleteConfirmModal } from "../canvasView/components/Toolbar/DeleteConfirmModal";
 import { CodePopup, type CodeFile } from "../canvasView/components/CodePopup";
 import {
 	reorganizeSandboxes,
@@ -109,6 +110,9 @@ function App() {
 
 	// Drag-drop state
 	const [isDragOver, setIsDragOver] = useState(false);
+
+	// Delete confirmation state (for keyboard Delete key)
+	const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
 	// FPS counter
 	const fps = useFPS();
@@ -783,6 +787,12 @@ function App() {
 			if (selectedSandboxId === sandboxId) setSelectedSandboxId(null);
 			if (focusedSandboxId === sandboxId) setFocusedSandboxId(null);
 
+			// Notify extension to delete component from storage (Core)
+			vscode.postMessage({
+				type: "deleteComponent",
+				payload: { componentId: sandboxId },
+			});
+
 			setSandboxes((prev) => {
 				const remaining = prev.filter((s) => s.id !== sandboxId);
 				if (remaining.length > 0) {
@@ -838,10 +848,24 @@ function App() {
 		});
 	}, []);
 
-	// Sandbox rebuild handler (TODO: force rebuild bypassing cache)
+	// Sandbox rebuild handler (force rebuild bypassing cache)
 	const handleSandboxRebuild = useCallback((sandboxId: string) => {
-		// TODO coming soon! - Will force rebuild this sandbox bypassing cache
 		console.log("[Canvas] Force rebuild sandbox:", sandboxId);
+
+		// Update sandbox to building state
+		setSandboxes((prev) =>
+			prev.map((s) =>
+				s.id === sandboxId
+					? { ...s, buildStatus: "building" as const, buildError: undefined }
+					: s
+			)
+		);
+
+		// Send rebuild request to extension
+		vscode.postMessage({
+			type: "rebuildComponent",
+			payload: { componentId: sandboxId },
+		});
 	}, []);
 
 	// Sandbox update handler
@@ -858,9 +882,16 @@ function App() {
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if ((e.key === "Delete" || e.key === "Backspace") && selectedSandboxId) {
-				handleSandboxDelete(selectedSandboxId);
+				// Show delete confirmation modal instead of deleting directly
+				e.preventDefault();
+				setPendingDeleteId(selectedSandboxId);
 			}
 			if (e.key === "Escape") {
+				// First priority: close delete confirmation modal
+				if (pendingDeleteId) {
+					setPendingDeleteId(null);
+					return;
+				}
 				if (focusedSandboxId) {
 					// Exit focused mode
 					console.log("[Canvas] ESC: Exiting focused mode");
@@ -883,7 +914,7 @@ function App() {
 		selectedSandboxId,
 		focusedSandboxId,
 		sandboxes,
-		handleSandboxDelete,
+		pendingDeleteId,
 		handleResetView,
 		fitAllSandboxes,
 	]);
@@ -1167,6 +1198,18 @@ function App() {
 					entryFile={codePopupFiles.find(f => f.isEntry)?.filename}
 					onClose={handleCloseCodePopup}
 					onSave={handleSaveCodeFile}
+				/>
+			)}
+
+			{/* Delete confirmation modal (triggered by Delete key) */}
+			{pendingDeleteId && (
+				<DeleteConfirmModal
+					sandboxId={pendingDeleteId}
+					onConfirm={() => {
+						handleSandboxDelete(pendingDeleteId);
+						setPendingDeleteId(null);
+					}}
+					onCancel={() => setPendingDeleteId(null)}
 				/>
 			)}
 		</div>

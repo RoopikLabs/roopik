@@ -263,7 +263,11 @@ export type WebviewMessage =
 	// Drag-drop import from OS file manager
 	| { type: 'dropComponent'; payload: { fileName: string; content: string; componentName: string } }
 	// Show notification in VSCode
-	| { type: 'showNotification'; payload: { level: 'info' | 'warning' | 'error'; message: string } };
+	| { type: 'showNotification'; payload: { level: 'info' | 'warning' | 'error'; message: string } }
+	// Delete component from storage
+	| { type: 'deleteComponent'; payload: { componentId: string } }
+	// Force rebuild component (bypasses cache)
+	| { type: 'rebuildComponent'; payload: { componentId: string } };
 
 /**
  * VSCode API interface
