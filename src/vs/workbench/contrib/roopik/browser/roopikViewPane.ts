@@ -208,16 +208,28 @@ export class RoopikDashboardView extends ViewPane {
 
 		const buttonsRow = document.createElement('div');
 		buttonsRow.style.display = 'flex';
+		buttonsRow.style.alignItems = 'center';
 		buttonsRow.style.gap = '4px';
 		buttonsRow.style.flexWrap = 'wrap';
 
-		const newCanvasBtn = this.createPrimaryActionButton('Canvas', 'codicon-new-file', 'roopik.openCanvas');
-		const importBtn = this.createSecondaryActionButton('Import', 'codicon-cloud-download', 'roopik.import.showPicker');
-		const projectModeBtn = this.createSecondaryActionButton('Project', 'codicon-globe', 'roopik.openProjectPreview');
+		// Mode buttons (Canvas and Project) - larger icons
+		const newCanvasBtn = this.createPrimaryActionButton('Canvas', 'codicon-new-file', 'roopik.openCanvas', true);
+		const projectModeBtn = this.createSecondaryActionButton('Project', 'codicon-globe', 'roopik.openProjectPreview', true);
+
+		// Separator
+		const separator = document.createElement('div');
+		separator.style.width = '1px';
+		separator.style.height = '16px';
+		separator.style.background = 'var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
+		separator.style.margin = '0 4px';
+
+		// Import button (smaller icon)
+		const importBtn = this.createSecondaryActionButton('Import', 'codicon-cloud-download', 'roopik.import.showPicker', false);
 
 		buttonsRow.appendChild(newCanvasBtn);
-		buttonsRow.appendChild(importBtn);
 		buttonsRow.appendChild(projectModeBtn);
+		buttonsRow.appendChild(separator);
+		buttonsRow.appendChild(importBtn);
 		actionsRow.appendChild(buttonsRow);
 
 		container.appendChild(actionsRow);
@@ -556,7 +568,7 @@ export class RoopikDashboardView extends ViewPane {
 		return section;
 	}
 
-	private createPrimaryActionButton(label: string, codiconClass: string, commandId: string): HTMLElement {
+	private createPrimaryActionButton(label: string, codiconClass: string, commandId: string, largeIcon: boolean = false): HTMLElement {
 		const btn = document.createElement('button');
 		btn.style.display = 'inline-flex';
 		btn.style.alignItems = 'center';
@@ -581,6 +593,9 @@ export class RoopikDashboardView extends ViewPane {
 
 		const icon = document.createElement('span');
 		icon.classList.add('codicon', codiconClass);
+		if (largeIcon) {
+			icon.style.fontSize = '14px'; // Slightly larger for mode buttons
+		}
 		btn.appendChild(icon);
 
 		const text = document.createElement('span');
@@ -595,7 +610,7 @@ export class RoopikDashboardView extends ViewPane {
 		return btn;
 	}
 
-	private createSecondaryActionButton(label: string, codiconClass: string, commandId: string): HTMLElement {
+	private createSecondaryActionButton(label: string, codiconClass: string, commandId: string, largeIcon: boolean = false): HTMLElement {
 		const btn = document.createElement('button');
 		btn.style.display = 'inline-flex';
 		btn.style.alignItems = 'center';
@@ -620,6 +635,9 @@ export class RoopikDashboardView extends ViewPane {
 
 		const icon = document.createElement('span');
 		icon.classList.add('codicon', codiconClass);
+		if (largeIcon) {
+			icon.style.fontSize = '14px'; // Slightly larger for mode buttons
+		}
 		btn.appendChild(icon);
 
 		const text = document.createElement('span');

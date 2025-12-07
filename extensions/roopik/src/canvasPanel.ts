@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ConfigManager } from './config';
 import { Logger } from './logger';
+import { ComponentLoader, ComponentLoadInfo } from './componentLoader';
 import type { RoopikExtensionManager } from './roopikExtensionManager';
 import type {
 	ComponentCreatedEvent,
@@ -54,11 +55,12 @@ interface SandboxData {
 }
 
 /**
- * Component entry with position (subset of Core's ComponentIndexEntry)
+ * Component entry with position and hash (subset of Core's ComponentIndexEntry)
  */
 interface ComponentIndexEntry {
+	contentHash: string;
 	sandboxPosition?: SandboxPosition;
-	// Other fields exist but we only care about position here
+	// Other fields exist but we only care about these here
 	[key: string]: unknown;
 }
 
@@ -124,6 +126,14 @@ export class CanvasPanel implements vscode.Disposable {
 	private viewportSaveTimer: ReturnType<typeof setTimeout> | undefined;
 	// Loaded sandbox positions (extracted from index.json on load)
 	private loadedSandboxPositions: LoadedSandboxPositions = {};
+
+	// ============================================================================
+	// Component Loading (for reopening canvas with existing components)
+	// ============================================================================
+	// Component loader handles cache validation and loading
+	private componentLoader: ComponentLoader | null = null;
+	// Existing components to load when webview is ready (extracted from index.json)
+	private loadedComponents: ComponentLoadInfo[] = [];
 
 	// ============================================================================
 	// Static Factory (called by manager)
@@ -193,6 +203,9 @@ export class CanvasPanel implements vscode.Disposable {
 
 		this.logger = Logger.getInstance().createScoped(`Canvas-${canvasId}`);
 
+		// Initialize component loader
+		this.componentLoader = new ComponentLoader(workspacePath, manager);
+
 		// Set initial HTML
 		this.updateWebview();
 
@@ -217,8 +230,8 @@ export class CanvasPanel implements vscode.Disposable {
 			this.disposables
 		);
 
-		// Load preferences from file on init
-		this.loadPreferencesFromFile();
+		// Load canvas state (preferences, positions, components) from file on init
+		this.loadCanvasStateFromFile();
 
 		this.logger.info(`Panel created for canvas: ${canvasName}`);
 	}
@@ -342,9 +355,11 @@ export class CanvasPanel implements vscode.Disposable {
 		try {
 			switch (message.type) {
 				case 'ready':
-					// Webview is ready, send preferences
+					// Webview is ready, send preferences and load existing components
 					this.logger.debug('Webview ready, sending preferences');
 					this.sendPreferencesToWebview();
+					// Load existing components (if any)
+					await this.loadExistingComponents();
 					break;
 
 				case 'createComponent':
@@ -481,7 +496,7 @@ export class CanvasPanel implements vscode.Disposable {
 	}
 
 	// ============================================================================
-	// Canvas Preferences (file-based, direct read/write to index.json)
+	// Canvas State Loading (file-based, reads from index.json)
 	// ============================================================================
 
 	/**
@@ -492,13 +507,17 @@ export class CanvasPanel implements vscode.Disposable {
 	}
 
 	/**
-	 * Load preferences and component positions from index.json on panel init
-	 * If file doesn't exist or preferences missing, uses defaults
+	 * Load canvas state from index.json on panel init
+	 * Extracts:
+	 * - Canvas preferences (background color, pattern, viewport)
+	 * - Sandbox positions (for restoring component placement)
+	 * - Component info (IDs + content hashes for cache validation)
+	 *
 	 * Does NOT send to webview - call sendPreferencesToWebview() after webview is ready
 	 */
-	private loadPreferencesFromFile(): void {
+	private loadCanvasStateFromFile(): void {
 		const indexPath = this.getIndexJsonPath();
-		this.logger.debug(`Loading preferences from: ${indexPath}`);
+		this.logger.debug(`Loading canvas state from: ${indexPath}`);
 
 		try {
 			if (fs.existsSync(indexPath)) {
@@ -520,17 +539,29 @@ export class CanvasPanel implements vscode.Disposable {
 					this.savePreferencesToFile();
 				}
 
-				// Extract sandbox positions from components map
+				// Extract sandbox positions and component info from components map
 				this.loadedSandboxPositions = {};
+				this.loadedComponents = [];
 				if (index.components) {
 					for (const [componentId, entry] of Object.entries(index.components)) {
+						// Extract position
 						if (entry.sandboxPosition) {
 							this.loadedSandboxPositions[componentId] = entry.sandboxPosition;
+						}
+						// Extract component info for loading (need contentHash for cache validation)
+						if (entry.contentHash) {
+							this.loadedComponents.push({
+								componentId,
+								contentHash: entry.contentHash
+							});
 						}
 					}
 					const posCount = Object.keys(this.loadedSandboxPositions).length;
 					if (posCount > 0) {
 						this.logger.debug(`Loaded positions for ${posCount} sandboxes`);
+					}
+					if (this.loadedComponents.length > 0) {
+						this.logger.debug(`Found ${this.loadedComponents.length} existing components to load`);
 					}
 				}
 			} else {
@@ -539,7 +570,7 @@ export class CanvasPanel implements vscode.Disposable {
 				this.logger.debug('Index file not found, using defaults');
 			}
 		} catch (error) {
-			this.logger.error(`Failed to load preferences: ${error}`);
+			this.logger.error(`Failed to load canvas state: ${error}`);
 			// Use defaults on error
 		}
 	}
@@ -555,6 +586,67 @@ export class CanvasPanel implements vscode.Disposable {
 			preferences: this.currentPreferences,
 			sandboxPositions: this.loadedSandboxPositions
 		});
+	}
+
+	/**
+	 * Load existing components when webview is ready
+	 * For each component:
+	 * 1. Send 'componentCreated' to create sandbox with loading spinner
+	 * 2. Use ComponentLoader to check cache and load or trigger rebuild
+	 */
+	private async loadExistingComponents(): Promise<void> {
+		if (this.loadedComponents.length === 0) {
+			this.logger.debug('No existing components to load');
+			return;
+		}
+
+		this.logger.info(`Loading ${this.loadedComponents.length} existing components`);
+
+		for (const component of this.loadedComponents) {
+			const { componentId, contentHash } = component;
+
+			// 1. Notify webview that component exists (shows loading spinner)
+			this.postToWebview('componentCreated', {
+				componentId,
+				canvasId: this.canvasId
+			});
+
+			// 2. Load component (checks cache, rebuilds if needed)
+			if (this.componentLoader) {
+				const result = await this.componentLoader.loadExistingComponent(
+					this.canvasId,
+					componentId,
+					contentHash
+				);
+
+				if (result.fromCache && result.success && result.bundledCode) {
+					// Cache hit - send bundled code directly to webview
+					this.logger.debug(`Sending cached bundle for ${componentId}`);
+					this.postToWebview('componentBuilt', {
+						componentId,
+						result: {
+							bundledCode: result.bundledCode,
+							cdnUrls: result.cdnUrls || [],
+							framework: 'react', // TODO: Get from component meta
+							resolvedDependencies: {},
+							buildTime: result.buildTime || 0,
+							bundleSize: result.bundleSize || 0
+						}
+					});
+				} else if (!result.success) {
+					// Load failed completely
+					this.logger.error(`Failed to load component ${componentId}: ${result.error}`);
+					this.postToWebview('componentError', {
+						componentId,
+						error: result.error || 'Failed to load component'
+					});
+				}
+				// If result.fromCache is false but success is true, rebuild was triggered
+				// and onComponentBuilt event will be routed back via manager
+			}
+		}
+
+		this.logger.info('Finished loading existing components');
 	}
 
 	/**
