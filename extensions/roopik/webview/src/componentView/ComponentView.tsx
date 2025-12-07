@@ -11,7 +11,8 @@ import type {
 	DevicePreset,
 	ExtensionMessage,
 	WebviewMessage,
-	SnapMode
+	SnapMode,
+	SandboxPositions
 } from '../canvasView/types';
 import { InfiniteCanvas } from '../canvasView/components/InfiniteCanvas';
 import { StatusPanel } from '../canvasView/components/StatusPanel';
@@ -75,6 +76,9 @@ function App() {
 
 	// Track previous sandbox count for auto-fit on new additions
 	const prevSandboxCountRef = useRef<number>(0);
+
+	// Store loaded sandbox positions from extension (for restoring sandbox positions)
+	const loadedPositionsRef = useRef<SandboxPositions>({});
 
 	// Track fullscreen and focused states for auto-fit logic
 	const fullscreenSandboxIdRef = useRef<string | null>(null);
@@ -153,14 +157,29 @@ function App() {
 									: sandbox
 							);
 						} else {
-							// Create new sandbox with building status at next available position
-							console.log('[Canvas] Creating new sandbox with building status');
-							const position = getNextAvailableGridPosition(prev, DEFAULT_CONFIG);
+							// Check if we have a saved position for this component
+							const savedPosition = loadedPositionsRef.current[componentId];
+							let position: { x: number; y: number };
+							let zIndex: number;
+
+							if (savedPosition) {
+								// Use saved position from storage
+								console.log('[Canvas] Using saved position for component:', componentId, savedPosition);
+								position = { x: savedPosition.x, y: savedPosition.y };
+								zIndex = savedPosition.zIndex;
+							} else {
+								// Calculate new position
+								console.log('[Canvas] Creating new sandbox with building status');
+								const gridPos = getNextAvailableGridPosition(prev, DEFAULT_CONFIG);
+								position = { x: gridPos.x, y: gridPos.y };
+								zIndex = prev.length + 1;
+							}
+
 							const newSandbox: Sandbox = {
 								id: componentId,
 								x: position.x,
 								y: position.y,
-								zIndex: prev.length + 1,
+								zIndex,
 								buildStatus: 'building',
 								componentInput: {
 									id: componentId,
@@ -275,14 +294,31 @@ function App() {
 					});
 
 					setSandboxes(prev => {
-						// Calculate position: use provided or find next available grid slot
-						const gridPos = position ?? getNextAvailableGridPosition(prev, DEFAULT_CONFIG);
+						// Priority: 1. Provided position, 2. Saved position, 3. Next available grid slot
+						let finalPosition: { x: number; y: number };
+						let zIndex: number;
+
+						if (position) {
+							finalPosition = position;
+							zIndex = Date.now();
+						} else {
+							const savedPosition = loadedPositionsRef.current[componentInput.id];
+							if (savedPosition) {
+								console.log('[Canvas] Using saved position for imported component:', componentInput.id, savedPosition);
+								finalPosition = { x: savedPosition.x, y: savedPosition.y };
+								zIndex = savedPosition.zIndex;
+							} else {
+								const gridPos = getNextAvailableGridPosition(prev, DEFAULT_CONFIG);
+								finalPosition = { x: gridPos.x, y: gridPos.y };
+								zIndex = Date.now();
+							}
+						}
 
 						const newSandbox: Sandbox = {
 							id: componentInput.id,
-							x: gridPos.x,
-							y: gridPos.y,
-							zIndex: Date.now(),
+							x: finalPosition.x,
+							y: finalPosition.y,
+							zIndex,
 							buildStatus: 'pending',
 							componentInput
 						};
@@ -313,8 +349,8 @@ function App() {
 				}
 
 				case 'canvasPreferencesLoaded': {
-					// Preferences loaded from file by extension
-					const { preferences } = msg.payload;
+					// Preferences and sandbox positions loaded from file by extension
+					const { preferences, sandboxPositions } = msg.payload;
 					console.log('[Canvas] 🎨 Preferences loaded from file:', preferences);
 
 					if (preferences.backgroundColor) {
@@ -325,6 +361,12 @@ function App() {
 					}
 					if (preferences.viewport) {
 						setTransform(preferences.viewport);
+					}
+
+					// Store sandbox positions for use when sandboxes are created
+					if (sandboxPositions) {
+						loadedPositionsRef.current = sandboxPositions;
+						console.log('[Canvas] 📍 Loaded positions for', Object.keys(sandboxPositions).length, 'sandboxes');
 					}
 					break;
 				}

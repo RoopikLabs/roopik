@@ -443,6 +443,46 @@ export class WorkspaceStorage {
 		await this.writeJson(indexPath, index);
 	}
 
+	/**
+	 * Update component positions in bulk
+	 * More efficient than updating each component individually
+	 */
+	async updateComponentPositions(
+		canvasId: string,
+		positions: Array<{ componentId: string; x: number; y: number; zIndex: number }>
+	): Promise<void> {
+		this.ensureInitialized();
+
+		const index = await this.getComponentIndex(canvasId);
+		let changed = false;
+
+		for (const pos of positions) {
+			const entry = index.components[pos.componentId];
+			if (entry) {
+				const currentPos = entry.sandboxPosition;
+				// Only update if position actually changed
+				if (!currentPos ||
+					currentPos.x !== pos.x ||
+					currentPos.y !== pos.y ||
+					currentPos.zIndex !== pos.zIndex) {
+					entry.sandboxPosition = {
+						x: pos.x,
+						y: pos.y,
+						zIndex: pos.zIndex
+					};
+					changed = true;
+				}
+			}
+		}
+
+		// Only write if something changed
+		if (changed) {
+			const indexPath = getComponentIndexPath(this.workspacePath, canvasId);
+			await this.writeJson(indexPath, index);
+			console.log('[WorkspaceStorage] Updated component positions for canvas:', canvasId);
+		}
+	}
+
 	// ========================================================================
 	// Private Helpers
 	// ========================================================================

@@ -32,9 +32,46 @@ const DEFAULT_CANVAS_PREFERENCES: CanvasPreferences = {
 	viewport: { x: 0, y: 0, scale: 1 }
 };
 
+/**
+ * Sandbox position on the infinite canvas (matches Core's storageTypes.ts)
+ */
+interface SandboxPosition {
+	x: number;
+	y: number;
+	zIndex: number;
+}
+
+/**
+ * Sandbox data from webview (includes id + position)
+ * The webview sends full sandbox objects, we only need id and position fields
+ */
+interface SandboxData {
+	id: string;
+	x: number;
+	y: number;
+	zIndex: number;
+	// Other fields exist but we only need position
+}
+
+/**
+ * Component entry with position (subset of Core's ComponentIndexEntry)
+ */
+interface ComponentIndexEntry {
+	sandboxPosition?: SandboxPosition;
+	// Other fields exist but we only care about position here
+	[key: string]: unknown;
+}
+
 interface ComponentIndex {
-	components: Record<string, unknown>;
+	components: Record<string, ComponentIndexEntry>;
 	preferences: CanvasPreferences;
+}
+
+/**
+ * Loaded sandbox positions (sent to webview for sandbox placement)
+ */
+interface LoadedSandboxPositions {
+	[componentId: string]: SandboxPosition;
 }
 
 /**
@@ -85,6 +122,8 @@ export class CanvasPanel implements vscode.Disposable {
 	private lastSavedBackgroundPattern: 'grid' | 'dots' | 'plain' = DEFAULT_CANVAS_PREFERENCES.backgroundPattern;
 	// Timer for debounced viewport saves (viewport changes frequently during pan/zoom)
 	private viewportSaveTimer: ReturnType<typeof setTimeout> | undefined;
+	// Loaded sandbox positions (extracted from index.json on load)
+	private loadedSandboxPositions: LoadedSandboxPositions = {};
 
 	// ============================================================================
 	// Static Factory (called by manager)
@@ -453,7 +492,7 @@ export class CanvasPanel implements vscode.Disposable {
 	}
 
 	/**
-	 * Load preferences from index.json on panel init
+	 * Load preferences and component positions from index.json on panel init
 	 * If file doesn't exist or preferences missing, uses defaults
 	 * Does NOT send to webview - call sendPreferencesToWebview() after webview is ready
 	 */
@@ -480,6 +519,20 @@ export class CanvasPanel implements vscode.Disposable {
 					this.logger.debug('No preferences in file, using defaults');
 					this.savePreferencesToFile();
 				}
+
+				// Extract sandbox positions from components map
+				this.loadedSandboxPositions = {};
+				if (index.components) {
+					for (const [componentId, entry] of Object.entries(index.components)) {
+						if (entry.sandboxPosition) {
+							this.loadedSandboxPositions[componentId] = entry.sandboxPosition;
+						}
+					}
+					const posCount = Object.keys(this.loadedSandboxPositions).length;
+					if (posCount > 0) {
+						this.logger.debug(`Loaded positions for ${posCount} sandboxes`);
+					}
+				}
 			} else {
 				// File doesn't exist - will be created by Core on canvas creation
 				// Use defaults for now
@@ -492,13 +545,15 @@ export class CanvasPanel implements vscode.Disposable {
 	}
 
 	/**
-	 * Send current preferences to webview
+	 * Send current preferences and sandbox positions to webview
 	 * Called when webview sends 'ready' message
 	 */
 	private sendPreferencesToWebview(): void {
 		this.logger.debug('Sending preferences to webview:', this.currentPreferences);
+		this.logger.debug('Sending sandbox positions:', Object.keys(this.loadedSandboxPositions).length);
 		this.postToWebview('canvasPreferencesLoaded', {
-			preferences: this.currentPreferences
+			preferences: this.currentPreferences,
+			sandboxPositions: this.loadedSandboxPositions
 		});
 	}
 
@@ -536,10 +591,87 @@ export class CanvasPanel implements vscode.Disposable {
 		}
 	}
 
+	// Timer for debounced position saves
+	private positionSaveTimer: ReturnType<typeof setTimeout> | undefined;
+	// Pending positions to save (accumulated during debounce)
+	private pendingPositions: SandboxData[] = [];
+
+	/**
+	 * Save component positions to index.json (debounced)
+	 * Updates canvasPosition for each component entry
+	 */
+	private saveComponentPositions(sandboxes: SandboxData[]): void {
+		// Accumulate positions (latest wins for same id)
+		this.pendingPositions = sandboxes;
+
+		// Debounce - wait 500ms after last change to avoid excessive writes during drag
+		if (this.positionSaveTimer) {
+			clearTimeout(this.positionSaveTimer);
+		}
+
+		this.positionSaveTimer = setTimeout(() => {
+			this.doSaveComponentPositions();
+			this.positionSaveTimer = undefined;
+		}, 500);
+	}
+
+	/**
+	 * Actually write sandbox positions to index.json
+	 */
+	private doSaveComponentPositions(): void {
+		if (this.pendingPositions.length === 0) {
+			return;
+		}
+
+		const indexPath = this.getIndexJsonPath();
+
+		try {
+			if (!fs.existsSync(indexPath)) {
+				this.logger.debug('Index file not found, skipping position save');
+				return;
+			}
+
+			const content = fs.readFileSync(indexPath, 'utf-8');
+			const index: ComponentIndex = JSON.parse(content);
+			let changed = false;
+
+			// Update each sandbox's position
+			for (const sandbox of this.pendingPositions) {
+				const entry = index.components[sandbox.id];
+				if (entry) {
+					const currentPos = entry.sandboxPosition;
+					// Only update if position actually changed
+					if (!currentPos ||
+						currentPos.x !== sandbox.x ||
+						currentPos.y !== sandbox.y ||
+						currentPos.zIndex !== sandbox.zIndex) {
+						entry.sandboxPosition = {
+							x: sandbox.x,
+							y: sandbox.y,
+							zIndex: sandbox.zIndex
+						};
+						changed = true;
+					}
+				}
+			}
+
+			// Only write if something changed
+			if (changed) {
+				fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf-8');
+				this.logger.debug(`Saved positions for ${this.pendingPositions.length} sandboxes`);
+			}
+
+			this.pendingPositions = [];
+		} catch (error) {
+			this.logger.error(`Failed to save sandbox positions: ${error}`);
+		}
+	}
+
 	/**
 	 * Handle saveCanvas message from webview
 	 * - backgroundColor/backgroundPattern: Save immediately
 	 * - viewport: Only update in-memory (saved on dispose)
+	 * - sandboxes: Extract positions and save to component index (debounced)
 	 */
 	private async handleSaveCanvas(payload: {
 		canvasId: string;
@@ -547,6 +679,7 @@ export class CanvasPanel implements vscode.Disposable {
 			backgroundColor?: string;
 			backgroundPattern?: 'grid' | 'dots' | 'plain';
 			viewport?: { x: number; y: number; scale: number };
+			sandboxes?: SandboxData[];
 		};
 	}): Promise<void> {
 		const state = payload.state;
@@ -583,6 +716,11 @@ export class CanvasPanel implements vscode.Disposable {
 				this.savePreferencesToFile();
 				this.viewportSaveTimer = undefined;
 			}, 500);
+		}
+
+		// Update component positions (debounced, saved alongside preferences)
+		if (state.sandboxes && state.sandboxes.length > 0) {
+			this.saveComponentPositions(state.sandboxes);
 		}
 
 		// Save immediately if color or pattern changed
@@ -677,6 +815,12 @@ export class CanvasPanel implements vscode.Disposable {
 		if (this.viewportSaveTimer) {
 			clearTimeout(this.viewportSaveTimer);
 			this.viewportSaveTimer = undefined;
+		}
+
+		// Clear any pending position save timer
+		if (this.positionSaveTimer) {
+			clearTimeout(this.positionSaveTimer);
+			this.positionSaveTimer = undefined;
 		}
 
 		// Note: We do NOT save on dispose to avoid recreating deleted canvas folders

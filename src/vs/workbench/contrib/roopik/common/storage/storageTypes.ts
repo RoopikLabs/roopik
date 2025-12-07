@@ -188,9 +188,9 @@ export interface CanvasIndex {
 }
 
 /**
- * Component's position on the infinite canvas
+ * Sandbox position on the infinite canvas
  */
-export interface CanvasPosition {
+export interface SandboxPosition {
 	/** X coordinate on canvas */
 	x: number;
 
@@ -214,8 +214,8 @@ export interface ComponentIndexEntry {
 	createdAt: number;
 	updatedAt: number;
 
-	/** Position on the infinite canvas (optional - assigned on first add) */
-	canvasPosition?: CanvasPosition;
+	/** Sandbox position on the infinite canvas (optional - assigned on first add) */
+	sandboxPosition?: SandboxPosition;
 }
 
 /**

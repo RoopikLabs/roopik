@@ -206,6 +206,20 @@ export interface CanvasPreferences {
 }
 
 /**
+ * Sandbox position on canvas (matches Core's storageTypes.ts SandboxPosition)
+ */
+export interface SandboxPosition {
+	x: number;
+	y: number;
+	zIndex: number;
+}
+
+/**
+ * Map of component IDs to their sandbox positions
+ */
+export type SandboxPositions = Record<string, SandboxPosition>;
+
+/**
  * Message types from Extension to Webview
  */
 export type ExtensionMessage =
@@ -217,8 +231,8 @@ export type ExtensionMessage =
 	| { type: 'canvasLoaded'; payload: { state: CanvasState } }
 	| { type: 'canvasSaved'; payload: { success: boolean } }
 	| { type: 'themeChanged'; payload: { theme: 'light' | 'dark' | 'high-contrast' } }
-	// Canvas preferences loaded from file
-	| { type: 'canvasPreferencesLoaded'; payload: { preferences: CanvasPreferences } }
+	// Canvas preferences loaded from file (includes sandbox positions for restoration)
+	| { type: 'canvasPreferencesLoaded'; payload: { preferences: CanvasPreferences; sandboxPositions?: SandboxPositions } }
 	// Import
 	| { type: 'addImportedComponent'; payload: { componentInput: ComponentInput; position?: { x: number; y: number }; replaceExisting?: boolean; replaceName?: string } };
 
