@@ -540,7 +540,12 @@ function App() {
 			const newTransform = calculateFitAllTransform(
 				sandboxList,
 				viewport,
-				DEFAULT_CONFIG
+				DEFAULT_CONFIG,
+				{
+					padding: 40,        // Reduced padding to use more space (was 100)
+					toolbarHeight: 100, // Space for bottom toolbar
+					maxScale: 1.8,      // Allow zooming in up to 180% for larger previews (was 1.0)
+				}
 			);
 			if (newTransform) {
 				console.log("[Canvas] Auto-fitting to viewport:", {
