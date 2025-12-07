@@ -56,16 +56,14 @@ export interface Component {
 	/** Last update timestamp */
 	updatedAt: number;
 
-	/** Position on canvas (managed by extension/webview) */
+	/**
+	 * Position on canvas (managed by extension/webview)
+	 * Note: width/height not stored - all sandboxes use DEFAULT_CONFIG dimensions
+	 */
 	position?: {
 		x: number;
 		y: number;
-	};
-
-	/** Size on canvas (managed by extension/webview) */
-	size?: {
-		width: number;
-		height: number;
+		zIndex?: number;
 	};
 }
 

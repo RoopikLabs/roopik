@@ -145,6 +145,8 @@ export interface BuildMeta {
  * Canvas UI preferences
  * These are stored per-canvas in index.json and managed by the Extension.
  * Core only sets default values on canvas creation.
+ *
+ * Note: Viewport (zoom/pan) is NOT persisted - auto-fit on load is preferred.
  */
 export interface CanvasPreferences {
 	/** Background color (hex) */
@@ -152,13 +154,6 @@ export interface CanvasPreferences {
 
 	/** Background pattern */
 	backgroundPattern: 'grid' | 'dots' | 'plain';
-
-	/** Viewport state (pan and zoom) */
-	viewport: {
-		x: number;
-		y: number;
-		scale: number;
-	};
 }
 
 /**
@@ -167,8 +162,7 @@ export interface CanvasPreferences {
  */
 export const DEFAULT_CANVAS_PREFERENCES: CanvasPreferences = {
 	backgroundColor: '#1e1e1e',
-	backgroundPattern: 'dots',
-	viewport: { x: 0, y: 0, scale: 1 }
+	backgroundPattern: 'dots'
 };
 
 // ============================================================================
@@ -194,6 +188,20 @@ export interface CanvasIndex {
 }
 
 /**
+ * Component's position on the infinite canvas
+ */
+export interface CanvasPosition {
+	/** X coordinate on canvas */
+	x: number;
+
+	/** Y coordinate on canvas */
+	y: number;
+
+	/** Z-index for overlap ordering in free mode */
+	zIndex: number;
+}
+
+/**
  * Component index entry (quick lookup without reading meta.json)
  */
 export interface ComponentIndexEntry {
@@ -205,6 +213,9 @@ export interface ComponentIndexEntry {
 	contentHash: string;
 	createdAt: number;
 	updatedAt: number;
+
+	/** Position on the infinite canvas (optional - assigned on first add) */
+	canvasPosition?: CanvasPosition;
 }
 
 /**

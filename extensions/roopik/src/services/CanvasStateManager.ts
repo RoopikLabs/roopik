@@ -31,12 +31,15 @@ export interface CanvasState {
 	updatedAt: number;
 }
 
+/**
+ * Sandbox interface for canvas state
+ * Note: width/height removed - all sandboxes use DEFAULT_CONFIG dimensions
+ * from gridManager.ts for consistency. Only x, y, zIndex are persisted.
+ */
 export interface Sandbox {
 	id: string;
 	x: number;
 	y: number;
-	width: number;
-	height: number;
 	zIndex: number;
 	buildStatus: 'pending' | 'building' | 'ready' | 'error';
 	buildError?: string;
