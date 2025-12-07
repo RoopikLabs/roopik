@@ -7,8 +7,8 @@ Track of all VS Code core files we've modified (for upstream conflict handling).
 | File | Change | Reason |
 |------|--------|--------|
 | `build/gulpfile.extensions.mjs` (after `extensions/git/tsconfig.json`) | Added `'extensions/roopik/tsconfig.json'` | Register roopik extension in build system |
-| `build/hygiene.mjs:19-32` | Added `roopikCopyrightHeaderLines` constant array | Allow Roopik copyright alongside Microsoft |
-| `build/hygiene.mjs:114-136` | Modified `copyrights` method to check both Microsoft and Roopik headers | Check for either Microsoft or Roopik copyright, fail only if neither found |
+| `build/hygiene.ts:25-31` | Added `roopikCopyrightHeaderLines` constant array | Allow Roopik copyright alongside Microsoft |
+| `build/hygiene.ts:115-135` | Modified `copyrights` method to check both Microsoft and Roopik headers | Check for either Microsoft or Roopik copyright, fail only if neither found |
 | `eslint.config.js:2185-2205` | Added roopik extension header override | Allow Roopik copyright in extensions/roopik/ |
 | `build/lib/electron.ts:190-200` | Changed `winIcon` from `path.join(root, 'resources/win32/code.ico')` to `'resources/win32/code.ico'` | Fix .exe icon embedding |
 
@@ -56,7 +56,7 @@ Track of all VS Code core files we've modified (for upstream conflict handling).
 - `package.json` - Update: `name`, `author.name`, `repository.url`, `bugs.url` (see apply-branding.json for full list)
 - `build/gulpfile.extensions.mjs` - Add roopik extension registration (after `extensions/git/tsconfig.json` line): `'extensions/roopik/tsconfig.json', // ROOPIK: Our canvas-first IDE extension`
 - `build/lib/electron.ts` (line ~190-200) - Change `winIcon`: `path.join(root, 'resources/win32/code.ico')` → `'resources/win32/code.ico'`
-- `build/hygiene.mjs` - Add Roopik copyright constants and update copyrights method (see code below)
+- `build/hygiene.ts` - Add Roopik copyright constants and update copyrights method (see code below)
 - `eslint.config.js` (end of file) - Add roopik extension header override block (see code below)
 
 ### Files to Replace
