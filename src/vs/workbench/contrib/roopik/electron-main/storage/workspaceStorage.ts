@@ -20,13 +20,12 @@ import {
 	getWorkspaceRoopikPath,
 	getConfigPath,
 	getCanvasesFolderPath,
-	getCanvasIndexPath,
+	getCanvasRegistryPath,
 	getCanvasPath,
 	getComponentsFolderPath,
 	getComponentIndexPath,
 	getComponentPath,
 	getComponentMetaPath
-	// CANVAS_INDEX_FILE - TODO: Use when needed for direct file path construction
 } from './paths.js';
 
 /**
@@ -34,7 +33,7 @@ import {
  *
  * Handles all file operations in the .roopik/ folder:
  * - config.json: Workspace configuration
- * - canvases/index.json: Canvas registry
+ * - canvases/canvases.json: Canvas registry
  * - canvases/{id}/components/: Component source files
  * - canvases/{id}/components/index.json: Component registry
  * - canvases/{id}/components/{id}/meta.json: Component metadata
@@ -71,11 +70,11 @@ export class WorkspaceStorage {
 		console.log('[WorkspaceStorage] Canvases folder path:', canvasesPath);
 		await this.ensureDir(canvasesPath);
 
-		// Create canvases/index.json if it doesn't exist
-		const canvasIndexPath = getCanvasIndexPath(workspacePath);
-		if (!await this.fileExists(canvasIndexPath)) {
+		// Create canvases/canvases.json if it doesn't exist
+		const canvasRegistryPath = getCanvasRegistryPath(workspacePath);
+		if (!await this.fileExists(canvasRegistryPath)) {
 			const emptyIndex: CanvasIndex = { canvases: [] };
-			await this.writeJson(canvasIndexPath, emptyIndex);
+			await this.writeJson(canvasRegistryPath, emptyIndex);
 		}
 
 		this.initialized = true;
@@ -151,15 +150,17 @@ export class WorkspaceStorage {
 		const emptyIndex: ComponentIndex = { components: {} };
 		await this.writeJson(componentIndexPath, emptyIndex);
 
-		// Update canvas index
+		// Update canvas registry
 		const canvasIndex = await this.getCanvasIndex();
+		const now = Date.now();
 		const canvasInfo: CanvasInfo = {
 			id,
 			name,
-			createdAt: Date.now()
+			createdAt: now,
+			updatedAt: now
 		};
 		canvasIndex.canvases.push(canvasInfo);
-		await this.writeJson(getCanvasIndexPath(this.workspacePath), canvasIndex);
+		await this.writeJson(getCanvasRegistryPath(this.workspacePath), canvasIndex);
 	}
 
 	/**
@@ -182,19 +183,47 @@ export class WorkspaceStorage {
 		const canvasPath = getCanvasPath(this.workspacePath, canvasId);
 		await this.removeDir(canvasPath);
 
-		// Update canvas index
+		// Update canvas registry
 		const canvasIndex = await this.getCanvasIndex();
 		canvasIndex.canvases = canvasIndex.canvases.filter(c => c.id !== canvasId);
-		await this.writeJson(getCanvasIndexPath(this.workspacePath), canvasIndex);
+		await this.writeJson(getCanvasRegistryPath(this.workspacePath), canvasIndex);
 	}
 
 	/**
-	 * List all canvas IDs from the canvas index (index.json)
+	 * Update a canvas entry in the registry (canvases.json)
+	 * Used when canvas name changes or any canvas update occurs
+	 * Always updates the updatedAt timestamp
+	 */
+	async updateCanvasInRegistry(canvasId: string, updates: Partial<CanvasInfo>): Promise<void> {
+		this.ensureInitialized();
+
+		console.log('[WorkspaceStorage] updateCanvasInRegistry: updating canvas', canvasId, 'with', updates);
+
+		const canvasIndex = await this.getCanvasIndex();
+		const canvasEntry = canvasIndex.canvases.find(c => c.id === canvasId);
+
+		if (canvasEntry) {
+			// Update the entry with new values
+			if (updates.name !== undefined) {
+				canvasEntry.name = updates.name;
+			}
+			// Always update the updatedAt timestamp when any update occurs
+			canvasEntry.updatedAt = Date.now();
+
+			await this.writeJson(getCanvasRegistryPath(this.workspacePath), canvasIndex);
+			console.log('[WorkspaceStorage] updateCanvasInRegistry: registry updated successfully');
+		} else {
+			console.log('[WorkspaceStorage] updateCanvasInRegistry: canvas not found in registry:', canvasId);
+		}
+	}
+
+	/**
+	 * List all canvas IDs from the canvas registry (canvases.json)
 	 */
 	async listCanvases(): Promise<string[]> {
 		this.ensureInitialized();
 
-		console.log('[WorkspaceStorage] listCanvases: reading from index.json');
+		console.log('[WorkspaceStorage] listCanvases: reading from canvases.json');
 		const canvasIndex = await this.getCanvasIndex();
 		const canvasIds = canvasIndex.canvases.map(c => c.id);
 		console.log('[WorkspaceStorage] listCanvases: found canvas IDs:', canvasIds);
@@ -226,7 +255,7 @@ export class WorkspaceStorage {
 					id: info.id,
 					name: info.name,
 					createdAt: info.createdAt,
-					updatedAt: info.createdAt,
+					updatedAt: info.updatedAt || info.createdAt,
 					componentCount: 0
 				};
 				console.log('[WorkspaceStorage] loadCanvasMeta: created meta from index:', meta);
@@ -241,6 +270,7 @@ export class WorkspaceStorage {
 
 	/**
 	 * Save canvas metadata to meta.json
+	 * Also updates the canvas registry (canvases.json) to keep name in sync
 	 */
 	async saveCanvasMeta(canvasId: string, meta: CanvasMeta): Promise<void> {
 		this.ensureInitialized();
@@ -250,6 +280,9 @@ export class WorkspaceStorage {
 
 		const metaPath = path.join(canvasPath, 'meta.json');
 		await this.writeJson(metaPath, meta);
+
+		// Also update the canvas registry to keep names in sync
+		await this.updateCanvasInRegistry(canvasId, { name: meta.name });
 	}
 
 	// ========================================================================
@@ -411,17 +444,17 @@ export class WorkspaceStorage {
 	}
 
 	private async getCanvasIndex(): Promise<CanvasIndex> {
-		const indexPath = getCanvasIndexPath(this.workspacePath);
-		console.log('[WorkspaceStorage] getCanvasIndex: reading from path:', indexPath);
+		const registryPath = getCanvasRegistryPath(this.workspacePath);
+		console.log('[WorkspaceStorage] getCanvasIndex: reading from path:', registryPath);
 		console.log('[WorkspaceStorage] getCanvasIndex: workspacePath is:', this.workspacePath);
 		try {
-			const content = await this.readFile(indexPath);
+			const content = await this.readFile(registryPath);
 			console.log('[WorkspaceStorage] getCanvasIndex: raw file content:', content);
 			const index = JSON.parse(content) as CanvasIndex;
 			console.log('[WorkspaceStorage] getCanvasIndex: parsed index:', JSON.stringify(index));
 			return index;
 		} catch (err) {
-			console.log('[WorkspaceStorage] getCanvasIndex: failed to read index.json, error:', err);
+			console.log('[WorkspaceStorage] getCanvasIndex: failed to read canvases.json, error:', err);
 			return { canvases: [] };
 		}
 	}

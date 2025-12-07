@@ -142,16 +142,18 @@ export interface BuildMeta {
 // ============================================================================
 
 /**
- * Canvas information in index
+ * Canvas information in registry (canvases.json)
+ * Contains essential metadata for quick listing without reading individual meta.json files
  */
 export interface CanvasInfo {
 	id: string;
 	name: string;
 	createdAt: number;
+	updatedAt: number;
 }
 
 /**
- * Canvas registry (.roopik/canvases/index.json)
+ * Canvas registry (.roopik/canvases/canvases.json)
  */
 export interface CanvasIndex {
 	canvases: CanvasInfo[];

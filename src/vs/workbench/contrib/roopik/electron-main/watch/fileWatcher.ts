@@ -43,7 +43,7 @@ const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.vue', '.svelte', '.cs
 /**
  * Files to ignore (metadata, not source)
  */
-const IGNORED_FILES = ['meta.json', 'index.json', 'build.json'];
+const IGNORED_FILES = ['meta.json', 'index.json', 'canvases.json', 'build.json'];
 
 export class FileWatcher extends Disposable implements IFileWatcher {
 	readonly _serviceBrand: undefined;

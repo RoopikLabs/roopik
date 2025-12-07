@@ -31,8 +31,11 @@ export const COMPONENTS_FOLDER = 'components';
 /** Config file name */
 export const CONFIG_FILE = 'config.json';
 
-/** Canvas index file name */
-export const CANVAS_INDEX_FILE = 'index.json';
+/** Canvas registry file name (list of all canvases) */
+export const CANVAS_REGISTRY_FILE = 'canvases.json';
+
+/** Component index file name (list of components in a canvas) */
+export const COMPONENT_INDEX_FILE = 'index.json';
 
 /** Component metadata file name */
 export const META_FILE = 'meta.json';
@@ -72,10 +75,10 @@ export function getCanvasesFolderPath(workspaceRoot: string): string {
 }
 
 /**
- * Get the canvas index file path
+ * Get the canvas registry file path (.roopik/canvases/canvases.json)
  */
-export function getCanvasIndexPath(workspaceRoot: string): string {
-	return path.join(getCanvasesFolderPath(workspaceRoot), CANVAS_INDEX_FILE);
+export function getCanvasRegistryPath(workspaceRoot: string): string {
+	return path.join(getCanvasesFolderPath(workspaceRoot), CANVAS_REGISTRY_FILE);
 }
 
 /**
@@ -103,7 +106,7 @@ export function getComponentsFolderPath(workspaceRoot: string, canvasId: string)
  * Get the component index file path for a canvas
  */
 export function getComponentIndexPath(workspaceRoot: string, canvasId: string): string {
-	return path.join(getComponentsFolderPath(workspaceRoot, canvasId), CANVAS_INDEX_FILE);
+	return path.join(getComponentsFolderPath(workspaceRoot, canvasId), COMPONENT_INDEX_FILE);
 }
 
 /**
