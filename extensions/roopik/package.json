@@ -15,7 +15,40 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
-    "commands": []
+    "commands": [
+      {
+        "command": "roopik.canvas.open",
+        "title": "Roopik: Open Canvas Panel"
+      },
+      {
+        "command": "roopik.canvas.close",
+        "title": "Roopik: Close Canvas Panel"
+      },
+      {
+        "command": "roopik.canvas.update",
+        "title": "Roopik: Update Canvas Panel"
+      },
+      {
+        "command": "roopik.canvas.importComponent",
+        "title": "Roopik: Import Component to Canvas"
+      },
+      {
+        "command": "roopik.component.created",
+        "title": "Roopik: Handle Component Created"
+      },
+      {
+        "command": "roopik.component.built",
+        "title": "Roopik: Handle Component Built"
+      },
+      {
+        "command": "roopik.component.deleted",
+        "title": "Roopik: Handle Component Deleted"
+      },
+      {
+        "command": "roopik.component.updated",
+        "title": "Roopik: Handle Component Updated"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",

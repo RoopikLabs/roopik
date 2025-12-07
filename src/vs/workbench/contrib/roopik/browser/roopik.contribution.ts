@@ -21,6 +21,7 @@ import { IWorkbenchLayoutService } from '../../../services/layout/browser/layout
 import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
+import { IFileDialogService } from '../../../../platform/dialogs/common/dialogs.js';
 import { RoopikWelcomeEditor } from './welcomeEditor.js';
 import { RoopikWelcomeInput, RoopikWelcomeInputSerializer } from './welcomeInput.js';
 import { RoopikViewsContribution } from './roopikViewPane.js';
@@ -180,6 +181,245 @@ registerAction2(class extends Action2 {
 	}
 });
 
+// Import Component - Show source picker
+// Shows options: Local File (active), GitHub, Figma, Third-party (coming soon)
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'roopik.import.showPicker',
+			title: localize2('roopik.import.showPicker', 'Import Component'),
+			category: localize2('roopik.category', 'Roopik'),
+			f1: true
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		// Get all services upfront - accessor is only valid synchronously
+		const quickInputService = accessor.get(IQuickInputService);
+		const canvasService = accessor.get(ICanvasService);
+		const componentService = accessor.get(IComponentService);
+		const notificationService = accessor.get(INotificationService);
+		const commandService = accessor.get(ICommandService);
+		const fileDialogService = accessor.get(IFileDialogService);
+
+		// Check if we have an active canvas, otherwise let user select one
+		let targetCanvasId = await canvasService.getFocusedCanvasIdAsync();
+
+		if (!targetCanvasId) {
+			// No canvas focused - get list of existing canvases
+			const allCanvases = await canvasService.listCanvasesAsync();
+
+			if (allCanvases.length === 0) {
+				// No canvases exist - prompt to create one
+				const shouldCreate = await quickInputService.pick([
+					{ label: '$(add) Create New Canvas', id: 'create' },
+					{ label: '$(close) Cancel', id: 'cancel' }
+				], {
+					title: localize('roopik.import.noCanvas.title', 'No Canvases Found'),
+					placeHolder: localize('roopik.import.noCanvas.placeholder', 'Create a canvas first to import components')
+				});
+
+				if (shouldCreate?.id === 'create') {
+					await commandService.executeCommand('roopik.openCanvas');
+				}
+				return;
+			}
+
+			// Show list of existing canvases to select from
+			const canvasItems = [
+				...allCanvases.map(canvas => ({
+					label: `$(symbol-class) ${canvas.name}`,
+					id: canvas.id,
+					description: `${canvas.componentCount || 0} components`,
+					detail: canvas.description || undefined
+				})),
+				{ label: '$(add) Create New Canvas', id: 'create', description: '' }
+			];
+
+			const selectedCanvas = await quickInputService.pick(canvasItems, {
+				title: localize('roopik.import.selectCanvas.title', 'Select Target Canvas'),
+				placeHolder: localize('roopik.import.selectCanvas.placeholder', 'Choose a canvas to import the component into')
+			});
+
+			if (!selectedCanvas) {
+				return;
+			}
+
+			if (selectedCanvas.id === 'create') {
+				await commandService.executeCommand('roopik.openCanvas');
+				return;
+			}
+
+			targetCanvasId = selectedCanvas.id;
+		}
+
+		// At this point we have a targetCanvasId
+		const canvasId = targetCanvasId;
+
+		// Show import source picker
+		const importSources = [
+			{
+				label: '$(file-code) Local File',
+				id: 'local-file',
+				description: 'Import from your project files',
+				detail: 'Browse and select a React, Vue, or Svelte component file'
+			},
+			{
+				label: '$(github) GitHub',
+				id: 'github',
+				description: 'Coming Soon',
+				detail: 'Import components from public GitHub repositories'
+			},
+			{
+				label: '$(symbol-color) Figma',
+				id: 'figma',
+				description: 'Coming Soon',
+				detail: 'Convert Figma designs to React components'
+			},
+			{
+				label: '$(package) Third-party Libraries',
+				id: 'third-party',
+				description: 'Coming Soon',
+				detail: 'Import from npm packages like shadcn/ui, Chakra, etc.'
+			},
+			{
+				label: '$(edit) Create Blank Component',
+				id: 'manual',
+				description: 'Start with a template',
+				detail: 'Create a new component from scratch'
+			}
+		];
+
+		const selectedSource = await quickInputService.pick(importSources, {
+			title: localize('roopik.import.title', 'Import Component'),
+			placeHolder: localize('roopik.import.placeholder', 'Select an import source')
+		});
+
+		if (!selectedSource) {
+			return;
+		}
+
+		// Handle each source type
+		switch (selectedSource.id) {
+			case 'local-file': {
+				// Use native file dialog to select component files
+				const uris = await fileDialogService.showOpenDialog({
+					title: localize('roopik.import.localFile.title', 'Select Component File'),
+					canSelectFiles: true,
+					canSelectFolders: false,
+					canSelectMany: false,
+					openLabel: localize('roopik.import.localFile.openLabel', 'Import'),
+					filters: [
+						{
+							name: localize('roopik.import.filter.react', 'React Components'),
+							extensions: ['tsx', 'jsx']
+						},
+						{
+							name: localize('roopik.import.filter.vue', 'Vue Components'),
+							extensions: ['vue']
+						},
+						{
+							name: localize('roopik.import.filter.svelte', 'Svelte Components'),
+							extensions: ['svelte']
+						},
+						{
+							name: localize('roopik.import.filter.all', 'All Components'),
+							extensions: ['tsx', 'jsx', 'vue', 'svelte', 'ts', 'js']
+						}
+					]
+				});
+
+				if (!uris || uris.length === 0) {
+					return;
+				}
+
+				const selectedUri = uris[0];
+				const filePath = selectedUri.fsPath;
+
+				try {
+					// Extract component name from file path
+					const fileName = filePath.split(/[\\/]/).pop() || 'Component';
+					const componentName = fileName.replace(/\.[^/.]+$/, '');
+
+					// Create component via ComponentService
+					await componentService.createComponent({
+						name: componentName,
+						canvasId: canvasId,
+						source: 'local-file',
+						sourceData: {
+							type: 'local-file',
+							filePath: filePath
+						}
+					});
+
+					notificationService.info(
+						localize('roopik.import.success', 'Importing component: {0}', componentName)
+					);
+				} catch (err) {
+					const errorMsg = err instanceof Error ? err.message : String(err);
+					notificationService.error(
+						localize('roopik.import.error', 'Failed to import: {0}', errorMsg)
+					);
+				}
+				break;
+			}
+
+			case 'manual': {
+				// Create blank component
+				const componentName = await quickInputService.input({
+					title: localize('roopik.import.manual.title', 'Create Blank Component'),
+					prompt: localize('roopik.import.manual.prompt', 'Enter a name for your component'),
+					placeHolder: localize('roopik.import.manual.placeholder', 'e.g., MyComponent'),
+					validateInput: async (value: string) => {
+						if (!value || !value.trim()) {
+							return localize('roopik.import.manual.required', 'Component name is required');
+						}
+						// PascalCase validation
+						if (!/^[A-Z][a-zA-Z0-9]*$/.test(value)) {
+							return localize('roopik.import.manual.invalidName', 'Use PascalCase (e.g., MyComponent)');
+						}
+						return undefined;
+					}
+				});
+
+				if (!componentName) {
+					return;
+				}
+
+				try {
+					await componentService.createComponent({
+						name: componentName,
+						canvasId: canvasId,
+						source: 'manual',
+						sourceData: {
+							type: 'manual',
+							framework: 'react',
+							template: 'basic'
+						}
+					});
+
+					notificationService.info(
+						localize('roopik.import.created', 'Creating component: {0}', componentName)
+					);
+				} catch (err) {
+					const errorMsg = err instanceof Error ? err.message : String(err);
+					notificationService.error(
+						localize('roopik.import.error', 'Failed to create: {0}', errorMsg)
+					);
+				}
+				break;
+			}
+
+			case 'github':
+			case 'figma':
+			case 'third-party':
+				notificationService.info(
+					localize('roopik.import.comingSoon', '{0} import is coming soon!', selectedSource.label.replace(/\$\([^)]+\)\s*/, ''))
+				);
+				break;
+		}
+	}
+});
 
 // Open Browser Project Preview (Mode 2 with embedded DevTools) - SINGLETON
 // Opens in RIGHT split by default to avoid blocking left-side menu items
@@ -368,6 +608,71 @@ class RoopikCanvasContribution extends Disposable implements IWorkbenchContribut
 }
 
 registerWorkbenchContribution2(RoopikCanvasContribution.ID, RoopikCanvasContribution, WorkbenchPhase.AfterRestored);
+
+// ============================================================================
+// Panel State Commands (called by Extension to notify Core)
+// These allow Extension to inform Core about panel open/close/focus state
+// ============================================================================
+
+// Extension notifies Core when a canvas panel is opened
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'roopik.core.registerPanelOpen',
+			title: localize2('roopik.core.registerPanelOpen', 'Register Panel Open'),
+			category: localize2('roopik.category', 'Roopik'),
+			f1: false // Internal command, not shown in command palette
+		});
+	}
+
+	async run(accessor: ServicesAccessor, canvasId: string): Promise<void> {
+		if (!canvasId) {
+			return;
+		}
+		const canvasService = accessor.get(ICanvasService);
+		canvasService.registerPanelOpen(canvasId);
+	}
+});
+
+// Extension notifies Core when a canvas panel is closed
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'roopik.core.registerPanelClosed',
+			title: localize2('roopik.core.registerPanelClosed', 'Register Panel Closed'),
+			category: localize2('roopik.category', 'Roopik'),
+			f1: false
+		});
+	}
+
+	async run(accessor: ServicesAccessor, canvasId: string): Promise<void> {
+		if (!canvasId) {
+			return;
+		}
+		const canvasService = accessor.get(ICanvasService);
+		canvasService.registerPanelClosed(canvasId);
+	}
+});
+
+// Extension notifies Core when a canvas panel gains focus
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'roopik.core.registerPanelFocused',
+			title: localize2('roopik.core.registerPanelFocused', 'Register Panel Focused'),
+			category: localize2('roopik.category', 'Roopik'),
+			f1: false
+		});
+	}
+
+	async run(accessor: ServicesAccessor, canvasId: string): Promise<void> {
+		if (!canvasId) {
+			return;
+		}
+		const canvasService = accessor.get(ICanvasService);
+		canvasService.registerPanelFocused(canvasId);
+	}
+});
 
 // Component event handler - bridges ComponentService events to Extension commands
 class RoopikComponentContribution extends Disposable implements IWorkbenchContribution {

@@ -69,6 +69,11 @@ export class RoopikDashboardView extends ViewPane {
 		@IQuickInputService private readonly quickInputService: IQuickInputService,
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
+
+		// Subscribe to canvas events to auto-refresh the list
+		this._register(this.canvasService.onCanvasCreated(() => this.loadCanvases()));
+		this._register(this.canvasService.onCanvasDeleted(() => this.loadCanvases()));
+		this._register(this.canvasService.onCanvasUpdated(() => this.loadCanvases()));
 	}
 
 	protected override renderBody(container: HTMLElement): void {
@@ -131,8 +136,9 @@ export class RoopikDashboardView extends ViewPane {
 
 	/**
 	 * Load canvases from CanvasService
+	 * Includes retry logic for when service is not yet initialized
 	 */
-	private async loadCanvases(): Promise<void> {
+	private async loadCanvases(retryCount: number = 0): Promise<void> {
 		if (!this.canvasesContainer) {
 			return;
 		}
@@ -146,6 +152,16 @@ export class RoopikDashboardView extends ViewPane {
 			const canvases = await this.canvasService.listCanvasesAsync();
 
 			if (canvases.length === 0) {
+				// If no canvases and we haven't retried yet, wait and retry
+				// This handles race condition where ViewPane loads before CanvasService is initialized
+				if (retryCount < 3) {
+					this.createSection(this.canvasesContainer, 'Canvases', [
+						{ label: 'Loading...', description: 'Checking workspace for canvases', onClick: () => { } }
+					]);
+					setTimeout(() => this.loadCanvases(retryCount + 1), 500);
+					return;
+				}
+
 				this.createSection(this.canvasesContainer, 'Canvases', [
 					{ label: 'No canvases yet', description: 'Click "Canvas" to create one', onClick: () => { } }
 				]);
@@ -164,6 +180,16 @@ export class RoopikDashboardView extends ViewPane {
 			this.createSection(this.canvasesContainer, 'Canvases', items);
 		} catch (err) {
 			console.error('[RoopikDashboardView] Failed to load canvases:', err);
+
+			// Retry on error (service might not be initialized yet)
+			if (retryCount < 3) {
+				this.createSection(this.canvasesContainer, 'Canvases', [
+					{ label: 'Loading...', description: 'Waiting for services...', onClick: () => { } }
+				]);
+				setTimeout(() => this.loadCanvases(retryCount + 1), 500);
+				return;
+			}
+
 			this.createSection(this.canvasesContainer, 'Canvases', [
 				{ label: 'Failed to load canvases', description: 'Check console for details', onClick: () => { } }
 			]);
@@ -174,11 +200,23 @@ export class RoopikDashboardView extends ViewPane {
 	 * Open a canvas by ID
 	 */
 	private async openCanvas(canvasId: string): Promise<void> {
-		// Use CanvasService to get canvas and fire event (which opens the panel)
-		const canvas = await this.canvasService.getCanvasAsync(canvasId);
-		if (canvas) {
-			// Fire the created event to open the panel (same pattern as createCanvas)
-			await this.canvasService.createCanvas(canvas.name);
+		try {
+			// Get canvas metadata
+			const canvas = await this.canvasService.getCanvasAsync(canvasId);
+			if (!canvas) {
+				this.notificationService.error(localize('roopik.openCanvas.notFound', 'Canvas not found'));
+				return;
+			}
+
+			// Directly call the extension command to open the canvas panel
+			// This will activate the extension if needed
+			await this.commandService.executeCommand('roopik.canvas.open', {
+				canvasId: canvas.id,
+				canvasName: canvas.name
+			});
+		} catch (err) {
+			const errorMsg = err instanceof Error ? err.message : String(err);
+			this.notificationService.error(localize('roopik.openCanvas.error', 'Failed to open canvas: {0}', errorMsg));
 		}
 	}
 
