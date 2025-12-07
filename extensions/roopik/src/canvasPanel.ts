@@ -270,8 +270,13 @@ export class CanvasPanel implements vscode.Disposable {
 	 * Handle component created event (routed from manager)
 	 */
 	public onComponentCreated(event: ComponentCreatedEvent): void {
-		this.logger.debug(`Component created: ${event.componentId}`);
-		this.postToWebview('componentCreated', event);
+		this.logger.debug(`Component created: ${event.componentId}, name: ${event.component?.name}`);
+		// Extract fields webview expects: { componentId, canvasId, name }
+		this.postToWebview('componentCreated', {
+			componentId: event.componentId,
+			canvasId: event.canvasId,
+			name: event.component?.name
+		});
 	}
 
 	/**
