@@ -35,6 +35,41 @@ const DEFAULT_CONFIG: GridConfig = {
 	startY: 100,
 };
 
+// Focused mode: calculate dynamic dimensions based on viewport
+// These values control how much space the focused sandbox fills
+export const FOCUSED_VIEWPORT_WIDTH_RATIO = 0.90;   // 90% of viewport width
+export const FOCUSED_TOOLBAR_HEIGHT = 100;          // Reserve space for bottom toolbar
+export const FOCUSED_TOP_MARGIN = 40;               // Small margin at top
+
+/**
+ * Calculate focused sandbox dimensions based on viewport size.
+ * Returns dimensions that fill most of the available viewport while
+ * reserving space for the bottom toolbar.
+ */
+export function getFocusedSandboxDimensions(
+	viewportWidth: number,
+	viewportHeight: number,
+	config: GridConfig = DEFAULT_CONFIG
+): { width: number; height: number } {
+	// Account for container padding in the calculation
+	const paddingX = config.containerPaddingLR * 2 + config.containerMargin * 2;
+	const paddingY = config.containerPaddingTB * 2 + config.containerMargin * 2;
+
+	// Calculate available space:
+	// - Width: 90% of viewport minus padding
+	// - Height: viewport minus toolbar, top margin, and padding
+	const availableHeight = viewportHeight - FOCUSED_TOOLBAR_HEIGHT - FOCUSED_TOP_MARGIN;
+
+	const maxWidth = viewportWidth * FOCUSED_VIEWPORT_WIDTH_RATIO - paddingX;
+	const maxHeight = availableHeight - paddingY;
+
+	// Ensure minimum dimensions
+	const width = Math.max(maxWidth, config.sandboxWidth);
+	const height = Math.max(maxHeight, config.sandboxHeight);
+
+	return { width, height };
+}
+
 // ============================================================
 // Grid Calculations
 // ============================================================
@@ -170,33 +205,54 @@ export function calculateFitAllTransform(
 
 /**
  * Calculate transform to focus on a single sandbox.
+ * @param sandbox The sandbox to focus on
+ * @param viewport The viewport dimensions
+ * @param config Grid configuration
+ * @param options Additional options including custom sandbox dimensions for focused mode
  */
 export function calculateFocusTransform(
 	sandbox: Sandbox,
 	viewport: ViewportSize,
 	config: GridConfig = DEFAULT_CONFIG,
-	options: { usableHeightRatio?: number; usableWidthRatio?: number; maxScale?: number } = {}
+	options: {
+		usableHeightRatio?: number;
+		usableWidthRatio?: number;
+		maxScale?: number;
+		/** Custom sandbox width (for focused/expanded mode) */
+		sandboxWidth?: number;
+		/** Custom sandbox height (for focused/expanded mode) */
+		sandboxHeight?: number;
+	} = {}
 ): Transform {
 	const {
-		usableHeightRatio = 0.8,
 		usableWidthRatio = 0.9,
 		maxScale = 1.2,
+		sandboxWidth,
+		sandboxHeight,
 	} = options;
 
-	const { totalWidth, totalHeight } = getSandboxTotalDimensions(config);
+	// Use custom dimensions if provided, otherwise use config defaults
+	const effectiveConfig = sandboxWidth && sandboxHeight
+		? { ...config, sandboxWidth, sandboxHeight }
+		: config;
 
-	const usableHeight = viewport.height * usableHeightRatio;
+	const { totalWidth, totalHeight } = getSandboxTotalDimensions(effectiveConfig);
+
+	// Calculate usable area accounting for toolbar at bottom
+	const usableHeight = viewport.height - FOCUSED_TOOLBAR_HEIGHT - FOCUSED_TOP_MARGIN;
 	const usableWidth = viewport.width * usableWidthRatio;
 
 	const scaleX = usableWidth / totalWidth;
 	const scaleY = usableHeight / totalHeight;
 	const scale = Math.min(scaleX, scaleY, maxScale);
 
-	// Calculate center position
+	// Calculate center position based on the EXPANDED size
+	// Position horizontally centered, vertically positioned with top margin
 	const sandboxVisualCenterX = sandbox.x + totalWidth / 2;
 	const sandboxVisualCenterY = sandbox.y + totalHeight / 2;
 	const viewportCenterX = viewport.width / 2;
-	const viewportCenterY = viewport.height / 2;
+	// Vertical center is offset to account for toolbar - center in the usable area
+	const viewportCenterY = FOCUSED_TOP_MARGIN + usableHeight / 2;
 
 	const x = viewportCenterX - sandboxVisualCenterX * scale;
 	const y = viewportCenterY - sandboxVisualCenterY * scale;

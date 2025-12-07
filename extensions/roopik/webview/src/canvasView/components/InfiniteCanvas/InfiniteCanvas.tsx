@@ -25,12 +25,17 @@ export interface InfiniteCanvasProps {
 	globalDeviceMode: DevicePreset;
 	/** Grid positioning mode: 'free' allows overlap, 'grid' snaps to nearest available slot */
 	snapMode?: SnapMode;
+	/** Viewport dimensions for dynamic focused sandbox sizing */
+	viewport?: { width: number; height: number };
 	onTransformChange: (transform: Transform) => void;
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
 	onSandboxUpdate: (id: string, updates: Partial<Sandbox>) => void;
 	onSandboxDelete: (id: string) => void;
-	onSandboxExpand: (id: string) => void;
+	/** Called when user clicks code icon to view sandbox code */
+	onSandboxShowCode: (id: string) => void;
+	/** Called when user clicks reload icon to force rebuild */
+	onSandboxRebuild: (id: string) => void;
 	/** Called when clicking on canvas background (not on a sandbox) */
 	onCanvasBackgroundClick?: () => void;
 }
@@ -46,11 +51,14 @@ interface SandboxLayerProps {
 	draggingSandboxId: string | null;
 	dragOffset: { x: number; y: number };
 	globalDeviceMode: DevicePreset;
+	/** Viewport dimensions for dynamic focused sandbox sizing */
+	viewport?: { width: number; height: number };
 	onSandboxDragStart: (e: React.MouseEvent, sandboxId: string) => void;
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
 	onSandboxDelete: (id: string) => void;
-	onSandboxExpand: (id: string) => void;
+	onSandboxShowCode: (id: string) => void;
+	onSandboxRebuild: (id: string) => void;
 	onSandboxUpdate: (id: string, updates: Partial<Sandbox>) => void;
 }
 
@@ -64,13 +72,23 @@ function SandboxLayer({
 	draggingSandboxId,
 	dragOffset,
 	globalDeviceMode,
+	viewport,
 	onSandboxDragStart,
 	onSandboxClick,
 	onSandboxDoubleClick,
 	onSandboxDelete,
-	onSandboxExpand,
+	onSandboxShowCode,
+	onSandboxRebuild,
 	onSandboxUpdate,
 }: SandboxLayerProps) {
+	// Find the focused sandbox position for push-away effect
+	const focusedSandbox = focusedSandboxId
+		? sandboxes.find(s => s.id === focusedSandboxId)
+		: null;
+	const focusedSandboxPosition = focusedSandbox
+		? { x: focusedSandbox.x, y: focusedSandbox.y }
+		: null;
+
 	return (
 		<>
 			{sandboxes.map((sandbox) => {
@@ -84,11 +102,14 @@ function SandboxLayer({
 						isDragging={isDragging}
 						dragOffset={isDragging ? dragOffset : undefined}
 						globalDeviceMode={globalDeviceMode}
+						viewport={viewport}
+						focusedSandboxPosition={focusedSandboxPosition}
 						onMouseDown={(e) => onSandboxDragStart(e, sandbox.id)}
 						onClick={() => onSandboxClick(sandbox.id)}
 						onDoubleClick={() => onSandboxDoubleClick(sandbox.id)}
 						onDelete={() => onSandboxDelete(sandbox.id)}
-						onExpand={() => onSandboxExpand(sandbox.id)}
+						onShowCode={() => onSandboxShowCode(sandbox.id)}
+						onRebuild={() => onSandboxRebuild(sandbox.id)}
 						onDeviceModeChange={(mode) => onSandboxUpdate(sandbox.id, { deviceMode: mode })}
 					/>
 				);
@@ -120,12 +141,14 @@ export function InfiniteCanvas({
 	backgroundColor,
 	globalDeviceMode,
 	snapMode = 'free',
+	viewport,
 	onTransformChange,
 	onSandboxClick,
 	onSandboxDoubleClick,
 	onSandboxUpdate,
 	onSandboxDelete,
-	onSandboxExpand,
+	onSandboxShowCode,
+	onSandboxRebuild,
 	onCanvasBackgroundClick,
 }: InfiniteCanvasProps) {
 	const canvasRef = useRef<HTMLDivElement>(null);
@@ -187,11 +210,13 @@ export function InfiniteCanvas({
 					draggingSandboxId={draggingSandboxId}
 					dragOffset={dragOffset}
 					globalDeviceMode={globalDeviceMode}
+					viewport={viewport}
 					onSandboxDragStart={handleSandboxDragStart}
 					onSandboxClick={onSandboxClick}
 					onSandboxDoubleClick={onSandboxDoubleClick}
 					onSandboxDelete={onSandboxDelete}
-					onSandboxExpand={onSandboxExpand}
+					onSandboxShowCode={onSandboxShowCode}
+					onSandboxRebuild={onSandboxRebuild}
 					onSandboxUpdate={onSandboxUpdate}
 				/>
 			</div>

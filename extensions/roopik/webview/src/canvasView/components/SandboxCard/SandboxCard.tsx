@@ -7,7 +7,7 @@ import { useRef, useState, useMemo } from 'react';
 import type { Sandbox, Point, DevicePreset } from '../../types';
 import { DEVICE_PRESETS, getNextDevicePreset } from '../../types';
 import { DeviceIcon } from '../DeviceToggle';
-import { DEFAULT_CONFIG } from '../../services/gridManager';
+import { DEFAULT_CONFIG, getFocusedSandboxDimensions } from '../../services/gridManager';
 import '../../styles/sandboxCard.css';
 
 interface SandboxCardProps {
@@ -20,11 +20,18 @@ interface SandboxCardProps {
 	isExiting?: boolean;
 	/** Global device mode from canvas */
 	globalDeviceMode: DevicePreset;
+	/** Viewport dimensions for dynamic focused sandbox sizing */
+	viewport?: { width: number; height: number };
+	/** Position of the focused sandbox (for calculating push-away offset) */
+	focusedSandboxPosition?: { x: number; y: number } | null;
 	onMouseDown: (e: React.MouseEvent) => void;
 	onClick: () => void;
 	onDoubleClick: () => void;
 	onDelete: () => void;
-	onExpand: () => void;
+	/** Callback to show code view for this sandbox */
+	onShowCode: () => void;
+	/** Callback to force rebuild this sandbox */
+	onRebuild: () => void;
 	/** Callback to update sandbox device mode */
 	onDeviceModeChange: (mode: DevicePreset | undefined) => void;
 }
@@ -338,11 +345,14 @@ export function SandboxCard({
 	isOverlapping = false,
 	isExiting = false,
 	globalDeviceMode,
+	viewport,
+	focusedSandboxPosition,
 	onMouseDown,
 	onClick,
 	onDoubleClick,
 	onDelete,
-	onExpand,
+	onShowCode,
+	onRebuild,
 	onDeviceModeChange
 }: SandboxCardProps) {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -402,9 +412,14 @@ export function SandboxCard({
 		return input.id;
 	}, [sandbox.id, sandbox.componentInput]);
 
-	const handleExpandClick = (e: React.MouseEvent) => {
+	const handleShowCodeClick = (e: React.MouseEvent) => {
 		e.stopPropagation();
-		onExpand();
+		onShowCode();
+	};
+
+	const handleRebuildClick = (e: React.MouseEvent) => {
+		e.stopPropagation();
+		onRebuild();
 	};
 
 	const handleDeleteClick = (e: React.MouseEvent) => {
@@ -431,6 +446,46 @@ export function SandboxCard({
 		}
 	};
 
+	// Get sandbox dimensions based on focus state
+	// When focused, sandbox expands dynamically to fill most of the viewport
+	const focusedDimensions = useMemo(() => {
+		if (!isFocused || !viewport) return null;
+		return getFocusedSandboxDimensions(viewport.width, viewport.height, DEFAULT_CONFIG);
+	}, [isFocused, viewport]);
+
+	const sandboxWidth = focusedDimensions?.width ?? DEFAULT_CONFIG.sandboxWidth;
+	const sandboxHeight = focusedDimensions?.height ?? DEFAULT_CONFIG.sandboxHeight;
+
+	// Calculate push-away offset for non-focused sandboxes when another is focused
+	// This creates a smooth "making room" effect without changing actual positions
+	const pushAwayOffset = useMemo(() => {
+		// Only apply to non-focused sandboxes when there's a focused one
+		if (isFocused || !focusedSandboxPosition) {
+			return { x: 0, y: 0 };
+		}
+
+		// Calculate direction from focused sandbox to this sandbox
+		const dx = sandbox.x - focusedSandboxPosition.x;
+		const dy = sandbox.y - focusedSandboxPosition.y;
+		const distance = Math.sqrt(dx * dx + dy * dy);
+
+		// If sandboxes are at the same position, push in a default direction
+		if (distance < 10) {
+			return { x: 800, y: 0 };
+		}
+
+		// Push all sandboxes far away - the focused sandbox expands to fill most of viewport
+		// Use a large fixed distance so all sandboxes are pushed well out of view
+		const pushDistance = 1200;
+		const normalizedX = dx / distance;
+		const normalizedY = dy / distance;
+
+		return {
+			x: normalizedX * pushDistance,
+			y: normalizedY * pushDistance,
+		};
+	}, [isFocused, focusedSandboxPosition, sandbox.x, sandbox.y]);
+
 	// Calculate iframe container style for device mode
 	// Device mode: set container to device dimensions, scale to fit available space
 	const iframeContainerStyle = useMemo((): React.CSSProperties => {
@@ -447,9 +502,9 @@ export function SandboxCard({
 		const deviceHeight = preset.height as number;
 
 		// Available space is the CONTENT area of sandbox card
-		// All sandboxes use the same dimensions from DEFAULT_CONFIG
-		const availableWidth = DEFAULT_CONFIG.sandboxWidth;
-		const availableHeight = DEFAULT_CONFIG.sandboxHeight;
+		// Use focus-aware dimensions
+		const availableWidth = sandboxWidth;
+		const availableHeight = sandboxHeight;
 
 		// Scale to fill available space while maintaining aspect ratio
 		const scaleX = availableWidth / deviceWidth;
@@ -472,12 +527,16 @@ export function SandboxCard({
 			transformOrigin: 'center center',
 			margin: `-${marginY}px -${marginX}px`,
 		};
-	}, [isDeviceMode, preset]);
+	}, [isDeviceMode, preset, sandboxWidth, sandboxHeight]);
+
+	// Check if this sandbox is being pushed away (another sandbox is focused)
+	const isPushedAway = !isFocused && focusedSandboxPosition !== null;
 
 	// Build className
 	const classNames = ['sandbox-card'];
 	if (isSelected) classNames.push('selected');
 	if (isFocused) classNames.push('focused');
+	if (isPushedAway) classNames.push('pushed-away');
 	if (isDragging) classNames.push('dragging');
 	if (isOverlapping) classNames.push('overlapping');
 	if (isExiting) classNames.push('exiting');
@@ -494,10 +553,15 @@ export function SandboxCard({
 			style={{
 				left: sandbox.x,
 				top: sandbox.y,
-				width: DEFAULT_CONFIG.sandboxWidth,
-				height: DEFAULT_CONFIG.sandboxHeight,
+				width: sandboxWidth,
+				height: sandboxHeight,
 				zIndex: sandbox.zIndex,
-				transform: dragOffset ? `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)` : 'none',
+				// Combine drag offset with push-away offset for smooth transitions
+				transform: dragOffset
+					? `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)`
+					: pushAwayOffset.x !== 0 || pushAwayOffset.y !== 0
+						? `translate3d(${pushAwayOffset.x}px, ${pushAwayOffset.y}px, 0)`
+						: 'none',
 			}}
 			onMouseEnter={() => setIsHovered(true)}
 			onMouseLeave={() => setIsHovered(false)}
@@ -548,12 +612,19 @@ export function SandboxCard({
 						>
 							<DeviceIcon preset={effectiveDeviceMode} size={16} />
 						</button>
-						<button onClick={handleExpandClick} title="Expand to fullscreen">
+						{/* Code view button - TODO coming soon! */}
+						<button onClick={handleShowCodeClick} title="View code (coming soon)">
 							<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="rgba(255, 255, 255, 0.9)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-								<path d="M2 6 L2 2 L6 2" />
-								<path d="M10 2 L14 2 L14 6" />
-								<path d="M14 10 L14 14 L10 14" />
-								<path d="M6 14 L2 14 L2 10" />
+								<path d="M5 4 L1 8 L5 12" />
+								<path d="M11 4 L15 8 L11 12" />
+								<path d="M10 2 L6 14" />
+							</svg>
+						</button>
+						{/* Rebuild button - TODO coming soon! */}
+						<button onClick={handleRebuildClick} title="Force rebuild (coming soon)">
+							<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="rgba(255, 255, 255, 0.9)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+								<path d="M2 8 A6 6 0 1 1 8 14" />
+								<path d="M2 4 L2 8 L6 8" />
 							</svg>
 						</button>
 						<button className="delete" onClick={handleDeleteClick} title="Delete sandbox">

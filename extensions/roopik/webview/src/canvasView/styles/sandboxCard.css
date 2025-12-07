@@ -71,6 +71,16 @@
 	border-color: rgba(0, 122, 204, 0.5);
 	box-shadow: 0 0 0 4px rgba(0, 122, 204, 0.15), 0 32px 80px rgba(0, 0, 0, 0.4),
 		inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(255, 255, 255, 0.05);
+	/* Focused mode expands the sandbox - transition handles smooth animation */
+	/* The expanded dimensions are set dynamically via JS based on viewport */
+	z-index: 9999 !important; /* Ensure focused sandbox is always on top */
+}
+
+/* Pushed-away state: other sandboxes slide away when one is focused */
+.sandbox-card.pushed-away {
+	opacity: 0.3;
+	filter: blur(2px);
+	pointer-events: none; /* Prevent interaction with pushed-away sandboxes */
 }
 
 .sandbox-card.dragging {

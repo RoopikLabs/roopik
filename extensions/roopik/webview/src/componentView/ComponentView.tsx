@@ -17,7 +17,6 @@ import type {
 import { InfiniteCanvas } from "../canvasView/components/InfiniteCanvas";
 import { StatusPanel } from "../canvasView/components/StatusPanel";
 import { GlobalDeviceToggle } from "../canvasView/components/DeviceToggle";
-import { FullscreenOverlay } from "../canvasView/components/FullscreenOverlay";
 import { BottomActionBar } from "../canvasView/components/Toolbar/BottomActionBar";
 import {
 	reorganizeSandboxes,
@@ -25,6 +24,7 @@ import {
 	calculateFocusTransform,
 	getNextAvailableGridPosition,
 	DEFAULT_CONFIG,
+	getFocusedSandboxDimensions,
 } from "../canvasView/services/gridManager";
 import { useFPS } from "../hooks/useFPS";
 import "./ComponentView.css";
@@ -62,14 +62,16 @@ function App() {
 	);
 	const [focusedSandboxId, setFocusedSandboxId] = useState<string | null>(null);
 
+	// Viewport dimensions for dynamic focused sandbox sizing
+	const [viewport, setViewport] = useState({
+		width: window.innerWidth,
+		height: window.innerHeight,
+	});
+
 	// Device mode state
 	const [globalDeviceMode, setGlobalDeviceMode] =
 		useState<DevicePreset>("auto");
 
-	// Fullscreen mode state
-	const [fullscreenSandboxId, setFullscreenSandboxId] = useState<string | null>(
-		null
-	);
 
 	// Bottom Action Bar state
 	const [isSelectMode, setIsSelectMode] = useState(false);
@@ -91,23 +93,21 @@ function App() {
 	// Store loaded sandbox positions from extension (for restoring sandbox positions)
 	const loadedPositionsRef = useRef<SandboxPositions>({});
 
-	// Track fullscreen and focused states for auto-fit logic
-	const fullscreenSandboxIdRef = useRef<string | null>(null);
+	// Track focused state for auto-fit logic
 	const focusedSandboxIdRef = useRef<string | null>(null);
 
 	// Track if we're in initial loading state (disable auto-fit during bulk load)
 	const isInitialLoadingRef = useRef<boolean>(false);
+
+	// Track last ESC press time for double-ESC to exit focused mode
+	const lastEscPressRef = useRef<number>(0);
 
 	// Ref to store fitAllSandboxes (defined later, used in message handler)
 	const fitAllSandboxesRef = useRef<((sandboxList: Sandbox[]) => void) | null>(
 		null
 	);
 
-	// Update refs when state changes
-	useEffect(() => {
-		fullscreenSandboxIdRef.current = fullscreenSandboxId;
-	}, [fullscreenSandboxId]);
-
+	// Update ref when focused state changes
 	useEffect(() => {
 		focusedSandboxIdRef.current = focusedSandboxId;
 	}, [focusedSandboxId]);
@@ -277,7 +277,6 @@ function App() {
 							if (!isInitialLoadingRef.current) {
 								setTimeout(() => {
 									if (
-										!fullscreenSandboxIdRef.current &&
 										!focusedSandboxIdRef.current &&
 										fitAllSandboxesRef.current
 									) {
@@ -441,7 +440,6 @@ function App() {
 						// Trigger auto-fit after state update
 						setTimeout(() => {
 							if (
-								!fullscreenSandboxIdRef.current &&
 								!focusedSandboxIdRef.current &&
 								fitAllSandboxesRef.current
 							) {
@@ -584,7 +582,6 @@ function App() {
 		// === DISABLE CONDITIONS (easily extendable) ===
 		const shouldSkipAutoFit =
 			isInitialLoadingRef.current || // Initial canvas loading - fit once after complete
-			fullscreenSandboxId !== null || // User in fullscreen mode
 			focusedSandboxId !== null; // User focused on a sandbox
 		// Future: || isEditingComponent || isUserDragging etc.
 
@@ -614,12 +611,12 @@ function App() {
 	}, [
 		sandboxCount,
 		sandboxes,
-		fullscreenSandboxId,
 		focusedSandboxId,
 		fitAllSandboxes,
 	]);
 
 	// Focus on a single sandbox (double-click)
+	// When focused, sandbox expands dynamically to fill most of the viewport
 	const focusSandbox = useCallback(
 		(sandboxId: string) => {
 			if (focusedSandboxId === sandboxId) {
@@ -636,10 +633,21 @@ function App() {
 			setFocusedSandboxId(sandboxId);
 
 			const viewport = { width: window.innerWidth, height: window.innerHeight };
+			// Calculate dynamic focused dimensions based on viewport
+			const focusedDimensions = getFocusedSandboxDimensions(
+				viewport.width,
+				viewport.height,
+				DEFAULT_CONFIG
+			);
+			// Use expanded dimensions for focus transform calculation
 			const newTransform = calculateFocusTransform(
 				sandbox,
 				viewport,
-				DEFAULT_CONFIG
+				DEFAULT_CONFIG,
+				{
+					sandboxWidth: focusedDimensions.width,
+					sandboxHeight: focusedDimensions.height,
+				}
 			);
 			setTransform(newTransform);
 		},
@@ -726,10 +734,7 @@ function App() {
 				if (remaining.length > 0) {
 					// Reorganize and auto-fit after deletion
 					setTimeout(() => {
-						if (
-							!fullscreenSandboxIdRef.current &&
-							!focusedSandboxIdRef.current
-						) {
+						if (!focusedSandboxIdRef.current) {
 							reorganizeToGrid(remaining);
 						} else {
 							// Just fit without reorganizing if user is focused
@@ -749,20 +754,20 @@ function App() {
 			selectedSandboxId,
 			focusedSandboxId,
 			reorganizeToGrid,
-			fullscreenSandboxId,
 			fitAllSandboxes,
 		]
 	);
 
-	// Sandbox expand (fullscreen) handler
-	const handleSandboxExpand = useCallback((sandboxId: string) => {
-		console.log("[Canvas] Expand sandbox to fullscreen:", sandboxId);
-		setFullscreenSandboxId(sandboxId);
+	// Sandbox code view handler (TODO: will show tabbed code editor)
+	const handleSandboxShowCode = useCallback((sandboxId: string) => {
+		// TODO coming soon! - Will show tabbed code view for this sandbox
+		console.log("[Canvas] Show code for sandbox:", sandboxId);
 	}, []);
 
-	// Exit fullscreen handler
-	const handleExitFullscreen = useCallback(() => {
-		setFullscreenSandboxId(null);
+	// Sandbox rebuild handler (TODO: force rebuild bypassing cache)
+	const handleSandboxRebuild = useCallback((sandboxId: string) => {
+		// TODO coming soon! - Will force rebuild this sandbox bypassing cache
+		console.log("[Canvas] Force rebuild sandbox:", sandboxId);
 	}, []);
 
 	// Sandbox update handler
@@ -782,12 +787,22 @@ function App() {
 				handleSandboxDelete(selectedSandboxId);
 			}
 			if (e.key === "Escape") {
-				// Exit fullscreen first, then deselect
-				if (fullscreenSandboxId) {
-					handleExitFullscreen();
+				// Double-ESC to exit focused mode (within 500ms)
+				// Single ESC deselects when not focused
+				const now = Date.now();
+				const timeSinceLastEsc = now - lastEscPressRef.current;
+				lastEscPressRef.current = now;
+
+				if (focusedSandboxId) {
+					// Require double-ESC to exit focused mode
+					if (timeSinceLastEsc < 500) {
+						console.log("[Canvas] Double-ESC: Exiting focused mode");
+						setFocusedSandboxId(null);
+						fitAllSandboxes(sandboxes);
+						lastEscPressRef.current = 0; // Reset to prevent triple-ESC issues
+					}
 				} else {
 					setSelectedSandboxId(null);
-					setFocusedSandboxId(null);
 				}
 			}
 			if (e.key === "0" && (e.ctrlKey || e.metaKey)) {
@@ -800,15 +815,22 @@ function App() {
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [
 		selectedSandboxId,
+		focusedSandboxId,
+		sandboxes,
 		handleSandboxDelete,
 		handleResetView,
-		fullscreenSandboxId,
-		handleExitFullscreen,
+		fitAllSandboxes,
 	]);
 
-	// Window resize handler
+	// Window resize handler - update viewport and refocus if needed
 	useEffect(() => {
 		const handleResize = () => {
+			// Update viewport dimensions for dynamic focused sizing
+			setViewport({
+				width: window.innerWidth,
+				height: window.innerHeight,
+			});
+
 			if (focusedSandboxId) {
 				setTimeout(() => {
 					focusSandbox(focusedSandboxId);
@@ -881,12 +903,14 @@ function App() {
 					backgroundColor={backgroundColor}
 					globalDeviceMode={globalDeviceMode}
 					snapMode={snapMode}
+					viewport={viewport}
 					onTransformChange={setTransform}
 					onSandboxClick={handleSandboxClick}
 					onSandboxDoubleClick={focusSandbox}
 					onSandboxUpdate={handleSandboxUpdate}
 					onSandboxDelete={handleSandboxDelete}
-					onSandboxExpand={handleSandboxExpand}
+					onSandboxShowCode={handleSandboxShowCode}
+					onSandboxRebuild={handleSandboxRebuild}
 					onCanvasBackgroundClick={() => setSelectedSandboxId(null)}
 				/>
 
@@ -923,22 +947,6 @@ function App() {
 				isInspectMode={isInspectMode}
 				isRectangleMode={isRectangleMode}
 			/>
-
-			{/* Fullscreen Overlay */}
-			{fullscreenSandboxId &&
-				(() => {
-					const sandbox = sandboxes.find((s) => s.id === fullscreenSandboxId);
-					if (!sandbox) return null;
-
-					return (
-						<FullscreenOverlay
-							sandbox={sandbox}
-							deviceMode={globalDeviceMode}
-							onDeviceModeChange={setGlobalDeviceMode}
-							onClose={handleExitFullscreen}
-						/>
-					);
-				})()}
 		</div>
 	);
 }
