@@ -358,8 +358,20 @@ export class CanvasPanel implements vscode.Disposable {
 					// Webview is ready, send preferences and load existing components
 					this.logger.debug('Webview ready, sending preferences');
 					this.sendPreferencesToWebview();
+					// Notify webview that initial loading is starting
+					if (this.loadedComponents.length > 0) {
+						this.postToWebview('canvasLoadingStarted', {
+							componentCount: this.loadedComponents.length
+						});
+					}
 					// Load existing components (if any)
 					await this.loadExistingComponents();
+					// Notify webview that initial loading is complete
+					if (this.loadedComponents.length > 0) {
+						this.postToWebview('canvasLoadingComplete', {
+							componentCount: this.loadedComponents.length
+						});
+					}
 					break;
 
 				case 'createComponent':

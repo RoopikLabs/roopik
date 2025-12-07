@@ -356,7 +356,7 @@ export function SandboxCard({
 
 	// Generate srcDoc based on build status
 	const srcDoc = useMemo(() => {
-		console.log('[SandboxCard] 🔄 Generating srcDoc for:', {
+		console.log('[SandboxCard] Generating srcDoc for:', {
 			sandboxId: sandbox.id,
 			buildStatus: sandbox.buildStatus,
 			hasBundledCode: !!sandbox.bundledCode,
@@ -375,10 +375,10 @@ export function SandboxCard({
 				return generateErrorHTML(sandbox.buildError || 'Unknown error');
 			case 'ready':
 				if (sandbox.bundledCode) {
-					console.log('[SandboxCard] ✅ Status: ready - Injecting bundledCode');
-					console.log('[SandboxCard] 📦 BundledCode preview (first 500 chars):', sandbox.bundledCode.substring(0, 500));
+					// console.log('[SandboxCard] ✅ Status: ready - Injecting bundledCode');
+					// console.log('[SandboxCard] 📦 BundledCode preview (first 500 chars):', sandbox.bundledCode.substring(0, 500));
 					const html = generateSandboxHTML(sandbox.bundledCode);
-					console.log('[SandboxCard] 📄 Generated HTML length:', html.length);
+					// console.log('[SandboxCard] 📄 Generated HTML length:', html.length);
 					return html;
 				}
 				console.error('[SandboxCard] ❌ Status: ready but no bundledCode!');

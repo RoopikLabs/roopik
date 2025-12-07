@@ -233,6 +233,9 @@ export type ExtensionMessage =
 	| { type: 'themeChanged'; payload: { theme: 'light' | 'dark' | 'high-contrast' } }
 	// Canvas preferences loaded from file (includes sandbox positions for restoration)
 	| { type: 'canvasPreferencesLoaded'; payload: { preferences: CanvasPreferences; sandboxPositions?: SandboxPositions } }
+	// Initial loading state (for bulk component loading)
+	| { type: 'canvasLoadingStarted'; payload: { componentCount: number } }
+	| { type: 'canvasLoadingComplete'; payload: { componentCount: number } }
 	// Import
 	| { type: 'addImportedComponent'; payload: { componentInput: ComponentInput; position?: { x: number; y: number }; replaceExisting?: boolean; replaceName?: string } };
 
