@@ -633,6 +633,7 @@ export class CanvasPanel implements vscode.Disposable {
 			this.postToWebview('componentFilesLoaded', {
 				componentId: payload.componentId,
 				files: []
+			});
 		}
 	}
 

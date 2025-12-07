@@ -189,19 +189,6 @@
 	z-index: 10;
 }
 
-/* Ensure Monaco widgets (find bar, suggestions, hints) appear above header/tabs */
-.code-popup-editor .monaco-editor .overflow-guard {
-	z-index: 10 !important;
-}
-
-.code-popup-editor .monaco-editor .find-widget,
-.code-popup-editor .monaco-editor .suggest-widget,
-.code-popup-editor .monaco-editor .parameter-hints-widget,
-.code-popup-editor .monaco-editor .monaco-hover,
-.code-popup-editor .monaco-editor .editor-widget {
-	z-index: 100 !important;
-}
-
 /* Line highlight decoration for initial scroll-to-line */
 .code-popup-line-highlight {
 	background: rgba(255, 213, 0, 0.15) !important;
