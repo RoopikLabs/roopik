@@ -285,20 +285,6 @@ export function CodePopup({
 		setShowCloseConfirm(false);
 	}, []);
 
-	// Handle ESC to close
-	useEffect(() => {
-		const handleKeyDown = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') {
-				e.preventDefault();
-				e.stopPropagation();
-				handleClose();
-			}
-		};
-
-		window.addEventListener('keydown', handleKeyDown, true);
-		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [handleClose]);
-
 	// No files to show
 	if (files.length === 0) {
 		return (

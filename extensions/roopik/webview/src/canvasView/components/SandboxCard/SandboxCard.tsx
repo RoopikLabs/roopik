@@ -7,6 +7,7 @@ import { useRef, useState, useMemo } from 'react';
 import type { Sandbox, Point, DevicePreset } from '../../types';
 import { DEVICE_PRESETS, getNextDevicePreset } from '../../types';
 import { DeviceIcon } from '../DeviceToggle';
+import { DeleteConfirmModal } from '../Toolbar/DeleteConfirmModal';
 import { DEFAULT_CONFIG, getFocusedSandboxDimensions } from '../../services/gridManager';
 import '../../styles/sandboxCard.css';
 
@@ -357,6 +358,7 @@ export function SandboxCard({
 }: SandboxCardProps) {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [isHovered, setIsHovered] = useState(false);
+	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
 	// Effective device mode: sandbox override or global
 	const effectiveDeviceMode = sandbox.deviceMode ?? globalDeviceMode;
@@ -429,7 +431,16 @@ export function SandboxCard({
 
 	const handleDeleteClick = (e: React.MouseEvent) => {
 		e.stopPropagation();
+		setShowDeleteConfirm(true);
+	};
+
+	const handleConfirmDelete = () => {
+		setShowDeleteConfirm(false);
 		onDelete();
+	};
+
+	const handleCancelDelete = () => {
+		setShowDeleteConfirm(false);
 	};
 
 	// Toggle device mode for this sandbox
@@ -664,6 +675,15 @@ export function SandboxCard({
 					</div>
 				</div>
 			</div>
+
+			{/* Delete confirmation modal */}
+			{showDeleteConfirm && (
+				<DeleteConfirmModal
+					sandboxId={displayName}
+					onConfirm={handleConfirmDelete}
+					onCancel={handleCancelDelete}
+				/>
+			)}
 		</div>
 	);
 }
