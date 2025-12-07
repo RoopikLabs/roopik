@@ -26,6 +26,7 @@ import { RoopikWelcomeInput, RoopikWelcomeInputSerializer } from './welcomeInput
 import { RoopikViewsContribution } from './roopikViewPane.js';
 import { RoopikLogger } from '../common/roopikLogger.js';
 import { IOutputService } from '../../../services/output/common/output.js';
+import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { Editor } from './projectMode/editor.js';
 import { EditorTabInput } from './projectMode/editorTabInput.js';
 import { EditorTabInputSerializer } from './projectMode/editorTabInputSerializer.js';
@@ -240,7 +241,7 @@ registerAction2(class extends Action2 {
 	}
 });
 
-// Startup contribution to open welcome screen and clear output
+// Startup contribution to open welcome screen, clear output, and initialize services
 class RoopikStartupContribution extends Disposable implements IWorkbenchContribution {
 	static readonly ID = 'roopik.startupContribution';
 
@@ -250,11 +251,45 @@ class RoopikStartupContribution extends Disposable implements IWorkbenchContribu
 		@IStorageService private readonly storageService: IStorageService,
 		@ILifecycleService private readonly lifecycleService: ILifecycleService,
 		@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,
-		@IOutputService private readonly outputService: IOutputService
+		@IOutputService private readonly outputService: IOutputService,
+		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
+		@ICanvasService private readonly canvasService: ICanvasService,
+		@IComponentService private readonly componentService: IComponentService
 	) {
 		super();
 		this.clearOutputOnStartup();
 		this.openWelcomeOnStartup();
+		this.initializeRoopikServices();
+	}
+
+	/**
+	 * Initialize Roopik services with workspace path
+	 * This is required before any canvas/component operations can work
+	 */
+	private async initializeRoopikServices(): Promise<void> {
+		await this.lifecycleService.when(LifecyclePhase.Restored);
+
+		// Get workspace folder
+		const workspace = this.workspaceContextService.getWorkspace();
+		if (!workspace.folders || workspace.folders.length === 0) {
+			console.warn('[RoopikStartupContribution] No workspace folder found, services not initialized');
+			return;
+		}
+
+		const workspacePath = workspace.folders[0].uri.fsPath;
+		console.log('[RoopikStartupContribution] Initializing services with workspace:', workspacePath);
+
+		try {
+			// Initialize Canvas Service
+			await this.canvasService.initialize(workspacePath);
+			console.log('[RoopikStartupContribution] CanvasService initialized');
+
+			// Initialize Component Service
+			await this.componentService.initialize(workspacePath);
+			console.log('[RoopikStartupContribution] ComponentService initialized');
+		} catch (err) {
+			console.error('[RoopikStartupContribution] Failed to initialize services:', err);
+		}
 	}
 
 	/**
