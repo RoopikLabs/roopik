@@ -13,7 +13,8 @@ This document describes the complete data flows for component operations in Roop
 1. [Local File Import (Activity Panel)](#1-local-file-import-activity-panel)
 2. [Drag-Drop Import (OS File Manager)](#2-drag-drop-import-os-file-manager)
 3. [Rebuild Component](#3-rebuild-component)
-4. [Canvas Restore on Startup](#4-canvas-restore-on-startup)
+4. [Save Component File (Code Editor)](#4-save-component-file-code-editor)
+5. [Canvas Restore on Startup](#5-canvas-restore-on-startup)
 
 ---
 
@@ -217,7 +218,63 @@ User clicks "Rebuild" button on a sandbox card.
 
 ---
 
-## 4. Canvas Restore on Startup
+## 4. Save Component File (Code Editor)
+
+User edits a file in the code popup and clicks Save.
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  USER: Edits file in CodePopup, clicks Save                                  │
+└──────────────────────────────┬───────────────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  1. WEBVIEW (CodePopup.tsx)                                             [W]  │
+│     handleSave() → sends saveComponentFile message                           │
+│                                                                              │
+│     Sends: postMessage('saveComponentFile', [M])                             │
+└──────────────────────────────┬───────────────────────────────────────────────┘
+                               │ postMessage
+                               ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  2. CANVAS PANEL (canvasPanel.ts)                                       [E]  │
+│     handleSaveComponentFile()                                                │
+│       • Writes file to disk via fs.writeFileSync()                           │
+│       • Path: .roopik/canvases/{canvasId}/components/{componentId}/{file}    │
+│                                                                              │
+│     Sends: postToWebview('componentFileSaved', [N])                          │
+└──────────────────────────────┬───────────────────────────────────────────────┘
+                               │
+              ┌────────────────┴────────────────┐
+              ▼                                 ▼
+┌─────────────────────────────┐   ┌─────────────────────────────────────────────┐
+│  3a. WEBVIEW            [W] │   │  3b. FILE WATCHER (fileWatcher.ts)      [C] │
+│                             │   │                                             │
+│  Receives 'componentFile-   │   │  Detects file change via fs.watch()         │
+│  Saved' → sets sandbox      │   │  Debounces (300ms)                          │
+│  buildStatus: 'building'    │   │  Fires onFileChanged event                  │
+└─────────────────────────────┘   └─────────────────────────────────────────────┘
+                                                │ Event
+                                                ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  4. COMPONENT SERVICE (componentService.ts)                             [C]  │
+│     handleFileChange()                                                       │
+│       • Looks up component from Map                                          │
+│       • Sets buildState: 'building'                                          │
+│       • buildQueue.enqueue() with trigger: 'file-change'                     │
+└──────────────────────────────┬───────────────────────────────────────────────┘
+                               │ Build Completes → Event
+                               ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  5-6. SAME AS BUILD COMPLETE (Steps 7-9 from Local Import)                   │
+│     onComponentBuilt event → CanvasPanel → Webview                           │
+│     Sandbox updates: buildStatus: 'ready', new bundledCode                   │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 5. Canvas Restore on Startup
 
 IDE restarts, user opens an existing canvas.
 
@@ -477,6 +534,32 @@ interface ComponentLoadInfo {
 }
 ```
 
+### [M] saveComponentFile Message
+```typescript
+// Webview → Extension (postMessage)
+{
+  type: 'saveComponentFile';
+  payload: {
+    componentId: string;
+    filename: string;    // e.g., "index.tsx"
+    content: string;     // Full file content
+  }
+}
+```
+
+### [N] componentFileSaved Message
+```typescript
+// Extension → Webview (postMessage)
+{
+  type: 'componentFileSaved';
+  payload: {
+    componentId: string;
+    filename: string;
+    success: boolean;
+  }
+}
+```
+
 ---
 
 ## Communication Channels Summary
@@ -496,9 +579,11 @@ interface ComponentLoadInfo {
 |-------|------|
 | Webview `[W]` | `extensions/roopik/webview/src/componentView/ComponentView.tsx` |
 | Webview Types `[W]` | `extensions/roopik/webview/src/canvasView/types/index.ts` |
+| Code Popup `[W]` | `extensions/roopik/webview/src/canvasView/components/CodePopup/CodePopup.tsx` |
 | Extension Panel `[E]` | `extensions/roopik/src/canvasPanel.ts` |
 | Extension Manager `[E]` | `extensions/roopik/src/roopikExtensionManager.ts` |
 | Extension Loader `[E]` | `extensions/roopik/src/componentLoader.ts` |
 | Core Commands `[C]` | `src/vs/workbench/contrib/roopik/browser/commands/componentCommands.ts` |
 | Core Service `[C]` | `src/vs/workbench/contrib/roopik/electron-main/component/componentService.ts` |
+| Core FileWatcher `[C]` | `src/vs/workbench/contrib/roopik/electron-main/watch/fileWatcher.ts` |
 | Core Types `[C]` | `src/vs/workbench/contrib/roopik/common/component/types.ts` |

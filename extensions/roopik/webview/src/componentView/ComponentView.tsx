@@ -504,9 +504,22 @@ function App() {
 				}
 
 				case "componentFileSaved": {
-					// File saved confirmation
+					// File saved confirmation - file watcher will trigger rebuild
 					const { componentId, filename, success } = msg.payload;
 					console.log("[Canvas] 💾 Component file saved:", componentId, filename, success ? "✓" : "✗");
+
+					// If save succeeded, set sandbox to "building" state
+					// The file watcher in Core will detect the change and trigger rebuild
+					// When rebuild completes, componentBuilt message will update to "ready"
+					if (success) {
+						setSandboxes((prev) =>
+							prev.map((s) =>
+								s.id === componentId
+									? { ...s, buildStatus: "building" as const, buildError: undefined }
+									: s
+							)
+						);
+					}
 					break;
 				}
 
