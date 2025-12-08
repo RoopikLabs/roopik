@@ -19,6 +19,10 @@ export { InjectorPipeline } from './injectorPipeline.js';
 export { ErrorBoundaryInjector } from './errorBoundaryInjector.js';
 export { InspectModeInjector } from './inspectModeInjector.js';
 export { HmrBridgeInjector } from './hmrBridgeInjector.js';
+export { SourceTrackingInjector, createSourceTrackingTransform } from './sourceTrackingInjector.js';
+
+// Source Tracking Core (for direct use)
+export { transformCode, parseElements, ParseOptions, TransformResult } from './sourceTrackingCore.js';
 
 // ============================================================================
 // Factory for default pipeline

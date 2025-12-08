@@ -63,6 +63,73 @@ export class InspectModeInjector extends BaseInjector {
 		const rect = element.getBoundingClientRect();
 		const computedStyle = window.getComputedStyle(element);
 
+		// Extract source tracking attributes (injected during build)
+		const roopikSource = element.getAttribute('data-roopik-source');
+		const roopikComponent = element.getAttribute('data-roopik-component');
+		const roopikParent = element.getAttribute('data-roopik-parent');
+
+		// Parse source location: "file:startLine:startCol:endLine:endCol"
+		let sourceLocation = null;
+		if (roopikSource) {
+			const parts = roopikSource.split(':');
+			if (parts.length >= 5) {
+				// Handle Windows paths (C:/path/file.tsx:10:5:15:20)
+				// Find the last 4 numeric parts
+				const numericParts = [];
+				let filePath = '';
+				for (let i = parts.length - 1; i >= 0 && numericParts.length < 4; i--) {
+					if (/^\\d+$/.test(parts[i])) {
+						numericParts.unshift(parts[i]);
+					} else {
+						filePath = parts.slice(0, i + 1).join(':');
+						break;
+					}
+				}
+				if (numericParts.length === 4) {
+					sourceLocation = {
+						file: filePath,
+						startLine: parseInt(numericParts[0], 10),
+						startColumn: parseInt(numericParts[1], 10),
+						endLine: parseInt(numericParts[2], 10),
+						endColumn: parseInt(numericParts[3], 10)
+					};
+				}
+			}
+		}
+
+		// Find nearest element with source tracking (walk up the tree)
+		let nearestSource = sourceLocation;
+		if (!nearestSource) {
+			let parent = element.parentElement;
+			while (parent && !nearestSource) {
+				const parentSource = parent.getAttribute('data-roopik-source');
+				if (parentSource) {
+					const parts = parentSource.split(':');
+					const numericParts = [];
+					let filePath = '';
+					for (let i = parts.length - 1; i >= 0 && numericParts.length < 4; i--) {
+						if (/^\\d+$/.test(parts[i])) {
+							numericParts.unshift(parts[i]);
+						} else {
+							filePath = parts.slice(0, i + 1).join(':');
+							break;
+						}
+					}
+					if (numericParts.length === 4) {
+						nearestSource = {
+							file: filePath,
+							startLine: parseInt(numericParts[0], 10),
+							startColumn: parseInt(numericParts[1], 10),
+							endLine: parseInt(numericParts[2], 10),
+							endColumn: parseInt(numericParts[3], 10),
+							isParent: true
+						};
+					}
+				}
+				parent = parent.parentElement;
+			}
+		}
+
 		return {
 			tagName: element.tagName.toLowerCase(),
 			id: element.id || null,
@@ -89,7 +156,11 @@ export class InspectModeInjector extends BaseInjector {
 				position: computedStyle.position
 			},
 			textContent: element.textContent?.slice(0, 100) || null,
-			innerHTML: element.innerHTML?.slice(0, 200) || null
+			innerHTML: element.innerHTML?.slice(0, 200) || null,
+			// Source tracking info
+			sourceLocation: nearestSource,
+			componentName: roopikComponent || null,
+			parentContext: roopikParent || null
 		};
 	}
 
