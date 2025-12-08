@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { Framework, ComponentInput, TransformedComponent } from '../../common/build/types.js';
 import { ComponentParser } from '../../common/build/componentParser.js';
+import { createSourceTrackingTransform } from './injectors/sourceTrackingInjector.js';
 
 // ============================================
 // CDN Configuration
@@ -235,13 +236,16 @@ export class ESBuildTransformer {
 		// 2. Detect entry file
 		const userEntryFile = input.entryFile || this.parser.detectEntryFile(input.files, framework);
 
-		// 3. Create synthetic entry point
+		// 3. Apply source tracking to user files (adds data-roopik-source attributes)
+		const trackedFiles = this.applySourceTracking(input.files, framework, input.id);
+
+		// 4. Create synthetic entry point
 		const syntheticEntryPath = 'roopik-main-entry.js';
 		const syntheticEntryCode = this.generateSyntheticEntry(framework, userEntryFile);
 
-		// 4. Combine user files + synthetic entry
+		// 5. Combine tracked user files + synthetic entry
 		const allFiles = {
-			...input.files,
+			...trackedFiles,
 			[syntheticEntryPath]: syntheticEntryCode
 		};
 
@@ -760,5 +764,46 @@ render(Component(), document.getElementById('root'));
 		});
 
 		return Array.from(urls);
+	}
+
+	/**
+	 * Apply source tracking to user files
+	 *
+	 * Adds data-roopik-source attributes to JSX/HTML elements.
+	 * This enables click-to-source functionality in the canvas sandbox.
+	 *
+	 * Works with all frameworks: React, Vue, Svelte, Solid, Preact, HTML
+	 *
+	 * @param files - User source files
+	 * @param framework - Detected framework
+	 * @param componentId - Component ID for tracking
+	 * @returns Files with source tracking attributes injected
+	 */
+	private applySourceTracking(
+		files: Record<string, string>,
+		framework: Framework,
+		componentId: string
+	): Record<string, string> {
+		const transform = createSourceTrackingTransform(framework);
+		const trackedFiles: Record<string, string> = {};
+
+		for (const [filename, content] of Object.entries(files)) {
+			try {
+				// Apply source tracking transformation
+				const transformedContent = transform(content, filename, componentId);
+				trackedFiles[filename] = transformedContent;
+
+				// Log if transformation happened
+				if (transformedContent !== content) {
+					console.log(`[SourceTracking] Transformed: ${filename}`);
+				}
+			} catch (error) {
+				// Gracefully handle errors - use original content
+				console.warn(`[SourceTracking] Failed to transform ${filename}:`, error);
+				trackedFiles[filename] = content;
+			}
+		}
+
+		return trackedFiles;
 	}
 }

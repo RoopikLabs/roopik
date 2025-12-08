@@ -3,7 +3,7 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { useRef, useState, useMemo } from 'react';
+import { useRef, useState, useMemo, useEffect } from 'react';
 import type { Sandbox, Point, DevicePreset, BuildErrorInfo } from '../../types';
 import { DEVICE_PRESETS, getNextDevicePreset } from '../../types';
 import { DeviceIcon } from '../DeviceToggle';
@@ -25,6 +25,8 @@ interface SandboxCardProps {
 	viewport?: { width: number; height: number };
 	/** Position of the focused sandbox (for calculating push-away offset) */
 	focusedSandboxPosition?: { x: number; y: number } | null;
+	/** Whether inspect mode is enabled globally */
+	isInspectMode?: boolean;
 	onMouseDown: (e: React.MouseEvent) => void;
 	onClick: () => void;
 	onDoubleClick: () => void;
@@ -443,6 +445,7 @@ export function SandboxCard({
 	globalDeviceMode,
 	viewport,
 	focusedSandboxPosition,
+	isInspectMode = false,
 	onMouseDown,
 	onClick,
 	onDoubleClick,
@@ -454,6 +457,20 @@ export function SandboxCard({
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [isHovered, setIsHovered] = useState(false);
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+	// Send inspect mode toggle to iframe when isInspectMode changes
+	useEffect(() => {
+		console.log('[SandboxCard] useEffect triggered - isInspectMode:', isInspectMode, 'sandbox:', sandbox.id, 'iframeRef:', !!iframeRef.current, 'contentWindow:', !!iframeRef.current?.contentWindow);
+		if (iframeRef.current?.contentWindow) {
+			console.log('[SandboxCard] Sending roopik-toggle-inspect to iframe:', isInspectMode);
+			iframeRef.current.contentWindow.postMessage({
+				type: 'roopik-toggle-inspect',
+				enabled: isInspectMode
+			}, '*');
+		} else {
+			console.log('[SandboxCard] ⚠️ Cannot send - iframe not ready');
+		}
+	}, [isInspectMode, sandbox.id]);
 
 	// Effective device mode: sandbox override or global
 	const effectiveDeviceMode = sandbox.deviceMode ?? globalDeviceMode;

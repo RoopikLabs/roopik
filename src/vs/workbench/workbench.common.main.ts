@@ -213,6 +213,9 @@ import './contrib/mcp/browser/mcp.contribution.js';
 import './contrib/chat/browser/chatSessions.contribution.js';
 import './contrib/chat/browser/chatContext.contribution.js';
 
+// Roopik Agent
+import './contrib/roopikAgent/browser/roopikAgent.contribution.js';
+
 // Interactive
 import './contrib/interactive/browser/interactive.contribution.js';
 
