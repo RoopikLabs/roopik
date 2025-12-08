@@ -354,12 +354,13 @@ function App() {
 
 				case "componentError": {
 					// Build failed - update sandbox with error
-					const { componentId, error } = msg.payload;
+					const { componentId, error, errorInfo } = msg.payload;
 					pendingBuildsRef.current.delete(componentId);
 
 					console.error("[Canvas] ❌ componentError received:", {
 						componentId,
 						error,
+						errorInfo,
 					});
 
 					setSandboxes((prev) =>
@@ -369,6 +370,7 @@ function App() {
 									...sandbox,
 									buildStatus: "error" as const,
 									buildError: error,
+									buildErrorInfo: errorInfo,
 									bundledCode: undefined,
 								};
 							}

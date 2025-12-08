@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useRef, useState, useMemo } from 'react';
-import type { Sandbox, Point, DevicePreset } from '../../types';
+import type { Sandbox, Point, DevicePreset, BuildErrorInfo } from '../../types';
 import { DEVICE_PRESETS, getNextDevicePreset } from '../../types';
 import { DeviceIcon } from '../DeviceToggle';
 import { DeleteConfirmModal } from '../Toolbar/DeleteConfirmModal';
@@ -215,8 +215,71 @@ const LOADING_HTML = `<!DOCTYPE html>
 
 /**
  * Error state HTML shown when build fails
+ * Now accepts optional structured errorInfo for detailed display
+ * Supports both esbuild format (errors array) and simple format
  */
-function generateErrorHTML(error: string): string {
+function generateErrorHTML(error: string, errorInfo?: BuildErrorInfo): string {
+	// Extract location from errorInfo - check both esbuild format and simple format
+	let file: string | undefined;
+	let line: number | undefined;
+	let column: number | undefined;
+	let lineText: string | undefined;
+
+	if (errorInfo) {
+		// Check esbuild format first (errors array with location)
+		if (errorInfo.errors && errorInfo.errors.length > 0) {
+			const firstError = errorInfo.errors[0];
+			if (firstError.location) {
+				file = firstError.location.file;
+				line = firstError.location.line;
+				column = firstError.location.column;
+				lineText = firstError.location.lineText;
+			}
+		}
+		// Fallback to simple format
+		if (!file && !line) {
+			file = errorInfo.file;
+			line = errorInfo.line;
+			column = errorInfo.column;
+		}
+	}
+
+	// Clean up file path (remove vfs:./ prefix if present)
+	if (file) {
+		file = file.replace(/^vfs:\.\//, '');
+	}
+
+	// Build location HTML
+	let locationHtml = '';
+	if (file || line) {
+		const parts: string[] = [];
+		if (file) {
+			parts.push(escapeHtml(file));
+		}
+		if (line) {
+			parts.push(`line ${line}`);
+			if (column) {
+				parts.push(`col ${column}`);
+			}
+		}
+		if (parts.length > 0) {
+			locationHtml = `<div class="error-location">${parts.join(' : ')}</div>`;
+		}
+	}
+
+	// Build line preview HTML if we have lineText
+	let linePreviewHtml = '';
+	if (lineText && column) {
+		// Show the problematic line with a caret pointing to the error column
+		const escapedLine = escapeHtml(lineText);
+		const caretPadding = ' '.repeat(Math.max(0, column - 1));
+		linePreviewHtml = `
+		<div class="error-line-preview">
+			<code>${escapedLine}</code>
+			<code class="error-caret">${caretPadding}^</code>
+		</div>`;
+	}
+
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -244,7 +307,7 @@ function generateErrorHTML(error: string): string {
 		}
 		h3 {
 			color: #dc2626;
-			margin-bottom: 12px;
+			margin-bottom: 8px;
 			font-size: 16px;
 			display: flex;
 			align-items: center;
@@ -253,6 +316,36 @@ function generateErrorHTML(error: string): string {
 		.icon {
 			width: 20px;
 			height: 20px;
+		}
+		.error-location {
+			background: #fef3c7;
+			color: #92400e;
+			padding: 6px 10px;
+			border-radius: 6px;
+			font-size: 12px;
+			font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+			margin-bottom: 12px;
+			display: flex;
+			align-items: center;
+			gap: 6px;
+		}
+		.error-line-preview {
+			background: #1e1e1e;
+			padding: 8px 12px;
+			border-radius: 6px;
+			margin-bottom: 12px;
+			overflow-x: auto;
+		}
+		.error-line-preview code {
+			display: block;
+			font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+			font-size: 11px;
+			color: #d4d4d4;
+			white-space: pre;
+		}
+		.error-caret {
+			color: #f87171;
+			font-weight: bold;
 		}
 		pre {
 			background: #f5f5f5;
@@ -274,6 +367,8 @@ function generateErrorHTML(error: string): string {
 			</svg>
 			Build Failed
 		</h3>
+		${locationHtml}
+		${linePreviewHtml}
 		<pre>${escapeHtml(error)}</pre>
 	</div>
 </body>
@@ -383,8 +478,8 @@ export function SandboxCard({
 				console.log('[SandboxCard] 🔨 Status: building');
 				return LOADING_HTML;
 			case 'error':
-				console.error('[SandboxCard] ❌ Status: error -', sandbox.buildError);
-				return generateErrorHTML(sandbox.buildError || 'Unknown error');
+				console.error('[SandboxCard] ❌ Status: error -', sandbox.buildError, sandbox.buildErrorInfo);
+				return generateErrorHTML(sandbox.buildError || 'Unknown error', sandbox.buildErrorInfo);
 			case 'ready':
 				if (sandbox.bundledCode) {
 					// console.log('[SandboxCard] ✅ Status: ready - Injecting bundledCode');
@@ -399,7 +494,7 @@ export function SandboxCard({
 				console.warn('[SandboxCard] ⚠️ Unknown status:', sandbox.buildStatus);
 				return PENDING_HTML;
 		}
-	}, [sandbox.buildStatus, sandbox.buildError, sandbox.bundledCode, sandbox.id]);
+	}, [sandbox.buildStatus, sandbox.buildError, sandbox.buildErrorInfo, sandbox.bundledCode, sandbox.id]);
 
 	// Get display name from componentInput (prefer name, fallback to filename)
 	const displayName = useMemo(() => {

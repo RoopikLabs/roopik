@@ -69,6 +69,50 @@ import type { DevicePreset } from './device';
 export type SandboxBuildStatus = 'pending' | 'building' | 'ready' | 'error';
 
 /**
+ * ESBuild error location
+ */
+export interface EsbuildErrorLocation {
+	file?: string;
+	line?: number;
+	column?: number;
+	length?: number;
+	lineText?: string;
+}
+
+/**
+ * ESBuild error entry
+ */
+export interface EsbuildError {
+	category?: string;
+	message?: string;
+	location?: EsbuildErrorLocation;
+	notes?: Array<{ text?: string }>;
+}
+
+/**
+ * Structured build error info from Core's build pipeline
+ * Can be either esbuild format (with errors array) or simple format
+ */
+export interface BuildErrorInfo {
+	/** Error message (simple format) */
+	message?: string;
+	/** Error code (for categorization) */
+	code?: string;
+	/** File that caused the error (simple format) */
+	file?: string;
+	/** Line number (1-indexed, simple format) */
+	line?: number;
+	/** Column number (1-indexed, simple format) */
+	column?: number;
+	/** Stack trace */
+	stack?: string;
+	/** Build time in ms (esbuild format) */
+	buildTime?: number;
+	/** Array of esbuild errors (esbuild format) */
+	errors?: EsbuildError[];
+}
+
+/**
  * Sandbox represents a live, interactive preview environment (iframe)
  *
  * All components are built via Core's ESBuild pipeline.
@@ -87,8 +131,11 @@ export interface Sandbox {
 	/** Build status */
 	buildStatus: SandboxBuildStatus;
 
-	/** Error message if build failed */
+	/** Error message if build failed (simple string for display) */
 	buildError?: string;
+
+	/** Structured error info with file, line, column (for detailed display) */
+	buildErrorInfo?: BuildErrorInfo;
 
 	/** Pre-built ESM from Core's ESBuild pipeline */
 	bundledCode?: string;
@@ -227,7 +274,7 @@ export type ExtensionMessage =
 	// Core pipeline responses
 	| { type: 'componentCreated'; payload: { componentId: string; canvasId: string; name?: string } }
 	| { type: 'componentBuilt'; payload: { componentId: string; result: TransformedComponent } }
-	| { type: 'componentError'; payload: { componentId: string; error: string } }
+	| { type: 'componentError'; payload: { componentId: string; error: string; errorInfo?: BuildErrorInfo } }
 	// Canvas state
 	| { type: 'canvasLoaded'; payload: { state: CanvasState } }
 	| { type: 'canvasSaved'; payload: { success: boolean } }

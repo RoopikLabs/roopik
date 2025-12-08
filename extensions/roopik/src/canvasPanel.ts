@@ -317,10 +317,11 @@ export class CanvasPanel implements vscode.Disposable {
 				error: 'Build succeeded but bundle path not provided'
 			});
 		} else {
-			// Build failed
+			// Build failed - send full errorInfo for detailed display
 			this.postToWebview('componentError', {
 				componentId: event.componentId,
-				error: event.errorInfo?.message || 'Build failed'
+				error: event.errorInfo?.message || 'Build failed',
+				errorInfo: event.errorInfo
 			});
 		}
 	}

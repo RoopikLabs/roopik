@@ -168,6 +168,12 @@ export function CodePopup({
 			saveCurrentFileRef.current();
 		});
 
+		// Re-enable Ctrl+X (cut) - VSCode webview intercepts this by default
+		// We explicitly bind it to Monaco's built-in cut action
+		editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyX, () => {
+			editor.trigger('keyboard', 'editor.action.clipboardCutAction', null);
+		});
+
 		// Apply initial line highlight (only once on first mount)
 		if (initialLine && !initialHighlightApplied.current) {
 			initialHighlightApplied.current = true;
