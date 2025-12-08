@@ -107,6 +107,20 @@ function App() {
 	const [codePopupSandboxId, setCodePopupSandboxId] = useState<string | null>(null);
 	const [codePopupName, setCodePopupName] = useState<string | null>(null);
 	const [codePopupFiles, setCodePopupFiles] = useState<CodeFile[]>([]);
+	const [codePopupInitialLine, setCodePopupInitialLine] = useState<number | undefined>(undefined);
+	const [codePopupInitialLineEnd, setCodePopupInitialLineEnd] = useState<number | undefined>(undefined);
+
+	// Pending element selection (stores source location while loading files)
+	const pendingElementSelectionRef = useRef<{
+		componentId: string;
+		sourceLocation: {
+			file: string;
+			startLine: number;
+			startColumn: number;
+			endLine: number;
+			endColumn: number;
+		};
+	} | null>(null);
 
 	// Drag-drop state
 	const [isDragOver, setIsDragOver] = useState(false);
@@ -383,7 +397,7 @@ function App() {
 				case "canvasLoaded": {
 					// Restore canvas state
 					const { state } = msg.payload;
-					console.log("[Canvas] 📂 Canvas loaded:", {
+					console.log("[Canvas] Canvas loaded:", {
 						id: state.id,
 						name: state.name,
 						sandboxCount: state.sandboxes.length,
@@ -414,7 +428,7 @@ function App() {
 				case "addImportedComponent": {
 					// Import component from file
 					const { componentInput, position } = msg.payload;
-					console.log("[Canvas] 📥 Importing component:", {
+					console.log("[Canvas] Importing component:", {
 						id: componentInput.id,
 						framework: componentInput.framework,
 						files: Object.keys(componentInput.files),
@@ -489,7 +503,7 @@ function App() {
 				case "componentFilesLoaded": {
 					// Files loaded for code editor popup
 					const { componentId, componentName, files } = msg.payload;
-					console.log("[Canvas] 📄 Component files loaded:", componentId, componentName, files.length, "files");
+					console.log("[Canvas] Component files loaded:", componentId, componentName, files.length, "files");
 
 					// Transform to CodeFile format with language detection
 					const codeFiles: CodeFile[] = files.map((f: { filename: string; content: string; isEntry?: boolean }) => ({
@@ -499,8 +513,24 @@ function App() {
 						isEntry: f.isEntry,
 					}));
 
+					// Check for pending element selection (from click-to-source)
+					let initialLine: number | undefined = undefined;
+					let initialLineEnd: number | undefined = undefined;
+					if (pendingElementSelectionRef.current?.componentId === componentId) {
+						const { startLine, endLine } = pendingElementSelectionRef.current.sourceLocation;
+						initialLine = startLine;
+						// Only set end line if it's different from start (multi-line element)
+						if (endLine > startLine) {
+							initialLineEnd = endLine;
+						}
+						console.log("[Canvas] Opening at line", initialLine, "to", initialLineEnd ?? initialLine, "(from element selection)");
+						pendingElementSelectionRef.current = null; // Clear pending
+					}
+
 					setCodePopupFiles(codeFiles);
 					setCodePopupName(componentName || null);
+					setCodePopupInitialLine(initialLine);
+					setCodePopupInitialLineEnd(initialLineEnd);
 					setCodePopupSandboxId(componentId);
 					break;
 				}
@@ -508,7 +538,7 @@ function App() {
 				case "componentFileSaved": {
 					// File saved confirmation - file watcher will trigger rebuild
 					const { componentId, filename, success } = msg.payload;
-					console.log("[Canvas] 💾 Component file saved:", componentId, filename, success ? "✓" : "✗");
+					console.log("[Canvas] Component file saved:", componentId, filename, success ? "✓" : "✗");
 
 					// If save succeeded, set sandbox to "building" state
 					// The file watcher in Core will detect the change and trigger rebuild
@@ -544,7 +574,7 @@ function App() {
 					if (sandboxPositions) {
 						loadedPositionsRef.current = sandboxPositions;
 						console.log(
-							"[Canvas] 📍 Loaded positions for",
+							"[Canvas] Loaded positions for",
 							Object.keys(sandboxPositions).length,
 							"sandboxes"
 						);
@@ -557,6 +587,53 @@ function App() {
 		window.addEventListener("message", handleMessage);
 		return () => window.removeEventListener("message", handleMessage);
 	}, [sandboxes]);
+
+	// Handle messages from sandbox iframes (element inspection, errors, etc.)
+	useEffect(() => {
+		const handleIframeMessage = (event: MessageEvent) => {
+			const data = event.data;
+			if (!data || typeof data !== 'object') return;
+
+			// Handle element selection from inspect mode
+			if (data.type === 'roopik-element-selected') {
+				const { componentId, element } = data;
+				console.log('[Canvas] Element selected in sandbox:', componentId, element);
+
+				// Check if we have source location info
+				if (element?.sourceLocation) {
+					const { file, startLine } = element.sourceLocation;
+					console.log('[Canvas] Source location:', file, 'line', startLine);
+
+					// Store the pending selection
+					pendingElementSelectionRef.current = {
+						componentId,
+						sourceLocation: element.sourceLocation
+					};
+
+					// Request files from extension - will receive componentFilesLoaded message
+					vscode.postMessage({
+						type: "loadComponentFiles",
+						payload: { componentId },
+					});
+				} else {
+					console.log('[Canvas] ⚠️ No source location for element');
+				}
+			}
+
+			// Handle inspect mode ready notification
+			if (data.type === 'roopik-inspect-ready') {
+				console.log('[Canvas] ✓ Inspect mode ready for sandbox:', data.componentId);
+			}
+
+			// Handle component runtime errors
+			if (data.type === 'roopik-component-error') {
+				console.log('[Canvas] ❌ Runtime error in sandbox:', data.componentId, data.error);
+			}
+		};
+
+		window.addEventListener("message", handleIframeMessage);
+		return () => window.removeEventListener("message", handleIframeMessage);
+	}, []);
 
 	// Notify extension that webview is ready
 	useEffect(() => {
@@ -852,6 +929,8 @@ function App() {
 		setCodePopupSandboxId(null);
 		setCodePopupName(null);
 		setCodePopupFiles([]);
+		setCodePopupInitialLine(undefined);
+		setCodePopupInitialLineEnd(undefined);
 	}, []);
 
 	// Save file from code popup
@@ -986,8 +1065,8 @@ function App() {
 			setIsSelectMode(false);
 			setIsRectangleMode(false);
 		}
-		console.log("[BottomActionBar] Inspect mode:", newState);
-	}, [isInspectMode]);
+		console.log("[ComponentView] Inspect mode toggled to:", newState, "- sandboxes count:", sandboxes.length);
+	}, [isInspectMode, sandboxes.length]);
 
 	const handleRectangleSelection = useCallback(() => {
 		const newState = !isRectangleMode;
@@ -1160,6 +1239,7 @@ function App() {
 					globalDeviceMode={globalDeviceMode}
 					snapMode={snapMode}
 					viewport={viewport}
+					isInspectMode={isInspectMode}
 					onTransformChange={setTransform}
 					onSandboxClick={handleSandboxClick}
 					onSandboxDoubleClick={focusSandbox}
@@ -1211,6 +1291,8 @@ function App() {
 					sandboxName={codePopupName || codePopupSandboxId}
 					files={codePopupFiles}
 					entryFile={codePopupFiles.find(f => f.isEntry)?.filename}
+					initialLine={codePopupInitialLine}
+					initialLineEnd={codePopupInitialLineEnd}
 					onClose={handleCloseCodePopup}
 					onSave={handleSaveCodeFile}
 				/>

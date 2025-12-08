@@ -27,6 +27,8 @@ export interface InfiniteCanvasProps {
 	snapMode?: SnapMode;
 	/** Viewport dimensions for dynamic focused sandbox sizing */
 	viewport?: { width: number; height: number };
+	/** Whether inspect mode is enabled globally */
+	isInspectMode?: boolean;
 	onTransformChange: (transform: Transform) => void;
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
@@ -53,6 +55,8 @@ interface SandboxLayerProps {
 	globalDeviceMode: DevicePreset;
 	/** Viewport dimensions for dynamic focused sandbox sizing */
 	viewport?: { width: number; height: number };
+	/** Whether inspect mode is enabled globally */
+	isInspectMode?: boolean;
 	onSandboxDragStart: (e: React.MouseEvent, sandboxId: string) => void;
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
@@ -73,6 +77,7 @@ function SandboxLayer({
 	dragOffset,
 	globalDeviceMode,
 	viewport,
+	isInspectMode,
 	onSandboxDragStart,
 	onSandboxClick,
 	onSandboxDoubleClick,
@@ -81,6 +86,9 @@ function SandboxLayer({
 	onSandboxRebuild,
 	onSandboxUpdate,
 }: SandboxLayerProps) {
+	// Debug log for inspect mode
+	console.log('[SandboxLayer] Rendering with isInspectMode:', isInspectMode, '- sandboxes:', sandboxes.length);
+
 	// Find the focused sandbox position for push-away effect
 	const focusedSandbox = focusedSandboxId
 		? sandboxes.find(s => s.id === focusedSandboxId)
@@ -104,6 +112,7 @@ function SandboxLayer({
 						globalDeviceMode={globalDeviceMode}
 						viewport={viewport}
 						focusedSandboxPosition={focusedSandboxPosition}
+						isInspectMode={isInspectMode}
 						onMouseDown={(e) => onSandboxDragStart(e, sandbox.id)}
 						onClick={() => onSandboxClick(sandbox.id)}
 						onDoubleClick={() => onSandboxDoubleClick(sandbox.id)}
@@ -142,6 +151,7 @@ export function InfiniteCanvas({
 	globalDeviceMode,
 	snapMode = 'free',
 	viewport,
+	isInspectMode,
 	onTransformChange,
 	onSandboxClick,
 	onSandboxDoubleClick,
@@ -211,6 +221,7 @@ export function InfiniteCanvas({
 					dragOffset={dragOffset}
 					globalDeviceMode={globalDeviceMode}
 					viewport={viewport}
+					isInspectMode={isInspectMode}
 					onSandboxDragStart={handleSandboxDragStart}
 					onSandboxClick={onSandboxClick}
 					onSandboxDoubleClick={onSandboxDoubleClick}
