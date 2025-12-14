@@ -14,6 +14,7 @@ import { LoadReason } from '../../../../../platform/window/electron-main/window.
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { CDPCssService } from './cssResolvers/cdpCssService.js';
 import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.js';
+import contextMenu from 'electron-context-menu';
 
 /**
  * Browser View Service
@@ -1007,6 +1008,63 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		// This allows renderer to sync its state without polling
 		webContents.on('devtools-closed', () => {
 			this._onDevToolsClosed.fire({ browserViewId });
+		});
+
+		// =====================================================
+		// Context Menu (Right-Click)
+		// =====================================================
+
+		// Enable standard browser context menu with custom navigation items
+		// Disable "Search with Google" and "Select All", add Back/Forward/Reload, keep Inspect Element
+		contextMenu({
+			window: browserView, // WebContentsView is accepted as a window option
+			showSearchWithGoogle: false, // Disable "Search with Google"
+			showSelectAll: false, // Disable "Select All" (irrelevant)
+			showInspectElement: true, // Always show Inspect Element (best feature for debugging)
+			prepend: (defaultActions, params, _browserWindow) => {
+				const menuItems: Electron.MenuItemConstructorOptions[] = [];
+				const wc = browserView.webContents;
+
+				// Navigation items (Back, Forward, Reload)
+				// Always show Back/Forward but disable them when not available
+				const canGoBack = wc.navigationHistory.canGoBack();
+				const canGoForward = wc.navigationHistory.canGoForward();
+
+				menuItems.push(
+					{
+						label: 'Back',
+						enabled: canGoBack,
+						click: () => {
+							if (canGoBack) {
+								wc.navigationHistory.goBack();
+							}
+						}
+					},
+					{
+						label: 'Forward',
+						enabled: canGoForward,
+						click: () => {
+							if (canGoForward) {
+								wc.navigationHistory.goForward();
+							}
+						}
+					},
+					{ type: 'separator' },
+					{
+						label: 'Reload',
+						click: () => {
+							wc.reload();
+						}
+					},
+					{ type: 'separator' }
+				);
+
+				return menuItems;
+			},
+			append: (_defaultActions, _params, _browserWindow) => {
+				// Custom items can be added here in the future (e.g., "View Source" using roopik-data)
+				return [];
+			}
 		});
 
 	}
