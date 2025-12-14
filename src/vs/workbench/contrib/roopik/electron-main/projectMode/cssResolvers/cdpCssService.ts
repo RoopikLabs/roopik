@@ -649,6 +649,171 @@ export class CDPCssService {
 	}
 
 	/**
+	 * Resolve a position using an inline source map
+	 * For Vite-injected styles from Vue/Svelte SFCs, the sourceMapURL contains
+	 * the full source map with line mappings
+	 *
+	 * @param sourceMapURL - data:application/json;base64,... URL
+	 * @param line - Line in compiled CSS (1-indexed)
+	 * @param column - Column in compiled CSS (0-indexed)
+	 * @returns Original position or null
+	 */
+	resolvePositionFromInlineSourceMap(
+		sourceMapURL: string | undefined,
+		line: number,
+		column: number
+	): { file: string; line: number; column: number } | null {
+		if (!sourceMapURL) {
+			return null;
+		}
+
+		const base64Match = sourceMapURL.match(/^data:application\/json;base64,(.+)$/);
+		if (!base64Match) {
+			return null;
+		}
+
+		try {
+			const decoded = Buffer.from(base64Match[1], 'base64').toString('utf-8');
+			const sourceMap = JSON.parse(decoded) as {
+				sources?: string[];
+				mappings?: string;
+				names?: string[];
+			};
+
+			if (!sourceMap.sources || sourceMap.sources.length === 0 || !sourceMap.mappings) {
+				return null;
+			}
+
+			// Decode VLQ mappings to find original position
+			// The mappings string is semicolon-separated (lines) and comma-separated (segments)
+			const originalPosition = this.decodeSourceMapPosition(
+				sourceMap.mappings,
+				sourceMap.sources,
+				line,
+				column
+			);
+
+			return originalPosition;
+		} catch (error) {
+			console.error('[CDPCssService] Failed to resolve from inline source map:', error);
+			return null;
+		}
+	}
+
+	/**
+	 * Decode source map VLQ mappings to find original position
+	 * Source maps use Base64 VLQ encoding for compact representation
+	 *
+	 * Each segment has: [genCol, sourceIdx, origLine, origCol, nameIdx?]
+	 */
+	private decodeSourceMapPosition(
+		mappings: string,
+		sources: string[],
+		targetLine: number,
+		targetColumn: number
+	): { file: string; line: number; column: number } | null {
+		// VLQ decoding characters
+		const VLQ_BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+		const decodeVLQ = (encoded: string): number[] => {
+			const values: number[] = [];
+			let value = 0;
+			let shift = 0;
+
+			for (const char of encoded) {
+				const digit = VLQ_BASE64.indexOf(char);
+				if (digit === -1) continue;
+
+				const hasContinuation = digit & 32;
+				value += (digit & 31) << shift;
+
+				if (hasContinuation) {
+					shift += 5;
+				} else {
+					// Convert from unsigned to signed
+					const negate = value & 1;
+					value = value >> 1;
+					values.push(negate ? -value : value);
+					value = 0;
+					shift = 0;
+				}
+			}
+
+			return values;
+		};
+
+		// Split by lines (semicolons)
+		const lines = mappings.split(';');
+
+		// State for decoding (values are relative to previous)
+		let sourceIndex = 0;
+		let originalLine = 0;
+		let originalColumn = 0;
+
+		// Iterate through lines to find our target
+		for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+			const lineNumber = lineIndex + 1; // 1-indexed
+			const lineMappings = lines[lineIndex];
+
+			if (!lineMappings) continue;
+
+			// Split by segments (commas)
+			const segments = lineMappings.split(',');
+			let generatedColumn = 0;
+
+			for (const segment of segments) {
+				if (!segment) continue;
+
+				const values = decodeVLQ(segment);
+				if (values.length === 0) continue;
+
+				// Update generated column (always present)
+				generatedColumn += values[0];
+
+				// If we have source info (at least 4 values)
+				if (values.length >= 4) {
+					sourceIndex += values[1];
+					originalLine += values[2];
+					originalColumn += values[3];
+				}
+
+				// Check if this is the line we're looking for
+				// Use >= for column to find the closest mapping
+				if (lineNumber === targetLine && generatedColumn <= targetColumn) {
+					// Found a mapping for our target position
+					if (sourceIndex >= 0 && sourceIndex < sources.length) {
+						return {
+							file: sources[sourceIndex],
+							line: originalLine + 1, // Convert to 1-indexed
+							column: originalColumn
+						};
+					}
+				}
+			}
+
+			// If we've passed the target line, return the last mapping we found on that line
+			if (lineNumber === targetLine && sourceIndex >= 0 && sourceIndex < sources.length) {
+				return {
+					file: sources[sourceIndex],
+					line: originalLine + 1,
+					column: originalColumn
+				};
+			}
+		}
+
+		// If no exact match found but we have some mapping, return the last one
+		if (sourceIndex >= 0 && sourceIndex < sources.length && originalLine >= 0) {
+			return {
+				file: sources[sourceIndex],
+				line: originalLine + 1,
+				column: originalColumn
+			};
+		}
+
+		return null;
+	}
+
+	/**
 	 * Get stylesheet text content
 	 */
 	async getStyleSheetText(

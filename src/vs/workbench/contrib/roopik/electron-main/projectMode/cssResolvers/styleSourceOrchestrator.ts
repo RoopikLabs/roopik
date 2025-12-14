@@ -3,6 +3,7 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
+import * as path from 'path';
 import type {
 	ElementStyleInfo,
 	ResolvedCSSProperty,
@@ -243,11 +244,18 @@ export class StyleSourceOrchestrator {
 				continue;
 			}
 
-			// Get stylesheet info (URL, source map URL)
-			const sheetInfo = await this.cdpService.getStyleSheetSourceURL(
+			// Get full stylesheet header (includes startLine offset for embedded styles)
+			const sheetHeader = await this.cdpService.getStyleSheetHeader(
 				browserViewId,
 				rule.styleSheetId
 			);
+
+			// Also get basic source info for URL conversion
+			const sheetInfo = sheetHeader ? {
+				sourceURL: sheetHeader.sourceURL,
+				sourceMapURL: sheetHeader.sourceMapURL,
+				isInline: sheetHeader.isInline
+			} : null;
 
 			// Determine file path and origin
 			let filePath: string | null = null;
@@ -307,6 +315,40 @@ export class StyleSourceOrchestrator {
 			// Get location from rule style range
 			let location = this.cdpService.convertRange(rule.style.range, filePath);
 
+			// For Vite-injected styles (Vue SFC, Svelte, etc.), resolve using inline source map
+			// The sourceMapURL contains base64-encoded mappings to original file positions
+			if (location && sheetHeader?.sourceMapURL?.startsWith('data:application/json;base64,')) {
+				const originalPos = this.cdpService.resolvePositionFromInlineSourceMap(
+					sheetHeader.sourceMapURL,
+					location.line,
+					location.column
+				);
+				if (originalPos) {
+					// Use the source-mapped position
+					location = {
+						...location,
+						file: this.resolveSourceMapPath(originalPos.file, filePath),
+						line: originalPos.line,
+						column: originalPos.column
+					};
+					// Update filePath to the resolved source file
+					filePath = location.file;
+					console.log('[StyleSourceOrchestrator] Resolved via inline source map:', {
+						selector: rule.selectorList.text,
+						file: filePath?.slice(-30),
+						line: location.line
+					});
+				}
+			} else if (location && sheetHeader && sheetHeader.startLine > 0) {
+				// Fallback: Apply stylesheet offset for embedded styles
+				// CDP's rule.style.range is relative to the stylesheet's start position
+				location = {
+					...location,
+					line: location.line + sheetHeader.startLine,
+					endLine: location.endLine ? location.endLine + sheetHeader.startLine : undefined
+				};
+			}
+
 			// Try to resolve through source map
 			if (isSourceMapped && location && originalFile) {
 				const originalLocation = await this.sourceMapResolver.resolveToOriginal(
@@ -328,11 +370,13 @@ export class StyleSourceOrchestrator {
 			// Get matching selector text
 			const selectorText = this.getMatchingSelectorText(rule, matchingSelectors);
 
-			// Process properties
+			// Process properties (pass source map info for embedded styles)
 			const properties = await this.processRuleProperties(
 				rule.style.cssProperties,
 				filePath,
-				isSourceMapped ? originalFile : undefined
+				isSourceMapped ? originalFile : undefined,
+				sheetHeader?.startLine || 0,
+				sheetHeader?.sourceMapURL
 			);
 
 			// Calculate specificity
@@ -379,13 +423,22 @@ export class StyleSourceOrchestrator {
 	 * Important: We only include properties that have a source range.
 	 * Properties without a range are expanded/computed values (e.g., padding-top
 	 * expanded from padding shorthand) and should not be shown in "Element Styles".
+	 *
+	 * @param cssProperties - CDP CSS properties
+	 * @param filePath - File path for the stylesheet
+	 * @param originalFile - Original file before source map resolution
+	 * @param stylesheetStartLine - Line offset for embedded styles (Vue SFC, Svelte)
+	 * @param sourceMapURL - Inline source map URL for Vite-injected styles
 	 */
 	private async processRuleProperties(
 		cssProperties: CDPCSSProperty[],
 		filePath: string,
-		originalFile?: string
+		originalFile?: string,
+		stylesheetStartLine: number = 0,
+		sourceMapURL?: string
 	): Promise<MatchedCSSProperty[]> {
 		const properties: MatchedCSSProperty[] = [];
+		const hasInlineSourceMap = sourceMapURL?.startsWith('data:application/json;base64,');
 
 		for (const prop of cssProperties) {
 			// Skip if no name (shouldn't happen but be safe)
@@ -412,7 +465,31 @@ export class StyleSourceOrchestrator {
 
 			let location = this.cdpService.convertRange(prop.range, filePath);
 
-			// Try source map resolution for property location
+			// For Vite-injected styles, resolve using inline source map
+			if (location && hasInlineSourceMap) {
+				const originalPos = this.cdpService.resolvePositionFromInlineSourceMap(
+					sourceMapURL,
+					location.line,
+					location.column
+				);
+				if (originalPos) {
+					location = {
+						...location,
+						file: this.resolveSourceMapPath(originalPos.file, filePath),
+						line: originalPos.line,
+						column: originalPos.column
+					};
+				}
+			} else if (location && stylesheetStartLine > 0) {
+				// Fallback: Apply stylesheet offset for embedded styles
+				location = {
+					...location,
+					line: location.line + stylesheetStartLine,
+					endLine: location.endLine ? location.endLine + stylesheetStartLine : undefined
+				};
+			}
+
+			// Try source map resolution for property location (SCSS/LESS)
 			if (originalFile && location) {
 				const originalLocation = await this.sourceMapResolver.resolveToOriginal(
 					originalFile,
@@ -772,6 +849,26 @@ export class StyleSourceOrchestrator {
 		]);
 
 		return inheritableProperties.has(propertyName);
+	}
+
+	/**
+	 * Resolve a source map path to an absolute file path
+	 * Source map paths can be relative or absolute
+	 */
+	private resolveSourceMapPath(sourceMapPath: string, currentFilePath: string): string {
+		// If already absolute, return as-is
+		if (this.isAbsoluteFilePath(sourceMapPath)) {
+			return sourceMapPath.replace(/\\/g, '/');
+		}
+
+		// If it's a simple filename (like "Footer.svelte"), resolve relative to project src
+		if (!sourceMapPath.includes('/') && !sourceMapPath.includes('\\')) {
+			return path.join(this.projectRoot, 'src', sourceMapPath).replace(/\\/g, '/');
+		}
+
+		// Resolve relative path from current file's directory
+		const currentDir = path.dirname(currentFilePath);
+		return path.resolve(currentDir, sourceMapPath).replace(/\\/g, '/');
 	}
 
 	/**

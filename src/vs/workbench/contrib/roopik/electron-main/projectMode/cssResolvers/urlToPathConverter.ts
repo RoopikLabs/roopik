@@ -50,6 +50,7 @@ export class URLToPathConverter {
 	 * Convert a browser URL to local file path
 	 *
 	 * @param url - URL from browser (e.g., http://localhost:5173/src/button.css)
+	 *              or filename from source map (e.g., App.svelte, Footer.vue)
 	 * @returns Local file path or null if external/unmappable
 	 */
 	convert(url: string): string | null {
@@ -65,6 +66,21 @@ export class URLToPathConverter {
 		// Skip blob URLs
 		if (url.startsWith('blob:')) {
 			return null;
+		}
+
+		// Handle simple filenames from source maps (Vue SFC, Svelte, etc.)
+		// These come as just "App.svelte" or "Footer.vue" without a protocol
+		if (!url.includes('://') && !url.startsWith('/')) {
+			// It's a relative filename - resolve against project root
+			// This typically comes from Vite's source maps for SFC files
+			const localPath = path.join(this.projectRoot, 'src', url);
+			return this.normalizeSlashes(localPath);
+		}
+
+		// Handle paths that look like relative paths (./foo or ../foo)
+		if (url.startsWith('./') || url.startsWith('../')) {
+			const localPath = path.join(this.projectRoot, url);
+			return this.normalizeSlashes(localPath);
 		}
 
 		try {
