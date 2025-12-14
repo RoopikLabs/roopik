@@ -356,6 +356,268 @@ console.log('[StyleSourceOrchestrator] Resolved position:', {
 
 ---
 
+## Style Inspect Panel: How Each Section Works
+
+The Style Inspect panel displays CSS information in multiple sections. Understanding how each section is computed helps debug issues and ensures consistent behavior.
+
+### Panel Sections Overview
+
+```
+┌─────────────────────────────────────┐
+│ ELEMENT                             │  ← Element info (tag, classes, id)
+├─────────────────────────────────────┤
+│ INLINE STYLES (N)                   │  ← style="" attribute on element
+├─────────────────────────────────────┤
+│ ELEMENT STYLES (N)                  │  ← CSS rules targeting THIS element
+├─────────────────────────────────────┤
+│ INHERITED (N)                       │  ← Styles from parent elements
+│   Inherited from body               │
+│   Inherited from section.hero       │
+├─────────────────────────────────────┤
+│ RESET STYLES (N)                    │  ← Universal selectors (*, *::before)
+├─────────────────────────────────────┤
+│ ALL COMPUTED (N)                    │  ← Final computed values with sources
+└─────────────────────────────────────┘
+```
+
+### Data Flow
+
+All sections are populated from `styleSourceOrchestrator.getElementStyles()`:
+
+```typescript
+// styleSourceOrchestrator.ts
+async getElementStyles(request): Promise<GetElementStylesResult> {
+    // 1. Get CDP data
+    const matchedStyles = await cdp.CSS.getMatchedStylesForNode({ nodeId });
+
+    // 2. Process element's own rules → matchedRules[]
+    const { rules: matchedRules } = await this.processMatchedRules(matchedStyles.matchedCSSRules);
+
+    // 3. Process inline styles → inlineStyles[]
+    const inlineStyles = this.processInlineStyles(matchedStyles.inlineStyle);
+
+    // 4. Process inherited styles → inheritedStyles[]
+    // IMPORTANT: Pass element's own styles to correctly track overrides!
+    const inheritedStyles = await this.processInheritedStyles(
+        matchedStyles.inherited,
+        matchedRules,      // ← Element's CSS rules
+        inlineStyles       // ← Element's inline styles
+    );
+
+    // 5. Build "All Computed" list → properties[]
+    const properties = this.buildResolvedProperties(matchedRules, inlineStyles, inheritedStyles);
+
+    return { matchedRules, inlineStyles, inheritedStyles, properties };
+}
+```
+
+### CSS Inheritance: The Key Concept
+
+**Not all CSS properties inherit!** This is fundamental to how the Inherited section works.
+
+#### Inheritable Properties (pass to children)
+```css
+/* These properties naturally flow down to child elements */
+font-family, font-size, font-weight, font-style
+color, line-height, letter-spacing, word-spacing
+text-align, text-indent, text-transform
+visibility, cursor, list-style
+```
+
+#### Non-Inheritable Properties (do NOT pass to children)
+```css
+/* These properties only affect the element they're defined on */
+background, background-color, background-image
+margin, padding, border
+width, height, display, position
+overflow, z-index, opacity
+```
+
+### Why This Matters for the UI
+
+When displaying **inherited styles**, we show rules from parent elements. But we need to distinguish:
+
+| Property State | Visual Treatment | Meaning |
+|----------------|------------------|---------|
+| **Active** | Normal text | Property inherits and applies to element |
+| **Overridden** | ~~Strikethrough~~ | A closer rule defines the same property |
+| **Not Inheritable** | Greyed out | Property doesn't inherit (like `background-color`) |
+
+### Override Logic: Who Wins?
+
+CSS cascade priority (highest to lowest):
+
+```
+1. Element's inline styles          style="color: red"
+2. Element's CSS rules              .btn { color: blue }
+3. Parent's inline styles           (inherited)
+4. Parent's CSS rules               body { color: black }
+5. Grandparent's rules              html { color: gray }
+6. Browser defaults                 (user-agent)
+```
+
+**Example: Tracking overrides**
+
+```html
+<body style="color: #333; background: white;">
+  <section class="hero">  <!-- .hero { color: blue; } -->
+    <button class="btn">  <!-- .btn { color: white; } -->
+      Click me
+    </button>
+  </section>
+</body>
+```
+
+For the `<button>`:
+
+| Property | Final Value | Source | Status |
+|----------|-------------|--------|--------|
+| `color` | `white` | `.btn` rule | **Active** (wins) |
+| `color` | `blue` | `.hero` rule (inherited) | **Overridden** by `.btn` |
+| `color` | `#333` | `body` inline (inherited) | **Overridden** by `.hero` |
+| `background` | `white` | `body` inline | **Not Inheritable** (greyed) |
+
+### Implementation: `processInheritedStyles()`
+
+This method ensures inherited properties are correctly marked:
+
+```typescript
+private async processInheritedStyles(
+    inherited: CDPMatchedStylesResponse['inherited'],
+    elementMatchedRules?: MatchedCSSRule[],    // Element's own rules
+    elementInlineStyles?: InlineStyleProperty[] // Element's inline styles
+): Promise<InheritedStyleInfo[]> {
+
+    // Step 1: Collect all properties defined on the element itself
+    const overriddenProps = new Set<string>();
+
+    // Inline styles have highest priority
+    for (const style of elementInlineStyles) {
+        if (this.isInheritableProperty(style.name)) {
+            overriddenProps.add(style.name);
+        }
+    }
+
+    // Then element's CSS rules
+    for (const rule of elementMatchedRules) {
+        for (const prop of rule.properties) {
+            if (this.isInheritableProperty(prop.name) && !prop.isOverridden) {
+                overriddenProps.add(prop.name);
+            }
+        }
+    }
+
+    // Step 2: Process each parent element's styles
+    for (const parent of inherited) {
+        for (const rule of parent.matchedRules) {
+            for (const prop of rule.properties) {
+                const isInheritable = this.isInheritableProperty(prop.name);
+                const isOverriddenByCloser = overriddenProps.has(prop.name);
+
+                // Track this property for even-farther ancestors
+                if (isInheritable && !isOverriddenByCloser) {
+                    overriddenProps.add(prop.name);
+                }
+
+                return {
+                    ...prop,
+                    // Struck through: inheritable but overridden by closer rule
+                    isOverridden: isInheritable && isOverriddenByCloser,
+                    // Greyed out: property doesn't inherit at all
+                    isNotInheritable: !isInheritable
+                };
+            }
+        }
+    }
+}
+```
+
+### Implementation: `buildResolvedProperties()` (All Computed)
+
+This builds the final computed values list:
+
+```typescript
+private buildResolvedProperties(
+    matchedRules: MatchedCSSRule[],
+    inlineStyles: InlineStyleProperty[],
+    inheritedStyles: InheritedStyleInfo[]
+): ResolvedCSSProperty[] {
+    const properties: ResolvedCSSProperty[] = [];
+    const seenProperties = new Set<string>();
+
+    // 1. Inline styles (highest priority, never overridden)
+    for (const style of inlineStyles) {
+        properties.push({ ...style, isOverridden: false });
+        seenProperties.add(style.name);
+    }
+
+    // 2. Element's CSS rules (high to low specificity)
+    for (const rule of matchedRules.reverse()) {
+        for (const prop of rule.properties) {
+            properties.push({
+                ...prop,
+                isOverridden: seenProperties.has(prop.name)
+            });
+            seenProperties.add(prop.name);
+        }
+    }
+
+    // 3. Inherited styles - ONLY INHERITABLE PROPERTIES!
+    // Non-inheritable properties (background, margin, etc.) are NOT added
+    // because they don't actually apply to this element
+    for (const inherited of inheritedStyles) {
+        for (const prop of inherited.matchedRules.flatMap(r => r.properties)) {
+            if (!this.isInheritableProperty(prop.name)) {
+                continue;  // Skip non-inheritable!
+            }
+            properties.push({
+                ...prop,
+                sourceType: 'inherited',
+                isOverridden: seenProperties.has(prop.name)
+            });
+            seenProperties.add(prop.name);
+        }
+    }
+
+    return properties;
+}
+```
+
+### Key Principle: Single Source of Truth
+
+**IMPORTANT**: The `isInheritableProperty()` check must be used consistently everywhere:
+
+1. **Inherited section**: Show non-inheritable as greyed out
+2. **All Computed section**: Completely skip non-inheritable inherited properties
+3. **Override tracking**: Only track inheritable properties in the override set
+
+If these checks are inconsistent, you get bugs like:
+- "background-color shows active in All Computed but greyed in Inherited"
+- "color shows overridden in one place but active in another"
+
+### The `isInheritableProperty()` Helper
+
+```typescript
+private isInheritableProperty(name: string): boolean {
+    const INHERITABLE_PROPERTIES = new Set([
+        // Font properties
+        'font', 'font-family', 'font-size', 'font-style', 'font-weight',
+        'font-variant', 'font-stretch', 'font-size-adjust',
+        // Text properties
+        'color', 'line-height', 'letter-spacing', 'word-spacing',
+        'text-align', 'text-indent', 'text-transform', 'text-shadow',
+        'white-space', 'direction', 'word-break', 'overflow-wrap',
+        // List properties
+        'list-style', 'list-style-type', 'list-style-position', 'list-style-image',
+        // Other
+        'visibility', 'cursor', 'quotes', 'orphans', 'widows'
+    ]);
+    return INHERITABLE_PROPERTIES.has(name);
+}
+```
+
+---
+
 ## Future Considerations: Live CSS Editing
 
 When implementing live CSS editing, we'll need to:
@@ -370,3 +632,9 @@ The VLQ decoder we built can potentially be extended to support reverse lookups 
 ---
 
 *Last updated: December 2024*
+
+---
+
+## Changelog
+
+- **Dec 2024**: Added "Style Inspect Panel: How Each Section Works" section explaining inheritance, overrides, and the single-source-of-truth principle for `isInheritableProperty()` checks.

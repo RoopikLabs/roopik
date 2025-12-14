@@ -126,8 +126,17 @@ export interface MatchedCSSProperty {
 	name: string;
 	/** Property value */
 	value: string;
-	/** Is this specific property overridden by another rule? */
+	/**
+	 * Is this specific property overridden by a closer rule?
+	 * UI should show this as STRUCK THROUGH
+	 */
 	isOverridden: boolean;
+	/**
+	 * Is this property non-inheritable? (only used in inherited styles section)
+	 * Properties like background-color, margin, padding don't inherit.
+	 * UI should show this as GREYED OUT (not struck through)
+	 */
+	isNotInheritable?: boolean;
 	/** Property location within rule (if available) */
 	location?: CSSSourceLocation;
 	/** Has !important flag */

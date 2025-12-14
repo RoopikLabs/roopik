@@ -143,11 +143,14 @@ export class StyleSourceOrchestrator {
 			);
 
 			// 6. Process inherited styles
+			// Pass element's own styles so we can correctly mark overridden inherited properties
 			const inheritedStyles = await this.processInheritedStyles(
 				browserViewId,
 				matchedStyles.inherited || [],
 				includeUserAgent,
-				htmlSource?.file // Pass HTML file for inline style attribution
+				htmlSource?.file, // Pass HTML file for inline style attribution
+				matchedRules,     // Element's own matched rules
+				inlineStyles      // Element's inline styles
 			);
 
 			// 7. Build resolved properties list (final computed values with sources)
@@ -543,17 +546,47 @@ export class StyleSourceOrchestrator {
 	 *
 	 * Shows ALL properties from rules that have inheritable properties,
 	 * including overridden ones (they'll be shown struck-out in UI).
+	 *
+	 * Override logic:
+	 * - A property is "overridden" (struck through) if a CLOSER rule defines the same property
+	 * - A property is "not inheritable" (greyed out) if it doesn't inherit (like background-color)
+	 * - "Closer" means: element's own rules > parent's rules > grandparent's rules
 	 */
 	private async processInheritedStyles(
 		browserViewId: number,
 		inherited: NonNullable<CDPMatchedStylesResponse['inherited']>,
 		includeUserAgent: boolean,
-		htmlFile?: string
+		htmlFile?: string,
+		elementMatchedRules?: MatchedCSSRule[],
+		elementInlineStyles?: InlineStyleProperty[]
 	): Promise<InheritedStyleInfo[]> {
 		const inheritedStyles: InheritedStyleInfo[] = [];
 
-		// Track which properties have been seen (for marking overrides)
-		const seenInheritedProps = new Set<string>();
+		// Track which inheritable properties have been defined by closer rules
+		// Start with properties from the element itself (highest priority)
+		const overriddenProps = new Set<string>();
+
+		// Add properties from element's inline styles (highest priority)
+		if (elementInlineStyles) {
+			for (const style of elementInlineStyles) {
+				if (this.isInheritableProperty(style.name)) {
+					overriddenProps.add(style.name);
+				}
+			}
+		}
+
+		// Add properties from element's matched rules (that are not already overridden)
+		if (elementMatchedRules) {
+			// Iterate in reverse (highest specificity first)
+			for (let i = elementMatchedRules.length - 1; i >= 0; i--) {
+				const rule = elementMatchedRules[i];
+				for (const prop of rule.properties) {
+					if (this.isInheritableProperty(prop.name) && !prop.isOverridden) {
+						overriddenProps.add(prop.name);
+					}
+				}
+			}
+		}
 
 		// Each entry in 'inherited' represents one parent element up the DOM tree
 		// Index 0 = direct parent, 1 = grandparent, etc.
@@ -574,26 +607,28 @@ export class StyleSourceOrchestrator {
 			);
 
 			// Filter to rules that have AT LEAST ONE inheritable property
-			// But keep ALL properties in those rules (show non-inheritable as struck-out)
+			// But keep ALL properties in those rules (show non-inheritable as greyed)
 			const rulesWithInheritableProps = rules
 				.filter(rule => rule.properties.some(p => this.isInheritableProperty(p.name)))
 				.map(rule => ({
 					...rule,
-					// Keep all properties, but mark non-inheritable ones as overridden
-					// Also mark properties that were already defined by a closer ancestor
+					// Keep all properties, but correctly mark their status
 					properties: rule.properties.map(p => {
 						const isInheritable = this.isInheritableProperty(p.name);
-						const alreadySeen = seenInheritedProps.has(p.name);
+						const isOverriddenByCloser = overriddenProps.has(p.name);
 
-						// Track inheritable properties we've seen
-						if (isInheritable && !alreadySeen) {
-							seenInheritedProps.add(p.name);
+						// Track this property for marking farther ancestors as overridden
+						// Only track if it's inheritable and not already overridden
+						if (isInheritable && !isOverriddenByCloser) {
+							overriddenProps.add(p.name);
 						}
 
 						return {
 							...p,
-							// Mark as overridden if: not inheritable OR already defined by closer ancestor
-							isOverridden: !isInheritable || alreadySeen
+							// isOverridden = struck through (a closer rule defines this property)
+							isOverridden: isInheritable && isOverriddenByCloser,
+							// isNotInheritable = greyed out (property doesn't inherit, like background-color)
+							isNotInheritable: !isInheritable
 						};
 					})
 				}));
@@ -703,9 +738,18 @@ export class StyleSourceOrchestrator {
 		}
 
 		// 3. Inherited styles (lowest priority) - now using matchedRules structure
+		// IMPORTANT: Only include INHERITABLE properties here!
+		// Non-inheritable properties (like background-color, margin, padding) from
+		// parent elements do NOT apply to the child - they should not appear in
+		// "All Computed" as active styles.
 		for (const inherited of inheritedStyles) {
 			for (const rule of inherited.matchedRules) {
 				for (const prop of rule.properties) {
+					// Skip non-inheritable properties - they don't actually apply to this element
+					if (!this.isInheritableProperty(prop.name)) {
+						continue;
+					}
+
 					const isOverridden = seenProperties.has(prop.name);
 
 					properties.push({
@@ -724,9 +768,14 @@ export class StyleSourceOrchestrator {
 				}
 			}
 
-			// Also include inherited inline styles
+			// Also include inherited inline styles (only inheritable ones)
 			if (inherited.inlineStyle) {
 				for (const style of inherited.inlineStyle) {
+					// Skip non-inheritable properties
+					if (!this.isInheritableProperty(style.name)) {
+						continue;
+					}
+
 					const isOverridden = seenProperties.has(style.name);
 					properties.push({
 						name: style.name,

@@ -7,6 +7,7 @@ import type {
 	ElementStyleInfo,
 	ResolvedCSSProperty,
 	MatchedCSSRule,
+	MatchedCSSProperty,
 	CSSSourceLocation,
 	CSSSourceType
 } from '../../../common/cssResolvers/types.js';
@@ -671,10 +672,17 @@ export class StyleInspectPanel {
 
 		for (const prop of rule.properties) {
 			const propLine = document.createElement('div');
-			propLine.style.cssText = `
-				padding: 2px 0;
-				${prop.isOverridden ? 'text-decoration: line-through; opacity: 0.5;' : ''}
-			`;
+			// Styling logic:
+			// - isOverridden: true → strikethrough + reduced opacity (property overridden by closer rule)
+			// - isNotInheritable: true → reduced opacity only (property doesn't inherit, like background-color)
+			// - Both false → normal display (active)
+			let propStyles = 'padding: 2px 0;';
+			if (prop.isOverridden) {
+				propStyles += ' text-decoration: line-through; opacity: 0.5;';
+			} else if (prop.isNotInheritable) {
+				propStyles += ' opacity: 0.5;';
+			}
+			propLine.style.cssText = propStyles;
 			propLine.textContent = `${prop.name}: ${prop.value}${prop.isImportant ? ' !important' : ''};`;
 			props.appendChild(propLine);
 		}
