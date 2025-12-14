@@ -60,14 +60,14 @@ export class RoopikStartupContribution extends Disposable implements IWorkbenchC
 		}
 
 		const workspacePath = workspace.folders[0].uri.fsPath;
-		console.log('[RoopikStartupContribution] Initializing services with workspace:', workspacePath);
+		// console.log('[RoopikStartupContribution] Initializing services with workspace:', workspacePath);
 
 		try {
 			await this.canvasService.initialize(workspacePath);
-			console.log('[RoopikStartupContribution] CanvasService initialized');
+			// console.log('[RoopikStartupContribution] CanvasService initialized');
 
 			await this.componentService.initialize(workspacePath);
-			console.log('[RoopikStartupContribution] ComponentService initialized');
+			// console.log('[RoopikStartupContribution] ComponentService initialized');
 		} catch (err) {
 			console.error('[RoopikStartupContribution] Failed to initialize services:', err);
 		}

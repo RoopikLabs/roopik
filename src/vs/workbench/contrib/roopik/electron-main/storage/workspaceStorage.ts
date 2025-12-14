@@ -53,7 +53,6 @@ export class WorkspaceStorage {
 	 * Creates .roopik/ folder structure if it doesn't exist
 	 */
 	async initialize(workspacePath: string): Promise<void> {
-		console.log('[WorkspaceStorage] Initializing with workspace:', workspacePath);
 		this.workspacePath = workspacePath;
 
 		// Create .roopik folder if it doesn't exist
@@ -68,7 +67,6 @@ export class WorkspaceStorage {
 
 		// Create canvases folder if it doesn't exist
 		const canvasesPath = getCanvasesFolderPath(workspacePath);
-		console.log('[WorkspaceStorage] Canvases folder path:', canvasesPath);
 		await this.ensureDir(canvasesPath);
 
 		// Create canvases/canvases.json if it doesn't exist
@@ -79,7 +77,6 @@ export class WorkspaceStorage {
 		}
 
 		this.initialized = true;
-		console.log('[WorkspaceStorage] Initialized successfully');
 	}
 
 	/**
@@ -201,7 +198,6 @@ export class WorkspaceStorage {
 	async updateCanvasInRegistry(canvasId: string, updates: Partial<CanvasInfo>): Promise<void> {
 		this.ensureInitialized();
 
-		console.log('[WorkspaceStorage] updateCanvasInRegistry: updating canvas', canvasId, 'with', updates);
 
 		const canvasIndex = await this.getCanvasIndex();
 		const canvasEntry = canvasIndex.canvases.find(c => c.id === canvasId);
@@ -215,9 +211,6 @@ export class WorkspaceStorage {
 			canvasEntry.updatedAt = Date.now();
 
 			await this.writeJson(getCanvasRegistryPath(this.workspacePath), canvasIndex);
-			console.log('[WorkspaceStorage] updateCanvasInRegistry: registry updated successfully');
-		} else {
-			console.log('[WorkspaceStorage] updateCanvasInRegistry: canvas not found in registry:', canvasId);
 		}
 	}
 
@@ -227,10 +220,8 @@ export class WorkspaceStorage {
 	async listCanvases(): Promise<string[]> {
 		this.ensureInitialized();
 
-		console.log('[WorkspaceStorage] listCanvases: reading from canvases.json');
 		const canvasIndex = await this.getCanvasIndex();
 		const canvasIds = canvasIndex.canvases.map(c => c.id);
-		console.log('[WorkspaceStorage] listCanvases: found canvas IDs:', canvasIds);
 		return canvasIds;
 	}
 
@@ -242,14 +233,11 @@ export class WorkspaceStorage {
 
 		const canvasPath = getCanvasPath(this.workspacePath, canvasId);
 		const metaPath = path.join(canvasPath, 'meta.json');
-		console.log('[WorkspaceStorage] loadCanvasMeta: loading from', metaPath);
 
 		try {
 			const meta = await this.readJson<CanvasMeta>(metaPath);
-			console.log('[WorkspaceStorage] loadCanvasMeta: loaded meta:', meta);
 			return meta;
 		} catch (err) {
-			console.log('[WorkspaceStorage] loadCanvasMeta: meta.json not found, trying canvas index');
 			// If meta.json doesn't exist, try to construct from canvas index
 			const canvasIndex = await this.getCanvasIndex();
 			const info = canvasIndex.canvases.find(c => c.id === canvasId);
@@ -262,12 +250,10 @@ export class WorkspaceStorage {
 					updatedAt: info.updatedAt || info.createdAt,
 					componentCount: 0
 				};
-				console.log('[WorkspaceStorage] loadCanvasMeta: created meta from index:', meta);
 				// Save it for future use
 				await this.saveCanvasMeta(canvasId, meta);
 				return meta;
 			}
-			console.log('[WorkspaceStorage] loadCanvasMeta: canvas not found in index');
 			return null;
 		}
 	}
@@ -495,16 +481,12 @@ export class WorkspaceStorage {
 
 	private async getCanvasIndex(): Promise<CanvasIndex> {
 		const registryPath = getCanvasRegistryPath(this.workspacePath);
-		console.log('[WorkspaceStorage] getCanvasIndex: reading from path:', registryPath);
-		console.log('[WorkspaceStorage] getCanvasIndex: workspacePath is:', this.workspacePath);
 		try {
 			const content = await this.readFile(registryPath);
-			console.log('[WorkspaceStorage] getCanvasIndex: raw file content:', content);
 			const index = JSON.parse(content) as CanvasIndex;
-			console.log('[WorkspaceStorage] getCanvasIndex: parsed index:', JSON.stringify(index));
 			return index;
 		} catch (err) {
-			console.log('[WorkspaceStorage] getCanvasIndex: failed to read canvases.json, error:', err);
+			console.error('[WorkspaceStorage] Failed to read canvases.json:', err);
 			return { canvases: [] };
 		}
 	}

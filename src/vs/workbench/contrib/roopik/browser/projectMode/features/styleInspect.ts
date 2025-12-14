@@ -138,32 +138,12 @@ export class StyleInspect {
 		}
 
 		try {
-			// Log what we're sending
-			console.log('[StyleInspect] handleElementSelected called with:', JSON.stringify({
-				browserViewId,
-				selector,
-				projectRoot: this.currentProjectRoot
-			}));
-
 			// Get element styles via IPC
 			const result: GetElementStylesResult = await this.browserService.getElementStyles({
 				browserViewId,
 				target: selector,
 				projectRoot: this.currentProjectRoot
 			});
-
-			// Log the result with full details
-			console.log('[StyleInspect] getElementStyles result:', JSON.stringify({
-				success: result.success,
-				error: result.error,
-				hasData: !!result.data,
-				tagName: result.data?.tagName,
-				classes: result.data?.classes,
-				propertiesCount: result.data?.properties?.length ?? 0,
-				matchedRulesCount: result.data?.matchedRules?.length ?? 0,
-				inlineStylesCount: result.data?.inlineStyles?.length ?? 0,
-				diagnostics: result.diagnostics
-			}, null, 2));
 
 			if (result.success && result.data) {
 				this.showStylePanel(result.data);
@@ -198,23 +178,12 @@ export class StyleInspect {
 		}
 
 		try {
-			// Log what we're sending
-			console.log('[StyleInspect] handleElementSelectedByPoint called with:', {
-				browserViewId,
-				x,
-				y,
-				projectRoot: this.currentProjectRoot
-			});
-
 			// Get element styles via IPC using coordinates
 			const result: GetElementStylesResult = await this.browserService.getElementStyles({
 				browserViewId,
 				target: { x, y },
 				projectRoot: this.currentProjectRoot
 			});
-
-			// Log the result
-			console.log('[StyleInspect] getElementStyles (by point) result:', result);
 
 			if (result.success && result.data) {
 				this.showStylePanel(result.data);

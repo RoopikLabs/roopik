@@ -615,22 +615,15 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	onCDPEvent(browserViewId: number, callback: (method: string, params: unknown) => void): () => void {
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView || browserView.webContents.isDestroyed()) {
-			console.warn('[ProjectMode][Main] Cannot register CDP event listener - browser view not found:', browserViewId);
 			return () => { }; // Return no-op cleanup function
 		}
 
-		console.log('[ProjectMode][Main] Registering CDP event listener for browserViewId:', browserViewId);
-
 		// Handler for 'message' event from debugger
-		// Electron's debugger emits 'message' events with (event, method, params)
 		const handler = (_event: Electron.Event, method: string, params: unknown) => {
-			// Debug: log ALL events to see what's happening
-			console.log('[ProjectMode][Main] CDP event received:', method);
 			callback(method, params);
 		};
 
 		browserView.webContents.debugger.on('message', handler);
-		console.log('[ProjectMode][Main] CDP event handler registered for browserViewId:', browserViewId);
 
 		// Return cleanup function
 		return () => {
@@ -722,14 +715,10 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	 */
 	private async enableCSSForStyleInspection(browserViewId: number): Promise<void> {
 		try {
-			console.log('[ProjectMode][Main] Enabling CSS domain for style inspection, browserViewId:', browserViewId);
-
 			// Reset CSS state first - this clears the cache and marks as not enabled
 			// so we get fresh styleSheetAdded events for this page load
 			this.cdpCssService.resetForPageLoad(browserViewId);
-
 			await this.cdpCssService.ensureCSSEnabled(browserViewId);
-			console.log('[ProjectMode][Main] CSS domain enabled for style inspection');
 		} catch (error) {
 			console.error('[ProjectMode][Main] Failed to enable CSS domain:', error);
 		}
@@ -971,10 +960,6 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		});
 
 		webContents.on('did-start-loading', () => {
-			console.log('[ProjectMode][Main] did-start-loading', {
-				browserViewId,
-				url: webContents.getURL()
-			});
 			// Fire event with EXPLICIT isLoading = true
 			this.fireNavigationStateChanged(browserViewId, true);
 
@@ -986,10 +971,6 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		});
 
 		webContents.on('did-finish-load', () => {
-			console.log('[ProjectMode][Main] did-finish-load', {
-				browserViewId,
-				url: webContents.getURL()
-			});
 			// Clear any previous error on successful load
 			this.clearNavigationError(browserViewId);
 			// Fire event with EXPLICIT isLoading = false
@@ -998,10 +979,6 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// did-stop-loading is more reliable than did-finish-load for complex pages
 		webContents.on('did-stop-loading', () => {
-			console.log('[ProjectMode][Main] did-stop-loading', {
-				browserViewId,
-				url: webContents.getURL()
-			});
 			// Fire event with EXPLICIT isLoading = false
 			this.fireNavigationStateChanged(browserViewId, false);
 
@@ -1235,14 +1212,11 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	 * @returns Complete style information including source locations
 	 */
 	async getElementStyles(request: GetElementStylesRequest): Promise<GetElementStylesResult> {
-		const { browserViewId, projectRoot, target } = request;
-
-		console.log('[BrowserViewService] getElementStyles called:', { browserViewId, projectRoot, target });
+		const { browserViewId, projectRoot } = request;
 
 		// Validate browser view exists
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView || browserView.webContents.isDestroyed()) {
-			console.error('[BrowserViewService] Browser view not found:', browserViewId);
 			return {
 				success: false,
 				error: 'Browser view not found or destroyed'
@@ -1253,22 +1227,12 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			// Get or create orchestrator for this project root
 			let orchestrator = this.styleOrchestrators.get(projectRoot);
 			if (!orchestrator) {
-				console.log('[BrowserViewService] Creating new StyleSourceOrchestrator for:', projectRoot);
 				orchestrator = new StyleSourceOrchestrator(this.cdpCssService, projectRoot);
 				this.styleOrchestrators.set(projectRoot, orchestrator);
 			}
 
 			// Delegate to orchestrator
-			const result = await orchestrator.getElementStyles(request);
-			console.log('[BrowserViewService] getElementStyles result:', {
-				success: result.success,
-				error: result.error,
-				hasData: !!result.data,
-				propertiesCount: result.data?.properties?.length ?? 0,
-				rulesCount: result.data?.matchedRules?.length ?? 0,
-				diagnostics: result.diagnostics
-			});
-			return result;
+			return await orchestrator.getElementStyles(request);
 		} catch (error) {
 			console.error('[BrowserViewService] getElementStyles error:', error);
 			return {

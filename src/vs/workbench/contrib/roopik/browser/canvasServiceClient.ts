@@ -117,9 +117,9 @@ export class CanvasServiceClient implements ICanvasService {
 	}
 
 	async listCanvasesAsync(options?: ListCanvasOptions): Promise<CanvasMeta[]> {
-		console.log('[CanvasServiceClient] listCanvasesAsync called, options:', options);
+		// console.log('[CanvasServiceClient] listCanvasesAsync called, options:', options);
 		const result = await this.channel.call<CanvasMeta[]>('listCanvases', options);
-		console.log('[CanvasServiceClient] listCanvasesAsync returned:', result);
+		// console.log('[CanvasServiceClient] listCanvasesAsync returned:', result);
 		return result;
 	}
 

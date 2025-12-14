@@ -84,8 +84,6 @@ export class StyleSourceOrchestrator {
 		try {
 			const { browserViewId, target, projectRoot, includeUserAgent = false } = request;
 
-			console.log('[StyleSourceOrchestrator] getElementStyles:', { browserViewId, target, projectRoot });
-
 			// Update project root if provided
 			if (projectRoot && projectRoot !== this.projectRoot) {
 				this.setProjectRoot(projectRoot);
@@ -94,14 +92,10 @@ export class StyleSourceOrchestrator {
 			// 1. Get node ID
 			let nodeId: number | null;
 			if (typeof target === 'string') {
-				console.log('[StyleSourceOrchestrator] Getting node by selector:', target);
 				nodeId = await this.cdpService.getNodeIdBySelector(browserViewId, target);
 			} else {
-				console.log('[StyleSourceOrchestrator] Getting node at point:', target);
 				nodeId = await this.cdpService.getNodeIdAtPoint(browserViewId, target.x, target.y);
 			}
-
-			console.log('[StyleSourceOrchestrator] Node ID:', nodeId);
 
 			if (!nodeId) {
 				return { success: false, error: 'Element not found' };
@@ -109,7 +103,6 @@ export class StyleSourceOrchestrator {
 
 			// 2. Get element info (tag, classes, data-roopik-source)
 			const nodeAttrs = await this.cdpService.getNodeAttributes(browserViewId, nodeId);
-			console.log('[StyleSourceOrchestrator] Node attributes:', nodeAttrs);
 			if (!nodeAttrs) {
 				return { success: false, error: 'Failed to get element attributes' };
 			}
@@ -118,7 +111,6 @@ export class StyleSourceOrchestrator {
 			const htmlSource = this.parseRoopikSourceAttribute(
 				nodeAttrs.attributes['data-roopik-source']
 			);
-			console.log('[StyleSourceOrchestrator] HTML source:', htmlSource);
 
 			// Parse component name
 			const componentName = nodeAttrs.attributes['data-roopik-component'];
@@ -128,13 +120,6 @@ export class StyleSourceOrchestrator {
 
 			// 3. Get matched styles via CDP
 			const matchedStyles = await this.cdpService.getMatchedStyles(browserViewId, nodeId);
-			console.log('[StyleSourceOrchestrator] Matched styles from CDP:', {
-				hasMatchedCSSRules: !!matchedStyles?.matchedCSSRules,
-				matchedCSSRulesCount: matchedStyles?.matchedCSSRules?.length ?? 0,
-				hasInlineStyle: !!matchedStyles?.inlineStyle,
-				hasInherited: !!matchedStyles?.inherited,
-				inheritedCount: matchedStyles?.inherited?.length ?? 0
-			});
 			if (!matchedStyles) {
 				return { success: false, error: 'Failed to get matched styles' };
 			}
@@ -146,7 +131,6 @@ export class StyleSourceOrchestrator {
 				includeUserAgent,
 				htmlSource?.file // Pass HTML file for inline style attribution
 			);
-			console.log('[StyleSourceOrchestrator] Processed rules:', { matchedRulesCount: matchedRules.length, scanned, mapsUsed });
 			styleSheetsScanned = scanned;
 			rulesMatched = matchedRules.length;
 			sourceMapsUsed.push(...mapsUsed);
@@ -243,25 +227,19 @@ export class StyleSourceOrchestrator {
 		let scanned = 0;
 
 		if (!cdpRules) {
-			console.log('[StyleSourceOrchestrator] No CDP rules to process');
 			return { rules, scanned, mapsUsed };
 		}
 
-		console.log('[StyleSourceOrchestrator] Processing', cdpRules.length, 'CDP rules');
-
 		for (const { rule, matchingSelectors } of cdpRules) {
 			scanned++;
-			const ruleSelector = rule.selectorList?.text || 'unknown';
 
 			// Skip user-agent styles unless requested
 			if (rule.origin === 'user-agent' && !includeUserAgent) {
-				console.log('[StyleSourceOrchestrator] Skipping user-agent rule:', ruleSelector);
 				continue;
 			}
 
 			// Skip inspector-injected styles (DevTools temporary styles)
 			if (rule.origin === 'inspector') {
-				console.log('[StyleSourceOrchestrator] Skipping inspector rule:', ruleSelector);
 				continue;
 			}
 
@@ -270,7 +248,6 @@ export class StyleSourceOrchestrator {
 				browserViewId,
 				rule.styleSheetId
 			);
-			console.log('[StyleSourceOrchestrator] Rule:', ruleSelector, 'styleSheetId:', rule.styleSheetId, 'origin:', rule.origin, 'sheetInfo:', JSON.stringify(sheetInfo));
 
 			// Determine file path and origin
 			let filePath: string | null = null;
@@ -287,7 +264,6 @@ export class StyleSourceOrchestrator {
 			} else if (sheetInfo) {
 				// Check for CSS-in-JS (blob: or data: URLs)
 				if (this.cssInJsDetector.isGeneratedStyleSheet(sheetInfo.sourceURL, sheetInfo.isInline)) {
-					console.log('[StyleSourceOrchestrator] Skipping CSS-in-JS rule:', ruleSelector, 'URL:', sheetInfo.sourceURL);
 					// CSS-in-JS: skip for now, will be handled at element level
 					continue;
 				}
@@ -296,14 +272,11 @@ export class StyleSourceOrchestrator {
 				if (sheetInfo.isInline && !sheetInfo.sourceURL) {
 					// Inline style tag - point to the HTML file if we know it
 					filePath = htmlFile || '<inline-style>';
-					console.log('[StyleSourceOrchestrator] Inline style tag rule:', ruleSelector, '-> file:', filePath);
 				} else if (sheetInfo.sourceURL) {
 					// Convert URL to local path
 					filePath = this.urlToPathConverter.convert(sheetInfo.sourceURL);
-					console.log('[StyleSourceOrchestrator] URL to path:', sheetInfo.sourceURL, '->', filePath);
 
 					if (!filePath) {
-						console.log('[StyleSourceOrchestrator] Skipping unmappable URL:', sheetInfo.sourceURL);
 						// External or unmappable URL, skip
 						continue;
 					}
@@ -319,11 +292,9 @@ export class StyleSourceOrchestrator {
 				// sheetInfo is null - likely an inline style in plain HTML
 				// Use the HTML file if available, otherwise use a marker
 				filePath = htmlFile || '<inline-style>';
-				console.log('[StyleSourceOrchestrator] No sheetInfo, treating as inline style:', ruleSelector, '-> file:', filePath);
 			}
 
 			if (!filePath) {
-				console.log('[StyleSourceOrchestrator] No filePath for rule:', ruleSelector);
 				continue;
 			}
 
