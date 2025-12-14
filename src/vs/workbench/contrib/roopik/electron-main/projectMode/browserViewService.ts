@@ -1174,11 +1174,14 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	 * @returns Complete style information including source locations
 	 */
 	async getElementStyles(request: GetElementStylesRequest): Promise<GetElementStylesResult> {
-		const { browserViewId, projectRoot } = request;
+		const { browserViewId, projectRoot, target } = request;
+
+		console.log('[BrowserViewService] getElementStyles called:', { browserViewId, projectRoot, target });
 
 		// Validate browser view exists
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView || browserView.webContents.isDestroyed()) {
+			console.error('[BrowserViewService] Browser view not found:', browserViewId);
 			return {
 				success: false,
 				error: 'Browser view not found or destroyed'
@@ -1189,12 +1192,22 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			// Get or create orchestrator for this project root
 			let orchestrator = this.styleOrchestrators.get(projectRoot);
 			if (!orchestrator) {
+				console.log('[BrowserViewService] Creating new StyleSourceOrchestrator for:', projectRoot);
 				orchestrator = new StyleSourceOrchestrator(this.cdpCssService, projectRoot);
 				this.styleOrchestrators.set(projectRoot, orchestrator);
 			}
 
 			// Delegate to orchestrator
-			return await orchestrator.getElementStyles(request);
+			const result = await orchestrator.getElementStyles(request);
+			console.log('[BrowserViewService] getElementStyles result:', {
+				success: result.success,
+				error: result.error,
+				hasData: !!result.data,
+				propertiesCount: result.data?.properties?.length ?? 0,
+				rulesCount: result.data?.matchedRules?.length ?? 0,
+				diagnostics: result.diagnostics
+			});
+			return result;
 		} catch (error) {
 			console.error('[BrowserViewService] getElementStyles error:', error);
 			return {

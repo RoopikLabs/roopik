@@ -84,6 +84,8 @@ export class StyleSourceOrchestrator {
 		try {
 			const { browserViewId, target, projectRoot, includeUserAgent = false } = request;
 
+			console.log('[StyleSourceOrchestrator] getElementStyles:', { browserViewId, target, projectRoot });
+
 			// Update project root if provided
 			if (projectRoot && projectRoot !== this.projectRoot) {
 				this.setProjectRoot(projectRoot);
@@ -92,10 +94,14 @@ export class StyleSourceOrchestrator {
 			// 1. Get node ID
 			let nodeId: number | null;
 			if (typeof target === 'string') {
+				console.log('[StyleSourceOrchestrator] Getting node by selector:', target);
 				nodeId = await this.cdpService.getNodeIdBySelector(browserViewId, target);
 			} else {
+				console.log('[StyleSourceOrchestrator] Getting node at point:', target);
 				nodeId = await this.cdpService.getNodeIdAtPoint(browserViewId, target.x, target.y);
 			}
+
+			console.log('[StyleSourceOrchestrator] Node ID:', nodeId);
 
 			if (!nodeId) {
 				return { success: false, error: 'Element not found' };
@@ -103,6 +109,7 @@ export class StyleSourceOrchestrator {
 
 			// 2. Get element info (tag, classes, data-roopik-source)
 			const nodeAttrs = await this.cdpService.getNodeAttributes(browserViewId, nodeId);
+			console.log('[StyleSourceOrchestrator] Node attributes:', nodeAttrs);
 			if (!nodeAttrs) {
 				return { success: false, error: 'Failed to get element attributes' };
 			}
@@ -111,6 +118,7 @@ export class StyleSourceOrchestrator {
 			const htmlSource = this.parseRoopikSourceAttribute(
 				nodeAttrs.attributes['data-roopik-source']
 			);
+			console.log('[StyleSourceOrchestrator] HTML source:', htmlSource);
 
 			// Parse component name
 			const componentName = nodeAttrs.attributes['data-roopik-component'];
@@ -120,6 +128,13 @@ export class StyleSourceOrchestrator {
 
 			// 3. Get matched styles via CDP
 			const matchedStyles = await this.cdpService.getMatchedStyles(browserViewId, nodeId);
+			console.log('[StyleSourceOrchestrator] Matched styles from CDP:', {
+				hasMatchedCSSRules: !!matchedStyles?.matchedCSSRules,
+				matchedCSSRulesCount: matchedStyles?.matchedCSSRules?.length ?? 0,
+				hasInlineStyle: !!matchedStyles?.inlineStyle,
+				hasInherited: !!matchedStyles?.inherited,
+				inheritedCount: matchedStyles?.inherited?.length ?? 0
+			});
 			if (!matchedStyles) {
 				return { success: false, error: 'Failed to get matched styles' };
 			}
@@ -128,8 +143,10 @@ export class StyleSourceOrchestrator {
 			const { rules: matchedRules, scanned, mapsUsed } = await this.processMatchedRules(
 				browserViewId,
 				matchedStyles.matchedCSSRules || [],
-				includeUserAgent
+				includeUserAgent,
+				htmlSource?.file // Pass HTML file for inline style attribution
 			);
+			console.log('[StyleSourceOrchestrator] Processed rules:', { matchedRulesCount: matchedRules.length, scanned, mapsUsed });
 			styleSheetsScanned = scanned;
 			rulesMatched = matchedRules.length;
 			sourceMapsUsed.push(...mapsUsed);
@@ -144,7 +161,8 @@ export class StyleSourceOrchestrator {
 			const inheritedStyles = await this.processInheritedStyles(
 				browserViewId,
 				matchedStyles.inherited || [],
-				includeUserAgent
+				includeUserAgent,
+				htmlSource?.file // Pass HTML file for inline style attribution
 			);
 
 			// 7. Build resolved properties list (final computed values with sources)
@@ -208,30 +226,42 @@ export class StyleSourceOrchestrator {
 
 	/**
 	 * Process CDP matched rules into our format
+	 *
+	 * @param browserViewId - Browser view ID
+	 * @param cdpRules - CDP matched rules
+	 * @param includeUserAgent - Whether to include user-agent styles
+	 * @param htmlFile - HTML file path for inline style attribution
 	 */
 	private async processMatchedRules(
 		browserViewId: number,
 		cdpRules: CDPMatchedStylesResponse['matchedCSSRules'],
-		includeUserAgent: boolean
+		includeUserAgent: boolean,
+		htmlFile?: string
 	): Promise<{ rules: MatchedCSSRule[]; scanned: number; mapsUsed: string[] }> {
 		const rules: MatchedCSSRule[] = [];
 		const mapsUsed: string[] = [];
 		let scanned = 0;
 
 		if (!cdpRules) {
+			console.log('[StyleSourceOrchestrator] No CDP rules to process');
 			return { rules, scanned, mapsUsed };
 		}
 
+		console.log('[StyleSourceOrchestrator] Processing', cdpRules.length, 'CDP rules');
+
 		for (const { rule, matchingSelectors } of cdpRules) {
 			scanned++;
+			const ruleSelector = rule.selectorList?.text || 'unknown';
 
 			// Skip user-agent styles unless requested
 			if (rule.origin === 'user-agent' && !includeUserAgent) {
+				console.log('[StyleSourceOrchestrator] Skipping user-agent rule:', ruleSelector);
 				continue;
 			}
 
 			// Skip inspector-injected styles (DevTools temporary styles)
 			if (rule.origin === 'inspector') {
+				console.log('[StyleSourceOrchestrator] Skipping inspector rule:', ruleSelector);
 				continue;
 			}
 
@@ -240,6 +270,7 @@ export class StyleSourceOrchestrator {
 				browserViewId,
 				rule.styleSheetId
 			);
+			console.log('[StyleSourceOrchestrator] Rule:', ruleSelector, 'origin:', rule.origin, 'sheetInfo:', sheetInfo);
 
 			// Determine file path and origin
 			let filePath: string | null = null;
@@ -254,29 +285,45 @@ export class StyleSourceOrchestrator {
 				origin = 'injected';
 				filePath = 'injected';
 			} else if (sheetInfo) {
-				// Check for CSS-in-JS (no URL or blob URL)
+				// Check for CSS-in-JS (blob: or data: URLs)
 				if (this.cssInJsDetector.isGeneratedStyleSheet(sheetInfo.sourceURL, sheetInfo.isInline)) {
+					console.log('[StyleSourceOrchestrator] Skipping CSS-in-JS rule:', ruleSelector, 'URL:', sheetInfo.sourceURL);
 					// CSS-in-JS: skip for now, will be handled at element level
 					continue;
 				}
 
-				// Convert URL to local path
-				filePath = this.urlToPathConverter.convert(sheetInfo.sourceURL);
+				// Handle inline <style> tags (empty sourceURL, isInline=true)
+				if (sheetInfo.isInline && !sheetInfo.sourceURL) {
+					// Inline style tag - point to the HTML file if we know it
+					filePath = htmlFile || '<inline-style>';
+					console.log('[StyleSourceOrchestrator] Inline style tag rule:', ruleSelector, '-> file:', filePath);
+				} else if (sheetInfo.sourceURL) {
+					// Convert URL to local path
+					filePath = this.urlToPathConverter.convert(sheetInfo.sourceURL);
+					console.log('[StyleSourceOrchestrator] URL to path:', sheetInfo.sourceURL, '->', filePath);
 
-				if (!filePath) {
-					// External or unmappable URL, skip
-					continue;
-				}
+					if (!filePath) {
+						console.log('[StyleSourceOrchestrator] Skipping unmappable URL:', sheetInfo.sourceURL);
+						// External or unmappable URL, skip
+						continue;
+					}
 
-				// Check for source map (SCSS/LESS)
-				if (await this.sourceMapResolver.hasSourceMap(filePath)) {
-					mapsUsed.push(filePath);
-					isSourceMapped = true;
-					originalFile = filePath;
+					// Check for source map (SCSS/LESS)
+					if (await this.sourceMapResolver.hasSourceMap(filePath)) {
+						mapsUsed.push(filePath);
+						isSourceMapped = true;
+						originalFile = filePath;
+					}
 				}
+			} else {
+				// sheetInfo is null - likely an inline style in plain HTML
+				// Use the HTML file if available, otherwise use a marker
+				filePath = htmlFile || '<inline-style>';
+				console.log('[StyleSourceOrchestrator] No sheetInfo, treating as inline style:', ruleSelector, '-> file:', filePath);
 			}
 
 			if (!filePath) {
+				console.log('[StyleSourceOrchestrator] No filePath for rule:', ruleSelector);
 				continue;
 			}
 
@@ -428,7 +475,8 @@ export class StyleSourceOrchestrator {
 	private async processInheritedStyles(
 		browserViewId: number,
 		inherited: NonNullable<CDPMatchedStylesResponse['inherited']>,
-		includeUserAgent: boolean
+		includeUserAgent: boolean,
+		htmlFile?: string
 	): Promise<InheritedStyleInfo[]> {
 		const inheritedStyles: InheritedStyleInfo[] = [];
 
@@ -443,7 +491,8 @@ export class StyleSourceOrchestrator {
 			const { rules } = await this.processMatchedRules(
 				browserViewId,
 				inheritedRulesWithSelectors,
-				includeUserAgent
+				includeUserAgent,
+				htmlFile
 			);
 
 			// Only include if there are matching rules

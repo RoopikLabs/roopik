@@ -210,33 +210,30 @@ export class CSSInJsDetector {
 	 * Check if a stylesheet is likely from CSS-in-JS
 	 *
 	 * CSS-in-JS libraries typically:
-	 * - Have no sourceURL (injected style tags)
-	 * - Use blob: URLs
-	 * - Have isInline = true with no external source
+	 * - Use blob: URLs (runtime-generated)
+	 * - Use data: URLs (inline generated)
+	 *
+	 * NOTE: We're now LESS aggressive about filtering.
+	 * Empty sourceURL with isInline=true could be a regular <style> tag in HTML,
+	 * not necessarily CSS-in-JS. We should include these styles.
 	 */
 	isGeneratedStyleSheet(
 		sourceURL: string | undefined,
 		isInline: boolean
 	): boolean {
-		// No URL usually means injected style
-		if (!sourceURL) {
+		// Blob URLs are runtime-generated (definitely CSS-in-JS)
+		if (sourceURL?.startsWith('blob:')) {
 			return true;
 		}
 
-		// Blob URLs are runtime-generated
-		if (sourceURL.startsWith('blob:')) {
+		// Data URLs are inline generated (definitely CSS-in-JS)
+		if (sourceURL?.startsWith('data:')) {
 			return true;
 		}
 
-		// Data URLs are inline generated
-		if (sourceURL.startsWith('data:')) {
-			return true;
-		}
-
-		// Inline styles with no file reference
-		if (isInline && !sourceURL.includes('.css') && !sourceURL.includes('.scss') && !sourceURL.includes('.less')) {
-			return true;
-		}
+		// NOTE: Empty sourceURL with isInline=true is NOT necessarily CSS-in-JS!
+		// It could be a regular <style> tag in HTML. We should NOT filter these out.
+		// The old logic was too aggressive and filtered all inline styles.
 
 		return false;
 	}
