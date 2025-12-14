@@ -42,11 +42,22 @@ export interface IStyleInspectPanelCallbacks {
 export class StyleInspectPanel {
 	private container: HTMLElement;
 	private contentContainer: HTMLElement;
+	private resizeHandle: HTMLElement;
 	private isVisible: boolean = false;
 	private currentData: ElementStyleInfo | null = null;
 
-	// Panel width constant
-	private static readonly PANEL_WIDTH = 320;
+	// Panel size constants
+	private static readonly DEFAULT_WIDTH = 320;
+	private static readonly MIN_WIDTH = 200;
+	private static readonly MAX_WIDTH = 600;
+
+	// Current width (persisted during session)
+	private currentWidth: number = StyleInspectPanel.DEFAULT_WIDTH;
+
+	// Resize state
+	private isResizing: boolean = false;
+	private resizeStartX: number = 0;
+	private resizeStartWidth: number = 0;
 
 	// Collapsible section states
 	private expandedSections = new Set<string>(['element', 'styles', 'rules']);
@@ -56,6 +67,12 @@ export class StyleInspectPanel {
 		private readonly callbacks: IStyleInspectPanelCallbacks
 	) {
 		this.container = this.createContainer();
+
+		// Create resize handle (on left edge of panel)
+		this.resizeHandle = this.createResizeHandle();
+		this.container.appendChild(this.resizeHandle);
+
+		// Content container
 		this.contentContainer = document.createElement('div');
 		this.contentContainer.className = 'style-inspect-content';
 		this.contentContainer.style.cssText = `
@@ -65,6 +82,9 @@ export class StyleInspectPanel {
 		`;
 		this.container.appendChild(this.contentContainer);
 		this.parent.appendChild(this.container);
+
+		// Setup resize event listeners
+		this.setupResizeListeners();
 	}
 
 	/**
@@ -74,9 +94,10 @@ export class StyleInspectPanel {
 		this.currentData = data;
 		this.render();
 		this.container.style.display = 'flex';
+		this.container.style.width = `${this.currentWidth}px`;
 		this.isVisible = true;
 		// Notify parent to adjust browser bounds
-		this.callbacks.onVisibilityChanged?.(true, StyleInspectPanel.PANEL_WIDTH);
+		this.callbacks.onVisibilityChanged?.(true, this.currentWidth);
 	}
 
 	/**
@@ -164,19 +185,100 @@ export class StyleInspectPanel {
 		const container = document.createElement('div');
 		container.className = 'roopik-style-inspect-panel';
 		container.style.cssText = `
-			width: ${StyleInspectPanel.PANEL_WIDTH}px;
-			min-width: ${StyleInspectPanel.PANEL_WIDTH}px;
+			width: ${this.currentWidth}px;
+			min-width: ${StyleInspectPanel.MIN_WIDTH}px;
+			max-width: ${StyleInspectPanel.MAX_WIDTH}px;
 			height: 100%;
 			background: var(--vscode-sideBar-background);
-			border-left: 1px solid var(--vscode-sideBar-border);
 			display: none;
 			flex-direction: column;
 			overflow: hidden;
 			font-family: var(--vscode-font-family);
 			font-size: var(--vscode-font-size);
 			flex-shrink: 0;
+			position: relative;
 		`;
 		return container;
+	}
+
+	/**
+	 * Create resize handle on left edge
+	 */
+	private createResizeHandle(): HTMLElement {
+		const handle = document.createElement('div');
+		handle.className = 'roopik-style-inspect-resize-handle';
+		handle.style.cssText = `
+			position: absolute;
+			left: 0;
+			top: 0;
+			width: 4px;
+			height: 100%;
+			cursor: ew-resize;
+			background: transparent;
+			z-index: 10;
+			transition: background 0.15s;
+		`;
+
+		// Hover effect
+		handle.addEventListener('mouseenter', () => {
+			handle.style.background = 'var(--vscode-focusBorder)';
+		});
+		handle.addEventListener('mouseleave', () => {
+			if (!this.isResizing) {
+				handle.style.background = 'transparent';
+			}
+		});
+
+		return handle;
+	}
+
+	/**
+	 * Setup resize event listeners
+	 */
+	private setupResizeListeners(): void {
+		// Mouse down on handle starts resize
+		this.resizeHandle.addEventListener('mousedown', (e) => {
+			e.preventDefault();
+			this.isResizing = true;
+			this.resizeStartX = e.clientX;
+			this.resizeStartWidth = this.currentWidth;
+			this.resizeHandle.style.background = 'var(--vscode-focusBorder)';
+
+			// Add body class to prevent text selection during drag
+			document.body.style.cursor = 'ew-resize';
+			document.body.style.userSelect = 'none';
+		});
+
+		// Mouse move updates width
+		document.addEventListener('mousemove', (e) => {
+			if (!this.isResizing) {
+				return;
+			}
+
+			// Calculate new width (dragging left = larger panel)
+			const deltaX = this.resizeStartX - e.clientX;
+			let newWidth = this.resizeStartWidth + deltaX;
+
+			// Clamp to min/max
+			newWidth = Math.max(StyleInspectPanel.MIN_WIDTH, Math.min(StyleInspectPanel.MAX_WIDTH, newWidth));
+
+			// Update width
+			this.currentWidth = newWidth;
+			this.container.style.width = `${newWidth}px`;
+
+			// Notify parent to update browser bounds
+			this.callbacks.onVisibilityChanged?.(true, newWidth);
+		});
+
+		// Mouse up ends resize
+		document.addEventListener('mouseup', () => {
+			if (this.isResizing) {
+				this.isResizing = false;
+				this.resizeHandle.style.background = 'transparent';
+				document.body.style.cursor = '';
+				document.body.style.userSelect = '';
+			}
+		});
 	}
 
 	private createHeader(): HTMLElement {
