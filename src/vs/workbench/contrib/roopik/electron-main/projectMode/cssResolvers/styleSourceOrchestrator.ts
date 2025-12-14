@@ -273,8 +273,14 @@ export class StyleSourceOrchestrator {
 					// Inline style tag - point to the HTML file if we know it
 					filePath = htmlFile || '<inline-style>';
 				} else if (sheetInfo.sourceURL) {
-					// Convert URL to local path
-					filePath = this.urlToPathConverter.convert(sheetInfo.sourceURL);
+					// Check if sourceURL is already an absolute file path
+					// (from Vite's inline source map extraction)
+					if (this.isAbsoluteFilePath(sheetInfo.sourceURL)) {
+						filePath = sheetInfo.sourceURL;
+					} else {
+						// Convert URL to local path
+						filePath = this.urlToPathConverter.convert(sheetInfo.sourceURL);
+					}
 
 					if (!filePath) {
 						// External or unmappable URL, skip
@@ -773,5 +779,33 @@ export class StyleSourceOrchestrator {
 	 */
 	clearCaches(): void {
 		this.sourceMapResolver.clearCache();
+	}
+
+	/**
+	 * Check if a path is an absolute file path (not a URL)
+	 * Handles both Windows (C:/...) and Unix (/...) paths
+	 */
+	private isAbsoluteFilePath(pathOrUrl: string): boolean {
+		if (!pathOrUrl) {
+			return false;
+		}
+
+		// Windows absolute path: C:/ or D:\ etc.
+		if (/^[a-zA-Z]:[/\\]/.test(pathOrUrl)) {
+			return true;
+		}
+
+		// Unix absolute path starting with / (but not // which could be protocol-relative URL)
+		if (pathOrUrl.startsWith('/') && !pathOrUrl.startsWith('//')) {
+			// Make sure it's not a URL path like /src/file.css (check for common URL patterns)
+			if (!pathOrUrl.includes('://') && !pathOrUrl.startsWith('/@')) {
+				// Additional check: if it looks like a relative web path, don't treat as absolute
+				// Absolute Unix paths typically start with /home, /usr, /var, /tmp, etc.
+				const unixAbsoluteIndicators = ['/home/', '/usr/', '/var/', '/tmp/', '/opt/', '/etc/', '/root/', '/Users/'];
+				return unixAbsoluteIndicators.some(indicator => pathOrUrl.startsWith(indicator));
+			}
+		}
+
+		return false;
 	}
 }

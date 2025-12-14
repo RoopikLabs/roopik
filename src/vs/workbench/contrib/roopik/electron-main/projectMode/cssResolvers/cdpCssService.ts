@@ -420,9 +420,13 @@ export class CDPCssService {
 	 *
 	 * We try multiple approaches:
 	 * 1. Check cache (populated by styleSheetAdded events)
-	 * 2. Try CSS.getAllStyleSheets (not always available)
-	 * 3. Try CSS.getStyleSheetText to at least get the content
+	 * 2. For inline styles without sourceURL, fetch text and extract from comments
+	 * 3. Try CSS.getAllStyleSheets (not always available)
 	 * 4. Build a minimal header from available info
+	 *
+	 * Important: Vite and similar tools inject CSS as inline <style> tags with
+	 * sourceURL comments. CDP reports isInline=true and empty sourceURL, but
+	 * the actual source URL is in the CSS text as a comment.
 	 */
 	async getStyleSheetHeader(
 		browserViewId: number,
@@ -432,6 +436,21 @@ export class CDPCssService {
 		const cached = cache?.get(styleSheetId);
 
 		if (cached) {
+			// Check if this stylesheet needs sourceURL enhancement
+			// Vite injects CSS with sourceMapURL containing original file path
+			// Enhancement needed when:
+			// 1. isInline=true with no sourceURL (common case)
+			// 2. isInline=false but no sourceURL AND has sourceMapURL (Vite HMR case)
+			const needsEnhancement = !cached.header.sourceURL && (
+				cached.header.isInline || cached.header.sourceMapURL
+			);
+
+			if (needsEnhancement) {
+				const enhanced = await this.enhanceInlineStyleHeader(browserViewId, cached);
+				if (enhanced) {
+					return enhanced;
+				}
+			}
 			return cached.header;
 		}
 
@@ -441,13 +460,23 @@ export class CDPCssService {
 		const refreshedCache = this.styleSheetCache.get(browserViewId);
 		const refreshedCached = refreshedCache?.get(styleSheetId);
 		if (refreshedCached) {
+			// Also check for enhancement after refresh (same logic as above)
+			const needsEnhancement = !refreshedCached.header.sourceURL && (
+				refreshedCached.header.isInline || refreshedCached.header.sourceMapURL
+			);
+
+			if (needsEnhancement) {
+				const enhanced = await this.enhanceInlineStyleHeader(browserViewId, refreshedCached);
+				if (enhanced) {
+					return enhanced;
+				}
+			}
 			return refreshedCached.header;
 		}
 
 		// CSS.getAllStyleSheets not available - try to get info via CSS.getStyleSheetText
 		// As a last resort, try to build a minimal header from the text content
 		try {
-			// Attempt to get the stylesheet text - if it succeeds, the stylesheet exists
 			const textResult = await this.browserService.sendCDPCommand(
 				browserViewId,
 				'CSS.getStyleSheetText',
@@ -455,20 +484,17 @@ export class CDPCssService {
 			) as { text: string };
 
 			if (textResult?.text !== undefined) {
-				// We have the text but not the URL
-				// Try to extract URL from CSS content (some stylesheets have source comments)
-				const sourceUrlMatch = textResult.text.match(/\/\*#\s*sourceURL=(.+?)\s*\*\//);
-				const sourceMappingMatch = textResult.text.match(/\/\*#\s*sourceMappingURL=(.+?)\s*\*\//);
+				const extracted = this.extractSourceInfoFromText(textResult.text);
 
-				// Build a minimal header - mark as inline since we don't know the source
+				// Build a header from extracted info
 				const minimalHeader: CDPStyleSheetHeader = {
 					styleSheetId,
 					frameId: '',
-					sourceURL: sourceUrlMatch ? sourceUrlMatch[1] : '',
+					sourceURL: extracted.sourceURL,
 					origin: 'regular',
 					title: '',
 					disabled: false,
-					isInline: !sourceUrlMatch, // If no sourceURL found, treat as inline
+					isInline: !extracted.sourceURL, // Has sourceURL = treat as external
 					isMutable: true,
 					isConstructed: false,
 					startLine: 0,
@@ -476,7 +502,7 @@ export class CDPCssService {
 					length: textResult.text.length,
 					endLine: 0,
 					endColumn: 0,
-					sourceMapURL: sourceMappingMatch ? sourceMappingMatch[1] : undefined
+					sourceMapURL: extracted.sourceMapURL
 				};
 
 				// Cache it
@@ -488,6 +514,135 @@ export class CDPCssService {
 			}
 		} catch {
 			// Stylesheet not available
+		}
+
+		return null;
+	}
+
+	/**
+	 * Enhance an inline style header by extracting sourceURL from CSS text or source map
+	 * Used for Vite and similar tools that inject CSS with source comments/maps
+	 */
+	private async enhanceInlineStyleHeader(
+		browserViewId: number,
+		cached: StyleSheetCacheEntry
+	): Promise<CDPStyleSheetHeader | null> {
+		try {
+			// First, try to extract source from inline source map in header
+			// Vite provides sourceMapURL as data:application/json;base64,... with original file
+			const sourceFromMap = this.extractSourceFromInlineSourceMap(cached.header.sourceMapURL);
+
+			if (sourceFromMap) {
+				// Update the cached header with the extracted source
+				cached.header = {
+					...cached.header,
+					sourceURL: sourceFromMap,
+					// Keep isInline false since we now know the source
+					isInline: false
+				};
+				return cached.header;
+			}
+
+			// Fallback: Fetch text and look for sourceURL comment
+			let text = cached.text;
+			if (text === undefined) {
+				const textResult = await this.browserService.sendCDPCommand(
+					browserViewId,
+					'CSS.getStyleSheetText',
+					{ styleSheetId: cached.header.styleSheetId }
+				) as { text: string };
+				text = textResult?.text;
+				if (text) {
+					cached.text = text;
+				}
+			}
+
+			if (!text) {
+				return null;
+			}
+
+			const extracted = this.extractSourceInfoFromText(text);
+
+			// Try sourceURL from comment first
+			if (extracted.sourceURL) {
+				cached.header = {
+					...cached.header,
+					sourceURL: extracted.sourceURL,
+					sourceMapURL: extracted.sourceMapURL || cached.header.sourceMapURL,
+					isInline: false
+				};
+				return cached.header;
+			}
+
+			// Try extracting from sourceMappingURL comment
+			if (extracted.sourceMapURL) {
+				const sourceFromTextMap = this.extractSourceFromInlineSourceMap(extracted.sourceMapURL);
+				if (sourceFromTextMap) {
+					cached.header = {
+						...cached.header,
+						sourceURL: sourceFromTextMap,
+						sourceMapURL: extracted.sourceMapURL,
+						isInline: false
+					};
+					return cached.header;
+				}
+			}
+		} catch {
+			// Failed to enhance, will return original header
+		}
+
+		return null;
+	}
+
+	/**
+	 * Extract sourceURL and sourceMappingURL from CSS text comments
+	 */
+	private extractSourceInfoFromText(text: string): { sourceURL: string; sourceMapURL?: string } {
+		// Match /*# sourceURL=... */ comment (Vite, Webpack, etc.)
+		const sourceUrlMatch = text.match(/\/\*#\s*sourceURL=(.+?)\s*\*\//);
+		// Match /*# sourceMappingURL=... */ comment
+		const sourceMappingMatch = text.match(/\/\*#\s*sourceMappingURL=(.+?)\s*\*\//);
+
+		return {
+			sourceURL: sourceUrlMatch ? sourceUrlMatch[1] : '',
+			sourceMapURL: sourceMappingMatch ? sourceMappingMatch[1] : undefined
+		};
+	}
+
+	/**
+	 * Extract original source file path from a base64-encoded inline source map
+	 * Vite embeds source maps as data:application/json;base64,... URLs
+	 */
+	private extractSourceFromInlineSourceMap(sourceMapURL: string | undefined): string | null {
+		if (!sourceMapURL) {
+			return null;
+		}
+
+		// Check if it's a base64-encoded inline source map
+		const base64Match = sourceMapURL.match(/^data:application\/json;base64,(.+)$/);
+		if (!base64Match) {
+			return null;
+		}
+
+		try {
+			// Decode the base64 source map
+			const decoded = Buffer.from(base64Match[1], 'base64').toString('utf-8');
+			const sourceMap = JSON.parse(decoded) as { sources?: string[]; file?: string };
+
+			// Get the first source file (usually the original CSS file)
+			if (sourceMap.sources && sourceMap.sources.length > 0) {
+				const source = sourceMap.sources[0];
+				// Source might be absolute path or relative
+				// Return as-is, URL converter will handle it
+				return source;
+			}
+
+			// Fallback to file property
+			if (sourceMap.file) {
+				return sourceMap.file;
+			}
+		} catch {
+			// Failed to parse source map
 		}
 
 		return null;
