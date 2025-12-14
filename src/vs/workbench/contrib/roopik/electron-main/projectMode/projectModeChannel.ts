@@ -102,6 +102,10 @@ export class ProjectModeChannel implements IServerChannel {
 			case 'executeScriptOnOverlay':
 				return this.service.executeScriptOnOverlay(arg.overlayViewId, arg.script);
 
+			// CSS Source Resolution
+			case 'getElementStyles':
+				return this.service.getElementStyles(arg);
+
 			default:
 				throw new Error(`[ProjectModeChannel] Unknown command: ${command}`);
 		}

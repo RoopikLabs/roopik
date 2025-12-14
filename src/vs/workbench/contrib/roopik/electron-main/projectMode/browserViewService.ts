@@ -7,10 +7,13 @@ import { BrowserWindow, WebContentsView, session, app } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
 import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
+import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
 import type { ILifecycleMainService } from '../../../../../platform/lifecycle/electron-main/lifecycleMainService.js';
 import { LoadReason } from '../../../../../platform/window/electron-main/window.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
+import { CDPCssService } from './cssResolvers/cdpCssService.js';
+import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.js';
 
 /**
  * Browser View Service
@@ -68,12 +71,18 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// Remote debugging port counter
 	private debuggingPortCounter = 9222;
 
+	// CSS source resolution services
+	private cdpCssService: CDPCssService;
+	private styleOrchestrators = new Map<string, StyleSourceOrchestrator>(); // projectRoot -> orchestrator
+
 	// ============================================
 	// Constructor & Lifecycle Setup
 	// ============================================
 
 	constructor(private readonly lifecycleMainService?: ILifecycleMainService) {
 		super();
+		// Initialize CDP CSS Service with this as the browser service
+		this.cdpCssService = new CDPCssService(this);
 		this.setupLifecycleHooks();
 	}
 
@@ -1148,6 +1157,61 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		for (const overlayViewId of overlaysToDestroy) {
 			this.destroyOverlayView(overlayViewId);
+		}
+	}
+
+	// ============================================
+	// CSS Source Resolution
+	// ============================================
+
+	/**
+	 * Get complete style information for an element
+	 *
+	 * Uses CDP (Chrome DevTools Protocol) for deterministic source resolution.
+	 * Handles plain CSS, SCSS/LESS (via source maps), CSS-in-JS, and inline styles.
+	 *
+	 * @param request - Element identification and project context
+	 * @returns Complete style information including source locations
+	 */
+	async getElementStyles(request: GetElementStylesRequest): Promise<GetElementStylesResult> {
+		const { browserViewId, projectRoot } = request;
+
+		// Validate browser view exists
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			return {
+				success: false,
+				error: 'Browser view not found or destroyed'
+			};
+		}
+
+		try {
+			// Get or create orchestrator for this project root
+			let orchestrator = this.styleOrchestrators.get(projectRoot);
+			if (!orchestrator) {
+				orchestrator = new StyleSourceOrchestrator(this.cdpCssService, projectRoot);
+				this.styleOrchestrators.set(projectRoot, orchestrator);
+			}
+
+			// Delegate to orchestrator
+			return await orchestrator.getElementStyles(request);
+		} catch (error) {
+			console.error('[BrowserViewService] getElementStyles error:', error);
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			};
+		}
+	}
+
+	/**
+	 * Clear CSS cache for a project
+	 * Call when files change to ensure fresh source map resolution
+	 */
+	clearCssCacheForProject(projectRoot: string): void {
+		const orchestrator = this.styleOrchestrators.get(projectRoot);
+		if (orchestrator) {
+			orchestrator.clearCaches();
 		}
 	}
 }

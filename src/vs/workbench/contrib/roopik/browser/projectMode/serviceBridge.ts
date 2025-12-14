@@ -7,6 +7,7 @@ import { Event } from '../../../../../base/common/event.js';
 import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
 import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
+import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 
 /**
  * Service Bridge
@@ -183,5 +184,13 @@ export class ServiceBridge implements IProjectModeService {
 
 	async executeScriptOnOverlay(overlayViewId: number, script: string): Promise<any> {
 		return this.channel.call('executeScriptOnOverlay', { overlayViewId, script });
+	}
+
+	// ============================================
+	// CSS Source Resolution
+	// ============================================
+
+	async getElementStyles(request: GetElementStylesRequest): Promise<GetElementStylesResult> {
+		return this.channel.call('getElementStyles', request);
 	}
 }

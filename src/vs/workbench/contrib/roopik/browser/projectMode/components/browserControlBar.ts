@@ -22,6 +22,7 @@ export interface BrowserBookmark {
 export interface IBrowserControlBarConfig {
 	showDevTools?: boolean;
 	showInspectMode?: boolean;
+	showStyleInspect?: boolean;
 	showScreenshot?: boolean;
 	showHardReload?: boolean;
 	showCopyUrl?: boolean;
@@ -44,6 +45,7 @@ export interface IBrowserControlBarCallbacks {
 	// Features
 	onDevTools?: () => void;
 	onInspectMode?: () => void;
+	onStyleInspectMode?: () => void;
 	onHardReload?: () => void;
 	onScreenshot?: () => void;
 	onCopyUrl?: () => void;
@@ -167,6 +169,11 @@ export class BrowserControlBar extends Disposable {
 		// Inspect Mode button (for element inspection)
 		if (this.config.showInspectMode && this.callbacks.onInspectMode) {
 			this.createIconButton(Codicon.inspect, 'Inspect Mode', () => this.callbacks.onInspectMode!());
+		}
+
+		// Style Inspect button (for CSS source tracking)
+		if (this.config.showStyleInspect && this.callbacks.onStyleInspectMode) {
+			this.createIconButton(Codicon.symbolColor, 'Style Inspect (CSS Sources)', () => this.callbacks.onStyleInspectMode!());
 		}
 
 		// DevTools button

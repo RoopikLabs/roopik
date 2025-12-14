@@ -34,8 +34,10 @@ import { InspectMode } from './features/inspectMode.js';
 import { Bookmarks } from './features/bookmarks.js';
 import { BrowserPause } from './features/browserPause.js';
 import { ActionBar } from './features/actionBar.js';
+import { StyleInspect } from './features/styleInspect.js';
 // Components
 import { DefaultBrowserScreen } from './components/defaultBrowserScreen.js';
+import { IEditorService } from '../../../../services/editor/common/editorService.js';
 
 /**
  * Project Mode Editor
@@ -88,6 +90,7 @@ export class Editor extends EditorPane {
 	private bookmarks!: Bookmarks;
 	private browserPause!: BrowserPause;
 	private actionBar!: ActionBar;
+	private styleInspect!: StyleInspect;
 
 	constructor(
 		group: IEditorGroup,
@@ -101,7 +104,8 @@ export class Editor extends EditorPane {
 		@IQuickInputService private readonly quickInputService: IQuickInputService,
 		@IContextMenuService private readonly contextMenuService: IContextMenuService,
 		@INotificationService private readonly notificationService: INotificationService,
-		@IClipboardService private readonly clipboardService: IClipboardService
+		@IClipboardService private readonly clipboardService: IClipboardService,
+		@IEditorService private readonly editorService: IEditorService
 	) {
 		super(Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = RoopikLogger.create(loggerService);
@@ -113,6 +117,16 @@ export class Editor extends EditorPane {
 		this.bookmarks = new Bookmarks(this.storageService, this.notificationService, this.logger);
 		this.browserPause = new BrowserPause(this.browserService);
 		this.actionBar = new ActionBar(this.browserService, this.logger);
+		this.styleInspect = new StyleInspect(this.browserService, this.notificationService, this.editorService);
+
+		// Set callback to update browser bounds when style panel visibility changes
+		this.styleInspect.setOnVisibilityChanged((visible, _panelWidth) => {
+			// When panel shows/hides, the browserContainer size changes due to flex layout
+			// We need to update the BrowserView bounds to match
+			this.logger.info(`[StyleInspect] Panel visibility changed: ${visible}`);
+			// Use retry mechanism to handle layout timing
+			this.updateBoundsWithRetry();
+		});
 
 		// Subscribe to DevServer logs and forward to VSCode output channel
 		// This is critical for debugging - shows all prerequisite checks, server startup, etc.
@@ -250,6 +264,7 @@ export class Editor extends EditorPane {
 		const config: IBrowserControlBarConfig = {
 			showDevTools: true,
 			showInspectMode: true,
+			showStyleInspect: true,
 			showScreenshot: true,
 			showHardReload: true,
 			showCopyUrl: true,
@@ -266,6 +281,7 @@ export class Editor extends EditorPane {
 			onRefresh: () => this.refresh(),
 			onStopDevServer: () => this.stopDevServer(),
 			onInspectMode: () => this.enableInspectMode(),
+			onStyleInspectMode: () => this.enableStyleInspectMode(),
 			onDevTools: () => this.toggleDevTools(),
 			onHardReload: () => this.hardReload(),
 			onScreenshot: () => this.takeScreenshot(),
@@ -282,11 +298,11 @@ export class Editor extends EditorPane {
 
 		this.controlBar = this._register(new BrowserControlBar(this.container, config, callbacks));
 
-		// Content container (browser + devtools)
+		// Content container (browser + style panel in row layout)
 		this.contentContainer = document.createElement('div');
 		this.contentContainer.style.flex = '1 1 auto';
 		this.contentContainer.style.display = 'flex';
-		this.contentContainer.style.flexDirection = 'column';
+		this.contentContainer.style.flexDirection = 'row';  // Row layout for browser + panel side by side
 		this.contentContainer.style.position = 'relative';
 		this.contentContainer.style.overflow = 'hidden';
 		this.contentContainer.style.minHeight = '0';
@@ -294,15 +310,16 @@ export class Editor extends EditorPane {
 		this.contentContainer.style.width = '100%';
 		this.container.appendChild(this.contentContainer);
 
-		// Browser container (top area)
+		// Browser container (takes remaining space, shrinks when panel opens)
 		this.browserContainer = document.createElement('div');
 		this.browserContainer.style.flex = '1 1 0%';
 		this.browserContainer.style.display = 'flex';
+		this.browserContainer.style.flexDirection = 'column';
 		this.browserContainer.style.overflow = 'hidden';
 		this.browserContainer.style.backgroundColor = 'var(--vscode-editor-background)';
 		this.browserContainer.style.position = 'relative';
 		this.browserContainer.style.minHeight = '0';
-		this.browserContainer.style.width = '100%';
+		this.browserContainer.style.minWidth = '0';  // Allow shrinking
 		this.contentContainer.appendChild(this.browserContainer);
 
 		// Default screen shown when no URL is loaded (WebContentsView renders on top of this)
@@ -1236,6 +1253,113 @@ export class Editor extends EditorPane {
 	}
 
 	// ============================================
+	// Style Inspect Mode (CSS source tracking)
+	// ============================================
+
+	/**
+	 * Enable Style Inspect Mode
+	 * Shows CSS sources for clicked elements with click-to-source
+	 */
+	private async enableStyleInspectMode(): Promise<void> {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		// Set project root for CSS path resolution
+		if (this.currentProjectRoot) {
+			this.styleInspect.setProjectRoot(this.currentProjectRoot);
+		}
+
+		// Initialize panel if not already done (panel is created on first use)
+		if (this.contentContainer && !this.styleInspect.isPanelVisible()) {
+			this.styleInspect.initialize(this.contentContainer);
+		}
+
+		await this.styleInspect.enable(this.browserViewId);
+
+		// Poll for element selection result (the script stores the result in window object)
+		this.pollForStyleInspectResult();
+	}
+
+	/**
+	 * Poll for style inspect result from the browser
+	 * Called after enabling style inspect mode
+	 */
+	private pollForStyleInspectResult(): void {
+		if (!this.browserViewId || !this.styleInspect.getIsActive()) {
+			return;
+		}
+
+		const checkResult = async () => {
+			if (!this.browserViewId || !this.styleInspect.getIsActive()) {
+				return;
+			}
+
+			try {
+				// Check if an element was selected
+				const result = await this.browserService.executeScript(
+					this.browserViewId,
+					`window.__roopikStyleInspectResult || null`
+				);
+
+				if (result) {
+					// Clear the result so we don't process it again
+					await this.browserService.executeScript(
+						this.browserViewId,
+						`window.__roopikStyleInspectResult = null`
+					);
+
+					// Handle the selection - prefer selector over coordinates
+					// Selector is more reliable as coordinates may hit overlay elements
+					if (result.selector) {
+						await this.styleInspect.handleElementSelected(
+							this.browserViewId,
+							result.selector
+						);
+					} else if (result.x !== undefined && result.y !== undefined) {
+						// Fallback to coordinates if no selector available
+						await this.styleInspect.handleElementSelectedByPoint(
+							this.browserViewId,
+							result.x,
+							result.y
+						);
+					}
+				} else {
+					// Keep polling while style inspect is active
+					if (this.styleInspect.getIsActive()) {
+						setTimeout(checkResult, 100);
+					}
+				}
+			} catch {
+				// Silent fail, keep polling
+				if (this.styleInspect.getIsActive()) {
+					setTimeout(checkResult, 100);
+				}
+			}
+		};
+
+		// Start polling after a short delay
+		setTimeout(checkResult, 100);
+	}
+
+	/**
+	 * Disable Style Inspect Mode
+	 */
+	public async disableStyleInspectMode(): Promise<void> {
+		if (this.browserViewId) {
+			await this.styleInspect.disable(this.browserViewId);
+		}
+		this.styleInspect.hidePanel();
+	}
+
+	/**
+	 * Check if style inspect mode is active
+	 */
+	public isStyleInspectModeActive(): boolean {
+		return this.styleInspect.getIsActive();
+	}
+
+	// ============================================
 	// Utilities
 	// ============================================
 
@@ -1555,6 +1679,9 @@ export class Editor extends EditorPane {
 		// Cleanup ResizeObserver
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = undefined;
+
+		// Dispose style inspect feature
+		this.styleInspect.dispose();
 
 		// Stop dev server if running (idempotent - may have already been stopped by onWillDispose)
 		this.stopDevServerOnClose();
