@@ -100,13 +100,17 @@ export class CDPCssService {
 				'CSS.getAllStyleSheets'
 			) as { headers: CDPStyleSheetHeader[] };
 
+			console.log('[CDPCssService] fetchAllStyleSheets got', result.headers?.length ?? 0, 'stylesheets');
+
 			const cache = this.styleSheetCache.get(browserViewId);
 			if (cache && result.headers) {
 				for (const header of result.headers) {
+					console.log('[CDPCssService] Caching stylesheet:', header.styleSheetId, 'sourceURL:', header.sourceURL, 'isInline:', header.isInline);
 					cache.set(header.styleSheetId, { header });
 				}
 			}
-		} catch {
+		} catch (error) {
+			console.log('[CDPCssService] getAllStyleSheets not supported, will fetch on demand:', error);
 			// Some older CDP versions don't support getAllStyleSheets
 			// Stylesheets will be fetched on demand
 		}
@@ -421,6 +425,13 @@ export class CDPCssService {
 		styleSheetId: string
 	): Promise<{ sourceURL: string; sourceMapURL?: string; isInline: boolean } | null> {
 		const header = await this.getStyleSheetHeader(browserViewId, styleSheetId);
+		console.log('[CDPCssService] getStyleSheetSourceURL for', styleSheetId, '-> header:', header ? JSON.stringify({
+			sourceURL: header.sourceURL,
+			sourceMapURL: header.sourceMapURL,
+			isInline: header.isInline,
+			origin: header.origin,
+			title: header.title
+		}) : 'null');
 		if (!header) {
 			return null;
 		}

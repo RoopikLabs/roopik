@@ -198,15 +198,15 @@ export interface InlineStyleProperty {
 }
 
 /**
- * Inherited style information
+ * Inherited style information (grouped by parent element like Chrome DevTools)
  */
 export interface InheritedStyleInfo {
-	/** Parent element tag name */
+	/** Parent element description (e.g., "section.hero", "body") */
 	fromElement: string;
-	/** Parent element selector (for identification) */
-	fromSelector?: string;
-	/** Inherited properties */
-	properties: ResolvedCSSProperty[];
+	/** CSS rules from this parent that apply inherited properties */
+	matchedRules: MatchedCSSRule[];
+	/** Inline styles from this parent (if any) */
+	inlineStyle?: InlineStyleProperty[];
 }
 
 // ============================================

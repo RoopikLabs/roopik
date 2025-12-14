@@ -270,7 +270,7 @@ export class StyleSourceOrchestrator {
 				browserViewId,
 				rule.styleSheetId
 			);
-			console.log('[StyleSourceOrchestrator] Rule:', ruleSelector, 'origin:', rule.origin, 'sheetInfo:', sheetInfo);
+			console.log('[StyleSourceOrchestrator] Rule:', ruleSelector, 'styleSheetId:', rule.styleSheetId, 'origin:', rule.origin, 'sheetInfo:', JSON.stringify(sheetInfo));
 
 			// Determine file path and origin
 			let filePath: string | null = null;
@@ -398,6 +398,10 @@ export class StyleSourceOrchestrator {
 
 	/**
 	 * Process CSS properties from a rule
+	 *
+	 * Important: We only include properties that have a source range.
+	 * Properties without a range are expanded/computed values (e.g., padding-top
+	 * expanded from padding shorthand) and should not be shown in "Element Styles".
 	 */
 	private async processRuleProperties(
 		cssProperties: CDPCSSProperty[],
@@ -414,6 +418,13 @@ export class StyleSourceOrchestrator {
 
 			// Skip internal/disabled properties
 			if (prop.disabled || prop.implicit) {
+				continue;
+			}
+
+			// Skip properties without a source range - these are expanded/computed
+			// values (e.g., padding-top from "padding: 10px") that weren't explicitly
+			// written in the CSS file. We only want to show what the user wrote.
+			if (!prop.range) {
 				continue;
 			}
 
@@ -471,6 +482,13 @@ export class StyleSourceOrchestrator {
 
 	/**
 	 * Process inherited styles from parent elements
+	 *
+	 * Groups styles by parent element like Chrome DevTools shows:
+	 * "Inherited from section.hero"
+	 * "Inherited from body"
+	 *
+	 * Shows ALL properties from rules that have inheritable properties,
+	 * including overridden ones (they'll be shown struck-out in UI).
 	 */
 	private async processInheritedStyles(
 		browserViewId: number,
@@ -480,14 +498,20 @@ export class StyleSourceOrchestrator {
 	): Promise<InheritedStyleInfo[]> {
 		const inheritedStyles: InheritedStyleInfo[] = [];
 
-		for (const inheritedEntry of inherited) {
-			// Process inherited rules
-			// Note: inherited rules don't have matchingSelectors, so we provide empty array
-			// (all selectors match since they're inherited from parent)
+		// Track which properties have been seen (for marking overrides)
+		const seenInheritedProps = new Set<string>();
+
+		// Each entry in 'inherited' represents one parent element up the DOM tree
+		// Index 0 = direct parent, 1 = grandparent, etc.
+		for (let i = 0; i < inherited.length; i++) {
+			const inheritedEntry = inherited[i];
+
+			// Process inherited CSS rules from this parent
 			const inheritedRulesWithSelectors = (inheritedEntry.matchedCSSRules || []).map(r => ({
 				rule: r.rule,
 				matchingSelectors: [] as number[]
 			}));
+
 			const { rules } = await this.processMatchedRules(
 				browserViewId,
 				inheritedRulesWithSelectors,
@@ -495,33 +519,67 @@ export class StyleSourceOrchestrator {
 				htmlFile
 			);
 
-			// Only include if there are matching rules
-			if (rules.length > 0) {
-				// Extract properties from all rules
-				const properties: ResolvedCSSProperty[] = [];
-				for (const rule of rules) {
-					for (const prop of rule.properties) {
-						// Only include inheritable properties
-						if (this.isInheritableProperty(prop.name)) {
-							properties.push({
-								name: prop.name,
-								value: prop.value,
-								sourceType: 'inherited',
-								location: prop.location,
-								selector: rule.selector,
-								isOverridden: false
-							});
+			// Filter to rules that have AT LEAST ONE inheritable property
+			// But keep ALL properties in those rules (show non-inheritable as struck-out)
+			const rulesWithInheritableProps = rules
+				.filter(rule => rule.properties.some(p => this.isInheritableProperty(p.name)))
+				.map(rule => ({
+					...rule,
+					// Keep all properties, but mark non-inheritable ones as overridden
+					// Also mark properties that were already defined by a closer ancestor
+					properties: rule.properties.map(p => {
+						const isInheritable = this.isInheritableProperty(p.name);
+						const alreadySeen = seenInheritedProps.has(p.name);
+
+						// Track inheritable properties we've seen
+						if (isInheritable && !alreadySeen) {
+							seenInheritedProps.add(p.name);
+						}
+
+						return {
+							...p,
+							// Mark as overridden if: not inheritable OR already defined by closer ancestor
+							isOverridden: !isInheritable || alreadySeen
+						};
+					})
+				}));
+
+			// Process inline styles from parent (if any)
+			let inlineStyle: InlineStyleProperty[] | undefined;
+			if (inheritedEntry.inlineStyle?.cssProperties) {
+				inlineStyle = inheritedEntry.inlineStyle.cssProperties
+					.filter(p => p.name && p.value && !p.disabled && !p.implicit && p.range)
+					.map(p => ({ name: p.name, value: p.value }));
+				if (inlineStyle.length === 0) {
+					inlineStyle = undefined;
+				}
+			}
+
+			// Only add if there are rules with inheritable properties
+			if (rulesWithInheritableProps.length > 0 || inlineStyle) {
+				// Get element description from selector
+				// Try to find most specific selector (tag.class format)
+				let fromElement = `parent ${i + 1}`;
+				for (const rule of rulesWithInheritableProps) {
+					// Look for selectors that look like element names (body, section.hero, etc.)
+					const selector = rule.selector;
+					if (selector.match(/^[a-z]+(\.[a-zA-Z][\w-]*)?$/)) {
+						// Simple element or element.class selector
+						fromElement = selector;
+						break;
+					} else if (selector.startsWith('.')) {
+						// Class selector - use as fallback
+						if (fromElement.startsWith('parent')) {
+							fromElement = selector;
 						}
 					}
 				}
 
-				if (properties.length > 0) {
-					inheritedStyles.push({
-						fromElement: 'parent', // Simplified - could enhance with parent tag
-						fromSelector: rules[0]?.selector,
-						properties
-					});
-				}
+				inheritedStyles.push({
+					fromElement,
+					matchedRules: rulesWithInheritableProps,
+					inlineStyle
+				});
 			}
 		}
 
@@ -530,7 +588,9 @@ export class StyleSourceOrchestrator {
 
 	/**
 	 * Build the final resolved properties list
-	 * Properties are in priority order: inline > matched rules > inherited
+	 * Properties are in priority order: inline > matched rules (high to low specificity) > inherited
+	 *
+	 * This is used for the "All Computed" section.
 	 */
 	private buildResolvedProperties(
 		matchedRules: MatchedCSSRule[],
@@ -552,8 +612,9 @@ export class StyleSourceOrchestrator {
 			seenProperties.add(style.name);
 		}
 
-		// 2. Matched CSS rules (in specificity order - rules array is already ordered)
-		for (const rule of matchedRules) {
+		// 2. Matched CSS rules - iterate in REVERSE (highest specificity = end of array)
+		for (let i = matchedRules.length - 1; i >= 0; i--) {
+			const rule = matchedRules[i];
 			for (const prop of rule.properties) {
 				const isOverridden = seenProperties.has(prop.name);
 
@@ -562,7 +623,6 @@ export class StyleSourceOrchestrator {
 				if (rule.origin === 'user-agent') {
 					sourceType = 'user-agent';
 				} else if (rule.isSourceMapped) {
-					// Could be scss-file or less-file based on extension
 					const ext = rule.file.toLowerCase();
 					if (ext.endsWith('.scss') || ext.endsWith('.sass')) {
 						sourceType = 'scss-file';
@@ -588,18 +648,42 @@ export class StyleSourceOrchestrator {
 			}
 		}
 
-		// 3. Inherited styles (lowest priority)
+		// 3. Inherited styles (lowest priority) - now using matchedRules structure
 		for (const inherited of inheritedStyles) {
-			for (const prop of inherited.properties) {
-				const isOverridden = seenProperties.has(prop.name);
+			for (const rule of inherited.matchedRules) {
+				for (const prop of rule.properties) {
+					const isOverridden = seenProperties.has(prop.name);
 
-				properties.push({
-					...prop,
-					isOverridden
-				});
+					properties.push({
+						name: prop.name,
+						value: prop.value,
+						sourceType: 'inherited',
+						location: prop.location || rule.location,
+						selector: rule.selector,
+						isOverridden,
+						isImportant: prop.isImportant
+					});
 
-				if (!isOverridden) {
-					seenProperties.add(prop.name);
+					if (!isOverridden) {
+						seenProperties.add(prop.name);
+					}
+				}
+			}
+
+			// Also include inherited inline styles
+			if (inherited.inlineStyle) {
+				for (const style of inherited.inlineStyle) {
+					const isOverridden = seenProperties.has(style.name);
+					properties.push({
+						name: style.name,
+						value: style.value,
+						sourceType: 'inherited',
+						location: style.location,
+						isOverridden
+					});
+					if (!isOverridden) {
+						seenProperties.add(style.name);
+					}
 				}
 			}
 		}
@@ -609,13 +693,23 @@ export class StyleSourceOrchestrator {
 
 	/**
 	 * Mark properties that are overridden by higher-specificity rules
-	 * Note: Rules in the array are in cascade order (higher specificity first)
+	 *
+	 * CDP returns rules in cascade order where LATER rules have HIGHER specificity.
+	 * So we iterate from END to START (highest specificity first).
+	 * The first rule we see for a property "wins", later ones are overridden.
+	 *
+	 * Example order from CDP:
+	 * [0] * { padding: 0 }           <- lowest specificity
+	 * [1] .btn { padding: 10px }     <- higher specificity (WINS)
+	 *
+	 * We iterate [1] then [0], so .btn's padding is seen first and wins.
 	 */
 	private markOverriddenProperties(rules: MatchedCSSRule[]): void {
 		const seenProperties = new Set<string>();
 
-		// Iterate in order (highest specificity first)
-		for (const rule of rules) {
+		// Iterate in REVERSE order (highest specificity first = end of array)
+		for (let i = rules.length - 1; i >= 0; i--) {
+			const rule = rules[i];
 			for (const prop of rule.properties) {
 				if (seenProperties.has(prop.name)) {
 					prop.isOverridden = true;

@@ -59,8 +59,10 @@ export class StyleInspectPanel {
 	private resizeStartX: number = 0;
 	private resizeStartWidth: number = 0;
 
-	// Collapsible section states
-	private expandedSections = new Set<string>(['element', 'styles', 'rules']);
+	// Collapsible section states - prioritize element-specific styles
+	// 'element', 'inline', 'rules' are expanded by default (top priority)
+	// 'inherited', 'resets', 'styles' are collapsed by default (less important)
+	private expandedSections = new Set<string>(['element', 'inline', 'rules']);
 
 	constructor(
 		private readonly parent: HTMLElement,
@@ -153,7 +155,7 @@ export class StyleInspectPanel {
 		// Header
 		this.contentContainer.appendChild(this.createHeader());
 
-		// Element section
+		// Element section (always first)
 		this.contentContainer.appendChild(this.createElementSection(this.currentData));
 
 		// CSS-in-JS notice (if detected)
@@ -161,19 +163,37 @@ export class StyleInspectPanel {
 			this.contentContainer.appendChild(this.createCssInJsNotice(this.currentData.cssInJs));
 		}
 
-		// Computed styles section
-		if (this.currentData.properties.length > 0) {
-			this.contentContainer.appendChild(this.createStylesSection(this.currentData.properties));
-		}
+		// Filter rules: separate element-specific from universal/resets
+		const elementSpecificRules = this.currentData.matchedRules.filter(r =>
+			r.selector !== '*' && !r.selector.startsWith('*,')
+		);
+		const resetRules = this.currentData.matchedRules.filter(r =>
+			r.selector === '*' || r.selector.startsWith('*,')
+		);
 
-		// Matched rules section
-		if (this.currentData.matchedRules.length > 0) {
-			this.contentContainer.appendChild(this.createRulesSection(this.currentData.matchedRules));
-		}
-
-		// Inline styles section
+		// 1. INLINE STYLES (highest priority - directly on element)
 		if (this.currentData.inlineStyles.length > 0) {
 			this.contentContainer.appendChild(this.createInlineStylesSection(this.currentData.inlineStyles));
+		}
+
+		// 2. ELEMENT-SPECIFIC CSS RULES (what the user wrote for this element)
+		if (elementSpecificRules.length > 0) {
+			this.contentContainer.appendChild(this.createRulesSection(elementSpecificRules, 'Element Styles'));
+		}
+
+		// 3. INHERITED - single section with sub-groups by parent element
+		if (this.currentData.inheritedStyles && this.currentData.inheritedStyles.length > 0) {
+			this.contentContainer.appendChild(this.createInheritedSection(this.currentData.inheritedStyles));
+		}
+
+		// 4. RESET/UNIVERSAL RULES (collapsed by default, less important)
+		if (resetRules.length > 0) {
+			this.contentContainer.appendChild(this.createRulesSection(resetRules, 'Reset Styles', 'resets'));
+		}
+
+		// 5. ALL COMPUTED (collapsed by default - for advanced users)
+		if (this.currentData.properties.length > 0) {
+			this.contentContainer.appendChild(this.createStylesSection(this.currentData.properties));
 		}
 	}
 
@@ -428,7 +448,7 @@ export class StyleInspectPanel {
 	private createStylesSection(properties: ResolvedCSSProperty[]): HTMLElement {
 		// Group properties by source type
 		const grouped = this.groupPropertiesBySource(properties);
-		const section = this.createCollapsibleSection('styles', `Computed Styles (${properties.length})`);
+		const section = this.createCollapsibleSection('styles', `All Computed (${properties.length})`);
 
 		// Create groups
 		for (const [sourceType, props] of grouped) {
@@ -548,7 +568,7 @@ export class StyleInspectPanel {
 			flex-shrink: 0;
 		`;
 
-		// Source link (if available)
+		// Source link (if available) - for CSS/SCSS/LESS files
 		if (prop.location && (prop.sourceType === 'css-file' || prop.sourceType === 'scss-file' || prop.sourceType === 'less-file')) {
 			const link = document.createElement('a');
 			link.style.cssText = `
@@ -571,29 +591,7 @@ export class StyleInspectPanel {
 			sourceContainer.appendChild(link);
 		}
 
-		// Edit button (if editable and not overridden)
-		if (prop.location && !prop.isOverridden && this.callbacks.onEditStyle) {
-			const editBtn = document.createElement('button');
-			editBtn.style.cssText = `
-				background: none;
-				border: none;
-				cursor: pointer;
-				padding: 2px;
-				opacity: 0;
-				font-size: 10px;
-				color: var(--vscode-icon-foreground);
-				transition: opacity 0.15s;
-			`;
-			editBtn.textContent = '✎';
-			editBtn.title = 'Edit value';
-
-			row.addEventListener('mouseenter', () => { editBtn.style.opacity = '0.7'; });
-			row.addEventListener('mouseleave', () => { editBtn.style.opacity = '0'; });
-
-			editBtn.addEventListener('click', () => this.startInlineEdit(prop, value));
-			sourceContainer.appendChild(editBtn);
-		}
-
+		// Note: Edit functionality will be via double-click in future, no icon needed
 		row.appendChild(sourceContainer);
 		return row;
 	}
@@ -602,8 +600,8 @@ export class StyleInspectPanel {
 	// Matched Rules Section
 	// ============================================
 
-	private createRulesSection(rules: MatchedCSSRule[]): HTMLElement {
-		const section = this.createCollapsibleSection('rules', `CSS Rules (${rules.length})`);
+	private createRulesSection(rules: MatchedCSSRule[], title: string = 'CSS Rules', sectionId: string = 'rules'): HTMLElement {
+		const section = this.createCollapsibleSection(sectionId, `${title} (${rules.length})`);
 
 		for (const rule of rules) {
 			const ruleEl = this.createRuleElement(rule);
@@ -664,27 +662,21 @@ export class StyleInspectPanel {
 
 		el.appendChild(header);
 
-		// Properties preview (first few)
+		// All properties (show everything - will be editable in future)
 		const props = document.createElement('div');
 		props.style.cssText = `
 			padding-left: 12px;
 			color: var(--vscode-descriptionForeground);
 		`;
 
-		const maxPreview = 3;
-		for (let i = 0; i < Math.min(rule.properties.length, maxPreview); i++) {
-			const prop = rule.properties[i];
+		for (const prop of rule.properties) {
 			const propLine = document.createElement('div');
-			propLine.style.cssText = prop.isOverridden ? 'text-decoration: line-through; opacity: 0.5;' : '';
+			propLine.style.cssText = `
+				padding: 2px 0;
+				${prop.isOverridden ? 'text-decoration: line-through; opacity: 0.5;' : ''}
+			`;
 			propLine.textContent = `${prop.name}: ${prop.value}${prop.isImportant ? ' !important' : ''};`;
 			props.appendChild(propLine);
-		}
-
-		if (rule.properties.length > maxPreview) {
-			const more = document.createElement('div');
-			more.style.cssText = `opacity: 0.5; font-style: italic;`;
-			more.textContent = `... ${rule.properties.length - maxPreview} more properties`;
-			props.appendChild(more);
 		}
 
 		el.appendChild(props);
@@ -726,6 +718,68 @@ export class StyleInspectPanel {
 		}
 
 		section.content.appendChild(list);
+		return section.element;
+	}
+
+	// ============================================
+	// Inherited Styles Section (single section with sub-groups like Chrome)
+	// ============================================
+
+	private createInheritedSection(inheritedStyles: NonNullable<ElementStyleInfo['inheritedStyles']>): HTMLElement {
+		// Count total rules across all parents
+		const totalRules = inheritedStyles.reduce((sum, i) => sum + i.matchedRules.length, 0);
+		const section = this.createCollapsibleSection('inherited', `Inherited (${totalRules})`);
+
+		// Add each parent element's styles as a sub-group
+		for (const inherited of inheritedStyles) {
+			// Parent element header (e.g., "Inherited from section.hero")
+			const parentHeader = document.createElement('div');
+			parentHeader.style.cssText = `
+				font-size: 11px;
+				color: var(--vscode-descriptionForeground);
+				padding: 8px 0 4px 0;
+				border-top: 1px solid var(--vscode-widget-border);
+				margin-top: 8px;
+			`;
+			parentHeader.textContent = `Inherited from ${inherited.fromElement}`;
+			section.content.appendChild(parentHeader);
+
+			// Render each matched rule from this parent
+			for (const rule of inherited.matchedRules) {
+				const ruleEl = this.createRuleElement(rule);
+				section.content.appendChild(ruleEl);
+			}
+
+			// Render inline styles from this parent (if any)
+			if (inherited.inlineStyle && inherited.inlineStyle.length > 0) {
+				const inlineHeader = document.createElement('div');
+				inlineHeader.style.cssText = `
+					font-size: 10px;
+					color: var(--vscode-descriptionForeground);
+					margin-top: 8px;
+					margin-bottom: 4px;
+				`;
+				inlineHeader.textContent = 'element.style';
+				section.content.appendChild(inlineHeader);
+
+				const list = document.createElement('div');
+				list.style.cssText = `
+					font-family: var(--vscode-editor-font-family), monospace;
+					font-size: 11px;
+					padding-left: 12px;
+				`;
+
+				for (const style of inherited.inlineStyle) {
+					const row = document.createElement('div');
+					row.style.cssText = `padding: 2px 0;`;
+					row.textContent = `${style.name}: ${style.value};`;
+					list.appendChild(row);
+				}
+
+				section.content.appendChild(list);
+			}
+		}
+
 		return section.element;
 	}
 
