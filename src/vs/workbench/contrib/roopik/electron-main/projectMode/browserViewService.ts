@@ -1026,38 +1026,38 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				const wc = browserView.webContents;
 
 				// Navigation items (Back, Forward, Reload)
-				// Always show Back/Forward but disable them when not available
+				// Only show Back/Forward when they're available
 				const canGoBack = wc.navigationHistory.canGoBack();
 				const canGoForward = wc.navigationHistory.canGoForward();
 
-				menuItems.push(
-					{
-						label: 'Back',
-						enabled: canGoBack,
-						click: () => {
-							if (canGoBack) {
+				if (canGoBack || canGoForward) {
+					if (canGoBack) {
+						menuItems.push({
+							label: 'Back',
+							click: () => {
 								wc.navigationHistory.goBack();
 							}
-						}
-					},
-					{
-						label: 'Forward',
-						enabled: canGoForward,
-						click: () => {
-							if (canGoForward) {
+						});
+					}
+					if (canGoForward) {
+						menuItems.push({
+							label: 'Forward',
+							click: () => {
 								wc.navigationHistory.goForward();
 							}
-						}
-					},
-					{ type: 'separator' },
-					{
-						label: 'Reload',
-						click: () => {
-							wc.reload();
-						}
-					},
-					{ type: 'separator' }
-				);
+						});
+					}
+					menuItems.push({ type: 'separator' });
+				}
+
+				menuItems.push({
+					label: 'Reload',
+					click: () => {
+						wc.reload();
+					}
+				});
+
+				menuItems.push({ type: 'separator' });
 
 				return menuItems;
 			},
