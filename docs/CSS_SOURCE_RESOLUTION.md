@@ -4,6 +4,154 @@
 
 The Style Inspect panel uses Chrome DevTools Protocol (CDP) to resolve CSS source files for inspected elements. This document explains all the challenges we solved to make CSS source resolution work correctly across different scenarios.
 
+---
+
+## Architecture: Single CDP Call, Centralized Processing
+
+The entire Style Inspect panel is powered by **one CDP call** and **one orchestrator** that processes all data. The UI simply displays pre-computed results.
+
+### High-Level Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                   User clicks element in browser                    │
+└─────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        CDP (Chrome DevTools Protocol)               │
+│                                                                     │
+│   CSS.getMatchedStylesForNode({ nodeId })  ← ONE CALL               │
+│                                                                     │
+│   Returns: {                                                        │
+│     inlineStyle: {...},           ← style="" attribute              │
+│     matchedCSSRules: [...],       ← All CSS rules for this element  │
+│     inherited: [                  ← Parent chain styles             │
+│       { matchedCSSRules: [...] }, ← Direct parent's rules           │
+│       { matchedCSSRules: [...] }, ← Grandparent's rules             │
+│       ...                         ← Up to <html>                    │
+│     ]                                                               │
+│   }                                                                 │
+└─────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│            styleSourceOrchestrator.getElementStyles()               │
+│                 (electron-main/projectMode/cssResolvers/)           │
+│                                                                     │
+│   ONE METHOD orchestrates all processing:                           │
+│                                                                     │
+│   ┌─────────────────────────────────────────────────────────────┐   │
+│   │ 1. processMatchedRules(cdp.matchedCSSRules)                 │   │
+│   │    → Resolve source files, parse selectors                  │   │
+│   │    → Output: matchedRules[]                                 │   │
+│   └─────────────────────────────────────────────────────────────┘   │
+│                              │                                      │
+│                              ▼                                      │
+│   ┌─────────────────────────────────────────────────────────────┐   │
+│   │ 2. processInlineStyles(cdp.inlineStyle)                     │   │
+│   │    → Extract style="" properties                            │   │
+│   │    → Output: inlineStyles[]                                 │   │
+│   └─────────────────────────────────────────────────────────────┘   │
+│                              │                                      │
+│                              ▼                                      │
+│   ┌─────────────────────────────────────────────────────────────┐   │
+│   │ 3. processInheritedStyles(cdp.inherited,                    │   │
+│   │                           matchedRules, inlineStyles)       │   │
+│   │    → Process parent chain                                   │   │
+│   │    → Mark overridden (strikethrough) vs not-inheritable     │   │
+│   │    → Uses: isInheritableProperty() helper                   │   │
+│   │    → Output: inheritedStyles[]                              │   │
+│   └─────────────────────────────────────────────────────────────┘   │
+│                              │                                      │
+│                              ▼                                      │
+│   ┌─────────────────────────────────────────────────────────────┐   │
+│   │ 4. buildResolvedProperties(matchedRules, inlineStyles,      │   │
+│   │                            inheritedStyles)                 │   │
+│   │    → Build final computed values list                       │   │
+│   │    → Skip non-inheritable from inherited (they don't apply) │   │
+│   │    → Uses: isInheritableProperty() helper                   │   │
+│   │    → Output: properties[]                                   │   │
+│   └─────────────────────────────────────────────────────────────┘   │
+│                              │                                      │
+│                              ▼                                      │
+│   Returns: ElementStyleInfo {                                       │
+│     matchedRules,      → Used by "Element Styles" & "Reset Styles"  │
+│     inlineStyles,      → Used by "Inline Styles"                    │
+│     inheritedStyles,   → Used by "Inherited"                        │
+│     properties         → Used by "All Computed"                     │
+│   }                                                                 │
+└─────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                styleInspectPanel.ts (UI - Browser Process)          │
+│                   (browser/projectMode/components/)                 │
+│                                                                     │
+│   render(data: ElementStyleInfo) {                                  │
+│     // UI just DISPLAYS pre-processed data - NO logic here!        │
+│                                                                     │
+│     createInlineStylesSection(data.inlineStyles)                    │
+│     createRulesSection(elementRules)      ← "Element Styles"        │
+│     createInheritedSection(data.inheritedStyles)                    │
+│     createRulesSection(resetRules)        ← "Reset Styles" (* only) │
+│     createStylesSection(data.properties)  ← "All Computed"          │
+│   }                                                                 │
+│                                                                     │
+│   // Only UI-level filtering: split matchedRules by selector        │
+│   elementRules = matchedRules.filter(r => r.selector !== '*')       │
+│   resetRules = matchedRules.filter(r => r.selector === '*')         │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Methods Reference
+
+| Method | Location | Purpose |
+|--------|----------|---------|
+| `getElementStyles()` | styleSourceOrchestrator.ts | **Main orchestrator** - calls CDP, coordinates all processing |
+| `processMatchedRules()` | styleSourceOrchestrator.ts | Parse CDP rules, resolve source file paths |
+| `processInlineStyles()` | styleSourceOrchestrator.ts | Extract `style=""` attribute properties |
+| `processInheritedStyles()` | styleSourceOrchestrator.ts | Process parent chain, mark override/inheritable flags |
+| `buildResolvedProperties()` | styleSourceOrchestrator.ts | Build "All Computed" from all processed data |
+| `isInheritableProperty()` | styleSourceOrchestrator.ts | **Shared helper** - determines if property inherits |
+| `render()` | styleInspectPanel.ts | Display pre-processed data (no CSS logic) |
+
+### What Each UI Section Displays
+
+| UI Section | Data Source | Processing |
+|------------|-------------|------------|
+| **Inline Styles** | `data.inlineStyles` | Direct display |
+| **Element Styles** | `data.matchedRules` | Filter: exclude `*` selectors |
+| **Reset Styles** | `data.matchedRules` | Filter: only `*` selectors |
+| **Inherited** | `data.inheritedStyles` | Direct display (flags pre-computed) |
+| **All Computed** | `data.properties` | Direct display (already filtered) |
+
+### File Structure
+
+```
+electron-main/projectMode/cssResolvers/
+├── styleSourceOrchestrator.ts   ← ALL processing logic (single source of truth)
+├── cdpCssService.ts             ← CDP communication wrapper
+├── urlToPathConverter.ts        ← Browser URL → local file path
+└── sourceMapResolver.ts         ← SCSS/LESS external source maps
+
+browser/projectMode/components/
+└── styleInspectPanel.ts         ← UI rendering only (no CSS interpretation)
+
+common/cssResolvers/
+└── types.ts                     ← Shared TypeScript interfaces
+```
+
+### Design Principles
+
+1. **Single CDP Call** - One `CSS.getMatchedStylesForNode()` fetches everything
+2. **Centralized Processing** - All interpretation in `styleSourceOrchestrator.ts`
+3. **Shared Helpers** - `isInheritableProperty()` used consistently everywhere
+4. **Dumb UI** - Panel just renders pre-computed data, no CSS logic
+5. **One-Way Data Flow** - CDP → Orchestrator → UI (no back-and-forth)
+
+---
+
 ## Two Main Scenarios
 
 ### Scenario 1: External CSS Files (React, Plain HTML)
@@ -637,4 +785,5 @@ The VLQ decoder we built can potentially be extended to support reverse lookups 
 
 ## Changelog
 
+- **Dec 2024**: Added "Architecture: Single CDP Call, Centralized Processing" section at top with detailed flow diagram showing how data flows from CDP → Orchestrator → UI.
 - **Dec 2024**: Added "Style Inspect Panel: How Each Section Works" section explaining inheritance, overrides, and the single-source-of-truth principle for `isInheritableProperty()` checks.

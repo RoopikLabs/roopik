@@ -37,7 +37,7 @@ import { ActionBar } from './features/actionBar.js';
 import { StyleInspect } from './features/styleInspect.js';
 // Components
 import { DefaultBrowserScreen } from './components/defaultBrowserScreen.js';
-import { IEditorService } from '../../../../services/editor/common/editorService.js';
+import { ISourceNavigationService } from '../../common/navigation/index.js';
 
 /**
  * Project Mode Editor
@@ -105,7 +105,7 @@ export class Editor extends EditorPane {
 		@IContextMenuService private readonly contextMenuService: IContextMenuService,
 		@INotificationService private readonly notificationService: INotificationService,
 		@IClipboardService private readonly clipboardService: IClipboardService,
-		@IEditorService private readonly editorService: IEditorService
+		@ISourceNavigationService private readonly sourceNavigationService: ISourceNavigationService
 	) {
 		super(Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = RoopikLogger.create(loggerService);
@@ -117,7 +117,7 @@ export class Editor extends EditorPane {
 		this.bookmarks = new Bookmarks(this.storageService, this.notificationService, this.logger);
 		this.browserPause = new BrowserPause(this.browserService);
 		this.actionBar = new ActionBar(this.browserService, this.logger);
-		this.styleInspect = new StyleInspect(this.browserService, this.notificationService, this.editorService);
+		this.styleInspect = new StyleInspect(this.browserService, this.notificationService, this.sourceNavigationService);
 
 		// Set callback to update browser bounds when style panel visibility changes
 		this.styleInspect.setOnVisibilityChanged((visible, _panelWidth) => {

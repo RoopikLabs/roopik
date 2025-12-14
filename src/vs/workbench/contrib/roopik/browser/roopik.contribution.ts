@@ -59,6 +59,8 @@ import { ICanvasService } from '../common/canvas/index.js';
 import { CanvasServiceClient } from './canvasServiceClient.js';
 import { IComponentService } from '../common/component/componentService.js';
 import { ComponentServiceClient } from './componentServiceClient.js';
+import { ISourceNavigationService } from '../common/navigation/index.js';
+import { SourceNavigationService } from './services/index.js';
 
 // ============================================================================
 // Editor Pane Registration
@@ -152,3 +154,7 @@ registerSingleton(ICanvasService, CanvasServiceClient, InstantiationType.Delayed
 // Component Service (component CRUD, build, file watching)
 // Browser-side client that communicates with ComponentService in main process via IPC
 registerSingleton(IComponentService, ComponentServiceClient, InstantiationType.Delayed);
+
+// Source Navigation Service (centralized file opening for click-to-source features)
+// Used by: Style Inspect panel, Context menu "View Source", Element inspector
+registerSingleton(ISourceNavigationService, SourceNavigationService, InstantiationType.Delayed);

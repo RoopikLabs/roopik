@@ -4,11 +4,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { INotificationService, Severity } from '../../../../../../platform/notification/common/notification.js';
-import { IEditorService } from '../../../../../services/editor/common/editorService.js';
-import { URI } from '../../../../../../base/common/uri.js';
 import type { IProjectModeService } from '../../../common/projectMode/ipc.js';
 import type { CSSSourceLocation, ElementStyleInfo, GetElementStylesResult } from '../../../common/cssResolvers/types.js';
 import { StyleInspectPanel, IStyleInspectPanelCallbacks } from '../components/styleInspectPanel.js';
+import { ISourceNavigationService } from '../../../common/navigation/index.js';
 
 /**
  * Style Inspect Feature
@@ -32,7 +31,7 @@ export class StyleInspect {
 	constructor(
 		private readonly browserService: IProjectModeService,
 		private readonly notificationService: INotificationService,
-		private readonly editorService: IEditorService
+		private readonly sourceNavigationService: ISourceNavigationService
 	) {}
 
 	/**
@@ -226,32 +225,16 @@ export class StyleInspect {
 
 	/**
 	 * Open a file at the specified location
+	 * Uses the centralized SourceNavigationService for consistent behavior
 	 */
 	private async openFile(location: CSSSourceLocation): Promise<void> {
-		try {
-			const uri = URI.file(location.file);
-
-			await this.editorService.openEditor({
-				resource: uri,
-				options: {
-					selection: {
-						startLineNumber: location.line,
-						startColumn: location.column + 1, // VSCode is 1-indexed
-						endLineNumber: location.endLine || location.line,
-						endColumn: (location.endColumn || location.column) + 1
-					},
-					pinned: false,
-					preserveFocus: false
-				}
-			});
-		} catch (error) {
-			console.error('[StyleInspect] Failed to open file:', error);
-			this.notificationService.notify({
-				severity: Severity.Error,
-				message: `Could not open file: ${location.file}`,
-				sticky: false
-			});
-		}
+		await this.sourceNavigationService.openSourceLocation({
+			file: location.file,
+			line: location.line,
+			column: location.column,
+			endLine: location.endLine,
+			endColumn: location.endColumn
+		});
 	}
 
 	/**

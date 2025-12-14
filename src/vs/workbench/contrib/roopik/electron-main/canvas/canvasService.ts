@@ -125,6 +125,13 @@ export class CanvasService implements ICanvasService {
 		return this.initialized;
 	}
 
+	/**
+	 * Get the workspace path (stored during initialization)
+	 */
+	getWorkspacePath(): string {
+		return this._workspacePath;
+	}
+
 	async isInitializedAsync(): Promise<boolean> {
 		return this.initialized;
 	}

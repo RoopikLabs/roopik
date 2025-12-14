@@ -7,7 +7,6 @@ import type {
 	ElementStyleInfo,
 	ResolvedCSSProperty,
 	MatchedCSSRule,
-	MatchedCSSProperty,
 	CSSSourceLocation,
 	CSSSourceType
 } from '../../../common/cssResolvers/types.js';
