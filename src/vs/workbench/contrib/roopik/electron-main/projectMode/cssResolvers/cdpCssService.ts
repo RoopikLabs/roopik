@@ -16,6 +16,11 @@ import type {
 export interface ICDPBrowserService {
 	sendCDPCommand(browserViewId: number, method: string, params?: unknown): Promise<unknown>;
 	attachDebugger(browserViewId: number, protocolVersion?: string): Promise<void>;
+	/**
+	 * Register a callback for CDP events
+	 * Returns a function to unregister the callback
+	 */
+	onCDPEvent?(browserViewId: number, callback: (method: string, params: unknown) => void): () => void;
 }
 
 /**
@@ -53,9 +58,12 @@ export class CDPCssService {
 	// Track which browser views have CSS domain enabled
 	private cssEnabledViews = new Set<number>();
 
+	// Event listener cleanup functions
+	private eventListenerCleanup = new Map<number, () => void>();
+
 	constructor(
 		private readonly browserService: ICDPBrowserService
-	) {}
+	) { }
 
 	// ============================================
 	// Domain Management
@@ -71,19 +79,72 @@ export class CDPCssService {
 		}
 
 		try {
-			// Enable DOM domain first (required for CSS queries)
-			await this.browserService.sendCDPCommand(browserViewId, 'DOM.enable');
+			// Initialize cache for this view BEFORE enabling CSS domain
+			// This ensures we catch all styleSheetAdded events
+			this.styleSheetCache.set(browserViewId, new Map());
 
-			// Enable CSS domain
+			// Ensure debugger is attached first (needed for event listener)
+			await this.browserService.attachDebugger(browserViewId);
+			console.log('[CDPCssService] Debugger attached for browserViewId:', browserViewId);
+
+			// Setup event listener for CSS.styleSheetAdded events
+			// This is the reliable way to get stylesheet headers
+			if (this.browserService.onCDPEvent) {
+				console.log('[CDPCssService] Setting up CDP event listener for browserViewId:', browserViewId);
+				const cleanup = this.browserService.onCDPEvent(browserViewId, (method, params) => {
+					// Log ALL CDP events to debug
+					if (method.startsWith('CSS.')) {
+						console.log('[CDPCssService] CDP CSS event:', method, JSON.stringify(params).slice(0, 200));
+					}
+
+					if (method === 'CSS.styleSheetAdded') {
+						const header = (params as { header: CDPStyleSheetHeader }).header;
+						const cache = this.styleSheetCache.get(browserViewId);
+						if (cache && header) {
+							console.log('[CDPCssService] styleSheetAdded event:', header.styleSheetId, 'sourceURL:', header.sourceURL, 'isInline:', header.isInline);
+							cache.set(header.styleSheetId, { header });
+						}
+					} else if (method === 'CSS.styleSheetRemoved') {
+						const styleSheetId = (params as { styleSheetId: string }).styleSheetId;
+						const cache = this.styleSheetCache.get(browserViewId);
+						if (cache) {
+							console.log('[CDPCssService] styleSheetRemoved event:', styleSheetId);
+							cache.delete(styleSheetId);
+						}
+					}
+				});
+				this.eventListenerCleanup.set(browserViewId, cleanup);
+			} else {
+				console.warn('[CDPCssService] browserService.onCDPEvent not available!');
+			}
+
+			// Enable DOM domain first (required for CSS queries)
+			console.log('[CDPCssService] Enabling DOM domain...');
+			await this.browserService.sendCDPCommand(browserViewId, 'DOM.enable');
+			console.log('[CDPCssService] DOM domain enabled');
+
+			// Enable CSS domain - this will trigger styleSheetAdded events
+			console.log('[CDPCssService] Enabling CSS domain (styleSheetAdded events should fire now)...');
 			await this.browserService.sendCDPCommand(browserViewId, 'CSS.enable');
+			console.log('[CDPCssService] CSS domain enabled');
+
+			// Check cache after CSS.enable - events should have populated it
+			const cacheAfterEnable = this.styleSheetCache.get(browserViewId);
+			console.log('[CDPCssService] Cache after CSS.enable:', cacheAfterEnable?.size ?? 0, 'stylesheets');
 
 			this.cssEnabledViews.add(browserViewId);
 
-			// Initialize cache for this view
-			this.styleSheetCache.set(browserViewId, new Map());
-
-			// Fetch all stylesheets
+			// Also try to fetch all stylesheets as a fallback
 			await this.fetchAllStyleSheets(browserViewId);
+
+			// Final cache check
+			const finalCache = this.styleSheetCache.get(browserViewId);
+			console.log('[CDPCssService] Final cache size:', finalCache?.size ?? 0, 'stylesheets');
+			if (finalCache && finalCache.size > 0) {
+				for (const [id, entry] of finalCache) {
+					console.log('[CDPCssService] Cached stylesheet:', id, 'sourceURL:', entry.header.sourceURL);
+				}
+			}
 		} catch (error) {
 			console.error('[CDPCssService] Failed to enable CSS domain:', error);
 			throw error;
@@ -117,11 +178,40 @@ export class CDPCssService {
 	}
 
 	/**
+	 * Reset CSS state for page load/reload
+	 * Call this when page starts loading to capture fresh stylesheet events
+	 */
+	resetForPageLoad(browserViewId: number): void {
+		console.log('[CDPCssService] Resetting CSS state for page load, browserViewId:', browserViewId);
+
+		// Clear cache - stylesheets will be re-added via styleSheetAdded events
+		this.styleSheetCache.set(browserViewId, new Map());
+
+		// IMPORTANT: Mark as not enabled so ensureCSSEnabled will re-enable CSS domain
+		// This ensures we get fresh styleSheetAdded events for the new page
+		this.cssEnabledViews.delete(browserViewId);
+
+		// Clean up old event listener - we'll create a new one when CSS is re-enabled
+		const cleanupFn = this.eventListenerCleanup.get(browserViewId);
+		if (cleanupFn) {
+			cleanupFn();
+			this.eventListenerCleanup.delete(browserViewId);
+		}
+	}
+
+	/**
 	 * Clean up when browser view is destroyed
 	 */
 	cleanup(browserViewId: number): void {
 		this.cssEnabledViews.delete(browserViewId);
 		this.styleSheetCache.delete(browserViewId);
+
+		// Clean up event listener
+		const cleanupFn = this.eventListenerCleanup.get(browserViewId);
+		if (cleanupFn) {
+			cleanupFn();
+			this.eventListenerCleanup.delete(browserViewId);
+		}
 	}
 
 	// ============================================
@@ -364,6 +454,12 @@ export class CDPCssService {
 
 	/**
 	 * Get stylesheet header by ID
+	 *
+	 * We try multiple approaches:
+	 * 1. Check cache (populated by styleSheetAdded events)
+	 * 2. Try CSS.getAllStyleSheets (not always available)
+	 * 3. Try CSS.getStyleSheetText to at least get the content
+	 * 4. Build a minimal header from available info
 	 */
 	async getStyleSheetHeader(
 		browserViewId: number,
@@ -380,7 +476,64 @@ export class CDPCssService {
 		await this.fetchAllStyleSheets(browserViewId);
 
 		const refreshedCache = this.styleSheetCache.get(browserViewId);
-		return refreshedCache?.get(styleSheetId)?.header || null;
+		const refreshedCached = refreshedCache?.get(styleSheetId);
+		if (refreshedCached) {
+			return refreshedCached.header;
+		}
+
+		// CSS.getAllStyleSheets not available - try to get info via CSS.getStyleSheetText
+		// The response includes styleSheetId but not the URL, so this is limited
+		// However, we can build a partial header
+		console.log('[CDPCssService] Stylesheet not in cache, trying direct fetch for:', styleSheetId);
+
+		// As a last resort, try to get stylesheet metadata via inspector protocol
+		// Some versions support CSS.getStyleSheetInfo or we can parse from styleSheetId format
+		try {
+			// Attempt to get the stylesheet text - if it succeeds, the stylesheet exists
+			const textResult = await this.browserService.sendCDPCommand(
+				browserViewId,
+				'CSS.getStyleSheetText',
+				{ styleSheetId }
+			) as { text: string };
+
+			if (textResult?.text !== undefined) {
+				// We have the text but not the URL
+				// Try to extract URL from CSS content (some stylesheets have source comments)
+				const sourceUrlMatch = textResult.text.match(/\/\*#\s*sourceURL=(.+?)\s*\*\//);
+				const sourceMappingMatch = textResult.text.match(/\/\*#\s*sourceMappingURL=(.+?)\s*\*\//);
+
+				// Build a minimal header - mark as inline since we don't know the source
+				const minimalHeader: CDPStyleSheetHeader = {
+					styleSheetId,
+					frameId: '',
+					sourceURL: sourceUrlMatch ? sourceUrlMatch[1] : '',
+					origin: 'regular',
+					title: '',
+					disabled: false,
+					isInline: !sourceUrlMatch, // If no sourceURL found, treat as inline
+					isMutable: true,
+					isConstructed: false,
+					startLine: 0,
+					startColumn: 0,
+					length: textResult.text.length,
+					endLine: 0,
+					endColumn: 0,
+					sourceMapURL: sourceMappingMatch ? sourceMappingMatch[1] : undefined
+				};
+
+				// Cache it
+				if (refreshedCache) {
+					refreshedCache.set(styleSheetId, { header: minimalHeader, text: textResult.text });
+				}
+
+				console.log('[CDPCssService] Built minimal header for', styleSheetId, 'sourceURL:', minimalHeader.sourceURL);
+				return minimalHeader;
+			}
+		} catch (error) {
+			console.log('[CDPCssService] Failed to get stylesheet text for', styleSheetId, ':', error);
+		}
+
+		return null;
 	}
 
 	/**

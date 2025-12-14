@@ -608,6 +608,38 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		return browserView.webContents.debugger.sendCommand(method, params);
 	}
 
+	/**
+	 * Register a callback for CDP events (like CSS.styleSheetAdded)
+	 * Returns a function to unregister the callback
+	 */
+	onCDPEvent(browserViewId: number, callback: (method: string, params: unknown) => void): () => void {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			console.warn('[ProjectMode][Main] Cannot register CDP event listener - browser view not found:', browserViewId);
+			return () => { }; // Return no-op cleanup function
+		}
+
+		console.log('[ProjectMode][Main] Registering CDP event listener for browserViewId:', browserViewId);
+
+		// Handler for 'message' event from debugger
+		// Electron's debugger emits 'message' events with (event, method, params)
+		const handler = (_event: Electron.Event, method: string, params: unknown) => {
+			// Debug: log ALL events to see what's happening
+			console.log('[ProjectMode][Main] CDP event received:', method);
+			callback(method, params);
+		};
+
+		browserView.webContents.debugger.on('message', handler);
+		console.log('[ProjectMode][Main] CDP event handler registered for browserViewId:', browserViewId);
+
+		// Return cleanup function
+		return () => {
+			if (!browserView.webContents.isDestroyed()) {
+				browserView.webContents.debugger.removeListener('message', handler);
+			}
+		};
+	}
+
 	// ============================================
 	// Device Emulation (via CDP)
 	// ============================================
@@ -678,6 +710,29 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		return browserView.webContents.debugger.isAttached()
 			? `ws://127.0.0.1:9222/devtools/page/${browserViewId}`
 			: '';
+	}
+
+	// ============================================
+	// CSS Style Inspection
+	// ============================================
+
+	/**
+	 * Enable CSS domain for style inspection
+	 * Called automatically when page loads to capture stylesheet events
+	 */
+	private async enableCSSForStyleInspection(browserViewId: number): Promise<void> {
+		try {
+			console.log('[ProjectMode][Main] Enabling CSS domain for style inspection, browserViewId:', browserViewId);
+
+			// Reset CSS state first - this clears the cache and marks as not enabled
+			// so we get fresh styleSheetAdded events for this page load
+			this.cdpCssService.resetForPageLoad(browserViewId);
+
+			await this.cdpCssService.ensureCSSEnabled(browserViewId);
+			console.log('[ProjectMode][Main] CSS domain enabled for style inspection');
+		} catch (error) {
+			console.error('[ProjectMode][Main] Failed to enable CSS domain:', error);
+		}
 	}
 
 	// ============================================
@@ -922,6 +977,12 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			});
 			// Fire event with EXPLICIT isLoading = true
 			this.fireNavigationStateChanged(browserViewId, true);
+
+			// Enable CSS domain EARLY to capture CSS.styleSheetAdded events
+			// Must be enabled before stylesheets load to receive the events
+			this.enableCSSForStyleInspection(browserViewId).catch(err => {
+				console.warn('[ProjectMode][Main] Failed to enable CSS for style inspection:', err);
+			});
 		});
 
 		webContents.on('did-finish-load', () => {

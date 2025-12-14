@@ -851,62 +851,6 @@ export class StyleInspectPanel {
 	}
 
 	// ============================================
-	// Inline Edit
-	// ============================================
-
-	private startInlineEdit(prop: ResolvedCSSProperty, valueElement: HTMLElement): void {
-		if (!this.callbacks.onEditStyle) {
-			return;
-		}
-
-		const input = document.createElement('input');
-		input.type = 'text';
-		input.value = prop.value;
-		input.style.cssText = `
-			font-family: var(--vscode-editor-font-family), monospace;
-			font-size: 11px;
-			background: var(--vscode-input-background);
-			color: var(--vscode-input-foreground);
-			border: 1px solid var(--vscode-focusBorder);
-			padding: 2px 4px;
-			width: 100%;
-			outline: none;
-		`;
-
-		const originalText = valueElement.textContent || '';
-		valueElement.textContent = '';
-		valueElement.appendChild(input);
-		input.focus();
-		input.select();
-
-		const commit = () => {
-			const newValue = input.value.trim();
-			if (newValue && newValue !== prop.value) {
-				this.callbacks.onEditStyle!(prop, newValue);
-				valueElement.textContent = newValue;
-			} else {
-				valueElement.textContent = originalText;
-			}
-		};
-
-		const cancel = () => {
-			valueElement.textContent = originalText;
-		};
-
-		input.addEventListener('blur', commit);
-		input.addEventListener('keydown', (e) => {
-			if (e.key === 'Enter') {
-				e.preventDefault();
-				commit();
-			}
-			if (e.key === 'Escape') {
-				e.preventDefault();
-				cancel();
-			}
-		});
-	}
-
-	// ============================================
 	// Helpers
 	// ============================================
 
