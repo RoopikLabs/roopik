@@ -227,17 +227,19 @@ export class StyleInspect {
 	 * Open a file at the specified location
 	 * Uses the centralized SourceNavigationService for consistent behavior
 	 *
-	 * NOTE: We intentionally DON'T pass endLine/endColumn for CSS navigation.
-	 * For CSS rules, we want to position the cursor at the rule start,
-	 * not select the entire rule body. The CDP gives us end positions
-	 * (marking the closing brace), but that's not useful for navigation.
+	 * For HTML source (data-roopik-source), we pass the full range to highlight
+	 * the entire element. This matches the context menu "Open Source" behavior.
+	 *
+	 * For CSS rules, the location typically comes from CDP which provides accurate
+	 * start/end positions for the rule, so we pass those too for consistency.
 	 */
 	private async openFile(location: CSSSourceLocation): Promise<void> {
 		await this.sourceNavigationService.openSourceLocation({
 			file: location.file,
 			line: location.line,
-			column: location.column
-			// Intentionally omit endLine/endColumn - we want cursor positioning, not selection
+			column: location.column,
+			endLine: location.endLine,
+			endColumn: location.endColumn
 		});
 	}
 
