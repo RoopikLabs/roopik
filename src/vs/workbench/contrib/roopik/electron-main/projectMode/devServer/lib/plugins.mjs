@@ -29,9 +29,17 @@
 import { createReactSourcePlugin } from './reactSourcePlugin.mjs';
 import { createVueSourcePlugin } from './vueSourcePlugin.mjs';
 import { createHtmlSourcePlugin } from './htmlSourcePlugin.mjs';
+import { createSvelteSourcePlugin } from './svelteSourcePlugin.mjs';
+import { createSolidSourcePlugin } from './solidSourcePlugin.mjs';
 
 // Re-export for external use
-export { createReactSourcePlugin, createVueSourcePlugin, createHtmlSourcePlugin };
+export {
+	createReactSourcePlugin,
+	createVueSourcePlugin,
+	createHtmlSourcePlugin,
+	createSvelteSourcePlugin,
+	createSolidSourcePlugin
+};
 
 // ============================================
 // Click-to-Source Script
@@ -348,6 +356,8 @@ export function createNoopPlugin(name = 'roopik:noop') {
  * @returns {Array} Array of Vite plugins
  */
 export function getPluginsForFramework(frameworkId, options = {}) {
+	console.log(`[Roopik Plugins] Getting plugins for framework: ${frameworkId}`);
+
 	const plugins = [];
 
 	// Always add inject plugin (click-to-source script)
@@ -382,10 +392,8 @@ export function getPluginsForFramework(frameworkId, options = {}) {
 			break;
 
 		case 'solid-vite':
-			// SolidJS uses similar JSX syntax to React
-			plugins.push(createReactSourcePlugin({
-				babelPath: options.babelPath,
-				forceRegexMode: options.forceRegexMode,
+			// SolidJS - dedicated plugin that handles .js/.ts/.jsx/.tsx with JSX
+			plugins.push(createSolidSourcePlugin({
 				verboseLogging: options.verboseLogging
 			}));
 			break;
@@ -397,9 +405,10 @@ export function getPluginsForFramework(frameworkId, options = {}) {
 			break;
 
 		case 'svelte-vite':
-			// Svelte has its own compilation, source tracking needs different approach
-			// TODO: Implement Svelte source tracking
-			plugins.push(createNoopPlugin('roopik:svelte-source-todo'));
+			// Svelte - dedicated plugin for .svelte files
+			plugins.push(createSvelteSourcePlugin({
+				verboseLogging: options.verboseLogging
+			}));
 			break;
 
 		default:
@@ -413,7 +422,7 @@ export function getPluginsForFramework(frameworkId, options = {}) {
  * Check if framework supports source tracking
  */
 export function supportsSourceTracking(frameworkId) {
-	const supported = ['react-vite', 'vue-vite', 'solid-vite', 'plain-html-vite'];
+	const supported = ['react-vite', 'vue-vite', 'solid-vite', 'svelte-vite', 'plain-html-vite'];
 	return supported.includes(frameworkId);
 }
 
