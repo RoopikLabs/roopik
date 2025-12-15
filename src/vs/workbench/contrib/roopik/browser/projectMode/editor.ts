@@ -148,6 +148,9 @@ export class Editor extends EditorPane {
 
 		// Setup menu/command palette pause detection
 		this.setupBrowserPauseDetection();
+
+		// Setup "Open Source" context menu handler
+		this.setupOpenSourceHandler();
 	}
 
 	/**
@@ -232,6 +235,41 @@ export class Editor extends EditorPane {
 
 		this._register(this.contextMenuService.onDidHideContextMenu(() => {
 			this.resumeBrowser();
+		}));
+	}
+
+	/**
+	 * Setup handler for "Open Source" context menu
+	 *
+	 * When user right-clicks in browser and selects "Open Source",
+	 * the main process parses the data-roopik-source attribute and
+	 * fires an event with the source location. We handle it here
+	 * and use the centralized SourceNavigationService to open the file.
+	 */
+	private setupOpenSourceHandler(): void {
+		this._register(this.browserService.onOpenSourceRequest((event) => {
+			// Filter by browserViewId - only handle events for this browser instance
+			if (event.browserViewId !== this.browserViewId) {
+				return;
+			}
+
+			if (event.sourceLocation) {
+				// Open the source file at the specified location
+				this.sourceNavigationService.openSourceLocation({
+					file: event.sourceLocation.file,
+					line: event.sourceLocation.line,
+					column: event.sourceLocation.column,
+					endLine: event.sourceLocation.endLine,
+					endColumn: event.sourceLocation.endColumn
+				});
+			} else if (event.error) {
+				// Show error notification
+				this.notificationService.notify({
+					severity: Severity.Warning,
+					message: event.error,
+					sticky: false
+				});
+			}
 		}));
 	}
 

@@ -21,6 +21,8 @@ export class ProjectModeChannel implements IServerChannel {
 				return this.service.onDevToolsClosed;
 			case 'onNavigationStateChanged':
 				return this.service.onNavigationStateChanged;
+			case 'onOpenSourceRequest':
+				return this.service.onOpenSourceRequest;
 			default:
 				throw new Error(`[ProjectModeChannel] Unknown event: ${event}`);
 		}

@@ -6,7 +6,7 @@
 import { BrowserWindow, WebContentsView, session, app } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from '../../common/projectMode/types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
 import type { ILifecycleMainService } from '../../../../../platform/lifecycle/electron-main/lifecycleMainService.js';
@@ -38,6 +38,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 	private readonly _onNavigationStateChanged = new Emitter<NavigationStateChangedEvent>();
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent> = this._onNavigationStateChanged.event;
+
+	private readonly _onOpenSourceRequest = new Emitter<OpenSourceRequestEvent>();
+	readonly onOpenSourceRequest: Event<OpenSourceRequestEvent> = this._onOpenSourceRequest.event;
 
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
@@ -1061,9 +1064,71 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 				return menuItems;
 			},
-			append: (_defaultActions, _params, _browserWindow) => {
-				// Custom items can be added here in the future (e.g., "View Source" using roopik-data)
-				return [];
+			append: (_defaultActions, params, _browserWindow) => {
+				const menuItems: Electron.MenuItemConstructorOptions[] = [];
+				const wc = browserView.webContents;
+
+				// "Open Source" - opens the source file for the clicked element
+				// Uses data-roopik-source attribute injected at build time
+				menuItems.push({ type: 'separator' });
+				menuItems.push({
+					label: 'Open Source',
+					click: async () => {
+						try {
+							// Execute script to find element at click position and get data-roopik-source
+							const sourceAttr = await wc.executeJavaScript(`
+								(function() {
+									const x = ${params.x};
+									const y = ${params.y};
+									let el = document.elementFromPoint(x, y);
+
+									// Walk up the DOM tree to find nearest element with data-roopik-source
+									while (el && el !== document.body && el !== document.documentElement) {
+										const source = el.getAttribute('data-roopik-source');
+										if (source) {
+											return source;
+										}
+										el = el.parentElement;
+									}
+									return null;
+								})();
+							`);
+
+							if (sourceAttr) {
+								// Parse the source location: file:startLine:startCol:endLine:endCol
+								// Windows paths contain colons (C:\), so we find the last 4 numeric parts
+								const parsed = this.parseSourceAttribute(sourceAttr);
+								if (parsed) {
+									this._onOpenSourceRequest.fire({
+										browserViewId,
+										sourceLocation: parsed
+									});
+								} else {
+									this._onOpenSourceRequest.fire({
+										browserViewId,
+										sourceLocation: null,
+										error: `Could not parse source location: ${sourceAttr}`
+									});
+								}
+							} else {
+								this._onOpenSourceRequest.fire({
+									browserViewId,
+									sourceLocation: null,
+									error: 'No source tracking found for this element. Source tracking is only available for components built with Roopik.'
+								});
+							}
+						} catch (error) {
+							console.error('[ProjectMode] Failed to get source location:', error);
+							this._onOpenSourceRequest.fire({
+								browserViewId,
+								sourceLocation: null,
+								error: `Failed to get source location: ${error}`
+							});
+						}
+					}
+				});
+
+				return menuItems;
 			}
 		});
 
@@ -1254,6 +1319,94 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		for (const overlayViewId of overlaysToDestroy) {
 			this.destroyOverlayView(overlayViewId);
 		}
+	}
+
+	// ============================================
+	// CSS Source Resolution
+	// ============================================
+
+	// ============================================
+	// Source Location Parsing
+	// ============================================
+
+	/**
+	 * Parse data-roopik-source attribute value into structured source location
+	 *
+	 * Format: file:startLine:startCol:endLine:endCol
+	 * Windows paths contain colons (C:\), so we parse from the end to find numeric parts.
+	 *
+	 * @param sourceAttr - The raw attribute value
+	 * @returns Parsed source location or null if invalid
+	 */
+	private parseSourceAttribute(sourceAttr: string): { file: string; line: number; column?: number; endLine?: number; endColumn?: number } | null {
+		if (!sourceAttr) {
+			return null;
+		}
+
+		// Split by colons
+		const parts = sourceAttr.split(':');
+
+		// Need at least 2 parts: file + line
+		// Full format: file:line:col:endLine:endCol (5 numeric parts at end, or less)
+		if (parts.length < 2) {
+			return null;
+		}
+
+		// Parse numeric values from the end
+		// Last 4 can be: line, col, endLine, endCol (all numbers)
+		// Find where numbers start from the end
+		let numericStartIndex = parts.length;
+		for (let i = parts.length - 1; i >= 0; i--) {
+			const num = parseInt(parts[i], 10);
+			if (isNaN(num)) {
+				numericStartIndex = i + 1;
+				break;
+			}
+		}
+
+		// File is everything before numeric parts
+		const fileParts = parts.slice(0, numericStartIndex);
+		const numericParts = parts.slice(numericStartIndex);
+
+		if (fileParts.length === 0 || numericParts.length === 0) {
+			return null;
+		}
+
+		const file = fileParts.join(':'); // Rejoin file path (handles Windows C:\)
+		const line = parseInt(numericParts[0], 10);
+
+		if (isNaN(line)) {
+			return null;
+		}
+
+		const result: { file: string; line: number; column?: number; endLine?: number; endColumn?: number } = {
+			file,
+			line
+		};
+
+		// Optional: column, endLine, endColumn
+		if (numericParts.length >= 2) {
+			const col = parseInt(numericParts[1], 10);
+			if (!isNaN(col)) {
+				result.column = col;
+			}
+		}
+
+		if (numericParts.length >= 3) {
+			const endLine = parseInt(numericParts[2], 10);
+			if (!isNaN(endLine)) {
+				result.endLine = endLine;
+			}
+		}
+
+		if (numericParts.length >= 4) {
+			const endCol = parseInt(numericParts[3], 10);
+			if (!isNaN(endCol)) {
+				result.endColumn = endCol;
+			}
+		}
+
+		return result;
 	}
 
 	// ============================================

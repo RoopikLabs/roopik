@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from './types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from './types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../cssResolvers/types.js';
 
 export const IProjectModeService = createDecorator<IProjectModeService>('projectModeService');
@@ -40,6 +40,12 @@ export interface IProjectModeService {
 	 * Fires on: did-navigate, did-start-loading, did-finish-load, page-title-updated
 	 */
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent>;
+
+	/**
+	 * Fired when user clicks "Open Source" in browser context menu
+	 * Contains parsed source location from data-roopik-source attribute
+	 */
+	readonly onOpenSourceRequest: Event<OpenSourceRequestEvent>;
 
 
 	// ============================================
