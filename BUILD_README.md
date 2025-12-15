@@ -1,29 +1,51 @@
-# 🚀 Build Guide
+# Build Guide
 
-## Daily Development (Fast)
+## Commands
+
+| Command | Cleans? | Watches? | Time |
+|---------|---------|----------|------|
+| `npm run watch` | YES | YES | ~10 min start |
+| `npm run watch-client` | YES | YES | ~10 min start |
+| `npm run compile` | YES | NO | ~10 min |
+| `npm run compile-build` | YES | NO | ~10 min |
+| `npm run compile-extensions` | YES | NO | ~1-2 min |
+| `npx tsc -p src/tsconfig.json --incremental` | NO | NO | ~30 sec |
+| `npx tsc -p src/tsconfig.json --incremental --watch` | NO | YES | ~1 sec/change |
+
+## Daily Development (Project Already Built)
+
+### Watch Without Cleaning (Best Option)
 
 ```bash
-# Terminal 1: Watch mode (auto-rebuilds on save, ~5 sec)
-npm run watch
+npx tsc -p src/tsconfig.json --incremental --watch
+```
 
-# Terminal 2: Launch VSCode
+- Does NOT clean old build
+- Watches for changes
+- Rebuilds only changed files (~1-2 sec)
+
+### One-Shot Build Without Cleaning
+
+```bash
+npx tsc -p src/tsconfig.json --incremental
+```
+
+### Launch VSCode
+
+```bash
 .\scripts\code.bat
 ```
 
-## Manual Rebuild
+## When to Use What
 
-```bash
-# Incremental build (only changed files)
-npm run compile-build
+| Situation | Command |
+|-----------|---------|
+| Project built, want to watch | `npx tsc -p src/tsconfig.json --incremental --watch` |
+| Project built, quick one-shot | `npx tsc -p src/tsconfig.json --incremental` |
+| Fresh start / corrupted build | `npm run compile` |
 
-# Extensions only
-npm run compile-extensions
-```
+## The Truth
 
-## Full Rebuild (Rarely Needed)
+**ALL npm run commands clean first!**
 
-```bash
-npm run compile  # ~10 min (only if build corrupted)
-```
-
-**Rule**: Use `npm run watch` for daily dev. Never run full `npm run compile` unless absolutely necessary!
+Only `npx tsc` with `--incremental` preserves the old build.

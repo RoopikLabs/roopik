@@ -29,9 +29,17 @@
 import { createReactSourcePlugin } from './reactSourcePlugin.mjs';
 import { createVueSourcePlugin } from './vueSourcePlugin.mjs';
 import { createHtmlSourcePlugin } from './htmlSourcePlugin.mjs';
+import { createSvelteSourcePlugin } from './svelteSourcePlugin.mjs';
+import { createSolidSourcePlugin } from './solidSourcePlugin.mjs';
 
 // Re-export for external use
-export { createReactSourcePlugin, createVueSourcePlugin, createHtmlSourcePlugin };
+export {
+	createReactSourcePlugin,
+	createVueSourcePlugin,
+	createHtmlSourcePlugin,
+	createSvelteSourcePlugin,
+	createSolidSourcePlugin
+};
 
 // ============================================
 // Click-to-Source Script
@@ -344,9 +352,12 @@ export function createNoopPlugin(name = 'roopik:noop') {
  * @param {string} [options.babelPath] - Path to @babel/core (for React AST mode)
  * @param {string} [options.vueCompilerPath] - Path to @vue/compiler-sfc (for Vue AST mode)
  * @param {boolean} [options.forceRegexMode=false] - Force regex mode (skip AST)
+ * @param {boolean} [options.enableCssSourceMaps=true] - Enable CSS source maps
  * @returns {Array} Array of Vite plugins
  */
 export function getPluginsForFramework(frameworkId, options = {}) {
+	console.log(`[Roopik Plugins] Getting plugins for framework: ${frameworkId}`);
+
 	const plugins = [];
 
 	// Always add inject plugin (click-to-source script)
@@ -354,6 +365,13 @@ export function getPluginsForFramework(frameworkId, options = {}) {
 
 	// Always add CORS plugin
 	plugins.push(createCorsPlugin());
+
+	// Always add CSS source maps plugin (for CSS source resolution)
+	if (options.enableCssSourceMaps !== false) {
+		plugins.push(createCssSourceMapsPlugin({
+			verbose: options.verboseLogging
+		}));
+	}
 
 	// Add framework-specific source tracking
 	switch (frameworkId) {
@@ -374,10 +392,8 @@ export function getPluginsForFramework(frameworkId, options = {}) {
 			break;
 
 		case 'solid-vite':
-			// SolidJS uses similar JSX syntax to React
-			plugins.push(createReactSourcePlugin({
-				babelPath: options.babelPath,
-				forceRegexMode: options.forceRegexMode,
+			// SolidJS - dedicated plugin that handles .js/.ts/.jsx/.tsx with JSX
+			plugins.push(createSolidSourcePlugin({
 				verboseLogging: options.verboseLogging
 			}));
 			break;
@@ -389,9 +405,10 @@ export function getPluginsForFramework(frameworkId, options = {}) {
 			break;
 
 		case 'svelte-vite':
-			// Svelte has its own compilation, source tracking needs different approach
-			// TODO: Implement Svelte source tracking
-			plugins.push(createNoopPlugin('roopik:svelte-source-todo'));
+			// Svelte - dedicated plugin for .svelte files
+			plugins.push(createSvelteSourcePlugin({
+				verboseLogging: options.verboseLogging
+			}));
 			break;
 
 		default:
@@ -405,6 +422,88 @@ export function getPluginsForFramework(frameworkId, options = {}) {
  * Check if framework supports source tracking
  */
 export function supportsSourceTracking(frameworkId) {
-	const supported = ['react-vite', 'vue-vite', 'solid-vite', 'plain-html-vite'];
+	const supported = ['react-vite', 'vue-vite', 'solid-vite', 'svelte-vite', 'plain-html-vite'];
 	return supported.includes(frameworkId);
+}
+
+// ============================================
+// CSS Source Maps Plugin
+// ============================================
+
+/**
+ * Create CSS Source Maps plugin
+ *
+ * Automatically enables CSS source maps in development mode.
+ * This is required for SCSS/LESS/PostCSS source resolution.
+ *
+ * When enabled, Vite generates source maps for:
+ * - CSS files (with CSS preprocessors)
+ * - SCSS/Sass files
+ * - LESS files
+ * - PostCSS transformations
+ *
+ * Source maps are embedded inline by default in development
+ * and allow our SourceMapResolver to map compiled CSS locations
+ * back to original source files.
+ *
+ * @param {Object} options - Plugin options
+ * @param {boolean} [options.verbose=false] - Enable verbose logging
+ * @returns {Object} Vite plugin
+ */
+export function createCssSourceMapsPlugin(options = {}) {
+	const { verbose = false } = options;
+
+	return {
+		name: 'roopik:css-source-maps',
+
+		// Modify Vite config to enable CSS source maps
+		config(config, { mode }) {
+			// Only enable in development mode
+			if (mode !== 'development' && mode !== 'serve') {
+				if (verbose) {
+					console.log('[roopik:css-source-maps] Skipping - not in development mode');
+				}
+				return;
+			}
+
+			if (verbose) {
+				console.log('[roopik:css-source-maps] Enabling CSS source maps for development');
+			}
+
+			return {
+				css: {
+					// Enable source maps in dev mode
+					// This generates inline source maps for CSS files
+					devSourcemap: true
+				},
+				// Also ensure build source maps are enabled (for edge cases)
+				build: {
+					sourcemap: config.build?.sourcemap ?? true
+				}
+			};
+		},
+
+		// Log when CSS modules are processed (debugging)
+		transform(code, id) {
+			if (verbose && (id.endsWith('.css') || id.endsWith('.scss') || id.endsWith('.less'))) {
+				const hasSourceMap = code.includes('sourceMappingURL');
+				console.log(`[roopik:css-source-maps] ${id} - sourceMap: ${hasSourceMap}`);
+			}
+			return null; // Don't modify code
+		}
+	};
+}
+
+/**
+ * Create all CSS-related plugins
+ *
+ * Combines CSS source maps with any future CSS processing plugins.
+ *
+ * @param {Object} options - Plugin options
+ * @returns {Array} Array of Vite plugins
+ */
+export function createCssPlugins(options = {}) {
+	return [
+		createCssSourceMapsPlugin(options)
+	];
 }

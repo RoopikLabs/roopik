@@ -21,6 +21,8 @@ export class ProjectModeChannel implements IServerChannel {
 				return this.service.onDevToolsClosed;
 			case 'onNavigationStateChanged':
 				return this.service.onNavigationStateChanged;
+			case 'onOpenSourceRequest':
+				return this.service.onOpenSourceRequest;
 			default:
 				throw new Error(`[ProjectModeChannel] Unknown event: ${event}`);
 		}
@@ -101,6 +103,10 @@ export class ProjectModeChannel implements IServerChannel {
 				return this.service.destroyOverlayView(arg);
 			case 'executeScriptOnOverlay':
 				return this.service.executeScriptOnOverlay(arg.overlayViewId, arg.script);
+
+			// CSS Source Resolution
+			case 'getElementStyles':
+				return this.service.getElementStyles(arg);
 
 			default:
 				throw new Error(`[ProjectModeChannel] Unknown command: ${command}`);

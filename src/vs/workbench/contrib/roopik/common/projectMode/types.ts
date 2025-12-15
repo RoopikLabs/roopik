@@ -134,4 +134,22 @@ export interface NavigationStateChangedEvent {
 	lastError?: NavigationError;
 }
 
+/**
+ * Event payload when user requests to open source from context menu
+ * Fired when user clicks "Open Source" in browser context menu
+ */
+export interface OpenSourceRequestEvent {
+	browserViewId: number;
+	/** Source location from data-roopik-source attribute */
+	sourceLocation: {
+		file: string;
+		line: number;
+		column?: number;
+		endLine?: number;
+		endColumn?: number;
+	} | null;
+	/** Error message if source location could not be determined */
+	error?: string;
+}
+
 

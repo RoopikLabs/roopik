@@ -104,14 +104,11 @@ export class CanvasService implements ICanvasService {
 		}
 
 		this._workspacePath = workspacePath;
-		console.log('[CanvasService] Initializing with workspace:', this._workspacePath);
 
 		// CRITICAL: Initialize storage service first before loading canvases
 		// The storage service needs the workspace path to know where to read/write files
 		if (!this.storageService.isInitialized()) {
-			console.log('[CanvasService] Initializing storage service first...');
 			await this.storageService.initialize(workspacePath);
-			console.log('[CanvasService] Storage service initialized');
 		}
 
 		// Load all existing canvases from storage
@@ -122,11 +119,17 @@ export class CanvasService implements ICanvasService {
 
 		// Fire initialization event so listeners can load canvases
 		this._onDidInitialize.fire();
-		console.log('[CanvasService] Fired onDidInitialize event');
 	}
 
 	isInitialized(): boolean {
 		return this.initialized;
+	}
+
+	/**
+	 * Get the workspace path (stored during initialization)
+	 */
+	getWorkspacePath(): string {
+		return this._workspacePath;
 	}
 
 	async isInitializedAsync(): Promise<boolean> {
@@ -561,16 +564,12 @@ export class CanvasService implements ICanvasService {
 	// ========================================================================
 
 	private async loadAllCanvases(): Promise<void> {
-		console.log('[CanvasService] loadAllCanvases starting...');
 		try {
 			const canvasIds = await this.storageService.listCanvases();
-			console.log('[CanvasService] loadAllCanvases: storageService returned canvas IDs:', canvasIds);
 
 			for (const canvasId of canvasIds) {
 				try {
-					console.log('[CanvasService] loadAllCanvases: loading meta for canvas:', canvasId);
 					const meta = await this.storageService.loadCanvasMeta(canvasId);
-					console.log('[CanvasService] loadAllCanvases: meta loaded:', meta);
 					if (meta) {
 						const canvas: Canvas = {
 							...meta,
@@ -578,13 +577,11 @@ export class CanvasService implements ICanvasService {
 							isFocused: false
 						};
 						this.canvases.set(canvasId, canvas);
-						console.log('[CanvasService] loadAllCanvases: canvas added to map:', canvasId);
 					}
 				} catch (err) {
 					console.error('[CanvasService] Failed to load canvas:', canvasId, err);
 				}
 			}
-			console.log('[CanvasService] loadAllCanvases complete. Total canvases:', this.canvases.size);
 		} catch (err) {
 			console.error('[CanvasService] Failed to list canvases:', err);
 		}

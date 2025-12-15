@@ -79,12 +79,10 @@ export class RoopikDashboardView extends ViewPane {
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
 
-		console.log('[RoopikDashboardView] Constructor called');
-
 		// Subscribe to onDidInitialize - this fires when CanvasService is fully ready
 		// This is the ONLY trigger for loading canvases - no premature attempts!
 		this._register(this.canvasService.onDidInitialize(() => {
-			console.log('[RoopikDashboardView] EVENT: onDidInitialize received - CanvasService is ready');
+			// console.log('[RoopikDashboardView] EVENT: onDidInitialize received - CanvasService is ready');
 			this.serviceInitialized = true;
 			this.clearLoadingTimeout();
 			this.loadCanvasesNow();
@@ -92,15 +90,15 @@ export class RoopikDashboardView extends ViewPane {
 
 		// Subscribe to canvas events to auto-refresh the list
 		this._register(this.canvasService.onCanvasCreated((event) => {
-			console.log('[RoopikDashboardView] EVENT: onCanvasCreated received', event);
+			// console.log('[RoopikDashboardView] EVENT: onCanvasCreated received', event);
 			this.loadCanvasesNow();
 		}));
 		this._register(this.canvasService.onCanvasDeleted((event) => {
-			console.log('[RoopikDashboardView] EVENT: onCanvasDeleted received', event);
+			// console.log('[RoopikDashboardView] EVENT: onCanvasDeleted received', event);
 			this.loadCanvasesNow();
 		}));
 		this._register(this.canvasService.onCanvasUpdated((event) => {
-			console.log('[RoopikDashboardView] EVENT: onCanvasUpdated received', event);
+			// console.log('[RoopikDashboardView] EVENT: onCanvasUpdated received', event);
 			this.loadCanvasesNow();
 		}));
 	}
@@ -157,21 +155,21 @@ export class RoopikDashboardView extends ViewPane {
 	 * This handles the IDE reload case where onDidInitialize already fired
 	 */
 	private async checkAndLoadCanvases(): Promise<void> {
-		console.log('[RoopikDashboardView] checkAndLoadCanvases: checking if service is already initialized...');
+		// console.log('[RoopikDashboardView] checkAndLoadCanvases: checking if service is already initialized...');
 
 		try {
 			const isInitialized = await this.canvasService.isInitializedAsync();
-			console.log('[RoopikDashboardView] checkAndLoadCanvases: isInitialized =', isInitialized);
+			// console.log('[RoopikDashboardView] checkAndLoadCanvases: isInitialized =', isInitialized);
 
 			if (isInitialized) {
 				// Service already initialized (IDE reload case) - load immediately
-				console.log('[RoopikDashboardView] Service already initialized, loading canvases now');
+				// console.log('[RoopikDashboardView] Service already initialized, loading canvases now');
 				this.serviceInitialized = true;
 				this.clearLoadingTimeout();
 				this.loadCanvasesNow();
 			} else {
 				// Not initialized yet - start timeout, wait for onDidInitialize event
-				console.log('[RoopikDashboardView] Service not initialized yet, waiting for event...');
+				// console.log('[RoopikDashboardView] Service not initialized yet, waiting for event...');
 				this.startLoadingTimeout();
 			}
 		} catch (err) {
@@ -183,7 +181,6 @@ export class RoopikDashboardView extends ViewPane {
 
 	protected override renderBody(container: HTMLElement): void {
 		super.renderBody(container);
-		console.log('[RoopikDashboardView] renderBody called');
 
 		// Inject CSS for professional animations
 		this.injectDeleteAnimations();
@@ -287,10 +284,9 @@ export class RoopikDashboardView extends ViewPane {
 	 * No timers, no waiting - proper event-based loading!
 	 */
 	private async loadCanvasesNow(): Promise<void> {
-		console.log('[RoopikDashboardView] loadCanvasesNow called');
 
 		if (!this.canvasesContainer) {
-			console.warn('[RoopikDashboardView] loadCanvasesNow: canvasesContainer is null');
+			// console.warn('[RoopikDashboardView] loadCanvasesNow: canvasesContainer is null');
 			return;
 		}
 
@@ -300,12 +296,10 @@ export class RoopikDashboardView extends ViewPane {
 		}
 
 		try {
-			console.log('[RoopikDashboardView] Calling canvasService.listCanvasesAsync()...');
 			const canvases = await this.canvasService.listCanvasesAsync();
-			console.log(`[RoopikDashboardView] listCanvasesAsync returned ${canvases.length} canvases:`, canvases);
+			// console.log(`[RoopikDashboardView] listCanvasesAsync returned ${canvases.length} canvases:`, canvases);
 
 			if (canvases.length === 0) {
-				console.log('[RoopikDashboardView] No canvases found, showing empty state');
 				this.createSection(this.canvasesContainer, 'Canvases', [
 					{ label: 'No canvases yet', description: 'Click "Canvas" to create one', onClick: () => { } }
 				]);
@@ -321,7 +315,7 @@ export class RoopikDashboardView extends ViewPane {
 				onRename: () => this.renameCanvas(canvas.id, canvas.name)
 			}));
 
-			console.log(`[RoopikDashboardView] Rendering ${items.length} canvas items`);
+			// console.log(`[RoopikDashboardView] Rendering ${items.length} canvas items`);
 			this.createSection(this.canvasesContainer, 'Canvases', items);
 		} catch (err) {
 			console.error('[RoopikDashboardView] Failed to load canvases:', err);

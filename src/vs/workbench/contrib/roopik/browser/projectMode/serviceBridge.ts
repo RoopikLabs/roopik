@@ -6,7 +6,8 @@
 import { Event } from '../../../../../base/common/event.js';
 import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from '../../common/projectMode/types.js';
+import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 
 /**
  * Service Bridge
@@ -31,10 +32,17 @@ export class ServiceBridge implements IProjectModeService {
 	 */
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent>;
 
+	/**
+	 * Event fired when user clicks "Open Source" in browser context menu
+	 * Contains parsed source location from data-roopik-source attribute
+	 */
+	readonly onOpenSourceRequest: Event<OpenSourceRequestEvent>;
+
 	constructor(private channel: IChannel) {
 		// Subscribe to events from main process
 		this.onDevToolsClosed = this.channel.listen<DevToolsClosedEvent>('onDevToolsClosed');
 		this.onNavigationStateChanged = this.channel.listen<NavigationStateChangedEvent>('onNavigationStateChanged');
+		this.onOpenSourceRequest = this.channel.listen<OpenSourceRequestEvent>('onOpenSourceRequest');
 	}
 
 	// ============================================
@@ -183,5 +191,13 @@ export class ServiceBridge implements IProjectModeService {
 
 	async executeScriptOnOverlay(overlayViewId: number, script: string): Promise<any> {
 		return this.channel.call('executeScriptOnOverlay', { overlayViewId, script });
+	}
+
+	// ============================================
+	// CSS Source Resolution
+	// ============================================
+
+	async getElementStyles(request: GetElementStylesRequest): Promise<GetElementStylesResult> {
+		return this.channel.call('getElementStyles', request);
 	}
 }

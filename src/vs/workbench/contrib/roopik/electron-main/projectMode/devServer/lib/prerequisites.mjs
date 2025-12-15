@@ -222,7 +222,7 @@ const FRAMEWORKS = {
 		name: 'Svelte (Vite)',
 		bundler: 'vite',
 		supported: true,
-		supportsSourceTracking: false, // Svelte has different compilation
+		supportsSourceTracking: true, // Now supported with svelteSourcePlugin
 		detect: (deps) => deps['vite'] && (deps['svelte'] || deps['@sveltejs/vite-plugin-svelte'])
 	},
 	'solid-vite': {

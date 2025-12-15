@@ -5,7 +5,8 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from './types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from './types.js';
+import type { GetElementStylesRequest, GetElementStylesResult } from '../cssResolvers/types.js';
 
 export const IProjectModeService = createDecorator<IProjectModeService>('projectModeService');
 
@@ -39,6 +40,12 @@ export interface IProjectModeService {
 	 * Fires on: did-navigate, did-start-loading, did-finish-load, page-title-updated
 	 */
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent>;
+
+	/**
+	 * Fired when user clicks "Open Source" in browser context menu
+	 * Contains parsed source location from data-roopik-source attribute
+	 */
+	readonly onOpenSourceRequest: Event<OpenSourceRequestEvent>;
 
 
 	// ============================================
@@ -234,4 +241,23 @@ export interface IProjectModeService {
 	 * Used for getting/setting state in floating toolbar
 	 */
 	executeScriptOnOverlay(overlayViewId: number, script: string): Promise<any>;
+
+	// ============================================
+	// CSS Source Resolution (for Inspect Panel)
+	// ============================================
+
+	/**
+	 * Get complete style information for an element
+	 *
+	 * Uses CDP (Chrome DevTools Protocol) for deterministic source resolution.
+	 * Returns all matched CSS rules with source file locations, handling:
+	 * - Plain CSS files
+	 * - SCSS/LESS (via source maps)
+	 * - CSS-in-JS (with component redirect)
+	 * - Inline styles
+	 *
+	 * @param request - Element identification and project context
+	 * @returns Complete style information including source locations
+	 */
+	getElementStyles(request: GetElementStylesRequest): Promise<GetElementStylesResult>;
 }

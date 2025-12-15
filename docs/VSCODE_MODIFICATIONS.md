@@ -164,5 +164,6 @@ Files modified outside of `workbench/contrib/roopik/` to integrate Roopik into V
 | `esbuild-svelte` | `^0.9.3` | ESBuild plugin to compile Svelte components (.svelte files) |
 | `svelte` | `^5.45.2` | Svelte 5 compiler (required by esbuild-svelte@0.9.x) |
 | `@vue/compiler-sfc` | `^3.5.25` | Vue 3 SFC compiler (peer dependency of esbuild-plugin-vue3) |
+| `electron-context-menu` | `^4.1.1` | Standard browser context menu (Back/Forward/Reload/Inspect) for ProjectMode BrowserView |
 
-**Why in core?** BuildService (part of ComponentService) runs in electron-main process to bundle user components with ESBuild. Frameworks like Vue/Svelte need their compiler plugins available at build time.
+**Why in core?** BuildService (part of ComponentService) runs in electron-main process to bundle user components with ESBuild. Frameworks like Vue/Svelte need their compiler plugins available at build time. electron-context-menu enables standard browser right-click menu in ProjectMode browser preview.

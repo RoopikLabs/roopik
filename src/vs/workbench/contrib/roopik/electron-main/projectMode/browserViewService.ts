@@ -6,11 +6,15 @@
 import { BrowserWindow, WebContentsView, session, app } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from '../../common/projectMode/types.js';
+import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
 import type { ILifecycleMainService } from '../../../../../platform/lifecycle/electron-main/lifecycleMainService.js';
 import { LoadReason } from '../../../../../platform/window/electron-main/window.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
+import { CDPCssService } from './cssResolvers/cdpCssService.js';
+import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.js';
+import contextMenu from 'electron-context-menu';
 
 /**
  * Browser View Service
@@ -34,6 +38,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 	private readonly _onNavigationStateChanged = new Emitter<NavigationStateChangedEvent>();
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent> = this._onNavigationStateChanged.event;
+
+	private readonly _onOpenSourceRequest = new Emitter<OpenSourceRequestEvent>();
+	readonly onOpenSourceRequest: Event<OpenSourceRequestEvent> = this._onOpenSourceRequest.event;
 
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
@@ -68,12 +75,18 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// Remote debugging port counter
 	private debuggingPortCounter = 9222;
 
+	// CSS source resolution services
+	private cdpCssService: CDPCssService;
+	private styleOrchestrators = new Map<string, StyleSourceOrchestrator>(); // projectRoot -> orchestrator
+
 	// ============================================
 	// Constructor & Lifecycle Setup
 	// ============================================
 
 	constructor(private readonly lifecycleMainService?: ILifecycleMainService) {
 		super();
+		// Initialize CDP CSS Service with this as the browser service
+		this.cdpCssService = new CDPCssService(this);
 		this.setupLifecycleHooks();
 	}
 
@@ -599,6 +612,31 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		return browserView.webContents.debugger.sendCommand(method, params);
 	}
 
+	/**
+	 * Register a callback for CDP events (like CSS.styleSheetAdded)
+	 * Returns a function to unregister the callback
+	 */
+	onCDPEvent(browserViewId: number, callback: (method: string, params: unknown) => void): () => void {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			return () => { }; // Return no-op cleanup function
+		}
+
+		// Handler for 'message' event from debugger
+		const handler = (_event: Electron.Event, method: string, params: unknown) => {
+			callback(method, params);
+		};
+
+		browserView.webContents.debugger.on('message', handler);
+
+		// Return cleanup function
+		return () => {
+			if (!browserView.webContents.isDestroyed()) {
+				browserView.webContents.debugger.removeListener('message', handler);
+			}
+		};
+	}
+
 	// ============================================
 	// Device Emulation (via CDP)
 	// ============================================
@@ -669,6 +707,25 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		return browserView.webContents.debugger.isAttached()
 			? `ws://127.0.0.1:9222/devtools/page/${browserViewId}`
 			: '';
+	}
+
+	// ============================================
+	// CSS Style Inspection
+	// ============================================
+
+	/**
+	 * Enable CSS domain for style inspection
+	 * Called automatically when page loads to capture stylesheet events
+	 */
+	private async enableCSSForStyleInspection(browserViewId: number): Promise<void> {
+		try {
+			// Reset CSS state first - this clears the cache and marks as not enabled
+			// so we get fresh styleSheetAdded events for this page load
+			this.cdpCssService.resetForPageLoad(browserViewId);
+			await this.cdpCssService.ensureCSSEnabled(browserViewId);
+		} catch (error) {
+			console.error('[ProjectMode][Main] Failed to enable CSS domain:', error);
+		}
 	}
 
 	// ============================================
@@ -907,19 +964,17 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		});
 
 		webContents.on('did-start-loading', () => {
-			console.log('[ProjectMode][Main] did-start-loading', {
-				browserViewId,
-				url: webContents.getURL()
-			});
 			// Fire event with EXPLICIT isLoading = true
 			this.fireNavigationStateChanged(browserViewId, true);
+
+			// Enable CSS domain EARLY to capture CSS.styleSheetAdded events
+			// Must be enabled before stylesheets load to receive the events
+			this.enableCSSForStyleInspection(browserViewId).catch(err => {
+				console.warn('[ProjectMode][Main] Failed to enable CSS for style inspection:', err);
+			});
 		});
 
 		webContents.on('did-finish-load', () => {
-			console.log('[ProjectMode][Main] did-finish-load', {
-				browserViewId,
-				url: webContents.getURL()
-			});
 			// Clear any previous error on successful load
 			this.clearNavigationError(browserViewId);
 			// Fire event with EXPLICIT isLoading = false
@@ -928,10 +983,6 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// did-stop-loading is more reliable than did-finish-load for complex pages
 		webContents.on('did-stop-loading', () => {
-			console.log('[ProjectMode][Main] did-stop-loading', {
-				browserViewId,
-				url: webContents.getURL()
-			});
 			// Fire event with EXPLICIT isLoading = false
 			this.fireNavigationStateChanged(browserViewId, false);
 
@@ -960,6 +1011,125 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		// This allows renderer to sync its state without polling
 		webContents.on('devtools-closed', () => {
 			this._onDevToolsClosed.fire({ browserViewId });
+		});
+
+		// =====================================================
+		// Context Menu (Right-Click)
+		// =====================================================
+
+		// Enable standard browser context menu with custom navigation items
+		// Disable "Search with Google" and "Select All", add Back/Forward/Reload, keep Inspect Element
+		contextMenu({
+			window: browserView, // WebContentsView is accepted as a window option
+			showSearchWithGoogle: false, // Disable "Search with Google"
+			showSelectAll: false, // Disable "Select All" (irrelevant)
+			showInspectElement: true, // Always show Inspect Element (best feature for debugging)
+			prepend: (defaultActions, params, _browserWindow) => {
+				const menuItems: Electron.MenuItemConstructorOptions[] = [];
+				const wc = browserView.webContents;
+
+				// Navigation items (Back, Forward, Reload)
+				// Only show Back/Forward when they're available
+				const canGoBack = wc.navigationHistory.canGoBack();
+				const canGoForward = wc.navigationHistory.canGoForward();
+
+				if (canGoBack || canGoForward) {
+					if (canGoBack) {
+						menuItems.push({
+							label: 'Back',
+							click: () => {
+								wc.navigationHistory.goBack();
+							}
+						});
+					}
+					if (canGoForward) {
+						menuItems.push({
+							label: 'Forward',
+							click: () => {
+								wc.navigationHistory.goForward();
+							}
+						});
+					}
+					menuItems.push({ type: 'separator' });
+				}
+
+				menuItems.push({
+					label: 'Reload',
+					click: () => {
+						wc.reload();
+					}
+				});
+
+				menuItems.push({ type: 'separator' });
+
+				return menuItems;
+			},
+			append: (_defaultActions, params, _browserWindow) => {
+				const menuItems: Electron.MenuItemConstructorOptions[] = [];
+				const wc = browserView.webContents;
+
+				// "Open Source" - opens the source file for the clicked element
+				// Uses data-roopik-source attribute injected at build time
+				menuItems.push({ type: 'separator' });
+				menuItems.push({
+					label: 'Open Source',
+					click: async () => {
+						try {
+							// Execute script to find element at click position and get data-roopik-source
+							const sourceAttr = await wc.executeJavaScript(`
+								(function() {
+									const x = ${params.x};
+									const y = ${params.y};
+									let el = document.elementFromPoint(x, y);
+
+									// Walk up the DOM tree to find nearest element with data-roopik-source
+									while (el && el !== document.body && el !== document.documentElement) {
+										const source = el.getAttribute('data-roopik-source');
+										if (source) {
+											return source;
+										}
+										el = el.parentElement;
+									}
+									return null;
+								})();
+							`);
+
+							if (sourceAttr) {
+								// Parse the source location: file:startLine:startCol:endLine:endCol
+								// Windows paths contain colons (C:\), so we find the last 4 numeric parts
+								const parsed = this.parseSourceAttribute(sourceAttr);
+								if (parsed) {
+									this._onOpenSourceRequest.fire({
+										browserViewId,
+										sourceLocation: parsed
+									});
+								} else {
+									this._onOpenSourceRequest.fire({
+										browserViewId,
+										sourceLocation: null,
+										error: `Could not parse source location: ${sourceAttr}`
+									});
+								}
+							} else {
+								this._onOpenSourceRequest.fire({
+									browserViewId,
+									sourceLocation: null,
+									error: 'No source tracking found for this element. Source tracking is only available for components built with Roopik.'
+								});
+							}
+						} catch (error) {
+							console.error('[ProjectMode] Failed to get source location:', error);
+							this._onOpenSourceRequest.fire({
+								browserViewId,
+								sourceLocation: null,
+								error: `Failed to get source location: ${error}`
+							});
+						}
+					}
+				});
+
+				return menuItems;
+			}
 		});
 
 	}
@@ -1148,6 +1318,149 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		for (const overlayViewId of overlaysToDestroy) {
 			this.destroyOverlayView(overlayViewId);
+		}
+	}
+
+	// ============================================
+	// CSS Source Resolution
+	// ============================================
+
+	// ============================================
+	// Source Location Parsing
+	// ============================================
+
+	/**
+	 * Parse data-roopik-source attribute value into structured source location
+	 *
+	 * Format: file:startLine:startCol:endLine:endCol
+	 * Windows paths contain colons (C:\), so we parse from the end to find numeric parts.
+	 *
+	 * @param sourceAttr - The raw attribute value
+	 * @returns Parsed source location or null if invalid
+	 */
+	private parseSourceAttribute(sourceAttr: string): { file: string; line: number; column?: number; endLine?: number; endColumn?: number } | null {
+		if (!sourceAttr) {
+			return null;
+		}
+
+		// Split by colons
+		const parts = sourceAttr.split(':');
+
+		// Need at least 2 parts: file + line
+		// Full format: file:line:col:endLine:endCol (5 numeric parts at end, or less)
+		if (parts.length < 2) {
+			return null;
+		}
+
+		// Parse numeric values from the end
+		// Last 4 can be: line, col, endLine, endCol (all numbers)
+		// Find where numbers start from the end
+		let numericStartIndex = parts.length;
+		for (let i = parts.length - 1; i >= 0; i--) {
+			const num = parseInt(parts[i], 10);
+			if (isNaN(num)) {
+				numericStartIndex = i + 1;
+				break;
+			}
+		}
+
+		// File is everything before numeric parts
+		const fileParts = parts.slice(0, numericStartIndex);
+		const numericParts = parts.slice(numericStartIndex);
+
+		if (fileParts.length === 0 || numericParts.length === 0) {
+			return null;
+		}
+
+		const file = fileParts.join(':'); // Rejoin file path (handles Windows C:\)
+		const line = parseInt(numericParts[0], 10);
+
+		if (isNaN(line)) {
+			return null;
+		}
+
+		const result: { file: string; line: number; column?: number; endLine?: number; endColumn?: number } = {
+			file,
+			line
+		};
+
+		// Optional: column, endLine, endColumn
+		if (numericParts.length >= 2) {
+			const col = parseInt(numericParts[1], 10);
+			if (!isNaN(col)) {
+				result.column = col;
+			}
+		}
+
+		if (numericParts.length >= 3) {
+			const endLine = parseInt(numericParts[2], 10);
+			if (!isNaN(endLine)) {
+				result.endLine = endLine;
+			}
+		}
+
+		if (numericParts.length >= 4) {
+			const endCol = parseInt(numericParts[3], 10);
+			if (!isNaN(endCol)) {
+				result.endColumn = endCol;
+			}
+		}
+
+		return result;
+	}
+
+	// ============================================
+	// CSS Source Resolution
+	// ============================================
+
+	/**
+	 * Get complete style information for an element
+	 *
+	 * Uses CDP (Chrome DevTools Protocol) for deterministic source resolution.
+	 * Handles plain CSS, SCSS/LESS (via source maps), CSS-in-JS, and inline styles.
+	 *
+	 * @param request - Element identification and project context
+	 * @returns Complete style information including source locations
+	 */
+	async getElementStyles(request: GetElementStylesRequest): Promise<GetElementStylesResult> {
+		const { browserViewId, projectRoot } = request;
+
+		// Validate browser view exists
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			return {
+				success: false,
+				error: 'Browser view not found or destroyed'
+			};
+		}
+
+		try {
+			// Get or create orchestrator for this project root
+			let orchestrator = this.styleOrchestrators.get(projectRoot);
+			if (!orchestrator) {
+				orchestrator = new StyleSourceOrchestrator(this.cdpCssService, projectRoot);
+				this.styleOrchestrators.set(projectRoot, orchestrator);
+			}
+
+			// Delegate to orchestrator
+			return await orchestrator.getElementStyles(request);
+		} catch (error) {
+			console.error('[BrowserViewService] getElementStyles error:', error);
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			};
+		}
+	}
+
+	/**
+	 * Clear CSS cache for a project
+	 * Call when files change to ensure fresh source map resolution
+	 */
+	clearCssCacheForProject(projectRoot: string): void {
+		const orchestrator = this.styleOrchestrators.get(projectRoot);
+		if (orchestrator) {
+			orchestrator.clearCaches();
 		}
 	}
 }
