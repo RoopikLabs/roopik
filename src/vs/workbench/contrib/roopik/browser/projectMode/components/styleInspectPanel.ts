@@ -380,31 +380,50 @@ export class StyleInspectPanel {
 		tagContainer.appendChild(tagSpan);
 		section.content.appendChild(tagContainer);
 
-		// Component name (if available)
-		if (data.componentName) {
-			const componentBadge = document.createElement('div');
-			componentBadge.style.cssText = `
-				display: inline-flex;
+		// Component name and Open in Editor button row
+		// Put them on the same row to save vertical space
+		if (data.componentName || data.htmlSource) {
+			const rowContainer = document.createElement('div');
+			rowContainer.style.cssText = `
+				display: flex;
 				align-items: center;
-				gap: 4px;
-				background: var(--vscode-badge-background);
-				color: var(--vscode-badge-foreground);
-				padding: 2px 8px;
-				border-radius: 10px;
-				font-size: 11px;
-				margin-bottom: 8px;
+				justify-content: space-between;
+				gap: 8px;
+				margin-bottom: 4px;
 			`;
-			componentBadge.textContent = `⚛ ${data.componentName}`;
-			section.content.appendChild(componentBadge);
-		}
 
-		// Open source button (if htmlSource available)
-		if (data.htmlSource) {
-			const btn = this.createButton('📄 Open in Editor', () => {
-				this.callbacks.onOpenFile(data.htmlSource!);
-			});
-			btn.title = `${data.htmlSource.file}:${data.htmlSource.line}`;
-			section.content.appendChild(btn);
+			// Component badge (left side)
+			if (data.componentName) {
+				const componentBadge = document.createElement('div');
+				componentBadge.style.cssText = `
+					display: inline-flex;
+					align-items: center;
+					gap: 4px;
+					background: var(--vscode-badge-background);
+					color: var(--vscode-badge-foreground);
+					padding: 2px 8px;
+					border-radius: 10px;
+					font-size: 11px;
+				`;
+				componentBadge.textContent = `⚛ ${data.componentName}`;
+				rowContainer.appendChild(componentBadge);
+			} else {
+				// Spacer if no component name
+				const spacer = document.createElement('div');
+				rowContainer.appendChild(spacer);
+			}
+
+			// Open in Editor button (right side)
+			if (data.htmlSource) {
+				const btn = this.createButton('📄 Open in Editor', () => {
+					this.callbacks.onOpenFile(data.htmlSource!);
+				});
+				btn.title = `${data.htmlSource.file}:${data.htmlSource.line}`;
+				btn.style.marginBottom = '0'; // Remove bottom margin since row handles spacing
+				rowContainer.appendChild(btn);
+			}
+
+			section.content.appendChild(rowContainer);
 		}
 
 		return section.element;
