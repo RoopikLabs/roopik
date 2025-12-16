@@ -34,6 +34,12 @@ export const INSPECT_MODE_SCRIPT = `
 	let isHoveringSelected = false;
 	let isChatOpen = false;
 
+	// Drag state
+	let isDragging = false;
+	let dragStartX = 0;
+	let dragStartY = 0;
+	let dragGhost = null;
+
 	// ========== Create UI Elements ==========
 
 	// Hover overlay (blue - follows mouse)
@@ -76,6 +82,132 @@ export const INSPECT_MODE_SCRIPT = `
 		isHoveringSelected = false;
 	});
 
+	// ========== Drag Handlers on Selected Overlay ==========
+	selectedOverlay.addEventListener('mousedown', function(e) {
+		if (!selectedElement || e.button !== 0) return;
+		e.preventDefault();
+		e.stopPropagation();
+
+		isDragging = true;
+		dragStartX = e.clientX;
+		dragStartY = e.clientY;
+		selectedOverlay.style.cursor = 'grabbing';
+
+		// Create ghost element (semi-transparent clone)
+		createDragGhost(e.clientX, e.clientY);
+
+		// Hide chat icon during drag
+		chatIcon.style.display = 'none';
+
+		// Add document-level listeners for drag
+		document.addEventListener('mousemove', onDragMove, true);
+		document.addEventListener('mouseup', onDragEnd, true);
+	});
+
+	function createDragGhost(x, y) {
+		if (!selectedElement) return;
+
+		// Create ghost container
+		dragGhost = document.createElement('div');
+		dragGhost.id = '__roopik_inspect_ghost';
+		dragGhost.style.cssText = [
+			'position: fixed',
+			'pointer-events: none',
+			'z-index: 2147483648',
+			'opacity: 0.7',
+			'transform: scale(0.95)',
+			'box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3)',
+			'border-radius: 4px',
+			'overflow: hidden',
+			'transition: opacity 0.1s'
+		].join(';');
+
+		// Clone the selected element for visual preview
+		var rect = selectedElement.getBoundingClientRect();
+		var clone = selectedElement.cloneNode(true);
+
+		// Remove data attributes from clone
+		clone.removeAttribute('data-roopik-source');
+		clone.removeAttribute('data-roopik-component');
+
+		// Style the clone to match original size
+		clone.style.cssText = [
+			'width: ' + rect.width + 'px',
+			'height: ' + rect.height + 'px',
+			'margin: 0',
+			'max-width: 300px',
+			'max-height: 200px',
+			'overflow: hidden'
+		].join(';');
+
+		dragGhost.appendChild(clone);
+
+		// Position at cursor
+		var ghostWidth = Math.min(rect.width, 300);
+		var ghostHeight = Math.min(rect.height, 200);
+		dragGhost.style.left = (x - ghostWidth / 2) + 'px';
+		dragGhost.style.top = (y - ghostHeight / 2) + 'px';
+		dragGhost.style.width = ghostWidth + 'px';
+		dragGhost.style.height = ghostHeight + 'px';
+
+		document.body.appendChild(dragGhost);
+
+		// Notify VSCode drag started
+		if (typeof window.__roopikBridge === 'function') {
+			window.__roopikBridge(JSON.stringify({
+				type: 'drag-started',
+				selector: getElementSelector(selectedElement),
+				tagName: selectedElement.tagName.toLowerCase()
+			}));
+		}
+	}
+
+	function onDragMove(e) {
+		if (!isDragging || !dragGhost) return;
+		e.preventDefault();
+
+		// Update ghost position (centered on cursor)
+		var ghostRect = dragGhost.getBoundingClientRect();
+		dragGhost.style.left = (e.clientX - ghostRect.width / 2) + 'px';
+		dragGhost.style.top = (e.clientY - ghostRect.height / 2) + 'px';
+
+		// TODO Phase 3: Detect drop zones and highlight siblings
+	}
+
+	function onDragEnd(e) {
+		if (!isDragging) return;
+		e.preventDefault();
+
+		isDragging = false;
+		selectedOverlay.style.cursor = 'grab';
+
+		// Remove ghost
+		if (dragGhost && dragGhost.parentNode) {
+			dragGhost.remove();
+		}
+		dragGhost = null;
+
+		// Remove document listeners
+		document.removeEventListener('mousemove', onDragMove, true);
+		document.removeEventListener('mouseup', onDragEnd, true);
+
+		// Restore chat icon if element still selected
+		if (selectedElement) {
+			updateOverlay(selectedOverlay, selectedLabel, selectedElement, '#22c55e', true);
+		}
+
+		// Notify VSCode drag ended
+		if (typeof window.__roopikBridge === 'function') {
+			window.__roopikBridge(JSON.stringify({
+				type: 'drag-ended',
+				dropX: e.clientX,
+				dropY: e.clientY
+			}));
+		}
+
+		showToast('🚧 Drop zones coming soon!');
+	}
+
 	// Chat icon (appears on selected element - top right corner)
 	const chatIcon = document.createElement('div');
 	chatIcon.id = '__roopik_inspect_chat';
@@ -117,10 +249,9 @@ export const INSPECT_MODE_SCRIPT = `
 		'background: #1e1e1e',
 		'border: 1px solid #3c3c3c',
 		'border-radius: 8px',
-		'padding: 8px',
+		'padding: 10px',
 		'box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4)',
-		'min-width: 280px',
-		'max-width: 400px'
+		'width: 500px'
 	].join(';');
 
 	// Chat input container (input + send button)
@@ -130,13 +261,12 @@ export const INSPECT_MODE_SCRIPT = `
 	const chatInput = document.createElement('input');
 	chatInput.type = 'text';
 	chatInput.placeholder = 'Describe changes... (Coming soon)';
-	chatInput.disabled = true;
 	chatInput.style.cssText = [
 		'flex: 1',
 		'background: #2d2d2d',
 		'border: 1px solid #3c3c3c',
 		'border-radius: 4px',
-		'padding: 8px 12px',
+		'padding: 10px 12px',
 		'color: #cccccc',
 		'font-size: 13px',
 		'font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
@@ -161,20 +291,7 @@ export const INSPECT_MODE_SCRIPT = `
 
 	chatInputContainer.appendChild(chatInput);
 	chatInputContainer.appendChild(chatSendBtn);
-
-	// Coming soon label
-	const comingSoon = document.createElement('div');
-	comingSoon.style.cssText = [
-		'font-size: 11px',
-		'color: #888',
-		'text-align: center',
-		'margin-top: 6px',
-		'font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif'
-	].join(';');
-	comingSoon.textContent = '🚧 AI editing coming soon!';
-
 	chatBar.appendChild(chatInputContainer);
-	chatBar.appendChild(comingSoon);
 	document.body.appendChild(chatBar);
 
 	// Chat icon click handler - toggles chat bar
@@ -197,8 +314,8 @@ export const INSPECT_MODE_SCRIPT = `
 		isChatOpen = true;
 
 		var rect = selectedElement.getBoundingClientRect();
-		var barHeight = 80; // Approximate height
-		var barWidth = 320;
+		var barHeight = 60; // Clean input bar height
+		var barWidth = 500;
 
 		// Determine position: prefer below element, fallback to above
 		var top, left;
@@ -222,6 +339,14 @@ export const INSPECT_MODE_SCRIPT = `
 		chatBar.style.left = left + 'px';
 		chatBar.style.display = 'block';
 
+		// Hide chat icon while chat bar is open
+		chatIcon.style.display = 'none';
+
+		// Focus the input
+		setTimeout(function() {
+			chatInput.focus();
+		}, 50);
+
 		// Also notify VSCode (for future use)
 		if (typeof window.__roopikBridge === 'function') {
 			var sourceAttr = selectedElement.getAttribute('data-roopik-source');
@@ -238,6 +363,11 @@ export const INSPECT_MODE_SCRIPT = `
 	function closeChatBar() {
 		isChatOpen = false;
 		chatBar.style.display = 'none';
+
+		// Show chat icon again when chat closes
+		if (selectedElement) {
+			updateOverlay(selectedOverlay, selectedLabel, selectedElement, '#22c55e', true);
+		}
 	}
 
 	// Close chat bar when clicking outside
@@ -450,6 +580,10 @@ export const INSPECT_MODE_SCRIPT = `
 			if (current.id && current.id.startsWith('__roopik_inspect')) {
 				return true;
 			}
+			// Also check for ghost element
+			if (current === dragGhost) {
+				return true;
+			}
 			current = current.parentElement;
 		}
 		return false;
@@ -571,6 +705,8 @@ export const INSPECT_MODE_SCRIPT = `
 		document.removeEventListener('click', onClick, true);
 		document.removeEventListener('keydown', onKeyDown, true);
 		document.removeEventListener('scroll', onScroll, true);
+		document.removeEventListener('mousemove', onDragMove, true);
+		document.removeEventListener('mouseup', onDragEnd, true);
 		window.removeEventListener('resize', onScroll);
 
 		if (toastTimeout) clearTimeout(toastTimeout);
@@ -582,11 +718,14 @@ export const INSPECT_MODE_SCRIPT = `
 		if (chatIcon.parentNode) chatIcon.remove();
 		if (chatBar.parentNode) chatBar.remove();
 		if (toast.parentNode) toast.remove();
+		if (dragGhost && dragGhost.parentNode) dragGhost.remove();
 
 		hoverElement = null;
 		selectedElement = null;
 		isHoveringSelected = false;
 		isChatOpen = false;
+		isDragging = false;
+		dragGhost = null;
 		delete window.__roopikInspectCleanup;
 	}
 
