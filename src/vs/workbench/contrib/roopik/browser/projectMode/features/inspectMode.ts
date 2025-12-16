@@ -267,7 +267,7 @@ const INSPECT_MODE_SCRIPT = `
 	].join(';');
 	document.body.appendChild(selectedOverlay);
 
-	// Hover label (tag info)
+	// Hover label (tag info - blue)
 	const hoverLabel = document.createElement('div');
 	hoverLabel.id = '__roopik_inspect_label';
 	hoverLabel.style.cssText = [
@@ -284,6 +284,24 @@ const INSPECT_MODE_SCRIPT = `
 		'display: none'
 	].join(';');
 	document.body.appendChild(hoverLabel);
+
+	// Selected label (tag info - green, stays on selected element)
+	const selectedLabel = document.createElement('div');
+	selectedLabel.id = '__roopik_inspect_selected_label';
+	selectedLabel.style.cssText = [
+		'position: fixed',
+		'pointer-events: none',
+		'z-index: 2147483647',
+		'background-color: #22c55e',
+		'color: white',
+		'font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
+		'font-size: 11px',
+		'padding: 2px 6px',
+		'border-radius: 2px',
+		'white-space: nowrap',
+		'display: none'
+	].join(';');
+	document.body.appendChild(selectedLabel);
 
 	// Toast notification
 	const toast = document.createElement('div');
@@ -475,8 +493,8 @@ const INSPECT_MODE_SCRIPT = `
 			window.__roopikBridge(JSON.stringify(message));
 		}
 
-		// Update selected overlay (green)
-		updateOverlay(selectedOverlay, null, el);
+		// Update selected overlay (green) with its own label
+		updateOverlay(selectedOverlay, selectedLabel, el, '#22c55e');
 		selectedOverlay.style.display = 'block';
 
 		// Hide hover overlay since we're now on selected
@@ -504,7 +522,7 @@ const INSPECT_MODE_SCRIPT = `
 			updateOverlay(hoverOverlay, hoverLabel, hoverElement, '#007acc');
 		}
 		if (selectedElement) {
-			updateOverlay(selectedOverlay, null, selectedElement);
+			updateOverlay(selectedOverlay, selectedLabel, selectedElement, '#22c55e');
 		}
 	}
 
@@ -522,6 +540,7 @@ const INSPECT_MODE_SCRIPT = `
 		if (hoverOverlay.parentNode) hoverOverlay.remove();
 		if (selectedOverlay.parentNode) selectedOverlay.remove();
 		if (hoverLabel.parentNode) hoverLabel.remove();
+		if (selectedLabel.parentNode) selectedLabel.remove();
 		if (toast.parentNode) toast.remove();
 
 		hoverElement = null;
