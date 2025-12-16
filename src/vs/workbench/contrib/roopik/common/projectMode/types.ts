@@ -120,7 +120,7 @@ export interface DevToolsClosedEvent {
 
 /**
  * Event payload when navigation state changes
- * Fired on: did-navigate, did-start-loading, did-finish-load, page-title-updated
+ * Fired on: did-navigate, did-start-loading, did-finish-load, page-title-updated, page-favicon-updated
  * This replaces polling for URL/title/loading state updates
  */
 export interface NavigationStateChangedEvent {
@@ -132,6 +132,8 @@ export interface NavigationStateChangedEvent {
 	canGoForward: boolean;
 	/** Navigation error if any (cleared on successful navigation) */
 	lastError?: NavigationError;
+	/** Favicon URL (first from page-favicon-updated event) */
+	favicon?: string;
 }
 
 /**

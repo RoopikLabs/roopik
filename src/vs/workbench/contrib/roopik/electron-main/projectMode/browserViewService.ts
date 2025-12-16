@@ -68,6 +68,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// Navigation errors - track last error per browser view
 	private lastNavigationErrors = new Map<number, NavigationError>();
 
+	// Favicon URLs - track current favicon per browser view
+	private favicons = new Map<number, string>();
+
 	// Remote debugging port counter
 	private debuggingPortCounter = 9222;
 
@@ -455,6 +458,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		const webContents = browserView.webContents;
 		const lastError = this.lastNavigationErrors.get(browserViewId);
+		const favicon = this.favicons.get(browserViewId);
 
 		// Use override if provided, otherwise query webContents
 		const isLoading = isLoadingOverride !== undefined ? isLoadingOverride : webContents.isLoading();
@@ -466,7 +470,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			isLoading,
 			canGoBack: webContents.navigationHistory.canGoBack(),
 			canGoForward: webContents.navigationHistory.canGoForward(),
-			lastError
+			lastError,
+			favicon
 		});
 	}
 
@@ -915,7 +920,17 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			this.fireNavigationStateChanged(browserViewId);
 		});
 
+		webContents.on('page-favicon-updated', (_event, favicons) => {
+			// Store first favicon URL and notify renderer
+			if (favicons && favicons.length > 0) {
+				this.favicons.set(browserViewId, favicons[0]);
+				this.fireNavigationStateChanged(browserViewId);
+			}
+		});
+
 		webContents.on('did-start-loading', () => {
+			// Clear favicon on new navigation (new page will send new favicon)
+			this.favicons.delete(browserViewId);
 			// Fire event with EXPLICIT isLoading = true
 			this.fireNavigationStateChanged(browserViewId, true);
 

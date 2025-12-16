@@ -611,6 +611,7 @@ export class Editor extends EditorPane {
 	// Track last known values to avoid unnecessary updates (for event-driven navigation)
 	private lastKnownUrl = '';
 	private lastKnownTitle = '';
+	private lastKnownFavicon = '';
 	private lastErrorUrl = ''; // Track which URL we showed error for
 	private wasLoading = false; // Track loading state for progress bar
 
@@ -708,6 +709,16 @@ export class Editor extends EditorPane {
 			});
 
 			// UI updates now happen via event subscription (see setupEventSubscriptions)
+		}
+
+		// Update tab favicon when it changes
+		const currentFavicon = event.favicon || '';
+		if (currentFavicon !== this.lastKnownFavicon) {
+			this.lastKnownFavicon = currentFavicon;
+			const input = this.input as EditorTabInput;
+			if (input) {
+				input.setFavicon(currentFavicon || undefined);
+			}
 		}
 
 		// Update back/forward button states
@@ -1396,7 +1407,7 @@ export class Editor extends EditorPane {
 		try {
 			// Use VSCode's clipboard service (works reliably in Electron)
 			await this.clipboardService.writeText(url);
-			this.logger.info(`[ProjectMode] URL copied to clipboard: ${url}`);
+			// this.logger.info(`[ProjectMode] URL copied to clipboard: ${url}`);
 
 			// Show success notification
 			this.notificationService.notify({
