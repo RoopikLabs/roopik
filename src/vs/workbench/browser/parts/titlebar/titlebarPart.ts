@@ -75,6 +75,12 @@ export interface ITitlebarPart extends IDisposable {
 	readonly onMenubarVisibilityChange: Event<boolean>;
 
 	/**
+	 * An event when the menubar focus state changes (e.g., when a menu is opened/closed).
+	 * Fires true when a menu is opened (focused), false when closed.
+	 */
+	readonly onMenubarFocusStateChange: Event<boolean>;
+
+	/**
 	 * Update some environmental title properties.
 	 */
 	updateProperties(properties: ITitleProperties): void;
@@ -100,6 +106,7 @@ export class BrowserTitleService extends MultiWindowParts<BrowserTitlebarPart> i
 
 		this.mainPart = this._register(this.createMainTitlebarPart());
 		this.onMenubarVisibilityChange = this.mainPart.onMenubarVisibilityChange;
+		this.onMenubarFocusStateChange = this.mainPart.onMenubarFocusStateChange;
 		this._register(this.registerPart(this.mainPart));
 
 		this.registerActions();
@@ -186,6 +193,7 @@ export class BrowserTitleService extends MultiWindowParts<BrowserTitlebarPart> i
 	//#region Service Implementation
 
 	readonly onMenubarVisibilityChange: Event<boolean>;
+	readonly onMenubarFocusStateChange: Event<boolean>;
 
 	private properties: ITitleProperties | undefined = undefined;
 
@@ -242,6 +250,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 
 	private _onMenubarVisibilityChange = this._register(new Emitter<boolean>());
 	readonly onMenubarVisibilityChange = this._onMenubarVisibilityChange.event;
+
+	private _onMenubarFocusStateChange = this._register(new Emitter<boolean>());
+	readonly onMenubarFocusStateChange = this._onMenubarFocusStateChange.event;
 
 	private readonly _onWillDispose = this._register(new Emitter<void>());
 	readonly onWillDispose = this._onWillDispose.event;
@@ -415,6 +426,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		this.menubar.setAttribute('role', 'menubar');
 
 		this._register(this.customMenubar.value.onVisibilityChange(e => this.onMenubarVisibilityChanged(e)));
+		this._register(this.customMenubar.value.onFocusStateChange(focused => this._onMenubarFocusStateChange.fire(focused)));
 
 		this.customMenubar.value.create(this.menubar);
 	}

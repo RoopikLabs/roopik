@@ -37,6 +37,7 @@ import { StyleInspect } from './features/styleInspect.js';
 // Components
 import { DefaultBrowserScreen } from './components/defaultBrowserScreen.js';
 import { ISourceNavigationService } from '../../common/navigation/index.js';
+import { IMenubarStateService } from '../../../../services/menubar/electron-browser/menubarStateService.js';
 
 /**
  * Project Mode Editor
@@ -103,7 +104,8 @@ export class Editor extends EditorPane {
 		@IContextMenuService private readonly contextMenuService: IContextMenuService,
 		@INotificationService private readonly notificationService: INotificationService,
 		@IClipboardService private readonly clipboardService: IClipboardService,
-		@ISourceNavigationService private readonly sourceNavigationService: ISourceNavigationService
+		@ISourceNavigationService private readonly sourceNavigationService: ISourceNavigationService,
+		@IMenubarStateService private readonly menubarStateService: IMenubarStateService
 	) {
 		super(Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = RoopikLogger.create(loggerService);
@@ -207,13 +209,7 @@ export class Editor extends EditorPane {
 	 * Currently handled:
 	 * - Command Palette (Ctrl+Shift+P) via IQuickInputService
 	 * - Context menus (right-click) via IContextMenuService
-	 *
-	 * TODO: Native menu bar (File, Edit, View...) needs main process IPC
-	 * The native Electron menu doesn't fire events in the renderer process.
-	 * To fix this, we need to:
-	 * 1. Add menu-will-show/menu-will-close event handlers in main process Menubar class
-	 * 2. Create IPC channel to notify renderer when menu opens/closes
-	 * 3. Subscribe to those events here
+	 * - Native menu bar (File, Edit, View...) via IMenubarStateService
 	 */
 	private setupBrowserPauseDetection(): void {
 		// 1. Command Palette detection via IQuickInputService
@@ -231,6 +227,18 @@ export class Editor extends EditorPane {
 		}));
 
 		this._register(this.contextMenuService.onDidHideContextMenu(() => {
+			this.resumeBrowser();
+		}));
+
+		// 3. Custom menubar detection via IMenubarStateService
+		// Events are fired when VSCode's custom HTML-based menubar is opened/closed
+		this._register(this.menubarStateService.onDidOpenMenu(() => {
+			this.logger.info(`[ProjectMode] Menubar opened`);
+			this.pauseBrowser();
+		}));
+
+		this._register(this.menubarStateService.onDidCloseMenu(() => {
+			this.logger.info(`[ProjectMode] Menubar closed`);
 			this.resumeBrowser();
 		}));
 	}
