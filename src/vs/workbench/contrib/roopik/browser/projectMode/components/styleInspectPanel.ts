@@ -200,11 +200,13 @@ export class StyleInspectPanel {
 		this.selectedNodeId = nodeId;
 		// Expand parent nodes to make selected node visible
 		this.expandParentsOfNode(nodeId);
-		// Switch to Components tab if not already there
+		// Switch to Components tab if not already there (use switchTab to update UI properly)
 		if (this.activeTab !== 'components') {
-			this.activeTab = 'components';
+			this.switchTab('components');
+		} else {
+			// Already on components tab, just re-render to update selection
+			this.renderComponentsTab();
 		}
-		this.renderComponentsTab();
 	}
 
 	/**

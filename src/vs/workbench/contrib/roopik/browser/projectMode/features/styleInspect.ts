@@ -482,6 +482,12 @@ export class StyleInspect {
 			// Pass isProjectMode flag - file links only work in project mode
 			const isProjectMode = !!this.currentProjectRoot;
 			this.panel.show(data, isProjectMode);
+
+			// Also set DOM tree if cached (for Components tab)
+			// This ensures tree is available when opening panel via inspect mode
+			if (this.domTreeCache) {
+				this.panel.setDOMTree(this.domTreeCache);
+			}
 		}
 	}
 

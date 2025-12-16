@@ -349,6 +349,12 @@ export class Editor extends EditorPane {
 				this.styleInspect.setProjectRoot(this.currentProjectRoot);
 			}
 
+			// Ensure DOM tree is fetched for Components tab sync
+			// This handles cases where page loaded but onPageLoadComplete didn't fire
+			if (!this.styleInspect.getDOMTreeCache()) {
+				this.fetchDOMTreeForComponentsTab();
+			}
+
 			// Get element styles and show panel
 			await this.styleInspect.handleElementSelected(this.browserViewId, message.selector);
 		}
@@ -933,11 +939,17 @@ export class Editor extends EditorPane {
 
 			// UI updates now happen via event subscription (see setupEventSubscriptions)
 
-			// If this is the first real URL (from about:blank), and page is not loading,
-			// trigger post-load setup. This handles the case where we miss the loading event
-			// (e.g., page was already loaded when we connected, or very fast load).
-			if (previousUrl === '' && currentUrl && currentUrl !== 'about:blank' && !event.isLoading) {
-				this.onPageLoadComplete();
+			// If page is not loading and we don't have a DOM tree cache, fetch it
+			// This handles cases where we miss the loading transition:
+			// - First navigation from about:blank
+			// - Fast page loads
+			// - Reconnecting to an already-loaded page
+			if (!event.isLoading && currentUrl && currentUrl !== 'about:blank') {
+				// Always call onPageLoadComplete if we're not loading and URL changed significantly
+				// It's safe to call multiple times - it just re-injects scripts and refreshes DOM tree
+				if (previousUrl !== currentUrl || !this.styleInspect.getDOMTreeCache()) {
+					this.onPageLoadComplete();
+				}
 			}
 		}
 
