@@ -329,6 +329,20 @@ export class BrowserControlBar extends Disposable {
 				}
 			};
 			setTimeout(() => document.addEventListener('click', closeOnClickOutside), 0);
+
+			// Auto-close after 1.5s when mouse leaves menu
+			let autoCloseTimer: ReturnType<typeof setTimeout> | undefined;
+			const startAutoClose = () => {
+				autoCloseTimer = setTimeout(() => this.hideOverflowMenu(), 1500);
+			};
+			const cancelAutoClose = () => {
+				if (autoCloseTimer) {
+					clearTimeout(autoCloseTimer);
+					autoCloseTimer = undefined;
+				}
+			};
+			this.overflowMenu.onmouseleave = startAutoClose;
+			this.overflowMenu.onmouseenter = cancelAutoClose;
 		}
 	}
 

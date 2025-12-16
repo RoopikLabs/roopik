@@ -233,12 +233,12 @@ export class Editor extends EditorPane {
 		// 3. Custom menubar detection via IMenubarStateService
 		// Events are fired when VSCode's custom HTML-based menubar is opened/closed
 		this._register(this.menubarStateService.onDidOpenMenu(() => {
-			this.logger.info(`[ProjectMode] Menubar opened`);
+			// this.logger.info(`[ProjectMode] Menubar opened`);
 			this.pauseBrowser();
 		}));
 
 		this._register(this.menubarStateService.onDidCloseMenu(() => {
-			this.logger.info(`[ProjectMode] Menubar closed`);
+			// this.logger.info(`[ProjectMode] Menubar closed`);
 			this.resumeBrowser();
 		}));
 	}
