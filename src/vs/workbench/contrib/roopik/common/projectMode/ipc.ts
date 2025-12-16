@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from './types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from './types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../cssResolvers/types.js';
 
 export const IProjectModeService = createDecorator<IProjectModeService>('projectModeService');
@@ -130,11 +130,6 @@ export interface IProjectModeService {
 	closeDevTools(browserViewId: number): Promise<void>;
 
 	/**
-	 * Set DevTools view bounds
-	 */
-	setDevToolsBounds(browserViewId: number, bounds: ViewBounds): Promise<void>;
-
-	/**
 	 * Check if DevTools is open
 	 */
 	isDevToolsOpen(browserViewId: number): Promise<boolean>;
@@ -164,20 +159,6 @@ export interface IProjectModeService {
 	sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any>;
 
 	// ============================================
-	// Device Emulation (via CDP)
-	// ============================================
-
-	/**
-	 * Set device emulation
-	 */
-	setDeviceEmulation(browserViewId: number, device: DevicePreset): Promise<void>;
-
-	/**
-	 * Clear device emulation
-	 */
-	clearDeviceEmulation(browserViewId: number): Promise<void>;
-
-	// ============================================
 	// Utilities
 	// ============================================
 
@@ -200,47 +181,6 @@ export interface IProjectModeService {
 	 * Get debugging WebSocket URL for MCP connection
 	 */
 	getDebuggingUrl(browserViewId: number): Promise<string>;
-
-	// ============================================
-	// Overlay View (for floating toolbar, menus)
-	// CRITICAL: Creates WebContentsView that renders ON TOP of browser
-	// ============================================
-
-	/**
-	 * Create overlay view for floating UI elements (toolbar, menus)
-	 * This creates a transparent WebContentsView positioned above the browser
-	 * @param browserViewId - Parent browser view ID
-	 * @param bounds - Position and size of overlay
-	 * @param htmlContent - HTML content to render in overlay
-	 * @returns Overlay view ID
-	 */
-	createOverlayView(browserViewId: number, bounds: ViewBounds, htmlContent: string): Promise<number>;
-
-	/**
-	 * Update overlay view bounds
-	 */
-	setOverlayBounds(overlayViewId: number, bounds: ViewBounds): Promise<void>;
-
-	/**
-	 * Update overlay HTML content
-	 */
-	setOverlayContent(overlayViewId: number, htmlContent: string): Promise<void>;
-
-	/**
-	 * Show/hide overlay view
-	 */
-	setOverlayVisible(overlayViewId: number, visible: boolean): Promise<void>;
-
-	/**
-	 * Destroy overlay view
-	 */
-	destroyOverlayView(overlayViewId: number): Promise<void>;
-
-	/**
-	 * Execute JavaScript in overlay view
-	 * Used for getting/setting state in floating toolbar
-	 */
-	executeScriptOnOverlay(overlayViewId: number, script: string): Promise<any>;
 
 	// ============================================
 	// CSS Source Resolution (for Inspect Panel)

@@ -6,7 +6,7 @@
 import { BrowserWindow, WebContentsView, session, app } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from '../../common/projectMode/types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
 import type { ILifecycleMainService } from '../../../../../platform/lifecycle/electron-main/lifecycleMainService.js';
@@ -61,10 +61,6 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	private browserViews = new Map<number, WebContentsView>();
 	private browserWindows = new Map<number, BrowserWindow>();
 
-
-	// Overlay views (for floating toolbar, menus)
-	// Maps overlayViewId -> { view, parentBrowserViewId }
-	private overlayViews = new Map<number, { view: WebContentsView; parentBrowserViewId: number }>();
 
 	// CDP debugger state
 	private debuggerAttached = new Map<number, boolean>();
@@ -242,9 +238,6 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 	async destroyBrowserView(browserViewId: number): Promise<void> {
 		console.log('[ProjectMode][Main] destroyBrowserView() called for', browserViewId);
-
-		// First destroy any overlay views
-		this.destroyOverlaysForBrowser(browserViewId);
 
 		// Close DevTools if open
 		await this.closeDevTools(browserViewId);
@@ -520,11 +513,6 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		}
 	}
 
-	async setDevToolsBounds(_browserViewId: number, _bounds: ViewBounds): Promise<void> {
-		// In attached mode, Electron manages DevTools layout automatically
-		// This method is kept for API compatibility but is a no-op
-	}
-
 	async isDevToolsOpen(browserViewId: number): Promise<boolean> {
 		const browserView = this.browserViews.get(browserViewId);
 		if (browserView && !browserView.webContents.isDestroyed()) {
@@ -635,39 +623,6 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				browserView.webContents.debugger.removeListener('message', handler);
 			}
 		};
-	}
-
-	// ============================================
-	// Device Emulation (via CDP)
-	// ============================================
-
-	async setDeviceEmulation(browserViewId: number, device: DevicePreset): Promise<void> {
-		await this.sendCDPCommand(browserViewId, 'Emulation.setDeviceMetricsOverride', {
-			width: device.width,
-			height: device.height,
-			deviceScaleFactor: device.deviceScaleFactor,
-			mobile: device.mobile
-		});
-
-		if (device.userAgent) {
-			await this.sendCDPCommand(browserViewId, 'Emulation.setUserAgentOverride', {
-				userAgent: device.userAgent
-			});
-		}
-
-		// Enable touch events for mobile
-		if (device.mobile) {
-			await this.sendCDPCommand(browserViewId, 'Emulation.setTouchEmulationEnabled', {
-				enabled: true
-			});
-		}
-	}
-
-	async clearDeviceEmulation(browserViewId: number): Promise<void> {
-		await this.sendCDPCommand(browserViewId, 'Emulation.clearDeviceMetricsOverride');
-		await this.sendCDPCommand(browserViewId, 'Emulation.setTouchEmulationEnabled', {
-			enabled: false
-		});
 	}
 
 	// ============================================
@@ -822,9 +777,6 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			hadBrowserView,
 			activeIdsSnapshot
 		});
-
-		// Destroy overlay views first
-		this.destroyOverlaysForBrowser(browserViewId);
 
 		const browserView = this.browserViews.get(browserViewId);
 		const window = this.browserWindows.get(browserViewId);
@@ -1167,159 +1119,6 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		});
 	}
 
-
-	// ============================================
-	// Overlay View (for floating toolbar, menus)
-	// Creates WebContentsView that renders ON TOP of browser view
-	// ============================================
-
-	async createOverlayView(browserViewId: number, bounds: ViewBounds, htmlContent: string): Promise<number> {
-		const window = this.browserWindows.get(browserViewId);
-		if (!window || window.isDestroyed()) {
-			throw new Error(`Window for browser view ${browserViewId} not found`);
-		}
-
-		// Create overlay WebContentsView with transparent background
-		const overlayView = new WebContentsView({
-			webPreferences: {
-				nodeIntegration: false,
-				contextIsolation: true,
-				// Allow inline scripts for our HTML content
-				webSecurity: true
-			}
-		});
-
-		// Set bounds
-		overlayView.setBounds({
-			x: Math.round(bounds.x),
-			y: Math.round(bounds.y),
-			width: Math.round(bounds.width),
-			height: Math.round(bounds.height)
-		});
-
-		// Make background transparent so we only see the UI elements
-		overlayView.setBackgroundColor('#00000000');
-
-		// Add to window - this automatically puts it on top of existing views
-		// (later additions are on top)
-		window.contentView.addChildView(overlayView);
-
-		// Load HTML content as data URL
-		const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`;
-		await overlayView.webContents.loadURL(dataUrl);
-
-		const overlayViewId = overlayView.webContents.id;
-
-		// Store reference
-		this.overlayViews.set(overlayViewId, {
-			view: overlayView,
-			parentBrowserViewId: browserViewId
-		});
-
-		return overlayViewId;
-	}
-
-	async setOverlayBounds(overlayViewId: number, bounds: ViewBounds): Promise<void> {
-		const overlayData = this.overlayViews.get(overlayViewId);
-		if (overlayData) {
-			overlayData.view.setBounds({
-				x: Math.round(bounds.x),
-				y: Math.round(bounds.y),
-				width: Math.round(bounds.width),
-				height: Math.round(bounds.height)
-			});
-		}
-	}
-
-	async setOverlayContent(overlayViewId: number, htmlContent: string): Promise<void> {
-		const overlayData = this.overlayViews.get(overlayViewId);
-		if (overlayData && !overlayData.view.webContents.isDestroyed()) {
-			const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`;
-			await overlayData.view.webContents.loadURL(dataUrl);
-		}
-	}
-
-	async setOverlayVisible(overlayViewId: number, visible: boolean): Promise<void> {
-		const overlayData = this.overlayViews.get(overlayViewId);
-		if (overlayData) {
-			overlayData.view.setVisible(visible);
-
-			// If making visible, ensure it's on top by re-adding to parent
-			if (visible) {
-				const window = this.browserWindows.get(overlayData.parentBrowserViewId);
-				if (window && !window.isDestroyed() && window.contentView) {
-					// Remove and re-add to bring to top
-					try {
-						window.contentView.removeChildView(overlayData.view);
-						window.contentView.addChildView(overlayData.view);
-					} catch (e) {
-						console.error('[ProjectMode] Error bringing overlay to top:', e);
-					}
-				}
-			}
-		}
-	}
-
-	async destroyOverlayView(overlayViewId: number): Promise<void> {
-		const overlayData = this.overlayViews.get(overlayViewId);
-		if (!overlayData) {
-			return;
-		}
-
-		const { view, parentBrowserViewId } = overlayData;
-		const window = this.browserWindows.get(parentBrowserViewId);
-
-		// Remove from window
-		if (window && !window.isDestroyed() && window.contentView) {
-			try {
-				window.contentView.removeChildView(view);
-			} catch (e) {
-				console.error('[ProjectMode] Error removing overlay view:', e);
-			}
-		}
-
-		// Destroy webContents
-		if (!view.webContents.isDestroyed()) {
-			try {
-				view.webContents.close();
-			} catch (e) {
-				console.error('[ProjectMode] Error closing overlay webContents:', e);
-			}
-		}
-
-		this.overlayViews.delete(overlayViewId);
-	}
-
-	/**
-	 * Execute JavaScript in an overlay view
-	 * Used for getting/setting state in the floating toolbar
-	 */
-	async executeScriptOnOverlay(overlayViewId: number, script: string): Promise<any> {
-		const overlayData = this.overlayViews.get(overlayViewId);
-		if (!overlayData || overlayData.view.webContents.isDestroyed()) {
-			throw new Error(`Overlay view ${overlayViewId} not found`);
-		}
-
-		return overlayData.view.webContents.executeJavaScript(script);
-	}
-
-	/**
-	 * Destroy all overlays for a browser view
-	 * Called when browser view is destroyed
-	 */
-	private destroyOverlaysForBrowser(browserViewId: number): void {
-		const overlaysToDestroy: number[] = [];
-
-		for (const [overlayViewId, overlayData] of this.overlayViews) {
-			if (overlayData.parentBrowserViewId === browserViewId) {
-				overlaysToDestroy.push(overlayViewId);
-			}
-		}
-
-		for (const overlayViewId of overlaysToDestroy) {
-			this.destroyOverlayView(overlayViewId);
-		}
-	}
 
 	// ============================================
 	// CSS Source Resolution
