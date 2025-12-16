@@ -25,6 +25,8 @@ export class ProjectModeChannel implements IServerChannel {
 				return this.service.onOpenSourceRequest;
 			case 'onBrowserBridgeMessage':
 				return this.service.onBrowserBridgeMessage;
+			case 'onBrowserKeyPress':
+				return this.service.onBrowserKeyPress;
 			default:
 				throw new Error(`[ProjectModeChannel] Unknown event: ${event}`);
 		}

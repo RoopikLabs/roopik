@@ -490,14 +490,13 @@ const INSPECT_MODE_SCRIPT = `
 		return false;
 	}
 
+	// NOTE: ESC key handling has been moved to centralized key handler in editor.ts
+	// Keys are intercepted by Electron's before-input-event and forwarded via IPC
+	// This allows unified key handling without scattered listeners
 	function onKeyDown(e) {
-		if (e.key === 'Escape') {
-			// Notify VSCode that inspect mode was exited
-			if (typeof window.__roopikBridge === 'function') {
-				window.__roopikBridge(JSON.stringify({ type: 'inspect-mode-exited' }));
-			}
-			cleanup();
-		}
+		// ESC is handled centrally - no longer needed here
+		// Keep listener for potential future key shortcuts in inspect mode
+		void e; // Silence unused parameter
 	}
 
 	function onScroll() {

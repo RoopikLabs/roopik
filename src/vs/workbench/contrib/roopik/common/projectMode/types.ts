@@ -214,4 +214,29 @@ export interface BrowserBridgeEvent {
 	message: BrowserBridgeMessage;
 }
 
+// ============================================
+// Browser Key Events (Centralized Key Handling)
+// ============================================
+
+/**
+ * Key event from browser via Electron's before-input-event
+ * All key presses in BrowserView are captured and forwarded to renderer
+ * for centralized handling.
+ */
+export interface BrowserKeyEvent {
+	browserViewId: number;
+	/** Key code (e.g., 'Escape', 'F12', 'KeyA') */
+	key: string;
+	/** Key code for physical key (e.g., 'Escape', 'F12') */
+	code: string;
+	/** Modifier keys */
+	modifiers: {
+		ctrl: boolean;
+		alt: boolean;
+		shift: boolean;
+		meta: boolean;
+	};
+	/** Event type */
+	type: 'keyDown' | 'keyUp';
+}
 

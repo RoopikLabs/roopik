@@ -242,6 +242,29 @@ export class StyleInspect {
 	}
 
 	/**
+	 * Show empty panel (for manual toggle)
+	 * Displays panel with hint to select an element
+	 */
+	showEmptyPanel(): void {
+		if (this.panel) {
+			// Show panel with placeholder data
+			const isProjectMode = !!this.currentProjectRoot;
+			this.panel.show({
+				tagName: '',
+				id: undefined,
+				classes: [],
+				properties: [],
+				matchedRules: [],
+				inlineStyles: [],
+				componentName: undefined,
+				htmlSource: undefined,
+				cssInJs: undefined,
+				inheritedStyles: undefined
+			}, isProjectMode);
+		}
+	}
+
+	/**
 	 * Check if panel is visible
 	 */
 	isPanelVisible(): boolean {

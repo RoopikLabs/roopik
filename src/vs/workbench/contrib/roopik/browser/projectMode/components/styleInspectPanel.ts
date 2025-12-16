@@ -67,6 +67,10 @@ export class StyleInspectPanel {
 	// 'inherited', 'resets', 'styles' are collapsed by default (less important)
 	private expandedSections = new Set<string>(['element', 'inline', 'rules']);
 
+	// NOTE: ESC key handling has been moved to centralized key handler in editor.ts
+	// Keys from BrowserView are intercepted by Electron's before-input-event
+	// and forwarded via IPC for unified handling
+
 	constructor(
 		private readonly parent: HTMLElement,
 		private readonly callbacks: IStyleInspectPanelCallbacks
@@ -90,6 +94,8 @@ export class StyleInspectPanel {
 
 		// Setup resize event listeners
 		this.setupResizeListeners();
+
+		// NOTE: ESC key handling is done centrally in editor.ts via onBrowserKeyPress
 	}
 
 	/**
@@ -141,6 +147,7 @@ export class StyleInspectPanel {
 	 * Dispose of the panel
 	 */
 	dispose(): void {
+		// ESC key handling is done centrally in editor.ts - no cleanup needed here
 		this.container.remove();
 	}
 
@@ -160,6 +167,12 @@ export class StyleInspectPanel {
 
 		// Header
 		this.contentContainer.appendChild(this.createHeader());
+
+		// Check if this is empty state (no element selected)
+		if (!this.currentData.tagName) {
+			this.contentContainer.appendChild(this.createEmptyState());
+			return;
+		}
 
 		// Element section (always first)
 		this.contentContainer.appendChild(this.createElementSection(this.currentData));
@@ -305,6 +318,50 @@ export class StyleInspectPanel {
 				document.body.style.userSelect = '';
 			}
 		});
+	}
+
+	/**
+	 * Create empty state hint when no element is selected
+	 */
+	private createEmptyState(): HTMLElement {
+		const container = document.createElement('div');
+		container.style.cssText = `
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			padding: 40px 20px;
+			text-align: center;
+			color: var(--vscode-descriptionForeground);
+		`;
+
+		const icon = document.createElement('div');
+		icon.style.cssText = `
+			font-size: 32px;
+			margin-bottom: 12px;
+			opacity: 0.5;
+		`;
+		icon.textContent = '🎯';
+		container.appendChild(icon);
+
+		const hint = document.createElement('div');
+		hint.style.cssText = `
+			font-size: 13px;
+			line-height: 1.5;
+		`;
+		hint.textContent = 'Use Inspect Mode to select an element';
+		container.appendChild(hint);
+
+		const subHint = document.createElement('div');
+		subHint.style.cssText = `
+			font-size: 11px;
+			margin-top: 8px;
+			opacity: 0.7;
+		`;
+		subHint.textContent = 'Press ESC to close this panel';
+		container.appendChild(subHint);
+
+		return container;
 	}
 
 	private createHeader(): HTMLElement {

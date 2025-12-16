@@ -6,7 +6,7 @@
 import { Event } from '../../../../../base/common/event.js';
 import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserKeyEvent } from '../../common/projectMode/types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 
 /**
@@ -44,12 +44,19 @@ export class ServiceBridge implements IProjectModeService {
 	 */
 	readonly onBrowserBridgeMessage: Event<BrowserBridgeEvent>;
 
+	/**
+	 * Event fired when a key is pressed in the browser view
+	 * Centralized key handling - all key presses from BrowserView are forwarded here
+	 */
+	readonly onBrowserKeyPress: Event<BrowserKeyEvent>;
+
 	constructor(private channel: IChannel) {
 		// Subscribe to events from main process
 		this.onDevToolsClosed = this.channel.listen<DevToolsClosedEvent>('onDevToolsClosed');
 		this.onNavigationStateChanged = this.channel.listen<NavigationStateChangedEvent>('onNavigationStateChanged');
 		this.onOpenSourceRequest = this.channel.listen<OpenSourceRequestEvent>('onOpenSourceRequest');
 		this.onBrowserBridgeMessage = this.channel.listen<BrowserBridgeEvent>('onBrowserBridgeMessage');
+		this.onBrowserKeyPress = this.channel.listen<BrowserKeyEvent>('onBrowserKeyPress');
 	}
 
 	// ============================================

@@ -45,6 +45,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	private readonly _onBrowserBridgeMessage = new Emitter<BrowserBridgeEvent>();
 	readonly onBrowserBridgeMessage: Event<BrowserBridgeEvent> = this._onBrowserBridgeMessage.event;
 
+	private readonly _onBrowserKeyPress = new Emitter<import('../../common/projectMode/types.js').BrowserKeyEvent>();
+	readonly onBrowserKeyPress: Event<import('../../common/projectMode/types.js').BrowserKeyEvent> = this._onBrowserKeyPress.event;
+
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
 	private static managedWebContentsIds = new Set<number>();
@@ -1161,13 +1164,34 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 	private setupZoomHandlers(browserView: WebContentsView): void {
 		const wc = browserView.webContents;
+		const browserViewId = wc.id; // Get the browserViewId from webContents
 
 		// NOTE: setVisualZoomLevelLimits is called in did-stop-loading event
 		// (after page loads) per Electron documentation requirements
 		// This ensures visual zoom works properly with pinch gestures
 
-		// Handle keyboard zoom shortcuts (Ctrl++, Ctrl+-, Ctrl+0)
+		// Centralized key handling via before-input-event
+		// All key presses are forwarded to renderer for unified handling
 		wc.on('before-input-event', (event, input) => {
+			// Forward ALL key events to renderer for centralized handling
+			// Only keyDown for now (keyUp could be added if needed)
+			if (input.type === 'keyDown' || input.type === 'keyUp') {
+				this._onBrowserKeyPress.fire({
+					browserViewId,
+					key: input.key,
+					code: input.code,
+					modifiers: {
+						ctrl: input.control,
+						alt: input.alt,
+						shift: input.shift,
+						meta: input.meta
+					},
+					type: input.type
+				});
+			}
+
+			// Handle keyboard zoom shortcuts (Ctrl++, Ctrl+-, Ctrl+0) locally
+			// These are handled here because they affect the webContents directly
 			if (input.type !== 'keyDown') return;
 			if (!input.control && !input.meta) return;
 

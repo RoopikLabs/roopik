@@ -128,6 +128,8 @@ export class Editor extends EditorPane {
 			this.logger.info(`[StyleInspect] Panel visibility changed: ${visible}`);
 			// Use retry mechanism to handle layout timing
 			this.updateBoundsWithRetry();
+			// Update control bar button active state
+			this.controlBar?.setStylePanelActive(visible);
 		});
 
 		// Subscribe to DevServer logs and forward to VSCode output channel
@@ -156,6 +158,9 @@ export class Editor extends EditorPane {
 
 		// Setup browser bridge message handler (inspect mode events, etc.)
 		this.setupBrowserBridgeHandler();
+
+		// Setup centralized key handler for browser key events
+		this.setupBrowserKeyHandler();
 	}
 
 	/**
@@ -299,7 +304,6 @@ export class Editor extends EditorPane {
 			}
 
 			const message = event.message;
-			this.logger.info(`[BrowserBridge] Received: ${message.type}`);
 
 			switch (message.type) {
 				case 'element-selected':
@@ -318,13 +322,10 @@ export class Editor extends EditorPane {
 	 * - Open style panel with CSS info
 	 */
 	private async handleElementSelected(message: import('../../common/projectMode/types.js').ElementSelectedMessage): Promise<void> {
-		this.logger.info(`[BrowserBridge] handleElementSelected: selector=${message.selector}, hasHtml=${!!message.html}`);
-
 		// Copy HTML to clipboard
 		if (message.html) {
 			try {
 				await this.clipboardService.writeText(message.html);
-				this.logger.info('[InspectMode] Element HTML copied to clipboard');
 			} catch (e) {
 				this.logger.error('[InspectMode] Failed to copy to clipboard:', e);
 			}
@@ -332,8 +333,6 @@ export class Editor extends EditorPane {
 
 		// Open style panel with element CSS info
 		if (this.browserViewId && message.selector) {
-			this.logger.info(`[BrowserBridge] Opening style panel for: ${message.selector}`);
-
 			// Ensure style panel is initialized
 			if (this.contentContainer && !this.styleInspect.isPanelVisible()) {
 				this.styleInspect.initialize(this.contentContainer);
@@ -346,18 +345,98 @@ export class Editor extends EditorPane {
 
 			// Get element styles and show panel
 			await this.styleInspect.handleElementSelected(this.browserViewId, message.selector);
-			this.logger.info('[BrowserBridge] Style panel handleElementSelected completed');
-		} else {
-			this.logger.warn(`[BrowserBridge] Cannot open panel: browserViewId=${this.browserViewId}, selector=${message.selector}`);
 		}
 	}
 
 	/**
-	 * Handle inspect mode exit (ESC pressed)
+	 * Handle inspect mode exit (ESC pressed in browser)
+	 * Centralized handler for ESC key from browser
 	 */
 	private handleInspectModeExited(): void {
-		this.logger.info('[InspectMode] Inspect mode exited');
-		// Update local state if needed
+		// Update button active state
+		this.controlBar?.setInspectModeActive(false);
+
+		// Also hide style panel (ESC should close everything)
+		if (this.styleInspect.isPanelVisible()) {
+			this.styleInspect.hidePanel();
+		}
+	}
+
+	/**
+	 * Setup centralized key handler for browser key events
+	 *
+	 * All key presses from the BrowserView are intercepted by Electron's
+	 * before-input-event and forwarded via IPC. This allows unified key
+	 * handling without scattered listeners in injected scripts or panels.
+	 *
+	 * Architecture:
+	 * Browser (BrowserView) → before-input-event (Electron main)
+	 *   → IPC event: onBrowserKeyPress → Renderer (editor.ts)
+	 *   → Central key handler → Features (Panel, InspectMode, DevTools)
+	 */
+	private setupBrowserKeyHandler(): void {
+		this._register(this.browserService.onBrowserKeyPress((event) => {
+			// Filter by browserViewId - only handle events for this browser instance
+			if (event.browserViewId !== this.browserViewId) {
+				return;
+			}
+
+			// Only handle keyDown events (ignore keyUp)
+			if (event.type !== 'keyDown') {
+				return;
+			}
+
+			// Dispatch based on key
+			this.handleBrowserKey(event.key, event.code, event.modifiers);
+		}));
+	}
+
+	/**
+	 * Central key dispatch handler
+	 * Routes key presses to appropriate features
+	 */
+	private handleBrowserKey(
+		key: string,
+		_code: string,
+		modifiers: { ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }
+	): void {
+		// ESC key - exit inspect mode and close panel
+		if (key === 'Escape') {
+			this.handleEscapeKey();
+			return;
+		}
+
+		// Future: Add more key handlers here
+		// Example patterns:
+		// - Ctrl+Shift+C: Toggle inspect mode
+		// - Ctrl+Shift+I: Toggle DevTools
+		// - F5: Refresh
+		// - Ctrl+R: Refresh
+
+		// For now, we let browser handle other keys normally
+		// The before-input-event doesn't preventDefault, so keys still work
+		void modifiers; // Silence unused variable warning
+	}
+
+	/**
+	 * Handle ESC key press from browser
+	 * Exits inspect mode and closes style panel
+	 */
+	private handleEscapeKey(): void {
+		// 1. Exit inspect mode if active
+		if (this.inspectMode.getIsActive()) {
+			// Disable inspect mode in browser
+			if (this.browserViewId) {
+				this.inspectMode.disable(this.browserViewId);
+			}
+			// Update button state
+			this.controlBar?.setInspectModeActive(false);
+		}
+
+		// 2. Close style panel if visible
+		if (this.styleInspect.isPanelVisible()) {
+			this.styleInspect.hidePanel();
+		}
 	}
 
 	/**
@@ -406,7 +485,7 @@ export class Editor extends EditorPane {
 			onRefresh: () => this.refresh(),
 			onStopDevServer: () => this.stopDevServer(),
 			onInspectMode: () => this.enableInspectMode(),
-			onStyleInspectMode: () => this.enableStyleInspectMode(),
+			onStylePanelToggle: () => this.toggleStylePanel(),
 			onDevTools: () => this.toggleDevTools(),
 			onHardReload: () => this.hardReload(),
 			onScreenshot: () => this.takeScreenshot(),
@@ -656,6 +735,8 @@ export class Editor extends EditorPane {
 			this._register(this.browserService.onDevToolsClosed((event) => {
 				if (event.browserViewId === this.browserViewId && this.devtoolsVisible) {
 					this.devtoolsVisible = false;
+					// Update button active state
+					this.controlBar?.setDevToolsActive(false);
 				}
 			}));
 
@@ -1259,6 +1340,9 @@ export class Editor extends EditorPane {
 			await this.browserService.openDevTools(this.browserViewId, {});
 			this.devtoolsVisible = true;
 		}
+
+		// Update button active state
+		this.controlBar?.setDevToolsActive(this.devtoolsVisible);
 	}
 
 	// ============================================
@@ -1298,6 +1382,9 @@ export class Editor extends EditorPane {
 
 		// Inject inspect mode script
 		await this.inspectMode.enable(this.browserViewId);
+
+		// Update button active state
+		this.controlBar?.setInspectModeActive(true);
 	}
 
 	/**
@@ -1365,43 +1452,6 @@ export class Editor extends EditorPane {
 	// Style Inspect Mode (CSS source tracking)
 	// ============================================
 
-	/**
-	 * Enable Style Inspect Mode
-	 * Shows CSS sources for clicked elements with click-to-source
-	 *
-	 * Flow (event-driven, no polling):
-	 * 1. Setup CDP bridge (creates window.__roopikBridge)
-	 * 2. Inject inspect mode script
-	 * 3. User clicks element → script calls __roopikBridge
-	 * 4. CDP Runtime.bindingCalled fires → main process receives
-	 * 5. IPC to renderer → handleElementSelected() opens panel
-	 */
-	private async enableStyleInspectMode(): Promise<void> {
-		if (!this.browserViewId) {
-			return;
-		}
-
-		// Set project root for CSS path resolution
-		if (this.currentProjectRoot) {
-			this.styleInspect.setProjectRoot(this.currentProjectRoot);
-		}
-
-		// Initialize panel container (panel shows when element is selected)
-		if (this.contentContainer) {
-			this.styleInspect.initialize(this.contentContainer);
-		}
-
-		// Setup CDP bridge first (creates window.__roopikBridge in page)
-		try {
-			await this.browserService.setupBrowserBridge(this.browserViewId);
-		} catch (e) {
-			this.logger.warn('[StyleInspect] Failed to setup bridge, continuing anyway:', e);
-		}
-
-		// Enable inspect mode (injects script)
-		// Element selection events come via setupBrowserBridgeHandler() → handleElementSelected()
-		await this.styleInspect.enable(this.browserViewId);
-	}
 
 	/**
 	 * Disable Style Inspect Mode
@@ -1411,6 +1461,24 @@ export class Editor extends EditorPane {
 			await this.styleInspect.disable(this.browserViewId);
 		}
 		this.styleInspect.hidePanel();
+	}
+
+	/**
+	 * Toggle Style Panel visibility
+	 * Called from control bar button click
+	 */
+	private toggleStylePanel(): void {
+		if (this.styleInspect.isPanelVisible()) {
+			this.styleInspect.hidePanel();
+		} else {
+			// Initialize panel if needed
+			if (this.contentContainer) {
+				this.styleInspect.initialize(this.contentContainer);
+			}
+			// Show empty panel (user can then use inspect mode to select an element)
+			// Or if we have cached data, show that
+			this.styleInspect.showEmptyPanel();
+		}
 	}
 
 	/**

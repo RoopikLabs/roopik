@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent } from './types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserKeyEvent } from './types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../cssResolvers/types.js';
 
 export const IProjectModeService = createDecorator<IProjectModeService>('projectModeService');
@@ -52,6 +52,13 @@ export interface IProjectModeService {
 	 * Used for element selection, inspect mode events, etc.
 	 */
 	readonly onBrowserBridgeMessage: Event<BrowserBridgeEvent>;
+
+	/**
+	 * Fired when a key is pressed in the browser view
+	 * Centralized key handling - all key presses from BrowserView are forwarded here
+	 * Replaces scattered key handling in injected scripts
+	 */
+	readonly onBrowserKeyPress: Event<BrowserKeyEvent>;
 
 	// ============================================
 	// Browser View Lifecycle
