@@ -6,7 +6,7 @@
 import { Event } from '../../../../../base/common/event.js';
 import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent } from '../../common/projectMode/types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 
 /**
@@ -38,11 +38,18 @@ export class ServiceBridge implements IProjectModeService {
 	 */
 	readonly onOpenSourceRequest: Event<OpenSourceRequestEvent>;
 
+	/**
+	 * Event fired when injected script sends a message via window.__roopikBridge()
+	 * Used for element selection, inspect mode events, etc.
+	 */
+	readonly onBrowserBridgeMessage: Event<BrowserBridgeEvent>;
+
 	constructor(private channel: IChannel) {
 		// Subscribe to events from main process
 		this.onDevToolsClosed = this.channel.listen<DevToolsClosedEvent>('onDevToolsClosed');
 		this.onNavigationStateChanged = this.channel.listen<NavigationStateChangedEvent>('onNavigationStateChanged');
 		this.onOpenSourceRequest = this.channel.listen<OpenSourceRequestEvent>('onOpenSourceRequest');
+		this.onBrowserBridgeMessage = this.channel.listen<BrowserBridgeEvent>('onBrowserBridgeMessage');
 	}
 
 	// ============================================
@@ -127,6 +134,10 @@ export class ServiceBridge implements IProjectModeService {
 
 	async sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any> {
 		return this.channel.call('sendCDPCommand', { browserViewId, method, params });
+	}
+
+	async setupBrowserBridge(browserViewId: number): Promise<void> {
+		return this.channel.call('setupBrowserBridge', browserViewId);
 	}
 
 	// ============================================

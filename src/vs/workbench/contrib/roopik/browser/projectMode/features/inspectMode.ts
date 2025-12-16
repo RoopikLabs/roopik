@@ -4,52 +4,89 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { INotificationService, Severity } from '../../../../../../platform/notification/common/notification.js';
+import { IClipboardService } from '../../../../../../platform/clipboard/common/clipboardService.js';
 import type { IProjectModeService } from '../../../common/projectMode/ipc.js';
 
 /**
- * Inspect Mode Feature
+ * Inspect Mode Feature (Unified)
  *
- * Runtime-injected inspect mode (no build-time script pollution).
- * Fire and forget - injects script, browser handles auto-cleanup.
+ * Runtime-injected inspect mode combining element inspection and style inspection.
+ * No build-time script pollution - injected on demand.
  *
  * Features:
- * - Highlight overlay follows hovered element
- * - Label shows tag name above element
- * - Click copies outerHTML to clipboard
+ * - Hover: Blue highlight follows hovered element with tag label
+ * - Click: Selects element, copies HTML, keeps highlight (doesn't exit)
+ * - Selected element stays highlighted (green) while hovering others (blue)
  * - Reads data-roopik-source for source location
- * - Toast notification confirms copy
- * - Auto-exits after copy (or ESC)
+ * - Stores selector for style panel to use
+ * - ESC exits inspect mode
+ *
+ * Data stored in window for panel to read:
+ * - __roopikInspectResult: Full element info (HTML, source, selector, etc.)
  */
 export class InspectMode {
+	private isActive: boolean = false;
+
 	constructor(
 		private readonly browserService: IProjectModeService,
-		private readonly notificationService: INotificationService
+		private readonly notificationService: INotificationService,
+		private readonly clipboardService: IClipboardService
 	) { }
 
 	/**
-	 * Enable Inspect Element Mode
-	 * Fire and forget - browser script handles auto-cleanup after copy
+	 * Enable Inspect Mode
+	 * Injects unified script for element + style inspection
 	 */
 	async enable(browserViewId: number): Promise<void> {
 		if (!browserViewId) {
 			return;
 		}
 
+		this.isActive = true;
+
 		try {
 			await this.browserService.executeScript(browserViewId, INSPECT_MODE_SCRIPT);
 
 			this.notificationService.notify({
 				severity: Severity.Info,
-				message: 'Inspect Mode: Click element to copy HTML.',
+				message: 'Inspect Mode: Click element to select. ESC to exit.',
 				sticky: false
 			});
 		} catch {
-			// Silent fail - user will see no overlay appear
+			this.isActive = false;
 		}
 	}
 
 	/**
-	 * Check if inspect mode is active in the browser
+	 * Disable Inspect Mode
+	 */
+	async disable(browserViewId: number): Promise<void> {
+		if (!browserViewId) {
+			return;
+		}
+
+		this.isActive = false;
+
+		try {
+			await this.browserService.executeScript(browserViewId, `
+				if (window.__roopikInspectCleanup) {
+					window.__roopikInspectCleanup();
+				}
+			`);
+		} catch {
+			// Silent fail
+		}
+	}
+
+	/**
+	 * Check if inspect mode is active (local state)
+	 */
+	getIsActive(): boolean {
+		return this.isActive;
+	}
+
+	/**
+	 * Check if inspect mode script is active in the browser
 	 * (Script might have been cleaned up by page navigation)
 	 */
 	async isActiveInBrowser(browserViewId: number): Promise<boolean> {
@@ -69,10 +106,10 @@ export class InspectMode {
 	}
 
 	/**
-	 * Get the last inspected element's HTML
-	 * API for programmatic access (agents, automation tools like Playwright)
+	 * Get the inspection result (selected element info)
+	 * Panel uses this to get element data
 	 */
-	async getLastInspectedHtml(browserViewId: number): Promise<string | null> {
+	async getInspectResult(browserViewId: number): Promise<InspectResult | null> {
 		if (!browserViewId) {
 			return null;
 		}
@@ -80,7 +117,7 @@ export class InspectMode {
 		try {
 			return await this.browserService.executeScript(
 				browserViewId,
-				'window.__roopikLastInspectedHtml || null'
+				'window.__roopikInspectResult || null'
 			);
 		} catch {
 			return null;
@@ -88,36 +125,75 @@ export class InspectMode {
 	}
 
 	/**
-	 * Get full info about the last inspected element
-	 * Includes HTML, source location, component name, etc.
+	 * Clear the inspection result
+	 * Call after panel has read the data
 	 */
-	async getLastInspectedInfo(browserViewId: number): Promise<InspectedElementInfo | null> {
+	async clearInspectResult(browserViewId: number): Promise<void> {
 		if (!browserViewId) {
-			return null;
+			return;
 		}
 
 		try {
-			return await this.browserService.executeScript(
+			await this.browserService.executeScript(
 				browserViewId,
-				'window.__roopikLastInspectedInfo || null'
+				'window.__roopikInspectResult = null'
 			);
 		} catch {
-			return null;
+			// Silent fail
 		}
+	}
+
+	/**
+	 * Copy element HTML to clipboard
+	 * Uses VSCode's clipboard service (works reliably in Electron)
+	 */
+	async copyElementHtml(browserViewId: number): Promise<boolean> {
+		const result = await this.getInspectResult(browserViewId);
+		if (!result?.html) {
+			return false;
+		}
+
+		try {
+			await this.clipboardService.writeText(result.html);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Get the last inspected element's HTML
+	 * API for programmatic access (agents, automation tools)
+	 */
+	async getLastInspectedHtml(browserViewId: number): Promise<string | null> {
+		const result = await this.getInspectResult(browserViewId);
+		return result?.html ?? null;
 	}
 }
 
 /**
- * Information about an inspected element
+ * Unified inspection result - combines element info + style info needs
+ * This is what gets stored in window.__roopikInspectResult
  */
-export interface InspectedElementInfo {
-	html: string;
+export interface InspectResult {
+	// Element identification (for style panel to query CSS)
+	selector: string;
+	x: number;
+	y: number;
+
+	// Element info
 	tagName: string;
 	id: string | null;
 	className: string | null;
+	html: string;
+
+	// Source tracking (from data-roopik-source)
 	source: SourceLocation | null;
 	component: string | null;
 	parent: string | null;
+
+	// Timestamp for change detection
+	timestamp: number;
 }
 
 /**
@@ -133,46 +209,68 @@ export interface SourceLocation {
 }
 
 // ============================================
-// Inspect Mode Script (injected into browser)
+// Unified Inspect Mode Script (injected into browser)
 // ============================================
 
 /**
- * JavaScript to inject into the browser for element inspection.
+ * Unified inspect mode script combining element + style inspection.
+ *
  * Features:
- * - Highlight overlay follows hovered element
- * - Label shows tag name
- * - Click copies outerHTML to clipboard
+ * - Hover: Blue highlight follows hovered element with tag label
+ * - Click: Selects element (green highlight), copies HTML, stores full info
+ * - Selected element stays highlighted while hovering others
+ * - Compare mode: Can see selected (green) + hovered (blue) simultaneously
  * - Reads data-roopik-source for source location
- * - Toast notification confirms copy
- * - ESC key exits inspect mode (auto-exits after copy)
+ * - Stores selector + coordinates for style panel
+ * - ESC exits inspect mode
  */
 const INSPECT_MODE_SCRIPT = `
 (function() {
+	'use strict';
+
 	// Cleanup any existing inspect mode
 	if (window.__roopikInspectCleanup) {
 		window.__roopikInspectCleanup();
 	}
 
+	// ========== State ==========
+	let hoverElement = null;
+	let selectedElement = null;
+	let toastTimeout = null;
+
 	// ========== Create UI Elements ==========
 
-	// Highlight overlay
-	const overlay = document.createElement('div');
-	overlay.id = '__roopik_inspect_overlay';
-	overlay.style.cssText = [
+	// Hover overlay (blue - follows mouse)
+	const hoverOverlay = document.createElement('div');
+	hoverOverlay.id = '__roopik_inspect_hover';
+	hoverOverlay.style.cssText = [
 		'position: fixed',
 		'pointer-events: none',
-		'z-index: 2147483647',
+		'z-index: 2147483646',
 		'border: 2px solid #007acc',
 		'background-color: rgba(0, 122, 204, 0.1)',
 		'transition: all 0.05s ease-out',
 		'display: none'
 	].join(';');
-	document.body.appendChild(overlay);
+	document.body.appendChild(hoverOverlay);
 
-	// Element label (tag info)
-	const label = document.createElement('div');
-	label.id = '__roopik_inspect_label';
-	label.style.cssText = [
+	// Selected overlay (green - stays on selected element)
+	const selectedOverlay = document.createElement('div');
+	selectedOverlay.id = '__roopik_inspect_selected';
+	selectedOverlay.style.cssText = [
+		'position: fixed',
+		'pointer-events: none',
+		'z-index: 2147483645',
+		'border: 2px solid #22c55e',
+		'background-color: rgba(34, 197, 94, 0.15)',
+		'display: none'
+	].join(';');
+	document.body.appendChild(selectedOverlay);
+
+	// Hover label (tag info)
+	const hoverLabel = document.createElement('div');
+	hoverLabel.id = '__roopik_inspect_label';
+	hoverLabel.style.cssText = [
 		'position: fixed',
 		'pointer-events: none',
 		'z-index: 2147483647',
@@ -185,9 +283,9 @@ const INSPECT_MODE_SCRIPT = `
 		'white-space: nowrap',
 		'display: none'
 	].join(';');
-	document.body.appendChild(label);
+	document.body.appendChild(hoverLabel);
 
-	// Toast notification container (appears from top)
+	// Toast notification
 	const toast = document.createElement('div');
 	toast.id = '__roopik_inspect_toast';
 	toast.style.cssText = [
@@ -209,173 +307,135 @@ const INSPECT_MODE_SCRIPT = `
 	].join(';');
 	document.body.appendChild(toast);
 
-	let currentElement = null;
-	let toastTimeout = null;
-
 	// ========== Helper Functions ==========
 
-	// Get element description for label (tag name only)
-	function getElementDescription(el) {
-		return el.tagName.toLowerCase();
-	}
-
-	// Show toast notification
 	function showToast(message) {
-		if (toastTimeout) {
-			clearTimeout(toastTimeout);
-		}
+		if (toastTimeout) clearTimeout(toastTimeout);
 		toast.textContent = message;
 		toast.style.opacity = '1';
 		toast.style.transform = 'translateX(-50%) translateY(0)';
-
 		toastTimeout = setTimeout(function() {
 			toast.style.opacity = '0';
 			toast.style.transform = 'translateX(-50%) translateY(-100px)';
 		}, 2000);
 	}
 
-	// Copy text to clipboard (with fallback)
-	function copyToClipboard(text) {
-		return new Promise(function(resolve, reject) {
-			// Try modern clipboard API first
-			if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-				navigator.clipboard.writeText(text)
-					.then(resolve)
-					.catch(function() {
-						// Fall back to execCommand
-						fallbackCopy(text, resolve, reject);
-					});
-			} else {
-				fallbackCopy(text, resolve, reject);
-			}
-		});
-	}
-
-	function fallbackCopy(text, resolve, reject) {
-		try {
-			const textarea = document.createElement('textarea');
-			textarea.value = text;
-			textarea.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
-			document.body.appendChild(textarea);
-			textarea.focus();
-			textarea.select();
-			const success = document.execCommand('copy');
-			document.body.removeChild(textarea);
-			if (success) {
-				resolve();
-			} else {
-				reject(new Error('execCommand failed'));
-			}
-		} catch (err) {
-			reject(err);
-		}
-	}
-
-	/**
-	 * Parse data-roopik-source attribute
-	 * Format: file:line:col or file:line:col:endLine:endCol
-	 * Handles Windows paths (C:/path/to/file.tsx:1:0:10:5)
-	 */
 	function parseSourceAttr(attr) {
 		if (!attr) return null;
-
-		const parts = attr.split(':');
-
-		// Find where the path ends by looking for numeric parts from the end
-		let pathEndIndex = 0;
-		for (let i = parts.length - 1; i >= 0; i--) {
+		var parts = attr.split(':');
+		var pathEndIndex = 0;
+		for (var i = parts.length - 1; i >= 0; i--) {
 			if (isNaN(parseInt(parts[i], 10))) {
 				pathEndIndex = i;
 				break;
 			}
 		}
-
-		const filePath = parts.slice(0, pathEndIndex + 1).join(':');
-		const numbers = parts.slice(pathEndIndex + 1).map(function(n) { return parseInt(n, 10); });
-
-		// Build result with required line, optional rest
-		var result = {
-			file: filePath,
-			line: numbers[0] || 1
-		};
-
-		if (numbers.length >= 2) {
-			result.column = numbers[1];
-		}
+		var filePath = parts.slice(0, pathEndIndex + 1).join(':');
+		var numbers = parts.slice(pathEndIndex + 1).map(function(n) { return parseInt(n, 10); });
+		var result = { file: filePath, line: numbers[0] || 1 };
+		if (numbers.length >= 2) result.column = numbers[1];
 		if (numbers.length >= 4) {
 			result.endLine = numbers[2];
 			result.endColumn = numbers[3];
 		}
-
 		return result;
 	}
 
-	// Build full element info object
-	function buildElementInfo(el) {
-		const sourceAttr = el.getAttribute('data-roopik-source');
-		const componentAttr = el.getAttribute('data-roopik-component');
-		const parentAttr = el.getAttribute('data-roopik-parent');
+	function getElementSelector(el) {
+		if (!el || el === document.body || el === document.documentElement) return null;
+		var parts = [];
+		var current = el;
+		while (current && current !== document.body && current !== document.documentElement) {
+			var selector = current.tagName.toLowerCase();
+			if (current.id) {
+				parts.unshift('#' + CSS.escape(current.id));
+				break;
+			}
+			if (current.className && typeof current.className === 'string') {
+				var classes = current.className.trim().split(/\\s+/).filter(function(c) { return c; });
+				if (classes.length > 0) {
+					selector += '.' + classes.map(function(c) { return CSS.escape(c); }).join('.');
+				}
+			}
+			var parent = current.parentElement;
+			if (parent) {
+				var siblings = Array.from(parent.children).filter(function(s) { return s.tagName === current.tagName; });
+				if (siblings.length > 1) {
+					var index = siblings.indexOf(current) + 1;
+					selector += ':nth-of-type(' + index + ')';
+				}
+			}
+			parts.unshift(selector);
+			current = parent;
+		}
+		return parts.join(' > ');
+	}
 
+	function buildInspectResult(el, x, y) {
+		var sourceAttr = el.getAttribute('data-roopik-source');
+		var componentAttr = el.getAttribute('data-roopik-component');
+		var parentAttr = el.getAttribute('data-roopik-parent');
 		return {
-			html: el.outerHTML,
+			selector: getElementSelector(el),
+			x: x,
+			y: y,
 			tagName: el.tagName.toLowerCase(),
 			id: el.id || null,
-			className: el.className || null,
+			className: (typeof el.className === 'string') ? el.className : null,
+			html: el.outerHTML,
 			source: sourceAttr ? parseSourceAttr(sourceAttr) : null,
 			component: componentAttr || null,
-			parent: parentAttr || null
+			parent: parentAttr || null,
+			timestamp: Date.now()
 		};
 	}
 
-	// Update overlay position
-	function updateOverlay(el) {
+	function updateOverlay(overlay, label, el, color) {
 		if (!el || el === document.body || el === document.documentElement) {
 			overlay.style.display = 'none';
-			label.style.display = 'none';
+			if (label) label.style.display = 'none';
 			return;
 		}
-
-		const rect = el.getBoundingClientRect();
+		var rect = el.getBoundingClientRect();
 		overlay.style.display = 'block';
 		overlay.style.top = rect.top + 'px';
 		overlay.style.left = rect.left + 'px';
 		overlay.style.width = rect.width + 'px';
 		overlay.style.height = rect.height + 'px';
 
-		// Position label above element, or below if not enough space
-		label.style.display = 'block';
-		label.textContent = getElementDescription(el);
-		const labelHeight = 20;
-		if (rect.top > labelHeight + 4) {
-			label.style.top = (rect.top - labelHeight - 4) + 'px';
-		} else {
-			label.style.top = (rect.bottom + 4) + 'px';
+		if (label) {
+			label.style.display = 'block';
+			label.textContent = el.tagName.toLowerCase();
+			label.style.backgroundColor = color || '#007acc';
+			var labelHeight = 20;
+			if (rect.top > labelHeight + 4) {
+				label.style.top = (rect.top - labelHeight - 4) + 'px';
+			} else {
+				label.style.top = (rect.bottom + 4) + 'px';
+			}
+			label.style.left = Math.max(0, rect.left) + 'px';
 		}
-		label.style.left = Math.max(0, rect.left) + 'px';
 	}
 
-	// Flash overlay green to indicate success
-	function flashSuccess() {
-		overlay.style.backgroundColor = 'rgba(0, 200, 0, 0.3)';
-		overlay.style.borderColor = '#00c800';
-		setTimeout(function() {
-			overlay.style.backgroundColor = 'rgba(0, 122, 204, 0.1)';
-			overlay.style.borderColor = '#007acc';
-		}, 200);
+	function isOurElement(el) {
+		return el && el.id && el.id.startsWith('__roopik_inspect');
 	}
-
 
 	// ========== Event Handlers ==========
 
 	function onMouseMove(e) {
-		// Ignore our own UI elements
-		const el = document.elementFromPoint(e.clientX, e.clientY);
-		if (el && el.id && el.id.startsWith('__roopik_inspect')) {
-			return;
-		}
-		if (el && el !== overlay && el !== label && el !== toast && el !== currentElement) {
-			currentElement = el;
-			updateOverlay(el);
+		var el = document.elementFromPoint(e.clientX, e.clientY);
+		if (isOurElement(el)) return;
+
+		if (el && el !== hoverElement) {
+			hoverElement = el;
+			// Don't show hover overlay on selected element (already has green)
+			if (el === selectedElement) {
+				hoverOverlay.style.display = 'none';
+				hoverLabel.style.display = 'none';
+			} else {
+				updateOverlay(hoverOverlay, hoverLabel, el, '#007acc');
+			}
 		}
 	}
 
@@ -384,44 +444,68 @@ const INSPECT_MODE_SCRIPT = `
 		e.stopPropagation();
 		e.stopImmediatePropagation();
 
-		if (currentElement && !(currentElement.id && currentElement.id.startsWith('__roopik_inspect'))) {
-			const html = currentElement.outerHTML;
-			const info = buildElementInfo(currentElement);
+		var el = hoverElement || document.elementFromPoint(e.clientX, e.clientY);
+		if (!el || isOurElement(el)) return false;
 
-			// Store for API access
-			window.__roopikLastInspectedHtml = html;
-			window.__roopikLastInspectedInfo = info;
+		// Select this element
+		selectedElement = el;
 
-			// Copy to clipboard, then auto-exit inspect mode
-			copyToClipboard(html)
-				.then(function() {
-					flashSuccess();
-					showToast('✓ Element copied');
+		// Build result
+		var rect = el.getBoundingClientRect();
+		var sourceAttr = el.getAttribute('data-roopik-source');
+		var message = {
+			type: 'element-selected',
+			selector: getElementSelector(el),
+			html: el.outerHTML,
+			tagName: el.tagName.toLowerCase(),
+			source: sourceAttr ? parseSourceAttr(sourceAttr) : null,
+			bounds: {
+				x: rect.left,
+				y: rect.top,
+				width: rect.width,
+				height: rect.height
+			}
+		};
 
-					// Auto-exit inspect mode after successful copy (with small delay for visual feedback)
-					setTimeout(function() {
-						cleanup();
-					}, 300);
-				})
-				.catch(function(err) {
-					console.error('[Roopik Inspect] Copy failed:', err);
-					showToast('✗ Copy failed');
-					// Don't exit on failure - let user try again
-				});
+		// Store result for backward compatibility (getInspectResult)
+		window.__roopikInspectResult = message;
+
+		// Send to VSCode via CDP bridge (if available)
+		if (typeof window.__roopikBridge === 'function') {
+			window.__roopikBridge(JSON.stringify(message));
 		}
 
+		// Update selected overlay (green)
+		updateOverlay(selectedOverlay, null, el);
+		selectedOverlay.style.display = 'block';
+
+		// Hide hover overlay since we're now on selected
+		hoverOverlay.style.display = 'none';
+		hoverLabel.style.display = 'none';
+
+		// Show selection feedback
+		showToast('✓ Element selected');
+
+		// DON'T cleanup - stay in inspect mode for comparing
 		return false;
 	}
 
 	function onKeyDown(e) {
 		if (e.key === 'Escape') {
+			// Notify VSCode that inspect mode was exited
+			if (typeof window.__roopikBridge === 'function') {
+				window.__roopikBridge(JSON.stringify({ type: 'inspect-mode-exited' }));
+			}
 			cleanup();
 		}
 	}
 
 	function onScroll() {
-		if (currentElement) {
-			updateOverlay(currentElement);
+		if (hoverElement && hoverElement !== selectedElement) {
+			updateOverlay(hoverOverlay, hoverLabel, hoverElement, '#007acc');
+		}
+		if (selectedElement) {
+			updateOverlay(selectedOverlay, null, selectedElement);
 		}
 	}
 
@@ -434,24 +518,22 @@ const INSPECT_MODE_SCRIPT = `
 		document.removeEventListener('scroll', onScroll, true);
 		window.removeEventListener('resize', onScroll);
 
-		if (toastTimeout) {
-			clearTimeout(toastTimeout);
-		}
+		if (toastTimeout) clearTimeout(toastTimeout);
 
-		if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-		if (label.parentNode) label.parentNode.removeChild(label);
-		if (toast.parentNode) toast.parentNode.removeChild(toast);
+		if (hoverOverlay.parentNode) hoverOverlay.remove();
+		if (selectedOverlay.parentNode) selectedOverlay.remove();
+		if (hoverLabel.parentNode) hoverLabel.remove();
+		if (toast.parentNode) toast.remove();
 
-		currentElement = null;
+		hoverElement = null;
+		selectedElement = null;
 		delete window.__roopikInspectCleanup;
 	}
 
-	// Store cleanup function
 	window.__roopikInspectCleanup = cleanup;
 
 	// ========== Initialize ==========
 
-	// Add event listeners (capture phase to intercept before page handlers)
 	document.addEventListener('mousemove', onMouseMove, true);
 	document.addEventListener('click', onClick, true);
 	document.addEventListener('keydown', onKeyDown, true);

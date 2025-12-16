@@ -6,7 +6,7 @@
 import { BrowserWindow, WebContentsView, session, app } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserBridgeMessage } from '../../common/projectMode/types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
 import type { ILifecycleMainService } from '../../../../../platform/lifecycle/electron-main/lifecycleMainService.js';
@@ -41,6 +41,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 	private readonly _onOpenSourceRequest = new Emitter<OpenSourceRequestEvent>();
 	readonly onOpenSourceRequest: Event<OpenSourceRequestEvent> = this._onOpenSourceRequest.event;
+
+	private readonly _onBrowserBridgeMessage = new Emitter<BrowserBridgeEvent>();
+	readonly onBrowserBridgeMessage: Event<BrowserBridgeEvent> = this._onBrowserBridgeMessage.event;
 
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
@@ -77,6 +80,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// CSS source resolution services
 	private cdpCssService: CDPCssService;
 	private styleOrchestrators = new Map<string, StyleSourceOrchestrator>(); // projectRoot -> orchestrator
+
+	// Track which browser views have the bridge binding set up
+	private bridgeBindingSetup = new Map<number, boolean>();
 
 	// ============================================
 	// Constructor & Lifecycle Setup
@@ -628,6 +634,54 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				browserView.webContents.debugger.removeListener('message', handler);
 			}
 		};
+	}
+
+	/**
+	 * Setup the browser bridge binding for script-to-main communication
+	 * Uses CDP Runtime.addBinding to create window.__roopikBridge()
+	 * Must be called after CDP is attached and before injecting inspect script
+	 */
+	async setupBrowserBridge(browserViewId: number): Promise<void> {
+		// Already setup?
+		if (this.bridgeBindingSetup.get(browserViewId)) {
+			return;
+		}
+
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		// Ensure debugger is attached
+		if (!this.debuggerAttached.get(browserViewId)) {
+			await this.attachDebugger(browserViewId);
+		}
+
+		const debugger_ = browserView.webContents.debugger;
+
+		// Enable Runtime domain (required for bindings)
+		await debugger_.sendCommand('Runtime.enable');
+
+		// Add the binding - creates window.__roopikBridge() in page
+		await debugger_.sendCommand('Runtime.addBinding', { name: '__roopikBridge' });
+
+		// Listen for binding calls
+		const handler = (_event: Electron.Event, method: string, params: { name?: string; payload?: string }) => {
+			if (method === 'Runtime.bindingCalled' && params.name === '__roopikBridge') {
+				try {
+					const message = JSON.parse(params.payload || '{}') as BrowserBridgeMessage;
+					this._onBrowserBridgeMessage.fire({
+						browserViewId,
+						message
+					});
+				} catch (e) {
+					console.error('[BrowserBridge] Failed to parse message:', e);
+				}
+			}
+		};
+
+		debugger_.on('message', handler);
+		this.bridgeBindingSetup.set(browserViewId, true);
 	}
 
 	// ============================================

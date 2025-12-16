@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from './types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent } from './types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../cssResolvers/types.js';
 
 export const IProjectModeService = createDecorator<IProjectModeService>('projectModeService');
@@ -47,6 +47,11 @@ export interface IProjectModeService {
 	 */
 	readonly onOpenSourceRequest: Event<OpenSourceRequestEvent>;
 
+	/**
+	 * Fired when injected script sends a message via window.__roopikBridge()
+	 * Used for element selection, inspect mode events, etc.
+	 */
+	readonly onBrowserBridgeMessage: Event<BrowserBridgeEvent>;
 
 	// ============================================
 	// Browser View Lifecycle
@@ -157,6 +162,13 @@ export interface IProjectModeService {
 	 * Send CDP command
 	 */
 	sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any>;
+
+	/**
+	 * Setup the browser bridge for script-to-main communication
+	 * Creates window.__roopikBridge() in the page via CDP Runtime.addBinding
+	 * Must be called before injecting inspect script
+	 */
+	setupBrowserBridge(browserViewId: number): Promise<void>;
 
 	// ============================================
 	// Utilities

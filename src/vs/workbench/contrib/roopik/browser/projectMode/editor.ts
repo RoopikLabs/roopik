@@ -113,10 +113,13 @@ export class Editor extends EditorPane {
 		this.devServerService = new DevServerBridge(mainProcessService.getChannel(DEV_SERVER_CHANNEL));
 
 		// Initialize features (extracted to features/ folder)
-		this.inspectMode = new InspectMode(this.browserService, this.notificationService);
+		this.inspectMode = new InspectMode(this.browserService, this.notificationService, this.clipboardService);
 		this.bookmarks = new Bookmarks(this.storageService, this.notificationService, this.logger);
 		this.browserPause = new BrowserPause(this.browserService);
 		this.styleInspect = new StyleInspect(this.browserService, this.notificationService, this.sourceNavigationService);
+
+		// Connect StyleInspect to unified InspectMode (uses same script for element selection)
+		this.styleInspect.setInspectMode(this.inspectMode);
 
 		// Set callback to update browser bounds when style panel visibility changes
 		this.styleInspect.setOnVisibilityChanged((visible, _panelWidth) => {
@@ -150,6 +153,9 @@ export class Editor extends EditorPane {
 
 		// Setup "Open Source" context menu handler
 		this.setupOpenSourceHandler();
+
+		// Setup browser bridge message handler (inspect mode events, etc.)
+		this.setupBrowserBridgeHandler();
 	}
 
 	/**
@@ -276,6 +282,62 @@ export class Editor extends EditorPane {
 				});
 			}
 		}));
+	}
+
+	/**
+	 * Setup handler for browser bridge messages
+	 *
+	 * When injected script sends a message via window.__roopikBridge(),
+	 * main process receives it via CDP Runtime.bindingCalled and forwards
+	 * via IPC. We handle it here for element selection, inspect mode exit, etc.
+	 */
+	private setupBrowserBridgeHandler(): void {
+		this._register(this.browserService.onBrowserBridgeMessage((event) => {
+			// Filter by browserViewId - only handle events for this browser instance
+			if (event.browserViewId !== this.browserViewId) {
+				return;
+			}
+
+			const message = event.message;
+
+			switch (message.type) {
+				case 'element-selected':
+					this.handleElementSelected(message);
+					break;
+				case 'inspect-mode-exited':
+					this.handleInspectModeExited();
+					break;
+			}
+		}));
+	}
+
+	/**
+	 * Handle element selection from inspect mode
+	 * - Copy HTML to clipboard
+	 * - Update inspect mode state
+	 * - (Future: open panel, send to agent, etc.)
+	 */
+	private async handleElementSelected(message: import('../../common/projectMode/types.js').ElementSelectedMessage): Promise<void> {
+		// Copy HTML to clipboard
+		if (message.html) {
+			try {
+				await this.clipboardService.writeText(message.html);
+				this.logger.info('[InspectMode] Element HTML copied to clipboard');
+			} catch (e) {
+				this.logger.error('[InspectMode] Failed to copy to clipboard:', e);
+			}
+		}
+
+		// TODO: Open style panel with element info
+		// TODO: Send to agent if chat is open
+	}
+
+	/**
+	 * Handle inspect mode exit (ESC pressed)
+	 */
+	private handleInspectModeExited(): void {
+		this.logger.info('[InspectMode] Inspect mode exited');
+		// Update local state if needed
 	}
 
 	/**
@@ -1198,12 +1260,23 @@ export class Editor extends EditorPane {
 
 	/**
 	 * Enable Inspect Element Mode
-	 * Fire and forget - browser script handles auto-cleanup after copy
+	 * 1. Setup CDP bridge for receiving events from injected script
+	 * 2. Inject inspect mode script
 	 */
 	private async enableInspectMode(): Promise<void> {
 		if (!this.browserViewId) {
 			return;
 		}
+
+		// Setup CDP bridge first (creates window.__roopikBridge in page)
+		try {
+			await this.browserService.setupBrowserBridge(this.browserViewId);
+		} catch (e) {
+			this.logger.warn('[InspectMode] Failed to setup bridge, continuing anyway:', e);
+			// Continue anyway - script will still work, just won't send events
+		}
+
+		// Inject inspect mode script
 		await this.inspectMode.enable(this.browserViewId);
 	}
 
@@ -1312,18 +1385,15 @@ export class Editor extends EditorPane {
 			}
 
 			try {
-				// Check if an element was selected
-				const result = await this.browserService.executeScript(
-					this.browserViewId,
-					`window.__roopikStyleInspectResult || null`
-				);
+				// Check if an element was selected (using unified inspect result)
+				const result = await this.inspectMode.getInspectResult(this.browserViewId);
 
 				if (result) {
 					// Clear the result so we don't process it again
-					await this.browserService.executeScript(
-						this.browserViewId,
-						`window.__roopikStyleInspectResult = null`
-					);
+					await this.inspectMode.clearInspectResult(this.browserViewId);
+
+					// Copy element HTML to clipboard via VSCode's clipboard service
+					await this.inspectMode.copyElementHtml(this.browserViewId);
 
 					// Handle the selection - prefer selector over coordinates
 					// Selector is more reliable as coordinates may hit overlay elements

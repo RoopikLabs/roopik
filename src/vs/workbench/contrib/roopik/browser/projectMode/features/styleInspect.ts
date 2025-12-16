@@ -8,31 +8,46 @@ import type { IProjectModeService } from '../../../common/projectMode/ipc.js';
 import type { CSSSourceLocation, ElementStyleInfo, GetElementStylesResult } from '../../../common/cssResolvers/types.js';
 import { StyleInspectPanel, IStyleInspectPanelCallbacks } from '../components/styleInspectPanel.js';
 import { ISourceNavigationService } from '../../../common/navigation/index.js';
+import type { InspectMode } from './inspectMode.js';
 
 /**
  * Style Inspect Feature
  *
  * Integrates inspect mode with CSS source resolution.
+ * Uses the unified InspectMode script for element selection.
+ *
  * Flow:
  * 1. User enables style inspect mode
- * 2. User clicks element in browser
- * 3. We call getElementStyles via IPC
- * 4. Style panel shows element info and CSS sources
- * 5. User can click file links to open in editor
+ * 2. InspectMode script is injected (unified hover/select behavior)
+ * 3. User clicks element in browser
+ * 4. Script sends event via CDP bridge (window.__roopikBridge)
+ * 5. Editor receives event, calls getElementStyles via IPC
+ * 6. Style panel shows element info and CSS sources
+ * 7. User can click file links to open in editor
  *
- * This replaces the basic inspect mode when style inspection is needed.
+ * Note: The actual script injection is handled by InspectMode class.
+ * StyleInspect is now focused on panel management and CSS resolution.
  */
 export class StyleInspect {
 	private panel: StyleInspectPanel | null = null;
 	private isActive: boolean = false;
 	private currentProjectRoot: string | undefined;
 	private onVisibilityChangedCallback: ((visible: boolean, panelWidth: number) => void) | undefined;
+	private inspectModeRef: InspectMode | null = null;
 
 	constructor(
 		private readonly browserService: IProjectModeService,
 		private readonly notificationService: INotificationService,
 		private readonly sourceNavigationService: ISourceNavigationService
 	) {}
+
+	/**
+	 * Set the InspectMode reference for unified script injection
+	 * Must be called before enable()
+	 */
+	setInspectMode(inspectMode: InspectMode): void {
+		this.inspectModeRef = inspectMode;
+	}
 
 	/**
 	 * Set callback for when panel visibility changes
@@ -71,22 +86,28 @@ export class StyleInspect {
 
 	/**
 	 * Enable Style Inspect Mode
-	 * Injects script that calls back when element is clicked
+	 * Uses the unified InspectMode script for element selection
 	 */
 	async enable(browserViewId: number): Promise<void> {
 		if (!browserViewId) {
 			return;
 		}
 
+		if (!this.inspectModeRef) {
+			console.error('[StyleInspect] InspectMode reference not set');
+			return;
+		}
+
 		this.isActive = true;
 
 		try {
-			// Inject style inspect script
-			await this.browserService.executeScript(browserViewId, STYLE_INSPECT_SCRIPT);
+			// Use unified InspectMode script for element selection
+			await this.inspectModeRef.enable(browserViewId);
 
+			// Override notification with style-specific message
 			this.notificationService.notify({
 				severity: Severity.Info,
-				message: 'Style Inspect: Click element to view CSS sources.',
+				message: 'Style Inspect: Click element to view CSS sources. ESC to exit.',
 				sticky: false
 			});
 		} catch (error) {
@@ -97,6 +118,7 @@ export class StyleInspect {
 
 	/**
 	 * Disable Style Inspect Mode
+	 * Cleans up the unified InspectMode script
 	 */
 	async disable(browserViewId: number): Promise<void> {
 		if (!browserViewId) {
@@ -106,11 +128,10 @@ export class StyleInspect {
 		this.isActive = false;
 
 		try {
-			await this.browserService.executeScript(browserViewId, `
-				if (window.__roopikStyleInspectCleanup) {
-					window.__roopikStyleInspectCleanup();
-				}
-			`);
+			// Use unified InspectMode cleanup
+			if (this.inspectModeRef) {
+				await this.inspectModeRef.disable(browserViewId);
+			}
 		} catch {
 			// Silent fail
 		}
@@ -274,218 +295,6 @@ export class StyleInspect {
 			this.panel.dispose();
 			this.panel = null;
 		}
+		this.inspectModeRef = null;
 	}
 }
-
-// ============================================
-// Style Inspect Script (injected into browser)
-// ============================================
-
-/**
- * JavaScript to inject into the browser for style inspection.
- * Similar to regular inspect mode but focused on CSS.
- */
-const STYLE_INSPECT_SCRIPT = `
-(function() {
-	'use strict';
-
-	// Cleanup any existing inspect mode
-	if (window.__roopikStyleInspectCleanup) {
-		window.__roopikStyleInspectCleanup();
-	}
-
-	// ========== Create UI Elements ==========
-
-	// Highlight overlay
-	const overlay = document.createElement('div');
-	overlay.id = '__roopik_style_inspect_overlay';
-	overlay.style.cssText = [
-		'position: fixed',
-		'pointer-events: none',
-		'z-index: 2147483647',
-		'border: 2px solid #9333EA',
-		'background-color: rgba(147, 51, 234, 0.1)',
-		'transition: all 0.05s ease-out',
-		'display: none'
-	].join(';');
-	document.body.appendChild(overlay);
-
-	// Element label
-	const label = document.createElement('div');
-	label.id = '__roopik_style_inspect_label';
-	label.style.cssText = [
-		'position: fixed',
-		'pointer-events: none',
-		'z-index: 2147483647',
-		'background-color: #9333EA',
-		'color: white',
-		'font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-		'font-size: 11px',
-		'padding: 2px 6px',
-		'border-radius: 2px',
-		'white-space: nowrap',
-		'display: none'
-	].join(';');
-	document.body.appendChild(label);
-
-	let currentElement = null;
-
-	// ========== Helper Functions ==========
-
-	function getElementSelector(el) {
-		if (!el || el === document.body || el === document.documentElement) {
-			return null;
-		}
-
-		// Build a full path selector to ensure uniqueness
-		var parts = [];
-		var current = el;
-
-		while (current && current !== document.body && current !== document.documentElement) {
-			var selector = current.tagName.toLowerCase();
-
-			// If element has an ID, use it and stop (IDs are unique)
-			if (current.id) {
-				parts.unshift('#' + CSS.escape(current.id));
-				break;
-			}
-
-			// Add classes
-			if (current.className && typeof current.className === 'string') {
-				var classes = current.className.trim().split(/\\s+/).filter(function(c) { return c; });
-				if (classes.length > 0) {
-					selector += '.' + classes.map(function(c) { return CSS.escape(c); }).join('.');
-				}
-			}
-
-			// Add nth-of-type for uniqueness among siblings
-			var parent = current.parentElement;
-			if (parent) {
-				var siblings = Array.from(parent.children).filter(function(s) {
-					return s.tagName === current.tagName;
-				});
-				if (siblings.length > 1) {
-					var index = siblings.indexOf(current) + 1;
-					selector += ':nth-of-type(' + index + ')';
-				}
-			}
-
-			parts.unshift(selector);
-			current = parent;
-		}
-
-		return parts.join(' > ');
-	}
-
-	function updateOverlay(el) {
-		if (!el || el === document.body || el === document.documentElement) {
-			overlay.style.display = 'none';
-			label.style.display = 'none';
-			return;
-		}
-
-		const rect = el.getBoundingClientRect();
-		overlay.style.display = 'block';
-		overlay.style.top = rect.top + 'px';
-		overlay.style.left = rect.left + 'px';
-		overlay.style.width = rect.width + 'px';
-		overlay.style.height = rect.height + 'px';
-
-		// Position label
-		label.style.display = 'block';
-		label.textContent = el.tagName.toLowerCase() + (el.className ? '.' + el.className.split(' ')[0] : '');
-		const labelHeight = 20;
-		if (rect.top > labelHeight + 4) {
-			label.style.top = (rect.top - labelHeight - 4) + 'px';
-		} else {
-			label.style.top = (rect.bottom + 4) + 'px';
-		}
-		label.style.left = Math.max(0, rect.left) + 'px';
-	}
-
-	// ========== Event Handlers ==========
-
-	function onMouseMove(e) {
-		const el = document.elementFromPoint(e.clientX, e.clientY);
-		if (el && el.id && el.id.startsWith('__roopik_style_inspect')) {
-			return;
-		}
-		if (el && el !== overlay && el !== label && el !== currentElement) {
-			currentElement = el;
-			updateOverlay(el);
-		}
-	}
-
-	function onClick(e) {
-		e.preventDefault();
-		e.stopPropagation();
-		e.stopImmediatePropagation();
-
-		if (currentElement && !(currentElement.id && currentElement.id.startsWith('__roopik_style_inspect'))) {
-			// Get selector for the element
-			const selector = getElementSelector(currentElement);
-
-			// Store for API access
-			window.__roopikStyleInspectResult = {
-				selector: selector,
-				x: e.clientX,
-				y: e.clientY,
-				tagName: currentElement.tagName.toLowerCase(),
-				className: currentElement.className || '',
-				id: currentElement.id || ''
-			};
-
-			// Visual feedback
-			overlay.style.backgroundColor = 'rgba(147, 51, 234, 0.3)';
-			overlay.style.borderColor = '#7C3AED';
-
-			setTimeout(function() {
-				cleanup();
-			}, 150);
-		}
-
-		return false;
-	}
-
-	function onKeyDown(e) {
-		if (e.key === 'Escape') {
-			cleanup();
-		}
-	}
-
-	function onScroll() {
-		if (currentElement) {
-			updateOverlay(currentElement);
-		}
-	}
-
-	// ========== Cleanup ==========
-
-	function cleanup() {
-		document.removeEventListener('mousemove', onMouseMove, true);
-		document.removeEventListener('click', onClick, true);
-		document.removeEventListener('keydown', onKeyDown, true);
-		document.removeEventListener('scroll', onScroll, true);
-		window.removeEventListener('resize', onScroll);
-
-		if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-		if (label.parentNode) label.parentNode.removeChild(label);
-
-		currentElement = null;
-		delete window.__roopikStyleInspectCleanup;
-	}
-
-	// Store cleanup function
-	window.__roopikStyleInspectCleanup = cleanup;
-
-	// ========== Initialize ==========
-
-	document.addEventListener('mousemove', onMouseMove, true);
-	document.addEventListener('click', onClick, true);
-	document.addEventListener('keydown', onKeyDown, true);
-	document.addEventListener('scroll', onScroll, true);
-	window.addEventListener('resize', onScroll);
-
-	return 'Style inspect mode enabled';
-})();
-`;
