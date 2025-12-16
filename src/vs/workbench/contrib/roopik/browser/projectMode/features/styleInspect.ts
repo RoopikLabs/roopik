@@ -230,17 +230,169 @@ export class StyleInspect {
 	/**
 	 * Sync tree selection with browser element selection
 	 * When user selects element in browser, highlight it in Components tree
+	 *
+	 * NOTE: We search our cached tree by selector instead of querying CDP again,
+	 * because each DOM.getDocument call can return different nodeIds (DOM invalidation).
 	 */
-	private async syncTreeWithSelectedElement(selector: string): Promise<void> {
-		try {
-			const nodeId = await this.getNodeIdForSelector(selector);
-			if (nodeId) {
-				this.highlightTreeNode(nodeId);
-			}
-		} catch (error) {
-			// Silent fail - tree sync is optional
-			console.debug('[StyleInspect] Failed to sync tree:', error);
+	private syncTreeWithSelectedElement(selector: string): void {
+		console.log('[StyleInspect] syncTreeWithSelectedElement called, selector:', selector);
+
+		if (!this.domTreeCache) {
+			console.warn('[StyleInspect] No DOM tree cache, cannot sync');
+			return;
 		}
+
+		// Find node in our cached tree by matching selector
+		const nodeId = this.findNodeIdBySelector(this.domTreeCache, selector);
+		console.log('[StyleInspect] Found nodeId in cache:', nodeId);
+
+		if (nodeId) {
+			this.highlightTreeNode(nodeId);
+		} else {
+			console.warn('[StyleInspect] Could not find node for selector:', selector);
+		}
+	}
+
+	/**
+	 * Find nodeId in cached tree by matching selector
+	 * Parses full selector path and walks down the tree to find exact match
+	 */
+	private findNodeIdBySelector(tree: DOMTreeNode, selector: string): number | null {
+		// Parse selector: "body > div.container > header.header > nav" or "#myId" etc.
+		const parts = selector.split(' > ').map(s => s.trim()).filter(s => s.length > 0);
+
+		if (parts.length === 0) {
+			return null;
+		}
+
+		// Parse all selector parts
+		const parsedParts = parts.map(p => this.parseSelectorPart(p));
+
+		// Walk down the tree following the path
+		// Start from tree root (should be body)
+		let currentNodes: DOMTreeNode[] = [tree];
+		let startIndex = 0;
+
+		// If first part matches tree root, skip it
+		if (parsedParts.length > 0 && this.nodeMatchesSelector(tree, parsedParts[0])) {
+			startIndex = 1;
+		}
+
+		// Walk through remaining path
+		for (let i = startIndex; i < parsedParts.length; i++) {
+			const target = parsedParts[i];
+			const nextNodes: DOMTreeNode[] = [];
+
+			for (const node of currentNodes) {
+				if (node.children) {
+					for (const child of node.children) {
+						if (this.nodeMatchesSelector(child, target)) {
+							nextNodes.push(child);
+						}
+					}
+				}
+			}
+
+			if (nextNodes.length === 0) {
+				// Path broken, try fallback DFS search for last part
+				console.log('[StyleInspect] Path broken at part', i, ', falling back to DFS');
+				const lastPart = parsedParts[parsedParts.length - 1];
+				return this.findMatchingNode(tree, lastPart);
+			}
+
+			currentNodes = nextNodes;
+		}
+
+		// Return first match (most specific)
+		return currentNodes.length > 0 ? currentNodes[0].nodeId : null;
+	}
+
+	/**
+	 * Parse a selector part like "div.container.active" or "#myId" or "div:nth-of-type(2)"
+	 */
+	private parseSelectorPart(part: string): { tag?: string; id?: string; classes: string[] } {
+		const result: { tag?: string; id?: string; classes: string[] } = { classes: [] };
+
+		// Remove :nth-of-type(...) etc.
+		const cleanPart = part.replace(/:[^.#]+/g, '');
+
+		// Check for ID selector
+		if (cleanPart.startsWith('#')) {
+			const idMatch = cleanPart.match(/^#([^.]+)/);
+			if (idMatch) {
+				result.id = idMatch[1];
+			}
+			return result;
+		}
+
+		// Parse tag and classes
+		const tagMatch = cleanPart.match(/^([a-z][a-z0-9]*)/i);
+		if (tagMatch) {
+			result.tag = tagMatch[1].toLowerCase();
+		}
+
+		// Extract classes
+		const classMatches = cleanPart.match(/\.([^.#]+)/g);
+		if (classMatches) {
+			result.classes = classMatches.map(c => c.slice(1)); // Remove leading dot
+		}
+
+		return result;
+	}
+
+	/**
+	 * Find a matching node in the tree (DFS)
+	 */
+	private findMatchingNode(
+		node: DOMTreeNode,
+		target: { tag?: string; id?: string; classes: string[] }
+	): number | null {
+		// Check if this node matches
+		if (this.nodeMatchesSelector(node, target)) {
+			return node.nodeId;
+		}
+
+		// Search children
+		if (node.children) {
+			for (const child of node.children) {
+				const found = this.findMatchingNode(child, target);
+				if (found) {
+					return found;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Check if a node matches the parsed selector
+	 */
+	private nodeMatchesSelector(
+		node: DOMTreeNode,
+		target: { tag?: string; id?: string; classes: string[] }
+	): boolean {
+		// Match by ID (highest priority)
+		if (target.id) {
+			return node.id === target.id;
+		}
+
+		// Match by tag
+		if (target.tag && node.tagName.toLowerCase() !== target.tag) {
+			return false;
+		}
+
+		// Match by classes (all must match)
+		if (target.classes.length > 0) {
+			const nodeClasses = node.className?.split(/\s+/) || [];
+			for (const cls of target.classes) {
+				if (!nodeClasses.includes(cls)) {
+					return false;
+				}
+			}
+		}
+
+		return true;
 	}
 
 	/**
@@ -457,6 +609,7 @@ export class StyleInspect {
 	 * Highlight a node in the tree (called when user selects element in browser)
 	 */
 	highlightTreeNode(nodeId: number): void {
+		console.log('[StyleInspect] highlightTreeNode called, nodeId:', nodeId, 'panel:', !!this.panel);
 		if (this.panel) {
 			this.panel.highlightTreeNode(nodeId);
 		}
@@ -558,9 +711,16 @@ export class StyleInspect {
 	/**
 	 * Highlight element in browser by nodeId via CDP
 	 * Called when user clicks a node in the Components tree
+	 *
+	 * IMPORTANT: The nodeId from our cached tree may not match CDP's current nodeIds
+	 * (CDP invalidates nodeIds on each DOM.getDocument call). So we:
+	 * 1. Find the node in our cached tree by nodeId
+	 * 2. Build a CSS selector from the node
+	 * 3. Use CDP DOM.querySelector to get a fresh nodeId
+	 * 4. Use that fresh nodeId with Overlay.highlightNode
 	 */
 	async highlightElementInBrowser(nodeId: number): Promise<void> {
-		if (!this.currentBrowserViewId) {
+		if (!this.currentBrowserViewId || !this.domTreeCache) {
 			return;
 		}
 
@@ -571,9 +731,45 @@ export class StyleInspect {
 				this.overlayEnabled = true;
 			}
 
-			// Use CDP Overlay.highlightNode to highlight the element
+			// Find the node in our cached tree and build a selector
+			const selector = this.buildSelectorFromNodeId(this.domTreeCache, nodeId);
+			if (!selector) {
+				console.warn('[StyleInspect] Could not build selector for nodeId:', nodeId);
+				return;
+			}
+
+			console.log('[StyleInspect] Built selector from tree node:', selector);
+
+			// Get fresh document root
+			const docResult = await this.browserService.sendCDPCommand(
+				this.currentBrowserViewId,
+				'DOM.getDocument',
+				{ depth: 0 }
+			);
+
+			if (!docResult?.root?.nodeId) {
+				console.warn('[StyleInspect] Could not get document root');
+				return;
+			}
+
+			// Query for the selector to get fresh nodeId
+			const queryResult = await this.browserService.sendCDPCommand(
+				this.currentBrowserViewId,
+				'DOM.querySelector',
+				{
+					nodeId: docResult.root.nodeId,
+					selector
+				}
+			);
+
+			if (!queryResult?.nodeId) {
+				console.warn('[StyleInspect] Could not find element with selector:', selector);
+				return;
+			}
+
+			// Use the fresh nodeId to highlight
 			await this.browserService.sendCDPCommand(this.currentBrowserViewId, 'Overlay.highlightNode', {
-				nodeId,
+				nodeId: queryResult.nodeId,
 				highlightConfig: {
 					contentColor: { r: 111, g: 168, b: 220, a: 0.66 }, // Blue overlay
 					paddingColor: { r: 147, g: 196, b: 125, a: 0.55 }, // Green for padding
@@ -584,6 +780,51 @@ export class StyleInspect {
 		} catch (error) {
 			console.error('[StyleInspect] Failed to highlight element:', error);
 		}
+	}
+
+	/**
+	 * Build a CSS selector from a node in our cached tree
+	 * Returns a unique selector path like "body > div.container > header#main"
+	 */
+	private buildSelectorFromNodeId(tree: DOMTreeNode, targetNodeId: number): string | null {
+		const path: string[] = [];
+
+		const findAndBuildPath = (node: DOMTreeNode): boolean => {
+			// Build selector part for this node
+			let part = node.tagName.toLowerCase();
+			if (node.id) {
+				part = `#${node.id}`; // ID is most specific, use alone
+			} else if (node.className) {
+				// Add first class for specificity
+				const firstClass = node.className.split(/\s+/)[0];
+				if (firstClass && !firstClass.startsWith('__roopik')) {
+					part += `.${firstClass}`;
+				}
+			}
+
+			if (node.nodeId === targetNodeId) {
+				path.push(part);
+				return true;
+			}
+
+			if (node.children) {
+				for (const child of node.children) {
+					if (findAndBuildPath(child)) {
+						path.push(part);
+						return true;
+					}
+				}
+			}
+
+			return false;
+		};
+
+		if (findAndBuildPath(tree)) {
+			// Reverse to get root-to-target order
+			return path.reverse().join(' > ');
+		}
+
+		return null;
 	}
 
 	/**
