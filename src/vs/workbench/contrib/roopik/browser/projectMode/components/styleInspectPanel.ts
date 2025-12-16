@@ -54,6 +54,9 @@ export class StyleInspectPanel {
 	// Current width (persisted during session)
 	private currentWidth: number = StyleInspectPanel.DEFAULT_WIDTH;
 
+	// Project mode flag - when false, file links are disabled
+	private isProjectMode: boolean = false;
+
 	// Resize state
 	private isResizing: boolean = false;
 	private resizeStartX: number = 0;
@@ -91,9 +94,12 @@ export class StyleInspectPanel {
 
 	/**
 	 * Show panel with element style information
+	 * @param data Element style data
+	 * @param isProjectMode When true, file links are clickable; when false, links are disabled
 	 */
-	show(data: ElementStyleInfo): void {
+	show(data: ElementStyleInfo, isProjectMode: boolean = false): void {
 		this.currentData = data;
+		this.isProjectMode = isProjectMode;
 		this.render();
 		this.container.style.display = 'flex';
 		this.container.style.width = `${this.currentWidth}px`;
@@ -380,9 +386,9 @@ export class StyleInspectPanel {
 		tagContainer.appendChild(tagSpan);
 		section.content.appendChild(tagContainer);
 
-		// Component name and Open in Editor button row
+		// Component name and Open in Editor button row (only in project mode)
 		// Put them on the same row to save vertical space
-		if (data.componentName || data.htmlSource) {
+		if (this.isProjectMode && (data.componentName || data.htmlSource)) {
 			const rowContainer = document.createElement('div');
 			rowContainer.style.cssText = `
 				display: flex;
@@ -657,27 +663,40 @@ export class StyleInspectPanel {
 		selector.textContent = rule.selector;
 		header.appendChild(selector);
 
-		// File link
-		const fileLink = document.createElement('a');
-		fileLink.style.cssText = `
-			color: var(--vscode-textLink-foreground);
-			cursor: pointer;
-			font-size: 10px;
-			white-space: nowrap;
-			text-decoration: none;
-			flex-shrink: 0;
-		`;
-		fileLink.addEventListener('mouseenter', () => { fileLink.style.textDecoration = 'underline'; });
-		fileLink.addEventListener('mouseleave', () => { fileLink.style.textDecoration = 'none'; });
+		// File link - only show clickable link in project mode
+		if (this.isProjectMode) {
+			const fileLink = document.createElement('a');
+			fileLink.style.cssText = `
+				color: var(--vscode-textLink-foreground);
+				cursor: pointer;
+				font-size: 10px;
+				white-space: nowrap;
+				text-decoration: none;
+				flex-shrink: 0;
+			`;
+			fileLink.addEventListener('mouseenter', () => { fileLink.style.textDecoration = 'underline'; });
+			fileLink.addEventListener('mouseleave', () => { fileLink.style.textDecoration = 'none'; });
 
-		const fileName = rule.file.split(/[/\\]/).pop() || 'file';
-		fileLink.textContent = `→ ${fileName}:${rule.location.line}`;
-		fileLink.title = `${rule.file}:${rule.location.line}`;
-		fileLink.addEventListener('click', (e) => {
-			e.preventDefault();
-			this.callbacks.onOpenFile(rule.location);
-		});
-		header.appendChild(fileLink);
+			const fileName = rule.file.split(/[/\\]/).pop() || 'file';
+			fileLink.textContent = `→ ${fileName}:${rule.location.line}`;
+			fileLink.title = `${rule.file}:${rule.location.line}`;
+			fileLink.addEventListener('click', (e) => {
+				e.preventDefault();
+				this.callbacks.onOpenFile(rule.location);
+			});
+			header.appendChild(fileLink);
+		} else {
+			// Non-project mode: show source type as plain text (non-clickable)
+			const sourceLabel = document.createElement('span');
+			sourceLabel.style.cssText = `
+				color: var(--vscode-descriptionForeground);
+				font-size: 10px;
+				white-space: nowrap;
+				flex-shrink: 0;
+			`;
+			sourceLabel.textContent = `→ <inline-style>`;
+			header.appendChild(sourceLabel);
+		}
 
 		el.appendChild(header);
 

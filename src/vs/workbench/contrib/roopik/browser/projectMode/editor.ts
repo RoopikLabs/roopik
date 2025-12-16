@@ -299,6 +299,7 @@ export class Editor extends EditorPane {
 			}
 
 			const message = event.message;
+			this.logger.info(`[BrowserBridge] Received: ${message.type}`);
 
 			switch (message.type) {
 				case 'element-selected':
@@ -314,10 +315,11 @@ export class Editor extends EditorPane {
 	/**
 	 * Handle element selection from inspect mode
 	 * - Copy HTML to clipboard
-	 * - Update inspect mode state
-	 * - (Future: open panel, send to agent, etc.)
+	 * - Open style panel with CSS info
 	 */
 	private async handleElementSelected(message: import('../../common/projectMode/types.js').ElementSelectedMessage): Promise<void> {
+		this.logger.info(`[BrowserBridge] handleElementSelected: selector=${message.selector}, hasHtml=${!!message.html}`);
+
 		// Copy HTML to clipboard
 		if (message.html) {
 			try {
@@ -328,8 +330,26 @@ export class Editor extends EditorPane {
 			}
 		}
 
-		// TODO: Open style panel with element info
-		// TODO: Send to agent if chat is open
+		// Open style panel with element CSS info
+		if (this.browserViewId && message.selector) {
+			this.logger.info(`[BrowserBridge] Opening style panel for: ${message.selector}`);
+
+			// Ensure style panel is initialized
+			if (this.contentContainer && !this.styleInspect.isPanelVisible()) {
+				this.styleInspect.initialize(this.contentContainer);
+			}
+
+			// Set project root for CSS path resolution
+			if (this.currentProjectRoot) {
+				this.styleInspect.setProjectRoot(this.currentProjectRoot);
+			}
+
+			// Get element styles and show panel
+			await this.styleInspect.handleElementSelected(this.browserViewId, message.selector);
+			this.logger.info('[BrowserBridge] Style panel handleElementSelected completed');
+		} else {
+			this.logger.warn(`[BrowserBridge] Cannot open panel: browserViewId=${this.browserViewId}, selector=${message.selector}`);
+		}
 	}
 
 	/**
@@ -1348,6 +1368,13 @@ export class Editor extends EditorPane {
 	/**
 	 * Enable Style Inspect Mode
 	 * Shows CSS sources for clicked elements with click-to-source
+	 *
+	 * Flow (event-driven, no polling):
+	 * 1. Setup CDP bridge (creates window.__roopikBridge)
+	 * 2. Inject inspect mode script
+	 * 3. User clicks element → script calls __roopikBridge
+	 * 4. CDP Runtime.bindingCalled fires → main process receives
+	 * 5. IPC to renderer → handleElementSelected() opens panel
 	 */
 	private async enableStyleInspectMode(): Promise<void> {
 		if (!this.browserViewId) {
@@ -1359,73 +1386,21 @@ export class Editor extends EditorPane {
 			this.styleInspect.setProjectRoot(this.currentProjectRoot);
 		}
 
-		// Initialize panel if not already done (panel is created on first use)
-		if (this.contentContainer && !this.styleInspect.isPanelVisible()) {
+		// Initialize panel container (panel shows when element is selected)
+		if (this.contentContainer) {
 			this.styleInspect.initialize(this.contentContainer);
 		}
 
-		await this.styleInspect.enable(this.browserViewId);
-
-		// Poll for element selection result (the script stores the result in window object)
-		this.pollForStyleInspectResult();
-	}
-
-	/**
-	 * Poll for style inspect result from the browser
-	 * Called after enabling style inspect mode
-	 */
-	private pollForStyleInspectResult(): void {
-		if (!this.browserViewId || !this.styleInspect.getIsActive()) {
-			return;
+		// Setup CDP bridge first (creates window.__roopikBridge in page)
+		try {
+			await this.browserService.setupBrowserBridge(this.browserViewId);
+		} catch (e) {
+			this.logger.warn('[StyleInspect] Failed to setup bridge, continuing anyway:', e);
 		}
 
-		const checkResult = async () => {
-			if (!this.browserViewId || !this.styleInspect.getIsActive()) {
-				return;
-			}
-
-			try {
-				// Check if an element was selected (using unified inspect result)
-				const result = await this.inspectMode.getInspectResult(this.browserViewId);
-
-				if (result) {
-					// Clear the result so we don't process it again
-					await this.inspectMode.clearInspectResult(this.browserViewId);
-
-					// Copy element HTML to clipboard via VSCode's clipboard service
-					await this.inspectMode.copyElementHtml(this.browserViewId);
-
-					// Handle the selection - prefer selector over coordinates
-					// Selector is more reliable as coordinates may hit overlay elements
-					if (result.selector) {
-						await this.styleInspect.handleElementSelected(
-							this.browserViewId,
-							result.selector
-						);
-					} else if (result.x !== undefined && result.y !== undefined) {
-						// Fallback to coordinates if no selector available
-						await this.styleInspect.handleElementSelectedByPoint(
-							this.browserViewId,
-							result.x,
-							result.y
-						);
-					}
-				} else {
-					// Keep polling while style inspect is active
-					if (this.styleInspect.getIsActive()) {
-						setTimeout(checkResult, 100);
-					}
-				}
-			} catch {
-				// Silent fail, keep polling
-				if (this.styleInspect.getIsActive()) {
-					setTimeout(checkResult, 100);
-				}
-			}
-		};
-
-		// Start polling after a short delay
-		setTimeout(checkResult, 100);
+		// Enable inspect mode (injects script)
+		// Element selection events come via setupBrowserBridgeHandler() → handleElementSelected()
+		await this.styleInspect.enable(this.browserViewId);
 	}
 
 	/**

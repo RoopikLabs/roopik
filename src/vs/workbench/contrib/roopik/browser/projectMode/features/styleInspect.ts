@@ -152,17 +152,18 @@ export class StyleInspect {
 		browserViewId: number,
 		selector: string
 	): Promise<void> {
-		if (!this.panel || !this.currentProjectRoot) {
-			console.warn('[StyleInspect] Panel or projectRoot not initialized');
+		if (!this.panel) {
+			console.warn('[StyleInspect] Panel not initialized');
 			return;
 		}
 
 		try {
 			// Get element styles via IPC
+			// projectRoot is optional - without it, source file paths won't be resolved
 			const result: GetElementStylesResult = await this.browserService.getElementStyles({
 				browserViewId,
 				target: selector,
-				projectRoot: this.currentProjectRoot
+				projectRoot: this.currentProjectRoot || ''
 			});
 
 			if (result.success && result.data) {
@@ -192,17 +193,18 @@ export class StyleInspect {
 		x: number,
 		y: number
 	): Promise<void> {
-		if (!this.panel || !this.currentProjectRoot) {
-			console.warn('[StyleInspect] Panel or projectRoot not initialized');
+		if (!this.panel) {
+			console.warn('[StyleInspect] Panel not initialized');
 			return;
 		}
 
 		try {
 			// Get element styles via IPC using coordinates
+			// projectRoot is optional - without it, source file paths won't be resolved
 			const result: GetElementStylesResult = await this.browserService.getElementStyles({
 				browserViewId,
 				target: { x, y },
-				projectRoot: this.currentProjectRoot
+				projectRoot: this.currentProjectRoot || ''
 			});
 
 			if (result.success && result.data) {
@@ -224,7 +226,9 @@ export class StyleInspect {
 	 */
 	private showStylePanel(data: ElementStyleInfo): void {
 		if (this.panel) {
-			this.panel.show(data);
+			// Pass isProjectMode flag - file links only work in project mode
+			const isProjectMode = !!this.currentProjectRoot;
+			this.panel.show(data, isProjectMode);
 		}
 	}
 
