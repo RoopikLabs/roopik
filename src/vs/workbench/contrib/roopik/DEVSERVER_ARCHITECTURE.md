@@ -405,8 +405,8 @@ export function getPluginsForFramework(frameworkId, options = {}) {
     const plugins = [];
 
     // Always add these
-    plugins.push(createInjectPlugin());  // Click-to-source script
-    plugins.push(createCorsPlugin());    // CORS headers
+    plugins.push(createCorsPlugin());           // CORS headers
+    plugins.push(createCssSourceMapsPlugin());  // CSS source maps
 
     // Framework-specific source tracking
     switch (frameworkId) {
@@ -417,7 +417,10 @@ export function getPluginsForFramework(frameworkId, options = {}) {
             plugins.push(createVueSourcePlugin(options));
             break;
         case 'solid-vite':
-            plugins.push(createReactSourcePlugin(options)); // Same as React
+            plugins.push(createSolidSourcePlugin(options));
+            break;
+        case 'svelte-vite':
+            plugins.push(createSvelteSourcePlugin(options));
             break;
         case 'plain-html-vite':
             plugins.push(createHtmlSourcePlugin(options));
@@ -428,29 +431,22 @@ export function getPluginsForFramework(frameworkId, options = {}) {
 }
 ```
 
-### Click-to-Source Injection
+### Inspect Mode (Runtime Injection)
 
-The `roopik:inject` plugin adds a script to every HTML page:
+Inspect mode is injected at **runtime** via `executeScript()`, NOT at build time.
+This keeps the source code clean and avoids polluting user's HTML.
 
-```javascript
-export function createInjectPlugin() {
-    return {
-        name: 'roopik:inject',
-        enforce: 'post',
+The runtime script is in `browser/projectMode/features/inspectMode.ts` and provides:
+- Hover highlight with element label
+- Click to copy HTML to clipboard
+- Reads `data-roopik-source` for source location
+- Toast notification feedback
+- ESC to cancel, auto-cleanup after copy
 
-        transformIndexHtml(html) {
-            // Inject before </body>
-            return html.replace('</body>', CLICK_TO_SOURCE_SCRIPT + '</body>');
-        }
-    };
-}
-```
-
-The injected script provides:
-- `window.__roopik_enableInspect()` - Enable inspect mode
-- `window.__roopik_disableInspect()` - Disable inspect mode
-- `window.__roopik_isInspectActive()` - Check if active
-- `window.__roopik_getLastInspectedHtml()` - Get last clicked element
+API available after injection:
+- `window.__roopikLastInspectedHtml` - Last clicked element HTML
+- `window.__roopikLastInspectedInfo` - Full element info with source location
+- `window.__roopikInspectCleanup()` - Manual cleanup
 
 ### Source Tracking
 

@@ -9,10 +9,15 @@ import type { IProjectModeService } from '../../../common/projectMode/ipc.js';
 /**
  * Inspect Mode Feature
  *
+ * Runtime-injected inspect mode (no build-time script pollution).
  * Fire and forget - injects script, browser handles auto-cleanup.
+ *
  * Features:
  * - Highlight overlay follows hovered element
+ * - Label shows tag name above element
  * - Click copies outerHTML to clipboard
+ * - Reads data-roopik-source for source location
+ * - Toast notification confirms copy
  * - Auto-exits after copy (or ESC)
  */
 export class InspectMode {
@@ -81,6 +86,50 @@ export class InspectMode {
 			return null;
 		}
 	}
+
+	/**
+	 * Get full info about the last inspected element
+	 * Includes HTML, source location, component name, etc.
+	 */
+	async getLastInspectedInfo(browserViewId: number): Promise<InspectedElementInfo | null> {
+		if (!browserViewId) {
+			return null;
+		}
+
+		try {
+			return await this.browserService.executeScript(
+				browserViewId,
+				'window.__roopikLastInspectedInfo || null'
+			);
+		} catch {
+			return null;
+		}
+	}
+}
+
+/**
+ * Information about an inspected element
+ */
+export interface InspectedElementInfo {
+	html: string;
+	tagName: string;
+	id: string | null;
+	className: string | null;
+	source: SourceLocation | null;
+	component: string | null;
+	parent: string | null;
+}
+
+/**
+ * Source location parsed from data-roopik-source attribute
+ * Matches common/navigation/sourceNavigationService.ts SourceLocation
+ */
+export interface SourceLocation {
+	file: string;
+	line: number;       // Required: start line (1-indexed)
+	column?: number;    // Optional: start column (0-indexed)
+	endLine?: number;   // Optional: end line for selection
+	endColumn?: number; // Optional: end column for selection
 }
 
 // ============================================
@@ -93,6 +142,7 @@ export class InspectMode {
  * - Highlight overlay follows hovered element
  * - Label shows tag name
  * - Click copies outerHTML to clipboard
+ * - Reads data-roopik-source for source location
  * - Toast notification confirms copy
  * - ESC key exits inspect mode (auto-exits after copy)
  */
@@ -221,6 +271,62 @@ const INSPECT_MODE_SCRIPT = `
 		}
 	}
 
+	/**
+	 * Parse data-roopik-source attribute
+	 * Format: file:line:col or file:line:col:endLine:endCol
+	 * Handles Windows paths (C:/path/to/file.tsx:1:0:10:5)
+	 */
+	function parseSourceAttr(attr) {
+		if (!attr) return null;
+
+		const parts = attr.split(':');
+
+		// Find where the path ends by looking for numeric parts from the end
+		let pathEndIndex = 0;
+		for (let i = parts.length - 1; i >= 0; i--) {
+			if (isNaN(parseInt(parts[i], 10))) {
+				pathEndIndex = i;
+				break;
+			}
+		}
+
+		const filePath = parts.slice(0, pathEndIndex + 1).join(':');
+		const numbers = parts.slice(pathEndIndex + 1).map(function(n) { return parseInt(n, 10); });
+
+		// Build result with required line, optional rest
+		var result = {
+			file: filePath,
+			line: numbers[0] || 1
+		};
+
+		if (numbers.length >= 2) {
+			result.column = numbers[1];
+		}
+		if (numbers.length >= 4) {
+			result.endLine = numbers[2];
+			result.endColumn = numbers[3];
+		}
+
+		return result;
+	}
+
+	// Build full element info object
+	function buildElementInfo(el) {
+		const sourceAttr = el.getAttribute('data-roopik-source');
+		const componentAttr = el.getAttribute('data-roopik-component');
+		const parentAttr = el.getAttribute('data-roopik-parent');
+
+		return {
+			html: el.outerHTML,
+			tagName: el.tagName.toLowerCase(),
+			id: el.id || null,
+			className: el.className || null,
+			source: sourceAttr ? parseSourceAttr(sourceAttr) : null,
+			component: componentAttr || null,
+			parent: parentAttr || null
+		};
+	}
+
 	// Update overlay position
 	function updateOverlay(el) {
 		if (!el || el === document.body || el === document.documentElement) {
@@ -280,9 +386,11 @@ const INSPECT_MODE_SCRIPT = `
 
 		if (currentElement && !(currentElement.id && currentElement.id.startsWith('__roopik_inspect'))) {
 			const html = currentElement.outerHTML;
+			const info = buildElementInfo(currentElement);
 
 			// Store for API access
 			window.__roopikLastInspectedHtml = html;
+			window.__roopikLastInspectedInfo = info;
 
 			// Copy to clipboard, then auto-exit inspect mode
 			copyToClipboard(html)
