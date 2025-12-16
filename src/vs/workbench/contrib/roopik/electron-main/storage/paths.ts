@@ -28,6 +28,12 @@ export const CANVASES_FOLDER = 'canvases';
 /** Components subfolder */
 export const COMPONENTS_FOLDER = 'components';
 
+/** Projects subfolder (for Mode 2 - Browser Preview) */
+export const PROJECTS_FOLDER = 'projects';
+
+/** Project registry file name */
+export const PROJECT_REGISTRY_FILE = 'projects.json';
+
 /** Config file name */
 export const CONFIG_FILE = 'config.json';
 
@@ -233,6 +239,24 @@ export function getBundlePath(workspacePath: string, canvasId: string, component
  */
 export function getBuildMetaPath(workspacePath: string, canvasId: string, componentId: string): string {
 	return path.join(getCacheComponentPath(workspacePath, canvasId, componentId), BUILD_META_FILE);
+}
+
+// ============================================================================
+// Project Paths (Mode 2 - Browser Preview)
+// ============================================================================
+
+/**
+ * Get the projects folder path (.roopik/projects/)
+ */
+export function getProjectsFolderPath(workspaceRoot: string): string {
+	return path.join(getWorkspaceRoopikPath(workspaceRoot), PROJECTS_FOLDER);
+}
+
+/**
+ * Get the project registry file path (.roopik/projects/projects.json)
+ */
+export function getProjectRegistryPath(workspaceRoot: string): string {
+	return path.join(getProjectsFolderPath(workspaceRoot), PROJECT_REGISTRY_FILE);
 }
 
 // ============================================================================

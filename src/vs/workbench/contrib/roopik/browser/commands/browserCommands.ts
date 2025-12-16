@@ -19,6 +19,15 @@ import { IConfigurationService } from '../../../../../platform/configuration/com
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { IStorageService, StorageScope } from '../../../../../platform/storage/common/storage.js';
 import { EditorTabInput } from '../projectMode/editorTabInput.js';
+import { Editor as ProjectModeEditor } from '../projectMode/editor.js';
+
+/**
+ * Arguments for openProjectPreview command
+ */
+interface OpenProjectPreviewArgs {
+	projectPath?: string;
+	projectName?: string;
+}
 
 /**
  * Register all browser-related commands
@@ -35,7 +44,7 @@ export function registerBrowserCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor): Promise<void> {
+		async run(accessor: ServicesAccessor, args?: OpenProjectPreviewArgs): Promise<void> {
 			const editorService = accessor.get(IEditorService);
 			const editorGroupsService = accessor.get(IEditorGroupsService);
 			const configurationService = accessor.get(IConfigurationService);
@@ -47,13 +56,18 @@ export function registerBrowserCommands(): void {
 
 			// Check if browser editor is already open in any group
 			const visibleEditors = editorService.visibleEditorPanes;
-			const existingPane = visibleEditors.find(
+			let existingPane = visibleEditors.find(
 				pane => pane.input instanceof EditorTabInput
 			);
 
 			if (existingPane) {
 				// Focus existing editor in its current group
 				await existingPane.group.openEditor(input, { pinned: true });
+
+				// If projectPath provided, start that project in the existing editor
+				if (args?.projectPath && existingPane instanceof ProjectModeEditor) {
+					await existingPane.startProjectPreview(args.projectPath);
+				}
 				return;
 			}
 
@@ -64,6 +78,19 @@ export function registerBrowserCommands(): void {
 				targetGroup = editorGroupsService.addGroup(editorGroupsService.activeGroup, direction);
 			}
 			await targetGroup.openEditor(input, { pinned: true });
+
+			// If projectPath provided, start that project after opening
+			if (args?.projectPath) {
+				// Find the newly opened editor pane
+				const newPane = editorService.visibleEditorPanes.find(
+					pane => pane.input instanceof EditorTabInput
+				);
+				if (newPane && newPane instanceof ProjectModeEditor) {
+					// Small delay to ensure editor is fully initialized
+					await new Promise(resolve => setTimeout(resolve, 100));
+					await newPane.startProjectPreview(args.projectPath);
+				}
+			}
 
 			// Show hint notification (once per installation)
 			const hintKey = 'roopik.browserRightSideHintShown';

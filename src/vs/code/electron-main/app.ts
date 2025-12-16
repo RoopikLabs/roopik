@@ -143,6 +143,10 @@ import { COMPONENT_CHANNEL_NAME } from '../../workbench/contrib/roopik/browser/c
 import { BuildService } from '../../workbench/contrib/roopik/electron-main/build/buildService.js';
 import { ImportService } from '../../workbench/contrib/roopik/electron-main/import/importService.js';
 import { FileWatcher } from '../../workbench/contrib/roopik/electron-main/watch/fileWatcher.js';
+// ROOPIK: Project Storage Service - Recent projects for Project Mode
+import { ProjectStorageService } from '../../workbench/contrib/roopik/electron-main/projectStorage/projectStorageService.js';
+import { ProjectStorageChannel } from '../../workbench/contrib/roopik/electron-main/channel/projectStorageChannel.js';
+import { PROJECT_STORAGE_CHANNEL } from '../../workbench/contrib/roopik/common/projectStorage/index.js';
 
 /**
  * The main VS Code application. There will only ever be one instance,
@@ -1282,6 +1286,11 @@ export class CodeApplication extends Disposable {
 		const componentService = new ComponentService(roopikStorageService, buildService, importService, fileWatcher);
 		const componentChannel = new ComponentChannel(componentService);
 		mainProcessElectronServer.registerChannel(COMPONENT_CHANNEL_NAME, componentChannel);
+
+		// ROOPIK: Project Storage Service - Recent projects for Project Mode
+		const projectStorageService = new ProjectStorageService();
+		const projectStorageChannel = new ProjectStorageChannel(projectStorageService);
+		mainProcessElectronServer.registerChannel(PROJECT_STORAGE_CHANNEL, projectStorageChannel);
 		// ROOPIK END
 	}
 

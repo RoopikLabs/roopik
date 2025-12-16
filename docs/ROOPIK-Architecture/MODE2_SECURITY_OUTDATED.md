@@ -1,5 +1,8 @@
 # Mode 2 Security: Webview-Only Preview Access
 
+
+## NOTE:  This is outdayed, we no longer apply any security restriction
+
 ## 🎯 Feature Overview
 
 **Goal**: Prevent external browsers (Chrome, Edge, Firefox) from accessing the Roopik development server to protect our proprietary click-to-source implementation and injected HTML code.
