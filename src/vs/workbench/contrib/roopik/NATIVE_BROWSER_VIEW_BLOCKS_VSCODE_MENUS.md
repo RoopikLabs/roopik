@@ -54,30 +54,57 @@ This is the same approach used by **Cursor IDE**.
 |------------|------------------|--------|
 | Command Palette (Ctrl+Shift+P) | `IQuickInputService.onShow/onHide` | ✅ Working |
 | Context Menus (right-click) | `IContextMenuService.onDidShow/HideContextMenu` | ✅ Working |
-| Native Menu Bar (File, Edit...) | Needs main process IPC | ❌ Not implemented |
+| Custom Menu Bar (File, Edit...) | `IMenubarStateService` via `ITitleService.onMenubarFocusStateChange` | ✅ Working |
 
-## Why Native Menu Bar Is Not Handled
+## Custom Menu Bar Detection
 
-The native Electron menu (File, Edit, View, Help...) is rendered by the **operating system**, not the renderer process. There are no JavaScript events when it opens/closes.
+On Windows and Linux with custom titlebar (`"window.titleBarStyle": "custom"`), VSCode renders an **HTML-based menubar** instead of the native OS menu. This menubar is implemented in `MenuBar` class (`base/browser/ui/menu/menubar.ts`).
 
-**To fix this would require:**
-1. Modify `src/vs/platform/menubar/electron-main/menubar.ts` (main process)
-2. Add `menu-will-show`/`menu-will-close` event handlers
-3. Create IPC channel to broadcast to renderer
-4. Subscribe in editor
+**Our solution:** Listen to the `onFocusStateChange` event from the custom menubar:
 
-**Why we skip this:**
-- Touches core VSCode infrastructure
-- High risk of rebase conflicts
-- Edge case (most users use keyboard shortcuts)
-- Command palette covers most use cases
+1. `MenuBar` class fires `onFocusStateChange(true)` when a menu opens
+2. `MenubarControl` in titlebar forwards this as `onFocusStateChange`
+3. `BrowserTitlebarPart` exposes `onMenubarFocusStateChange` event
+4. `IMenubarStateService` listens to `ITitleService.onMenubarFocusStateChange`
+5. `editor.ts` subscribes to `IMenubarStateService.onDidOpenMenu/onDidCloseMenu`
 
 ## Implementation
 
 ### Files
-- [projectModeV2Editor.ts](browser/projectModeV2/projectModeV2Editor.ts) - `setupBrowserPauseDetection()`
+- [titlebarPart.ts](../../../../browser/parts/titlebar/titlebarPart.ts) - `ITitlebarPart.onMenubarFocusStateChange` event
+- [menubarStateService.ts](../../../../services/menubar/electron-browser/menubarStateService.ts) - Listens to ITitleService
+- [editor.ts](browser/projectMode/editor.ts) - `setupBrowserPauseDetection()`
 
 ### Key Code
+
+**Titlebar Part (titlebarPart.ts):**
+```typescript
+export interface ITitlebarPart extends IDisposable {
+    readonly onMenubarVisibilityChange: Event<boolean>;
+    readonly onMenubarFocusStateChange: Event<boolean>;  // <-- New event
+    // ...
+}
+
+// In BrowserTitlebarPart.installMenubar():
+this._register(this.customMenubar.value.onFocusStateChange(focused =>
+    this._onMenubarFocusStateChange.fire(focused)
+));
+```
+
+**MenubarStateService (menubarStateService.ts):**
+```typescript
+constructor(@ITitleService private readonly titleService: ITitleService) {
+    this._register(this.titleService.onMenubarFocusStateChange(focused => {
+        if (focused) {
+            this._onDidOpenMenu.fire();
+        } else {
+            this._onDidCloseMenu.fire();
+        }
+    }));
+}
+```
+
+**Editor (editor.ts):**
 ```typescript
 private setupBrowserPauseDetection(): void {
     // Command Palette
@@ -87,18 +114,20 @@ private setupBrowserPauseDetection(): void {
     // Context Menus
     this._register(this.contextMenuService.onDidShowContextMenu(() => this.pauseBrowser()));
     this._register(this.contextMenuService.onDidHideContextMenu(() => this.resumeBrowser()));
-}
 
-private pauseBrowser(): void {
-    this.browserService.setBrowserVisible(this.browserViewId, false);
-    this.showPausedOverlay();
-}
-
-private resumeBrowser(): void {
-    this.hidePausedOverlay();
-    this.browserService.setBrowserVisible(this.browserViewId, true);
+    // Custom Menu Bar
+    this._register(this.menubarStateService.onDidOpenMenu(() => this.pauseBrowser()));
+    this._register(this.menubarStateService.onDidCloseMenu(() => this.resumeBrowser()));
 }
 ```
+
+## Why Not Use Native Menu Events (IPC)?
+
+We initially tried hooking into Electron's native menu events (`menu-will-show`/`menu-will-close`) and broadcasting via IPC. **This approach was abandoned because:**
+
+1. **Windows uses custom menubar**: On Windows with custom titlebar, VSCode uses an HTML-based menubar, not native Electron menus
+2. **Electron limitation**: The `menu-will-show`/`menu-will-close` events only fire for **submenus**, not top-level menu clicks
+3. **Simpler approach**: Using the existing `onFocusStateChange` event from the custom menubar is cleaner and doesn't require IPC
 
 ## Why Not Pause on Window Blur?
 

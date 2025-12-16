@@ -6,7 +6,7 @@
 import { Event } from '../../../../../base/common/event.js';
 import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from '../../common/projectMode/types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 
 /**
@@ -105,10 +105,6 @@ export class ServiceBridge implements IProjectModeService {
 		return this.channel.call('closeDevTools', browserViewId);
 	}
 
-	async setDevToolsBounds(browserViewId: number, bounds: ViewBounds): Promise<void> {
-		return this.channel.call('setDevToolsBounds', { browserViewId, bounds });
-	}
-
 	async isDevToolsOpen(browserViewId: number): Promise<boolean> {
 		return this.channel.call('isDevToolsOpen', browserViewId);
 	}
@@ -134,18 +130,6 @@ export class ServiceBridge implements IProjectModeService {
 	}
 
 	// ============================================
-	// Device Emulation
-	// ============================================
-
-	async setDeviceEmulation(browserViewId: number, device: DevicePreset): Promise<void> {
-		return this.channel.call('setDeviceEmulation', { browserViewId, device });
-	}
-
-	async clearDeviceEmulation(browserViewId: number): Promise<void> {
-		return this.channel.call('clearDeviceEmulation', browserViewId);
-	}
-
-	// ============================================
 	// Utilities
 	// ============================================
 
@@ -163,34 +147,6 @@ export class ServiceBridge implements IProjectModeService {
 
 	async getDebuggingUrl(browserViewId: number): Promise<string> {
 		return this.channel.call('getDebuggingUrl', browserViewId);
-	}
-
-	// ============================================
-	// Overlay View
-	// ============================================
-
-	async createOverlayView(browserViewId: number, bounds: ViewBounds, htmlContent: string): Promise<number> {
-		return this.channel.call('createOverlayView', { browserViewId, bounds, htmlContent });
-	}
-
-	async setOverlayBounds(overlayViewId: number, bounds: ViewBounds): Promise<void> {
-		return this.channel.call('setOverlayBounds', { overlayViewId, bounds });
-	}
-
-	async setOverlayContent(overlayViewId: number, htmlContent: string): Promise<void> {
-		return this.channel.call('setOverlayContent', { overlayViewId, htmlContent });
-	}
-
-	async setOverlayVisible(overlayViewId: number, visible: boolean): Promise<void> {
-		return this.channel.call('setOverlayVisible', { overlayViewId, visible });
-	}
-
-	async destroyOverlayView(overlayViewId: number): Promise<void> {
-		return this.channel.call('destroyOverlayView', overlayViewId);
-	}
-
-	async executeScriptOnOverlay(overlayViewId: number, script: string): Promise<any> {
-		return this.channel.call('executeScriptOnOverlay', { overlayViewId, script });
 	}
 
 	// ============================================

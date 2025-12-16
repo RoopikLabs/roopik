@@ -167,3 +167,25 @@ Files modified outside of `workbench/contrib/roopik/` to integrate Roopik into V
 | `electron-context-menu` | `^4.1.1` | Standard browser context menu (Back/Forward/Reload/Inspect) for ProjectMode BrowserView |
 
 **Why in core?** BuildService (part of ComponentService) runs in electron-main process to bundle user components with ESBuild. Frameworks like Vue/Svelte need their compiler plugins available at build time. electron-context-menu enables standard browser right-click menu in ProjectMode browser preview.
+
+---
+
+## Titlebar / Menubar Modifications
+
+**Purpose:** Expose menubar focus state changes so ProjectMode can pause browser preview when menus open (WebContentsView renders on top of HTML menus).
+
+| File | Change | Reason |
+|------|--------|--------|
+| `src/vs/workbench/browser/parts/titlebar/titlebarPart.ts` | Added `onMenubarFocusStateChange: Event<boolean>` to `ITitlebarPart` interface and `BrowserTitlebarPart` class | Expose event when custom HTML menubar opens/closes |
+| `src/vs/workbench/browser/parts/titlebar/titlebarPart.ts` | In `installMenubar()`: Added listener `this.customMenubar.value.onFocusStateChange(focused => this._onMenubarFocusStateChange.fire(focused))` | Wire up menubar focus events to titlebar part |
+| `src/vs/workbench/browser/parts/titlebar/titlebarPart.ts` | In `BrowserTitleService`: Added `onMenubarFocusStateChange` property assignment from `mainPart` | Expose event through service |
+
+**Roopik Service (NOT in VSCode core - lives in our project):**
+
+| File | Purpose |
+|------|---------|
+| `src/vs/workbench/contrib/roopik/browser/services/menubarStateService.ts` | Service that listens to `ITitleService.onMenubarFocusStateChange` and exposes `onDidOpenMenu`/`onDidCloseMenu` events for browser pause detection |
+
+**Usage in Roopik:**
+- `src/vs/workbench/contrib/roopik/browser/projectMode/editor.ts` subscribes to `IMenubarStateService.onDidOpenMenu/onDidCloseMenu` to pause/resume browser when menus open
+- Service is registered via import in `roopik.contribution.ts`

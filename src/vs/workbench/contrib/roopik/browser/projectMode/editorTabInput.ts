@@ -7,6 +7,7 @@ import { EditorInput } from '../../../../common/editor/editorInput.js';
 import { EditorInputCapabilities } from '../../../../common/editor.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { Codicon } from '../../../../../base/common/codicons.js';
+import { ThemeIcon } from '../../../../../base/common/themables.js';
 import { registerIcon } from '../../../../../platform/theme/common/iconRegistry.js';
 import { truncate } from '../../../../../base/common/strings.js';
 
@@ -33,6 +34,7 @@ export class EditorTabInput extends EditorInput {
 
 	private _url: string = 'about:blank';
 	private _pageTitle: string = '';
+	private _favicon: string | undefined;
 
 	/**
 	 * Get the singleton browser instance.
@@ -102,7 +104,11 @@ export class EditorTabInput extends EditorInput {
 		}
 	}
 
-	override getIcon() {
+	override getIcon(): ThemeIcon | URI {
+		// Use favicon if available, otherwise fall back to globe icon
+		if (this._favicon) {
+			return URI.parse(this._favicon);
+		}
 		return browserTabIcon;
 	}
 
@@ -129,6 +135,16 @@ export class EditorTabInput extends EditorInput {
 
 	get pageTitle(): string {
 		return this._pageTitle;
+	}
+
+	/**
+	 * Set favicon URL (from page-favicon-updated event)
+	 */
+	setFavicon(favicon: string | undefined): void {
+		if (this._favicon !== favicon) {
+			this._favicon = favicon;
+			this._onDidChangeLabel.fire();
+		}
 	}
 
 	override matches(other: EditorInput): boolean {

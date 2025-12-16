@@ -33,11 +33,11 @@ import { IClipboardService } from '../../../../../platform/clipboard/common/clip
 import { InspectMode } from './features/inspectMode.js';
 import { Bookmarks } from './features/bookmarks.js';
 import { BrowserPause } from './features/browserPause.js';
-import { ActionBar } from './features/actionBar.js';
 import { StyleInspect } from './features/styleInspect.js';
 // Components
 import { DefaultBrowserScreen } from './components/defaultBrowserScreen.js';
 import { ISourceNavigationService } from '../../common/navigation/index.js';
+import { IMenubarStateService } from '../services/menubarStateService.js';
 
 /**
  * Project Mode Editor
@@ -89,7 +89,6 @@ export class Editor extends EditorPane {
 	private inspectMode!: InspectMode;
 	private bookmarks!: Bookmarks;
 	private browserPause!: BrowserPause;
-	private actionBar!: ActionBar;
 	private styleInspect!: StyleInspect;
 
 	constructor(
@@ -105,7 +104,8 @@ export class Editor extends EditorPane {
 		@IContextMenuService private readonly contextMenuService: IContextMenuService,
 		@INotificationService private readonly notificationService: INotificationService,
 		@IClipboardService private readonly clipboardService: IClipboardService,
-		@ISourceNavigationService private readonly sourceNavigationService: ISourceNavigationService
+		@ISourceNavigationService private readonly sourceNavigationService: ISourceNavigationService,
+		@IMenubarStateService private readonly menubarStateService: IMenubarStateService
 	) {
 		super(Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = RoopikLogger.create(loggerService);
@@ -116,7 +116,6 @@ export class Editor extends EditorPane {
 		this.inspectMode = new InspectMode(this.browserService, this.notificationService);
 		this.bookmarks = new Bookmarks(this.storageService, this.notificationService, this.logger);
 		this.browserPause = new BrowserPause(this.browserService);
-		this.actionBar = new ActionBar(this.browserService, this.logger);
 		this.styleInspect = new StyleInspect(this.browserService, this.notificationService, this.sourceNavigationService);
 
 		// Set callback to update browser bounds when style panel visibility changes
@@ -210,13 +209,7 @@ export class Editor extends EditorPane {
 	 * Currently handled:
 	 * - Command Palette (Ctrl+Shift+P) via IQuickInputService
 	 * - Context menus (right-click) via IContextMenuService
-	 *
-	 * TODO: Native menu bar (File, Edit, View...) needs main process IPC
-	 * The native Electron menu doesn't fire events in the renderer process.
-	 * To fix this, we need to:
-	 * 1. Add menu-will-show/menu-will-close event handlers in main process Menubar class
-	 * 2. Create IPC channel to notify renderer when menu opens/closes
-	 * 3. Subscribe to those events here
+	 * - Native menu bar (File, Edit, View...) via IMenubarStateService
 	 */
 	private setupBrowserPauseDetection(): void {
 		// 1. Command Palette detection via IQuickInputService
@@ -234,6 +227,18 @@ export class Editor extends EditorPane {
 		}));
 
 		this._register(this.contextMenuService.onDidHideContextMenu(() => {
+			this.resumeBrowser();
+		}));
+
+		// 3. Custom menubar detection via IMenubarStateService
+		// Events are fired when VSCode's custom HTML-based menubar is opened/closed
+		this._register(this.menubarStateService.onDidOpenMenu(() => {
+			// this.logger.info(`[ProjectMode] Menubar opened`);
+			this.pauseBrowser();
+		}));
+
+		this._register(this.menubarStateService.onDidCloseMenu(() => {
+			// this.logger.info(`[ProjectMode] Menubar closed`);
 			this.resumeBrowser();
 		}));
 	}
@@ -368,8 +373,6 @@ export class Editor extends EditorPane {
 		// This is critical for split screen scenarios where parent resizes
 		this.resizeObserver = new ResizeObserver(() => {
 			this.updateViewBounds();
-			// Also update action bar bounds on resize
-			this.updateBottomActionBarBounds();
 		});
 		this.resizeObserver.observe(this.container); // Parent container for split resize
 		this.resizeObserver.observe(this.browserContainer);
@@ -473,29 +476,24 @@ export class Editor extends EditorPane {
 	private updateBoundsWithRetry(): void {
 		// Immediate update (may get wrong bounds if layout not complete)
 		this.updateViewBounds();
-		this.updateBottomActionBarBounds();
 
 		// Use requestAnimationFrame to wait for next paint
 		requestAnimationFrame(() => {
 			this.updateViewBounds();
-			this.updateBottomActionBarBounds();
 
 			// Additional delayed updates to catch late layout changes
 			// This handles split screen and other complex layout scenarios
 			setTimeout(() => {
 				this.updateViewBounds();
-				this.updateBottomActionBarBounds();
 			}, 50);
 
 			setTimeout(() => {
 				this.updateViewBounds();
-				this.updateBottomActionBarBounds();
 			}, 150);
 
 			// Final update after layout should definitely be stable
 			setTimeout(() => {
 				this.updateViewBounds();
-				this.updateBottomActionBarBounds();
 			}, 300);
 		});
 	}
@@ -613,6 +611,7 @@ export class Editor extends EditorPane {
 	// Track last known values to avoid unnecessary updates (for event-driven navigation)
 	private lastKnownUrl = '';
 	private lastKnownTitle = '';
+	private lastKnownFavicon = '';
 	private lastErrorUrl = ''; // Track which URL we showed error for
 	private wasLoading = false; // Track loading state for progress bar
 
@@ -710,6 +709,16 @@ export class Editor extends EditorPane {
 			});
 
 			// UI updates now happen via event subscription (see setupEventSubscriptions)
+		}
+
+		// Update tab favicon when it changes
+		const currentFavicon = event.favicon || '';
+		if (currentFavicon !== this.lastKnownFavicon) {
+			this.lastKnownFavicon = currentFavicon;
+			const input = this.input as EditorTabInput;
+			if (input) {
+				input.setFavicon(currentFavicon || undefined);
+			}
 		}
 
 		// Update back/forward button states
@@ -1171,48 +1180,17 @@ export class Editor extends EditorPane {
 	}
 
 	// ============================================
-	// Edit Mode & Action Bar (delegates to ActionBar feature)
+	// Edit Mode (placeholder for future implementation)
 	// ============================================
 
 	/**
-	 * Toggle Edit Mode - shows/hides the bottom action bar
+	 * Toggle Edit Mode
+	 * TODO: Implement edit mode features (drag-drop, direct style editing)
 	 */
-	private async toggleEditModeToolbar(enabled: boolean): Promise<void> {
-		if (enabled) {
-			if (!this.actionBar.exists) {
-				await this.actionBar.create(this.browserViewId!, this.getBrowserBounds());
-			} else {
-				await this.actionBar.show();
-			}
-			this.logger.info('[ProjectMode] Edit Mode ENABLED');
-		} else {
-			await this.actionBar.hide();
-			this.logger.info('[ProjectMode] Edit Mode DISABLED');
-		}
+	private toggleEditModeToolbar(enabled: boolean): void {
+		this.logger.info(`[ProjectMode] Edit Mode ${enabled ? 'ENABLED' : 'DISABLED'} (not yet implemented)`);
+		// TODO: Implement edit mode - will enable drag-drop, style editing, etc.
 	}
-
-	/**
-	 * Get current browser container bounds
-	 */
-	private getBrowserBounds(): ViewBounds {
-		const rect = this.browserContainer?.getBoundingClientRect() || { left: 0, top: 0, width: 0, height: 0 };
-		return {
-			x: Math.floor(rect.left),
-			y: Math.floor(rect.top),
-			width: Math.floor(rect.width),
-			height: Math.floor(rect.height)
-		};
-	}
-
-	/**
-	 * Update action bar bounds when browser resizes
-	 */
-	private async updateBottomActionBarBounds(): Promise<void> {
-		await this.actionBar.updateBounds(this.getBrowserBounds());
-	}
-
-	// TODO: Action bar features are unimplemented
-	// Communication will use executeScript for on-demand queries
 
 	// ============================================
 	// Inspect Mode (delegates to InspectMode feature class)
@@ -1429,7 +1407,7 @@ export class Editor extends EditorPane {
 		try {
 			// Use VSCode's clipboard service (works reliably in Electron)
 			await this.clipboardService.writeText(url);
-			this.logger.info(`[ProjectMode] URL copied to clipboard: ${url}`);
+			// this.logger.info(`[ProjectMode] URL copied to clipboard: ${url}`);
 
 			// Show success notification
 			this.notificationService.notify({
@@ -1698,10 +1676,6 @@ export class Editor extends EditorPane {
 
 		// Hide views immediately
 		this.hideViews();
-
-		// Destroy action bar
-		this.actionBar.destroy()
-			.catch((err: Error) => this.logger.error('[ProjectMode] Failed to destroy action bar:', err));
 
 		// Publish browser destroyed event to central event bus
 		this.eventService.publish('browser.destroyed', {
