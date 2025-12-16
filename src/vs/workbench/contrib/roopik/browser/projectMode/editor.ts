@@ -132,6 +132,12 @@ export class Editor extends EditorPane {
 			this.controlBar?.setStylePanelActive(visible);
 		});
 
+		// Set callback for tree node selection (Components tab)
+		// When user clicks a node in the tree, highlight it in the browser
+		this.styleInspect.setOnTreeNodeSelected((nodeId) => {
+			this.handleTreeNodeSelected(nodeId);
+		});
+
 		// Subscribe to DevServer logs and forward to VSCode output channel
 		// This is critical for debugging - shows all prerequisite checks, server startup, etc.
 		this._register(this.devServerService.onLog((event) => {
@@ -437,6 +443,69 @@ export class Editor extends EditorPane {
 		if (this.styleInspect.isPanelVisible()) {
 			this.styleInspect.hidePanel();
 		}
+
+		// 3. Hide element highlight in browser
+		this.styleInspect.hideElementHighlight();
+	}
+
+	// ============================================
+	// Page Load Complete Handler
+	// ============================================
+
+	/**
+	 * Called when page finishes loading (after navigation/refresh)
+	 * Handles:
+	 * 1. Re-injecting inspect mode script if it was active
+	 * 2. Fetching DOM tree for Components tab
+	 */
+	private onPageLoadComplete(): void {
+		this.logger.info('[ProjectMode] onPageLoadComplete called, browserViewId:', this.browserViewId);
+
+		if (!this.browserViewId) {
+			this.logger.warn('[ProjectMode] onPageLoadComplete: No browserViewId!');
+			return;
+		}
+
+		// 1. Re-inject inspect mode script if it was active before page load
+		// Page navigation wipes all injected scripts, so we need to re-inject
+		if (this.inspectMode.getIsActive()) {
+			this.logger.info('[ProjectMode] Re-injecting inspect mode script');
+			this.inspectMode.enable(this.browserViewId).catch((error) => {
+				this.logger.warn('[ProjectMode] Failed to re-inject inspect mode after page load:', error);
+			});
+		}
+
+		// 2. Fetch DOM tree for Components tab
+		this.logger.info('[ProjectMode] Fetching DOM tree for Components tab');
+		this.fetchDOMTreeForComponentsTab();
+	}
+
+	// ============================================
+	// DOM Tree (Components Tab)
+	// ============================================
+
+	/**
+	 * Fetch DOM tree for the Components tab
+	 * Called after page finishes loading
+	 */
+	private fetchDOMTreeForComponentsTab(): void {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		// Fetch DOM tree in background (don't await)
+		this.styleInspect.fetchDOMTree(this.browserViewId).catch((error) => {
+			this.logger.warn('[ProjectMode] Failed to fetch DOM tree:', error);
+		});
+	}
+
+	/**
+	 * Handle tree node selection from Components tab
+	 * Highlights the element in the browser
+	 */
+	private async handleTreeNodeSelected(nodeId: number): Promise<void> {
+		// Highlight element in browser via CDP
+		await this.styleInspect.highlightElementInBrowser(nodeId);
 	}
 
 	/**
@@ -815,6 +884,9 @@ export class Editor extends EditorPane {
 				this.eventService.publish('browser.loadingFinished', {
 					browserViewId: event.browserViewId
 				});
+
+				// Page finished loading - do post-load setup
+				this.onPageLoadComplete();
 			}
 			this.wasLoading = false;
 			this.controlBar?.hideLoading();
@@ -841,6 +913,7 @@ export class Editor extends EditorPane {
 
 		// Check if URL changed
 		if (currentUrl !== this.lastKnownUrl) {
+			const previousUrl = this.lastKnownUrl;
 			this.lastKnownUrl = currentUrl;
 
 			// CRITICAL: Update input URL so it gets serialized correctly on reload
@@ -859,6 +932,13 @@ export class Editor extends EditorPane {
 			});
 
 			// UI updates now happen via event subscription (see setupEventSubscriptions)
+
+			// If this is the first real URL (from about:blank), and page is not loading,
+			// trigger post-load setup. This handles the case where we miss the loading event
+			// (e.g., page was already loaded when we connected, or very fast load).
+			if (previousUrl === '' && currentUrl && currentUrl !== 'about:blank' && !event.isLoading) {
+				this.onPageLoadComplete();
+			}
 		}
 
 		// Update tab title when page title changes
@@ -1476,8 +1556,13 @@ export class Editor extends EditorPane {
 				this.styleInspect.initialize(this.contentContainer);
 			}
 			// Show empty panel (user can then use inspect mode to select an element)
-			// Or if we have cached data, show that
+			// Panel will use cached DOM tree if available (from page load)
 			this.styleInspect.showEmptyPanel();
+
+			// If no cached tree exists yet, fetch it now
+			if (!this.styleInspect.getDOMTreeCache()) {
+				this.fetchDOMTreeForComponentsTab();
+			}
 		}
 	}
 

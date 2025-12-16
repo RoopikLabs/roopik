@@ -6,15 +6,36 @@
 import { INotificationService, Severity } from '../../../../../../platform/notification/common/notification.js';
 import type { IProjectModeService } from '../../../common/projectMode/ipc.js';
 import type { CSSSourceLocation, ElementStyleInfo, GetElementStylesResult } from '../../../common/cssResolvers/types.js';
-import { StyleInspectPanel, IStyleInspectPanelCallbacks } from '../components/styleInspectPanel.js';
+import { StyleInspectPanel, IStyleInspectPanelCallbacks, DOMTreeNode } from '../components/styleInspectPanel.js';
 import { ISourceNavigationService } from '../../../common/navigation/index.js';
 import type { InspectMode } from './inspectMode.js';
 
 /**
+ * CDP DOM node structure (from DOM.getDocument response)
+ */
+interface CDPDOMNode {
+	nodeId: number;
+	nodeType: number;
+	nodeName: string;
+	localName: string;
+	nodeValue: string;
+	childNodeCount?: number;
+	children?: CDPDOMNode[];
+	attributes?: string[];
+}
+
+/**
  * Style Inspect Feature
  *
- * Integrates inspect mode with CSS source resolution.
- * Uses the unified InspectMode script for element selection.
+ * Controller/coordinator that bridges UI Panel, Main Process (CDP/IPC), and Editor.
+ *
+ * Responsibilities:
+ * - Enable/disable inspect mode (delegates to InspectMode)
+ * - Fetch element styles via IPC when element is selected
+ * - Fetch DOM tree via CDP for Components tab
+ * - Highlight elements in browser via CDP (DOM.highlightNode)
+ * - Convert CDP data formats to UI-friendly formats
+ * - Bidirectional sync: browser selection ↔ tree selection
  *
  * Flow:
  * 1. User enables style inspect mode
@@ -26,7 +47,7 @@ import type { InspectMode } from './inspectMode.js';
  * 7. User can click file links to open in editor
  *
  * Note: The actual script injection is handled by InspectMode class.
- * StyleInspect is now focused on panel management and CSS resolution.
+ * StyleInspect is focused on panel management, CDP calls, and data coordination.
  */
 export class StyleInspect {
 	private panel: StyleInspectPanel | null = null;
@@ -34,6 +55,13 @@ export class StyleInspect {
 	private currentProjectRoot: string | undefined;
 	private onVisibilityChangedCallback: ((visible: boolean, panelWidth: number) => void) | undefined;
 	private inspectModeRef: InspectMode | null = null;
+
+	// DOM tree state
+	private currentBrowserViewId: number | null = null;
+	private domTreeCache: DOMTreeNode | null = null;
+
+	// Callback for tree node selection (to highlight in browser)
+	private onTreeNodeSelectedCallback: ((nodeId: number) => void) | undefined;
 
 	constructor(
 		private readonly browserService: IProjectModeService,
@@ -58,6 +86,14 @@ export class StyleInspect {
 	}
 
 	/**
+	 * Set callback for when user clicks a node in the Components tree
+	 * Used by editor to highlight the element in browser
+	 */
+	setOnTreeNodeSelected(callback: (nodeId: number) => void): void {
+		this.onTreeNodeSelectedCallback = callback;
+	}
+
+	/**
 	 * Initialize the style panel in a container
 	 */
 	initialize(container: HTMLElement): void {
@@ -71,6 +107,9 @@ export class StyleInspect {
 			onClose: () => this.onPanelClosed(),
 			onVisibilityChanged: (visible, panelWidth) => {
 				this.onVisibilityChangedCallback?.(visible, panelWidth);
+			},
+			onTreeNodeSelected: (nodeId) => {
+				this.onTreeNodeSelectedCallback?.(nodeId);
 			}
 		};
 
@@ -168,6 +207,9 @@ export class StyleInspect {
 
 			if (result.success && result.data) {
 				this.showStylePanel(result.data);
+
+				// Sync with Components tree - highlight the selected element
+				this.syncTreeWithSelectedElement(selector);
 			} else {
 				this.notificationService.notify({
 					severity: Severity.Warning,
@@ -182,6 +224,22 @@ export class StyleInspect {
 				message: 'Failed to inspect element styles',
 				sticky: false
 			});
+		}
+	}
+
+	/**
+	 * Sync tree selection with browser element selection
+	 * When user selects element in browser, highlight it in Components tree
+	 */
+	private async syncTreeWithSelectedElement(selector: string): Promise<void> {
+		try {
+			const nodeId = await this.getNodeIdForSelector(selector);
+			if (nodeId) {
+				this.highlightTreeNode(nodeId);
+			}
+		} catch (error) {
+			// Silent fail - tree sync is optional
+			console.debug('[StyleInspect] Failed to sync tree:', error);
 		}
 	}
 
@@ -244,6 +302,7 @@ export class StyleInspect {
 	/**
 	 * Show empty panel (for manual toggle)
 	 * Displays panel with hint to select an element
+	 * Also sets cached DOM tree if available
 	 */
 	showEmptyPanel(): void {
 		if (this.panel) {
@@ -261,6 +320,12 @@ export class StyleInspect {
 				cssInJs: undefined,
 				inheritedStyles: undefined
 			}, isProjectMode);
+
+			// If we have a cached DOM tree, set it on the panel
+			// This ensures Components tab has data even if opened before page load
+			if (this.domTreeCache) {
+				this.panel.setDOMTree(this.domTreeCache);
+			}
 		}
 	}
 
@@ -323,5 +388,254 @@ export class StyleInspect {
 			this.panel = null;
 		}
 		this.inspectModeRef = null;
+		this.currentBrowserViewId = null;
+		this.domTreeCache = null;
+	}
+
+	// ============================================
+	// DOM Tree (Components Tab)
+	// ============================================
+
+	/**
+	 * Fetch DOM tree from browser via CDP
+	 * Called when page loads or when Components tab is opened
+	 */
+	async fetchDOMTree(browserViewId: number): Promise<void> {
+		this.currentBrowserViewId = browserViewId;
+		console.log('[StyleInspect] fetchDOMTree called, browserViewId:', browserViewId);
+
+		try {
+			// Enable DOM domain if not already enabled
+			await this.browserService.enableCDPDomains(browserViewId, { dom: true });
+
+			// Get the full document tree
+			const result = await this.browserService.sendCDPCommand(browserViewId, 'DOM.getDocument', {
+				depth: -1, // Get entire tree
+				pierce: true // Pierce shadow DOM
+			});
+
+			console.log('[StyleInspect] DOM.getDocument result:', result ? 'got result' : 'no result', 'root:', result?.root ? 'yes' : 'no');
+
+			if (result && result.root) {
+				// Convert CDP DOM structure to our DOMTreeNode format
+				const tree = this.convertCDPNodeToTree(result.root);
+				console.log('[StyleInspect] Converted tree:', tree ? `tagName=${tree.tagName}, children=${tree.children?.length}` : 'NULL');
+
+				// Always cache the tree (even if panel not open)
+				this.domTreeCache = tree;
+
+				// Update panel if it exists
+				if (this.panel && tree) {
+					console.log('[StyleInspect] Setting tree on panel');
+					this.panel.setDOMTree(tree);
+				} else {
+					console.log('[StyleInspect] Panel:', !!this.panel, 'tree:', !!tree);
+				}
+			}
+		} catch (error) {
+			console.error('[StyleInspect] Failed to fetch DOM tree:', error);
+		}
+	}
+
+	/**
+	 * Get cached DOM tree (for panel to use when opened)
+	 */
+	getDOMTreeCache(): DOMTreeNode | null {
+		return this.domTreeCache;
+	}
+
+	/**
+	 * Refresh the DOM tree (call after page navigation)
+	 */
+	async refreshDOMTree(): Promise<void> {
+		if (this.currentBrowserViewId) {
+			await this.fetchDOMTree(this.currentBrowserViewId);
+		}
+	}
+
+	/**
+	 * Highlight a node in the tree (called when user selects element in browser)
+	 */
+	highlightTreeNode(nodeId: number): void {
+		if (this.panel) {
+			this.panel.highlightTreeNode(nodeId);
+		}
+	}
+
+	// Non-visual tags to filter out from Components tree
+	private static readonly NON_VISUAL_TAGS = new Set([
+		'head', 'script', 'style', 'meta', 'link', 'title', 'base', 'noscript'
+	]);
+
+	/**
+	 * Convert CDP DOM node to our DOMTreeNode format
+	 * Filters out non-element nodes (text, comments) and non-visual tags (script, style, etc.)
+	 */
+	private convertCDPNodeToTree(cdpNode: CDPDOMNode): DOMTreeNode | null {
+		// Only include ELEMENT_NODE (nodeType 1)
+		// Skip document, text, comment nodes, etc.
+		if (cdpNode.nodeType !== 1) {
+			// For document node (nodeType 9), process children to find html/body
+			if (cdpNode.nodeType === 9 && cdpNode.children) {
+				console.log('[StyleInspect] Processing document node, children:', cdpNode.children.length);
+				for (const child of cdpNode.children) {
+					const result = this.convertCDPNodeToTree(child);
+					if (result) {
+						return result;
+					}
+				}
+			}
+			return null;
+		}
+
+		const tagName = cdpNode.localName || cdpNode.nodeName.toLowerCase();
+
+		// Skip non-visual tags entirely
+		if (StyleInspect.NON_VISUAL_TAGS.has(tagName)) {
+			return null;
+		}
+
+		// For html element, skip directly to body
+		if (tagName === 'html' && cdpNode.children) {
+			console.log('[StyleInspect] Found html element, looking for body in', cdpNode.children.length, 'children');
+			for (const child of cdpNode.children) {
+				const childTagName = child.localName || child.nodeName.toLowerCase();
+				console.log('[StyleInspect] html child:', childTagName);
+				if (childTagName === 'body') {
+					return this.convertCDPNodeToTree(child);
+				}
+			}
+			// If no body found, return null (shouldn't happen in valid HTML)
+			console.warn('[StyleInspect] No body found in html element!');
+			return null;
+		}
+
+		// Extract className and id from attributes array
+		// CDP returns attributes as flat array: ['class', 'foo bar', 'id', 'myId', ...]
+		let className: string | undefined;
+		let id: string | undefined;
+
+		if (cdpNode.attributes) {
+			for (let i = 0; i < cdpNode.attributes.length; i += 2) {
+				const attrName = cdpNode.attributes[i];
+				const attrValue = cdpNode.attributes[i + 1];
+				if (attrName === 'class') {
+					className = attrValue;
+				} else if (attrName === 'id') {
+					id = attrValue;
+				}
+			}
+		}
+
+		// Skip our injected inspect mode elements
+		if (id && id.startsWith('__roopik_inspect')) {
+			return null;
+		}
+
+		// Convert children recursively
+		const children: DOMTreeNode[] = [];
+		if (cdpNode.children) {
+			for (const child of cdpNode.children) {
+				const childNode = this.convertCDPNodeToTree(child);
+				if (childNode) {
+					children.push(childNode);
+				}
+			}
+		}
+
+		return {
+			nodeId: cdpNode.nodeId,
+			tagName,
+			className,
+			id,
+			children
+		};
+	}
+
+	// Track if Overlay domain is enabled
+	private overlayEnabled: boolean = false;
+
+	/**
+	 * Highlight element in browser by nodeId via CDP
+	 * Called when user clicks a node in the Components tree
+	 */
+	async highlightElementInBrowser(nodeId: number): Promise<void> {
+		if (!this.currentBrowserViewId) {
+			return;
+		}
+
+		try {
+			// Enable Overlay domain if not already enabled (required for highlighting)
+			if (!this.overlayEnabled) {
+				await this.browserService.sendCDPCommand(this.currentBrowserViewId, 'Overlay.enable', {});
+				this.overlayEnabled = true;
+			}
+
+			// Use CDP Overlay.highlightNode to highlight the element
+			await this.browserService.sendCDPCommand(this.currentBrowserViewId, 'Overlay.highlightNode', {
+				nodeId,
+				highlightConfig: {
+					contentColor: { r: 111, g: 168, b: 220, a: 0.66 }, // Blue overlay
+					paddingColor: { r: 147, g: 196, b: 125, a: 0.55 }, // Green for padding
+					borderColor: { r: 255, g: 229, b: 153, a: 0.66 }, // Yellow for border
+					marginColor: { r: 246, g: 178, b: 107, a: 0.66 }  // Orange for margin
+				}
+			});
+		} catch (error) {
+			console.error('[StyleInspect] Failed to highlight element:', error);
+		}
+	}
+
+	/**
+	 * Hide element highlight in browser
+	 */
+	async hideElementHighlight(): Promise<void> {
+		if (!this.currentBrowserViewId) {
+			return;
+		}
+
+		try {
+			await this.browserService.sendCDPCommand(this.currentBrowserViewId, 'Overlay.hideHighlight', {});
+		} catch (error) {
+			// Silent fail
+		}
+	}
+
+	/**
+	 * Get nodeId for a CSS selector
+	 * Used to sync browser selection with tree
+	 */
+	async getNodeIdForSelector(selector: string): Promise<number | null> {
+		if (!this.currentBrowserViewId) {
+			return null;
+		}
+
+		try {
+			// First get the document root
+			const docResult = await this.browserService.sendCDPCommand(
+				this.currentBrowserViewId,
+				'DOM.getDocument',
+				{ depth: 0 }
+			);
+
+			if (!docResult?.root?.nodeId) {
+				return null;
+			}
+
+			// Query for the selector
+			const queryResult = await this.browserService.sendCDPCommand(
+				this.currentBrowserViewId,
+				'DOM.querySelector',
+				{
+					nodeId: docResult.root.nodeId,
+					selector
+				}
+			);
+
+			return queryResult?.nodeId || null;
+		} catch (error) {
+			console.error('[StyleInspect] Failed to get nodeId for selector:', error);
+			return null;
+		}
 	}
 }

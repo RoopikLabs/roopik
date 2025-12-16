@@ -77,6 +77,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// Favicon URLs - track current favicon per browser view
 	private favicons = new Map<number, string>();
 
+	// Track if favicon was received for current page load (to know when to clear)
+	private faviconReceivedForCurrentLoad = new Map<number, boolean>();
+
 	// Remote debugging port counter
 	private debuggingPortCounter = 9222;
 
@@ -301,6 +304,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			this.browserWindows.delete(browserViewId);
 			this.debuggerAttached.delete(browserViewId);
 			this.lastNavigationErrors.delete(browserViewId);
+			this.favicons.delete(browserViewId);
+			this.faviconReceivedForCurrentLoad.delete(browserViewId);
 
 			// Remove from static set
 			BrowserViewService.managedWebContentsIds.delete(browserViewId);
@@ -885,6 +890,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		this.browserWindows.delete(browserViewId);
 		this.debuggerAttached.delete(browserViewId);
 		this.lastNavigationErrors.delete(browserViewId);
+		this.favicons.delete(browserViewId);
+		this.faviconReceivedForCurrentLoad.delete(browserViewId);
 		BrowserViewService.managedWebContentsIds.delete(browserViewId);
 
 		console.warn('[ProjectMode][Main] destroyBrowserViewSync cleanup complete', {
@@ -981,13 +988,16 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			// Store first favicon URL and notify renderer
 			if (favicons && favicons.length > 0) {
 				this.favicons.set(browserViewId, favicons[0]);
+				this.faviconReceivedForCurrentLoad.set(browserViewId, true);
 				this.fireNavigationStateChanged(browserViewId);
 			}
 		});
 
 		webContents.on('did-start-loading', () => {
-			// Clear favicon on new navigation (new page will send new favicon)
-			this.favicons.delete(browserViewId);
+			// Mark that we haven't received favicon for this page load yet
+			this.faviconReceivedForCurrentLoad.set(browserViewId, false);
+			// DON'T clear favicon here - keep showing old favicon until new one arrives
+			// This provides smoother UX (no blank icon during loading)
 			// Fire event with EXPLICIT isLoading = true
 			this.fireNavigationStateChanged(browserViewId, true);
 
@@ -1007,6 +1017,11 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// did-stop-loading is more reliable than did-finish-load for complex pages
 		webContents.on('did-stop-loading', () => {
+			// If no favicon was received during this page load, clear the old one
+			// This handles sites that have no favicon
+			if (!this.faviconReceivedForCurrentLoad.get(browserViewId)) {
+				this.favicons.delete(browserViewId);
+			}
 			// Fire event with EXPLICIT isLoading = false
 			this.fireNavigationStateChanged(browserViewId, false);
 

@@ -179,6 +179,12 @@ export class StyleInspectPanel {
 	 */
 	setDOMTree(tree: DOMTreeNode): void {
 		this.domTree = tree;
+
+		// Auto-expand body (root) so user sees content immediately
+		if (tree && tree.tagName === 'body') {
+			this.expandedNodes.add(tree.nodeId);
+		}
+
 		if (this.activeTab === 'components') {
 			this.renderComponentsTab();
 		}
@@ -679,16 +685,19 @@ export class StyleInspectPanel {
 			});
 		}
 
-		// Expand/collapse chevron
+		// Expand/collapse chevron (using VSCode codicon)
 		const chevron = document.createElement('span');
+		chevron.className = 'codicon codicon-chevron-right';
 		chevron.style.cssText = `
 			width: 16px;
-			font-size: 10px;
-			opacity: ${hasChildren ? '1' : '0'};
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			font-size: 12px;
+			opacity: ${hasChildren ? '0.7' : '0'};
 			transition: transform 0.15s;
 			${isExpanded ? 'transform: rotate(90deg);' : ''}
 		`;
-		chevron.textContent = '▶';
 
 		if (hasChildren) {
 			chevron.addEventListener('click', (e) => {
