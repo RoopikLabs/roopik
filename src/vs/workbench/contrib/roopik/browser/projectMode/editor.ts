@@ -37,7 +37,7 @@ import { StyleInspect } from './features/styleInspect.js';
 // Components
 import { DefaultBrowserScreen } from './components/defaultBrowserScreen.js';
 import { ISourceNavigationService } from '../../common/navigation/index.js';
-import { IMenubarStateService } from '../../../../services/menubar/electron-browser/menubarStateService.js';
+import { IMenubarStateService } from '../services/menubarStateService.js';
 
 /**
  * Project Mode Editor

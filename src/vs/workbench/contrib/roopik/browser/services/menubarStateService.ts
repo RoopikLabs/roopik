@@ -3,11 +3,11 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { Emitter, Event } from '../../../../base/common/event.js';
-import { Disposable } from '../../../../base/common/lifecycle.js';
-import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
-import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
-import { ITitleService } from '../../title/browser/titleService.js';
+import { Emitter, Event } from '../../../../../base/common/event.js';
+import { Disposable } from '../../../../../base/common/lifecycle.js';
+import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
+import { InstantiationType, registerSingleton } from '../../../../../platform/instantiation/common/extensions.js';
+import { ITitleService } from '../../../../services/title/browser/titleService.js';
 
 export const IMenubarStateService = createDecorator<IMenubarStateService>('menubarStateService');
 
@@ -16,7 +16,7 @@ export const IMenubarStateService = createDecorator<IMenubarStateService>('menub
  * Used to pause BrowserView/WebContentsView which render on top of HTML menus.
  *
  * This works with VSCode's custom HTML-based menubar (used on Windows/Linux when
- * "window.titleBarStyle" is "custom").
+ * "window.titleBarStyle": "custom").
  */
 export interface IMenubarStateService {
 	readonly _serviceBrand: undefined;
@@ -57,16 +57,12 @@ class MenubarStateService extends Disposable implements IMenubarStateService {
 	) {
 		super();
 
-		console.log('[MenubarStateService] Service initialized, listening for titlebar focus state changes');
-
 		// Listen for menubar focus state changes from the custom HTML-based menubar
 		this._register(this.titleService.onMenubarFocusStateChange(focused => {
 			if (focused) {
-				console.log('[MenubarStateService] <<< Menu opened (focused)');
 				this._isMenuOpen = true;
 				this._onDidOpenMenu.fire();
 			} else {
-				console.log('[MenubarStateService] <<< Menu closed (unfocused)');
 				this._isMenuOpen = false;
 				this._onDidCloseMenu.fire();
 			}

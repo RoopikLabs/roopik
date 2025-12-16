@@ -180,12 +180,12 @@ Files modified outside of `workbench/contrib/roopik/` to integrate Roopik into V
 | `src/vs/workbench/browser/parts/titlebar/titlebarPart.ts` | In `installMenubar()`: Added listener `this.customMenubar.value.onFocusStateChange(focused => this._onMenubarFocusStateChange.fire(focused))` | Wire up menubar focus events to titlebar part |
 | `src/vs/workbench/browser/parts/titlebar/titlebarPart.ts` | In `BrowserTitleService`: Added `onMenubarFocusStateChange` property assignment from `mainPart` | Expose event through service |
 
-**New Service Created:**
+**Roopik Service (NOT in VSCode core - lives in our project):**
 
 | File | Purpose |
 |------|---------|
-| `src/vs/workbench/services/menubar/electron-browser/menubarStateService.ts` | Service that listens to `ITitleService.onMenubarFocusStateChange` and exposes `onDidOpenMenu`/`onDidCloseMenu` events for browser pause detection |
-| `src/vs/workbench/workbench.desktop.main.ts` | Added import: `import './services/menubar/electron-browser/menubarStateService.js';` |
+| `src/vs/workbench/contrib/roopik/browser/services/menubarStateService.ts` | Service that listens to `ITitleService.onMenubarFocusStateChange` and exposes `onDidOpenMenu`/`onDidCloseMenu` events for browser pause detection |
 
 **Usage in Roopik:**
 - `src/vs/workbench/contrib/roopik/browser/projectMode/editor.ts` subscribes to `IMenubarStateService.onDidOpenMenu/onDidCloseMenu` to pause/resume browser when menus open
+- Service is registered via import in `roopik.contribution.ts`

@@ -61,6 +61,8 @@ import { IComponentService } from '../common/component/componentService.js';
 import { ComponentServiceClient } from './componentServiceClient.js';
 import { ISourceNavigationService } from '../common/navigation/index.js';
 import { SourceNavigationService } from './services/index.js';
+// MenubarStateService - registers singleton for browser pause detection
+import './services/menubarStateService.js';
 
 // ============================================================================
 // Editor Pane Registration
