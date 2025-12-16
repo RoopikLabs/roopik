@@ -300,6 +300,12 @@ export interface ProjectInfo {
 
 	/** Timestamp last opened (for recents sorting) */
 	updatedAt: number;
+
+	/** Framework identifier (e.g., "react-vite", "vue-vite", "nextjs") - optional */
+	framework?: string;
+
+	/** Human-readable framework name (e.g., "React + Vite", "Next.js") - optional */
+	frameworkDisplayName?: string;
 }
 
 /**

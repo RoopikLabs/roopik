@@ -100,15 +100,15 @@ export class ProjectStorageService implements IProjectStorageService {
 	/**
 	 * Add or update a project in the registry
 	 */
-	async upsertProject(name: string, projectPath: string): Promise<string> {
+	async upsertProject(name: string, projectPath: string, framework?: string, frameworkDisplayName?: string): Promise<string> {
 		if (!this.storage || !this.initialized) {
 			throw new Error('[ProjectStorageService] Not initialized');
 		}
 
-		const projectId = await this.storage.upsertProject(name, projectPath);
+		const projectId = await this.storage.upsertProject(name, projectPath, framework, frameworkDisplayName);
 		this._onProjectsChanged.fire();
 
-		console.log(`[ProjectStorageService] Upserted project: ${name} at ${projectPath}`);
+		console.log(`[ProjectStorageService] Upserted project: ${name} at ${projectPath}` + (framework ? ` (${frameworkDisplayName || framework})` : ''));
 		return projectId;
 	}
 

@@ -517,9 +517,11 @@ export class WorkspaceStorage {
 	 * If project with same path exists, updates updatedAt; otherwise creates new
 	 * @param name Display name (e.g., folder name)
 	 * @param projectPath Workspace-relative path to project root
+	 * @param framework Optional framework identifier (e.g., "react-vite")
+	 * @param frameworkDisplayName Optional human-readable framework name (e.g., "React + Vite")
 	 * @returns The project ID
 	 */
-	async upsertProject(name: string, projectPath: string): Promise<string> {
+	async upsertProject(name: string, projectPath: string, framework?: string, frameworkDisplayName?: string): Promise<string> {
 		this.ensureInitialized();
 
 		const index = await this.getProjectIndex();
@@ -530,9 +532,15 @@ export class WorkspaceStorage {
 		const existing = index.projects.find(p => p.path.replace(/\\/g, '/') === normalizedPath);
 
 		if (existing) {
-			// Update existing - just touch updatedAt
+			// Update existing - touch updatedAt and update framework if provided
 			existing.name = name;
 			existing.updatedAt = now;
+			if (framework !== undefined) {
+				existing.framework = framework;
+			}
+			if (frameworkDisplayName !== undefined) {
+				existing.frameworkDisplayName = frameworkDisplayName;
+			}
 			await this.writeJson(getProjectRegistryPath(this.workspacePath), index);
 			return existing.id;
 		}
@@ -543,7 +551,9 @@ export class WorkspaceStorage {
 			id: projectId,
 			name,
 			path: normalizedPath,
-			updatedAt: now
+			updatedAt: now,
+			framework,
+			frameworkDisplayName
 		});
 
 		await this.writeJson(getProjectRegistryPath(this.workspacePath), index);

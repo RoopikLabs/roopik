@@ -49,8 +49,8 @@ export class ProjectStorageChannel implements IServerChannel {
 			case 'getRecentProjects':
 				return this.service.getRecentProjects(arg as number | undefined);
 			case 'upsertProject': {
-				const { name, projectPath } = arg as { name: string; projectPath: string };
-				return this.service.upsertProject(name, projectPath);
+				const { name, projectPath, framework, frameworkDisplayName } = arg as { name: string; projectPath: string; framework?: string; frameworkDisplayName?: string };
+				return this.service.upsertProject(name, projectPath, framework, frameworkDisplayName);
 			}
 			case 'deleteProject':
 				return this.service.deleteProject(arg as string);

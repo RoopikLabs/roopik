@@ -1380,7 +1380,13 @@ export class Editor extends EditorPane {
 			// Save to recent projects storage (project started successfully = valid path)
 			// Extract project name from the path (folder name)
 			const projectName = projectRoot.split(/[/\\]/).pop() || 'Project';
-			this.projectStorageService.upsertProject(projectName, projectRoot).catch((err) => {
+
+			// Get server info to capture framework (optional - don't block on this)
+			this.devServerService.getServerInfo(projectRoot).then((serverInfo) => {
+				const framework = serverInfo?.framework;
+				const frameworkDisplayName = serverInfo?.frameworkDisplayName;
+				return this.projectStorageService.upsertProject(projectName, projectRoot, framework, frameworkDisplayName);
+			}).catch((err) => {
 				this.logger.warn('[ProjectMode] Failed to save project to recent projects:', err);
 			});
 

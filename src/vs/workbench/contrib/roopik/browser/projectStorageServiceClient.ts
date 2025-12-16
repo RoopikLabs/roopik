@@ -66,8 +66,8 @@ export class ProjectStorageServiceClient implements IProjectStorageService {
 		return this.channel.call('getRecentProjects', limit);
 	}
 
-	async upsertProject(name: string, projectPath: string): Promise<string> {
-		return this.channel.call('upsertProject', { name, projectPath });
+	async upsertProject(name: string, projectPath: string, framework?: string, frameworkDisplayName?: string): Promise<string> {
+		return this.channel.call('upsertProject', { name, projectPath, framework, frameworkDisplayName });
 	}
 
 	async deleteProject(projectId: string): Promise<void> {

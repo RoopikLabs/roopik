@@ -74,9 +74,11 @@ export interface IProjectStorageService {
 	 * If project with same path exists, updates updatedAt; otherwise creates new
 	 * @param name Display name (e.g., folder name)
 	 * @param projectPath Workspace-relative path to project root
+	 * @param framework Optional framework identifier (e.g., "react-vite")
+	 * @param frameworkDisplayName Optional human-readable framework name (e.g., "React + Vite")
 	 * @returns The project ID
 	 */
-	upsertProject(name: string, projectPath: string): Promise<string>;
+	upsertProject(name: string, projectPath: string, framework?: string, frameworkDisplayName?: string): Promise<string>;
 
 	/**
 	 * Delete a project from registry
