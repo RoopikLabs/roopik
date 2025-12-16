@@ -154,4 +154,89 @@ export interface OpenSourceRequestEvent {
 	error?: string;
 }
 
+// ============================================
+// Browser Bridge Messages (CDP Runtime.bindingCalled)
+// ============================================
+
+/**
+ * Base interface for all browser bridge messages
+ * Sent from injected scripts via window.__roopikBridge()
+ */
+export interface BrowserBridgeMessageBase {
+	type: string;
+	browserViewId?: number; // Added by main process
+}
+
+/**
+ * Element selected in inspect mode
+ */
+export interface ElementSelectedMessage extends BrowserBridgeMessageBase {
+	type: 'element-selected';
+	selector: string;
+	html: string;
+	tagName: string;
+	source: {
+		file: string;
+		line: number;
+		column?: number;
+		endLine?: number;
+		endColumn?: number;
+	} | null;
+	bounds: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	};
+}
+
+/**
+ * Inspect mode exited (ESC pressed)
+ */
+export interface InspectModeExitedMessage extends BrowserBridgeMessageBase {
+	type: 'inspect-mode-exited';
+}
+
+/**
+ * Union of all browser bridge message types
+ * Add new message types here as we add features
+ */
+export type BrowserBridgeMessage =
+	| ElementSelectedMessage
+	| InspectModeExitedMessage;
+
+/**
+ * Event payload for browser bridge messages
+ * Wraps the message with browserViewId
+ */
+export interface BrowserBridgeEvent {
+	browserViewId: number;
+	message: BrowserBridgeMessage;
+}
+
+// ============================================
+// Browser Key Events (Centralized Key Handling)
+// ============================================
+
+/**
+ * Key event from browser via Electron's before-input-event
+ * All key presses in BrowserView are captured and forwarded to renderer
+ * for centralized handling.
+ */
+export interface BrowserKeyEvent {
+	browserViewId: number;
+	/** Key code (e.g., 'Escape', 'F12', 'KeyA') */
+	key: string;
+	/** Key code for physical key (e.g., 'Escape', 'F12') */
+	code: string;
+	/** Modifier keys */
+	modifiers: {
+		ctrl: boolean;
+		alt: boolean;
+		shift: boolean;
+		meta: boolean;
+	};
+	/** Event type */
+	type: 'keyDown' | 'keyUp';
+}
 

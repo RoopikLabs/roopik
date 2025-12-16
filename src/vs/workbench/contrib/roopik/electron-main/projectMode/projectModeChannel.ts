@@ -23,6 +23,10 @@ export class ProjectModeChannel implements IServerChannel {
 				return this.service.onNavigationStateChanged;
 			case 'onOpenSourceRequest':
 				return this.service.onOpenSourceRequest;
+			case 'onBrowserBridgeMessage':
+				return this.service.onBrowserBridgeMessage;
+			case 'onBrowserKeyPress':
+				return this.service.onBrowserKeyPress;
 			default:
 				throw new Error(`[ProjectModeChannel] Unknown event: ${event}`);
 		}
@@ -71,6 +75,8 @@ export class ProjectModeChannel implements IServerChannel {
 				return this.service.enableCDPDomains(arg.browserViewId, arg.domains);
 			case 'sendCDPCommand':
 				return this.service.sendCDPCommand(arg.browserViewId, arg.method, arg.params);
+			case 'setupBrowserBridge':
+				return this.service.setupBrowserBridge(arg);
 
 			// Utilities
 			case 'takeScreenshot':

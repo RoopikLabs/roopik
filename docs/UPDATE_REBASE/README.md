@@ -58,7 +58,14 @@ This directory contains tools and documentation for maintaining Roopik branding 
 1. **Keep a clean upstream clone** (e.g. `vscode_initi_diff_reference`). After pulling Microsoft/vscode, run `node docs/UPDATE_REBASE/apply-branding.js` there so branding stays correct in the reference copy.
 2. **Copy Roopik code manually** into the reference clone:
    - Copy `extensions/roopik/`
+	```
+	robocopy "C:\Users\Humblebee\Documents\GitHub\roopik\extensions\roopik" "C:\Users\Humblebee\Documents\GitHub\vscode_initi_diff_reference\extensions\roopik" //E //XD node_modules out build .build
+	```
    - Copy any custom core folders (e.g. `src/vs/workbench/contrib/roopik/`)
+	```
+	robocopy "C:\Users\Humblebee\Documents\GitHub\roopik\src\vs\workbench\contrib\roopik" "C:\Users\Humblebee\Documents\GitHub\vscode_initi_diff_reference\src\vs\workbench\contrib\roopik" //E //XD node_modules out
+	```
+
 3. **Build/test once** in the reference clone (`npm install`, `npm run watch-extensions`, etc.) to ensure it compiles.
 4. **Sync back to your main repo with `robocopy`** in two passes:
    - Pass 1 (copy only): `/E` + `/XD extensions\roopik node_modules out .build .claude .config .vscode .git .github` – brings in new files/updates but keeps destination extras.
@@ -68,9 +75,7 @@ This directory contains tools and documentation for maintaining Roopik branding 
 
 robocopy "C:\Users\Humblebee\Documents\GitHub\vscode_initi_diff_reference" "C:\Users\Humblebee\Documents\GitHub\roopik" /E /XD node_modules out .build .claude .config .vscode .git .github
 
-robocopy "C:\Users\Humblebee\Documents\GitHub\vscode_initi_diff_reference" ^
-         "C:\Users\Humblebee\Documents\GitHub\roopik" /MIR ^
-         /XD extensions\roopik docs node_modules out .build .claude .config .vscode .git .github
+robocopy "C:\Users\Humblebee\Documents\GitHub\vscode_initi_diff_reference" "C:\Users\Humblebee\Documents\GitHub\roopik" /MIR /XD extensions\roopik docs node_modules out .build .claude .config .vscode .git .github
 
 This flow keeps Microsoft changes separate, minimizes merge conflicts, and ensures `extensions/roopik` (and other custom code) never gets wiped during mirroring.
 

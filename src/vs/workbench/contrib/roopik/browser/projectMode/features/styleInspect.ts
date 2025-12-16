@@ -6,33 +6,76 @@
 import { INotificationService, Severity } from '../../../../../../platform/notification/common/notification.js';
 import type { IProjectModeService } from '../../../common/projectMode/ipc.js';
 import type { CSSSourceLocation, ElementStyleInfo, GetElementStylesResult } from '../../../common/cssResolvers/types.js';
-import { StyleInspectPanel, IStyleInspectPanelCallbacks } from '../components/styleInspectPanel.js';
+import { StyleInspectPanel, IStyleInspectPanelCallbacks, DOMTreeNode } from '../components/styleInspectPanel.js';
 import { ISourceNavigationService } from '../../../common/navigation/index.js';
+import type { InspectMode } from './inspectMode.js';
+
+/**
+ * CDP DOM node structure (from DOM.getDocument response)
+ */
+interface CDPDOMNode {
+	nodeId: number;
+	nodeType: number;
+	nodeName: string;
+	localName: string;
+	nodeValue: string;
+	childNodeCount?: number;
+	children?: CDPDOMNode[];
+	attributes?: string[];
+}
 
 /**
  * Style Inspect Feature
  *
- * Integrates inspect mode with CSS source resolution.
+ * Controller/coordinator that bridges UI Panel, Main Process (CDP/IPC), and Editor.
+ *
+ * Responsibilities:
+ * - Enable/disable inspect mode (delegates to InspectMode)
+ * - Fetch element styles via IPC when element is selected
+ * - Fetch DOM tree via CDP for Components tab
+ * - Highlight elements in browser via CDP (DOM.highlightNode)
+ * - Convert CDP data formats to UI-friendly formats
+ * - Bidirectional sync: browser selection ↔ tree selection
+ *
  * Flow:
  * 1. User enables style inspect mode
- * 2. User clicks element in browser
- * 3. We call getElementStyles via IPC
- * 4. Style panel shows element info and CSS sources
- * 5. User can click file links to open in editor
+ * 2. InspectMode script is injected (unified hover/select behavior)
+ * 3. User clicks element in browser
+ * 4. Script sends event via CDP bridge (window.__roopikBridge)
+ * 5. Editor receives event, calls getElementStyles via IPC
+ * 6. Style panel shows element info and CSS sources
+ * 7. User can click file links to open in editor
  *
- * This replaces the basic inspect mode when style inspection is needed.
+ * Note: The actual script injection is handled by InspectMode class.
+ * StyleInspect is focused on panel management, CDP calls, and data coordination.
  */
 export class StyleInspect {
 	private panel: StyleInspectPanel | null = null;
 	private isActive: boolean = false;
 	private currentProjectRoot: string | undefined;
 	private onVisibilityChangedCallback: ((visible: boolean, panelWidth: number) => void) | undefined;
+	private inspectModeRef: InspectMode | null = null;
+
+	// DOM tree state
+	private currentBrowserViewId: number | null = null;
+	private domTreeCache: DOMTreeNode | null = null;
+
+	// Callback for tree node selection (to highlight in browser)
+	private onTreeNodeSelectedCallback: ((nodeId: number) => void) | undefined;
 
 	constructor(
 		private readonly browserService: IProjectModeService,
 		private readonly notificationService: INotificationService,
 		private readonly sourceNavigationService: ISourceNavigationService
-	) {}
+	) { }
+
+	/**
+	 * Set the InspectMode reference for unified script injection
+	 * Must be called before enable()
+	 */
+	setInspectMode(inspectMode: InspectMode): void {
+		this.inspectModeRef = inspectMode;
+	}
 
 	/**
 	 * Set callback for when panel visibility changes
@@ -40,6 +83,14 @@ export class StyleInspect {
 	 */
 	setOnVisibilityChanged(callback: (visible: boolean, panelWidth: number) => void): void {
 		this.onVisibilityChangedCallback = callback;
+	}
+
+	/**
+	 * Set callback for when user clicks a node in the Components tree
+	 * Used by editor to highlight the element in browser
+	 */
+	setOnTreeNodeSelected(callback: (nodeId: number) => void): void {
+		this.onTreeNodeSelectedCallback = callback;
 	}
 
 	/**
@@ -56,6 +107,17 @@ export class StyleInspect {
 			onClose: () => this.onPanelClosed(),
 			onVisibilityChanged: (visible, panelWidth) => {
 				this.onVisibilityChangedCallback?.(visible, panelWidth);
+			},
+			onTreeNodeSelected: (nodeId) => {
+				this.onTreeNodeSelectedCallback?.(nodeId);
+			},
+			onTreeNodeHover: (nodeId) => {
+				// Highlight on hover, hide on leave (null)
+				if (nodeId !== null) {
+					this.highlightElementInBrowser(nodeId);
+				} else {
+					this.hideElementHighlight();
+				}
 			}
 		};
 
@@ -71,22 +133,28 @@ export class StyleInspect {
 
 	/**
 	 * Enable Style Inspect Mode
-	 * Injects script that calls back when element is clicked
+	 * Uses the unified InspectMode script for element selection
 	 */
 	async enable(browserViewId: number): Promise<void> {
 		if (!browserViewId) {
 			return;
 		}
 
+		if (!this.inspectModeRef) {
+			console.error('[StyleInspect] InspectMode reference not set');
+			return;
+		}
+
 		this.isActive = true;
 
 		try {
-			// Inject style inspect script
-			await this.browserService.executeScript(browserViewId, STYLE_INSPECT_SCRIPT);
+			// Use unified InspectMode script for element selection
+			await this.inspectModeRef.enable(browserViewId);
 
+			// Override notification with style-specific message
 			this.notificationService.notify({
 				severity: Severity.Info,
-				message: 'Style Inspect: Click element to view CSS sources.',
+				message: 'Style Inspect: Click element to view CSS sources. ESC to exit.',
 				sticky: false
 			});
 		} catch (error) {
@@ -97,6 +165,7 @@ export class StyleInspect {
 
 	/**
 	 * Disable Style Inspect Mode
+	 * Cleans up the unified InspectMode script
 	 */
 	async disable(browserViewId: number): Promise<void> {
 		if (!browserViewId) {
@@ -106,11 +175,10 @@ export class StyleInspect {
 		this.isActive = false;
 
 		try {
-			await this.browserService.executeScript(browserViewId, `
-				if (window.__roopikStyleInspectCleanup) {
-					window.__roopikStyleInspectCleanup();
-				}
-			`);
+			// Use unified InspectMode cleanup
+			if (this.inspectModeRef) {
+				await this.inspectModeRef.disable(browserViewId);
+			}
 		} catch {
 			// Silent fail
 		}
@@ -131,21 +199,25 @@ export class StyleInspect {
 		browserViewId: number,
 		selector: string
 	): Promise<void> {
-		if (!this.panel || !this.currentProjectRoot) {
-			console.warn('[StyleInspect] Panel or projectRoot not initialized');
+		if (!this.panel) {
+			console.warn('[StyleInspect] Panel not initialized');
 			return;
 		}
 
 		try {
 			// Get element styles via IPC
+			// projectRoot is optional - without it, source file paths won't be resolved
 			const result: GetElementStylesResult = await this.browserService.getElementStyles({
 				browserViewId,
 				target: selector,
-				projectRoot: this.currentProjectRoot
+				projectRoot: this.currentProjectRoot || ''
 			});
 
 			if (result.success && result.data) {
 				this.showStylePanel(result.data);
+
+				// Sync with Components tree - highlight the selected element
+				this.syncTreeWithSelectedElement(selector);
 			} else {
 				this.notificationService.notify({
 					severity: Severity.Warning,
@@ -164,6 +236,209 @@ export class StyleInspect {
 	}
 
 	/**
+	 * Sync tree selection with browser element selection
+	 * When user selects element in browser, highlight it in Components tree
+	 *
+	 * NOTE: We search our cached tree by selector instead of querying CDP again,
+	 * because each DOM.getDocument call can return different nodeIds (DOM invalidation).
+	 */
+	private syncTreeWithSelectedElement(selector: string): void {
+		console.log('[StyleInspect] syncTreeWithSelectedElement called, selector:', selector);
+
+		if (!this.domTreeCache) {
+			console.warn('[StyleInspect] No DOM tree cache, cannot sync');
+			return;
+		}
+
+		// Find node in our cached tree by matching selector
+		const nodeId = this.findNodeIdBySelector(this.domTreeCache, selector);
+		console.log('[StyleInspect] Found nodeId in cache:', nodeId);
+
+		if (nodeId) {
+			this.highlightTreeNode(nodeId);
+		} else {
+			console.warn('[StyleInspect] Could not find node for selector:', selector);
+		}
+	}
+
+	/**
+	 * Find nodeId in cached tree by matching selector
+	 * Parses full selector path and walks down the tree to find exact match
+	 * Handles :nth-of-type() for disambiguating siblings with same tag
+	 */
+	private findNodeIdBySelector(tree: DOMTreeNode, selector: string): number | null {
+		// Parse selector: "body > div.container > header.header > nav" or "#myId" etc.
+		const parts = selector.split(' > ').map(s => s.trim()).filter(s => s.length > 0);
+
+		if (parts.length === 0) {
+			return null;
+		}
+
+		// Parse all selector parts
+		const parsedParts = parts.map(p => this.parseSelectorPart(p));
+
+		// Walk down the tree following the path
+		// Start from tree root (should be body)
+		let currentNodes: DOMTreeNode[] = [tree];
+		let currentParent: DOMTreeNode | null = null;
+		let startIndex = 0;
+
+		// If first part matches tree root, skip it
+		if (parsedParts.length > 0 && this.nodeMatchesSelector(tree, parsedParts[0], null, 0)) {
+			startIndex = 1;
+		}
+
+		// Walk through remaining path
+		for (let i = startIndex; i < parsedParts.length; i++) {
+			const target = parsedParts[i];
+			const nextNodes: DOMTreeNode[] = [];
+
+			for (const node of currentNodes) {
+				if (node.children) {
+					// Group children by tag for nth-of-type matching
+					const tagCounts = new Map<string, number>();
+
+					for (const child of node.children) {
+						const childTag = child.tagName.toLowerCase();
+						const currentCount = tagCounts.get(childTag) || 0;
+						tagCounts.set(childTag, currentCount + 1);
+
+						// Pass the nth-of-type index (1-based)
+						if (this.nodeMatchesSelector(child, target, node, currentCount + 1)) {
+							nextNodes.push(child);
+						}
+					}
+				}
+			}
+
+			if (nextNodes.length === 0) {
+				// Path broken, try fallback DFS search for last part
+				console.log('[StyleInspect] Path broken at part', i, ', falling back to DFS');
+				const lastPart = parsedParts[parsedParts.length - 1];
+				return this.findMatchingNodeWithNth(tree, lastPart);
+			}
+
+			currentParent = currentNodes[0];
+			currentNodes = nextNodes;
+		}
+
+		// Return first match (most specific)
+		return currentNodes.length > 0 ? currentNodes[0].nodeId : null;
+	}
+
+	/**
+	 * Parse a selector part like "div.container.active" or "#myId" or "div:nth-of-type(2)"
+	 */
+	private parseSelectorPart(part: string): { tag?: string; id?: string; classes: string[]; nthOfType?: number } {
+		const result: { tag?: string; id?: string; classes: string[]; nthOfType?: number } = { classes: [] };
+
+		// Extract :nth-of-type(n) before cleaning
+		const nthMatch = part.match(/:nth-of-type\((\d+)\)/);
+		if (nthMatch) {
+			result.nthOfType = parseInt(nthMatch[1], 10);
+		}
+
+		// Remove :nth-of-type(...) and other pseudo-selectors for tag/class parsing
+		const cleanPart = part.replace(/:[^.#]+(\([^)]*\))?/g, '');
+
+		// Check for ID selector
+		if (cleanPart.startsWith('#')) {
+			const idMatch = cleanPart.match(/^#([^.]+)/);
+			if (idMatch) {
+				result.id = idMatch[1];
+			}
+			return result;
+		}
+
+		// Parse tag and classes
+		const tagMatch = cleanPart.match(/^([a-z][a-z0-9]*)/i);
+		if (tagMatch) {
+			result.tag = tagMatch[1].toLowerCase();
+		}
+
+		// Extract classes
+		const classMatches = cleanPart.match(/\.([^.#:]+)/g);
+		if (classMatches) {
+			result.classes = classMatches.map(c => c.slice(1)); // Remove leading dot
+		}
+
+		return result;
+	}
+
+	/**
+	 * Find a matching node in the tree (DFS) with nth-of-type support
+	 */
+	private findMatchingNodeWithNth(
+		node: DOMTreeNode,
+		target: { tag?: string; id?: string; classes: string[]; nthOfType?: number }
+	): number | null {
+		// Search children with proper nth-of-type tracking
+		if (node.children) {
+			const tagCounts = new Map<string, number>();
+
+			for (const child of node.children) {
+				const childTag = child.tagName.toLowerCase();
+				const currentCount = tagCounts.get(childTag) || 0;
+				tagCounts.set(childTag, currentCount + 1);
+
+				// Check if this child matches
+				if (this.nodeMatchesSelector(child, target, node, currentCount + 1)) {
+					return child.nodeId;
+				}
+
+				// Recurse into children
+				const found = this.findMatchingNodeWithNth(child, target);
+				if (found) {
+					return found;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Check if a node matches the parsed selector
+	 * @param node The DOM tree node to check
+	 * @param target The parsed selector target
+	 * @param parent The parent node (for nth-of-type context)
+	 * @param nthIndex The 1-based index of this node among same-tag siblings
+	 */
+	private nodeMatchesSelector(
+		node: DOMTreeNode,
+		target: { tag?: string; id?: string; classes: string[]; nthOfType?: number },
+		parent: DOMTreeNode | null,
+		nthIndex: number
+	): boolean {
+		// Match by ID (highest priority)
+		if (target.id) {
+			return node.id === target.id;
+		}
+
+		// Match by tag
+		if (target.tag && node.tagName.toLowerCase() !== target.tag) {
+			return false;
+		}
+
+		// Match by classes (all must match)
+		if (target.classes.length > 0) {
+			const nodeClasses = node.className?.split(/\s+/) || [];
+			for (const cls of target.classes) {
+				if (!nodeClasses.includes(cls)) {
+					return false;
+				}
+			}
+		}
+
+		// Match by nth-of-type if specified
+		if (target.nthOfType !== undefined && nthIndex !== target.nthOfType) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
 	 * Handle element selection by coordinates
 	 */
 	async handleElementSelectedByPoint(
@@ -171,17 +446,18 @@ export class StyleInspect {
 		x: number,
 		y: number
 	): Promise<void> {
-		if (!this.panel || !this.currentProjectRoot) {
-			console.warn('[StyleInspect] Panel or projectRoot not initialized');
+		if (!this.panel) {
+			console.warn('[StyleInspect] Panel not initialized');
 			return;
 		}
 
 		try {
 			// Get element styles via IPC using coordinates
+			// projectRoot is optional - without it, source file paths won't be resolved
 			const result: GetElementStylesResult = await this.browserService.getElementStyles({
 				browserViewId,
 				target: { x, y },
-				projectRoot: this.currentProjectRoot
+				projectRoot: this.currentProjectRoot || ''
 			});
 
 			if (result.success && result.data) {
@@ -203,7 +479,15 @@ export class StyleInspect {
 	 */
 	private showStylePanel(data: ElementStyleInfo): void {
 		if (this.panel) {
-			this.panel.show(data);
+			// Pass isProjectMode flag - file links only work in project mode
+			const isProjectMode = !!this.currentProjectRoot;
+			this.panel.show(data, isProjectMode);
+
+			// Also set DOM tree if cached (for Components tab)
+			// This ensures tree is available when opening panel via inspect mode
+			if (this.domTreeCache) {
+				this.panel.setDOMTree(this.domTreeCache);
+			}
 		}
 	}
 
@@ -213,6 +497,36 @@ export class StyleInspect {
 	hidePanel(): void {
 		if (this.panel) {
 			this.panel.hide();
+		}
+	}
+
+	/**
+	 * Show empty panel (for manual toggle)
+	 * Displays panel with hint to select an element
+	 * Also sets cached DOM tree if available
+	 */
+	showEmptyPanel(): void {
+		if (this.panel) {
+			// Show panel with placeholder data
+			const isProjectMode = !!this.currentProjectRoot;
+			this.panel.show({
+				tagName: '',
+				id: undefined,
+				classes: [],
+				properties: [],
+				matchedRules: [],
+				inlineStyles: [],
+				componentName: undefined,
+				htmlSource: undefined,
+				cssInJs: undefined,
+				inheritedStyles: undefined
+			}, isProjectMode);
+
+			// If we have a cached DOM tree, set it on the panel
+			// This ensures Components tab has data even if opened before page load
+			if (this.domTreeCache) {
+				this.panel.setDOMTree(this.domTreeCache);
+			}
 		}
 	}
 
@@ -274,218 +588,362 @@ export class StyleInspect {
 			this.panel.dispose();
 			this.panel = null;
 		}
-	}
-}
-
-// ============================================
-// Style Inspect Script (injected into browser)
-// ============================================
-
-/**
- * JavaScript to inject into the browser for style inspection.
- * Similar to regular inspect mode but focused on CSS.
- */
-const STYLE_INSPECT_SCRIPT = `
-(function() {
-	'use strict';
-
-	// Cleanup any existing inspect mode
-	if (window.__roopikStyleInspectCleanup) {
-		window.__roopikStyleInspectCleanup();
+		this.inspectModeRef = null;
+		this.currentBrowserViewId = null;
+		this.domTreeCache = null;
 	}
 
-	// ========== Create UI Elements ==========
+	// ============================================
+	// DOM Tree (Components Tab)
+	// ============================================
 
-	// Highlight overlay
-	const overlay = document.createElement('div');
-	overlay.id = '__roopik_style_inspect_overlay';
-	overlay.style.cssText = [
-		'position: fixed',
-		'pointer-events: none',
-		'z-index: 2147483647',
-		'border: 2px solid #9333EA',
-		'background-color: rgba(147, 51, 234, 0.1)',
-		'transition: all 0.05s ease-out',
-		'display: none'
-	].join(';');
-	document.body.appendChild(overlay);
+	/**
+	 * Fetch DOM tree from browser via CDP
+	 * Called when page loads or when Components tab is opened
+	 */
+	async fetchDOMTree(browserViewId: number): Promise<void> {
+		this.currentBrowserViewId = browserViewId;
+		console.log('[StyleInspect] fetchDOMTree called, browserViewId:', browserViewId);
 
-	// Element label
-	const label = document.createElement('div');
-	label.id = '__roopik_style_inspect_label';
-	label.style.cssText = [
-		'position: fixed',
-		'pointer-events: none',
-		'z-index: 2147483647',
-		'background-color: #9333EA',
-		'color: white',
-		'font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-		'font-size: 11px',
-		'padding: 2px 6px',
-		'border-radius: 2px',
-		'white-space: nowrap',
-		'display: none'
-	].join(';');
-	document.body.appendChild(label);
+		try {
+			// Enable DOM domain if not already enabled
+			await this.browserService.enableCDPDomains(browserViewId, { dom: true });
 
-	let currentElement = null;
+			// Get the full document tree
+			const result = await this.browserService.sendCDPCommand(browserViewId, 'DOM.getDocument', {
+				depth: -1, // Get entire tree
+				pierce: true // Pierce shadow DOM
+			});
 
-	// ========== Helper Functions ==========
+			console.log('[StyleInspect] DOM.getDocument result:', result ? 'got result' : 'no result', 'root:', result?.root ? 'yes' : 'no');
 
-	function getElementSelector(el) {
-		if (!el || el === document.body || el === document.documentElement) {
+			if (result && result.root) {
+				// Convert CDP DOM structure to our DOMTreeNode format
+				const tree = this.convertCDPNodeToTree(result.root);
+				console.log('[StyleInspect] Converted tree:', tree ? `tagName=${tree.tagName}, children=${tree.children?.length}` : 'NULL');
+
+				// Always cache the tree (even if panel not open)
+				this.domTreeCache = tree;
+
+				// Update panel if it exists
+				if (this.panel && tree) {
+					console.log('[StyleInspect] Setting tree on panel');
+					this.panel.setDOMTree(tree);
+				} else {
+					console.log('[StyleInspect] Panel:', !!this.panel, 'tree:', !!tree);
+				}
+			}
+		} catch (error) {
+			console.error('[StyleInspect] Failed to fetch DOM tree:', error);
+		}
+	}
+
+	/**
+	 * Get cached DOM tree (for panel to use when opened)
+	 */
+	getDOMTreeCache(): DOMTreeNode | null {
+		return this.domTreeCache;
+	}
+
+	/**
+	 * Refresh the DOM tree (call after page navigation)
+	 */
+	async refreshDOMTree(): Promise<void> {
+		if (this.currentBrowserViewId) {
+			await this.fetchDOMTree(this.currentBrowserViewId);
+		}
+	}
+
+	/**
+	 * Highlight a node in the tree (called when user selects element in browser)
+	 */
+	highlightTreeNode(nodeId: number): void {
+		console.log('[StyleInspect] highlightTreeNode called, nodeId:', nodeId, 'panel:', !!this.panel);
+		if (this.panel) {
+			this.panel.highlightTreeNode(nodeId);
+		}
+	}
+
+	// Non-visual tags to filter out from Components tree
+	private static readonly NON_VISUAL_TAGS = new Set([
+		'head', 'script', 'style', 'meta', 'link', 'title', 'base', 'noscript'
+	]);
+
+	/**
+	 * Convert CDP DOM node to our DOMTreeNode format
+	 * Filters out non-element nodes (text, comments) and non-visual tags (script, style, etc.)
+	 */
+	private convertCDPNodeToTree(cdpNode: CDPDOMNode): DOMTreeNode | null {
+		// Only include ELEMENT_NODE (nodeType 1)
+		// Skip document, text, comment nodes, etc.
+		if (cdpNode.nodeType !== 1) {
+			// For document node (nodeType 9), process children to find html/body
+			if (cdpNode.nodeType === 9 && cdpNode.children) {
+				console.log('[StyleInspect] Processing document node, children:', cdpNode.children.length);
+				for (const child of cdpNode.children) {
+					const result = this.convertCDPNodeToTree(child);
+					if (result) {
+						return result;
+					}
+				}
+			}
 			return null;
 		}
 
-		// Build a full path selector to ensure uniqueness
-		var parts = [];
-		var current = el;
+		const tagName = cdpNode.localName || cdpNode.nodeName.toLowerCase();
 
-		while (current && current !== document.body && current !== document.documentElement) {
-			var selector = current.tagName.toLowerCase();
-
-			// If element has an ID, use it and stop (IDs are unique)
-			if (current.id) {
-				parts.unshift('#' + CSS.escape(current.id));
-				break;
-			}
-
-			// Add classes
-			if (current.className && typeof current.className === 'string') {
-				var classes = current.className.trim().split(/\\s+/).filter(function(c) { return c; });
-				if (classes.length > 0) {
-					selector += '.' + classes.map(function(c) { return CSS.escape(c); }).join('.');
-				}
-			}
-
-			// Add nth-of-type for uniqueness among siblings
-			var parent = current.parentElement;
-			if (parent) {
-				var siblings = Array.from(parent.children).filter(function(s) {
-					return s.tagName === current.tagName;
-				});
-				if (siblings.length > 1) {
-					var index = siblings.indexOf(current) + 1;
-					selector += ':nth-of-type(' + index + ')';
-				}
-			}
-
-			parts.unshift(selector);
-			current = parent;
+		// Skip non-visual tags entirely
+		if (StyleInspect.NON_VISUAL_TAGS.has(tagName)) {
+			return null;
 		}
 
-		return parts.join(' > ');
+		// For html element, skip directly to body
+		if (tagName === 'html' && cdpNode.children) {
+			console.log('[StyleInspect] Found html element, looking for body in', cdpNode.children.length, 'children');
+			for (const child of cdpNode.children) {
+				const childTagName = child.localName || child.nodeName.toLowerCase();
+				console.log('[StyleInspect] html child:', childTagName);
+				if (childTagName === 'body') {
+					return this.convertCDPNodeToTree(child);
+				}
+			}
+			// If no body found, return null (shouldn't happen in valid HTML)
+			console.warn('[StyleInspect] No body found in html element!');
+			return null;
+		}
+
+		// Extract className and id from attributes array
+		// CDP returns attributes as flat array: ['class', 'foo bar', 'id', 'myId', ...]
+		let className: string | undefined;
+		let id: string | undefined;
+
+		if (cdpNode.attributes) {
+			for (let i = 0; i < cdpNode.attributes.length; i += 2) {
+				const attrName = cdpNode.attributes[i];
+				const attrValue = cdpNode.attributes[i + 1];
+				if (attrName === 'class') {
+					className = attrValue;
+				} else if (attrName === 'id') {
+					id = attrValue;
+				}
+			}
+		}
+
+		// Skip our injected inspect mode elements
+		if (id && id.startsWith('__roopik_inspect')) {
+			return null;
+		}
+
+		// Convert children recursively
+		const children: DOMTreeNode[] = [];
+		if (cdpNode.children) {
+			for (const child of cdpNode.children) {
+				const childNode = this.convertCDPNodeToTree(child);
+				if (childNode) {
+					children.push(childNode);
+				}
+			}
+		}
+
+		return {
+			nodeId: cdpNode.nodeId,
+			tagName,
+			className,
+			id,
+			children
+		};
 	}
 
-	function updateOverlay(el) {
-		if (!el || el === document.body || el === document.documentElement) {
-			overlay.style.display = 'none';
-			label.style.display = 'none';
+	// Track if Overlay domain is enabled
+	private overlayEnabled: boolean = false;
+
+	/**
+	 * Highlight element in browser by nodeId via CDP
+	 * Called when user clicks a node in the Components tree
+	 *
+	 * IMPORTANT: The nodeId from our cached tree may not match CDP's current nodeIds
+	 * (CDP invalidates nodeIds on each DOM.getDocument call). So we:
+	 * 1. Find the node in our cached tree by nodeId
+	 * 2. Build a CSS selector from the node
+	 * 3. Use CDP DOM.querySelector to get a fresh nodeId
+	 * 4. Use that fresh nodeId with Overlay.highlightNode
+	 */
+	async highlightElementInBrowser(nodeId: number): Promise<void> {
+		if (!this.currentBrowserViewId || !this.domTreeCache) {
 			return;
 		}
 
-		const rect = el.getBoundingClientRect();
-		overlay.style.display = 'block';
-		overlay.style.top = rect.top + 'px';
-		overlay.style.left = rect.left + 'px';
-		overlay.style.width = rect.width + 'px';
-		overlay.style.height = rect.height + 'px';
+		try {
+			// Enable Overlay domain if not already enabled (required for highlighting)
+			if (!this.overlayEnabled) {
+				await this.browserService.sendCDPCommand(this.currentBrowserViewId, 'Overlay.enable', {});
+				this.overlayEnabled = true;
+			}
 
-		// Position label
-		label.style.display = 'block';
-		label.textContent = el.tagName.toLowerCase() + (el.className ? '.' + el.className.split(' ')[0] : '');
-		const labelHeight = 20;
-		if (rect.top > labelHeight + 4) {
-			label.style.top = (rect.top - labelHeight - 4) + 'px';
-		} else {
-			label.style.top = (rect.bottom + 4) + 'px';
+			// Find the node in our cached tree and build a selector
+			const selector = this.buildSelectorFromNodeId(this.domTreeCache, nodeId);
+			if (!selector) {
+				console.warn('[StyleInspect] Could not build selector for nodeId:', nodeId);
+				return;
+			}
+
+			// console.log('[StyleInspect] Built selector from tree node:', selector);
+
+			// Get fresh document root
+			const docResult = await this.browserService.sendCDPCommand(
+				this.currentBrowserViewId,
+				'DOM.getDocument',
+				{ depth: 0 }
+			);
+
+			if (!docResult?.root?.nodeId) {
+				console.warn('[StyleInspect] Could not get document root');
+				return;
+			}
+
+			// Query for the selector to get fresh nodeId
+			const queryResult = await this.browserService.sendCDPCommand(
+				this.currentBrowserViewId,
+				'DOM.querySelector',
+				{
+					nodeId: docResult.root.nodeId,
+					selector
+				}
+			);
+
+			if (!queryResult?.nodeId) {
+				console.warn('[StyleInspect] Could not find element with selector:', selector);
+				return;
+			}
+
+			// Use the fresh nodeId to highlight
+			await this.browserService.sendCDPCommand(this.currentBrowserViewId, 'Overlay.highlightNode', {
+				nodeId: queryResult.nodeId,
+				highlightConfig: {
+					contentColor: { r: 111, g: 168, b: 220, a: 0.66 }, // Blue overlay
+					paddingColor: { r: 147, g: 196, b: 125, a: 0.55 }, // Green for padding
+					borderColor: { r: 255, g: 229, b: 153, a: 0.66 }, // Yellow for border
+					marginColor: { r: 246, g: 178, b: 107, a: 0.66 }  // Orange for margin
+				}
+			});
+		} catch (error) {
+			console.error('[StyleInspect] Failed to highlight element:', error);
 		}
-		label.style.left = Math.max(0, rect.left) + 'px';
 	}
 
-	// ========== Event Handlers ==========
+	/**
+	 * Build a CSS selector from a node in our cached tree
+	 * Returns a unique selector path like "body > div.container > header#main"
+	 * Uses :nth-child() for disambiguation when siblings have same tag
+	 */
+	private buildSelectorFromNodeId(tree: DOMTreeNode, targetNodeId: number): string | null {
+		const path: string[] = [];
 
-	function onMouseMove(e) {
-		const el = document.elementFromPoint(e.clientX, e.clientY);
-		if (el && el.id && el.id.startsWith('__roopik_style_inspect')) {
+		const findAndBuildPath = (node: DOMTreeNode, parent: DOMTreeNode | null): boolean => {
+			// Build selector part for this node
+			let part = node.tagName.toLowerCase();
+			if (node.id) {
+				part = `#${node.id}`; // ID is most specific, use alone
+			} else if (node.className) {
+				// Add first class for specificity
+				const firstClass = node.className.split(/\s+/)[0];
+				if (firstClass && !firstClass.startsWith('__roopik')) {
+					part += `.${firstClass}`;
+				}
+			}
+
+			// Add :nth-of-type() if there are siblings with same tag (and no unique id/class)
+			// NOTE: We use nth-of-type instead of nth-child because:
+			// 1. Our cached tree only has ELEMENT nodes (no text/comment nodes)
+			// 2. nth-child counts ALL nodes including text/comments
+			// 3. nth-of-type only counts elements of same tag type - matches our filtered tree
+			if (parent && !node.id) {
+				const siblings = parent.children || [];
+				const sameTagSiblings = siblings.filter(s => s.tagName.toLowerCase() === node.tagName.toLowerCase());
+				if (sameTagSiblings.length > 1) {
+					// Find this node's index among same-tag siblings only
+					const indexAmongSameTag = sameTagSiblings.findIndex(s => s.nodeId === node.nodeId);
+					if (indexAmongSameTag >= 0) {
+						part += `:nth-of-type(${indexAmongSameTag + 1})`; // CSS is 1-indexed
+					}
+				}
+			}
+
+			if (node.nodeId === targetNodeId) {
+				path.push(part);
+				return true;
+			}
+
+			if (node.children) {
+				for (const child of node.children) {
+					if (findAndBuildPath(child, node)) {
+						path.push(part);
+						return true;
+					}
+				}
+			}
+
+			return false;
+		};
+
+		if (findAndBuildPath(tree, null)) {
+			// Reverse to get root-to-target order
+			return path.reverse().join(' > ');
+		}
+
+		return null;
+	}
+
+	/**
+	 * Hide element highlight in browser
+	 */
+	async hideElementHighlight(): Promise<void> {
+		if (!this.currentBrowserViewId) {
 			return;
 		}
-		if (el && el !== overlay && el !== label && el !== currentElement) {
-			currentElement = el;
-			updateOverlay(el);
+
+		try {
+			await this.browserService.sendCDPCommand(this.currentBrowserViewId, 'Overlay.hideHighlight', {});
+		} catch (error) {
+			// Silent fail
 		}
 	}
 
-	function onClick(e) {
-		e.preventDefault();
-		e.stopPropagation();
-		e.stopImmediatePropagation();
-
-		if (currentElement && !(currentElement.id && currentElement.id.startsWith('__roopik_style_inspect'))) {
-			// Get selector for the element
-			const selector = getElementSelector(currentElement);
-
-			// Store for API access
-			window.__roopikStyleInspectResult = {
-				selector: selector,
-				x: e.clientX,
-				y: e.clientY,
-				tagName: currentElement.tagName.toLowerCase(),
-				className: currentElement.className || '',
-				id: currentElement.id || ''
-			};
-
-			// Visual feedback
-			overlay.style.backgroundColor = 'rgba(147, 51, 234, 0.3)';
-			overlay.style.borderColor = '#7C3AED';
-
-			setTimeout(function() {
-				cleanup();
-			}, 150);
+	/**
+	 * Get nodeId for a CSS selector
+	 * Used to sync browser selection with tree
+	 */
+	async getNodeIdForSelector(selector: string): Promise<number | null> {
+		if (!this.currentBrowserViewId) {
+			return null;
 		}
 
-		return false;
-	}
+		try {
+			// First get the document root
+			const docResult = await this.browserService.sendCDPCommand(
+				this.currentBrowserViewId,
+				'DOM.getDocument',
+				{ depth: 0 }
+			);
 
-	function onKeyDown(e) {
-		if (e.key === 'Escape') {
-			cleanup();
+			if (!docResult?.root?.nodeId) {
+				return null;
+			}
+
+			// Query for the selector
+			const queryResult = await this.browserService.sendCDPCommand(
+				this.currentBrowserViewId,
+				'DOM.querySelector',
+				{
+					nodeId: docResult.root.nodeId,
+					selector
+				}
+			);
+
+			return queryResult?.nodeId || null;
+		} catch (error) {
+			console.error('[StyleInspect] Failed to get nodeId for selector:', error);
+			return null;
 		}
 	}
-
-	function onScroll() {
-		if (currentElement) {
-			updateOverlay(currentElement);
-		}
-	}
-
-	// ========== Cleanup ==========
-
-	function cleanup() {
-		document.removeEventListener('mousemove', onMouseMove, true);
-		document.removeEventListener('click', onClick, true);
-		document.removeEventListener('keydown', onKeyDown, true);
-		document.removeEventListener('scroll', onScroll, true);
-		window.removeEventListener('resize', onScroll);
-
-		if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-		if (label.parentNode) label.parentNode.removeChild(label);
-
-		currentElement = null;
-		delete window.__roopikStyleInspectCleanup;
-	}
-
-	// Store cleanup function
-	window.__roopikStyleInspectCleanup = cleanup;
-
-	// ========== Initialize ==========
-
-	document.addEventListener('mousemove', onMouseMove, true);
-	document.addEventListener('click', onClick, true);
-	document.addEventListener('keydown', onKeyDown, true);
-	document.addEventListener('scroll', onScroll, true);
-	window.addEventListener('resize', onScroll);
-
-	return 'Style inspect mode enabled';
-})();
-`;
+}

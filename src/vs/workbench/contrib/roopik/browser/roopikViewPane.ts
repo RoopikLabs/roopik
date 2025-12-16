@@ -34,6 +34,8 @@ import { Action } from '../../../../base/common/actions.js';
 import { ICanvasService } from '../common/canvas/index.js';
 import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
 import type { CanvasMeta } from '../common/canvas/types.js';
+import { IProjectStorageService } from '../common/projectStorage/index.js';
+import type { ProjectInfo } from '../common/storage/storageTypes.js';
 
 const roopikViewIcon = registerIcon('roopik-view-icon', Codicon.paintcan, localize('roopikViewIcon', 'View icon of the Roopik view.'));
 
@@ -76,6 +78,7 @@ export class RoopikDashboardView extends ViewPane {
 		@INotificationService private readonly notificationService: INotificationService,
 		@ICanvasService private readonly canvasService: ICanvasService,
 		@IQuickInputService private readonly quickInputService: IQuickInputService,
+		@IProjectStorageService private readonly projectStorageService: IProjectStorageService,
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
 
@@ -100,6 +103,14 @@ export class RoopikDashboardView extends ViewPane {
 		this._register(this.canvasService.onCanvasUpdated((event) => {
 			// console.log('[RoopikDashboardView] EVENT: onCanvasUpdated received', event);
 			this.loadCanvasesNow();
+		}));
+
+		// Subscribe to project storage events to auto-refresh projects list
+		this._register(this.projectStorageService.onDidInitialize(() => {
+			this.loadProjectsNow();
+		}));
+		this._register(this.projectStorageService.onProjectsChanged(() => {
+			this.loadProjectsNow();
 		}));
 	}
 
@@ -428,7 +439,7 @@ export class RoopikDashboardView extends ViewPane {
 	}
 
 	/**
-	 * Load projects section (static placeholder for now)
+	 * Load projects section - shows loading state initially
 	 */
 	private loadProjects(): void {
 		if (!this.projectsContainer) {
@@ -440,11 +451,99 @@ export class RoopikDashboardView extends ViewPane {
 			this.projectsContainer.removeChild(this.projectsContainer.firstChild);
 		}
 
-		// Static placeholder projects
-		this.createSection(this.projectsContainer, 'Projects', [
-			{ label: 'E-commerce App', description: 'React + Vite', onClick: () => { } },
-			{ label: 'Dashboard UI', description: 'Next.js', onClick: () => { } }
+		// Show loading state
+		this.createSection(this.projectsContainer, 'Recent Projects', [
+			{ label: 'Loading...', description: 'Waiting for services...', onClick: () => { } }
 		]);
+
+		// Check if already initialized and load
+		this.checkAndLoadProjects();
+	}
+
+	/**
+	 * Check if project storage service is already initialized and load projects
+	 * Handles IDE reload case where onDidInitialize already fired
+	 */
+	private async checkAndLoadProjects(): Promise<void> {
+		try {
+			const isInitialized = await this.projectStorageService.isInitializedAsync();
+			if (isInitialized) {
+				this.loadProjectsNow();
+			}
+			// Otherwise, wait for onDidInitialize event (subscribed in constructor)
+		} catch (err) {
+			console.error('[RoopikDashboardView] checkAndLoadProjects: error checking initialization:', err);
+		}
+	}
+
+	/**
+	 * Load projects from ProjectStorageService immediately
+	 * Called when onDidInitialize fires or on project events
+	 */
+	private async loadProjectsNow(): Promise<void> {
+		if (!this.projectsContainer) {
+			return;
+		}
+
+		// Clear existing content
+		while (this.projectsContainer.firstChild) {
+			this.projectsContainer.removeChild(this.projectsContainer.firstChild);
+		}
+
+		try {
+			const projects = await this.projectStorageService.getRecentProjects(5);
+
+			if (projects.length === 0) {
+				this.createSection(this.projectsContainer, 'Recent Projects', [
+					{ label: 'No recent projects', description: 'Click "Project" to open one', onClick: () => { } }
+				]);
+				return;
+			}
+
+			// Convert to section items
+			const items = projects.map((project: ProjectInfo) => ({
+				label: project.name,
+				description: this.formatTimeAgo(project.updatedAt),
+				onClick: () => this.openProject(project),
+				onDelete: () => this.deleteProject(project.id, project.name)
+			}));
+
+			this.createSection(this.projectsContainer, 'Recent Projects', items);
+		} catch (err) {
+			console.error('[RoopikDashboardView] Failed to load projects:', err);
+			this.createSection(this.projectsContainer, 'Recent Projects', [
+				{ label: 'Failed to load projects', description: 'Check console for details', onClick: () => { } }
+			]);
+		}
+	}
+
+	/**
+	 * Open a project in Project Mode
+	 */
+	private async openProject(project: ProjectInfo): Promise<void> {
+		try {
+			// Execute the project preview command with the project path
+			await this.commandService.executeCommand('roopik.openProjectPreview', {
+				projectPath: project.path,
+				projectName: project.name
+			});
+		} catch (err) {
+			const errorMsg = err instanceof Error ? err.message : String(err);
+			this.notificationService.error(localize('roopik.openProject.error', 'Failed to open project: {0}', errorMsg));
+		}
+	}
+
+	/**
+	 * Delete a project from recent projects
+	 */
+	private async deleteProject(projectId: string, projectName: string): Promise<void> {
+		try {
+			await this.projectStorageService.deleteProject(projectId);
+			this.notificationService.info(localize('roopik.deleteProject.success', 'Removed "{0}" from recent projects', projectName));
+		} catch (err) {
+			const errorMsg = err instanceof Error ? err.message : String(err);
+			this.notificationService.error(localize('roopik.deleteProject.error', 'Failed to remove project: {0}', errorMsg));
+		}
 	}
 
 	/**

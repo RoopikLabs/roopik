@@ -189,3 +189,47 @@ Files modified outside of `workbench/contrib/roopik/` to integrate Roopik into V
 **Usage in Roopik:**
 - `src/vs/workbench/contrib/roopik/browser/projectMode/editor.ts` subscribes to `IMenubarStateService.onDidOpenMenu/onDidCloseMenu` to pause/resume browser when menus open
 - Service is registered via import in `roopik.contribution.ts`
+
+---
+
+## Content Security Policy (CSP) Modifications
+
+**Purpose:** Allow favicon loading from local development servers (Vite, React dev server, etc.) in ProjectMode browser preview.
+
+| File | Lines | Change | Reason |
+|------|-------|--------|--------|
+| `src/vs/code/electron-browser/workbench/workbench.html` | 19-20 | Added `http://127.0.0.1:*` and `http://localhost:*` to `img-src` directive | Allow favicon images from local dev servers |
+| `src/vs/code/electron-browser/workbench/workbench-dev.html` | 19-20 | Added `http://127.0.0.1:*` and `http://localhost:*` to `img-src` directive | Allow favicon images from local dev servers |
+
+**Change Details:**
+
+Original CSP `img-src` directive:
+```html
+img-src
+    'self'
+    data:
+    blob:
+    vscode-remote-resource:
+    vscode-managed-remote-resource:
+    https:
+;
+```
+
+Modified CSP `img-src` directive:
+```html
+img-src
+    'self'
+    data:
+    blob:
+    vscode-remote-resource:
+    vscode-managed-remote-resource:
+    https:
+    http://127.0.0.1:*
+    http://localhost:*
+;
+```
+
+**Why needed?** When users preview local projects (e.g., Vite at `http://127.0.0.1:5173`), the browser tab favicon is loaded from the dev server. Without this CSP exception, favicon requests are blocked and show console errors like:
+```
+Loading the image 'http://127.0.0.1:5173/favicon.ico' violates the Content Security Policy directive: 'img-src ...'
+```

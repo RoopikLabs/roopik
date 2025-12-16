@@ -105,9 +105,15 @@ export class EditorTabInput extends EditorInput {
 	}
 
 	override getIcon(): ThemeIcon | URI {
-		// Use favicon if available, otherwise fall back to globe icon
-		if (this._favicon) {
-			return URI.parse(this._favicon);
+		// Use favicon if available and valid, otherwise fall back to globe icon
+		// Check for non-empty string to avoid issues with empty/invalid URLs
+		if (this._favicon && this._favicon.length > 0) {
+			try {
+				return URI.parse(this._favicon);
+			} catch {
+				// Invalid favicon URL, use default
+				return browserTabIcon;
+			}
 		}
 		return browserTabIcon;
 	}

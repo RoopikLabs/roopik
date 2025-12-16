@@ -45,7 +45,7 @@ export interface IBrowserControlBarCallbacks {
 	// Features
 	onDevTools?: () => void;
 	onInspectMode?: () => void;
-	onStyleInspectMode?: () => void;
+	onStylePanelToggle?: () => void;  // Toggle style panel visibility
 	onHardReload?: () => void;
 	onScreenshot?: () => void;
 	onCopyUrl?: () => void;
@@ -86,6 +86,11 @@ export class BrowserControlBar extends Disposable {
 	// Edit Mode state
 	private editModeButton: HTMLButtonElement | undefined;
 	private isEditModeActive: boolean = false;
+
+	// Feature buttons for active state styling
+	private inspectModeButton: HTMLButtonElement | undefined;
+	private stylePanelButton: HTMLButtonElement | undefined;
+	private devToolsButton: HTMLButtonElement | undefined;
 
 	constructor(
 		parent: HTMLElement,
@@ -168,17 +173,17 @@ export class BrowserControlBar extends Disposable {
 
 		// Inspect Mode button (for element inspection)
 		if (this.config.showInspectMode && this.callbacks.onInspectMode) {
-			this.createIconButton(Codicon.inspect, 'Inspect Mode', () => this.callbacks.onInspectMode!());
+			this.inspectModeButton = this.createIconButton(Codicon.inspect, 'Inspect Mode', () => this.callbacks.onInspectMode!());
 		}
 
-		// Style Inspect button (for CSS source tracking)
-		if (this.config.showStyleInspect && this.callbacks.onStyleInspectMode) {
-			this.createIconButton(Codicon.symbolColor, 'Style Inspect (CSS Sources)', () => this.callbacks.onStyleInspectMode!());
+		// Style Panel toggle button (sidebar icon - toggles CSS panel)
+		if (this.config.showStyleInspect && this.callbacks.onStylePanelToggle) {
+			this.stylePanelButton = this.createIconButton(Codicon.layoutSidebarRight, 'Toggle Style Panel', () => this.callbacks.onStylePanelToggle!());
 		}
 
 		// DevTools button
 		if (this.config.showDevTools && this.callbacks.onDevTools) {
-			this.createIconButton(Codicon.terminal, 'Toggle DevTools', () => this.callbacks.onDevTools!());
+			this.devToolsButton = this.createIconButton(Codicon.terminal, 'Toggle DevTools', () => this.callbacks.onDevTools!());
 		}
 
 		// Screenshot button
@@ -989,6 +994,49 @@ export class BrowserControlBar extends Disposable {
 			this.editModeButton.onmouseleave = () => {
 				this.editModeButton!.style.backgroundColor = 'transparent';
 			};
+		}
+	}
+
+	// ============================================
+	// Feature Button Active States
+	// ============================================
+
+	/**
+	 * Update inspect mode button active state (blue outline when active)
+	 */
+	setInspectModeActive(active: boolean): void {
+		this.updateButtonActiveState(this.inspectModeButton, active);
+	}
+
+	/**
+	 * Update style panel button active state (blue outline when active)
+	 */
+	setStylePanelActive(active: boolean): void {
+		this.updateButtonActiveState(this.stylePanelButton, active);
+	}
+
+	/**
+	 * Update devtools button active state (blue outline when active)
+	 */
+	setDevToolsActive(active: boolean): void {
+		this.updateButtonActiveState(this.devToolsButton, active);
+	}
+
+	/**
+	 * Helper to update button active state with blue outline
+	 */
+	private updateButtonActiveState(button: HTMLButtonElement | undefined, active: boolean): void {
+		if (!button) {
+			return;
+		}
+
+		if (active) {
+			// Active state - blue outline
+			button.style.outline = '1px solid var(--vscode-focusBorder, #007acc)';
+			button.style.outlineOffset = '-1px';
+		} else {
+			// Inactive state - no outline
+			button.style.outline = 'none';
 		}
 	}
 
