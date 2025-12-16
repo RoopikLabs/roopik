@@ -553,7 +553,7 @@ export class Editor extends EditorPane {
 			onHome: () => this.goHome(),
 			onRefresh: () => this.refresh(),
 			onStopDevServer: () => this.stopDevServer(),
-			onInspectMode: () => this.enableInspectMode(),
+			onInspectMode: () => this.toggleInspectMode(),
 			onStylePanelToggle: () => this.toggleStylePanel(),
 			onDevTools: () => this.toggleDevTools(),
 			onHardReload: () => this.hardReload(),
@@ -1443,28 +1443,35 @@ export class Editor extends EditorPane {
 	// ============================================
 
 	/**
-	 * Enable Inspect Element Mode
-	 * 1. Setup CDP bridge for receiving events from injected script
-	 * 2. Inject inspect mode script
+	 * Toggle Inspect Element Mode (enable/disable)
+	 * Same button press enables and disables - standard toggle behavior
 	 */
-	private async enableInspectMode(): Promise<void> {
+	private async toggleInspectMode(): Promise<void> {
 		if (!this.browserViewId) {
 			return;
 		}
 
-		// Setup CDP bridge first (creates window.__roopikBridge in page)
-		try {
-			await this.browserService.setupBrowserBridge(this.browserViewId);
-		} catch (e) {
-			this.logger.warn('[InspectMode] Failed to setup bridge, continuing anyway:', e);
-			// Continue anyway - script will still work, just won't send events
+		// Toggle based on current state
+		if (this.inspectMode.getIsActive()) {
+			// Disable inspect mode
+			await this.inspectMode.disable(this.browserViewId);
+			this.controlBar?.setInspectModeActive(false);
+		} else {
+			// Enable inspect mode
+			// Setup CDP bridge first (creates window.__roopikBridge in page)
+			try {
+				await this.browserService.setupBrowserBridge(this.browserViewId);
+			} catch (e) {
+				this.logger.warn('[InspectMode] Failed to setup bridge, continuing anyway:', e);
+				// Continue anyway - script will still work, just won't send events
+			}
+
+			// Inject inspect mode script
+			await this.inspectMode.enable(this.browserViewId);
+
+			// Update button active state
+			this.controlBar?.setInspectModeActive(true);
 		}
-
-		// Inject inspect mode script
-		await this.inspectMode.enable(this.browserViewId);
-
-		// Update button active state
-		this.controlBar?.setInspectModeActive(true);
 	}
 
 	/**
