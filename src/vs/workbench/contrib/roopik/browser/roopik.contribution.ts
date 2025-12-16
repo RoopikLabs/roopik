@@ -61,6 +61,8 @@ import { IComponentService } from '../common/component/componentService.js';
 import { ComponentServiceClient } from './componentServiceClient.js';
 import { ISourceNavigationService } from '../common/navigation/index.js';
 import { SourceNavigationService } from './services/index.js';
+import { IProjectStorageService } from '../common/projectStorage/index.js';
+import { ProjectStorageServiceClient } from './projectStorageServiceClient.js';
 // MenubarStateService - registers singleton for browser pause detection
 import './services/menubarStateService.js';
 
@@ -160,3 +162,7 @@ registerSingleton(IComponentService, ComponentServiceClient, InstantiationType.D
 // Source Navigation Service (centralized file opening for click-to-source features)
 // Used by: Style Inspect panel, Context menu "View Source", Element inspector
 registerSingleton(ISourceNavigationService, SourceNavigationService, InstantiationType.Delayed);
+
+// Project Storage Service (recent projects for Project Mode)
+// Browser-side client that communicates with ProjectStorageService in main process via IPC
+registerSingleton(IProjectStorageService, ProjectStorageServiceClient, InstantiationType.Delayed);

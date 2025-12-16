@@ -280,7 +280,6 @@ export class StyleInspect {
 		// Walk down the tree following the path
 		// Start from tree root (should be body)
 		let currentNodes: DOMTreeNode[] = [tree];
-		let currentParent: DOMTreeNode | null = null;
 		let startIndex = 0;
 
 		// If first part matches tree root, skip it
@@ -318,7 +317,6 @@ export class StyleInspect {
 				return this.findMatchingNodeWithNth(tree, lastPart);
 			}
 
-			currentParent = currentNodes[0];
 			currentNodes = nextNodes;
 		}
 

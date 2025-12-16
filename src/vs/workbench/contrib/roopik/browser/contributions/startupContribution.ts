@@ -26,6 +26,7 @@ import { RoopikWelcomeInput } from '../welcomeInput.js';
 import { RoopikLogger } from '../../common/roopikLogger.js';
 import { ICanvasService } from '../../common/canvas/index.js';
 import { IComponentService } from '../../common/component/componentService.js';
+import { IProjectStorageService } from '../../common/projectStorage/index.js';
 
 export class RoopikStartupContribution extends Disposable implements IWorkbenchContribution {
 	static readonly ID = 'roopik.startupContribution';
@@ -39,7 +40,8 @@ export class RoopikStartupContribution extends Disposable implements IWorkbenchC
 		@IOutputService private readonly outputService: IOutputService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 		@ICanvasService private readonly canvasService: ICanvasService,
-		@IComponentService private readonly componentService: IComponentService
+		@IComponentService private readonly componentService: IComponentService,
+		@IProjectStorageService private readonly projectStorageService: IProjectStorageService
 	) {
 		super();
 		this.clearOutputOnStartup();
@@ -68,6 +70,9 @@ export class RoopikStartupContribution extends Disposable implements IWorkbenchC
 
 			await this.componentService.initialize(workspacePath);
 			// console.log('[RoopikStartupContribution] ComponentService initialized');
+
+			await this.projectStorageService.initialize(workspacePath);
+			// console.log('[RoopikStartupContribution] ProjectStorageService initialized');
 		} catch (err) {
 			console.error('[RoopikStartupContribution] Failed to initialize services:', err);
 		}

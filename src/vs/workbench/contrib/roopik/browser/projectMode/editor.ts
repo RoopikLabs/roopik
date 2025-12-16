@@ -38,6 +38,7 @@ import { StyleInspect } from './features/styleInspect.js';
 import { DefaultBrowserScreen } from './components/defaultBrowserScreen.js';
 import { ISourceNavigationService } from '../../common/navigation/index.js';
 import { IMenubarStateService } from '../services/menubarStateService.js';
+import { IProjectStorageService } from '../../common/projectStorage/index.js';
 
 /**
  * Project Mode Editor
@@ -105,7 +106,8 @@ export class Editor extends EditorPane {
 		@INotificationService private readonly notificationService: INotificationService,
 		@IClipboardService private readonly clipboardService: IClipboardService,
 		@ISourceNavigationService private readonly sourceNavigationService: ISourceNavigationService,
-		@IMenubarStateService private readonly menubarStateService: IMenubarStateService
+		@IMenubarStateService private readonly menubarStateService: IMenubarStateService,
+		@IProjectStorageService private readonly projectStorageService: IProjectStorageService
 	) {
 		super(Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = RoopikLogger.create(loggerService);
@@ -1374,6 +1376,19 @@ export class Editor extends EditorPane {
 			// Update state
 			this.isProjectMode = true;
 			this.currentProjectRoot = projectRoot;
+
+			// Save to recent projects storage (project started successfully = valid path)
+			// Extract project name from the path (folder name)
+			const projectName = projectRoot.split(/[/\\]/).pop() || 'Project';
+
+			// Get server info to capture framework (optional - don't block on this)
+			this.devServerService.getServerInfo(projectRoot).then((serverInfo) => {
+				const framework = serverInfo?.framework;
+				const frameworkDisplayName = serverInfo?.frameworkDisplayName;
+				return this.projectStorageService.upsertProject(projectName, projectRoot, framework, frameworkDisplayName);
+			}).catch((err) => {
+				this.logger.warn('[ProjectMode] Failed to save project to recent projects:', err);
+			});
 
 			// Small delay to ensure Vite server is fully ready to accept connections
 			// The server reports READY when listening starts, but it may take a few ms
