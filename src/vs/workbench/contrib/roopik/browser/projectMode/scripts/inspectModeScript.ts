@@ -444,7 +444,15 @@ export const INSPECT_MODE_SCRIPT = `
 	}
 
 	function isOurElement(el) {
-		return el && el.id && el.id.startsWith('__roopik_inspect');
+		// Check if element or any parent is one of our UI elements
+		var current = el;
+		while (current && current !== document.body) {
+			if (current.id && current.id.startsWith('__roopik_inspect')) {
+				return true;
+			}
+			current = current.parentElement;
+		}
+		return false;
 	}
 
 	// ========== Event Handlers ==========
