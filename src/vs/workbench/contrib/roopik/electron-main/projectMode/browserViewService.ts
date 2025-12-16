@@ -696,6 +696,45 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// Utilities
 	// ============================================
 
+	/**
+	 * Validate that a favicon URL actually exists (returns 200)
+	 * Uses HEAD request for minimal overhead
+	 */
+	private async validateFaviconUrl(url: string): Promise<boolean> {
+		try {
+			const { net } = await import('electron');
+			return new Promise((resolve) => {
+				const request = net.request({
+					method: 'HEAD',
+					url,
+					// Short timeout - favicon validation shouldn't block
+					// Note: net.request doesn't have timeout option, we handle via events
+				});
+
+				// Timeout after 3 seconds
+				const timeout = setTimeout(() => {
+					request.abort();
+					resolve(false);
+				}, 3000);
+
+				request.on('response', (response) => {
+					clearTimeout(timeout);
+					// Accept 200 OK and 304 Not Modified
+					resolve(response.statusCode === 200 || response.statusCode === 304);
+				});
+
+				request.on('error', () => {
+					clearTimeout(timeout);
+					resolve(false);
+				});
+
+				request.end();
+			});
+		} catch {
+			return false;
+		}
+	}
+
 	async takeScreenshot(browserViewId: number): Promise<string> {
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView || browserView.webContents.isDestroyed()) {
@@ -986,10 +1025,23 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		webContents.on('page-favicon-updated', (_event, favicons) => {
 			// Store first favicon URL and notify renderer
+			// But first validate that the favicon actually exists (HEAD request)
 			if (favicons && favicons.length > 0) {
-				this.favicons.set(browserViewId, favicons[0]);
-				this.faviconReceivedForCurrentLoad.set(browserViewId, true);
-				this.fireNavigationStateChanged(browserViewId);
+				const faviconUrl = favicons[0];
+
+				// Validate favicon URL with HEAD request before using it
+				// This prevents 404 errors from showing broken favicon in tab
+				this.validateFaviconUrl(faviconUrl).then(isValid => {
+					if (isValid) {
+						this.favicons.set(browserViewId, faviconUrl);
+						this.faviconReceivedForCurrentLoad.set(browserViewId, true);
+						this.fireNavigationStateChanged(browserViewId);
+					} else {
+						// Favicon URL returned 404 or error - don't use it
+						// The default globe icon will be shown instead
+						console.log(`[ProjectMode] Favicon not found: ${faviconUrl}`);
+					}
+				});
 			}
 		});
 

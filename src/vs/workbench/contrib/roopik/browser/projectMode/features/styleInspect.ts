@@ -110,6 +110,14 @@ export class StyleInspect {
 			},
 			onTreeNodeSelected: (nodeId) => {
 				this.onTreeNodeSelectedCallback?.(nodeId);
+			},
+			onTreeNodeHover: (nodeId) => {
+				// Highlight on hover, hide on leave (null)
+				if (nodeId !== null) {
+					this.highlightElementInBrowser(nodeId);
+				} else {
+					this.hideElementHighlight();
+				}
 			}
 		};
 
@@ -785,11 +793,12 @@ export class StyleInspect {
 	/**
 	 * Build a CSS selector from a node in our cached tree
 	 * Returns a unique selector path like "body > div.container > header#main"
+	 * Uses :nth-child() for disambiguation when siblings have same tag
 	 */
 	private buildSelectorFromNodeId(tree: DOMTreeNode, targetNodeId: number): string | null {
 		const path: string[] = [];
 
-		const findAndBuildPath = (node: DOMTreeNode): boolean => {
+		const findAndBuildPath = (node: DOMTreeNode, parent: DOMTreeNode | null): boolean => {
 			// Build selector part for this node
 			let part = node.tagName.toLowerCase();
 			if (node.id) {
@@ -802,6 +811,19 @@ export class StyleInspect {
 				}
 			}
 
+			// Add :nth-child() if there are siblings with same tag (and no unique id/class)
+			if (parent && !node.id) {
+				const siblings = parent.children || [];
+				const sameTagSiblings = siblings.filter(s => s.tagName.toLowerCase() === node.tagName.toLowerCase());
+				if (sameTagSiblings.length > 1) {
+					// Find this node's index among ALL siblings (not just same-tag)
+					const indexAmongAll = siblings.findIndex(s => s.nodeId === node.nodeId);
+					if (indexAmongAll >= 0) {
+						part += `:nth-child(${indexAmongAll + 1})`; // CSS is 1-indexed
+					}
+				}
+			}
+
 			if (node.nodeId === targetNodeId) {
 				path.push(part);
 				return true;
@@ -809,7 +831,7 @@ export class StyleInspect {
 
 			if (node.children) {
 				for (const child of node.children) {
-					if (findAndBuildPath(child)) {
+					if (findAndBuildPath(child, node)) {
 						path.push(part);
 						return true;
 					}
@@ -819,7 +841,7 @@ export class StyleInspect {
 			return false;
 		};
 
-		if (findAndBuildPath(tree)) {
+		if (findAndBuildPath(tree, null)) {
 			// Reverse to get root-to-target order
 			return path.reverse().join(' > ');
 		}

@@ -37,6 +37,8 @@ export interface IStyleInspectPanelCallbacks {
 	onVisibilityChanged?: (visible: boolean, panelWidth: number) => void;
 	/** Called when user clicks a node in the Components tree */
 	onTreeNodeSelected?: (nodeId: number) => void;
+	/** Called when user hovers a node in the Components tree */
+	onTreeNodeHover?: (nodeId: number | null) => void;
 }
 
 /**
@@ -660,6 +662,11 @@ export class StyleInspectPanel {
 			padding: 8px 0;
 		`;
 
+		// Clear highlight when mouse leaves tree container
+		treeContainer.addEventListener('mouseleave', () => {
+			this.callbacks.onTreeNodeHover?.(null);
+		});
+
 		this.renderTreeNode(treeContainer, this.domTree, 0);
 		content.appendChild(treeContainer);
 	}
@@ -678,15 +685,19 @@ export class StyleInspectPanel {
 			${isSelected ? 'background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground);' : ''}
 		`;
 
-		// Hover effect
-		if (!isSelected) {
-			row.addEventListener('mouseenter', () => {
+		// Hover effect + highlight in browser
+		row.addEventListener('mouseenter', () => {
+			if (!isSelected) {
 				row.style.background = 'var(--vscode-list-hoverBackground)';
-			});
-			row.addEventListener('mouseleave', () => {
+			}
+			// Highlight element in browser on hover
+			this.callbacks.onTreeNodeHover?.(node.nodeId);
+		});
+		row.addEventListener('mouseleave', () => {
+			if (!isSelected) {
 				row.style.background = '';
-			});
-		}
+			}
+		});
 
 		// Expand/collapse chevron (using VSCode codicon)
 		const chevron = document.createElement('span');
