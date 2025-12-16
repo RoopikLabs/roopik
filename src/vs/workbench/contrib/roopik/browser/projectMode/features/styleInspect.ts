@@ -811,15 +811,19 @@ export class StyleInspect {
 				}
 			}
 
-			// Add :nth-child() if there are siblings with same tag (and no unique id/class)
+			// Add :nth-of-type() if there are siblings with same tag (and no unique id/class)
+			// NOTE: We use nth-of-type instead of nth-child because:
+			// 1. Our cached tree only has ELEMENT nodes (no text/comment nodes)
+			// 2. nth-child counts ALL nodes including text/comments
+			// 3. nth-of-type only counts elements of same tag type - matches our filtered tree
 			if (parent && !node.id) {
 				const siblings = parent.children || [];
 				const sameTagSiblings = siblings.filter(s => s.tagName.toLowerCase() === node.tagName.toLowerCase());
 				if (sameTagSiblings.length > 1) {
-					// Find this node's index among ALL siblings (not just same-tag)
-					const indexAmongAll = siblings.findIndex(s => s.nodeId === node.nodeId);
-					if (indexAmongAll >= 0) {
-						part += `:nth-child(${indexAmongAll + 1})`; // CSS is 1-indexed
+					// Find this node's index among same-tag siblings only
+					const indexAmongSameTag = sameTagSiblings.findIndex(s => s.nodeId === node.nodeId);
+					if (indexAmongSameTag >= 0) {
+						part += `:nth-of-type(${indexAmongSameTag + 1})`; // CSS is 1-indexed
 					}
 				}
 			}
