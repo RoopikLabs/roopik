@@ -67,7 +67,7 @@ export class StyleInspect {
 		private readonly browserService: IProjectModeService,
 		private readonly notificationService: INotificationService,
 		private readonly sourceNavigationService: ISourceNavigationService
-	) {}
+	) { }
 
 	/**
 	 * Set the InspectMode reference for unified script injection
@@ -264,6 +264,7 @@ export class StyleInspect {
 	/**
 	 * Find nodeId in cached tree by matching selector
 	 * Parses full selector path and walks down the tree to find exact match
+	 * Handles :nth-of-type() for disambiguating siblings with same tag
 	 */
 	private findNodeIdBySelector(tree: DOMTreeNode, selector: string): number | null {
 		// Parse selector: "body > div.container > header.header > nav" or "#myId" etc.
@@ -279,10 +280,11 @@ export class StyleInspect {
 		// Walk down the tree following the path
 		// Start from tree root (should be body)
 		let currentNodes: DOMTreeNode[] = [tree];
+		let currentParent: DOMTreeNode | null = null;
 		let startIndex = 0;
 
 		// If first part matches tree root, skip it
-		if (parsedParts.length > 0 && this.nodeMatchesSelector(tree, parsedParts[0])) {
+		if (parsedParts.length > 0 && this.nodeMatchesSelector(tree, parsedParts[0], null, 0)) {
 			startIndex = 1;
 		}
 
@@ -293,8 +295,16 @@ export class StyleInspect {
 
 			for (const node of currentNodes) {
 				if (node.children) {
+					// Group children by tag for nth-of-type matching
+					const tagCounts = new Map<string, number>();
+
 					for (const child of node.children) {
-						if (this.nodeMatchesSelector(child, target)) {
+						const childTag = child.tagName.toLowerCase();
+						const currentCount = tagCounts.get(childTag) || 0;
+						tagCounts.set(childTag, currentCount + 1);
+
+						// Pass the nth-of-type index (1-based)
+						if (this.nodeMatchesSelector(child, target, node, currentCount + 1)) {
 							nextNodes.push(child);
 						}
 					}
@@ -305,9 +315,10 @@ export class StyleInspect {
 				// Path broken, try fallback DFS search for last part
 				console.log('[StyleInspect] Path broken at part', i, ', falling back to DFS');
 				const lastPart = parsedParts[parsedParts.length - 1];
-				return this.findMatchingNode(tree, lastPart);
+				return this.findMatchingNodeWithNth(tree, lastPart);
 			}
 
+			currentParent = currentNodes[0];
 			currentNodes = nextNodes;
 		}
 
@@ -318,11 +329,17 @@ export class StyleInspect {
 	/**
 	 * Parse a selector part like "div.container.active" or "#myId" or "div:nth-of-type(2)"
 	 */
-	private parseSelectorPart(part: string): { tag?: string; id?: string; classes: string[] } {
-		const result: { tag?: string; id?: string; classes: string[] } = { classes: [] };
+	private parseSelectorPart(part: string): { tag?: string; id?: string; classes: string[]; nthOfType?: number } {
+		const result: { tag?: string; id?: string; classes: string[]; nthOfType?: number } = { classes: [] };
 
-		// Remove :nth-of-type(...) etc.
-		const cleanPart = part.replace(/:[^.#]+/g, '');
+		// Extract :nth-of-type(n) before cleaning
+		const nthMatch = part.match(/:nth-of-type\((\d+)\)/);
+		if (nthMatch) {
+			result.nthOfType = parseInt(nthMatch[1], 10);
+		}
+
+		// Remove :nth-of-type(...) and other pseudo-selectors for tag/class parsing
+		const cleanPart = part.replace(/:[^.#]+(\([^)]*\))?/g, '');
 
 		// Check for ID selector
 		if (cleanPart.startsWith('#')) {
@@ -340,7 +357,7 @@ export class StyleInspect {
 		}
 
 		// Extract classes
-		const classMatches = cleanPart.match(/\.([^.#]+)/g);
+		const classMatches = cleanPart.match(/\.([^.#:]+)/g);
 		if (classMatches) {
 			result.classes = classMatches.map(c => c.slice(1)); // Remove leading dot
 		}
@@ -349,21 +366,28 @@ export class StyleInspect {
 	}
 
 	/**
-	 * Find a matching node in the tree (DFS)
+	 * Find a matching node in the tree (DFS) with nth-of-type support
 	 */
-	private findMatchingNode(
+	private findMatchingNodeWithNth(
 		node: DOMTreeNode,
-		target: { tag?: string; id?: string; classes: string[] }
+		target: { tag?: string; id?: string; classes: string[]; nthOfType?: number }
 	): number | null {
-		// Check if this node matches
-		if (this.nodeMatchesSelector(node, target)) {
-			return node.nodeId;
-		}
-
-		// Search children
+		// Search children with proper nth-of-type tracking
 		if (node.children) {
+			const tagCounts = new Map<string, number>();
+
 			for (const child of node.children) {
-				const found = this.findMatchingNode(child, target);
+				const childTag = child.tagName.toLowerCase();
+				const currentCount = tagCounts.get(childTag) || 0;
+				tagCounts.set(childTag, currentCount + 1);
+
+				// Check if this child matches
+				if (this.nodeMatchesSelector(child, target, node, currentCount + 1)) {
+					return child.nodeId;
+				}
+
+				// Recurse into children
+				const found = this.findMatchingNodeWithNth(child, target);
 				if (found) {
 					return found;
 				}
@@ -375,10 +399,16 @@ export class StyleInspect {
 
 	/**
 	 * Check if a node matches the parsed selector
+	 * @param node The DOM tree node to check
+	 * @param target The parsed selector target
+	 * @param parent The parent node (for nth-of-type context)
+	 * @param nthIndex The 1-based index of this node among same-tag siblings
 	 */
 	private nodeMatchesSelector(
 		node: DOMTreeNode,
-		target: { tag?: string; id?: string; classes: string[] }
+		target: { tag?: string; id?: string; classes: string[]; nthOfType?: number },
+		parent: DOMTreeNode | null,
+		nthIndex: number
 	): boolean {
 		// Match by ID (highest priority)
 		if (target.id) {
@@ -398,6 +428,11 @@ export class StyleInspect {
 					return false;
 				}
 			}
+		}
+
+		// Match by nth-of-type if specified
+		if (target.nthOfType !== undefined && nthIndex !== target.nthOfType) {
+			return false;
 		}
 
 		return true;
@@ -746,7 +781,7 @@ export class StyleInspect {
 				return;
 			}
 
-			console.log('[StyleInspect] Built selector from tree node:', selector);
+			// console.log('[StyleInspect] Built selector from tree node:', selector);
 
 			// Get fresh document root
 			const docResult = await this.browserService.sendCDPCommand(
