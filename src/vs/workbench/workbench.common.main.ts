@@ -126,6 +126,7 @@ import './services/textMate/browser/textMateTokenizationFeature.contribution.js'
 import './services/treeSitter/browser/treeSitter.contribution.js';
 import './services/userActivity/common/userActivityService.js';
 import './services/userActivity/browser/userActivityBrowser.js';
+import './services/userAttention/browser/userAttentionBrowser.js';
 import './services/editor/browser/editorPaneService.js';
 import './services/editor/common/customEditorLabelService.js';
 import './services/dataChannel/browser/dataChannelService.js';
@@ -203,18 +204,12 @@ import './contrib/notebook/browser/notebook.contribution.js';
 // Speech
 import './contrib/speech/browser/speech.contribution.js';
 
-// Roopik Design IDE
-import './contrib/roopik/browser/roopik.contribution.js';
-
 // Chat
 import './contrib/chat/browser/chat.contribution.js';
 import './contrib/inlineChat/browser/inlineChat.contribution.js';
 import './contrib/mcp/browser/mcp.contribution.js';
 import './contrib/chat/browser/chatSessions.contribution.js';
 import './contrib/chat/browser/chatContext.contribution.js';
-
-// Roopik Agent
-import './contrib/roopikAgent/browser/roopikAgent.contribution.js';
 
 // Interactive
 import './contrib/interactive/browser/interactive.contribution.js';

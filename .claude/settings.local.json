@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version:*)",
+      "Bash(if exist node_modules echo \"EXISTS\" else echo \"NOT FOUND\")",
+      "Bash(test:*)",
+      "Bash(npm install)",
+      "Bash(node:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(node-gyp rebuild:*)",
+      "Bash(npx node-gyp rebuild:*)",
+      "Bash(cmd.exe /c scriptscode.bat)",
+      "Bash(npm run compile:*)",
+      "Bash(npm run compile-extension:roopik:*)",
+      "Bash(npm run compile-extensions:*)",
+      "Bash(git add:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm create:*)",
+      "Bash(del \"c:\\Users\\Humblebee\\Documents\\GitHub\\roopik\\extensions\\roopik\\src\\performanceMonitor.ts\")",
+      "Bash(dir:*)",
+      "Bash(cat:*)",
+      "Bash(npm run compile-extension:*)",
+      "Bash(npm run build:extension:*)",
+      "Bash(if exist package.json echo \"EXISTS\" else echo \"NOT FOUND\")",
+      "Bash(rm:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run compile-extensions-build:*)",
+      "Bash(find:*)",
+      "Bash(curl:*)",
+      "Bash(tree:*)",
+      "Bash(if exist docs echo \"EXISTS\" else echo \"NOT FOUND\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

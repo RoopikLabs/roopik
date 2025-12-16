@@ -500,12 +500,12 @@ function updateEslintConfig() {
 	}
 }
 
-// Apply build/gulpfile.extensions.mjs updates
+// Apply build/gulpfile.extensions.ts updates
 function updateGulpfileExtensions() {
-	const filePath = path.join(ROOT_DIR, 'build/gulpfile.extensions.mjs');
+	const filePath = path.join(ROOT_DIR, 'build/gulpfile.extensions.ts');
 
 	if (!fileExists(filePath)) {
-		warning('build/gulpfile.extensions.mjs not found (skipping)');
+		warning('build/gulpfile.extensions.ts not found (skipping)');
 		return { updated: false, errors: 0 };
 	}
 
@@ -518,21 +518,21 @@ function updateGulpfileExtensions() {
 
 	// Check if roopik extension already exists
 	if (content.includes("'extensions/roopik/tsconfig.json'")) {
-		success('build/gulpfile.extensions.mjs - Roopik extension already registered');
+		success('build/gulpfile.extensions.ts - Roopik extension already registered');
 		return { updated: false, errors: 0 };
 	}
 
 	// Find the compilations array
 	const compilationsMatch = content.match(/const compilations = \[([\s\S]*?)\];/);
 	if (!compilationsMatch) {
-		warning('build/gulpfile.extensions.mjs - Could not find compilations array');
+		warning('build/gulpfile.extensions.ts - Could not find compilations array');
 		return { updated: false, errors: 0 };
 	}
 
 	// Find the opening bracket position
 	const arrayStartIndex = content.indexOf('const compilations = [');
 	if (arrayStartIndex === -1) {
-		warning('build/gulpfile.extensions.mjs - Could not find compilations array start');
+		warning('build/gulpfile.extensions.ts - Could not find compilations array start');
 		return { updated: false, errors: 0 };
 	}
 
@@ -556,10 +556,10 @@ function updateGulpfileExtensions() {
 	}
 
 	if (writeFile(filePath, updatedContent)) {
-		success('build/gulpfile.extensions.mjs - Added roopik extension registration');
+		success('build/gulpfile.extensions.ts - Added roopik extension registration');
 		return { updated: true, errors: 0 };
 	} else {
-		error('build/gulpfile.extensions.mjs - Failed to update');
+		error('build/gulpfile.extensions.ts - Failed to update');
 		return { updated: false, errors: 1 };
 	}
 }
