@@ -58,7 +58,7 @@ export const INSPECT_MODE_SCRIPT = `
 		'z-index: 2147483646',
 		'border: 2px solid #007acc',
 		'background-color: rgba(0, 122, 204, 0.1)',
-		'transition: all 0.05s ease-out',
+		'transition: top 0.12s ease-out, left 0.12s ease-out, width 0.12s ease-out, height 0.12s ease-out',
 		'display: none'
 	].join(';');
 	document.body.appendChild(hoverOverlay);
@@ -269,7 +269,7 @@ export const INSPECT_MODE_SCRIPT = `
 	].join(';');
 	// Chat bubble icon (SVG) - centered with flexbox applied via JS
 	chatIcon.innerHTML = '<svg style="display:block;margin:auto;margin-top:6px;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
-	chatIcon.title = 'Ask AI to edit this element';
+	chatIcon.title = 'Ask AI';
 	document.body.appendChild(chatIcon);
 
 	// Chat icon hover effects
@@ -436,6 +436,7 @@ export const INSPECT_MODE_SCRIPT = `
 		'padding: 2px 6px',
 		'border-radius: 2px',
 		'white-space: nowrap',
+		'transition: top 0.12s ease-out, left 0.12s ease-out',
 		'display: none'
 	].join(';');
 	document.body.appendChild(hoverLabel);
@@ -1077,9 +1078,6 @@ export const INSPECT_MODE_SCRIPT = `
 		// Hide hover overlay since we're now on selected
 		hoverOverlay.style.display = 'none';
 		hoverLabel.style.display = 'none';
-
-		// Show selection feedback
-		showToast('✓ Element selected');
 
 		// DON'T cleanup - stay in inspect mode for comparing
 		return false;
