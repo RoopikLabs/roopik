@@ -44,6 +44,8 @@ export const INSPECT_MODE_SCRIPT = `
 	let currentDropZone = null;  // { parent, index, position: 'before'|'after'|'inside' }
 	let dropIndicator = null;
 	let dropTargetOverlay = null;
+	let invalidDropOverlay = null;
+	let lastDropValid = false;
 
 	// ========== Create UI Elements ==========
 
@@ -103,6 +105,10 @@ export const INSPECT_MODE_SCRIPT = `
 
 		// Hide chat icon during drag
 		chatIcon.style.display = 'none';
+
+		// Hide hover overlay during drag
+		hoverOverlay.style.display = 'none';
+		hoverLabel.style.display = 'none';
 
 		// Add document-level listeners for drag
 		document.addEventListener('mousemove', onDragMove, true);
@@ -182,7 +188,8 @@ export const INSPECT_MODE_SCRIPT = `
 			currentDropZone = dropZone;
 			showDropIndicator(dropZone);
 		} else {
-			hideDropIndicator();
+			// Show red invalid indicator
+			showInvalidDropIndicator(e.clientX, e.clientY);
 		}
 	}
 
@@ -503,6 +510,22 @@ export const INSPECT_MODE_SCRIPT = `
 	].join(';');
 	document.body.appendChild(dropTargetOverlay);
 
+	// Invalid drop overlay (red dotted - shows when hovering invalid area)
+	// z-index must be higher than selectedOverlay (2147483645) to show on top
+	invalidDropOverlay = document.createElement('div');
+	invalidDropOverlay.id = '__roopik_inspect_invalid_drop';
+	invalidDropOverlay.style.cssText = [
+		'position: fixed',
+		'pointer-events: none',
+		'z-index: 2147483646',
+		'border: 3px dotted #ef4444',
+		'background-color: rgba(239, 68, 68, 0.15)',
+		'border-radius: 4px',
+		'display: none',
+		'transition: all 0.1s ease-out'
+	].join(';');
+	document.body.appendChild(invalidDropOverlay);
+
 	// ========== Helper Functions ==========
 
 	function showToast(message) {
@@ -709,10 +732,11 @@ export const INSPECT_MODE_SCRIPT = `
 	 * Returns { parent, siblings, index } or null
 	 */
 	function getDropTarget(x, y) {
-		// Get element at point (temporarily hide ghost)
+		// Get element at point (temporarily hide our overlays)
 		if (dragGhost) dragGhost.style.display = 'none';
 		if (dropIndicator) dropIndicator.style.display = 'none';
 		if (dropTargetOverlay) dropTargetOverlay.style.display = 'none';
+		if (invalidDropOverlay) invalidDropOverlay.style.display = 'none';
 
 		var elementAtPoint = document.elementFromPoint(x, y);
 
@@ -732,15 +756,32 @@ export const INSPECT_MODE_SCRIPT = `
 		var target = elementAtPoint;
 		var parent = target.parentElement;
 
-		// Skip body and html
-		if (!parent || parent === document.body || parent === document.documentElement) {
-			// Maybe dropping as child of the target itself
+		// Handle edge cases for body/html parents
+		if (!parent || parent === document.documentElement) {
+			return null;
+		}
+
+		// If parent is body, we can still drop - use body as parent
+		if (parent === document.body) {
+			// Check if target is a container we can drop into
 			if (target.children.length > 0 || isContainerElement(target)) {
 				return {
 					parent: target,
 					siblings: Array.from(target.children).filter(validSibling),
 					index: 0,
 					position: 'inside'
+				};
+			}
+			// Otherwise use body as parent with its direct children
+			var bodySiblings = Array.from(document.body.children).filter(validSibling);
+			if (bodySiblings.length > 0) {
+				var direction = getLayoutDirection(document.body);
+				var insertIndex = findInsertIndex(bodySiblings, x, y, direction);
+				return {
+					parent: document.body,
+					siblings: bodySiblings,
+					index: insertIndex.index,
+					position: insertIndex.position
 				};
 			}
 			return null;
@@ -831,6 +872,10 @@ export const INSPECT_MODE_SCRIPT = `
 	function showDropIndicator(dropZone) {
 		if (!dropZone || !dropIndicator || !dropTargetOverlay) return;
 
+		// Hide invalid indicator when showing valid
+		if (invalidDropOverlay) invalidDropOverlay.style.display = 'none';
+		lastDropValid = true;
+
 		var parent = dropZone.parent;
 		var siblings = dropZone.siblings;
 		var index = dropZone.index;
@@ -908,17 +953,57 @@ export const INSPECT_MODE_SCRIPT = `
 	}
 
 	/**
-	 * Hide drop zone indicators
+	 * Hide all drop zone indicators
 	 */
 	function hideDropIndicator() {
 		if (dropIndicator) dropIndicator.style.display = 'none';
 		if (dropTargetOverlay) dropTargetOverlay.style.display = 'none';
+		if (invalidDropOverlay) invalidDropOverlay.style.display = 'none';
+		currentDropZone = null;
+	}
+
+	/**
+	 * Show invalid drop indicator (red dotted overlay on hovered element)
+	 */
+	function showInvalidDropIndicator(x, y) {
+		// Hide valid indicators
+		if (dropIndicator) dropIndicator.style.display = 'none';
+		if (dropTargetOverlay) dropTargetOverlay.style.display = 'none';
+
+		// Temporarily hide all our overlays to get the real element underneath
+		if (dragGhost) dragGhost.style.display = 'none';
+		if (invalidDropOverlay) invalidDropOverlay.style.display = 'none';
+		if (selectedOverlay) selectedOverlay.style.display = 'none';
+		if (hoverOverlay) hoverOverlay.style.display = 'none';
+
+		var elementAtPoint = document.elementFromPoint(x, y);
+
+		// Restore overlays
+		if (dragGhost) dragGhost.style.display = 'block';
+		if (selectedOverlay && selectedElement) selectedOverlay.style.display = 'block';
+
+		// Show red overlay on the element (which is invalid for drop)
+		if (elementAtPoint && invalidDropOverlay) {
+			var rect = elementAtPoint.getBoundingClientRect();
+			invalidDropOverlay.style.display = 'block';
+			invalidDropOverlay.style.top = rect.top + 'px';
+			invalidDropOverlay.style.left = rect.left + 'px';
+			invalidDropOverlay.style.width = rect.width + 'px';
+			invalidDropOverlay.style.height = rect.height + 'px';
+		}
+
+		lastDropValid = false;
 		currentDropZone = null;
 	}
 
 	// ========== Event Handlers ==========
 
 	function onMouseMove(e) {
+		// Skip hover highlighting during drag mode
+		if (isDragging) {
+			return;
+		}
+
 		var el = document.elementFromPoint(e.clientX, e.clientY);
 		if (isOurElement(el)) return;
 
@@ -1049,6 +1134,7 @@ export const INSPECT_MODE_SCRIPT = `
 		if (dragGhost && dragGhost.parentNode) dragGhost.remove();
 		if (dropIndicator && dropIndicator.parentNode) dropIndicator.remove();
 		if (dropTargetOverlay && dropTargetOverlay.parentNode) dropTargetOverlay.remove();
+		if (invalidDropOverlay && invalidDropOverlay.parentNode) invalidDropOverlay.remove();
 
 		// Reset all state
 		hoverElement = null;
@@ -1058,6 +1144,7 @@ export const INSPECT_MODE_SCRIPT = `
 		isDragging = false;
 		dragGhost = null;
 		currentDropZone = null;
+		lastDropValid = false;
 		delete window.__roopikInspectCleanup;
 	}
 
