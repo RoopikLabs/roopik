@@ -40,6 +40,11 @@ export const INSPECT_MODE_SCRIPT = `
 	let dragStartY = 0;
 	let dragGhost = null;
 
+	// Drop zone state
+	let currentDropZone = null;  // { parent, index, position: 'before'|'after'|'inside' }
+	let dropIndicator = null;
+	let dropTargetOverlay = null;
+
 	// ========== Create UI Elements ==========
 
 	// Hover overlay (blue - follows mouse)
@@ -171,7 +176,14 @@ export const INSPECT_MODE_SCRIPT = `
 		dragGhost.style.left = (e.clientX - ghostRect.width / 2) + 'px';
 		dragGhost.style.top = (e.clientY - ghostRect.height / 2) + 'px';
 
-		// TODO Phase 3: Detect drop zones and highlight siblings
+		// Detect drop zone and show indicator
+		var dropZone = getDropTarget(e.clientX, e.clientY);
+		if (dropZone) {
+			currentDropZone = dropZone;
+			showDropIndicator(dropZone);
+		} else {
+			hideDropIndicator();
+		}
 	}
 
 	function onDragEnd(e) {
@@ -180,6 +192,12 @@ export const INSPECT_MODE_SCRIPT = `
 
 		isDragging = false;
 		selectedOverlay.style.cursor = 'grab';
+
+		// Capture drop zone before cleanup
+		var dropZone = currentDropZone;
+
+		// Hide drop indicators
+		hideDropIndicator();
 
 		// Remove ghost
 		if (dragGhost && dragGhost.parentNode) {
@@ -196,16 +214,34 @@ export const INSPECT_MODE_SCRIPT = `
 			updateOverlay(selectedOverlay, selectedLabel, selectedElement, '#22c55e', true);
 		}
 
-		// Notify VSCode drag ended
+		// Notify VSCode drag ended with drop zone info
 		if (typeof window.__roopikBridge === 'function') {
-			window.__roopikBridge(JSON.stringify({
+			var message = {
 				type: 'drag-ended',
 				dropX: e.clientX,
-				dropY: e.clientY
-			}));
+				dropY: e.clientY,
+				hasDropZone: !!dropZone
+			};
+
+			if (dropZone) {
+				message.dropZone = {
+					parentSelector: getElementSelector(dropZone.parent),
+					parentTagName: dropZone.parent.tagName.toLowerCase(),
+					index: dropZone.index,
+					position: dropZone.position,
+					siblingCount: dropZone.siblings.length
+				};
+			}
+
+			window.__roopikBridge(JSON.stringify(message));
 		}
 
-		showToast('🚧 Drop zones coming soon!');
+		// Show feedback
+		if (dropZone) {
+			showToast('📍 Drop at index ' + dropZone.index + ' (Phase 4: DOM move coming soon)');
+		} else {
+			showToast('❌ Invalid drop location');
+		}
 	}
 
 	// Chat icon (appears on selected element - top right corner)
@@ -437,6 +473,36 @@ export const INSPECT_MODE_SCRIPT = `
 	].join(';');
 	document.body.appendChild(toast);
 
+	// ========== Drop Zone UI Elements ==========
+
+	// Drop indicator line (shows where element will be inserted)
+	dropIndicator = document.createElement('div');
+	dropIndicator.id = '__roopik_inspect_drop_indicator';
+	dropIndicator.style.cssText = [
+		'position: fixed',
+		'pointer-events: none',
+		'z-index: 2147483647',
+		'background-color: #3b82f6',
+		'display: none',
+		'transition: all 0.1s ease-out'
+	].join(';');
+	document.body.appendChild(dropIndicator);
+
+	// Drop target overlay (highlights the parent container)
+	dropTargetOverlay = document.createElement('div');
+	dropTargetOverlay.id = '__roopik_inspect_drop_target';
+	dropTargetOverlay.style.cssText = [
+		'position: fixed',
+		'pointer-events: none',
+		'z-index: 2147483644',
+		'border: 2px dashed #3b82f6',
+		'background-color: rgba(59, 130, 246, 0.05)',
+		'border-radius: 4px',
+		'display: none',
+		'transition: all 0.1s ease-out'
+	].join(';');
+	document.body.appendChild(dropTargetOverlay);
+
 	// ========== Helper Functions ==========
 
 	function showToast(message) {
@@ -589,6 +655,267 @@ export const INSPECT_MODE_SCRIPT = `
 		return false;
 	}
 
+	// ========== Drop Zone Detection ==========
+
+	/**
+	 * Detect layout direction of a container
+	 * Returns 'horizontal' for row layouts, 'vertical' for column layouts
+	 */
+	function getLayoutDirection(parent) {
+		var style = window.getComputedStyle(parent);
+		var display = style.display;
+		var flexDirection = style.flexDirection;
+		var gridAutoFlow = style.gridAutoFlow;
+
+		// Flexbox
+		if (display === 'flex' || display === 'inline-flex') {
+			if (flexDirection === 'row' || flexDirection === 'row-reverse') {
+				return 'horizontal';
+			}
+			return 'vertical';
+		}
+
+		// Grid
+		if (display === 'grid' || display === 'inline-grid') {
+			if (gridAutoFlow && gridAutoFlow.includes('column')) {
+				return 'horizontal';
+			}
+			// Check if grid has multiple columns
+			var cols = style.gridTemplateColumns;
+			if (cols && cols !== 'none' && cols.split(' ').length > 1) {
+				return 'horizontal';
+			}
+			return 'vertical';
+		}
+
+		// Block elements are vertical by default
+		return 'vertical';
+	}
+
+	/**
+	 * Check if an element is a descendant of another
+	 */
+	function isDescendant(parent, child) {
+		var node = child;
+		while (node) {
+			if (node === parent) return true;
+			node = node.parentElement;
+		}
+		return false;
+	}
+
+	/**
+	 * Get valid drop target at coordinates
+	 * Returns { parent, siblings, index } or null
+	 */
+	function getDropTarget(x, y) {
+		// Get element at point (temporarily hide ghost)
+		if (dragGhost) dragGhost.style.display = 'none';
+		if (dropIndicator) dropIndicator.style.display = 'none';
+		if (dropTargetOverlay) dropTargetOverlay.style.display = 'none';
+
+		var elementAtPoint = document.elementFromPoint(x, y);
+
+		if (dragGhost) dragGhost.style.display = 'block';
+
+		// Skip our UI elements
+		if (!elementAtPoint || isOurElement(elementAtPoint)) {
+			return null;
+		}
+
+		// Don't allow dropping into the selected element or its descendants
+		if (selectedElement && (elementAtPoint === selectedElement || isDescendant(selectedElement, elementAtPoint))) {
+			return null;
+		}
+
+		// Find the parent container
+		var target = elementAtPoint;
+		var parent = target.parentElement;
+
+		// Skip body and html
+		if (!parent || parent === document.body || parent === document.documentElement) {
+			// Maybe dropping as child of the target itself
+			if (target.children.length > 0 || isContainerElement(target)) {
+				return {
+					parent: target,
+					siblings: Array.from(target.children).filter(validSibling),
+					index: 0,
+					position: 'inside'
+				};
+			}
+			return null;
+		}
+
+		// Get siblings (excluding selected element and our UI)
+		var siblings = Array.from(parent.children).filter(validSibling);
+
+		if (siblings.length === 0) {
+			// Empty container - drop inside
+			return {
+				parent: parent,
+				siblings: [],
+				index: 0,
+				position: 'inside'
+			};
+		}
+
+		// Find insertion index based on position
+		var direction = getLayoutDirection(parent);
+		var insertIndex = findInsertIndex(siblings, x, y, direction);
+
+		return {
+			parent: parent,
+			siblings: siblings,
+			index: insertIndex.index,
+			position: insertIndex.position
+		};
+	}
+
+	/**
+	 * Check if element is a container (can have children)
+	 */
+	function isContainerElement(el) {
+		var tag = el.tagName.toLowerCase();
+		var containers = ['div', 'section', 'article', 'main', 'aside', 'nav', 'header', 'footer', 'ul', 'ol', 'form', 'fieldset'];
+		return containers.includes(tag);
+	}
+
+	/**
+	 * Filter function for valid siblings
+	 */
+	function validSibling(el) {
+		// Exclude selected element
+		if (el === selectedElement) return false;
+		// Exclude our UI elements
+		if (el.id && el.id.startsWith('__roopik_inspect')) return false;
+		// Exclude script/style
+		var tag = el.tagName.toLowerCase();
+		if (tag === 'script' || tag === 'style' || tag === 'link') return false;
+		return true;
+	}
+
+	/**
+	 * Find the insertion index among siblings
+	 */
+	function findInsertIndex(siblings, x, y, direction) {
+		if (siblings.length === 0) {
+			return { index: 0, position: 'inside' };
+		}
+
+		for (var i = 0; i < siblings.length; i++) {
+			var sibling = siblings[i];
+			var rect = sibling.getBoundingClientRect();
+
+			if (direction === 'horizontal') {
+				// Horizontal layout - check X position
+				var midX = rect.left + rect.width / 2;
+				if (x < midX) {
+					return { index: i, position: 'before' };
+				}
+			} else {
+				// Vertical layout - check Y position
+				var midY = rect.top + rect.height / 2;
+				if (y < midY) {
+					return { index: i, position: 'before' };
+				}
+			}
+		}
+
+		// After all siblings
+		return { index: siblings.length, position: 'after' };
+	}
+
+	/**
+	 * Show drop indicator at the correct position
+	 */
+	function showDropIndicator(dropZone) {
+		if (!dropZone || !dropIndicator || !dropTargetOverlay) return;
+
+		var parent = dropZone.parent;
+		var siblings = dropZone.siblings;
+		var index = dropZone.index;
+		var position = dropZone.position;
+
+		// Show parent highlight
+		var parentRect = parent.getBoundingClientRect();
+		dropTargetOverlay.style.display = 'block';
+		dropTargetOverlay.style.top = parentRect.top + 'px';
+		dropTargetOverlay.style.left = parentRect.left + 'px';
+		dropTargetOverlay.style.width = parentRect.width + 'px';
+		dropTargetOverlay.style.height = parentRect.height + 'px';
+
+		// Determine indicator position
+		var direction = getLayoutDirection(parent);
+		var indicatorRect = { top: 0, left: 0, width: 0, height: 0 };
+
+		if (position === 'inside' || siblings.length === 0) {
+			// Empty container - show indicator in center
+			if (direction === 'horizontal') {
+				indicatorRect.top = parentRect.top + 10;
+				indicatorRect.left = parentRect.left + parentRect.width / 2 - 2;
+				indicatorRect.width = 4;
+				indicatorRect.height = parentRect.height - 20;
+			} else {
+				indicatorRect.top = parentRect.top + parentRect.height / 2 - 2;
+				indicatorRect.left = parentRect.left + 10;
+				indicatorRect.width = parentRect.width - 20;
+				indicatorRect.height = 4;
+			}
+		} else if (position === 'before' && index < siblings.length) {
+			// Before a sibling
+			var siblingRect = siblings[index].getBoundingClientRect();
+			if (direction === 'horizontal') {
+				indicatorRect.top = siblingRect.top;
+				indicatorRect.left = siblingRect.left - 2;
+				indicatorRect.width = 4;
+				indicatorRect.height = siblingRect.height;
+			} else {
+				indicatorRect.top = siblingRect.top - 2;
+				indicatorRect.left = siblingRect.left;
+				indicatorRect.width = siblingRect.width;
+				indicatorRect.height = 4;
+			}
+		} else {
+			// After last sibling
+			var lastSibling = siblings[siblings.length - 1];
+			var lastRect = lastSibling.getBoundingClientRect();
+			if (direction === 'horizontal') {
+				indicatorRect.top = lastRect.top;
+				indicatorRect.left = lastRect.right - 2;
+				indicatorRect.width = 4;
+				indicatorRect.height = lastRect.height;
+			} else {
+				indicatorRect.top = lastRect.bottom - 2;
+				indicatorRect.left = lastRect.left;
+				indicatorRect.width = lastRect.width;
+				indicatorRect.height = 4;
+			}
+		}
+
+		// Apply indicator styles
+		dropIndicator.style.display = 'block';
+		dropIndicator.style.top = indicatorRect.top + 'px';
+		dropIndicator.style.left = indicatorRect.left + 'px';
+		dropIndicator.style.width = indicatorRect.width + 'px';
+		dropIndicator.style.height = indicatorRect.height + 'px';
+
+		// Add rounded caps to the indicator
+		if (direction === 'horizontal') {
+			dropIndicator.style.borderRadius = '2px';
+		} else {
+			dropIndicator.style.borderRadius = '2px';
+		}
+	}
+
+	/**
+	 * Hide drop zone indicators
+	 */
+	function hideDropIndicator() {
+		if (dropIndicator) dropIndicator.style.display = 'none';
+		if (dropTargetOverlay) dropTargetOverlay.style.display = 'none';
+		currentDropZone = null;
+	}
+
 	// ========== Event Handlers ==========
 
 	function onMouseMove(e) {
@@ -711,6 +1038,7 @@ export const INSPECT_MODE_SCRIPT = `
 
 		if (toastTimeout) clearTimeout(toastTimeout);
 
+		// Remove all UI elements
 		if (hoverOverlay.parentNode) hoverOverlay.remove();
 		if (selectedOverlay.parentNode) selectedOverlay.remove();
 		if (hoverLabel.parentNode) hoverLabel.remove();
@@ -719,13 +1047,17 @@ export const INSPECT_MODE_SCRIPT = `
 		if (chatBar.parentNode) chatBar.remove();
 		if (toast.parentNode) toast.remove();
 		if (dragGhost && dragGhost.parentNode) dragGhost.remove();
+		if (dropIndicator && dropIndicator.parentNode) dropIndicator.remove();
+		if (dropTargetOverlay && dropTargetOverlay.parentNode) dropTargetOverlay.remove();
 
+		// Reset all state
 		hoverElement = null;
 		selectedElement = null;
 		isHoveringSelected = false;
 		isChatOpen = false;
 		isDragging = false;
 		dragGhost = null;
+		currentDropZone = null;
 		delete window.__roopikInspectCleanup;
 	}
 
