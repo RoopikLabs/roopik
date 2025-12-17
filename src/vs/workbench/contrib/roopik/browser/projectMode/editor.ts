@@ -34,6 +34,7 @@ import { InspectMode } from './features/inspectMode.js';
 import { Bookmarks } from './features/bookmarks.js';
 import { BrowserPause } from './features/browserPause.js';
 import { StyleInspect } from './features/styleInspect.js';
+import { DragDrop } from './features/dragDrop/index.js';
 // Components
 import { DefaultBrowserScreen } from './components/defaultBrowserScreen.js';
 import { ISourceNavigationService } from '../../common/navigation/index.js';
@@ -91,6 +92,7 @@ export class Editor extends EditorPane {
 	private bookmarks!: Bookmarks;
 	private browserPause!: BrowserPause;
 	private styleInspect!: StyleInspect;
+	private dragDrop!: DragDrop;
 
 	constructor(
 		group: IEditorGroup,
@@ -119,9 +121,30 @@ export class Editor extends EditorPane {
 		this.bookmarks = new Bookmarks(this.storageService, this.notificationService, this.logger);
 		this.browserPause = new BrowserPause(this.browserService);
 		this.styleInspect = new StyleInspect(this.browserService, this.notificationService, this.sourceNavigationService);
+		this.dragDrop = new DragDrop(this.browserService, this.logger);
+
+		// Set callback for pending changes updates (for UI badge and panel)
+		this.dragDrop.setOnPendingMovesChanged((moves) => {
+			this.logger.info('[DragDrop] Pending moves changed:', moves.length);
+			// Update control bar badge
+			this.controlBar?.setPendingChangesCount(moves.length);
+			// Update Changes tab in StyleInspect panel
+			this.styleInspect.setPendingMoves(moves);
+		});
 
 		// Connect StyleInspect to unified InspectMode (uses same script for element selection)
 		this.styleInspect.setInspectMode(this.inspectMode);
+
+		// Wire pending changes callbacks from StyleInspect panel to DragDrop feature
+		this.styleInspect.setOnUndoMove((moveId) => {
+			this.undoPendingMove(moveId);
+		});
+		this.styleInspect.setOnUndoAll(() => {
+			this.undoAllPendingMoves();
+		});
+		this.styleInspect.setOnApplyAll(() => {
+			this.applyAllPendingMoves();
+		});
 
 		// Set callback to update browser bounds when style panel visibility changes
 		this.styleInspect.setOnVisibilityChanged((visible, _panelWidth) => {
@@ -319,6 +342,14 @@ export class Editor extends EditorPane {
 					break;
 				case 'inspect-mode-exited':
 					this.handleInspectModeExited();
+					break;
+				case 'drag-started':
+					this.dragDrop.handleDragStarted(message as import('../../common/projectMode/types.js').DragStartedMessage);
+					break;
+				case 'drag-ended':
+					if (this.browserViewId) {
+						this.dragDrop.handleDragEnded(this.browserViewId, message as import('../../common/projectMode/types.js').DragEndedMessage);
+					}
 					break;
 			}
 		}));
@@ -550,7 +581,8 @@ export class Editor extends EditorPane {
 			showHardReload: true,
 			showCopyUrl: true,
 			showBookmarks: true,
-			showEditMode: true
+			showEditMode: true,
+			showPendingChanges: true
 		};
 
 		// Browser control bar callbacks
@@ -574,7 +606,9 @@ export class Editor extends EditorPane {
 			getBookmarks: () => this.bookmarks.getAll(),
 			isBookmarked: (url) => this.bookmarks.isBookmarked(url),
 			// Edit Mode callback
-			onEditModeToggle: (enabled: boolean) => this.toggleEditModeToolbar(enabled)
+			onEditModeToggle: (enabled: boolean) => this.toggleEditModeToolbar(enabled),
+			// Pending Changes callback
+			onPendingChangesClick: () => this.togglePendingChangesPanel()
 		};
 
 		this.controlBar = this._register(new BrowserControlBar(this.container, config, callbacks));
@@ -1466,6 +1500,104 @@ export class Editor extends EditorPane {
 	}
 
 	// ============================================
+	// Pending Changes Panel (drag-drop operations)
+	// ============================================
+
+	/**
+	 * Toggle Pending Changes Panel visibility
+	 * Opens the StyleInspect panel and switches to the Changes tab
+	 */
+	private togglePendingChangesPanel(): void {
+		if (!this.contentContainer) {
+			return;
+		}
+
+		// Initialize StyleInspect panel if not already done
+		if (!this.styleInspect.isPanelVisible()) {
+			this.styleInspect.initialize(this.contentContainer);
+		}
+
+		// Switch to Changes tab (this also shows the panel if hidden)
+		this.styleInspect.switchToChangesTab();
+	}
+
+	/**
+	 * Undo a specific pending move
+	 */
+	private async undoPendingMove(moveId: string): Promise<void> {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		const success = await this.dragDrop.undoMove(this.browserViewId, moveId);
+		if (!success) {
+			this.notificationService.notify({
+				severity: Severity.Warning,
+				message: 'Failed to undo move',
+				sticky: false
+			});
+		}
+	}
+
+	/**
+	 * Undo all pending moves by reloading the page
+	 *
+	 * Since DOM changes are ephemeral (like Chrome DevTools), the simplest
+	 * and most reliable way to "Undo All" is to reload the page from source.
+	 * HMR will serve the original code without any in-memory DOM changes.
+	 *
+	 * This is more robust than trying to undo each move individually because:
+	 * 1. Element selectors change after moves, making tracking unreliable
+	 * 2. Complex nested moves can get out of sync
+	 * 3. Page reload guarantees a clean state from source
+	 */
+	private async undoAllPendingMoves(): Promise<void> {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		const count = this.dragDrop.getPendingCount();
+		if (count === 0) {
+			return;
+		}
+
+		// Clear the pending queue first
+		this.dragDrop.clearPendingChanges();
+
+		// Reload the page to restore original DOM from source
+		await this.refresh();
+
+		// Notify user
+		this.notificationService.notify({
+			severity: Severity.Info,
+			message: `Discarded ${count} pending change${count === 1 ? '' : 's'} - page reloaded`,
+			sticky: false
+		});
+	}
+
+	/**
+	 * Apply all pending moves (commit to source)
+	 * TODO: Implement AST-based source file updates
+	 */
+	private async applyAllPendingMoves(): Promise<void> {
+		const moves = this.dragDrop.getPendingMoves();
+		if (moves.length === 0) {
+			return;
+		}
+
+		// TODO: Phase 5 - Implement AST-based source file updates
+		// For now, just clear the queue and show a message
+		this.notificationService.notify({
+			severity: Severity.Info,
+			message: `${moves.length} changes applied (source file update coming soon)`,
+			sticky: false
+		});
+
+		// Clear the pending queue
+		this.dragDrop.clearPendingChanges();
+	}
+
+	// ============================================
 	// Inspect Mode (delegates to InspectMode feature class)
 	// ============================================
 
@@ -1924,8 +2056,9 @@ export class Editor extends EditorPane {
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = undefined;
 
-		// Dispose style inspect feature
+		// Dispose features
 		this.styleInspect.dispose();
+		this.dragDrop.dispose();
 
 		// Stop dev server if running (idempotent - may have already been stopped by onWillDispose)
 		this.stopDevServerOnClose();

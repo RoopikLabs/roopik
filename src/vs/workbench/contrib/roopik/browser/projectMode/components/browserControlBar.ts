@@ -28,6 +28,7 @@ export interface IBrowserControlBarConfig {
 	showCopyUrl?: boolean;
 	showBookmarks?: boolean;
 	showEditMode?: boolean;
+	showPendingChanges?: boolean;
 }
 
 /**
@@ -59,6 +60,9 @@ export interface IBrowserControlBarCallbacks {
 
 	// Edit Mode (canvas-like bottom action bar)
 	onEditModeToggle?: (enabled: boolean) => void;
+
+	// Pending Changes
+	onPendingChangesClick?: () => void;
 }
 
 /**
@@ -91,6 +95,10 @@ export class BrowserControlBar extends Disposable {
 	private inspectModeButton: HTMLButtonElement | undefined;
 	private stylePanelButton: HTMLButtonElement | undefined;
 	private devToolsButton: HTMLButtonElement | undefined;
+
+	// Pending changes button with badge
+	private pendingChangesButton: HTMLButtonElement | undefined;
+	private pendingChangesBadge: HTMLElement | undefined;
 
 	constructor(
 		parent: HTMLElement,
@@ -189,6 +197,11 @@ export class BrowserControlBar extends Disposable {
 		// Screenshot button
 		if (this.config.showScreenshot && this.callbacks.onScreenshot) {
 			this.createIconButton(Codicon.deviceCamera, 'Take Screenshot', () => this.callbacks.onScreenshot!());
+		}
+
+		// Pending Changes button with badge
+		if (this.config.showPendingChanges && this.callbacks.onPendingChangesClick) {
+			this.createPendingChangesButton();
 		}
 
 		// Overflow menu for Hard Reload and Copy URL
@@ -994,6 +1007,94 @@ export class BrowserControlBar extends Disposable {
 			this.editModeButton.onmouseleave = () => {
 				this.editModeButton!.style.backgroundColor = 'transparent';
 			};
+		}
+	}
+
+	// ============================================
+	// Pending Changes Button
+	// ============================================
+
+	/**
+	 * Create pending changes button with badge
+	 */
+	private createPendingChangesButton(): void {
+		// Container for button + badge
+		const wrapper = document.createElement('div');
+		wrapper.style.cssText = `
+			position: relative;
+			display: inline-flex;
+		`;
+
+		// Create the button
+		this.pendingChangesButton = document.createElement('button');
+		this.pendingChangesButton.style.cssText = `
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 26px;
+			height: 26px;
+			padding: 0;
+			border: none;
+			background: transparent;
+			color: var(--vscode-foreground);
+			cursor: pointer;
+			border-radius: 4px;
+		`;
+		this.pendingChangesButton.title = 'Pending Changes';
+
+		// Icon
+		const icon = document.createElement('span');
+		icon.className = ThemeIcon.asClassName(Codicon.diff);
+		this.pendingChangesButton.appendChild(icon);
+
+		// Hover effects
+		this.pendingChangesButton.onmouseenter = () => {
+			this.pendingChangesButton!.style.backgroundColor = 'var(--vscode-toolbar-hoverBackground)';
+		};
+		this.pendingChangesButton.onmouseleave = () => {
+			this.pendingChangesButton!.style.backgroundColor = 'transparent';
+		};
+
+		// Click handler
+		this.pendingChangesButton.onclick = () => {
+			this.callbacks.onPendingChangesClick?.();
+		};
+
+		// Create badge (hidden by default)
+		this.pendingChangesBadge = document.createElement('span');
+		this.pendingChangesBadge.style.cssText = `
+			position: absolute;
+			top: -2px;
+			right: -2px;
+			min-width: 14px;
+			height: 14px;
+			padding: 0 4px;
+			font-size: 10px;
+			font-weight: 600;
+			line-height: 14px;
+			text-align: center;
+			border-radius: 7px;
+			background: var(--vscode-badge-background, #007acc);
+			color: var(--vscode-badge-foreground, #fff);
+			display: none;
+		`;
+
+		wrapper.appendChild(this.pendingChangesButton);
+		wrapper.appendChild(this.pendingChangesBadge);
+		this.container.appendChild(wrapper);
+	}
+
+	/**
+	 * Update pending changes count badge
+	 */
+	setPendingChangesCount(count: number): void {
+		if (!this.pendingChangesBadge) return;
+
+		if (count > 0) {
+			this.pendingChangesBadge.textContent = count > 99 ? '99+' : String(count);
+			this.pendingChangesBadge.style.display = 'block';
+		} else {
+			this.pendingChangesBadge.style.display = 'none';
 		}
 	}
 

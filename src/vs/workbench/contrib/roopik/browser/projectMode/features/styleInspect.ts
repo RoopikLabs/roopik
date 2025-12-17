@@ -9,6 +9,7 @@ import type { CSSSourceLocation, ElementStyleInfo, GetElementStylesResult } from
 import { StyleInspectPanel, IStyleInspectPanelCallbacks, DOMTreeNode } from '../components/styleInspectPanel.js';
 import { ISourceNavigationService } from '../../../common/navigation/index.js';
 import type { InspectMode } from './inspectMode.js';
+import type { PendingMove } from './dragDrop/types.js';
 
 /**
  * CDP DOM node structure (from DOM.getDocument response)
@@ -63,6 +64,11 @@ export class StyleInspect {
 	// Callback for tree node selection (to highlight in browser)
 	private onTreeNodeSelectedCallback: ((nodeId: number) => void) | undefined;
 
+	// Callbacks for pending changes (Changes tab)
+	private onUndoMoveCallback: ((moveId: string) => void) | undefined;
+	private onUndoAllCallback: (() => void) | undefined;
+	private onApplyAllCallback: (() => void) | undefined;
+
 	constructor(
 		private readonly browserService: IProjectModeService,
 		private readonly notificationService: INotificationService,
@@ -94,6 +100,27 @@ export class StyleInspect {
 	}
 
 	/**
+	 * Set callback for when user clicks Undo on a pending move
+	 */
+	setOnUndoMove(callback: (moveId: string) => void): void {
+		this.onUndoMoveCallback = callback;
+	}
+
+	/**
+	 * Set callback for when user clicks Undo All
+	 */
+	setOnUndoAll(callback: () => void): void {
+		this.onUndoAllCallback = callback;
+	}
+
+	/**
+	 * Set callback for when user clicks Apply All
+	 */
+	setOnApplyAll(callback: () => void): void {
+		this.onApplyAllCallback = callback;
+	}
+
+	/**
 	 * Initialize the style panel in a container
 	 */
 	initialize(container: HTMLElement): void {
@@ -118,6 +145,16 @@ export class StyleInspect {
 				} else {
 					this.hideElementHighlight();
 				}
+			},
+			// Pending changes callbacks
+			onUndoMove: (moveId) => {
+				this.onUndoMoveCallback?.(moveId);
+			},
+			onUndoAll: () => {
+				this.onUndoAllCallback?.();
+			},
+			onApplyAll: () => {
+				this.onApplyAllCallback?.();
 			}
 		};
 
@@ -533,6 +570,26 @@ export class StyleInspect {
 	 */
 	isPanelVisible(): boolean {
 		return this.panel?.getIsVisible() ?? false;
+	}
+
+	/**
+	 * Set pending moves for the Changes tab
+	 * Called by editor when DragDrop pending moves change
+	 */
+	setPendingMoves(moves: PendingMove[]): void {
+		if (this.panel) {
+			this.panel.setPendingMoves(moves);
+		}
+	}
+
+	/**
+	 * Switch to the Changes tab and show the panel
+	 * Called when user clicks the pending changes badge
+	 */
+	switchToChangesTab(): void {
+		if (this.panel) {
+			this.panel.switchToChangesTab();
+		}
 	}
 
 	/**
