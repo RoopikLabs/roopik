@@ -271,6 +271,8 @@ export class CodeApplication extends Disposable {
 			return false;
 		};
 
+		/*
+		// ROOPIK: Disabled, not used currently
 		const isAllowedWebviewRequest = (uri: URI, details: Electron.OnBeforeRequestListenerDetails): boolean => {
 			if (uri.path !== '/index.html') {
 				return true; // Only restrict top level page of webviews: index.html
@@ -292,12 +294,18 @@ export class CodeApplication extends Disposable {
 
 			return false;
 		};
+		*/
 
 		session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
 			const uri = URI.parse(details.url);
 			if (uri.scheme === Schemas.vscodeWebview) {
-				// Allow all webview requests for Roopik browser preview (Electron webview tag)
+				// ROOPIK: Allow all webview requests for Roopik browser preview (Electron webview tag)
+				// if (!isAllowedWebviewRequest(uri, details)) {
+				// 	this.logService.error('Blocked vscode-webview request', details.url);
+				// 	return callback({ cancel: true });
+				// }
 				// Original validation disabled to enable full browser preview functionality
+				// ROOPIK END
 			}
 
 			if (uri.scheme === Schemas.vscodeFileResource) {

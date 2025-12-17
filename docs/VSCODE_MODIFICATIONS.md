@@ -6,7 +6,7 @@ Track of all VS Code core files we've modified (for upstream conflict handling).
 
 | File | Change | Reason |
 |------|--------|--------|
-| `build/gulpfile.extensions.mjs` (after `extensions/git/tsconfig.json`) | Added `'extensions/roopik/tsconfig.json'` | Register roopik extension in build system |
+| `build/gulpfile.extensions.js` (after `extensions/git/tsconfig.json`) | Added `'extensions/roopik/tsconfig.json'` | Register roopik extension in build system |
 | `build/hygiene.ts:25-31` | Added `roopikCopyrightHeaderLines` constant array | Allow Roopik copyright alongside Microsoft |
 | `build/hygiene.ts:115-135` | Modified `copyrights` method to check both Microsoft and Roopik headers | Check for either Microsoft or Roopik copyright, fail only if neither found |
 | `eslint.config.js:2185-2205` | Added roopik extension header override | Allow Roopik copyright in extensions/roopik/ |
@@ -52,9 +52,8 @@ Track of all VS Code core files we've modified (for upstream conflict handling).
 - `.gitignore` - Clean/update (remove Microsoft-specific, add Roopik-specific)
 - `.mention-bot` - Line 2: `maxReviewers`: 2 → 4, Line 3: `requiredOrgs`: ["Microsoft"] → ["RoopikLabs"]
 - `.npmrc` - **DO NOT DELETE OR CHANGE** - Only observe build version changes, keep as-is
-- `gulpfile.mjs` - Note: May have changed from `.mjs` to `.ts` imports (VS Code migration, adapt if needed)
 - `package.json` - Update: `name`, `author.name`, `repository.url`, `bugs.url` (see apply-branding.json for full list)
-- `build/gulpfile.extensions.mjs` - Add roopik extension registration (after `extensions/git/tsconfig.json` line): `'extensions/roopik/tsconfig.json', // ROOPIK: Our canvas-first IDE extension`
+- `build/gulpfile.extensions.ts` - Add roopik extension registration (after `extensions/git/tsconfig.json` line): `'extensions/roopik/tsconfig.json', // ROOPIK: Our canvas-first IDE extension`
 - `build/lib/electron.ts` (line ~190-200) - Change `winIcon`: `path.join(root, 'resources/win32/code.ico')` → `'resources/win32/code.ico'`
 - `build/hygiene.ts` - Add Roopik copyright constants and update copyrights method (see code below)
 - `eslint.config.js` (end of file) - Add roopik extension header override block (see code below)
@@ -65,7 +64,7 @@ Track of all VS Code core files we've modified (for upstream conflict handling).
 - `SECURITY.md` - Replace with Roopik version
 - `LICENSE.md` - Replace with Roopik version
 
-**build/hygiene.mjs changes:**
+**build/hygiene.js changes:**
 
 Add after line 19 (after Microsoft copyright constant):
 ```javascript
@@ -80,25 +79,27 @@ const roopikCopyrightHeaderLines = [
 
 Update `copyrights` method (around line 114):
 ```javascript
-const copyrights = es.through(function (file) {
-	const lines = file.__lines;
-	// ROOPIK: Check if file matches either Microsoft or Roopik copyright header
-	let hasMicrosoftCopyright = true;
-	let hasRoopikCopyright = true;
-	for (let i = 0; i < copyrightHeaderLines.length; i++) {
-		if (lines[i] !== copyrightHeaderLines[i]) {
-			hasMicrosoftCopyright = false;
+	const copyrights = es.through(function (file: VinylFileWithLines) {
+		const lines = file.__lines;
+
+		// ROOPIK: Check if file matches either Microsoft or Roopik copyright header
+		let hasMicrosoftCopyright = true;
+		let hasRoopikCopyright = true;
+		for (let i = 0; i < copyrightHeaderLines.length; i++) {
+			if (lines[i] !== copyrightHeaderLines[i]) {
+				hasMicrosoftCopyright = false;
+			}
+			if (lines[i] !== roopikCopyrightHeaderLines[i]) {
+				hasRoopikCopyright = false;
+			}
 		}
-		if (lines[i] !== roopikCopyrightHeaderLines[i]) {
-			hasRoopikCopyright = false;
+
+		if (!hasMicrosoftCopyright && !hasRoopikCopyright) {
+			console.error(file.relative + ': Missing or bad copyright statement');
+			errorCount++;
 		}
-	}
-	if (!hasMicrosoftCopyright && !hasRoopikCopyright) {
-		console.error(file.relative + ': Missing or bad copyright statement');
-		errorCount++;
-	}
-	this.emit('data', file);
-});
+		this.emit('data', file);
+	});
 ```
 
 **eslint.config.js override block:**
@@ -129,7 +130,7 @@ Files modified outside of `workbench/contrib/roopik/` to integrate Roopik into V
 | File | Change | PR Reference |
 |------|--------|--------------|
 | `src/vs/workbench/workbench.common.main.ts` | Added roopik contribution import:<br>`// Roopik Design IDE`<br>`import './contrib/roopik/browser/roopik.contribution.js';` | [PR #15](https://github.com/RoopikLabs/roopik/pull/15/files) |
-| `src/vs/code/electron-main/app.ts` | Multiple changes (see detailed section below) | [PR #15](https://github.com/RoopikLabs/roopik/pull/15/files) |
+| `src/vs/code/electron-main/app.ts` [MANUAL] | Multiple changes (see detailed section below) | [PR #15](https://github.com/RoopikLabs/roopik/pull/15/files) |
 | `src/vs/platform/windows/electron-main/windows.ts` | Added `webviewTag: true` in `webPreferences`:<br>`// Enable webview tag for Roopik browser preview`<br>`webviewTag: true,` | [PR #15](https://github.com/RoopikLabs/roopik/pull/15/files) |
 
 **Note:** See [PR #15](https://github.com/RoopikLabs/roopik/pull/15/files) for full diff.

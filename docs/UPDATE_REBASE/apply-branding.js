@@ -448,49 +448,38 @@ function updateEslintConfig() {
 		return { updated: false, errors: 1 };
 	}
 
-	const overrideBlock = `// ROOPIK: Override header rule for roopik extension
-{
-	files: ['extensions/roopik/**/*.{ts,tsx,js,jsx}'],
-	plugins: { header: pluginHeader },
-	rules: {
-		'header/header': [2, 'block', [
-			'---------------------------------------------------------------------------------------------',
-			' *  Copyright (c) Roopik. All rights reserved.',
-			' *  Licensed under the MIT License. See License.txt in the project root for license information.',
-			' *--------------------------------------------------------------------------------------------'
-		]]
-	}
-},
-`;
-
 	// Check if override block already exists
 	if (content.includes('// ROOPIK: Override header rule for roopik extension')) {
 		success('eslint.config.js - Override block already exists');
 		return { updated: false, errors: 0 };
 	}
 
-	// Find the end of the export array/object
-	// Look for closing bracket before export statement or at end
-	let updatedContent = content.trimEnd();
+	// Find the final closing - just the ); at the end
+	// Use a regex to handle different line ending styles
+	const closingPattern = /\n\);\s*$/;
 
-	// Find the last closing bracket/brace that's part of the export
-	// Usually eslint.config.js exports an array, so we need to add before the closing ]
-	const lastBracketIndex = updatedContent.lastIndexOf(']');
-	const lastBraceIndex = updatedContent.lastIndexOf('}');
-	const lastIndex = Math.max(lastBracketIndex, lastBraceIndex);
-
-	if (lastIndex > 0) {
-		// Insert the override block before the closing bracket
-		const before = updatedContent.substring(0, lastIndex);
-		const after = updatedContent.substring(lastIndex);
-
-		// Add comma if needed
-		const needsComma = !before.trimEnd().endsWith(',') && !before.trimEnd().endsWith('[') && !before.trimEnd().endsWith('{');
-		updatedContent = before + (needsComma ? ',' : '') + '\n\n' + overrideBlock + '\n' + after;
-	} else {
-		// Fallback: just append at the end
-		updatedContent = updatedContent.replace(/[,;]\s*$/, '') + '\n\n' + overrideBlock;
+	if (!closingPattern.test(content)) {
+		warning('eslint.config.js - Could not find closing ); anchor point');
+		return { updated: false, errors: 0 };
 	}
+
+	// Insert the Roopik block before the final );
+	const roopikBlock = `\t// ROOPIK: Override header rule for roopik extension
+\t{
+\t\tfiles: ['extensions/roopik/**/*.{ts,tsx,js,jsx}'],
+\t\tplugins: { header: pluginHeader },
+\t\trules: {
+\t\t\t'header/header': [2, 'block', [
+\t\t\t\t'---------------------------------------------------------------------------------------------',
+\t\t\t\t' *  Copyright (c) Roopik. All rights reserved.',
+\t\t\t\t' *  Licensed under the MIT License. See License.txt in the project root for license information.',
+\t\t\t\t' *--------------------------------------------------------------------------------------------'
+\t\t\t]]
+\t\t}
+\t},
+`;
+
+	const updatedContent = content.replace(closingPattern, '\n' + roopikBlock + ');');
 
 	if (writeFile(filePath, updatedContent)) {
 		success('eslint.config.js - Added roopik extension override block');
@@ -617,7 +606,7 @@ const roopikCopyrightHeaderLines = [
 
 	const newFunction = `const copyrights = es.through(function (file: VinylFileWithLines) {
 		const lines = file.__lines;
-		
+
 		// ROOPIK: Check if file matches either Microsoft or Roopik copyright header
 		let hasMicrosoftCopyright = true;
 		let hasRoopikCopyright = true;
@@ -629,14 +618,14 @@ const roopikCopyrightHeaderLines = [
 				hasRoopikCopyright = false;
 			}
 		}
-		
+
 		if (!hasMicrosoftCopyright && !hasRoopikCopyright) {
 			console.error(file.relative + ': Missing or bad copyright statement');
 			errorCount++;
 		}
 		this.emit('data', file);
 	});`;
-	
+
 	// Check if already updated
 	if (content.includes('// ROOPIK: Check if file matches either Microsoft or Roopik copyright header')) {
 		if (!needsUpdate) {
@@ -811,6 +800,54 @@ function installRoopikDependencies(config) {
 	}
 }
 
+// ============================================================================
+// MANUAL CODE CHANGES (Core Integration)
+// ============================================================================
+
+// Update workbench.common.main.ts - Add Roopik contribution import
+function updateWorkbenchCommonMain() {
+	const filePath = path.join(ROOT_DIR, 'src/vs/workbench/workbench.common.main.ts');
+
+	if (!fileExists(filePath)) {
+		warning('src/vs/workbench/workbench.common.main.ts not found (skipping)');
+		return { updated: false, errors: 0 };
+	}
+
+	const content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	// Check if Roopik import already exists
+	if (content.includes("import './contrib/roopik/browser/roopik.contribution.js';")) {
+		success('workbench.common.main.ts - Roopik contribution already imported');
+		return { updated: false, errors: 0 };
+	}
+
+	// Find and replace just the Speech import line (not the comment)
+	const oldImport = `import './contrib/speech/browser/speech.contribution.js';`;
+
+	const newImport = `import './contrib/speech/browser/speech.contribution.js';
+
+// Roopik Design IDE
+import './contrib/roopik/browser/roopik.contribution.js';`;
+
+	if (!content.includes(oldImport)) {
+		warning('workbench.common.main.ts - Could not find Speech import to anchor Roopik import');
+		return { updated: false, errors: 0 };
+	}
+
+	const updatedContent = content.replace(oldImport, newImport);
+
+	if (writeFile(filePath, updatedContent)) {
+		success('workbench.common.main.ts - Added Roopik contribution import');
+		return { updated: true, errors: 0 };
+	} else {
+		error('workbench.common.main.ts - Failed to update');
+		return { updated: false, errors: 1 };
+	}
+}
+
 // Apply server manifest updates
 function updateServerManifest(config) {
 	const filePath = path.join(ROOT_DIR, 'resources/server/manifest.json');
@@ -857,6 +894,123 @@ function updateServerManifest(config) {
 		error(`resources/server/manifest.json - Parse error: ${err.message}`);
 		return { updated: false, errors: 1 };
 	}
+}
+
+// Update windows.ts - Enable webview tag for Roopik browser preview
+function updateWindowsTs() {
+	const filePath = path.join(ROOT_DIR, 'src/vs/platform/windows/electron-main/windows.ts');
+
+	if (!fileExists(filePath)) {
+		warning('src/vs/platform/windows/electron-main/windows.ts not found (skipping)');
+		return { updated: false, errors: 0 };
+	}
+
+	const content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	// Check if webviewTag already exists
+	if (content.includes('webviewTag: true')) {
+		success('windows.ts - webviewTag already enabled');
+		return { updated: false, errors: 0 };
+	}
+
+	// Find the anchor point - use a simpler search that works with any line endings
+	const searchPattern = '...webPreferences,';
+	const searchIndex = content.indexOf(searchPattern);
+
+	if (searchIndex === -1) {
+		warning('windows.ts - Could not find webPreferences spread operator');
+		return { updated: false, errors: 0 };
+	}
+
+	// Find the next line after the spread operator (enableWebSQL line)
+	const afterSpread = content.indexOf('enableWebSQL: false,', searchIndex);
+
+	if (afterSpread === -1) {
+		warning('windows.ts - Could not find enableWebSQL line');
+		return { updated: false, errors: 0 };
+	}
+
+	// Insert webviewTag line before enableWebSQL
+	// Extract the indentation from the enableWebSQL line
+	const lineStart = content.lastIndexOf('\n', afterSpread) + 1;
+	const enableWebSQLLine = content.substring(lineStart, afterSpread);
+	const indent = enableWebSQLLine.match(/^\s*/)[0];
+
+	// Build the replacement - insert webviewTag between spread and enableWebSQL
+	const insertionPoint = content.indexOf('\n', searchIndex) + 1;
+	const before = content.substring(0, insertionPoint);
+	const after = content.substring(insertionPoint);
+
+	const webviewTagLine = `${indent}// ROOPIK: Enable webview tag for Roopik browser preview\n${indent}webviewTag: true,\n`;
+	const updatedContent = before + webviewTagLine + after;
+
+	if (writeFile(filePath, updatedContent)) {
+		success('windows.ts - Added webviewTag: true');
+		return { updated: true, errors: 0 };
+	} else {
+		error('windows.ts - Failed to update');
+		return { updated: false, errors: 1 };
+	}
+}
+
+// Update CSP in workbench HTML files - Allow localhost for Roopik browser preview
+function updateWorkbenchCSP() {
+	const files = [
+		'src/vs/code/electron-browser/workbench/workbench.html',
+		'src/vs/code/electron-browser/workbench/workbench-dev.html'
+	];
+
+	let totalUpdated = 0;
+	let totalErrors = 0;
+
+	for (const file of files) {
+		const filePath = path.join(ROOT_DIR, file);
+
+		if (!fileExists(filePath)) {
+			warning(`${file} not found (skipping)`);
+			continue;
+		}
+
+		const content = readFile(filePath);
+		if (!content) {
+			totalErrors++;
+			continue;
+		}
+
+		// Check if localhost CSP entries already exist
+		if (content.includes('http://127.0.0.1:*') && content.includes('http://localhost:*')) {
+			success(`${file} - CSP localhost entries already present`);
+			continue;
+		}
+
+		// Find the img-src section and add localhost entries
+		const imgSrcPattern = /(img-src\s+[^;]+https:)\s*/;
+		const match = content.match(imgSrcPattern);
+
+		if (!match) {
+			warning(`${file} - Could not find img-src directive`);
+			continue;
+		}
+
+		// Add localhost entries after https: (no extra blank line)
+		const updatedContent = content.replace(
+			imgSrcPattern,
+			`$1\n\t\t\t\t\thttp://127.0.0.1:*\n\t\t\t\t\thttp://localhost:*\n\t\t\t\t`
+		);
+
+		if (writeFile(filePath, updatedContent)) {
+			success(`${file} - Added localhost CSP entries`);
+			totalUpdated++;
+		} else {
+			error(`${file} - Failed to update`);
+			totalErrors++;
+		}
+	}
+
+	return { updated: totalUpdated > 0, errors: totalErrors };
 }
 
 // Process icon replacements
@@ -1031,6 +1185,29 @@ function main() {
 		totalChanges++;
 	}
 	totalErrors += mailmapResult.errors;
+
+	// ============================================================================
+	// Manual Code Changes - Core Integration
+	// ============================================================================
+	log('\n🔧 Applying manual code changes (Core Integration)...\n', 'cyan');
+
+	const workbenchResult = updateWorkbenchCommonMain();
+	if (workbenchResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += workbenchResult.errors;
+
+	const windowsResult = updateWindowsTs();
+	if (windowsResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += windowsResult.errors;
+
+	const cspResult = updateWorkbenchCSP();
+	if (cspResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += cspResult.errors;
 
 	// Install Roopik dependencies
 	log('\n📦 Installing Roopik dependencies...\n', 'cyan');
