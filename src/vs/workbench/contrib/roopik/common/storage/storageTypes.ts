@@ -279,3 +279,50 @@ export const DEFAULT_WORKSPACE_CONFIG: WorkspaceConfig = {
 		cdnProvider: 'esm.sh'
 	}
 };
+
+// ============================================================================
+// Project Storage Types (Mode 2 - Browser Preview)
+// ============================================================================
+
+/**
+ * Project entry in registry (projects.json)
+ * Minimal data needed for recent projects list
+ */
+export interface ProjectInfo {
+	/** Unique project ID */
+	id: string;
+
+	/** Display name (e.g., "My React App" or folder name) */
+	name: string;
+
+	/** Workspace-relative path to project root (e.g., "apps/frontend" or ".") */
+	path: string;
+
+	/** Timestamp last opened (for recents sorting) */
+	updatedAt: number;
+
+	/** Framework identifier (e.g., "react-vite", "vue-vite", "nextjs") - optional */
+	framework?: string;
+
+	/** Human-readable framework name (e.g., "React + Vite", "Next.js") - optional */
+	frameworkDisplayName?: string;
+}
+
+/**
+ * Project registry (.roopik/projects/projects.json)
+ */
+export interface ProjectIndex {
+	/** Registry version for migrations */
+	version: number;
+
+	/** List of all projects opened in this workspace */
+	projects: ProjectInfo[];
+}
+
+/**
+ * Default project registry
+ */
+export const DEFAULT_PROJECT_INDEX: ProjectIndex = {
+	version: 1,
+	projects: []
+};

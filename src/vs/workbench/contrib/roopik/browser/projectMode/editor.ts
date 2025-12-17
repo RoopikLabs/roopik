@@ -34,10 +34,12 @@ import { InspectMode } from './features/inspectMode.js';
 import { Bookmarks } from './features/bookmarks.js';
 import { BrowserPause } from './features/browserPause.js';
 import { StyleInspect } from './features/styleInspect.js';
+import { DragDrop } from './features/dragDrop/index.js';
 // Components
 import { DefaultBrowserScreen } from './components/defaultBrowserScreen.js';
 import { ISourceNavigationService } from '../../common/navigation/index.js';
 import { IMenubarStateService } from '../services/menubarStateService.js';
+import { IProjectStorageService } from '../../common/projectStorage/index.js';
 
 /**
  * Project Mode Editor
@@ -90,6 +92,7 @@ export class Editor extends EditorPane {
 	private bookmarks!: Bookmarks;
 	private browserPause!: BrowserPause;
 	private styleInspect!: StyleInspect;
+	private dragDrop!: DragDrop;
 
 	constructor(
 		group: IEditorGroup,
@@ -105,7 +108,8 @@ export class Editor extends EditorPane {
 		@INotificationService private readonly notificationService: INotificationService,
 		@IClipboardService private readonly clipboardService: IClipboardService,
 		@ISourceNavigationService private readonly sourceNavigationService: ISourceNavigationService,
-		@IMenubarStateService private readonly menubarStateService: IMenubarStateService
+		@IMenubarStateService private readonly menubarStateService: IMenubarStateService,
+		@IProjectStorageService private readonly projectStorageService: IProjectStorageService
 	) {
 		super(Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = RoopikLogger.create(loggerService);
@@ -113,10 +117,34 @@ export class Editor extends EditorPane {
 		this.devServerService = new DevServerBridge(mainProcessService.getChannel(DEV_SERVER_CHANNEL));
 
 		// Initialize features (extracted to features/ folder)
-		this.inspectMode = new InspectMode(this.browserService, this.notificationService);
+		this.inspectMode = new InspectMode(this.browserService, this.notificationService, this.clipboardService);
 		this.bookmarks = new Bookmarks(this.storageService, this.notificationService, this.logger);
 		this.browserPause = new BrowserPause(this.browserService);
 		this.styleInspect = new StyleInspect(this.browserService, this.notificationService, this.sourceNavigationService);
+		this.dragDrop = new DragDrop(this.browserService, this.logger);
+
+		// Set callback for pending changes updates (for UI badge and panel)
+		this.dragDrop.setOnPendingMovesChanged((moves) => {
+			this.logger.info('[DragDrop] Pending moves changed:', moves.length);
+			// Update control bar badge
+			this.controlBar?.setPendingChangesCount(moves.length);
+			// Update Changes tab in StyleInspect panel
+			this.styleInspect.setPendingMoves(moves);
+		});
+
+		// Connect StyleInspect to unified InspectMode (uses same script for element selection)
+		this.styleInspect.setInspectMode(this.inspectMode);
+
+		// Wire pending changes callbacks from StyleInspect panel to DragDrop feature
+		this.styleInspect.setOnUndoMove((moveId) => {
+			this.undoPendingMove(moveId);
+		});
+		this.styleInspect.setOnUndoAll(() => {
+			this.undoAllPendingMoves();
+		});
+		this.styleInspect.setOnApplyAll(() => {
+			this.applyAllPendingMoves();
+		});
 
 		// Set callback to update browser bounds when style panel visibility changes
 		this.styleInspect.setOnVisibilityChanged((visible, _panelWidth) => {
@@ -125,6 +153,14 @@ export class Editor extends EditorPane {
 			this.logger.info(`[StyleInspect] Panel visibility changed: ${visible}`);
 			// Use retry mechanism to handle layout timing
 			this.updateBoundsWithRetry();
+			// Update control bar button active state
+			this.controlBar?.setStylePanelActive(visible);
+		});
+
+		// Set callback for tree node selection (Components tab)
+		// When user clicks a node in the tree, highlight it in the browser
+		this.styleInspect.setOnTreeNodeSelected((nodeId) => {
+			this.handleTreeNodeSelected(nodeId);
 		});
 
 		// Subscribe to DevServer logs and forward to VSCode output channel
@@ -150,6 +186,12 @@ export class Editor extends EditorPane {
 
 		// Setup "Open Source" context menu handler
 		this.setupOpenSourceHandler();
+
+		// Setup browser bridge message handler (inspect mode events, etc.)
+		this.setupBrowserBridgeHandler();
+
+		// Setup centralized key handler for browser key events
+		this.setupBrowserKeyHandler();
 	}
 
 	/**
@@ -279,6 +321,233 @@ export class Editor extends EditorPane {
 	}
 
 	/**
+	 * Setup handler for browser bridge messages
+	 *
+	 * When injected script sends a message via window.__roopikBridge(),
+	 * main process receives it via CDP Runtime.bindingCalled and forwards
+	 * via IPC. We handle it here for element selection, inspect mode exit, etc.
+	 */
+	private setupBrowserBridgeHandler(): void {
+		this._register(this.browserService.onBrowserBridgeMessage((event) => {
+			// Filter by browserViewId - only handle events for this browser instance
+			if (event.browserViewId !== this.browserViewId) {
+				return;
+			}
+
+			const message = event.message;
+
+			switch (message.type) {
+				case 'element-selected':
+					this.handleElementSelected(message);
+					break;
+				case 'inspect-mode-exited':
+					this.handleInspectModeExited();
+					break;
+				case 'drag-started':
+					this.dragDrop.handleDragStarted(message as import('../../common/projectMode/types.js').DragStartedMessage);
+					break;
+				case 'drag-ended':
+					if (this.browserViewId) {
+						this.dragDrop.handleDragEnded(this.browserViewId, message as import('../../common/projectMode/types.js').DragEndedMessage);
+					}
+					break;
+			}
+		}));
+	}
+
+	/**
+	 * Handle element selection from inspect mode
+	 * - Copy HTML to clipboard
+	 * - Open style panel with CSS info
+	 */
+	private async handleElementSelected(message: import('../../common/projectMode/types.js').ElementSelectedMessage): Promise<void> {
+		// Copy HTML to clipboard
+		if (message.html) {
+			try {
+				await this.clipboardService.writeText(message.html);
+			} catch (e) {
+				this.logger.error('[InspectMode] Failed to copy to clipboard:', e);
+			}
+		}
+
+		// Open style panel with element CSS info
+		if (this.browserViewId && message.selector) {
+			// Ensure style panel is initialized
+			if (this.contentContainer && !this.styleInspect.isPanelVisible()) {
+				this.styleInspect.initialize(this.contentContainer);
+			}
+
+			// Set project root for CSS path resolution
+			if (this.currentProjectRoot) {
+				this.styleInspect.setProjectRoot(this.currentProjectRoot);
+			}
+
+			// Ensure DOM tree is fetched for Components tab sync
+			// This handles cases where page loaded but onPageLoadComplete didn't fire
+			if (!this.styleInspect.getDOMTreeCache()) {
+				this.fetchDOMTreeForComponentsTab();
+			}
+
+			// Get element styles and show panel
+			await this.styleInspect.handleElementSelected(this.browserViewId, message.selector);
+		}
+	}
+
+	/**
+	 * Handle inspect mode exit (ESC pressed in browser)
+	 * Centralized handler for ESC key from browser
+	 */
+	private handleInspectModeExited(): void {
+		// Update button active state
+		this.controlBar?.setInspectModeActive(false);
+
+		// Also hide style panel (ESC should close everything)
+		if (this.styleInspect.isPanelVisible()) {
+			this.styleInspect.hidePanel();
+		}
+	}
+
+	/**
+	 * Setup centralized key handler for browser key events
+	 *
+	 * All key presses from the BrowserView are intercepted by Electron's
+	 * before-input-event and forwarded via IPC. This allows unified key
+	 * handling without scattered listeners in injected scripts or panels.
+	 *
+	 * Architecture:
+	 * Browser (BrowserView) → before-input-event (Electron main)
+	 *   → IPC event: onBrowserKeyPress → Renderer (editor.ts)
+	 *   → Central key handler → Features (Panel, InspectMode, DevTools)
+	 */
+	private setupBrowserKeyHandler(): void {
+		this._register(this.browserService.onBrowserKeyPress((event) => {
+			// Filter by browserViewId - only handle events for this browser instance
+			if (event.browserViewId !== this.browserViewId) {
+				return;
+			}
+
+			// Only handle keyDown events (ignore keyUp)
+			if (event.type !== 'keyDown') {
+				return;
+			}
+
+			// Dispatch based on key
+			this.handleBrowserKey(event.key, event.code, event.modifiers);
+		}));
+	}
+
+	/**
+	 * Central key dispatch handler
+	 * Routes key presses to appropriate features
+	 */
+	private handleBrowserKey(
+		key: string,
+		_code: string,
+		modifiers: { ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }
+	): void {
+		// ESC key - exit inspect mode and close panel
+		if (key === 'Escape') {
+			this.handleEscapeKey();
+			return;
+		}
+
+		// Future: Add more key handlers here
+		// Example patterns:
+		// - Ctrl+Shift+C: Toggle inspect mode
+		// - Ctrl+Shift+I: Toggle DevTools
+		// - F5: Refresh
+		// - Ctrl+R: Refresh
+
+		// For now, we let browser handle other keys normally
+		// The before-input-event doesn't preventDefault, so keys still work
+		void modifiers; // Silence unused variable warning
+	}
+
+	/**
+	 * Handle ESC key press from browser
+	 * Exits inspect mode and closes style panel
+	 */
+	private handleEscapeKey(): void {
+		// 1. Exit inspect mode if active
+		if (this.inspectMode.getIsActive()) {
+			// Disable inspect mode in browser
+			if (this.browserViewId) {
+				this.inspectMode.disable(this.browserViewId);
+			}
+			// Update button state
+			this.controlBar?.setInspectModeActive(false);
+		}
+
+		// 2. Close style panel if visible
+		if (this.styleInspect.isPanelVisible()) {
+			this.styleInspect.hidePanel();
+		}
+
+		// 3. Hide element highlight in browser
+		this.styleInspect.hideElementHighlight();
+	}
+
+	// ============================================
+	// Page Load Complete Handler
+	// ============================================
+
+	/**
+	 * Called when page finishes loading (after navigation/refresh)
+	 * Handles:
+	 * 1. Re-injecting inspect mode script if it was active
+	 * 2. Fetching DOM tree for Components tab
+	 */
+	private onPageLoadComplete(): void {
+		this.logger.info('[ProjectMode] onPageLoadComplete called, browserViewId:', this.browserViewId);
+
+		if (!this.browserViewId) {
+			this.logger.warn('[ProjectMode] onPageLoadComplete: No browserViewId!');
+			return;
+		}
+
+		// 1. Re-inject inspect mode script if it was active before page load
+		// Page navigation wipes all injected scripts, so we need to re-inject
+		if (this.inspectMode.getIsActive()) {
+			this.logger.info('[ProjectMode] Re-injecting inspect mode script');
+			this.inspectMode.enable(this.browserViewId).catch((error) => {
+				this.logger.warn('[ProjectMode] Failed to re-inject inspect mode after page load:', error);
+			});
+		}
+
+		// 2. Fetch DOM tree for Components tab
+		this.logger.info('[ProjectMode] Fetching DOM tree for Components tab');
+		this.fetchDOMTreeForComponentsTab();
+	}
+
+	// ============================================
+	// DOM Tree (Components Tab)
+	// ============================================
+
+	/**
+	 * Fetch DOM tree for the Components tab
+	 * Called after page finishes loading
+	 */
+	private fetchDOMTreeForComponentsTab(): void {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		// Fetch DOM tree in background (don't await)
+		this.styleInspect.fetchDOMTree(this.browserViewId).catch((error) => {
+			this.logger.warn('[ProjectMode] Failed to fetch DOM tree:', error);
+		});
+	}
+
+	/**
+	 * Handle tree node selection from Components tab
+	 * Highlights the element in the browser
+	 */
+	private async handleTreeNodeSelected(nodeId: number): Promise<void> {
+		// Highlight element in browser via CDP
+		await this.styleInspect.highlightElementInBrowser(nodeId);
+	}
+
+	/**
 	 * Pause browser - delegates to BrowserPause feature
 	 */
 	private pauseBrowser(): void {
@@ -312,7 +581,8 @@ export class Editor extends EditorPane {
 			showHardReload: true,
 			showCopyUrl: true,
 			showBookmarks: true,
-			showEditMode: true
+			showEditMode: true,
+			showPendingChanges: true
 		};
 
 		// Browser control bar callbacks
@@ -323,8 +593,8 @@ export class Editor extends EditorPane {
 			onHome: () => this.goHome(),
 			onRefresh: () => this.refresh(),
 			onStopDevServer: () => this.stopDevServer(),
-			onInspectMode: () => this.enableInspectMode(),
-			onStyleInspectMode: () => this.enableStyleInspectMode(),
+			onInspectMode: () => this.toggleInspectMode(),
+			onStylePanelToggle: () => this.toggleStylePanel(),
 			onDevTools: () => this.toggleDevTools(),
 			onHardReload: () => this.hardReload(),
 			onScreenshot: () => this.takeScreenshot(),
@@ -336,7 +606,9 @@ export class Editor extends EditorPane {
 			getBookmarks: () => this.bookmarks.getAll(),
 			isBookmarked: (url) => this.bookmarks.isBookmarked(url),
 			// Edit Mode callback
-			onEditModeToggle: (enabled: boolean) => this.toggleEditModeToolbar(enabled)
+			onEditModeToggle: (enabled: boolean) => this.toggleEditModeToolbar(enabled),
+			// Pending Changes callback
+			onPendingChangesClick: () => this.togglePendingChangesPanel()
 		};
 
 		this.controlBar = this._register(new BrowserControlBar(this.container, config, callbacks));
@@ -574,6 +846,8 @@ export class Editor extends EditorPane {
 			this._register(this.browserService.onDevToolsClosed((event) => {
 				if (event.browserViewId === this.browserViewId && this.devtoolsVisible) {
 					this.devtoolsVisible = false;
+					// Update button active state
+					this.controlBar?.setDevToolsActive(false);
 				}
 			}));
 
@@ -652,6 +926,9 @@ export class Editor extends EditorPane {
 				this.eventService.publish('browser.loadingFinished', {
 					browserViewId: event.browserViewId
 				});
+
+				// Page finished loading - do post-load setup
+				this.onPageLoadComplete();
 			}
 			this.wasLoading = false;
 			this.controlBar?.hideLoading();
@@ -678,6 +955,7 @@ export class Editor extends EditorPane {
 
 		// Check if URL changed
 		if (currentUrl !== this.lastKnownUrl) {
+			const previousUrl = this.lastKnownUrl;
 			this.lastKnownUrl = currentUrl;
 
 			// CRITICAL: Update input URL so it gets serialized correctly on reload
@@ -696,6 +974,19 @@ export class Editor extends EditorPane {
 			});
 
 			// UI updates now happen via event subscription (see setupEventSubscriptions)
+
+			// If page is not loading and we don't have a DOM tree cache, fetch it
+			// This handles cases where we miss the loading transition:
+			// - First navigation from about:blank
+			// - Fast page loads
+			// - Reconnecting to an already-loaded page
+			if (!event.isLoading && currentUrl && currentUrl !== 'about:blank') {
+				// Always call onPageLoadComplete if we're not loading and URL changed significantly
+				// It's safe to call multiple times - it just re-injects scripts and refreshes DOM tree
+				if (previousUrl !== currentUrl || !this.styleInspect.getDOMTreeCache()) {
+					this.onPageLoadComplete();
+				}
+			}
 		}
 
 		// Update tab title when page title changes
@@ -1120,6 +1411,19 @@ export class Editor extends EditorPane {
 			this.isProjectMode = true;
 			this.currentProjectRoot = projectRoot;
 
+			// Save to recent projects storage (project started successfully = valid path)
+			// Extract project name from the path (folder name)
+			const projectName = projectRoot.split(/[/\\]/).pop() || 'Project';
+
+			// Get server info to capture framework (optional - don't block on this)
+			this.devServerService.getServerInfo(projectRoot).then((serverInfo) => {
+				const framework = serverInfo?.framework;
+				const frameworkDisplayName = serverInfo?.frameworkDisplayName;
+				return this.projectStorageService.upsertProject(projectName, projectRoot, framework, frameworkDisplayName);
+			}).catch((err) => {
+				this.logger.warn('[ProjectMode] Failed to save project to recent projects:', err);
+			});
+
 			// Small delay to ensure Vite server is fully ready to accept connections
 			// The server reports READY when listening starts, but it may take a few ms
 			// to actually be able to serve requests (especially on first load with cold cache)
@@ -1177,6 +1481,9 @@ export class Editor extends EditorPane {
 			await this.browserService.openDevTools(this.browserViewId, {});
 			this.devtoolsVisible = true;
 		}
+
+		// Update button active state
+		this.controlBar?.setDevToolsActive(this.devtoolsVisible);
 	}
 
 	// ============================================
@@ -1193,18 +1500,137 @@ export class Editor extends EditorPane {
 	}
 
 	// ============================================
+	// Pending Changes Panel (drag-drop operations)
+	// ============================================
+
+	/**
+	 * Toggle Pending Changes Panel visibility
+	 * Opens the StyleInspect panel and switches to the Changes tab
+	 */
+	private togglePendingChangesPanel(): void {
+		if (!this.contentContainer) {
+			return;
+		}
+
+		// Initialize StyleInspect panel if not already done
+		if (!this.styleInspect.isPanelVisible()) {
+			this.styleInspect.initialize(this.contentContainer);
+		}
+
+		// Switch to Changes tab (this also shows the panel if hidden)
+		this.styleInspect.switchToChangesTab();
+	}
+
+	/**
+	 * Undo a specific pending move
+	 */
+	private async undoPendingMove(moveId: string): Promise<void> {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		const success = await this.dragDrop.undoMove(this.browserViewId, moveId);
+		if (!success) {
+			this.notificationService.notify({
+				severity: Severity.Warning,
+				message: 'Failed to undo move',
+				sticky: false
+			});
+		}
+	}
+
+	/**
+	 * Undo all pending moves by reloading the page
+	 *
+	 * Since DOM changes are ephemeral (like Chrome DevTools), the simplest
+	 * and most reliable way to "Undo All" is to reload the page from source.
+	 * HMR will serve the original code without any in-memory DOM changes.
+	 *
+	 * This is more robust than trying to undo each move individually because:
+	 * 1. Element selectors change after moves, making tracking unreliable
+	 * 2. Complex nested moves can get out of sync
+	 * 3. Page reload guarantees a clean state from source
+	 */
+	private async undoAllPendingMoves(): Promise<void> {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		const count = this.dragDrop.getPendingCount();
+		if (count === 0) {
+			return;
+		}
+
+		// Clear the pending queue first
+		this.dragDrop.clearPendingChanges();
+
+		// Reload the page to restore original DOM from source
+		await this.refresh();
+
+		// Notify user
+		this.notificationService.notify({
+			severity: Severity.Info,
+			message: `Discarded ${count} pending change${count === 1 ? '' : 's'} - page reloaded`,
+			sticky: false
+		});
+	}
+
+	/**
+	 * Apply all pending moves (commit to source)
+	 * TODO: Implement AST-based source file updates
+	 */
+	private async applyAllPendingMoves(): Promise<void> {
+		const moves = this.dragDrop.getPendingMoves();
+		if (moves.length === 0) {
+			return;
+		}
+
+		// TODO: Phase 5 - Implement AST-based source file updates
+		// For now, just clear the queue and show a message
+		this.notificationService.notify({
+			severity: Severity.Info,
+			message: `${moves.length} changes applied (source file update coming soon)`,
+			sticky: false
+		});
+
+		// Clear the pending queue
+		this.dragDrop.clearPendingChanges();
+	}
+
+	// ============================================
 	// Inspect Mode (delegates to InspectMode feature class)
 	// ============================================
 
 	/**
-	 * Enable Inspect Element Mode
-	 * Fire and forget - browser script handles auto-cleanup after copy
+	 * Toggle Inspect Element Mode (enable/disable)
+	 * Same button press enables and disables - standard toggle behavior
 	 */
-	private async enableInspectMode(): Promise<void> {
+	private async toggleInspectMode(): Promise<void> {
 		if (!this.browserViewId) {
 			return;
 		}
-		await this.inspectMode.enable(this.browserViewId);
+
+		// Toggle based on current state
+		if (this.inspectMode.getIsActive()) {
+			// Disable inspect mode
+			await this.inspectMode.disable(this.browserViewId);
+			this.controlBar?.setInspectModeActive(false);
+		} else {
+			// Enable inspect mode
+			// Setup CDP bridge first (creates window.__roopikBridge in page)
+			try {
+				await this.browserService.setupBrowserBridge(this.browserViewId);
+			} catch (e) {
+				this.logger.warn('[InspectMode] Failed to setup bridge, continuing anyway:', e);
+				// Continue anyway - script will still work, just won't send events
+			}
+
+			// Inject inspect mode script
+			await this.inspectMode.enable(this.browserViewId);
+
+			// Update button active state
+			this.controlBar?.setInspectModeActive(true);
+		}
 	}
 
 	/**
@@ -1272,91 +1698,6 @@ export class Editor extends EditorPane {
 	// Style Inspect Mode (CSS source tracking)
 	// ============================================
 
-	/**
-	 * Enable Style Inspect Mode
-	 * Shows CSS sources for clicked elements with click-to-source
-	 */
-	private async enableStyleInspectMode(): Promise<void> {
-		if (!this.browserViewId) {
-			return;
-		}
-
-		// Set project root for CSS path resolution
-		if (this.currentProjectRoot) {
-			this.styleInspect.setProjectRoot(this.currentProjectRoot);
-		}
-
-		// Initialize panel if not already done (panel is created on first use)
-		if (this.contentContainer && !this.styleInspect.isPanelVisible()) {
-			this.styleInspect.initialize(this.contentContainer);
-		}
-
-		await this.styleInspect.enable(this.browserViewId);
-
-		// Poll for element selection result (the script stores the result in window object)
-		this.pollForStyleInspectResult();
-	}
-
-	/**
-	 * Poll for style inspect result from the browser
-	 * Called after enabling style inspect mode
-	 */
-	private pollForStyleInspectResult(): void {
-		if (!this.browserViewId || !this.styleInspect.getIsActive()) {
-			return;
-		}
-
-		const checkResult = async () => {
-			if (!this.browserViewId || !this.styleInspect.getIsActive()) {
-				return;
-			}
-
-			try {
-				// Check if an element was selected
-				const result = await this.browserService.executeScript(
-					this.browserViewId,
-					`window.__roopikStyleInspectResult || null`
-				);
-
-				if (result) {
-					// Clear the result so we don't process it again
-					await this.browserService.executeScript(
-						this.browserViewId,
-						`window.__roopikStyleInspectResult = null`
-					);
-
-					// Handle the selection - prefer selector over coordinates
-					// Selector is more reliable as coordinates may hit overlay elements
-					if (result.selector) {
-						await this.styleInspect.handleElementSelected(
-							this.browserViewId,
-							result.selector
-						);
-					} else if (result.x !== undefined && result.y !== undefined) {
-						// Fallback to coordinates if no selector available
-						await this.styleInspect.handleElementSelectedByPoint(
-							this.browserViewId,
-							result.x,
-							result.y
-						);
-					}
-				} else {
-					// Keep polling while style inspect is active
-					if (this.styleInspect.getIsActive()) {
-						setTimeout(checkResult, 100);
-					}
-				}
-			} catch {
-				// Silent fail, keep polling
-				if (this.styleInspect.getIsActive()) {
-					setTimeout(checkResult, 100);
-				}
-			}
-		};
-
-		// Start polling after a short delay
-		setTimeout(checkResult, 100);
-	}
 
 	/**
 	 * Disable Style Inspect Mode
@@ -1366,6 +1707,29 @@ export class Editor extends EditorPane {
 			await this.styleInspect.disable(this.browserViewId);
 		}
 		this.styleInspect.hidePanel();
+	}
+
+	/**
+	 * Toggle Style Panel visibility
+	 * Called from control bar button click
+	 */
+	private toggleStylePanel(): void {
+		if (this.styleInspect.isPanelVisible()) {
+			this.styleInspect.hidePanel();
+		} else {
+			// Initialize panel if needed
+			if (this.contentContainer) {
+				this.styleInspect.initialize(this.contentContainer);
+			}
+			// Show empty panel (user can then use inspect mode to select an element)
+			// Panel will use cached DOM tree if available (from page load)
+			this.styleInspect.showEmptyPanel();
+
+			// If no cached tree exists yet, fetch it now
+			if (!this.styleInspect.getDOMTreeCache()) {
+				this.fetchDOMTreeForComponentsTab();
+			}
+		}
 	}
 
 	/**
@@ -1692,8 +2056,9 @@ export class Editor extends EditorPane {
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = undefined;
 
-		// Dispose style inspect feature
+		// Dispose features
 		this.styleInspect.dispose();
+		this.dragDrop.dispose();
 
 		// Stop dev server if running (idempotent - may have already been stopped by onWillDispose)
 		this.stopDevServerOnClose();

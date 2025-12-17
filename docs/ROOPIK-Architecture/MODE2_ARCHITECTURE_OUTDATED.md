@@ -1,6 +1,6 @@
 # Mode 2: Managed Dev Server Architecture
 
-*Updated: January 18, 2025 - With Working Click-to-Source Implementation*
+## NOTE: OUTDATED with old architecture/ Now the Proejct mode has moved compleetly in core. Refer Project_Mode_Architecture for new details.
 
 ---
 

@@ -14,7 +14,10 @@ import {
 	ComponentIndexEntry,
 	WorkspaceConfig,
 	DEFAULT_WORKSPACE_CONFIG,
-	DEFAULT_CANVAS_PREFERENCES
+	DEFAULT_CANVAS_PREFERENCES,
+	ProjectInfo,
+	ProjectIndex,
+	DEFAULT_PROJECT_INDEX
 } from '../../common/storage/storageTypes.js';
 import { CanvasMeta } from '../../common/canvas/types.js';
 import {
@@ -26,7 +29,9 @@ import {
 	getComponentsFolderPath,
 	getComponentIndexPath,
 	getComponentPath,
-	getComponentMetaPath
+	getComponentMetaPath,
+	getProjectsFolderPath,
+	getProjectRegistryPath
 } from './paths.js';
 
 /**
@@ -467,6 +472,112 @@ export class WorkspaceStorage {
 			await this.writeJson(indexPath, index);
 			console.log('[WorkspaceStorage] Updated component positions for canvas:', canvasId);
 		}
+	}
+
+	// ========================================================================
+	// Project Operations (Mode 2 - Browser Preview)
+	// ========================================================================
+
+	/**
+	 * Get project index (registry of all projects)
+	 * Creates projects folder and registry if they don't exist
+	 */
+	private async getProjectIndex(): Promise<ProjectIndex> {
+		this.ensureInitialized();
+
+		// Ensure projects folder exists
+		const projectsPath = getProjectsFolderPath(this.workspacePath);
+		await this.ensureDir(projectsPath);
+
+		// Read or create registry
+		const registryPath = getProjectRegistryPath(this.workspacePath);
+		try {
+			return await this.readJson<ProjectIndex>(registryPath);
+		} catch {
+			// Create default registry
+			const defaultIndex = { ...DEFAULT_PROJECT_INDEX };
+			await this.writeJson(registryPath, defaultIndex);
+			return defaultIndex;
+		}
+	}
+
+	/**
+	 * Get recent projects (sorted by updatedAt, most recent first)
+	 * @param limit Max number of projects to return (default: 5)
+	 */
+	async getRecentProjects(limit: number = 5): Promise<ProjectInfo[]> {
+		const index = await this.getProjectIndex();
+		return [...index.projects]
+			.sort((a, b) => b.updatedAt - a.updatedAt)
+			.slice(0, limit);
+	}
+
+	/**
+	 * Add or update a project in the registry
+	 * If project with same path exists, updates updatedAt; otherwise creates new
+	 * @param name Display name (e.g., folder name)
+	 * @param projectPath Workspace-relative path to project root
+	 * @param framework Optional framework identifier (e.g., "react-vite")
+	 * @param frameworkDisplayName Optional human-readable framework name (e.g., "React + Vite")
+	 * @returns The project ID
+	 */
+	async upsertProject(name: string, projectPath: string, framework?: string, frameworkDisplayName?: string): Promise<string> {
+		this.ensureInitialized();
+
+		const index = await this.getProjectIndex();
+		const now = Date.now();
+		const normalizedPath = projectPath.replace(/\\/g, '/');
+
+		// Check if project with same path already exists
+		const existing = index.projects.find(p => p.path.replace(/\\/g, '/') === normalizedPath);
+
+		if (existing) {
+			// Update existing - touch updatedAt and update framework if provided
+			existing.name = name;
+			existing.updatedAt = now;
+			if (framework !== undefined) {
+				existing.framework = framework;
+			}
+			if (frameworkDisplayName !== undefined) {
+				existing.frameworkDisplayName = frameworkDisplayName;
+			}
+			await this.writeJson(getProjectRegistryPath(this.workspacePath), index);
+			return existing.id;
+		}
+
+		// Create new project
+		const projectId = this.generateProjectId();
+		index.projects.push({
+			id: projectId,
+			name,
+			path: normalizedPath,
+			updatedAt: now,
+			framework,
+			frameworkDisplayName
+		});
+
+		await this.writeJson(getProjectRegistryPath(this.workspacePath), index);
+		return projectId;
+	}
+
+	/**
+	 * Delete a project from registry
+	 */
+	async deleteProject(projectId: string): Promise<void> {
+		this.ensureInitialized();
+
+		const index = await this.getProjectIndex();
+		index.projects = index.projects.filter(p => p.id !== projectId);
+		await this.writeJson(getProjectRegistryPath(this.workspacePath), index);
+	}
+
+	/**
+	 * Generate a unique project ID
+	 */
+	private generateProjectId(): string {
+		const timestamp = Date.now().toString(36);
+		const random = Math.random().toString(36).substring(2, 8);
+		return `proj_${timestamp}_${random}`;
 	}
 
 	// ========================================================================

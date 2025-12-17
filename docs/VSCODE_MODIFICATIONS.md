@@ -150,6 +150,8 @@ Files modified outside of `workbench/contrib/roopik/` to integrate Roopik into V
 | **~139-145** | Added imports for ComponentService | Added imports:<br>`// ROOPIK: Component Service - Component lifecycle, build queue, file watching`<br>`import { ComponentService } from '../../workbench/contrib/roopik/electron-main/component/componentService.js';`<br>`import { ComponentChannel } from '../../workbench/contrib/roopik/electron-main/channel/componentChannel.js';`<br>`import { COMPONENT_CHANNEL_NAME } from '../../workbench/contrib/roopik/browser/componentServiceClient.js';`<br>`import { BuildService } from '../../workbench/contrib/roopik/electron-main/build/buildService.js';`<br>`import { ImportService } from '../../workbench/contrib/roopik/electron-main/import/importService.js';`<br>`import { FileWatcher } from '../../workbench/contrib/roopik/electron-main/watch/fileWatcher.js';` |
 | **~1272-1276** | Registered CanvasService IPC channel | Added IPC channel registration:<br>`// ROOPIK: Canvas Service - Canvas lifecycle, metadata, panel state tracking`<br>`const roopikStorageService = new RoopikStorageService();`<br>`const canvasService = new CanvasService(roopikStorageService);`<br>`const canvasChannel = new CanvasChannel(canvasService);`<br>`mainProcessElectronServer.registerChannel(CANVAS_CHANNEL_NAME, canvasChannel);` |
 | **~1278-1284** | Registered ComponentService IPC channel | Added IPC channel registration:<br>`// ROOPIK: Component Service - Component lifecycle, build queue, file watching`<br>`const buildService = new BuildService();`<br>`const importService = new ImportService();`<br>`const fileWatcher = new FileWatcher();`<br>`const componentService = new ComponentService(roopikStorageService, buildService, importService, fileWatcher);`<br>`const componentChannel = new ComponentChannel(componentService);`<br>`mainProcessElectronServer.registerChannel(COMPONENT_CHANNEL_NAME, componentChannel);`<br>`// ROOPIK END` |
+| **~146-149** | Added imports for ProjectStorageService | Added imports:<br>`// ROOPIK: Project Storage Service - Recent projects for Project Mode`<br>`import { ProjectStorageService } from '../../workbench/contrib/roopik/electron-main/projectStorage/projectStorageService.js';`<br>`import { ProjectStorageChannel } from '../../workbench/contrib/roopik/electron-main/channel/projectStorageChannel.js';`<br>`import { PROJECT_STORAGE_CHANNEL } from '../../workbench/contrib/roopik/common/projectStorage/index.js';` |
+| **~1290-1293** | Registered ProjectStorageService IPC channel | Added IPC channel registration:<br>`// ROOPIK: Project Storage Service - Recent projects for Project Mode`<br>`const projectStorageService = new ProjectStorageService();`<br>`const projectStorageChannel = new ProjectStorageChannel(projectStorageService);`<br>`mainProcessElectronServer.registerChannel(PROJECT_STORAGE_CHANNEL, projectStorageChannel);` |
 
 ---
 
@@ -189,3 +191,47 @@ Files modified outside of `workbench/contrib/roopik/` to integrate Roopik into V
 **Usage in Roopik:**
 - `src/vs/workbench/contrib/roopik/browser/projectMode/editor.ts` subscribes to `IMenubarStateService.onDidOpenMenu/onDidCloseMenu` to pause/resume browser when menus open
 - Service is registered via import in `roopik.contribution.ts`
+
+---
+
+## Content Security Policy (CSP) Modifications
+
+**Purpose:** Allow favicon loading from local development servers (Vite, React dev server, etc.) in ProjectMode browser preview.
+
+| File | Lines | Change | Reason |
+|------|-------|--------|--------|
+| `src/vs/code/electron-browser/workbench/workbench.html` | 19-20 | Added `http://127.0.0.1:*` and `http://localhost:*` to `img-src` directive | Allow favicon images from local dev servers |
+| `src/vs/code/electron-browser/workbench/workbench-dev.html` | 19-20 | Added `http://127.0.0.1:*` and `http://localhost:*` to `img-src` directive | Allow favicon images from local dev servers |
+
+**Change Details:**
+
+Original CSP `img-src` directive:
+```html
+img-src
+    'self'
+    data:
+    blob:
+    vscode-remote-resource:
+    vscode-managed-remote-resource:
+    https:
+;
+```
+
+Modified CSP `img-src` directive:
+```html
+img-src
+    'self'
+    data:
+    blob:
+    vscode-remote-resource:
+    vscode-managed-remote-resource:
+    https:
+    http://127.0.0.1:*
+    http://localhost:*
+;
+```
+
+**Why needed?** When users preview local projects (e.g., Vite at `http://127.0.0.1:5173`), the browser tab favicon is loaded from the dev server. Without this CSP exception, favicon requests are blocked and show console errors like:
+```
+Loading the image 'http://127.0.0.1:5173/favicon.ico' violates the Content Security Policy directive: 'img-src ...'
+```

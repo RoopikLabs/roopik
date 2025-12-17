@@ -6,7 +6,7 @@
 import { BrowserWindow, WebContentsView, session, app } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserBridgeMessage } from '../../common/projectMode/types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
 import type { ILifecycleMainService } from '../../../../../platform/lifecycle/electron-main/lifecycleMainService.js';
@@ -42,6 +42,12 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	private readonly _onOpenSourceRequest = new Emitter<OpenSourceRequestEvent>();
 	readonly onOpenSourceRequest: Event<OpenSourceRequestEvent> = this._onOpenSourceRequest.event;
 
+	private readonly _onBrowserBridgeMessage = new Emitter<BrowserBridgeEvent>();
+	readonly onBrowserBridgeMessage: Event<BrowserBridgeEvent> = this._onBrowserBridgeMessage.event;
+
+	private readonly _onBrowserKeyPress = new Emitter<import('../../common/projectMode/types.js').BrowserKeyEvent>();
+	readonly onBrowserKeyPress: Event<import('../../common/projectMode/types.js').BrowserKeyEvent> = this._onBrowserKeyPress.event;
+
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
 	private static managedWebContentsIds = new Set<number>();
@@ -71,12 +77,18 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// Favicon URLs - track current favicon per browser view
 	private favicons = new Map<number, string>();
 
+	// Track if favicon was received for current page load (to know when to clear)
+	private faviconReceivedForCurrentLoad = new Map<number, boolean>();
+
 	// Remote debugging port counter
 	private debuggingPortCounter = 9222;
 
 	// CSS source resolution services
 	private cdpCssService: CDPCssService;
 	private styleOrchestrators = new Map<string, StyleSourceOrchestrator>(); // projectRoot -> orchestrator
+
+	// Track which browser views have the bridge binding set up
+	private bridgeBindingSetup = new Map<number, boolean>();
 
 	// ============================================
 	// Constructor & Lifecycle Setup
@@ -292,6 +304,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			this.browserWindows.delete(browserViewId);
 			this.debuggerAttached.delete(browserViewId);
 			this.lastNavigationErrors.delete(browserViewId);
+			this.favicons.delete(browserViewId);
+			this.faviconReceivedForCurrentLoad.delete(browserViewId);
 
 			// Remove from static set
 			BrowserViewService.managedWebContentsIds.delete(browserViewId);
@@ -630,9 +644,96 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		};
 	}
 
+	/**
+	 * Setup the browser bridge binding for script-to-main communication
+	 * Uses CDP Runtime.addBinding to create window.__roopikBridge()
+	 * Must be called after CDP is attached and before injecting inspect script
+	 */
+	async setupBrowserBridge(browserViewId: number): Promise<void> {
+		// Already setup?
+		if (this.bridgeBindingSetup.get(browserViewId)) {
+			return;
+		}
+
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		// Ensure debugger is attached
+		if (!this.debuggerAttached.get(browserViewId)) {
+			await this.attachDebugger(browserViewId);
+		}
+
+		const debugger_ = browserView.webContents.debugger;
+
+		// Enable Runtime domain (required for bindings)
+		await debugger_.sendCommand('Runtime.enable');
+
+		// Add the binding - creates window.__roopikBridge() in page
+		await debugger_.sendCommand('Runtime.addBinding', { name: '__roopikBridge' });
+
+		// Listen for binding calls
+		const handler = (_event: Electron.Event, method: string, params: { name?: string; payload?: string }) => {
+			if (method === 'Runtime.bindingCalled' && params.name === '__roopikBridge') {
+				try {
+					const message = JSON.parse(params.payload || '{}') as BrowserBridgeMessage;
+					this._onBrowserBridgeMessage.fire({
+						browserViewId,
+						message
+					});
+				} catch (e) {
+					console.error('[BrowserBridge] Failed to parse message:', e);
+				}
+			}
+		};
+
+		debugger_.on('message', handler);
+		this.bridgeBindingSetup.set(browserViewId, true);
+	}
+
 	// ============================================
 	// Utilities
 	// ============================================
+
+	/**
+	 * Validate that a favicon URL actually exists (returns 200)
+	 * Uses HEAD request for minimal overhead
+	 */
+	private async validateFaviconUrl(url: string): Promise<boolean> {
+		try {
+			const { net } = await import('electron');
+			return new Promise((resolve) => {
+				const request = net.request({
+					method: 'HEAD',
+					url,
+					// Short timeout - favicon validation shouldn't block
+					// Note: net.request doesn't have timeout option, we handle via events
+				});
+
+				// Timeout after 3 seconds
+				const timeout = setTimeout(() => {
+					request.abort();
+					resolve(false);
+				}, 3000);
+
+				request.on('response', (response) => {
+					clearTimeout(timeout);
+					// Accept 200 OK and 304 Not Modified
+					resolve(response.statusCode === 200 || response.statusCode === 304);
+				});
+
+				request.on('error', () => {
+					clearTimeout(timeout);
+					resolve(false);
+				});
+
+				request.end();
+			});
+		} catch {
+			return false;
+		}
+	}
 
 	async takeScreenshot(browserViewId: number): Promise<string> {
 		const browserView = this.browserViews.get(browserViewId);
@@ -828,6 +929,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		this.browserWindows.delete(browserViewId);
 		this.debuggerAttached.delete(browserViewId);
 		this.lastNavigationErrors.delete(browserViewId);
+		this.favicons.delete(browserViewId);
+		this.faviconReceivedForCurrentLoad.delete(browserViewId);
 		BrowserViewService.managedWebContentsIds.delete(browserViewId);
 
 		console.warn('[ProjectMode][Main] destroyBrowserViewSync cleanup complete', {
@@ -922,15 +1025,31 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		webContents.on('page-favicon-updated', (_event, favicons) => {
 			// Store first favicon URL and notify renderer
+			// But first validate that the favicon actually exists (HEAD request)
 			if (favicons && favicons.length > 0) {
-				this.favicons.set(browserViewId, favicons[0]);
-				this.fireNavigationStateChanged(browserViewId);
+				const faviconUrl = favicons[0];
+
+				// Validate favicon URL with HEAD request before using it
+				// This prevents 404 errors from showing broken favicon in tab
+				this.validateFaviconUrl(faviconUrl).then(isValid => {
+					if (isValid) {
+						this.favicons.set(browserViewId, faviconUrl);
+						this.faviconReceivedForCurrentLoad.set(browserViewId, true);
+						this.fireNavigationStateChanged(browserViewId);
+					} else {
+						// Favicon URL returned 404 or error - don't use it
+						// The default globe icon will be shown instead
+						console.log(`[ProjectMode] Favicon not found: ${faviconUrl}`);
+					}
+				});
 			}
 		});
 
 		webContents.on('did-start-loading', () => {
-			// Clear favicon on new navigation (new page will send new favicon)
-			this.favicons.delete(browserViewId);
+			// Mark that we haven't received favicon for this page load yet
+			this.faviconReceivedForCurrentLoad.set(browserViewId, false);
+			// DON'T clear favicon here - keep showing old favicon until new one arrives
+			// This provides smoother UX (no blank icon during loading)
 			// Fire event with EXPLICIT isLoading = true
 			this.fireNavigationStateChanged(browserViewId, true);
 
@@ -950,6 +1069,11 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// did-stop-loading is more reliable than did-finish-load for complex pages
 		webContents.on('did-stop-loading', () => {
+			// If no favicon was received during this page load, clear the old one
+			// This handles sites that have no favicon
+			if (!this.faviconReceivedForCurrentLoad.get(browserViewId)) {
+				this.favicons.delete(browserViewId);
+			}
 			// Fire event with EXPLICIT isLoading = false
 			this.fireNavigationStateChanged(browserViewId, false);
 
@@ -1107,13 +1231,34 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 	private setupZoomHandlers(browserView: WebContentsView): void {
 		const wc = browserView.webContents;
+		const browserViewId = wc.id; // Get the browserViewId from webContents
 
 		// NOTE: setVisualZoomLevelLimits is called in did-stop-loading event
 		// (after page loads) per Electron documentation requirements
 		// This ensures visual zoom works properly with pinch gestures
 
-		// Handle keyboard zoom shortcuts (Ctrl++, Ctrl+-, Ctrl+0)
+		// Centralized key handling via before-input-event
+		// All key presses are forwarded to renderer for unified handling
 		wc.on('before-input-event', (event, input) => {
+			// Forward ALL key events to renderer for centralized handling
+			// Only keyDown for now (keyUp could be added if needed)
+			if (input.type === 'keyDown' || input.type === 'keyUp') {
+				this._onBrowserKeyPress.fire({
+					browserViewId,
+					key: input.key,
+					code: input.code,
+					modifiers: {
+						ctrl: input.control,
+						alt: input.alt,
+						shift: input.shift,
+						meta: input.meta
+					},
+					type: input.type
+				});
+			}
+
+			// Handle keyboard zoom shortcuts (Ctrl++, Ctrl+-, Ctrl+0) locally
+			// These are handled here because they affect the webContents directly
 			if (input.type !== 'keyDown') return;
 			if (!input.control && !input.meta) return;
 
