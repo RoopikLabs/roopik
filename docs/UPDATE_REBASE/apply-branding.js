@@ -1013,6 +1013,178 @@ function updateWorkbenchCSP() {
 	return { updated: totalUpdated > 0, errors: totalErrors };
 }
 
+// Update titlebarPart.ts - Add menubar focus state change events for Roopik
+function updateTitlebarPart() {
+	const filePath = path.join(ROOT_DIR, 'src/vs/workbench/browser/parts/titlebar/titlebarPart.ts');
+
+	if (!fileExists(filePath)) {
+		warning('src/vs/workbench/browser/parts/titlebar/titlebarPart.ts not found (skipping)');
+		return { updated: false, errors: 0 };
+	}
+
+	const titlebarPartPath = filePath;
+	const content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	// Check if already updated
+	if (content.includes('readonly onMenubarFocusStateChange: Event<boolean>')) {
+		success('titlebarPart.ts - Roopik menubar focus state changes already present');
+		return { updated: false, errors: 0 };
+	}
+
+	let updatedContent = content;
+	let changesMade = 0;
+	let changesFailed = 0;
+
+	// ========================================================================
+	// Change 1: Add onMenubarFocusStateChange to ITitlebarPart interface
+	// ========================================================================
+	const change1Search = 'readonly onMenubarVisibilityChange: Event<boolean>;';
+	if (updatedContent.includes(change1Search)) {
+		const change1Pattern = /(readonly onMenubarVisibilityChange: Event<boolean>;)/;
+		const change1Replacement = `$1
+
+	/**
+	 * // ROOPIK
+	 * An event when the menubar focus state changes (e.g., when a menu is opened/closed).
+	 * Fires true when a menu is opened (focused), false when closed.
+	 */
+	readonly onMenubarFocusStateChange: Event<boolean>;`;
+
+		if (change1Pattern.test(updatedContent)) {
+			updatedContent = updatedContent.replace(change1Pattern, change1Replacement);
+			info('titlebarPart.ts - [1/5] Added onMenubarFocusStateChange to ITitlebarPart interface');
+			changesMade++;
+		} else {
+			warning('titlebarPart.ts - [1/5] Could not add to ITitlebarPart interface');
+			changesFailed++;
+		}
+	} else {
+		warning('titlebarPart.ts - [1/5] Could not find anchor text for ITitlebarPart interface');
+		changesFailed++;
+	}
+
+	// ========================================================================
+	// Change 2: Add onMenubarFocusStateChange assignment in BrowserTitleService constructor
+	// ========================================================================
+	const change2Search = 'this.onMenubarVisibilityChange = this.mainPart.onMenubarVisibilityChange;';
+	if (updatedContent.includes(change2Search)) {
+		const change2Pattern = /(this\.onMenubarVisibilityChange = this\.mainPart\.onMenubarVisibilityChange;)/;
+		const change2Replacement = `$1
+		this.onMenubarFocusStateChange = this.mainPart.onMenubarFocusStateChange; // ROOPIK`;
+
+		if (change2Pattern.test(updatedContent)) {
+			updatedContent = updatedContent.replace(change2Pattern, change2Replacement);
+			info('titlebarPart.ts - [2/5] Added onMenubarFocusStateChange assignment in BrowserTitleService');
+			changesMade++;
+		} else {
+			warning('titlebarPart.ts - [2/5] Could not add assignment in BrowserTitleService');
+			changesFailed++;
+		}
+	} else {
+		warning('titlebarPart.ts - [2/5] Could not find anchor text in BrowserTitleService constructor');
+		changesFailed++;
+	}
+
+	// ========================================================================
+	// Change 3: Add onMenubarFocusStateChange declaration in BrowserTitleService
+	// ========================================================================
+	const change3Search = 'readonly onMenubarVisibilityChange: Event<boolean>;';
+	// We need to find the second occurrence (in BrowserTitleService class)
+	const firstOccurrence = updatedContent.indexOf(change3Search);
+	if (firstOccurrence !== -1) {
+		const secondOccurrence = updatedContent.indexOf(change3Search, firstOccurrence + change3Search.length);
+		if (secondOccurrence !== -1) {
+			const before = updatedContent.substring(0, secondOccurrence + change3Search.length);
+			const after = updatedContent.substring(secondOccurrence + change3Search.length);
+			updatedContent = before + '\n\n\t// ROOPIK\n\treadonly onMenubarFocusStateChange: Event<boolean>;' + after;
+			info('titlebarPart.ts - [3/5] Added onMenubarFocusStateChange declaration in BrowserTitleService');
+			changesMade++;
+		} else {
+			warning('titlebarPart.ts - [3/5] Could not find second onMenubarVisibilityChange declaration');
+			changesFailed++;
+		}
+	} else {
+		warning('titlebarPart.ts - [3/5] Could not find anchor text for BrowserTitleService declaration');
+		changesFailed++;
+	}
+
+	// ========================================================================
+	// Change 4: Add emitter and event in BrowserTitlebarPart
+	// ========================================================================
+	const change4Search = 'readonly onMenubarVisibilityChange = this._onMenubarVisibilityChange.event;';
+
+	if (updatedContent.includes(change4Search)) {
+		const change4Pattern = /(readonly onMenubarVisibilityChange = this\._onMenubarVisibilityChange\.event;)/;
+		const change4Replacement = `$1
+
+	// ROOPIK
+	private _onMenubarFocusStateChange = this._register(new Emitter<boolean>());
+	readonly onMenubarFocusStateChange = this._onMenubarFocusStateChange.event;`;
+
+		if (change4Pattern.test(updatedContent)) {
+			updatedContent = updatedContent.replace(change4Pattern, change4Replacement);
+			info('titlebarPart.ts - [4/5] Added emitter and event in BrowserTitlebarPart');
+			changesMade++;
+		} else {
+			warning('titlebarPart.ts - [4/5] Could not add emitter in BrowserTitlebarPart');
+			changesFailed++;
+		}
+	} else {
+		warning('titlebarPart.ts - [4/5] Could not find anchor text in BrowserTitlebarPart');
+		changesFailed++;
+	}
+
+	// ========================================================================
+	// Change 5: Add listener in installMenubar() method
+	// ========================================================================
+	const change5Search = 'this._register(this.customMenubar.value.onVisibilityChange(e => this.onMenubarVisibilityChanged(e)));';
+
+	if (updatedContent.includes(change5Search)) {
+		const change5Pattern = /(this\._register\(this\.customMenubar\.value\.onVisibilityChange\(e => this\.onMenubarVisibilityChanged\(e\)\)\);)/;
+		const change5Replacement = `$1
+
+		// ROOPIK: Fire event when menubar focus state changes (menu opened/closed)
+		this._register(this.customMenubar.value.onFocusStateChange(focused => this._onMenubarFocusStateChange.fire(focused)));`;
+
+		if (change5Pattern.test(updatedContent)) {
+			updatedContent = updatedContent.replace(change5Pattern, change5Replacement);
+			info('titlebarPart.ts - [5/5] Added listener in installMenubar() method');
+			changesMade++;
+		} else {
+			warning('titlebarPart.ts - [5/5] Could not add listener in installMenubar()');
+			changesFailed++;
+		}
+	} else {
+		warning('titlebarPart.ts - [5/5] Could not find anchor text in installMenubar()');
+		changesFailed++;
+	}
+
+	// ========================================================================
+	// Write file and report results
+	// ========================================================================
+	if (changesMade > 0) {
+		const writeSuccess = writeFile(titlebarPartPath, updatedContent);
+		if (writeSuccess) {
+			info(`titlebarPart.ts - Applied ${changesMade}/5 changes`);
+			if (changesFailed > 0) {
+				warning(`titlebarPart.ts - ${changesFailed} change(s) failed to apply`);
+			}
+			return { updated: true, errors: changesFailed };
+		} else {
+			error('titlebarPart.ts - Failed to write file');
+			return { updated: false, errors: 1 };
+		}
+	} else if (changesFailed > 0) {
+		error(`titlebarPart.ts - All ${changesFailed} changes failed to apply`);
+		return { updated: false, errors: changesFailed };
+	}
+
+	return { updated: false, errors: 0 };
+}
+
 // Process icon replacements
 function processIconReplacements(config) {
 	let totalChanges = 0;
@@ -1208,6 +1380,12 @@ function main() {
 		totalChanges++;
 	}
 	totalErrors += cspResult.errors;
+
+	const titlebarResult = updateTitlebarPart();
+	if (titlebarResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += titlebarResult.errors;
 
 	// Install Roopik dependencies
 	log('\n📦 Installing Roopik dependencies...\n', 'cyan');
