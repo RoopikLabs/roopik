@@ -37,7 +37,6 @@ import { StyleInspect } from './features/styleInspect.js';
 import { DragDrop } from './features/dragDrop/index.js';
 // Components
 import { DefaultBrowserScreen } from './components/defaultBrowserScreen.js';
-import { PendingChangesPanel } from './components/pendingChangesPanel.js';
 import { ISourceNavigationService } from '../../common/navigation/index.js';
 import { IMenubarStateService } from '../services/menubarStateService.js';
 import { IProjectStorageService } from '../../common/projectStorage/index.js';
@@ -95,9 +94,6 @@ export class Editor extends EditorPane {
 	private styleInspect!: StyleInspect;
 	private dragDrop!: DragDrop;
 
-	// Pending changes panel (for drag-drop operations)
-	private pendingChangesPanel: PendingChangesPanel | undefined;
-
 	constructor(
 		group: IEditorGroup,
 		@ITelemetryService telemetryService: ITelemetryService,
@@ -132,12 +128,23 @@ export class Editor extends EditorPane {
 			this.logger.info('[DragDrop] Pending moves changed:', moves.length);
 			// Update control bar badge
 			this.controlBar?.setPendingChangesCount(moves.length);
-			// Update panel if visible
-			this.pendingChangesPanel?.updateList(moves);
+			// Update Changes tab in StyleInspect panel
+			this.styleInspect.setPendingMoves(moves);
 		});
 
 		// Connect StyleInspect to unified InspectMode (uses same script for element selection)
 		this.styleInspect.setInspectMode(this.inspectMode);
+
+		// Wire pending changes callbacks from StyleInspect panel to DragDrop feature
+		this.styleInspect.setOnUndoMove((moveId) => {
+			this.undoPendingMove(moveId);
+		});
+		this.styleInspect.setOnUndoAll(() => {
+			this.undoAllPendingMoves();
+		});
+		this.styleInspect.setOnApplyAll(() => {
+			this.applyAllPendingMoves();
+		});
 
 		// Set callback to update browser bounds when style panel visibility changes
 		this.styleInspect.setOnVisibilityChanged((visible, _panelWidth) => {
@@ -1498,29 +1505,20 @@ export class Editor extends EditorPane {
 
 	/**
 	 * Toggle Pending Changes Panel visibility
-	 * Shows/hides the floating panel with pending DOM move operations
+	 * Opens the StyleInspect panel and switches to the Changes tab
 	 */
 	private togglePendingChangesPanel(): void {
-		if (!this.browserContainer) {
+		if (!this.contentContainer) {
 			return;
 		}
 
-		// Initialize panel if not exists
-		if (!this.pendingChangesPanel) {
-			this.pendingChangesPanel = new PendingChangesPanel(
-				this.browserContainer,
-				{
-					onUndoMove: (moveId: string) => this.undoPendingMove(moveId),
-					onUndoAll: () => this.undoAllPendingMoves(),
-					onApplyAll: () => this.applyAllPendingMoves(),
-					onClose: () => this.pendingChangesPanel?.hide()
-				}
-			);
+		// Initialize StyleInspect panel if not already done
+		if (!this.styleInspect.isPanelVisible()) {
+			this.styleInspect.initialize(this.contentContainer);
 		}
 
-		// Toggle visibility with current pending moves
-		const moves = this.dragDrop.getPendingMoves();
-		this.pendingChangesPanel.toggle(moves);
+		// Switch to Changes tab (this also shows the panel if hidden)
+		this.styleInspect.switchToChangesTab();
 	}
 
 	/**
@@ -1542,18 +1540,39 @@ export class Editor extends EditorPane {
 	}
 
 	/**
-	 * Undo all pending moves (LIFO order)
+	 * Undo all pending moves by reloading the page
+	 *
+	 * Since DOM changes are ephemeral (like Chrome DevTools), the simplest
+	 * and most reliable way to "Undo All" is to reload the page from source.
+	 * HMR will serve the original code without any in-memory DOM changes.
+	 *
+	 * This is more robust than trying to undo each move individually because:
+	 * 1. Element selectors change after moves, making tracking unreliable
+	 * 2. Complex nested moves can get out of sync
+	 * 3. Page reload guarantees a clean state from source
 	 */
 	private async undoAllPendingMoves(): Promise<void> {
 		if (!this.browserViewId) {
 			return;
 		}
 
-		const moves = this.dragDrop.getPendingMoves();
-		// Undo in reverse order (LIFO)
-		for (let i = moves.length - 1; i >= 0; i--) {
-			await this.dragDrop.undoMove(this.browserViewId, moves[i].id);
+		const count = this.dragDrop.getPendingCount();
+		if (count === 0) {
+			return;
 		}
+
+		// Clear the pending queue first
+		this.dragDrop.clearPendingChanges();
+
+		// Reload the page to restore original DOM from source
+		await this.refresh();
+
+		// Notify user
+		this.notificationService.notify({
+			severity: Severity.Info,
+			message: `Discarded ${count} pending change${count === 1 ? '' : 's'} - page reloaded`,
+			sticky: false
+		});
 	}
 
 	/**
@@ -1576,9 +1595,6 @@ export class Editor extends EditorPane {
 
 		// Clear the pending queue
 		this.dragDrop.clearPendingChanges();
-
-		// Hide the panel
-		this.pendingChangesPanel?.hide();
 	}
 
 	// ============================================
@@ -2043,7 +2059,6 @@ export class Editor extends EditorPane {
 		// Dispose features
 		this.styleInspect.dispose();
 		this.dragDrop.dispose();
-		this.pendingChangesPanel?.dispose();
 
 		// Stop dev server if running (idempotent - may have already been stopped by onWillDispose)
 		this.stopDevServerOnClose();

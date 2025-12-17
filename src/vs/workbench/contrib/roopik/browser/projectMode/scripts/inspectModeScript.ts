@@ -30,6 +30,22 @@ export const INSPECT_MODE_SCRIPT = `
 	// ========== Configuration ==========
 
 	/**
+	 * DRAG ELEMENT FEATURE FLAG
+	 *
+	 * Set to false to completely disable drag-drop element reordering.
+	 * This is a temporary kill switch while the feature is unstable.
+	 *
+	 * Known issues with drag-drop:
+	 * - Elements don't align properly due to component CSS constraints
+	 * - Undo doesn't work reliably (element selectors change after move)
+	 * - Need AST-based source update before this is truly useful
+	 *
+	 * Now using data-roopik-source attribute for stable element identification
+	 * (inspired by Onlook's data-oid approach) to make undo work reliably.
+	 */
+	var DRAG_ELEMENT_ENABLED = true;
+
+	/**
 	 * DRAG MODE ENABLE FLAG
 	 *
 	 * Drag mode should ONLY be enabled when:
@@ -48,6 +64,11 @@ export const INSPECT_MODE_SCRIPT = `
 	 * Future: This will be passed as parameter from VSCode based on project context.
 	 */
 	function isDragModeAvailable() {
+		// Kill switch - if drag element is disabled globally, return false
+		if (!DRAG_ELEMENT_ENABLED) {
+			return false;
+		}
+
 		// Check if page has any elements with source tracking (our project)
 		var hasSourceTracking = document.querySelector('[data-roopik-source]') !== null;
 
@@ -1182,6 +1203,18 @@ export const INSPECT_MODE_SCRIPT = `
 		}
 	};
 
+	/**
+	 * Build a unique CSS selector for an element - exported for VSCode to call
+	 * Used by source-based element lookup for reliable undo operations.
+	 *
+	 * This is essential for the undo feature: after elements move, their CSS
+	 * selectors change (e.g., :nth-of-type() indices), but we can find them
+	 * by data-roopik-source attribute and then build a fresh selector.
+	 */
+	window.__roopikBuildSelector = function(el) {
+		return getElementSelector(el);
+	};
+
 	// ========== Cleanup ==========
 
 	function cleanup() {
@@ -1222,6 +1255,7 @@ export const INSPECT_MODE_SCRIPT = `
 		delete window.__roopikInspectCleanup;
 		delete window.__roopikShowToast;
 		delete window.__roopikReselectElement;
+		delete window.__roopikBuildSelector;
 	}
 
 	window.__roopikInspectCleanup = cleanup;

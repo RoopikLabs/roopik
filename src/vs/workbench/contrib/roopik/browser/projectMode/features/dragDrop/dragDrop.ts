@@ -117,7 +117,7 @@ export class DragDrop {
 			// 5. Get element tag name for display
 			const tagName = dropZone.parentTagName || 'element';
 
-			// 6. Add to pending changes queue
+			// 6. Add to pending changes queue (handles collapse and auto-remove)
 			const pendingMove = this.pendingQueue.add({
 				elementSelector,
 				elementTagName: tagName,
@@ -128,14 +128,20 @@ export class DragDrop {
 				toIndex: dropZone.index
 			});
 
-			this.logger.info('[DragDrop] Move added to queue:', pendingMove.id);
-
 			// 7. Update selection overlay
 			await this.cdpService.reselectElement(browserViewId);
 
 			// 8. Show success feedback
 			const pendingCount = this.pendingQueue.getPendingCount();
-			await this.showFeedback(browserViewId, true, `Element moved (${pendingCount} pending)`);
+
+			if (pendingMove === null) {
+				// Element moved back to original position - entry was auto-removed
+				this.logger.info('[DragDrop] Move cancelled - element back to original position');
+				await this.showFeedback(browserViewId, true, `Reverted (${pendingCount} pending)`);
+			} else {
+				this.logger.info('[DragDrop] Move tracked:', pendingMove.id);
+				await this.showFeedback(browserViewId, true, `Element moved (${pendingCount} pending)`);
+			}
 
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
@@ -171,6 +177,9 @@ export class DragDrop {
 
 	/**
 	 * Undo a specific move by ID
+	 *
+	 * Uses source-based element lookup (data-roopik-source attribute) to find
+	 * the element reliably, since CSS selectors change after DOM moves.
 	 */
 	async undoMove(browserViewId: number, moveId: string): Promise<boolean> {
 		const move = this.pendingQueue.getMove(moveId);
@@ -179,17 +188,13 @@ export class DragDrop {
 			return false;
 		}
 
-		// Execute undo via CDP (move back to original position)
-		const result = await this.cdpService.undoMove(
-			browserViewId,
-			move.elementSelector,
-			move.fromParent,
-			move.fromIndex
-		);
+		// Execute undo via CDP using source-based lookup
+		// This uses data-roopik-source attribute to find the element reliably
+		const result = await this.cdpService.undoMoveWithSource(browserViewId, move);
 
 		if (!result.success) {
 			this.logger.error('[DragDrop] Undo failed:', result.error);
-			await this.showFeedback(browserViewId, false, 'Undo failed');
+			await this.showFeedback(browserViewId, false, `Undo failed: ${result.error}`);
 			return false;
 		}
 

@@ -1,7 +1,7 @@
 # Drag-Drop Element Reordering - Implementation Documentation
 
 > **Last Updated**: December 2024
-> **Status**: Phase 4 Complete (CDP DOM.moveTo), Phase 5 Pending (AST Source Update)
+> **Status**: Phase 4 Complete (CDP DOM.moveTo + Undo), Phase 5 Pending (AST Source Update)
 
 ---
 
@@ -51,6 +51,26 @@ Pending Changes Queue
 
 ---
 
+## Feature Flag
+
+The drag-drop feature can be enabled/disabled via a flag in `inspectModeScript.ts`:
+
+```typescript
+/**
+ * DRAG ELEMENT FEATURE FLAG
+ * Set to false to completely disable drag-drop element reordering.
+ */
+var DRAG_ELEMENT_ENABLED = true;  // Set to false to disable
+```
+
+When disabled:
+- Element selection (inspect mode) still works
+- Drag events are completely suppressed
+- No ghost element or drop zones appear
+- Changes tab in Inspect panel will be empty
+
+---
+
 ## File Structure
 
 ### Drag-Drop Feature Module
@@ -61,370 +81,245 @@ src/vs/workbench/contrib/roopik/browser/projectMode/
 │   └── dragDrop/
 │       ├── types.ts              # PendingMove, SourceLocation, callbacks
 │       ├── pendingChangesQueue.ts # LIFO queue with undo tracking
-│       ├── cdpMoveService.ts     # CDP DOM operations
+│       ├── cdpMoveService.ts     # CDP DOM operations + stable element lookup
 │       ├── dragDrop.ts           # Main feature class
 │       └── index.ts              # Exports
 │
 ├── components/
-│   ├── browserControlBar.ts      # Added pending changes badge
-│   └── pendingChangesPanel.ts    # Floating panel UI
+│   ├── browserControlBar.ts      # Control bar (has pending changes support)
+│   ├── pendingChangesPanel.ts    # Floating panel UI (legacy, not visible over WebContentsView)
+│   └── styleInspectPanel.ts      # Inspect panel with "Changes" tab
+│
+├── features/
+│   └── styleInspect.ts           # Style inspect feature (hosts Changes tab)
 │
 └── editor.ts                     # Integration point
 ```
 
-### Pending Changes Module (Standalone)
+### UI Integration
 
-```
-src/vs/workbench/contrib/roopik/
-├── common/pendingChanges/
-│   ├── types.ts                  # IPendingFile, IPendingChangesConfig
-│   ├── index.ts                  # Exports
-│   └── README.md                 # Documentation
-│
-└── electron-main/pendingChanges/
-    ├── pendingChangesService.ts  # File system operations
-    └── index.ts                  # Exports
-```
+The pending changes are shown in the **"Changes" tab** within the StyleInspect panel (right sidebar), not as a floating panel. This is because floating panels cannot render on top of WebContentsView (separate Chromium process).
 
 ---
 
 ## Implementation Details
 
-### 1. Drag-Drop Types (`features/dragDrop/types.ts`)
+### 1. Stable Element Identification (Onlook-inspired)
+
+**Problem**: CSS selectors like `:nth-of-type()` change when elements move, breaking undo.
+
+**Solution**: Use `data-roopik-source` attribute as a stable identifier (inspired by [Onlook's data-oid approach](https://github.com/onlook-dev/onlook)).
 
 ```typescript
-/**
- * Represents a pending move operation
- */
-export interface PendingMove {
-  id: string;                      // Unique identifier
-  elementSelector: string;         // CSS selector of moved element
-  elementTagName: string;          // Tag name for display
-  sourceLocation: SourceLocation | null;  // data-roopik-source info
-  fromParent: string;              // Original parent selector
-  fromIndex: number;               // Original index in parent
-  toParent: string;                // New parent selector
-  toIndex: number;                 // New index in parent
-  timestamp: number;               // When move occurred
-  status: PendingMoveStatus;       // 'pending' | 'applied' | 'undone'
-}
+// In cdpMoveService.ts
 
 /**
- * Source location from data-roopik-source attribute
+ * Find element by data-roopik-source attribute (stable identifier)
+ *
+ * Unlike CSS selectors that change when elements move (e.g., :nth-of-type),
+ * data-roopik-source contains the source file location which stays constant.
  */
-export interface SourceLocation {
-  file: string;
-  line: number;
-  column: number;
-  endLine?: number;
-  endColumn?: number;
+async findElementBySource(browserViewId: number, sourceLocation: SourceLocation): Promise<string | null> {
+  // Build source attribute value: file:line:col:endLine:endCol
+  const sourceValue = [
+    sourceLocation.file,
+    sourceLocation.line,
+    sourceLocation.column ?? 0,
+    sourceLocation.endLine ?? sourceLocation.line,
+    sourceLocation.endColumn ?? 0
+  ].join(':');
+
+  // Find element with matching attribute, then build fresh selector
+  const script = `
+    var elements = document.querySelectorAll('[data-roopik-source]');
+    for (var i = 0; i < elements.length; i++) {
+      if (elements[i].getAttribute('data-roopik-source') === '${sourceValue}') {
+        return window.__roopikBuildSelector(elements[i]);
+      }
+    }
+    return null;
+  `;
+  return await this.browserService.executeScript(browserViewId, script);
 }
 ```
 
-### 2. Pending Changes Queue (`features/dragDrop/pendingChangesQueue.ts`)
+**Key Insight**: The `data-roopik-source` attribute is injected at build-time and maps DOM elements back to source code locations. This attribute doesn't change when elements are moved in the DOM, making it ideal for tracking elements across operations.
 
-Manages the queue of pending moves with LIFO undo behavior.
+### 2. Undo Implementation
 
-**Key Methods:**
-- `add(move)` - Add new move to queue
-- `markUndone(id)` - Mark move as undone
-- `markApplied(id)` - Mark move as applied
-- `getPendingMoves()` - Get all pending moves
-- `getPendingCount()` - Get count of pending moves
-- `clear()` - Clear all moves
-
-**Behavior:**
-- New moves are added with `status: 'pending'`
-- Undo marks as `'undone'` (doesn't remove, for history)
-- Apply marks as `'applied'`
-- Only `'pending'` moves are returned by `getPendingMoves()`
-
-### 3. CDP Move Service (`features/dragDrop/cdpMoveService.ts`)
-
-Handles Chrome DevTools Protocol operations for DOM manipulation.
-
-**Key Methods:**
-
+**Single Undo** (per-move):
 ```typescript
-// Enable DOM domain (required before any DOM operations)
-async enableDOM(browserViewId: number): Promise<void>
+// In dragDrop.ts
+async undoMove(browserViewId: number, moveId: string): Promise<boolean> {
+  const move = this.pendingQueue.getMove(moveId);
 
-// Get document root with full tree
-async getDocumentRoot(browserViewId: number): Promise<number | null>
+  // Use source-based lookup to find element (stable identifier)
+  const result = await this.cdpService.undoMoveWithSource(browserViewId, move);
 
-// Get nodeId for CSS selector
-async getNodeId(browserViewId, rootNodeId, selector): Promise<number | null>
-
-// Get element's current position (for undo tracking)
-async getElementPosition(browserViewId, selector): Promise<{
-  parentSelector: string;
-  index: number;
-} | null>
-
-// Find reference node for insertBefore
-async findReferenceNode(browserViewId, parentSelector, elementSelector, targetIndex): Promise<ReferenceNodeResult>
-
-// Move element using CDP DOM.moveTo
-async moveElement(browserViewId, elementSelector, parentSelector, targetIndex): Promise<MoveResult>
-
-// Undo move (move back to original position)
-async undoMove(browserViewId, elementSelector, originalParent, originalIndex): Promise<MoveResult>
-```
-
-**CDP Commands Used:**
-- `DOM.enable` - Enable DOM domain
-- `DOM.getDocument` - Get document root (with depth: -1 for full tree)
-- `DOM.querySelector` - Find node by selector
-- `DOM.moveTo` - Move node to new parent/position
-
-### 4. DragDrop Feature Class (`features/dragDrop/dragDrop.ts`)
-
-Main feature class that orchestrates drag-drop operations.
-
-**Constructor:**
-```typescript
-constructor(
-  browserService: IProjectModeService,
-  logger: ILogger
-)
-```
-
-**Event Handlers:**
-```typescript
-// Called when drag starts (just logging)
-handleDragStarted(message: DragStartedMessage): void
-
-// Called when drag ends - main entry point
-async handleDragEnded(browserViewId: number, message: DragEndedMessage): Promise<void>
-```
-
-**Pending Changes Management:**
-```typescript
-getPendingMoves(): PendingMove[]
-getPendingCount(): number
-hasPendingChanges(): boolean
-async undoMove(browserViewId, moveId): Promise<boolean>
-async undoLastMove(browserViewId): Promise<boolean>
-clearPendingChanges(): void
-```
-
-**Callback:**
-```typescript
-setOnPendingMovesChanged(callback: OnPendingMovesChangedCallback | null): void
-```
-
-### 5. Browser Control Bar Badge (`components/browserControlBar.ts`)
-
-Added pending changes button with badge to the control bar.
-
-**Config Addition:**
-```typescript
-interface IBrowserControlBarConfig {
-  // ... existing
-  showPendingChanges?: boolean;
+  if (result.success) {
+    this.pendingQueue.markUndone(moveId);
+  }
+  return result.success;
 }
 ```
 
-**Callback Addition:**
+**Discard All** (page reload):
 ```typescript
-interface IBrowserControlBarCallbacks {
-  // ... existing
-  onPendingChangesClick?: () => void;
+// In editor.ts
+private async undoAllPendingMoves(): Promise<void> {
+  // Clear queue and reload page - most reliable way to restore original DOM
+  this.dragDrop.clearPendingChanges();
+  await this.refresh();  // Reloads page from source
 }
 ```
 
-**Methods:**
+**Why reload instead of sequential undo?**
+1. Element selectors change after moves, making tracking unreliable
+2. Complex nested moves can get out of sync
+3. Page reload guarantees a clean state from source
+4. DOM changes are ephemeral (like Chrome DevTools) - not persisted
+
+### 3. Parent Selector (Full Path)
+
+To ensure undo moves elements to the correct parent, we build a full-path unique selector:
+
 ```typescript
-// Update badge count
-setPendingChangesCount(count: number): void
+// In cdpMoveService.ts - getElementPosition()
+function buildSelector(element) {
+  var parts = [];
+  var current = element;
+  while (current && current !== document.body) {
+    var selector = current.tagName.toLowerCase();
+    if (current.id) {
+      parts.unshift('#' + CSS.escape(current.id));
+      break;
+    }
+    if (current.className) {
+      selector += '.' + classes.map(CSS.escape).join('.');
+    }
+    // Add :nth-of-type for uniqueness
+    var siblings = Array.from(parent.children).filter(s => s.tagName === current.tagName);
+    if (siblings.length > 1) {
+      selector += ':nth-of-type(' + (siblings.indexOf(current) + 1) + ')';
+    }
+    parts.unshift(selector);
+    current = current.parentElement;
+  }
+  return parts.join(' > ');
+}
 ```
 
-**Visual:**
-- Button with icon
-- Badge showing count (hidden when 0)
-- Badge shows "99+" for counts > 99
+**Before**: `div.container` (not unique)
+**After**: `#root > div.app > main.content > div.container` (unique path)
 
-### 6. Pending Changes Panel (`components/pendingChangesPanel.ts`)
+### 4. Exposed Window Functions
 
-Floating panel showing pending moves.
+The inject script exposes helper functions for CDP operations:
 
-**UI Structure:**
+```typescript
+// In inspectModeScript.ts
+
+// Build unique CSS selector for any element
+window.__roopikBuildSelector = function(el) {
+  return getElementSelector(el);
+};
+
+// Show toast notification
+window.__roopikShowToast = function(message) {
+  showToast(message);
+};
+
+// Update selection overlay after DOM move
+window.__roopikReselectElement = function() {
+  updateOverlay(selectedOverlay, selectedLabel, selectedElement, '#22c55e', true);
+};
+```
+
+### 5. Changes Tab UI
+
+Integrated into StyleInspect panel as a "Changes" tab:
+
 ```
 ┌─────────────────────────────────────────┐
-│ Pending Changes                    [×]  │
+│ [Styles] [Computed] [Changes]           │
 ├─────────────────────────────────────────┤
-│ ↕ <div>                                 │
-│   reordered: 2 → 0               [Undo] │
+│                                         │
+│ ↕ <a.btn>                               │
+│   reordered: 0 → 1               [Undo] │
+│                                         │
+│ ↕ <div.card>                            │
+│   moved to .container            [Undo] │
+│                                         │
 ├─────────────────────────────────────────┤
-│ ↕ <button>                              │
-│   moved to .header               [Undo] │
-├─────────────────────────────────────────┤
-│ [Undo All]              [Apply All]     │
+│ [Discard All]           [Apply All]     │
 └─────────────────────────────────────────┘
 ```
 
-**Callbacks:**
+**Callbacks in styleInspect.ts:**
 ```typescript
-interface IPendingChangesPanelCallbacks {
-  onUndoMove: (moveId: string) => void;
-  onUndoAll: () => void;
-  onApplyAll: () => void;
-  onClose: () => void;
-}
-```
-
-**Methods:**
-```typescript
-show(moves: PendingMove[]): void
-hide(): void
-toggle(moves: PendingMove[]): void
-updateList(moves: PendingMove[]): void
-getIsVisible(): boolean
-dispose(): void
-```
-
-### 7. Editor Integration (`editor.ts`)
-
-**Properties Added:**
-```typescript
-private dragDrop!: DragDrop;
-private pendingChangesPanel: PendingChangesPanel | undefined;
-```
-
-**Constructor Changes:**
-```typescript
-// Initialize DragDrop feature
-this.dragDrop = new DragDrop(this.browserService, this.logger);
-
-// Wire callback for UI updates
-this.dragDrop.setOnPendingMovesChanged((moves) => {
-  this.controlBar?.setPendingChangesCount(moves.length);
-  this.pendingChangesPanel?.updateList(moves);
-});
-```
-
-**Message Handler:**
-```typescript
-// In setupBrowserBridgeHandler()
-case 'drag-started':
-  this.dragDrop.handleDragStarted(message);
-  break;
-case 'drag-ended':
-  if (this.browserViewId) {
-    this.dragDrop.handleDragEnded(this.browserViewId, message);
-  }
-  break;
-```
-
-**Methods Added:**
-```typescript
-private togglePendingChangesPanel(): void
-private async undoPendingMove(moveId: string): Promise<void>
-private async undoAllPendingMoves(): Promise<void>
-private async applyAllPendingMoves(): Promise<void>
+setOnUndoMoveCallback(callback: (moveId: string) => void): void
+setOnUndoAllCallback(callback: () => void): void
+setOnApplyAllCallback(callback: () => void): void
 ```
 
 ---
 
-## Pending Changes Module (Standalone)
+## How DOM Changes Work
 
-A separate, reusable module for tracking file changes before applying to disk.
+### Persistence Model
 
-### Purpose
+DOM changes are **ephemeral** (not persisted to disk):
 
-- Track "dirty" files (pending changes)
-- Store changes in `.roopik/pending/` folder
-- Provide URIs for VSCode diff view
-- Auto-collapse multiple edits to same file
-- Auto-remove if content matches original
-
-### Configuration
-
-```typescript
-interface IPendingChangesConfig {
-  pendingFolder: string;           // default: '.roopik/pending'
-  folderStrategy: 'mirror' | 'flat'; // default: 'mirror'
-  pendingExtension: string;        // default: ''
-  cleanupOnApply: boolean;         // default: true
-}
+```
+User drags element
+        ↓
+CDP DOM.moveTo (instant visual change in browser memory)
+        ↓
+Tracked in pending changes queue (in-memory)
+        ↓
+NOT written to source file until "Apply All"
+        ↓
+Page reload = original DOM restored from source
 ```
 
-### Key Interface
+This is exactly how Chrome DevTools works - you can modify elements but refreshing restores them.
 
-```typescript
-interface IPendingChangesService {
-  initialize(workspaceRoot: string): Promise<void>;
+### Data Flow
 
-  // Query
-  getPendingFiles(): IPendingFile[];
-  hasPendingChanges(originalPath: string): boolean;
-  getPendingCount(): number;
-
-  // Operations
-  updateFile(originalPath, newContent, source, metadata?): Promise<IPendingFile | undefined>;
-  discardFile(originalPath: string): Promise<void>;
-  discardAll(): Promise<void>;
-  applyFile(originalPath: string): Promise<IApplyResult>;
-  applyAll(): Promise<IApplyResult[]>;
-
-  // Diff view
-  getDiffUris(originalPath: string): [string, string] | undefined;
-
-  // Callbacks
-  onPendingFilesChanged(callback): void;
-}
 ```
-
-### Usage Example
-
-```typescript
-import { PendingChangesService } from '../../electron-main/pendingChanges';
-
-const service = new PendingChangesService();
-await service.initialize('/path/to/workspace');
-
-// Track a change
-await service.updateFile(
-  '/path/to/Button.tsx',
-  newContent,
-  'drag-drop',
-  { description: 'Moved button to header' }
-);
-
-// Open diff view
-const [originalUri, pendingUri] = service.getDiffUris('/path/to/Button.tsx');
-vscode.commands.executeCommand('vscode.diff', originalUri, pendingUri);
-
-// Apply changes
-await service.applyFile('/path/to/Button.tsx');
-```
-
----
-
-## Message Types (PostMessage)
-
-### From Inject Script to Extension
-
-```typescript
-// Drag started
-{
-  type: 'drag-started',
-  selector: string,
-  tagName: string
-}
-
-// Drag ended
-{
-  type: 'drag-ended',
-  hasDropZone: boolean,
-  dropZone?: {
-    parentSelector: string,
-    parentTagName: string,
-    index: number,
-    position: 'before' | 'after' | 'inside',
-    siblingCount: number
-  }
-}
+┌─────────────────────────────────────────────────────────────┐
+│ Inject Script (inspectModeScript.ts)                        │
+│ - Handles drag events                                       │
+│ - Creates ghost element & drop indicators                   │
+│ - Detects drop zones                                        │
+│ - Sends PostMessage on drag-ended                           │
+└─────────────────────────────────────────────────────────────┘
+                              │ PostMessage
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│ DragDrop Feature (dragDrop.ts)                              │
+│ - Receives drag-ended message                               │
+│ - Gets current element position (for undo)                  │
+│ - Calls CDP service to execute move                         │
+│ - Adds to pending changes queue                             │
+└─────────────────────────────────────────────────────────────┘
+                              │ CDP Commands
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│ CDP Move Service (cdpMoveService.ts)                        │
+│ - DOM.enable, DOM.getDocument                               │
+│ - DOM.querySelector (find nodes)                            │
+│ - DOM.moveTo (execute move)                                 │
+│ - findElementBySource (stable lookup for undo)              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Chromium Browser (WebContentsView)                          │
+│ - DOM updated in memory                                     │
+│ - Visual change is instant                                  │
+│ - NOT persisted to disk                                     │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -440,74 +335,192 @@ await service.applyFile('/path/to/Button.tsx');
 | 3 | Drop zone detection & indicators | ✅ Complete |
 | 4 | CDP DOM.moveTo integration | ✅ Complete |
 | - | Pending changes queue | ✅ Complete |
-| - | Pending changes UI (badge + panel) | ✅ Complete |
-| - | Undo individual/all moves | ✅ Complete |
-| - | Pending Changes Module (standalone) | ✅ Complete |
+| - | Changes tab in Inspect panel | ✅ Complete |
+| - | Undo with stable element IDs | ✅ Complete |
+| - | Discard All (page reload) | ✅ Complete |
+| - | Feature flag to disable | ✅ Complete |
 
 ### Pending (Phase 5)
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | AST Transform Service | TODO | Babel/TypeScript to move JSX nodes |
-| IPC Channel for PendingChanges | TODO | Browser ↔ Main process |
-| Diff view integration | TODO | Add icon, wire vscode.diff |
-| Apply to source file | TODO | Write pending → original |
+| Apply to source file | TODO | Write changes to actual source |
+| Diff view integration | TODO | Show before/after in editor |
 
 ---
 
 ## Known Issues & Limitations
 
-1. **Source location may be stale**: If user edits source file while changes are pending, source locations become invalid.
+1. **Source tracking required**: Drag-drop only works for elements that have `data-roopik-source` attributes (injected at build-time). Plain HTML without source tracking won't support undo.
 
-2. **No conflict detection**: If same file is modified in editor and via drag-drop, no warning is shown.
+2. **React/JSX focused**: Source updates (Phase 5) will use JSX AST parsing. Other frameworks may need different parsers.
 
-3. **Panel z-index**: Panel may appear behind BrowserView in some cases (native view vs HTML).
+3. **No conflict detection**: If source file is modified in editor while changes are pending, source locations become stale.
 
-4. **Same element multiple drags**: Currently tracks each move separately. Plan is to collapse to final position.
-
----
-
-## Future Enhancements
-
-1. **Collapse same-element moves**: Track final delta, not history
-2. **Session recovery**: Persist pending changes across IDE restarts
-3. **Conflict detection**: Warn if source file changed
-4. **Multi-file diff**: Use VSCode's MultiDiffEditor
-5. **AI agent integration**: Same flow for AI-generated changes
-
----
-
-## Related Files
-
-### Inject Script (Drag Visuals)
-- `src/vs/workbench/contrib/roopik/browser/projectMode/scripts/inspectModeScript.ts`
-
-### Common Types
-- `src/vs/workbench/contrib/roopik/common/projectMode/types.ts`
-
-### IPC Service
-- `src/vs/workbench/contrib/roopik/common/projectMode/ipc.ts`
+4. **CSS constraints**: Elements may not align perfectly after move due to CSS flexbox/grid constraints in the component.
 
 ---
 
 ## Troubleshooting
 
 ### Drag not working
-1. Check if inspect mode is enabled
-2. Check browser console for errors
-3. Verify `data-roopik-source` attributes exist
+1. Check `DRAG_ELEMENT_ENABLED` flag is `true`
+2. Check if inspect mode is enabled
+3. Verify `data-roopik-source` attributes exist on elements
 
-### CDP move fails
-1. Check `DOM.enable` was called
-2. Verify selectors are valid
-3. Check nodeId is not 0 (means not found)
+### Undo moves element to wrong position
+1. Check browser console for selector being used
+2. Verify parent selector is unique (full path)
+3. Try "Discard All" to reload page instead
 
-### Panel not showing
-1. Click the badge button
-2. Check `browserContainer` exists
-3. Check z-index vs native BrowserView
+### Undo fails with "Element not found"
+1. Element may not have `data-roopik-source` attribute
+2. Source location format may be incorrect
+3. Fall back to "Discard All" which reloads page
 
-### Undo not working
-1. Check move status is 'pending'
-2. Check browserViewId is valid
-3. Check original position was tracked correctly
+### Changes tab empty
+1. Check `DRAG_ELEMENT_ENABLED` is `true`
+2. Verify drag was successful (check for toast)
+3. Check pending changes queue has entries
+
+---
+
+## Related Files
+
+### Core Implementation
+- `features/dragDrop/dragDrop.ts` - Main feature class
+- `features/dragDrop/cdpMoveService.ts` - CDP operations
+- `features/dragDrop/pendingChangesQueue.ts` - Queue management
+- `features/dragDrop/types.ts` - Type definitions
+
+### UI Components
+- `components/styleInspectPanel.ts` - Changes tab UI
+- `features/styleInspect.ts` - Feature wrapper
+
+### Inject Script
+- `scripts/inspectModeScript.ts` - Browser-side drag handling
+
+### Integration
+- `editor.ts` - Wiring everything together
+
+---
+
+## What's Next (Pending Work)
+
+### Phase 5: Apply Changes to Source Code
+
+The current implementation only manipulates the DOM visually. To make changes permanent, we need to write them back to source files.
+
+#### 5.1 AST Transform Service (TODO)
+
+Create a service that can parse and modify JSX/TSX source code:
+
+```typescript
+// Proposed: electron-main/astTransform/jsxMoveService.ts
+
+interface IJSXMoveService {
+  // Parse source file and locate JSX element by source location
+  findElement(filePath: string, location: SourceLocation): ASTNode | null;
+
+  // Move element in AST to new parent/index
+  moveElement(
+    filePath: string,
+    elementLocation: SourceLocation,
+    newParentLocation: SourceLocation,
+    newIndex: number
+  ): Promise<string>;  // Returns modified source code
+
+  // Format code with Prettier
+  formatCode(code: string, filePath: string): Promise<string>;
+}
+```
+
+**Libraries to use:**
+- `@babel/parser` - Parse JSX/TSX
+- `@babel/traverse` - Find nodes by location
+- `@babel/generator` - Generate code from AST
+- `prettier` - Format output
+
+#### 5.2 IPC Channel for Source Updates (TODO)
+
+Browser process cannot write files directly. Need IPC channel to main process:
+
+```typescript
+// Proposed channel
+interface ISourceUpdateChannel {
+  // Apply a pending move to source file
+  applyMove(move: PendingMove): Promise<ApplyResult>;
+
+  // Apply all pending moves
+  applyAllMoves(moves: PendingMove[]): Promise<ApplyResult[]>;
+
+  // Preview change (returns diff)
+  previewMove(move: PendingMove): Promise<DiffResult>;
+}
+```
+
+#### 5.3 Diff View Integration (TODO)
+
+Show before/after diff in VSCode editor before applying:
+
+```typescript
+// In editor.ts
+private async previewPendingMove(moveId: string): Promise<void> {
+  const move = this.dragDrop.getMove(moveId);
+  const diff = await this.sourceUpdateChannel.previewMove(move);
+
+  // Open diff editor
+  vscode.commands.executeCommand(
+    'vscode.diff',
+    originalUri,
+    pendingUri,
+    `${filename} (Pending Change)`
+  );
+}
+```
+
+#### 5.4 Apply Button Implementation (TODO)
+
+Wire the "Apply All" button to actually write to source:
+
+```typescript
+// In editor.ts
+private async applyAllPendingMoves(): Promise<void> {
+  const moves = this.dragDrop.getPendingMoves();
+
+  for (const move of moves) {
+    if (!move.sourceLocation) {
+      // Skip moves without source info
+      continue;
+    }
+
+    const result = await this.sourceUpdateChannel.applyMove(move);
+    if (result.success) {
+      this.dragDrop.markApplied(move.id);
+    }
+  }
+
+  // HMR will auto-refresh browser with new source
+}
+```
+
+### Future Enhancements (Post-Phase 5)
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| Multi-framework support | Vue, Svelte, Angular parsers | Medium |
+| Style drag-drop | Drag styles between elements | High |
+| Undo/Redo history | Full session history with keyboard shortcuts | Medium |
+| Conflict detection | Warn if source changed while editing | Low |
+| Collaborative editing | Real-time sync between users | Future |
+| AI agent integration | Same APIs for AI-driven changes | High |
+
+---
+
+## References
+
+- [Onlook](https://github.com/onlook-dev/onlook) - Inspiration for stable element IDs (data-oid)
+- [Chrome DevTools Protocol - DOM](https://chromedevtools.github.io/devtools-protocol/tot/DOM/) - CDP DOM commands
+- [Babel Parser](https://babeljs.io/docs/babel-parser) - JSX/TSX parsing
+- [VSCode Diff Editor](https://code.visualstudio.com/api/references/commands#vscode.diff) - Diff view API

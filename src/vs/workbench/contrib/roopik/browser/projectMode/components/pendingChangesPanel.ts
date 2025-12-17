@@ -22,6 +22,7 @@ export interface IPendingChangesPanelCallbacks {
  * Users can undo individual moves or apply/undo all at once.
  *
  * UI Style: VSCode-themed floating panel (like quick pick)
+ * Uses fixed positioning to escape overflow:hidden containers.
  */
 export class PendingChangesPanel {
 	private container: HTMLElement;
@@ -37,6 +38,18 @@ export class PendingChangesPanel {
 	}
 
 	/**
+	 * Position the panel relative to the container
+	 */
+	private positionPanel(): void {
+		if (!this.panel) return;
+
+		const containerRect = this.container.getBoundingClientRect();
+		// Position at top-right of the browser container
+		this.panel.style.top = `${containerRect.top + 10}px`;
+		this.panel.style.right = `${window.innerWidth - containerRect.right + 10}px`;
+	}
+
+	/**
 	 * Show the panel with pending moves
 	 */
 	show(moves: PendingMove[]): void {
@@ -44,6 +57,7 @@ export class PendingChangesPanel {
 			this.createPanel();
 		}
 		this.updateList(moves);
+		this.positionPanel();
 		this.panel!.style.display = 'flex';
 		this.isVisible = true;
 	}
@@ -75,7 +89,10 @@ export class PendingChangesPanel {
 	updateList(moves: PendingMove[]): void {
 		if (!this.listContainer) return;
 
-		this.listContainer.innerHTML = '';
+		// Clear children using DOM manipulation (CSP-safe, no innerHTML)
+		while (this.listContainer.firstChild) {
+			this.listContainer.removeChild(this.listContainer.firstChild);
+		}
 
 		if (moves.length === 0) {
 			const emptyMsg = document.createElement('div');
@@ -105,20 +122,19 @@ export class PendingChangesPanel {
 
 	/**
 	 * Create the panel DOM structure
+	 * Uses fixed positioning to escape overflow:hidden containers
 	 */
 	private createPanel(): void {
 		this.panel = document.createElement('div');
 		this.panel.style.cssText = `
-			position: absolute;
-			top: 50px;
-			right: 10px;
+			position: fixed;
 			width: 320px;
 			max-height: 400px;
-			background: var(--vscode-quickInput-background);
-			border: 1px solid var(--vscode-widget-border);
+			background: var(--vscode-quickInput-background, #252526);
+			border: 1px solid var(--vscode-widget-border, #454545);
 			border-radius: 6px;
 			box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-			z-index: 1000;
+			z-index: 10000;
 			display: none;
 			flex-direction: column;
 			overflow: hidden;
@@ -131,15 +147,15 @@ export class PendingChangesPanel {
 			align-items: center;
 			justify-content: space-between;
 			padding: 10px 12px;
-			background: var(--vscode-quickInputTitle-background);
-			border-bottom: 1px solid var(--vscode-widget-border);
+			background: var(--vscode-quickInputTitle-background, #1e1e1e);
+			border-bottom: 1px solid var(--vscode-widget-border, #454545);
 		`;
 
 		const title = document.createElement('span');
 		title.style.cssText = `
 			font-weight: 600;
 			font-size: 13px;
-			color: var(--vscode-foreground);
+			color: var(--vscode-foreground, #cccccc);
 		`;
 		title.textContent = 'Pending Changes';
 
@@ -147,7 +163,7 @@ export class PendingChangesPanel {
 		closeBtn.style.cssText = `
 			background: transparent;
 			border: none;
-			color: var(--vscode-foreground);
+			color: var(--vscode-foreground, #cccccc);
 			cursor: pointer;
 			padding: 2px 6px;
 			font-size: 16px;
@@ -176,8 +192,8 @@ export class PendingChangesPanel {
 			display: flex;
 			gap: 8px;
 			padding: 10px 12px;
-			border-top: 1px solid var(--vscode-widget-border);
-			background: var(--vscode-quickInputTitle-background);
+			border-top: 1px solid var(--vscode-widget-border, #454545);
+			background: var(--vscode-quickInputTitle-background, #1e1e1e);
 		`;
 
 		const undoAllBtn = this.createActionButton('Undo All', 'secondary', () => {
@@ -196,7 +212,8 @@ export class PendingChangesPanel {
 		this.panel.appendChild(this.listContainer);
 		this.panel.appendChild(footer);
 
-		this.container.appendChild(this.panel);
+		// Append to document.body to escape overflow:hidden containers
+		document.body.appendChild(this.panel);
 	}
 
 	/**

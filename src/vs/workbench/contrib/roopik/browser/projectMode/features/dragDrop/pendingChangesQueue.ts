@@ -27,6 +27,13 @@ export class PendingChangesQueue {
 
 	/**
 	 * Add a new pending move to the queue
+	 *
+	 * **Collapse to Final**: If this element was already moved, update the existing
+	 * entry's destination instead of creating a new entry. This tracks the final
+	 * delta (original position → current position) rather than history.
+	 *
+	 * **Auto-Remove**: If the element is moved back to its original position,
+	 * the entry is removed entirely (no change to track).
 	 */
 	add(params: {
 		elementSelector: string;
@@ -36,7 +43,32 @@ export class PendingChangesQueue {
 		fromIndex: number;
 		toParent: string;
 		toIndex: number;
-	}): PendingMove {
+	}): PendingMove | null {
+		// Check if this element already has a pending move
+		const existingIndex = this.moves.findIndex(
+			m => m.status === 'pending' && m.elementSelector === params.elementSelector
+		);
+
+		if (existingIndex !== -1) {
+			const existing = this.moves[existingIndex];
+
+			// Check if moving back to original position (no-op)
+			if (existing.fromParent === params.toParent && existing.fromIndex === params.toIndex) {
+				// Element is back to original position - remove the entry
+				this.moves.splice(existingIndex, 1);
+				this.notifyChanged();
+				return null;
+			}
+
+			// Update destination to new position (collapse multiple moves)
+			existing.toParent = params.toParent;
+			existing.toIndex = params.toIndex;
+			existing.timestamp = Date.now();
+			this.notifyChanged();
+			return existing;
+		}
+
+		// New element - create a fresh entry
 		const move: PendingMove = {
 			id: generateMoveId(),
 			elementSelector: params.elementSelector,
