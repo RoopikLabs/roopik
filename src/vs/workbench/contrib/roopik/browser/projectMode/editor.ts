@@ -420,15 +420,17 @@ export class Editor extends EditorPane {
 				{}
 			);
 
-			// 1. Get the document - use depth: 0 like styleInspect.ts does
-			this.logger.info('[DragDrop] Step 1: Getting document root...');
+			// 1. Get the document with full depth to push DOM tree to frontend
+			// CDP querySelector only works on nodes that have been "pushed" to the frontend
+			// Using depth: -1 fetches the entire DOM tree
+			this.logger.info('[DragDrop] Step 1: Getting document with full tree...');
 			const docResult = await this.browserService.sendCDPCommand(
 				this.browserViewId,
 				'DOM.getDocument',
-				{ depth: 0 }
+				{ depth: -1, pierce: true }  // -1 = entire tree, pierce = go through shadow DOM
 			) as { root: { nodeId: number } };
 
-			this.logger.info('[DragDrop] Step 1 result:', JSON.stringify(docResult));
+			this.logger.info('[DragDrop] Step 1 result: document nodeId:', docResult?.root?.nodeId);
 
 			if (!docResult?.root?.nodeId) {
 				this.logger.error('[DragDrop] Failed to get document root');
@@ -496,57 +498,114 @@ export class Editor extends EditorPane {
 			const parentNodeId = parentResult.nodeId;
 			this.logger.info('[DragDrop] Parent nodeId:', parentNodeId);
 
-			// 5. Get children of parent to find insertBefore node
-			// DOM.moveTo uses insertBeforeNodeId - the node BEFORE which to insert
-			// If we want to insert at index N, we need the nodeId of the child at index N
-			// If inserting at the end, we don't specify insertBeforeNodeId
+			// 5. Get the insertBefore node using JavaScript execution
+			// This is more reliable than CDP queries because:
+			// - We can properly filter out our UI elements
+			// - We can handle the case where the element is already in the same parent
+			// - The sibling indices from inject script EXCLUDE the selected element
 			this.logger.info('[DragDrop] Step 5: Calculating insertBefore node. Index:', dropZone.index, 'SiblingCount:', dropZone.siblingCount);
+
+			// Use JavaScript to find the correct reference node
+			const findReferenceScript = `
+				(function() {
+					var parent = document.querySelector('${dropZone.parentSelector.replace(/'/g, "\\'")}');
+					var selectedEl = document.querySelector('${elementSelector.replace(/'/g, "\\'")}');
+					if (!parent) return { error: 'Parent not found' };
+					if (!selectedEl) return { error: 'Selected element not found' };
+
+					// Get all raw children
+					var allChildren = Array.from(parent.children);
+
+					// Filter to valid children (excluding our UI elements)
+					var validChildren = allChildren.filter(function(el) {
+						if (el.id && el.id.startsWith('__roopik')) return false;
+						if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'LINK') return false;
+						return true;
+					});
+
+					// Check if selected element is in this parent
+					var selectedInSameParent = selectedEl.parentElement === parent;
+					var selectedIndexInValid = validChildren.indexOf(selectedEl);
+
+					// Get siblings (valid children EXCLUDING selected element)
+					// This matches what the inject script sends us
+					var siblingsWithoutSelected = validChildren.filter(function(el) {
+						return el !== selectedEl;
+					});
+
+					var targetIndex = ${dropZone.index};
+
+					// Debug info
+					var debugInfo = {
+						validCount: validChildren.length,
+						siblingsCount: siblingsWithoutSelected.length,
+						selectedInSameParent: selectedInSameParent,
+						selectedIndexInValid: selectedIndexInValid,
+						targetIndex: targetIndex
+					};
+
+					// If inserting at or past the end, append (no insertBefore needed)
+					if (targetIndex >= siblingsWithoutSelected.length) {
+						debugInfo.action = 'append';
+						return { insertBefore: null, debug: JSON.stringify(debugInfo) };
+					}
+
+					// Get the sibling at target index (from siblings list that excludes selected)
+					var referenceNode = siblingsWithoutSelected[targetIndex];
+					if (!referenceNode) {
+						debugInfo.action = 'append_noref';
+						return { insertBefore: null, debug: JSON.stringify(debugInfo) };
+					}
+
+					// Now we need to find this reference node's position in the CURRENT DOM
+					// (before any move happens) to build the correct selector
+					var refIndexInAllChildren = allChildren.indexOf(referenceNode);
+					debugInfo.refIndexInAll = refIndexInAllChildren;
+
+					// nth-child is 1-based
+					var nthChildIndex = refIndexInAllChildren + 1;
+					var selector = '${dropZone.parentSelector.replace(/'/g, "\\'")} > :nth-child(' + nthChildIndex + ')';
+
+					debugInfo.action = 'insertBefore';
+					debugInfo.selector = selector;
+
+					return {
+						insertBeforeSelector: selector,
+						debug: JSON.stringify(debugInfo)
+					};
+				})()
+			`;
+
+			const referenceResult = await this.browserService.executeScript(
+				this.browserViewId,
+				findReferenceScript
+			) as { insertBefore?: null; insertBeforeSelector?: string; error?: string; debug?: string };
+
+			this.logger.info('[DragDrop] Step 5 result:', JSON.stringify(referenceResult));
 
 			let insertBeforeNodeId: number | undefined;
 
-			if (dropZone.index < dropZone.siblingCount) {
-				// Need to get the sibling at the target index
-				// We'll query for children and get the nth child
-				const childrenScript = `
-					(function() {
-						var parent = document.querySelector('${dropZone.parentSelector.replace(/'/g, "\\'")}');
-						if (!parent) return null;
-						var children = Array.from(parent.children).filter(function(el) {
-							return !el.id.startsWith('__roopik');
-						});
-						if (${dropZone.index} >= children.length) return null;
-						// Build a unique selector for the child
-						var child = children[${dropZone.index}];
-						if (!child) return null;
-						// Use nth-child selector
-						var index = Array.from(parent.children).indexOf(child) + 1;
-						return '${dropZone.parentSelector.replace(/'/g, "\\'")} > :nth-child(' + index + ')';
-					})()
-				`;
+			if (referenceResult?.error) {
+				this.logger.error('[DragDrop] Error finding reference node:', referenceResult.error);
+				this.showDragFeedback(false, 'Could not find drop position');
+				return;
+			}
 
-				const siblingSelector = await this.browserService.executeScript(
+			if (referenceResult?.insertBeforeSelector) {
+				const siblingResult = await this.browserService.sendCDPCommand(
 					this.browserViewId,
-					childrenScript
-				);
+					'DOM.querySelector',
+					{ nodeId: rootNodeId, selector: referenceResult.insertBeforeSelector }
+				) as { nodeId: number };
 
-				this.logger.info('[DragDrop] Step 5a: Sibling selector:', siblingSelector);
+				this.logger.info('[DragDrop] Step 5b: Reference node query result:', siblingResult);
 
-				if (siblingSelector) {
-					const siblingResult = await this.browserService.sendCDPCommand(
-						this.browserViewId,
-						'DOM.querySelector',
-						{ nodeId: rootNodeId, selector: siblingSelector }
-					) as { nodeId: number };
-
-					this.logger.info('[DragDrop] Step 5b: Sibling query result:', siblingResult);
-
-					if (siblingResult?.nodeId && siblingResult.nodeId !== 0) {
-						insertBeforeNodeId = siblingResult.nodeId;
-					}
+				if (siblingResult?.nodeId && siblingResult.nodeId !== 0) {
+					insertBeforeNodeId = siblingResult.nodeId;
 				}
 			}
 
-			this.logger.info('[DragDrop] Step 5 complete. insertBeforeNodeId:', insertBeforeNodeId);
+			this.logger.info('[DragDrop] Step 5 complete. insertBeforeNodeId:', insertBeforeNodeId, 'Debug:', referenceResult?.debug);
 
 			// 6. Call DOM.moveTo
 			this.logger.info('[DragDrop] Step 6: Calling DOM.moveTo with:', {
@@ -570,9 +629,34 @@ export class Editor extends EditorPane {
 				moveParams
 			);
 
-			this.logger.info('[DragDrop] Step 6 result (DOM.moveTo):', moveResult);
-			this.logger.info('[DragDrop] Element moved successfully!');
+			this.logger.info('[DragDrop] Step 6 result (DOM.moveTo):', JSON.stringify(moveResult));
+
+			// Verify the move by checking if element's new nodeId is returned
+			if (!moveResult || typeof moveResult.nodeId !== 'number') {
+				this.logger.error('[DragDrop] DOM.moveTo did not return a nodeId - move may have failed');
+				this.showDragFeedback(false, 'Move may have failed');
+				return;
+			}
+
+			this.logger.info('[DragDrop] Element moved successfully! New nodeId:', moveResult.nodeId);
 			this.showDragFeedback(true, 'Element moved');
+
+			// Step 7: Verify by getting the element's new parent
+			this.logger.info('[DragDrop] Step 7: Verifying move by checking new parent...');
+			const verifyScript = `
+				(function() {
+					var el = document.querySelector('${elementSelector.replace(/'/g, "\\'")}');
+					if (!el) return { error: 'Element not found after move' };
+					var parent = el.parentElement;
+					return {
+						found: true,
+						newParentTag: parent ? parent.tagName.toLowerCase() : null,
+						newParentSelector: parent ? (parent.className ? parent.tagName.toLowerCase() + '.' + parent.className.split(' ')[0] : parent.tagName.toLowerCase()) : null
+					};
+				})()
+			`;
+			const verifyResult = await this.browserService.executeScript(this.browserViewId, verifyScript);
+			this.logger.info('[DragDrop] Step 7 verification result:', JSON.stringify(verifyResult));
 
 			// 7. Re-select the moved element to update overlays
 			// The element's position changed, so we need to refresh the selection
