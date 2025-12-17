@@ -193,6 +193,36 @@
         }
       ]
     }
-  ]
+  ],
+
+  "dependencies": {
+    "description": "Roopik-specific dependencies to add to package.json",
+    "packages": [
+      {
+        "name": "esbuild",
+        "reason": "JavaScript/TypeScript bundler for sandbox component transformation"
+      },
+      {
+        "name": "esbuild-plugin-vue3",
+        "reason": "ESBuild plugin to compile Vue 3 SFC (.vue files)"
+      },
+      {
+        "name": "esbuild-svelte",
+        "reason": "ESBuild plugin to compile Svelte components (.svelte files)"
+      },
+      {
+        "name": "svelte",
+        "reason": "Svelte 5 compiler (required by esbuild-svelte)"
+      },
+      {
+        "name": "@vue/compiler-sfc",
+        "reason": "Vue 3 SFC compiler (peer dependency of esbuild-plugin-vue3)"
+      },
+      {
+        "name": "electron-context-menu",
+        "reason": "Standard browser context menu for ProjectMode BrowserView"
+      }
+    ]
+  }
 }
 

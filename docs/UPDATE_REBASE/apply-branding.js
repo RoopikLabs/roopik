@@ -18,6 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { execSync } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -732,6 +733,84 @@ function clearMailmap() {
 	}
 }
 
+// Install Roopik dependencies
+function installRoopikDependencies(config) {
+	const filePath = path.join(ROOT_DIR, 'package.json');
+
+	if (!fileExists(filePath)) {
+		warning('package.json not found (skipping dependencies)');
+		return { updated: false, errors: 0 };
+	}
+
+	if (!config.dependencies || !config.dependencies.packages) {
+		info('No dependencies configured in branding-config.json');
+		return { updated: false, errors: 0 };
+	}
+
+	const content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	try {
+		const pkg = JSON.parse(content);
+		const packagesToInstall = [];
+		const alreadyInstalled = [];
+		let needsUpdate = false;
+
+		// Check which packages need to be added
+		for (const dep of config.dependencies.packages) {
+			if (!pkg.dependencies || !pkg.dependencies[dep.name]) {
+				packagesToInstall.push(dep.name);
+				needsUpdate = true;
+			} else {
+				alreadyInstalled.push(dep.name);
+			}
+		}
+
+		if (packagesToInstall.length === 0) {
+			success('Roopik dependencies - All already installed');
+			return { updated: false, errors: 0 };
+		}
+
+		info(`\nInstalling ${packagesToInstall.length} Roopik dependencies...`);
+		packagesToInstall.forEach(name => info(`  - ${name}`));
+
+		if (alreadyInstalled.length > 0) {
+			info(`\nAlready installed (${alreadyInstalled.length}):`);
+			alreadyInstalled.forEach(name => info(`  ✓ ${name}`));
+		}
+
+		if (DRY_RUN) {
+			info('\n[DRY-RUN] Would run: npm install ' + packagesToInstall.join(' '));
+			return { updated: false, errors: 0 };
+		}
+
+		// Install packages using npm (gets latest versions)
+		info('\nRunning npm install (this may take a moment)...');
+
+		try {
+			const command = `npm install ${packagesToInstall.join(' ')}`;
+
+			execSync(command, {
+				cwd: ROOT_DIR,
+				stdio: 'inherit'
+			});
+
+			success(`\n✓ Successfully installed ${packagesToInstall.length} dependencies`);
+			return { updated: true, errors: 0 };
+		} catch (err) {
+			error(`\nFailed to install dependencies: ${err.message}`);
+			error('You may need to manually run: npm install ' + packagesToInstall.join(' '));
+			return { updated: false, errors: 1 };
+		}
+
+	} catch (err) {
+		error(`package.json - Parse error: ${err.message}`);
+		return { updated: false, errors: 1 };
+	}
+}
+
 // Apply server manifest updates
 function updateServerManifest(config) {
 	const filePath = path.join(ROOT_DIR, 'resources/server/manifest.json');
@@ -952,6 +1031,14 @@ function main() {
 		totalChanges++;
 	}
 	totalErrors += mailmapResult.errors;
+
+	// Install Roopik dependencies
+	log('\n📦 Installing Roopik dependencies...\n', 'cyan');
+	const depsResult = installRoopikDependencies(config);
+	if (depsResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += depsResult.errors;
 
 	// Process icon replacements
 	if (!SKIP_ICONS) {
