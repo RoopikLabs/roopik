@@ -320,6 +320,9 @@ export class Editor extends EditorPane {
 				case 'inspect-mode-exited':
 					this.handleInspectModeExited();
 					break;
+				case 'drag-ended':
+					this.handleDragEnded(message as import('../../common/projectMode/types.js').DragEndedMessage);
+					break;
 			}
 		}));
 	}
@@ -373,6 +376,251 @@ export class Editor extends EditorPane {
 		// Also hide style panel (ESC should close everything)
 		if (this.styleInspect.isPanelVisible()) {
 			this.styleInspect.hidePanel();
+		}
+	}
+
+	/**
+	 * Handle drag ended event from inspect mode
+	 * Uses CDP DOM.moveTo to reorder elements in the live DOM
+	 *
+	 * Phase 4: Live DOM reordering via CDP
+	 * The inject script detects drop zones and sends the target info.
+	 * We use CDP to:
+	 * 1. Get the document root
+	 * 2. Query for the dragged element by selector
+	 * 3. Query for the target parent by selector
+	 * 4. Get siblings to calculate insertBefore node
+	 * 5. Call DOM.moveTo to move the element
+	 */
+	private async handleDragEnded(message: import('../../common/projectMode/types.js').DragEndedMessage): Promise<void> {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		// No valid drop zone - nothing to do
+		if (!message.hasDropZone || !message.dropZone) {
+			this.logger.info('[DragDrop] Drop cancelled - no valid drop zone');
+			return;
+		}
+
+		const { dropZone } = message;
+		this.logger.info('[DragDrop] Processing drop:', {
+			parentSelector: dropZone.parentSelector,
+			index: dropZone.index,
+			position: dropZone.position,
+			siblingCount: dropZone.siblingCount
+		});
+
+		try {
+			// 0. Enable DOM domain (required for DOM operations)
+			this.logger.info('[DragDrop] Step 0: Enabling DOM domain...');
+			await this.browserService.sendCDPCommand(
+				this.browserViewId,
+				'DOM.enable',
+				{}
+			);
+
+			// 1. Get the document - use depth: 0 like styleInspect.ts does
+			this.logger.info('[DragDrop] Step 1: Getting document root...');
+			const docResult = await this.browserService.sendCDPCommand(
+				this.browserViewId,
+				'DOM.getDocument',
+				{ depth: 0 }
+			) as { root: { nodeId: number } };
+
+			this.logger.info('[DragDrop] Step 1 result:', JSON.stringify(docResult));
+
+			if (!docResult?.root?.nodeId) {
+				this.logger.error('[DragDrop] Failed to get document root');
+				this.showDragFeedback(false, 'Failed to access document');
+				return;
+			}
+
+			const rootNodeId = docResult.root.nodeId;
+			this.logger.info('[DragDrop] Root nodeId:', rootNodeId);
+
+			// 2. Get the currently selected element's selector from the inject script
+			// We need to query the browser for __roopikInspectResult to get the dragged element
+			this.logger.info('[DragDrop] Step 2: Getting selected element selector...');
+			const inspectResult = await this.browserService.executeScript(
+				this.browserViewId,
+				'window.__roopikInspectResult ? window.__roopikInspectResult.selector : null'
+			);
+
+			this.logger.info('[DragDrop] Step 2 result:', inspectResult);
+
+			if (!inspectResult) {
+				this.logger.error('[DragDrop] No element selected for drag');
+				this.showDragFeedback(false, 'No element selected');
+				return;
+			}
+
+			const elementSelector = inspectResult as string;
+			this.logger.info('[DragDrop] Element to move:', elementSelector);
+
+			// 3. Query for the dragged element's nodeId
+			this.logger.info('[DragDrop] Step 3: Querying element nodeId for:', elementSelector);
+			const elementResult = await this.browserService.sendCDPCommand(
+				this.browserViewId,
+				'DOM.querySelector',
+				{ nodeId: rootNodeId, selector: elementSelector }
+			) as { nodeId: number };
+
+			this.logger.info('[DragDrop] Step 3 result:', elementResult);
+
+			if (!elementResult?.nodeId || elementResult.nodeId === 0) {
+				this.logger.error('[DragDrop] Could not find element:', elementSelector);
+				this.showDragFeedback(false, 'Element not found');
+				return;
+			}
+
+			const elementNodeId = elementResult.nodeId;
+			this.logger.info('[DragDrop] Element nodeId:', elementNodeId);
+
+			// 4. Query for the target parent's nodeId
+			this.logger.info('[DragDrop] Step 4: Querying parent nodeId for:', dropZone.parentSelector);
+			const parentResult = await this.browserService.sendCDPCommand(
+				this.browserViewId,
+				'DOM.querySelector',
+				{ nodeId: rootNodeId, selector: dropZone.parentSelector }
+			) as { nodeId: number };
+
+			this.logger.info('[DragDrop] Step 4 result:', parentResult);
+
+			if (!parentResult?.nodeId || parentResult.nodeId === 0) {
+				this.logger.error('[DragDrop] Could not find parent:', dropZone.parentSelector);
+				this.showDragFeedback(false, 'Target not found');
+				return;
+			}
+
+			const parentNodeId = parentResult.nodeId;
+			this.logger.info('[DragDrop] Parent nodeId:', parentNodeId);
+
+			// 5. Get children of parent to find insertBefore node
+			// DOM.moveTo uses insertBeforeNodeId - the node BEFORE which to insert
+			// If we want to insert at index N, we need the nodeId of the child at index N
+			// If inserting at the end, we don't specify insertBeforeNodeId
+			this.logger.info('[DragDrop] Step 5: Calculating insertBefore node. Index:', dropZone.index, 'SiblingCount:', dropZone.siblingCount);
+
+			let insertBeforeNodeId: number | undefined;
+
+			if (dropZone.index < dropZone.siblingCount) {
+				// Need to get the sibling at the target index
+				// We'll query for children and get the nth child
+				const childrenScript = `
+					(function() {
+						var parent = document.querySelector('${dropZone.parentSelector.replace(/'/g, "\\'")}');
+						if (!parent) return null;
+						var children = Array.from(parent.children).filter(function(el) {
+							return !el.id.startsWith('__roopik');
+						});
+						if (${dropZone.index} >= children.length) return null;
+						// Build a unique selector for the child
+						var child = children[${dropZone.index}];
+						if (!child) return null;
+						// Use nth-child selector
+						var index = Array.from(parent.children).indexOf(child) + 1;
+						return '${dropZone.parentSelector.replace(/'/g, "\\'")} > :nth-child(' + index + ')';
+					})()
+				`;
+
+				const siblingSelector = await this.browserService.executeScript(
+					this.browserViewId,
+					childrenScript
+				);
+
+				this.logger.info('[DragDrop] Step 5a: Sibling selector:', siblingSelector);
+
+				if (siblingSelector) {
+					const siblingResult = await this.browserService.sendCDPCommand(
+						this.browserViewId,
+						'DOM.querySelector',
+						{ nodeId: rootNodeId, selector: siblingSelector }
+					) as { nodeId: number };
+
+					this.logger.info('[DragDrop] Step 5b: Sibling query result:', siblingResult);
+
+					if (siblingResult?.nodeId && siblingResult.nodeId !== 0) {
+						insertBeforeNodeId = siblingResult.nodeId;
+					}
+				}
+			}
+
+			this.logger.info('[DragDrop] Step 5 complete. insertBeforeNodeId:', insertBeforeNodeId);
+
+			// 6. Call DOM.moveTo
+			this.logger.info('[DragDrop] Step 6: Calling DOM.moveTo with:', {
+				nodeId: elementNodeId,
+				targetNodeId: parentNodeId,
+				insertBeforeNodeId
+			});
+
+			const moveParams: { nodeId: number; targetNodeId: number; insertBeforeNodeId?: number } = {
+				nodeId: elementNodeId,
+				targetNodeId: parentNodeId
+			};
+
+			if (insertBeforeNodeId !== undefined) {
+				moveParams.insertBeforeNodeId = insertBeforeNodeId;
+			}
+
+			const moveResult = await this.browserService.sendCDPCommand(
+				this.browserViewId,
+				'DOM.moveTo',
+				moveParams
+			);
+
+			this.logger.info('[DragDrop] Step 6 result (DOM.moveTo):', moveResult);
+			this.logger.info('[DragDrop] Element moved successfully!');
+			this.showDragFeedback(true, 'Element moved');
+
+			// 7. Re-select the moved element to update overlays
+			// The element's position changed, so we need to refresh the selection
+			await this.browserService.executeScript(
+				this.browserViewId,
+				`
+				(function() {
+					if (typeof window.__roopikReselectElement === 'function') {
+						window.__roopikReselectElement();
+					}
+				})()
+				`
+			);
+
+		} catch (error) {
+			// Log full error details for debugging
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			const errorStack = error instanceof Error ? error.stack : '';
+			this.logger.error('[DragDrop] Failed to move element:', errorMessage);
+			this.logger.error('[DragDrop] Error stack:', errorStack);
+			this.logger.error('[DragDrop] Full error object:', error);
+			this.showDragFeedback(false, `Move failed: ${errorMessage}`);
+		}
+	}
+
+	/**
+	 * Show feedback after drag operation
+	 * Injects a toast message into the browser
+	 */
+	private async showDragFeedback(success: boolean, message: string): Promise<void> {
+		if (!this.browserViewId) return;
+
+		const emoji = success ? '✅' : '❌';
+		const fullMessage = `${emoji} ${message}`;
+
+		try {
+			await this.browserService.executeScript(
+				this.browserViewId,
+				`
+				(function() {
+					if (typeof window.__roopikShowToast === 'function') {
+						window.__roopikShowToast('${fullMessage.replace(/'/g, "\\'")}');
+					}
+				})()
+				`
+			);
+		} catch {
+			// Silent fail - toast is just feedback
 		}
 	}
 

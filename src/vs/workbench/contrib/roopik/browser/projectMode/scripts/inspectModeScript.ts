@@ -27,6 +27,39 @@ export const INSPECT_MODE_SCRIPT = `
 		window.__roopikInspectCleanup();
 	}
 
+	// ========== Configuration ==========
+
+	/**
+	 * DRAG MODE ENABLE FLAG
+	 *
+	 * Drag mode should ONLY be enabled when:
+	 * 1. Page is hosted by Roopik's Vite dev server (not external sites like google.com)
+	 * 2. Elements have data-roopik-source attributes (for source mapping)
+	 * 3. We have write access to source files
+	 *
+	 * Detection methods (to be implemented):
+	 * - Check for window.__ROOPIK_PROJECT__ flag set by our Vite plugin
+	 * - Check if any element has data-roopik-source attribute
+	 * - Check URL matches localhost with our dev server port
+	 *
+	 * For now: We detect by checking if page has data-roopik-source elements
+	 * This ensures drag features only work on pages we can actually save to source.
+	 *
+	 * Future: This will be passed as parameter from VSCode based on project context.
+	 */
+	function isDragModeAvailable() {
+		// Check if page has any elements with source tracking (our project)
+		var hasSourceTracking = document.querySelector('[data-roopik-source]') !== null;
+
+		// Future: Also check for project flag
+		// var isRoopikProject = !!window.__ROOPIK_PROJECT__;
+
+		return hasSourceTracking;
+	}
+
+	// Cache the result (don't re-check on every drag attempt)
+	var dragModeEnabled = isDragModeAvailable();
+
 	// ========== State ==========
 	let hoverElement = null;
 	let selectedElement = null;
@@ -46,6 +79,11 @@ export const INSPECT_MODE_SCRIPT = `
 	let dropTargetOverlay = null;
 	let invalidDropOverlay = null;
 	let lastDropValid = false;
+
+	// Pending changes queue (for future AST sync)
+	// Changes accumulate here until user clicks "Save"
+	// Format: [{ type: 'move', elementSelector, sourceLocation, targetParent, targetIndex, timestamp }]
+	let pendingChanges = [];
 
 	// ========== Create UI Elements ==========
 
@@ -73,7 +111,8 @@ export const INSPECT_MODE_SCRIPT = `
 		'z-index: 2147483645',
 		'border: 2px solid #22c55e',
 		'background-color: rgba(34, 197, 94, 0.15)',
-		'cursor: grab',
+		// Only show grab cursor if drag mode is enabled (our project with source tracking)
+		'cursor: ' + (dragModeEnabled ? 'grab' : 'default'),
 		'display: none'
 	].join(';');
 	document.body.appendChild(selectedOverlay);
@@ -91,7 +130,10 @@ export const INSPECT_MODE_SCRIPT = `
 
 	// ========== Drag Handlers on Selected Overlay ==========
 	selectedOverlay.addEventListener('mousedown', function(e) {
+		// Guard: Only allow drag if drag mode is enabled (our project)
+		if (!dragModeEnabled) return;
 		if (!selectedElement || e.button !== 0) return;
+
 		e.preventDefault();
 		e.stopPropagation();
 
@@ -222,6 +264,7 @@ export const INSPECT_MODE_SCRIPT = `
 		}
 
 		// Notify VSCode drag ended with drop zone info
+		// VSCode will handle CDP DOM.moveTo and show feedback via __roopikShowToast
 		if (typeof window.__roopikBridge === 'function') {
 			var message = {
 				type: 'drag-ended',
@@ -243,10 +286,9 @@ export const INSPECT_MODE_SCRIPT = `
 			window.__roopikBridge(JSON.stringify(message));
 		}
 
-		// Show feedback
-		if (dropZone) {
-			showToast('📍 Drop at index ' + dropZone.index + ' (Phase 4: DOM move coming soon)');
-		} else {
+		// Show immediate feedback for invalid drops
+		// Valid drops get feedback from VSCode after CDP operation completes
+		if (!dropZone) {
 			showToast('❌ Invalid drop location');
 		}
 	}
@@ -1108,6 +1150,38 @@ export const INSPECT_MODE_SCRIPT = `
 		}
 	}
 
+	// ========== Exported Functions ==========
+	// These are called from VSCode via executeScript after CDP operations
+
+	/**
+	 * Show toast message - exported for VSCode to call
+	 */
+	window.__roopikShowToast = function(message) {
+		showToast(message);
+	};
+
+	/**
+	 * Re-select the current element - exported for VSCode to call after DOM move
+	 * Updates overlays and selection state after element position changes
+	 */
+	window.__roopikReselectElement = function() {
+		if (!selectedElement) return;
+
+		// The element's position may have changed, update overlays
+		updateOverlay(selectedOverlay, selectedLabel, selectedElement, '#22c55e', true);
+
+		// Update the stored result with new bounds
+		var rect = selectedElement.getBoundingClientRect();
+		if (window.__roopikInspectResult) {
+			window.__roopikInspectResult.bounds = {
+				x: rect.left,
+				y: rect.top,
+				width: rect.width,
+				height: rect.height
+			};
+		}
+	};
+
 	// ========== Cleanup ==========
 
 	function cleanup() {
@@ -1143,7 +1217,11 @@ export const INSPECT_MODE_SCRIPT = `
 		dragGhost = null;
 		currentDropZone = null;
 		lastDropValid = false;
+
+		// Remove exported functions
 		delete window.__roopikInspectCleanup;
+		delete window.__roopikShowToast;
+		delete window.__roopikReselectElement;
 	}
 
 	window.__roopikInspectCleanup = cleanup;

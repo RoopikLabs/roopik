@@ -2,6 +2,31 @@
 
 This document explains the element drag-and-drop system in Roopik's inspect mode.
 
+## Important: Project-Only Feature
+
+**Drag mode is ONLY enabled for pages hosted by Roopik's dev server.**
+
+External websites (google.com, youtube.com, etc.) can be inspected but NOT dragged because:
+1. We can't save changes to external sites (no source access)
+2. No `data-roopik-source` attributes for source mapping
+3. Changes would be lost on refresh
+
+### Detection Logic
+```javascript
+function isDragModeAvailable() {
+    // Check if page has elements with our source tracking
+    return document.querySelector('[data-roopik-source]') !== null;
+}
+```
+
+### Visual Difference
+| Mode | Cursor on Selected | Drag Enabled |
+|------|-------------------|--------------|
+| Our Project | `grab` | ✅ Yes |
+| External Site | `default` | ❌ No |
+
+---
+
 ## Overview
 
 The drag-and-drop system allows users to visually reorder elements in the browser preview. It consists of 5 phases:
@@ -11,7 +36,7 @@ The drag-and-drop system allows users to visually reorder elements in the browse
 | 1 | ✅ Complete | Grab cursor + Chat icon on selected element |
 | 2 | ✅ Complete | Drag visual feedback (ghost element) |
 | 3 | ✅ Complete | Drop zone detection + indicators |
-| 4 | 🔲 Pending | CDP DOM.moveTo for live reordering |
+| 4 | ✅ Complete | CDP DOM.moveTo for live reordering |
 | 5 | 🔲 Pending | AST source code update on drop |
 
 ---
@@ -163,27 +188,50 @@ function getLayoutDirection(parent) {
 
 ---
 
-## Phase 4: CDP DOM.moveTo (Pending)
+## Phase 4: CDP DOM.moveTo (Complete)
 
-### Planned Flow
+### Flow
 ```
-Valid drop detected → Call CDP DOM.moveTo → DOM updates live → Re-select moved element
+Valid drop detected → editor.ts receives drag-ended → Call CDP DOM.moveTo → DOM updates live → Re-select moved element
 ```
 
-### CDP Commands to Use
+### Implementation
+
+The CDP DOM.moveTo implementation is in `browser/projectMode/editor.ts`:
+
+```typescript
+// handleDragEnded() method
+1. Get document root via DOM.getDocument
+2. Query dragged element's nodeId via DOM.querySelector
+3. Query target parent's nodeId via DOM.querySelector
+4. Calculate insertBeforeNodeId from drop index
+5. Call DOM.moveTo to move element
+6. Call __roopikReselectElement to update overlays
+7. Show toast feedback via __roopikShowToast
+```
+
+### CDP Commands Used
 ```javascript
+// Get document root
+DOM.getDocument({ depth: 0 })
+
 // Get node ID for element
-DOM.querySelector({ nodeId: documentNodeId, selector: elementSelector })
+DOM.querySelector({ nodeId: rootNodeId, selector: elementSelector })
 
 // Move node to new position
 DOM.moveTo({ nodeId: elementNodeId, targetNodeId: parentNodeId, insertBeforeNodeId?: siblingNodeId })
 ```
 
+### Exported Functions
+The inject script exports these functions for VSCode to call:
+- `window.__roopikShowToast(message)` - Show toast feedback
+- `window.__roopikReselectElement()` - Update overlays after move
+
 ### Sync with Style Panel
-After move, the system will:
-1. Re-select the moved element (updates `__roopikInspectResult`)
-2. Send `element-selected` event via `__roopikBridge`
-3. Style panel receives event and re-fetches styles
+After move, the system:
+1. Re-selects the moved element (updates overlay bounds)
+2. Element stays selected with green overlay
+3. Style panel can be used to inspect the moved element
 
 ---
 
@@ -296,3 +344,111 @@ browser/projectMode/
 - [ ] Source file updated after move
 - [ ] Formatting preserved
 - [ ] Undo works
+
+---
+
+## Future Architecture: DOM → Source Sync
+
+### The Challenge
+When user drags elements:
+1. DOM changes immediately (via CDP)
+2. But source code hasn't changed
+3. Page refresh would lose changes
+4. Need to sync DOM changes back to source files
+
+### Solution: Pending Changes Queue
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Browser (DOM)                                               │
+│  - User drags element                                        │
+│  - CDP DOM.moveTo (live preview)                            │
+│  - Change stored in pendingChanges[]                        │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Pending Changes Queue (In Memory)                          │
+│  [{                                                         │
+│    type: 'move',                                            │
+│    elementSelector: 'div.card:nth-of-type(2)',             │
+│    sourceLocation: { file: 'Card.tsx', line: 15 },         │
+│    targetParent: { selector: '.container', line: 10 },     │
+│    targetIndex: 0,                                          │
+│    timestamp: 1702...                                       │
+│  }, ...]                                                    │
+│                                                             │
+│  Features:                                                  │
+│  - Undo/Redo within session                                │
+│  - Merge consecutive moves of same element                 │
+│  - Clear on page navigation                                │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼ User clicks "Save Changes"
+┌─────────────────────────────────────────────────────────────┐
+│  Review Panel (Future UI)                                    │
+│  - List of pending changes                                  │
+│  - Visual diff preview                                      │
+│  - Accept/Reject individual changes                         │
+│  - "Save All" button                                        │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  AST Transformer (Main Process)                             │
+│  - Parse source file (babel for JSX, vue-compiler, etc.)   │
+│  - Find JSX node via data-roopik-source location           │
+│  - Apply move operation in AST                             │
+│  - Generate new code (preserve formatting via Prettier)    │
+│  - Write to file                                            │
+│  - HMR updates browser automatically                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Why This Approach?
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Immediate write** | Simple | Risky, no preview |
+| **Git-based undo** | Familiar | Heavy, requires commits |
+| **Pending queue** ✅ | Preview, undo, batch | More complex |
+
+### Key Design Decisions
+
+1. **Changes are virtual until saved**
+   - DOM updates immediately (good UX)
+   - Source unchanged until explicit save
+   - Page refresh = changes lost (with warning)
+
+2. **Review before commit**
+   - User sees what will change
+   - Can reject individual changes
+   - Prevents accidental damage
+
+3. **Batch operations**
+   - Multiple drags = one save operation
+   - Better for git history
+   - Atomic changes
+
+### State Variable
+```javascript
+// In inject script
+let pendingChanges = [];
+
+// Change format
+{
+  type: 'move',
+  elementSelector: string,      // CSS selector of moved element
+  sourceLocation: {             // From data-roopik-source
+    file: string,
+    line: number,
+    column?: number
+  },
+  targetParent: {
+    selector: string,
+    sourceLocation?: {...}
+  },
+  targetIndex: number,          // Position among siblings
+  timestamp: number
+}
+```

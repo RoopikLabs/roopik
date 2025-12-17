@@ -198,12 +198,41 @@ export interface InspectModeExitedMessage extends BrowserBridgeMessageBase {
 }
 
 /**
+ * Drag started (element being dragged)
+ */
+export interface DragStartedMessage extends BrowserBridgeMessageBase {
+	type: 'drag-started';
+	selector: string;
+	tagName: string;
+}
+
+/**
+ * Drag ended (element dropped)
+ */
+export interface DragEndedMessage extends BrowserBridgeMessageBase {
+	type: 'drag-ended';
+	dropX: number;
+	dropY: number;
+	hasDropZone: boolean;
+	/** Present if hasDropZone is true */
+	dropZone?: {
+		parentSelector: string;
+		parentTagName: string;
+		index: number;
+		position: 'before' | 'after' | 'inside';
+		siblingCount: number;
+	};
+}
+
+/**
  * Union of all browser bridge message types
  * Add new message types here as we add features
  */
 export type BrowserBridgeMessage =
 	| ElementSelectedMessage
-	| InspectModeExitedMessage;
+	| InspectModeExitedMessage
+	| DragStartedMessage
+	| DragEndedMessage;
 
 /**
  * Event payload for browser bridge messages
