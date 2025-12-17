@@ -34,8 +34,10 @@ import { InspectMode } from './features/inspectMode.js';
 import { Bookmarks } from './features/bookmarks.js';
 import { BrowserPause } from './features/browserPause.js';
 import { StyleInspect } from './features/styleInspect.js';
+import { DragDrop } from './features/dragDrop/index.js';
 // Components
 import { DefaultBrowserScreen } from './components/defaultBrowserScreen.js';
+import { PendingChangesPanel } from './components/pendingChangesPanel.js';
 import { ISourceNavigationService } from '../../common/navigation/index.js';
 import { IMenubarStateService } from '../services/menubarStateService.js';
 import { IProjectStorageService } from '../../common/projectStorage/index.js';
@@ -91,6 +93,10 @@ export class Editor extends EditorPane {
 	private bookmarks!: Bookmarks;
 	private browserPause!: BrowserPause;
 	private styleInspect!: StyleInspect;
+	private dragDrop!: DragDrop;
+
+	// Pending changes panel (for drag-drop operations)
+	private pendingChangesPanel: PendingChangesPanel | undefined;
 
 	constructor(
 		group: IEditorGroup,
@@ -119,6 +125,16 @@ export class Editor extends EditorPane {
 		this.bookmarks = new Bookmarks(this.storageService, this.notificationService, this.logger);
 		this.browserPause = new BrowserPause(this.browserService);
 		this.styleInspect = new StyleInspect(this.browserService, this.notificationService, this.sourceNavigationService);
+		this.dragDrop = new DragDrop(this.browserService, this.logger);
+
+		// Set callback for pending changes updates (for UI badge and panel)
+		this.dragDrop.setOnPendingMovesChanged((moves) => {
+			this.logger.info('[DragDrop] Pending moves changed:', moves.length);
+			// Update control bar badge
+			this.controlBar?.setPendingChangesCount(moves.length);
+			// Update panel if visible
+			this.pendingChangesPanel?.updateList(moves);
+		});
 
 		// Connect StyleInspect to unified InspectMode (uses same script for element selection)
 		this.styleInspect.setInspectMode(this.inspectMode);
@@ -320,8 +336,13 @@ export class Editor extends EditorPane {
 				case 'inspect-mode-exited':
 					this.handleInspectModeExited();
 					break;
+				case 'drag-started':
+					this.dragDrop.handleDragStarted(message as import('../../common/projectMode/types.js').DragStartedMessage);
+					break;
 				case 'drag-ended':
-					this.handleDragEnded(message as import('../../common/projectMode/types.js').DragEndedMessage);
+					if (this.browserViewId) {
+						this.dragDrop.handleDragEnded(this.browserViewId, message as import('../../common/projectMode/types.js').DragEndedMessage);
+					}
 					break;
 			}
 		}));
@@ -376,335 +397,6 @@ export class Editor extends EditorPane {
 		// Also hide style panel (ESC should close everything)
 		if (this.styleInspect.isPanelVisible()) {
 			this.styleInspect.hidePanel();
-		}
-	}
-
-	/**
-	 * Handle drag ended event from inspect mode
-	 * Uses CDP DOM.moveTo to reorder elements in the live DOM
-	 *
-	 * Phase 4: Live DOM reordering via CDP
-	 * The inject script detects drop zones and sends the target info.
-	 * We use CDP to:
-	 * 1. Get the document root
-	 * 2. Query for the dragged element by selector
-	 * 3. Query for the target parent by selector
-	 * 4. Get siblings to calculate insertBefore node
-	 * 5. Call DOM.moveTo to move the element
-	 */
-	private async handleDragEnded(message: import('../../common/projectMode/types.js').DragEndedMessage): Promise<void> {
-		if (!this.browserViewId) {
-			return;
-		}
-
-		// No valid drop zone - nothing to do
-		if (!message.hasDropZone || !message.dropZone) {
-			this.logger.info('[DragDrop] Drop cancelled - no valid drop zone');
-			return;
-		}
-
-		const { dropZone } = message;
-		this.logger.info('[DragDrop] Processing drop:', {
-			parentSelector: dropZone.parentSelector,
-			index: dropZone.index,
-			position: dropZone.position,
-			siblingCount: dropZone.siblingCount
-		});
-
-		try {
-			// 0. Enable DOM domain (required for DOM operations)
-			this.logger.info('[DragDrop] Step 0: Enabling DOM domain...');
-			await this.browserService.sendCDPCommand(
-				this.browserViewId,
-				'DOM.enable',
-				{}
-			);
-
-			// 1. Get the document with full depth to push DOM tree to frontend
-			// CDP querySelector only works on nodes that have been "pushed" to the frontend
-			// Using depth: -1 fetches the entire DOM tree
-			this.logger.info('[DragDrop] Step 1: Getting document with full tree...');
-			const docResult = await this.browserService.sendCDPCommand(
-				this.browserViewId,
-				'DOM.getDocument',
-				{ depth: -1, pierce: true }  // -1 = entire tree, pierce = go through shadow DOM
-			) as { root: { nodeId: number } };
-
-			this.logger.info('[DragDrop] Step 1 result: document nodeId:', docResult?.root?.nodeId);
-
-			if (!docResult?.root?.nodeId) {
-				this.logger.error('[DragDrop] Failed to get document root');
-				this.showDragFeedback(false, 'Failed to access document');
-				return;
-			}
-
-			const rootNodeId = docResult.root.nodeId;
-			this.logger.info('[DragDrop] Root nodeId:', rootNodeId);
-
-			// 2. Get the currently selected element's selector from the inject script
-			// We need to query the browser for __roopikInspectResult to get the dragged element
-			this.logger.info('[DragDrop] Step 2: Getting selected element selector...');
-			const inspectResult = await this.browserService.executeScript(
-				this.browserViewId,
-				'window.__roopikInspectResult ? window.__roopikInspectResult.selector : null'
-			);
-
-			this.logger.info('[DragDrop] Step 2 result:', inspectResult);
-
-			if (!inspectResult) {
-				this.logger.error('[DragDrop] No element selected for drag');
-				this.showDragFeedback(false, 'No element selected');
-				return;
-			}
-
-			const elementSelector = inspectResult as string;
-			this.logger.info('[DragDrop] Element to move:', elementSelector);
-
-			// 3. Query for the dragged element's nodeId
-			this.logger.info('[DragDrop] Step 3: Querying element nodeId for:', elementSelector);
-			const elementResult = await this.browserService.sendCDPCommand(
-				this.browserViewId,
-				'DOM.querySelector',
-				{ nodeId: rootNodeId, selector: elementSelector }
-			) as { nodeId: number };
-
-			this.logger.info('[DragDrop] Step 3 result:', elementResult);
-
-			if (!elementResult?.nodeId || elementResult.nodeId === 0) {
-				this.logger.error('[DragDrop] Could not find element:', elementSelector);
-				this.showDragFeedback(false, 'Element not found');
-				return;
-			}
-
-			const elementNodeId = elementResult.nodeId;
-			this.logger.info('[DragDrop] Element nodeId:', elementNodeId);
-
-			// 4. Query for the target parent's nodeId
-			this.logger.info('[DragDrop] Step 4: Querying parent nodeId for:', dropZone.parentSelector);
-			const parentResult = await this.browserService.sendCDPCommand(
-				this.browserViewId,
-				'DOM.querySelector',
-				{ nodeId: rootNodeId, selector: dropZone.parentSelector }
-			) as { nodeId: number };
-
-			this.logger.info('[DragDrop] Step 4 result:', parentResult);
-
-			if (!parentResult?.nodeId || parentResult.nodeId === 0) {
-				this.logger.error('[DragDrop] Could not find parent:', dropZone.parentSelector);
-				this.showDragFeedback(false, 'Target not found');
-				return;
-			}
-
-			const parentNodeId = parentResult.nodeId;
-			this.logger.info('[DragDrop] Parent nodeId:', parentNodeId);
-
-			// 5. Get the insertBefore node using JavaScript execution
-			// This is more reliable than CDP queries because:
-			// - We can properly filter out our UI elements
-			// - We can handle the case where the element is already in the same parent
-			// - The sibling indices from inject script EXCLUDE the selected element
-			this.logger.info('[DragDrop] Step 5: Calculating insertBefore node. Index:', dropZone.index, 'SiblingCount:', dropZone.siblingCount);
-
-			// Use JavaScript to find the correct reference node
-			const findReferenceScript = `
-				(function() {
-					var parent = document.querySelector('${dropZone.parentSelector.replace(/'/g, "\\'")}');
-					var selectedEl = document.querySelector('${elementSelector.replace(/'/g, "\\'")}');
-					if (!parent) return { error: 'Parent not found' };
-					if (!selectedEl) return { error: 'Selected element not found' };
-
-					// Get all raw children
-					var allChildren = Array.from(parent.children);
-
-					// Filter to valid children (excluding our UI elements)
-					var validChildren = allChildren.filter(function(el) {
-						if (el.id && el.id.startsWith('__roopik')) return false;
-						if (el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'LINK') return false;
-						return true;
-					});
-
-					// Check if selected element is in this parent
-					var selectedInSameParent = selectedEl.parentElement === parent;
-					var selectedIndexInValid = validChildren.indexOf(selectedEl);
-
-					// Get siblings (valid children EXCLUDING selected element)
-					// This matches what the inject script sends us
-					var siblingsWithoutSelected = validChildren.filter(function(el) {
-						return el !== selectedEl;
-					});
-
-					var targetIndex = ${dropZone.index};
-
-					// Debug info
-					var debugInfo = {
-						validCount: validChildren.length,
-						siblingsCount: siblingsWithoutSelected.length,
-						selectedInSameParent: selectedInSameParent,
-						selectedIndexInValid: selectedIndexInValid,
-						targetIndex: targetIndex
-					};
-
-					// If inserting at or past the end, append (no insertBefore needed)
-					if (targetIndex >= siblingsWithoutSelected.length) {
-						debugInfo.action = 'append';
-						return { insertBefore: null, debug: JSON.stringify(debugInfo) };
-					}
-
-					// Get the sibling at target index (from siblings list that excludes selected)
-					var referenceNode = siblingsWithoutSelected[targetIndex];
-					if (!referenceNode) {
-						debugInfo.action = 'append_noref';
-						return { insertBefore: null, debug: JSON.stringify(debugInfo) };
-					}
-
-					// Now we need to find this reference node's position in the CURRENT DOM
-					// (before any move happens) to build the correct selector
-					var refIndexInAllChildren = allChildren.indexOf(referenceNode);
-					debugInfo.refIndexInAll = refIndexInAllChildren;
-
-					// nth-child is 1-based
-					var nthChildIndex = refIndexInAllChildren + 1;
-					var selector = '${dropZone.parentSelector.replace(/'/g, "\\'")} > :nth-child(' + nthChildIndex + ')';
-
-					debugInfo.action = 'insertBefore';
-					debugInfo.selector = selector;
-
-					return {
-						insertBeforeSelector: selector,
-						debug: JSON.stringify(debugInfo)
-					};
-				})()
-			`;
-
-			const referenceResult = await this.browserService.executeScript(
-				this.browserViewId,
-				findReferenceScript
-			) as { insertBefore?: null; insertBeforeSelector?: string; error?: string; debug?: string };
-
-			this.logger.info('[DragDrop] Step 5 result:', JSON.stringify(referenceResult));
-
-			let insertBeforeNodeId: number | undefined;
-
-			if (referenceResult?.error) {
-				this.logger.error('[DragDrop] Error finding reference node:', referenceResult.error);
-				this.showDragFeedback(false, 'Could not find drop position');
-				return;
-			}
-
-			if (referenceResult?.insertBeforeSelector) {
-				const siblingResult = await this.browserService.sendCDPCommand(
-					this.browserViewId,
-					'DOM.querySelector',
-					{ nodeId: rootNodeId, selector: referenceResult.insertBeforeSelector }
-				) as { nodeId: number };
-
-				this.logger.info('[DragDrop] Step 5b: Reference node query result:', siblingResult);
-
-				if (siblingResult?.nodeId && siblingResult.nodeId !== 0) {
-					insertBeforeNodeId = siblingResult.nodeId;
-				}
-			}
-
-			this.logger.info('[DragDrop] Step 5 complete. insertBeforeNodeId:', insertBeforeNodeId, 'Debug:', referenceResult?.debug);
-
-			// 6. Call DOM.moveTo
-			this.logger.info('[DragDrop] Step 6: Calling DOM.moveTo with:', {
-				nodeId: elementNodeId,
-				targetNodeId: parentNodeId,
-				insertBeforeNodeId
-			});
-
-			const moveParams: { nodeId: number; targetNodeId: number; insertBeforeNodeId?: number } = {
-				nodeId: elementNodeId,
-				targetNodeId: parentNodeId
-			};
-
-			if (insertBeforeNodeId !== undefined) {
-				moveParams.insertBeforeNodeId = insertBeforeNodeId;
-			}
-
-			const moveResult = await this.browserService.sendCDPCommand(
-				this.browserViewId,
-				'DOM.moveTo',
-				moveParams
-			);
-
-			this.logger.info('[DragDrop] Step 6 result (DOM.moveTo):', JSON.stringify(moveResult));
-
-			// Verify the move by checking if element's new nodeId is returned
-			if (!moveResult || typeof moveResult.nodeId !== 'number') {
-				this.logger.error('[DragDrop] DOM.moveTo did not return a nodeId - move may have failed');
-				this.showDragFeedback(false, 'Move may have failed');
-				return;
-			}
-
-			this.logger.info('[DragDrop] Element moved successfully! New nodeId:', moveResult.nodeId);
-			this.showDragFeedback(true, 'Element moved');
-
-			// Step 7: Verify by getting the element's new parent
-			this.logger.info('[DragDrop] Step 7: Verifying move by checking new parent...');
-			const verifyScript = `
-				(function() {
-					var el = document.querySelector('${elementSelector.replace(/'/g, "\\'")}');
-					if (!el) return { error: 'Element not found after move' };
-					var parent = el.parentElement;
-					return {
-						found: true,
-						newParentTag: parent ? parent.tagName.toLowerCase() : null,
-						newParentSelector: parent ? (parent.className ? parent.tagName.toLowerCase() + '.' + parent.className.split(' ')[0] : parent.tagName.toLowerCase()) : null
-					};
-				})()
-			`;
-			const verifyResult = await this.browserService.executeScript(this.browserViewId, verifyScript);
-			this.logger.info('[DragDrop] Step 7 verification result:', JSON.stringify(verifyResult));
-
-			// 7. Re-select the moved element to update overlays
-			// The element's position changed, so we need to refresh the selection
-			await this.browserService.executeScript(
-				this.browserViewId,
-				`
-				(function() {
-					if (typeof window.__roopikReselectElement === 'function') {
-						window.__roopikReselectElement();
-					}
-				})()
-				`
-			);
-
-		} catch (error) {
-			// Log full error details for debugging
-			const errorMessage = error instanceof Error ? error.message : String(error);
-			const errorStack = error instanceof Error ? error.stack : '';
-			this.logger.error('[DragDrop] Failed to move element:', errorMessage);
-			this.logger.error('[DragDrop] Error stack:', errorStack);
-			this.logger.error('[DragDrop] Full error object:', error);
-			this.showDragFeedback(false, `Move failed: ${errorMessage}`);
-		}
-	}
-
-	/**
-	 * Show feedback after drag operation
-	 * Injects a toast message into the browser
-	 */
-	private async showDragFeedback(success: boolean, message: string): Promise<void> {
-		if (!this.browserViewId) return;
-
-		const emoji = success ? '✅' : '❌';
-		const fullMessage = `${emoji} ${message}`;
-
-		try {
-			await this.browserService.executeScript(
-				this.browserViewId,
-				`
-				(function() {
-					if (typeof window.__roopikShowToast === 'function') {
-						window.__roopikShowToast('${fullMessage.replace(/'/g, "\\'")}');
-					}
-				})()
-				`
-			);
-		} catch {
-			// Silent fail - toast is just feedback
 		}
 	}
 
@@ -882,7 +574,8 @@ export class Editor extends EditorPane {
 			showHardReload: true,
 			showCopyUrl: true,
 			showBookmarks: true,
-			showEditMode: true
+			showEditMode: true,
+			showPendingChanges: true
 		};
 
 		// Browser control bar callbacks
@@ -906,7 +599,9 @@ export class Editor extends EditorPane {
 			getBookmarks: () => this.bookmarks.getAll(),
 			isBookmarked: (url) => this.bookmarks.isBookmarked(url),
 			// Edit Mode callback
-			onEditModeToggle: (enabled: boolean) => this.toggleEditModeToolbar(enabled)
+			onEditModeToggle: (enabled: boolean) => this.toggleEditModeToolbar(enabled),
+			// Pending Changes callback
+			onPendingChangesClick: () => this.togglePendingChangesPanel()
 		};
 
 		this.controlBar = this._register(new BrowserControlBar(this.container, config, callbacks));
@@ -1798,6 +1493,95 @@ export class Editor extends EditorPane {
 	}
 
 	// ============================================
+	// Pending Changes Panel (drag-drop operations)
+	// ============================================
+
+	/**
+	 * Toggle Pending Changes Panel visibility
+	 * Shows/hides the floating panel with pending DOM move operations
+	 */
+	private togglePendingChangesPanel(): void {
+		if (!this.browserContainer) {
+			return;
+		}
+
+		// Initialize panel if not exists
+		if (!this.pendingChangesPanel) {
+			this.pendingChangesPanel = new PendingChangesPanel(
+				this.browserContainer,
+				{
+					onUndoMove: (moveId: string) => this.undoPendingMove(moveId),
+					onUndoAll: () => this.undoAllPendingMoves(),
+					onApplyAll: () => this.applyAllPendingMoves(),
+					onClose: () => this.pendingChangesPanel?.hide()
+				}
+			);
+		}
+
+		// Toggle visibility with current pending moves
+		const moves = this.dragDrop.getPendingMoves();
+		this.pendingChangesPanel.toggle(moves);
+	}
+
+	/**
+	 * Undo a specific pending move
+	 */
+	private async undoPendingMove(moveId: string): Promise<void> {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		const success = await this.dragDrop.undoMove(this.browserViewId, moveId);
+		if (!success) {
+			this.notificationService.notify({
+				severity: Severity.Warning,
+				message: 'Failed to undo move',
+				sticky: false
+			});
+		}
+	}
+
+	/**
+	 * Undo all pending moves (LIFO order)
+	 */
+	private async undoAllPendingMoves(): Promise<void> {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		const moves = this.dragDrop.getPendingMoves();
+		// Undo in reverse order (LIFO)
+		for (let i = moves.length - 1; i >= 0; i--) {
+			await this.dragDrop.undoMove(this.browserViewId, moves[i].id);
+		}
+	}
+
+	/**
+	 * Apply all pending moves (commit to source)
+	 * TODO: Implement AST-based source file updates
+	 */
+	private async applyAllPendingMoves(): Promise<void> {
+		const moves = this.dragDrop.getPendingMoves();
+		if (moves.length === 0) {
+			return;
+		}
+
+		// TODO: Phase 5 - Implement AST-based source file updates
+		// For now, just clear the queue and show a message
+		this.notificationService.notify({
+			severity: Severity.Info,
+			message: `${moves.length} changes applied (source file update coming soon)`,
+			sticky: false
+		});
+
+		// Clear the pending queue
+		this.dragDrop.clearPendingChanges();
+
+		// Hide the panel
+		this.pendingChangesPanel?.hide();
+	}
+
+	// ============================================
 	// Inspect Mode (delegates to InspectMode feature class)
 	// ============================================
 
@@ -2256,8 +2040,10 @@ export class Editor extends EditorPane {
 		this.resizeObserver?.disconnect();
 		this.resizeObserver = undefined;
 
-		// Dispose style inspect feature
+		// Dispose features
 		this.styleInspect.dispose();
+		this.dragDrop.dispose();
+		this.pendingChangesPanel?.dispose();
 
 		// Stop dev server if running (idempotent - may have already been stopped by onWillDispose)
 		this.stopDevServerOnClose();
