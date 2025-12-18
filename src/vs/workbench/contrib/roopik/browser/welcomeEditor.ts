@@ -35,6 +35,13 @@ export class RoopikWelcomeEditor extends EditorPane {
 	private recentCanvasesContainer: HTMLElement | undefined;
 	private recentProjectsContainer: HTMLElement | undefined;
 
+	/** Timeout handle for project loading */
+	private projectLoadingTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
+	/** Whether project service is initialized */
+	private projectServiceInitialized: boolean = false;
+	/** Loading timeout (5 seconds) */
+	private static readonly LOADING_TIMEOUT_MS = 5000;
+
 	constructor(
 		group: IEditorGroup,
 		@ITelemetryService telemetryService: ITelemetryService,
@@ -53,7 +60,11 @@ export class RoopikWelcomeEditor extends EditorPane {
 		this._register(this.canvasService.onCanvasDeleted(() => this.loadRecentCanvases()));
 		this._register(this.canvasService.onCanvasUpdated(() => this.loadRecentCanvases()));
 
-		this._register(this.projectStorageService.onDidInitialize(() => this.loadRecentProjects()));
+		this._register(this.projectStorageService.onDidInitialize(() => {
+			this.projectServiceInitialized = true;
+			this.clearProjectLoadingTimeout();
+			this.loadRecentProjects();
+		}));
 		this._register(this.projectStorageService.onProjectsChanged(() => this.loadRecentProjects()));
 	}
 
@@ -394,7 +405,12 @@ export class RoopikWelcomeEditor extends EditorPane {
 		nameEl.textContent = project.name;
 
 		const pathEl = append(item, $('.recent-canvas-path'));
-		pathEl.textContent = this.formatTimeAgo(project.updatedAt);
+		// Build description: time + framework (if available)
+		let description = this.formatTimeAgo(project.updatedAt);
+		if (project.frameworkDisplayName) {
+			description += ` • ${project.frameworkDisplayName}`;
+		}
+		pathEl.textContent = description;
 
 		item.onclick = () => {
 			this.commandService.executeCommand('roopik.openProjectPreview', {
@@ -430,12 +446,52 @@ export class RoopikWelcomeEditor extends EditorPane {
 		try {
 			const isInitialized = await this.projectStorageService.isInitializedAsync();
 			if (isInitialized) {
+				this.projectServiceInitialized = true;
+				this.clearProjectLoadingTimeout();
 				this.loadRecentProjects();
+			} else {
+				// Not initialized - start timeout
+				this.startProjectLoadingTimeout();
 			}
-			// Otherwise wait for onDidInitialize event
 		} catch (err) {
 			console.error('[RoopikWelcomeEditor] checkAndLoadProjects error:', err);
+			this.startProjectLoadingTimeout();
 		}
+	}
+
+	/**
+	 * Clear project loading timeout
+	 */
+	private clearProjectLoadingTimeout(): void {
+		if (this.projectLoadingTimeoutHandle) {
+			clearTimeout(this.projectLoadingTimeoutHandle);
+			this.projectLoadingTimeoutHandle = undefined;
+		}
+	}
+
+	/**
+	 * Start project loading timeout
+	 */
+	private startProjectLoadingTimeout(): void {
+		this.clearProjectLoadingTimeout();
+		this.projectLoadingTimeoutHandle = setTimeout(() => {
+			if (!this.projectServiceInitialized) {
+				console.warn('[RoopikWelcomeEditor] Project loading timeout');
+				this.showProjectTimeoutState();
+			}
+		}, RoopikWelcomeEditor.LOADING_TIMEOUT_MS);
+	}
+
+	/**
+	 * Show timeout state for projects
+	 */
+	private showProjectTimeoutState(): void {
+		if (!this.recentProjectsContainer) {
+			return;
+		}
+		clearNode(this.recentProjectsContainer);
+		const errorState = append(this.recentProjectsContainer, $('.quick-start-empty'));
+		errorState.textContent = 'Open a workspace first';
 	}
 
 	/**
