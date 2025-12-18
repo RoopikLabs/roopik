@@ -170,7 +170,13 @@ The script reads from `branding-config.json` and automatically:
    - Changes app name and short name to "Roopik"
    - Uses values from `branding-config.json` → `server.manifest`
 
-6. **Replaces Icons** (if `--skip-icons` not used)
+6. **Installs Roopik Dependencies** ✨ NEW
+   - Automatically installs required npm packages (esbuild, Vue/Svelte compilers, etc.)
+   - Gets latest compatible versions from npm
+   - Skips packages already installed
+   - Uses values from `branding-config.json` → `dependencies`
+
+7. **Replaces Icons** (if `--skip-icons` not used)
    - Reads icon list from `branding-config.json` → `icons`
    - Copies from `branding/icons/` to VS Code locations
    - Windows icons (`.ico`, `.png` files)
