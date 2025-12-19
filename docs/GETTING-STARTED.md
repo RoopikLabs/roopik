@@ -31,6 +31,14 @@ npm run compile
 npm run watch
 ```
 
+**For native modules (terminal, etc.) or after pulling upstream changes:**
+
+```bash
+# From roopik root directory
+npm run postinstall
+```
+
+
 ### 3. Launch Roopik
 
 **Windows**:
@@ -152,7 +160,10 @@ See [docs/upstream/sync-strategy.md](docs/upstream/sync-strategy.md) for details
 Rebuild native modules:
 ```bash
 cd node_modules/@vscode/policy-watcher
-npx node-gyp rebuild --target=39.1.2 --dist-url=https://electronjs.org/headers
+
+// NOTE Update the target version with .npmrc electron target version
+
+npx node-gyp rebuild --target=39.2.7 --dist-url=https://electronjs.org/headers
 ```
 
 See [docs/challenges/README.md](docs/challenges/README.md) for common issues.

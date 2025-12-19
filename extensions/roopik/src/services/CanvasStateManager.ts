@@ -1,6 +1,6 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Roopik. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
@@ -428,7 +428,7 @@ export class CanvasStateManager {
 	 * Update canvas index file
 	 */
 	private async updateCanvasIndex(metadata: CanvasMetadata): Promise<void> {
-		if (!this.canvasDir) return;
+		if (!this.canvasDir) { return; }
 
 		const indexPath = path.join(this.canvasDir, 'canvases.json');
 		let index: { canvases: CanvasMetadata[] } = { canvases: [] };
@@ -456,7 +456,7 @@ export class CanvasStateManager {
 	 * Update canvas index file (sync)
 	 */
 	private updateCanvasIndexSync(metadata: CanvasMetadata): void {
-		if (!this.canvasDir) return;
+		if (!this.canvasDir) { return; }
 
 		const indexPath = path.join(this.canvasDir, 'canvases.json');
 		let index: { canvases: CanvasMetadata[] } = { canvases: [] };
@@ -486,7 +486,7 @@ export class CanvasStateManager {
 	 * Remove canvas from index file
 	 */
 	private async removeFromIndex(canvasName: string): Promise<void> {
-		if (!this.canvasDir) return;
+		if (!this.canvasDir) { return; }
 
 		const indexPath = path.join(this.canvasDir, 'canvases.json');
 

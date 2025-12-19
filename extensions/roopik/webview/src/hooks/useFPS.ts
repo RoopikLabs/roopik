@@ -1,6 +1,6 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Roopik. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
 import { useState, useRef, useEffect } from 'react';
@@ -18,7 +18,7 @@ export function useFPS() {
 
 		const updateFps = () => {
 			// Stop if component unmounted
-			if (!isActiveRef.current) return;
+			if (!isActiveRef.current) { return; }
 
 			frameCount.current++;
 			const now = Date.now();

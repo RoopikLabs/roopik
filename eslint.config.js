@@ -24,6 +24,7 @@ export default tseslint.config(
 	{
 		ignores: [
 			...ignores,
+			'docs/**',
 			'!**/.eslint-plugin-local/**/*'
 		],
 	},
@@ -1767,6 +1768,13 @@ export default tseslint.config(
 						'vs/editor/~',
 						'vs/editor/contrib/*/~',
 						'vs/code/~',
+						// Roopik fork: allow bridging from code/electron-main into our
+						// workbench contrib area for custom services while keeping
+						// other layering rules intact.
+						{
+							'when': 'hasElectron',
+							'pattern': 'vs/workbench/contrib/roopik/~'
+						},
 						{
 							'when': 'hasBrowser',
 							'pattern': 'vs/workbench/workbench.web.main.js'
@@ -2122,15 +2130,15 @@ export default tseslint.config(
 			'@typescript-eslint/consistent-generic-constructors': ['warn', 'constructor'],
 		}
 	},
-	// ROOPIK: Override header rule for roopik extension
+	// ROOPIK: Override header rule for roopik extension and core integration
 	{
-		files: ['extensions/roopik/**/*.{ts,tsx,js,jsx}'],
+		files: ['extensions/roopik/**/*.{ts,tsx,js,mjs,jsx}', 'src/vs/workbench/contrib/roopik/**/*.{ts,tsx,js,mjs,jsx}'],
 		plugins: { header: pluginHeader },
 		rules: {
 			'header/header': [2, 'block', [
 				'---------------------------------------------------------------------------------------------',
 				' *  Copyright (c) Roopik. All rights reserved.',
-				' *  Licensed under the MIT License. See License.txt in the project root for license information.',
+				' *  Licensed under the MIT License.',
 				' *--------------------------------------------------------------------------------------------'
 			]]
 		}

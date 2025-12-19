@@ -1,6 +1,6 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Roopik. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
 import * as fs from 'fs';
@@ -312,7 +312,7 @@ export class ConfigManager {
 
 	/**
 	 * Check if regex mode is forced
-	 * @returns {boolean}
+	 * @returns True if regex mode is forced
 	 */
 	public isRegexModeForced(): boolean {
 		return this.config.plugins.forceRegexMode;
@@ -320,8 +320,8 @@ export class ConfigManager {
 
 	/**
 	 * Get plugin strategy for a specific framework
-	 * @param {string} framework - Framework identifier
-	 * @returns {Object} Strategy configuration
+	 * @param framework - Framework identifier
+	 * @returns Strategy configuration
 	 */
 	public getPluginStrategy(framework: string): {
 		forceRegex: boolean;

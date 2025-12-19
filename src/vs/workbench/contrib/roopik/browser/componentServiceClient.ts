@@ -29,10 +29,10 @@ import {
 	CreateComponentRequest
 } from '../common/component/types.js';
 
-/**
- * IPC Channel name for ComponentService communication
- */
-export const COMPONENT_CHANNEL_NAME = 'roopikComponent';
+import { COMPONENT_CHANNEL_NAME } from '../common/component/index.js';
+
+// IPC Channel name for ComponentService communication
+export { COMPONENT_CHANNEL_NAME };
 
 export class ComponentServiceClient implements IComponentService {
 	readonly _serviceBrand: undefined;

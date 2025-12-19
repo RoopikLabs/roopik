@@ -54,11 +54,17 @@ export class RoopikDashboardView extends ViewPane {
 	private projectsContainer: HTMLElement | undefined;
 	private static animationsInjected = false;
 
-	/** Timeout handle for loading state */
+	/** Timeout handle for canvas loading state */
 	private loadingTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
-	/** Whether we've received the initialization event */
+	/** Timeout handle for project loading state */
+	private projectLoadingTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+	/** Whether we've received the canvas initialization event */
 	private serviceInitialized: boolean = false;
+
+	/** Whether we've received the project storage initialization event */
+	private projectServiceInitialized: boolean = false;
 
 	/** Loading timeout in milliseconds (5 seconds) */
 	private static readonly LOADING_TIMEOUT_MS = 5000;
@@ -107,6 +113,8 @@ export class RoopikDashboardView extends ViewPane {
 
 		// Subscribe to project storage events to auto-refresh projects list
 		this._register(this.projectStorageService.onDidInitialize(() => {
+			this.projectServiceInitialized = true;
+			this.clearProjectLoadingTimeout();
 			this.loadProjectsNow();
 		}));
 		this._register(this.projectStorageService.onProjectsChanged(() => {
@@ -115,7 +123,7 @@ export class RoopikDashboardView extends ViewPane {
 	}
 
 	/**
-	 * Clear the loading timeout if it exists
+	 * Clear the canvas loading timeout if it exists
 	 */
 	private clearLoadingTimeout(): void {
 		if (this.loadingTimeoutHandle) {
@@ -125,20 +133,43 @@ export class RoopikDashboardView extends ViewPane {
 	}
 
 	/**
-	 * Start loading timeout - shows error state if onDidInitialize never fires
+	 * Clear the project loading timeout if it exists
+	 */
+	private clearProjectLoadingTimeout(): void {
+		if (this.projectLoadingTimeoutHandle) {
+			clearTimeout(this.projectLoadingTimeoutHandle);
+			this.projectLoadingTimeoutHandle = undefined;
+		}
+	}
+
+	/**
+	 * Start canvas loading timeout - shows error state if onDidInitialize never fires
 	 */
 	private startLoadingTimeout(): void {
 		this.clearLoadingTimeout();
 		this.loadingTimeoutHandle = setTimeout(() => {
 			if (!this.serviceInitialized) {
-				console.warn('[RoopikDashboardView] Loading timeout - service initialization took too long');
+				console.warn('[RoopikDashboardView] Canvas loading timeout - service initialization took too long');
 				this.showTimeoutState();
 			}
 		}, RoopikDashboardView.LOADING_TIMEOUT_MS);
 	}
 
 	/**
-	 * Show timeout/error state when initialization takes too long
+	 * Start project loading timeout - shows error state if onDidInitialize never fires
+	 */
+	private startProjectLoadingTimeout(): void {
+		this.clearProjectLoadingTimeout();
+		this.projectLoadingTimeoutHandle = setTimeout(() => {
+			if (!this.projectServiceInitialized) {
+				console.warn('[RoopikDashboardView] Project loading timeout - service initialization took too long');
+				this.showProjectTimeoutState();
+			}
+		}, RoopikDashboardView.LOADING_TIMEOUT_MS);
+	}
+
+	/**
+	 * Show timeout/error state when canvas initialization takes too long
 	 */
 	private showTimeoutState(): void {
 		if (!this.canvasesContainer) {
@@ -157,6 +188,27 @@ export class RoopikDashboardView extends ViewPane {
 					this.showLoadingState();
 					this.startLoadingTimeout();
 				}
+			}
+		]);
+	}
+
+	/**
+	 * Show timeout/error state when project initialization takes too long
+	 */
+	private showProjectTimeoutState(): void {
+		if (!this.projectsContainer) {
+			return;
+		}
+
+		while (this.projectsContainer.firstChild) {
+			this.projectsContainer.removeChild(this.projectsContainer.firstChild);
+		}
+
+		this.createSection(this.projectsContainer, 'Projects', [
+			{
+				label: 'Service unavailable',
+				description: 'Open a workspace first',
+				onClick: () => { }
 			}
 		]);
 	}
@@ -468,11 +520,18 @@ export class RoopikDashboardView extends ViewPane {
 		try {
 			const isInitialized = await this.projectStorageService.isInitializedAsync();
 			if (isInitialized) {
+				// Service already initialized (IDE reload case) - load immediately
+				this.projectServiceInitialized = true;
+				this.clearProjectLoadingTimeout();
 				this.loadProjectsNow();
+			} else {
+				// Not initialized yet - start timeout, wait for onDidInitialize event
+				this.startProjectLoadingTimeout();
 			}
-			// Otherwise, wait for onDidInitialize event (subscribed in constructor)
 		} catch (err) {
 			console.error('[RoopikDashboardView] checkAndLoadProjects: error checking initialization:', err);
+			// Start timeout as fallback
+			this.startProjectLoadingTimeout();
 		}
 	}
 
@@ -501,12 +560,20 @@ export class RoopikDashboardView extends ViewPane {
 			}
 
 			// Convert to section items
-			const items = projects.map((project: ProjectInfo) => ({
-				label: project.name,
-				description: this.formatTimeAgo(project.updatedAt),
-				onClick: () => this.openProject(project),
-				onDelete: () => this.deleteProject(project.id, project.name)
-			}));
+			const items = projects.map((project: ProjectInfo) => {
+				// Build description: time + framework (if available)
+				let description = this.formatTimeAgo(project.updatedAt);
+				if (project.frameworkDisplayName) {
+					description += ` • ${project.frameworkDisplayName}`;
+				}
+
+				return {
+					label: project.name,
+					description,
+					onClick: () => this.openProject(project),
+					onDelete: () => this.deleteProject(project.id, project.name)
+				};
+			});
 
 			this.createSection(this.projectsContainer, 'Recent Projects', items);
 		} catch (err) {

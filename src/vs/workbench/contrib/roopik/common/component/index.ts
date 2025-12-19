@@ -32,3 +32,8 @@ export {
 	ComponentDeletedEvent,
 	ComponentUpdatedEvent
 } from './componentService.js';
+
+/**
+ * IPC Channel name for ComponentService communication.
+*/
+export const COMPONENT_CHANNEL_NAME = 'roopikComponent';

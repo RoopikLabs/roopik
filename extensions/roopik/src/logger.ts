@@ -1,6 +1,6 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Roopik. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
 /**
@@ -364,7 +364,7 @@ export class Logger {
 	 * Rotate log file when size limit reached
 	 */
 	private rotateLogFile(): void {
-		if (!this.currentLogFile) return;
+		if (!this.currentLogFile) { return; }
 
 		try {
 			const timestamp = Date.now();

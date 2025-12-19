@@ -10,6 +10,7 @@ Track of all VS Code core files we've modified (for upstream conflict handling).
 | `build/hygiene.ts:25-31` | Added `roopikCopyrightHeaderLines` constant array | Allow Roopik copyright alongside Microsoft |
 | `build/hygiene.ts:115-135` | Modified `copyrights` method to check both Microsoft and Roopik headers | Check for either Microsoft or Roopik copyright, fail only if neither found |
 | `eslint.config.js:2185-2205` | Added roopik extension header override | Allow Roopik copyright in extensions/roopik/ |
+| `eslint.config.js` (`local/code-import-patterns` → `target: 'src/vs/code/~'`) | Added Roopik allow-pattern for `vs/workbench/contrib/roopik/~` (electron layers) | Prevent hygiene/precommit failures caused by Roopik imports in `src/vs/code/electron-main/*` (layering rule whitelist) |
 | `build/lib/electron.ts:190-200` | Changed `winIcon` from `path.join(root, 'resources/win32/code.ico')` to `'resources/win32/code.ico'` | Fix .exe icon embedding |
 
 ## Branding (Text/Metadata)
@@ -57,6 +58,7 @@ Track of all VS Code core files we've modified (for upstream conflict handling).
 - `build/lib/electron.ts` (line ~190-200) - Change `winIcon`: `path.join(root, 'resources/win32/code.ico')` → `'resources/win32/code.ico'`
 - `build/hygiene.ts` - Add Roopik copyright constants and update copyrights method (see code below)
 - `eslint.config.js` (end of file) - Add roopik extension header override block (see code below)
+- `eslint.config.js` (code-import-patterns) - Add Roopik allow-pattern under `target: 'src/vs/code/~'` for electron layers so `npm run precommit` doesn't fail when `src/vs/code/electron-main/*` imports `workbench/contrib/roopik/*`
 
 ### Files to Replace
 - `CONTRIBUTING.md` - Replace with Roopik version
@@ -116,6 +118,20 @@ Update `copyrights` method (around line 114):
 			' *--------------------------------------------------------------------------------------------'
 		]]
 	}
+},
+```
+
+**eslint.config.js code-import-patterns exception (Roopik):**
+
+This is a targeted whitelist entry so the local `code-import-patterns` rule (a whitelist-based layering check) allows Roopik IPC/service wiring from `src/vs/code/**` in Electron layers.
+
+```javascript
+// Roopik fork: allow bridging from code/electron-main into our
+// workbench contrib area for custom services while keeping
+// other layering rules intact.
+{
+	'when': 'hasElectron',
+	'pattern': 'vs/workbench/contrib/roopik/~'
 },
 ```
 

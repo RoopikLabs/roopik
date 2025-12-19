@@ -26,3 +26,8 @@ export {
 	CanvasUpdatedEvent,
 	CanvasFocusChangedEvent
 } from './canvasService.js';
+
+/**
+ * IPC Channel name for CanvasService communication.
+*/
+export const CANVAS_CHANNEL_NAME = 'roopikCanvas';

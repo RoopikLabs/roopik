@@ -134,12 +134,12 @@ import { DEV_SERVER_CHANNEL } from '../../workbench/contrib/roopik/common/projec
 // ROOPIK: Canvas Service - Canvas lifecycle and metadata management
 import { CanvasService } from '../../workbench/contrib/roopik/electron-main/canvas/canvasService.js';
 import { CanvasChannel } from '../../workbench/contrib/roopik/electron-main/channel/canvasChannel.js';
-import { CANVAS_CHANNEL_NAME } from '../../workbench/contrib/roopik/browser/canvasServiceClient.js';
+import { CANVAS_CHANNEL_NAME } from '../../workbench/contrib/roopik/common/canvas/index.js';
 import { RoopikStorageService } from '../../workbench/contrib/roopik/electron-main/storage/storageService.js';
 // ROOPIK: Component Service - Component lifecycle, build queue, file watching
 import { ComponentService } from '../../workbench/contrib/roopik/electron-main/component/componentService.js';
 import { ComponentChannel } from '../../workbench/contrib/roopik/electron-main/channel/componentChannel.js';
-import { COMPONENT_CHANNEL_NAME } from '../../workbench/contrib/roopik/browser/componentServiceClient.js';
+import { COMPONENT_CHANNEL_NAME } from '../../workbench/contrib/roopik/common/component/index.js';
 import { BuildService } from '../../workbench/contrib/roopik/electron-main/build/buildService.js';
 import { ImportService } from '../../workbench/contrib/roopik/electron-main/import/importService.js';
 import { FileWatcher } from '../../workbench/contrib/roopik/electron-main/watch/fileWatcher.js';
@@ -300,12 +300,13 @@ export class CodeApplication extends Disposable {
 			const uri = URI.parse(details.url);
 			if (uri.scheme === Schemas.vscodeWebview) {
 				// ROOPIK: Allow all webview requests for Roopik browser preview (Electron webview tag)
-				// if (!isAllowedWebviewRequest(uri, details)) {
-				// 	this.logService.error('Blocked vscode-webview request', details.url);
-				// 	return callback({ cancel: true });
-				// }
 				// Original validation disabled to enable full browser preview functionality
+				// if (!isAllowedWebviewRequest(uri, details)) {
+				//  this.logService.error('Blocked vscode-webview request', details.url);
+				//  return callback({ cancel: true });
+				// }
 				// ROOPIK END
+				return callback({ cancel: false });
 			}
 
 			if (uri.scheme === Schemas.vscodeFileResource) {
@@ -443,9 +444,9 @@ export class CodeApplication extends Disposable {
 			}
 
 			// Block any in-page navigation
-			// ROOPIK: Block any in-page navigation (except for ProjectMode browser views)
 			contents.on('will-navigate', event => {
-				// ROOPIK: Allow navigation for ProjectMode managed browser views
+				// ROOPIK: Block any in-page navigation (except for ProjectMode browser views)
+				// Allow navigation for ProjectMode managed browser views
 				const webContentsId = contents.id;
 				if (BrowserViewService.isManagedWebContents(webContentsId)) {
 					this.logService.trace(`[ProjectMode] Allowing navigation for managed browser view ${webContentsId}`);
@@ -1293,6 +1294,7 @@ export class CodeApplication extends Disposable {
 		const utilityProcessWorkerChannel = ProxyChannel.fromService(accessor.get(IUtilityProcessWorkerMainService), disposables);
 		mainProcessElectronServer.registerChannel(ipcUtilityProcessWorkerChannelName, utilityProcessWorkerChannel);
 
+		// ROOPIK: -----------------------------------------------------------
 		// ROOPIK: ProjectMode - Browser Preview with embedded DevTools and CDP
 		const projectModeService = new BrowserViewService(accessor.get(ILifecycleMainService));
 		const projectModeChannel = new ProjectModeChannel(projectModeService);

@@ -26,7 +26,7 @@ const copyrightHeaderLines = [
 const roopikCopyrightHeaderLines = [
 	'/*---------------------------------------------------------------------------------------------',
 	' *  Copyright (c) Roopik. All rights reserved.',
-	' *  Licensed under the MIT License. See License.txt in the project root for license information.',
+	' *  Licensed under the MIT License.',
 	' *--------------------------------------------------------------------------------------------*/',
 ];
 
@@ -114,7 +114,7 @@ export function hygiene(some: NodeJS.ReadWriteStream | string[] | undefined, run
 
 	const copyrights = es.through(function (file: VinylFileWithLines) {
 		const lines = file.__lines;
-		
+
 		// ROOPIK: Check if file matches either Microsoft or Roopik copyright header
 		let hasMicrosoftCopyright = true;
 		let hasRoopikCopyright = true;
@@ -126,7 +126,7 @@ export function hygiene(some: NodeJS.ReadWriteStream | string[] | undefined, run
 				hasRoopikCopyright = false;
 			}
 		}
-		
+
 		if (!hasMicrosoftCopyright && !hasRoopikCopyright) {
 			console.error(file.relative + ': Missing or bad copyright statement');
 			errorCount++;

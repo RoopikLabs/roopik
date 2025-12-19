@@ -448,46 +448,104 @@ function updateEslintConfig() {
 		return { updated: false, errors: 1 };
 	}
 
-	// Check if override block already exists
-	if (content.includes('// ROOPIK: Override header rule for roopik extension')) {
+	let updatedContent = content;
+	let didUpdate = false;
+
+	// 1) Ensure Roopik extension header override exists
+	if (updatedContent.includes('// ROOPIK: Override header rule for roopik extension')) {
 		success('eslint.config.js - Override block already exists');
-		return { updated: false, errors: 0 };
-	}
+	} else {
+		// Find the final closing - just the ); at the end
+		// Use a regex to handle different line ending styles
+		const closingPattern = /\n\);\s*$/;
+		if (!closingPattern.test(updatedContent)) {
+			warning('eslint.config.js - Could not find closing ); anchor point');
+			return { updated: false, errors: 0 };
+		}
 
-	// Find the final closing - just the ); at the end
-	// Use a regex to handle different line ending styles
-	const closingPattern = /\n\);\s*$/;
-
-	if (!closingPattern.test(content)) {
-		warning('eslint.config.js - Could not find closing ); anchor point');
-		return { updated: false, errors: 0 };
-	}
-
-	// Insert the Roopik block before the final );
-	const roopikBlock = `\t// ROOPIK: Override header rule for roopik extension
+		// Insert the Roopik block before the final );
+		// Include both extensions/roopik and src/vs/workbench/contrib/roopik
+		const roopikBlock = `\t// ROOPIK: Override header rule for roopik extension and core integration
 \t{
-\t\tfiles: ['extensions/roopik/**/*.{ts,tsx,js,jsx}'],
+\t\tfiles: ['extensions/roopik/**/*.{ts,tsx,js,mjs,jsx}', 'src/vs/workbench/contrib/roopik/**/*.{ts,tsx,js,mjs,jsx}'],
 \t\tplugins: { header: pluginHeader },
 \t\trules: {
 \t\t\t'header/header': [2, 'block', [
 \t\t\t\t'---------------------------------------------------------------------------------------------',
 \t\t\t\t' *  Copyright (c) Roopik. All rights reserved.',
-\t\t\t\t' *  Licensed under the MIT License. See License.txt in the project root for license information.',
+\t\t\t\t' *  Licensed under the MIT License.',
 \t\t\t\t' *--------------------------------------------------------------------------------------------'
 \t\t\t]]
 \t\t}
 \t},
 `;
 
-	const updatedContent = content.replace(closingPattern, '\n' + roopikBlock + ');');
+		updatedContent = updatedContent.replace(closingPattern, '\n' + roopikBlock + ');');
+		success('eslint.config.js - Added roopik extension and core integration override block');
+		didUpdate = true;
+	}
 
-	if (writeFile(filePath, updatedContent)) {
-		success('eslint.config.js - Added roopik extension override block');
-		return { updated: true, errors: 0 };
+	// 2) Ensure docs folder is excluded from global ignores
+	if (updatedContent.includes("'docs/**',")) {
+		success('eslint.config.js - docs folder already excluded from ignores');
 	} else {
+		const globalIgnoresPattern = /ignores:\s*\[\s*\.\.\.ignores,/;
+		const match = updatedContent.match(globalIgnoresPattern);
+		if (match) {
+			const insertPos = updatedContent.indexOf(match[0]) + match[0].length;
+			updatedContent = updatedContent.slice(0, insertPos) + "\n\t\t\t'docs/**'," + updatedContent.slice(insertPos);
+			success('eslint.config.js - Added docs/** to global ignores');
+			didUpdate = true;
+		} else {
+			warning('eslint.config.js - Could not find global ignores section');
+		}
+	}
+
+	// 3) Ensure Roopik import-pattern exception exists for src/vs/code/** in electron layers
+	if (updatedContent.includes("'pattern': 'vs/workbench/contrib/roopik/~'")) {
+		success('eslint.config.js - code-import-patterns exception already exists');
+	} else {
+		const targetMarker = "'target': 'src/vs/code/~'";
+		const targetIndex = updatedContent.indexOf(targetMarker);
+		if (targetIndex === -1) {
+			warning('eslint.config.js - Could not find src/vs/code/~ rule block');
+		} else {
+			const vsCodeRestriction = "'vs/code/~',";
+			const vsCodeRestrictionIndex = updatedContent.indexOf(vsCodeRestriction, targetIndex);
+			if (vsCodeRestrictionIndex === -1) {
+				warning('eslint.config.js - Could not find vs/code/~ restriction inside src/vs/code/~ block');
+			} else {
+				const insertAfterLineEnd = updatedContent.indexOf('\n', vsCodeRestrictionIndex);
+				if (insertAfterLineEnd === -1) {
+					warning('eslint.config.js - Could not determine insertion point for src/vs/code/~ block');
+				} else {
+					const roopikImportException =
+						"\t\t\t\t\t\t// Roopik fork: allow bridging from code/electron-main into our\n" +
+						"\t\t\t\t\t\t// workbench contrib area for custom services while keeping\n" +
+						"\t\t\t\t\t\t// other layering rules intact.\n" +
+						"\t\t\t\t\t\t{\n" +
+						"\t\t\t\t\t\t\t'when': 'hasElectron',\n" +
+						"\t\t\t\t\t\t\t'pattern': 'vs/workbench/contrib/roopik/~'\n" +
+						"\t\t\t\t\t\t},\n";
+
+					const insertPos = insertAfterLineEnd + 1;
+					updatedContent = updatedContent.slice(0, insertPos) + roopikImportException + updatedContent.slice(insertPos);
+					success('eslint.config.js - Added code-import-patterns exception for Roopik');
+					didUpdate = true;
+				}
+			}
+		}
+	}
+
+	if (didUpdate) {
+		if (writeFile(filePath, updatedContent)) {
+			return { updated: true, errors: 0 };
+		}
 		error('eslint.config.js - Failed to update');
 		return { updated: false, errors: 1 };
 	}
+
+	return { updated: false, errors: 0 };
 }
 
 // Apply build/gulpfile.extensions.ts updates
@@ -582,7 +640,7 @@ function updateHygieneMjs() {
 const roopikCopyrightHeaderLines = [
 	'/*---------------------------------------------------------------------------------------------',
 	' *  Copyright (c) Roopik. All rights reserved.',
-	' *  Licensed under the MIT License. See License.txt in the project root for license information.',
+	' *  Licensed under the MIT License.',
 	' *--------------------------------------------------------------------------------------------*/',
 ];
 `;
@@ -657,6 +715,50 @@ const roopikCopyrightHeaderLines = [
 	}
 
 	return { updated: false, errors: 0 };
+}
+
+// Apply build/filters.ts updates - Exclude docs folder from hygiene checks
+function updateFiltersTs() {
+	const filePath = path.join(ROOT_DIR, 'build/filters.ts');
+
+	if (!fileExists(filePath)) {
+		warning('build/filters.ts not found (skipping)');
+		return { updated: false, errors: 0 };
+	}
+
+	let content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	// Check if already updated
+	if (content.includes("'!docs/**/*',")) {
+		success('build/filters.ts - docs folder already excluded');
+		return { updated: false, errors: 0 };
+	}
+
+	// Find the 'all' export and add !docs/**/* exclusion
+	const allExportPattern = /export const all = Object\.freeze<string\[\]>\(\[([\s\S]*?)'!cli\/\*\*\/\*',/;
+	const match = content.match(allExportPattern);
+
+	if (!match) {
+		warning('build/filters.ts - Could not find all export array');
+		return { updated: false, errors: 0 };
+	}
+
+	// Insert before !cli/**/*
+	const updated = content.replace(
+		"'!cli/**/*',",
+		"'!docs/**/*',\n\t'!cli/**/*',"
+	);
+
+	if (writeFile(filePath, updated)) {
+		success('build/filters.ts - Added docs folder exclusion to hygiene checks');
+		return { updated: true, errors: 0 };
+	} else {
+		error('build/filters.ts - Failed to update');
+		return { updated: false, errors: 1 };
+	}
 }
 
 // Apply .mention-bot updates
@@ -1345,6 +1447,12 @@ function main() {
 		totalChanges++;
 	}
 	totalErrors += hygieneResult.errors;
+
+	const filtersResult = updateFiltersTs();
+	if (filtersResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += filtersResult.errors;
 
 	const mentionBotResult = updateMentionBot();
 	if (mentionBotResult.updated) {

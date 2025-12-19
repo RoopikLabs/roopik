@@ -1,12 +1,13 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Roopik. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { RoopikExtensionManager } from './roopikExtensionManager';
 import { Logger, LogLevel } from './logger';
+import type { Component, BuildResult, BuildErrorInfo } from './types/component';
 
 /**
  * Roopik Canvas Extension
@@ -188,7 +189,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			manager!.handleComponentCreatedFromCore({
 				componentId: event.componentId,
 				canvasId: event.canvasId,
-				component: event.component as any
+				component: event.component as Component
 			});
 		}
 	);
@@ -202,9 +203,9 @@ export async function activate(context: vscode.ExtensionContext) {
 				componentId: event.componentId,
 				canvasId: event.canvasId,
 				success: event.success,
-				result: event.result as any,
-				errorInfo: event.errorInfo as any,
-				trigger: event.trigger as any
+				result: event.result as (Omit<BuildResult, 'bundledCode'> & { bundlePath?: string }) | undefined,
+				errorInfo: event.errorInfo as BuildErrorInfo | undefined,
+				trigger: event.trigger as 'create' | 'update' | 'rebuild' | 'file-change'
 			});
 		}
 	);
@@ -226,8 +227,8 @@ export async function activate(context: vscode.ExtensionContext) {
 			manager!.handleComponentUpdatedFromCore({
 				componentId: event.componentId,
 				canvasId: event.canvasId,
-				component: event.component as any,
-				changes: event.changes as any
+				component: event.component as Component,
+				changes: event.changes as ('name' | 'source')[]
 			});
 		}
 	);

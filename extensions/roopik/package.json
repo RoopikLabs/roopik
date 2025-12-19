@@ -34,7 +34,7 @@
     "build:webview": "npm run build --prefix webview",
     "watch:all": "npm-run-all -p watch watch:webview",
     "watch:webview": "npm run dev --prefix webview",
-    "postinstall": "cd webview && npm install"
+    "postinstall": "npm --prefix webview install && npm --prefix webview run build"
 
   },
   "devDependencies": {
