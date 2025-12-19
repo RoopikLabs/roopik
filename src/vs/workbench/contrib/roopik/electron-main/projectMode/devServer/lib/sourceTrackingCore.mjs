@@ -78,7 +78,7 @@ export function isInsideString(code, position) {
 		}
 
 		// Toggle string states
-		if (char === "'" && !inDoubleQuote && !inTemplateString) {
+		if (char === `'` && !inDoubleQuote && !inTemplateString) {
 			inSingleQuote = !inSingleQuote;
 		} else if (char === '"' && !inSingleQuote && !inTemplateString) {
 			inDoubleQuote = !inDoubleQuote;
@@ -130,7 +130,7 @@ export function isInsideScriptOrStyle(html, position) {
 
 		// Track quote context (for attribute values)
 		if (!inScript && !inStyle) {
-			if (char === "'" && !inDoubleQuote) {
+			if (char === `'` && !inDoubleQuote) {
 				inSingleQuote = !inSingleQuote;
 			} else if (char === '"' && !inSingleQuote) {
 				inDoubleQuote = !inDoubleQuote;
@@ -222,12 +222,12 @@ export function findMatchingClosingTag(allMatches, openingPos, tagName) {
 	let foundOpening = false;
 
 	for (const match of allMatches) {
-		if (match.start < openingPos) continue;
+		if (match.start < openingPos) { continue; }
 		if (match.start === openingPos && match.type === 'opening') {
 			foundOpening = true;
 			continue;
 		}
-		if (!foundOpening) continue;
+		if (!foundOpening) { continue; }
 
 		if (match.tagName === tagName) {
 			if (match.type === 'opening') {

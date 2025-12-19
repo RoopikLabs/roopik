@@ -366,13 +366,13 @@ export function findNearestAvailableSlot(
 		for (let dr = -radius; dr <= radius; dr++) {
 			for (let dc = -radius; dc <= radius; dc++) {
 				// Only check the perimeter of the ring
-				if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) continue;
+				if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) { continue; }
 
 				const testRow = targetSlot.row + dr;
 				const testCol = targetSlot.col + dc;
 
 				// Skip invalid positions
-				if (testRow < 0 || testCol < 0 || testCol >= config.gridColumns) continue;
+				if (testRow < 0 || testCol < 0 || testCol >= config.gridColumns) { continue; }
 
 				const testSlotIndex = testRow * config.gridColumns + testCol;
 
@@ -418,7 +418,7 @@ export function snapToGridSlot(
 
 	// Check if this slot is occupied by another sandbox
 	const isOccupied = sandboxes.some(sandbox => {
-		if (sandbox.id === excludeSandboxId) return false;
+		if (sandbox.id === excludeSandboxId) { return false; }
 		const sandboxSlot = getSlotFromPosition(sandbox.x, sandbox.y, config);
 		return sandboxSlot.slotIndex === slot.slotIndex;
 	});
@@ -444,7 +444,7 @@ export function checkOverlap(
 	const overlappingWith: string[] = [];
 
 	sandboxes.forEach(sandbox => {
-		if (sandbox.id === excludeSandboxId) return;
+		if (sandbox.id === excludeSandboxId) { return; }
 
 		// Check bounding box overlap
 		const overlapX = x < sandbox.x + totalWidth && x + totalWidth > sandbox.x;

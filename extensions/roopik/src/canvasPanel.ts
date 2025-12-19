@@ -1,6 +1,6 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Roopik. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
@@ -16,6 +16,7 @@ import type {
 	ComponentDeletedEvent,
 	ComponentUpdatedEvent
 } from './types/componentEvents';
+import type { SourceData } from './types/component';
 
 // ============================================================================
 // Canvas Preferences (matches Core's storageTypes.ts)
@@ -471,7 +472,7 @@ export class CanvasPanel implements vscode.Disposable {
 		const component = await this.manager.createComponent({
 			canvasId: this.canvasId,
 			name: payload.name,
-			sourceData: payload.sourceData as any,
+			sourceData: payload.sourceData as SourceData,
 			position: payload.position
 		});
 
@@ -661,8 +662,8 @@ export class CanvasPanel implements vscode.Disposable {
 
 			// Sort: entry file first, then alphabetically
 			files.sort((a, b) => {
-				if (a.isEntry && !b.isEntry) return -1;
-				if (!a.isEntry && b.isEntry) return 1;
+				if (a.isEntry && !b.isEntry) { return -1; }
+				if (!a.isEntry && b.isEntry) { return 1; }
 				return a.filename.localeCompare(b.filename);
 			});
 

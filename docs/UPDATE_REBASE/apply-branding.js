@@ -700,6 +700,50 @@ const roopikCopyrightHeaderLines = [
 	return { updated: false, errors: 0 };
 }
 
+// Apply build/filters.ts updates - Exclude docs folder from hygiene checks
+function updateFiltersTs() {
+	const filePath = path.join(ROOT_DIR, 'build/filters.ts');
+
+	if (!fileExists(filePath)) {
+		warning('build/filters.ts not found (skipping)');
+		return { updated: false, errors: 0 };
+	}
+
+	let content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	// Check if already updated
+	if (content.includes("'!docs/**/*',")) {
+		success('build/filters.ts - docs folder already excluded');
+		return { updated: false, errors: 0 };
+	}
+
+	// Find the 'all' export and add !docs/**/* exclusion
+	const allExportPattern = /export const all = Object\.freeze<string\[\]>\(\[([\s\S]*?)'!cli\/\*\*\/\*',/;
+	const match = content.match(allExportPattern);
+
+	if (!match) {
+		warning('build/filters.ts - Could not find all export array');
+		return { updated: false, errors: 0 };
+	}
+
+	// Insert before !cli/**/*
+	const updated = content.replace(
+		"'!cli/**/*',",
+		"'!docs/**/*',\n\t'!cli/**/*',"
+	);
+
+	if (writeFile(filePath, updated)) {
+		success('build/filters.ts - Added docs folder exclusion to hygiene checks');
+		return { updated: true, errors: 0 };
+	} else {
+		error('build/filters.ts - Failed to update');
+		return { updated: false, errors: 1 };
+	}
+}
+
 // Apply .mention-bot updates
 function updateMentionBot() {
 	const filePath = path.join(ROOT_DIR, '.mention-bot');
@@ -759,6 +803,90 @@ function clearMailmap() {
 		return { updated: true, errors: 0 };
 	} else {
 		error('.mailmap - Failed to clear');
+		return { updated: false, errors: 1 };
+	}
+}
+
+// Remove product.overrides.json from .gitignore - Roopik needs this file tracked in git
+function removeProductOverridesFromGitignore() {
+	const filePath = path.join(ROOT_DIR, '.gitignore');
+
+	if (!fileExists(filePath)) {
+		warning('.gitignore not found (skipping product.overrides.json removal)');
+		return { updated: false, errors: 0 };
+	}
+
+	let content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	// Check if product.overrides.json is in .gitignore
+	if (!content.includes('product.overrides.json')) {
+		success('.gitignore - product.overrides.json already not ignored');
+		return { updated: false, errors: 0 };
+	}
+
+	// Remove the line containing product.overrides.json
+	const lines = content.split('\n');
+	const filteredLines = lines.filter(line => !line.trim().includes('product.overrides.json'));
+	const updatedContent = filteredLines.join('\n');
+
+	if (writeFile(filePath, updatedContent)) {
+		success('.gitignore - Removed product.overrides.json from ignore list');
+		return { updated: true, errors: 0 };
+	} else {
+		error('.gitignore - Failed to remove product.overrides.json');
+		return { updated: false, errors: 1 };
+	}
+}
+
+// Update .gitignore - Add Microsoft-specific CI/CD ignores
+function updateGitignore() {
+	const filePath = path.join(ROOT_DIR, '.gitignore');
+
+	if (!fileExists(filePath)) {
+		warning('.gitignore not found (skipping)');
+		return { updated: false, errors: 0 };
+	}
+
+	let content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	// Check if Microsoft ignores already exist
+	if (content.includes('# Microsoft-specific CI/CD and automation (not needed for Roopik fork)')) {
+		success('.gitignore - Microsoft ignores already added');
+		return { updated: false, errors: 0 };
+	}
+
+	// Add Microsoft-specific ignores at the end
+	const microsoftIgnores = `
+# Microsoft-specific CI/CD and automation (not needed for Roopik fork)
+.github/workflows/
+.github/endgame/
+.github/CODEOWNERS
+.github/dependabot.yml
+.github/similarity.yml
+.github/classifier.json
+.github/CODENOTIFY
+.github/commands/
+.github/commands.json
+`;
+
+	// Ensure file ends with newline before appending
+	if (!content.endsWith('\n')) {
+		content += '\n';
+	}
+
+	const updatedContent = content + microsoftIgnores;
+
+	if (writeFile(filePath, updatedContent)) {
+		success('.gitignore - Added Microsoft-specific CI/CD ignores');
+		return { updated: true, errors: 0 };
+	} else {
+		error('.gitignore - Failed to update');
 		return { updated: false, errors: 1 };
 	}
 }
@@ -1387,6 +1515,12 @@ function main() {
 	}
 	totalErrors += hygieneResult.errors;
 
+	const filtersResult = updateFiltersTs();
+	if (filtersResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += filtersResult.errors;
+
 	const mentionBotResult = updateMentionBot();
 	if (mentionBotResult.updated) {
 		totalChanges++;
@@ -1398,6 +1532,18 @@ function main() {
 		totalChanges++;
 	}
 	totalErrors += mailmapResult.errors;
+
+	const productOverridesResult = removeProductOverridesFromGitignore();
+	if (productOverridesResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += productOverridesResult.errors;
+
+	const gitignoreResult = updateGitignore();
+	if (gitignoreResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += gitignoreResult.errors;
 
 	// ============================================================================
 	// Manual Code Changes - Core Integration

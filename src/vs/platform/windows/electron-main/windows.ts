@@ -145,6 +145,8 @@ export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowSt
 		height: windowState.height,
 		webPreferences: {
 			...webPreferences,
+			// ROOPIK: Enable webview tag for Roopik browser preview
+			webviewTag: true,
 			enableWebSQL: false,
 			spellcheck: false,
 			zoomFactor: zoomLevelToZoomFactor(windowState.zoomLevel ?? windowSettings?.zoomLevel),
@@ -156,8 +158,6 @@ export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowSt
 			// TODO(deepak1556): Should be removed once migration is complete
 			// https://github.com/microsoft/vscode/issues/239228
 			enableDeprecatedPaste: true,
-			// Enable webview tag for Roopik browser preview
-			webviewTag: true,
 		},
 		experimentalDarkMode: true
 	};
@@ -198,7 +198,7 @@ export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowSt
 
 	const useNativeTabs = isMacintosh && windowSettings?.nativeTabs === true;
 	if (useNativeTabs) {
-		options.tabbingIdentifier = productService.nameShort; // this opts in to sierra tabs
+		options.tabbingIdentifier = productService.nameShort; // this opts in to native macOS tabs
 	}
 
 	const hideNativeTitleBar = !hasNativeTitlebar(configurationService, overrides?.forceNativeTitlebar ? TitlebarStyle.NATIVE : undefined);
