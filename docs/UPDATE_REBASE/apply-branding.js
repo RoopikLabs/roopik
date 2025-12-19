@@ -464,10 +464,9 @@ function updateEslintConfig() {
 		}
 
 		// Insert the Roopik block before the final );
-		// Include both extensions/roopik and src/vs/workbench/contrib/roopik
-		const roopikBlock = `\t// ROOPIK: Override header rule for roopik extension and core integration
+		const roopikBlock = `\t// ROOPIK: Override header rule for roopik extension
 \t{
-\t\tfiles: ['extensions/roopik/**/*.{ts,tsx,js,mjs,jsx}', 'src/vs/workbench/contrib/roopik/**/*.{ts,tsx,js,mjs,jsx}'],
+\t\tfiles: ['extensions/roopik/**/*.{ts,tsx,js,jsx}'],
 \t\tplugins: { header: pluginHeader },
 \t\trules: {
 \t\t\t'header/header': [2, 'block', [
@@ -481,27 +480,11 @@ function updateEslintConfig() {
 `;
 
 		updatedContent = updatedContent.replace(closingPattern, '\n' + roopikBlock + ');');
-		success('eslint.config.js - Added roopik extension and core integration override block');
+		success('eslint.config.js - Added roopik extension override block');
 		didUpdate = true;
 	}
 
-	// 2) Ensure docs folder is excluded from global ignores
-	if (updatedContent.includes("'docs/**',")) {
-		success('eslint.config.js - docs folder already excluded from ignores');
-	} else {
-		const globalIgnoresPattern = /ignores:\s*\[\s*\.\.\.ignores,/;
-		const match = updatedContent.match(globalIgnoresPattern);
-		if (match) {
-			const insertPos = updatedContent.indexOf(match[0]) + match[0].length;
-			updatedContent = updatedContent.slice(0, insertPos) + "\n\t\t\t'docs/**'," + updatedContent.slice(insertPos);
-			success('eslint.config.js - Added docs/** to global ignores');
-			didUpdate = true;
-		} else {
-			warning('eslint.config.js - Could not find global ignores section');
-		}
-	}
-
-	// 3) Ensure Roopik import-pattern exception exists for src/vs/code/** in electron layers
+	// 2) Ensure Roopik import-pattern exception exists for src/vs/code/** in electron layers
 	if (updatedContent.includes("'pattern': 'vs/workbench/contrib/roopik/~'")) {
 		success('eslint.config.js - code-import-patterns exception already exists');
 	} else {
