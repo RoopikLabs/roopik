@@ -91,11 +91,7 @@
 				"icon": "$(link-external)"
 			},
 			{
-				"command": "roopik-agent.cloudButtonClicked",
-				"title": "%command.cloud.title%",
-				"icon": "$(cloud)"
-			},
-			{
+
 				"command": "roopik-agent.settingsButtonClicked",
 				"title": "%command.settings.title%",
 				"icon": "$(settings-gear)"

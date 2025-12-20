@@ -6,7 +6,6 @@ import * as yaml from "yaml"
 
 import type { OrganizationSettings, MarketplaceItem, MarketplaceItemType, McpMarketplaceItem } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
-import { CloudService } from "@roo-code/cloud"
 
 import { GlobalFileNames } from "../../shared/globalFileNames"
 import { ensureSettingsDirectoryExists } from "../../utils/globalContext"
@@ -40,17 +39,8 @@ export class MarketplaceManager {
 
 			let orgSettings: OrganizationSettings | undefined
 
-			try {
-				if (CloudService.hasInstance() && CloudService.instance.isAuthenticated()) {
-					orgSettings = CloudService.instance.getOrganizationSettings()
-				}
-			} catch (orgError) {
-				console.warn("Failed to load organization settings:", orgError)
-				const orgErrorMessage = orgError instanceof Error ? orgError.message : String(orgError)
-				errors.push(`Organization settings: ${orgErrorMessage}`)
-			}
-
-			const allMarketplaceItems = await this.configLoader.loadAllItems(orgSettings?.hideMarketplaceMcps)
+			// Organization settings are not available (cloud removed)
+			const allMarketplaceItems = await this.configLoader.loadAllItems(false)
 			let organizationMcps: MarketplaceItem[] = []
 			let marketplaceItems = allMarketplaceItems
 

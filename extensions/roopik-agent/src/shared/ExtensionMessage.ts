@@ -9,8 +9,6 @@ import type {
 	ClineMessage,
 	MarketplaceItem,
 	TodoItem,
-	CloudUserInfo,
-	CloudOrganizationMembership,
 	OrganizationAllowList,
 	ShareVisibility,
 	QueuedMessage,
@@ -64,75 +62,75 @@ export interface LanguageModelChatSelector {
 // 'settingsButtonClicked' or 'hello'. Webview will hold state.
 export interface ExtensionMessage {
 	type:
-		| "action"
-		| "state"
-		| "selectedImages"
-		| "theme"
-		| "workspaceUpdated"
-		| "invoke"
-		| "messageUpdated"
-		| "mcpServers"
-		| "enhancedPrompt"
-		| "commitSearchResults"
-		| "listApiConfig"
-		| "routerModels"
-		| "openAiModels"
-		| "ollamaModels"
-		| "lmStudioModels"
-		| "vsCodeLmModels"
-		| "huggingFaceModels"
-		| "vsCodeLmApiAvailable"
-		| "updatePrompt"
-		| "systemPrompt"
-		| "autoApprovalEnabled"
-		| "updateCustomMode"
-		| "deleteCustomMode"
-		| "exportModeResult"
-		| "importModeResult"
-		| "checkRulesDirectoryResult"
-		| "deleteCustomModeCheck"
-		| "currentCheckpointUpdated"
-		| "checkpointInitWarning"
-		| "showHumanRelayDialog"
-		| "humanRelayResponse"
-		| "humanRelayCancel"
-		| "browserToolEnabled"
-		| "browserConnectionResult"
-		| "remoteBrowserEnabled"
-		| "ttsStart"
-		| "ttsStop"
-		| "maxReadFileLine"
-		| "fileSearchResults"
-		| "toggleApiConfigPin"
-		| "acceptInput"
-		| "setHistoryPreviewCollapsed"
-		| "commandExecutionStatus"
-		| "mcpExecutionStatus"
-		| "vsCodeSetting"
-		| "authenticatedUser"
-		| "condenseTaskContextStarted"
-		| "condenseTaskContextResponse"
-		| "singleRouterModelFetchResponse"
-		| "rooCreditBalance"
-		| "indexingStatusUpdate"
-		| "indexCleared"
-		| "codebaseIndexConfig"
-		| "marketplaceInstallResult"
-		| "marketplaceRemoveResult"
-		| "marketplaceData"
-		| "shareTaskSuccess"
-		| "codeIndexSettingsSaved"
-		| "codeIndexSecretStatus"
-		| "showDeleteMessageDialog"
-		| "showEditMessageDialog"
-		| "commands"
-		| "insertTextIntoTextarea"
-		| "dismissedUpsells"
-		| "organizationSwitchResult"
-		| "interactionRequired"
-		| "browserSessionUpdate"
-		| "browserSessionNavigate"
-		| "claudeCodeRateLimits"
+	| "action"
+	| "state"
+	| "selectedImages"
+	| "theme"
+	| "workspaceUpdated"
+	| "invoke"
+	| "messageUpdated"
+	| "mcpServers"
+	| "enhancedPrompt"
+	| "commitSearchResults"
+	| "listApiConfig"
+	| "routerModels"
+	| "openAiModels"
+	| "ollamaModels"
+	| "lmStudioModels"
+	| "vsCodeLmModels"
+	| "huggingFaceModels"
+	| "vsCodeLmApiAvailable"
+	| "updatePrompt"
+	| "systemPrompt"
+	| "autoApprovalEnabled"
+	| "updateCustomMode"
+	| "deleteCustomMode"
+	| "exportModeResult"
+	| "importModeResult"
+	| "checkRulesDirectoryResult"
+	| "deleteCustomModeCheck"
+	| "currentCheckpointUpdated"
+	| "checkpointInitWarning"
+	| "showHumanRelayDialog"
+	| "humanRelayResponse"
+	| "humanRelayCancel"
+	| "browserToolEnabled"
+	| "browserConnectionResult"
+	| "remoteBrowserEnabled"
+	| "ttsStart"
+	| "ttsStop"
+	| "maxReadFileLine"
+	| "fileSearchResults"
+	| "toggleApiConfigPin"
+	| "acceptInput"
+	| "setHistoryPreviewCollapsed"
+	| "commandExecutionStatus"
+	| "mcpExecutionStatus"
+	| "vsCodeSetting"
+	| "authenticatedUser"
+	| "condenseTaskContextStarted"
+	| "condenseTaskContextResponse"
+	| "singleRouterModelFetchResponse"
+	| "rooCreditBalance"
+	| "indexingStatusUpdate"
+	| "indexCleared"
+	| "codebaseIndexConfig"
+	| "marketplaceInstallResult"
+	| "marketplaceRemoveResult"
+	| "marketplaceData"
+	| "shareTaskSuccess"
+	| "codeIndexSettingsSaved"
+	| "codeIndexSecretStatus"
+	| "showDeleteMessageDialog"
+	| "showEditMessageDialog"
+	| "commands"
+	| "insertTextIntoTextarea"
+	| "dismissedUpsells"
+	| "organizationSwitchResult"
+	| "interactionRequired"
+	| "browserSessionUpdate"
+	| "browserSessionNavigate"
+	| "claudeCodeRateLimits"
 	text?: string
 	payload?: any // Add a generic payload for now, can refine later
 	// Checkpoint warning message
@@ -141,15 +139,14 @@ export interface ExtensionMessage {
 		timeout: number
 	}
 	action?:
-		| "chatButtonClicked"
-		| "settingsButtonClicked"
-		| "historyButtonClicked"
-		| "marketplaceButtonClicked"
-		| "cloudButtonClicked"
-		| "didBecomeVisible"
-		| "focusInput"
-		| "switchTab"
-		| "toggleAutoApprove"
+	| "chatButtonClicked"
+	| "settingsButtonClicked"
+	| "historyButtonClicked"
+	| "marketplaceButtonClicked"
+	| "didBecomeVisible"
+	| "focusInput"
+	| "switchTab"
+	| "toggleAutoApprove"
 	invoke?: "newChat" | "sendMessage" | "primaryButtonClick" | "secondaryButtonClick" | "setChatBoxMessage"
 	state?: ExtensionState
 	images?: string[]
@@ -198,7 +195,6 @@ export interface ExtensionMessage {
 	value?: any
 	hasContent?: boolean // For checkRulesDirectoryResult
 	items?: MarketplaceItem[]
-	userInfo?: CloudUserInfo
 	organizationAllowList?: OrganizationAllowList
 	tab?: string
 	marketplaceItems?: MarketplaceItem[]
@@ -330,10 +326,6 @@ export type ExtensionState = Pick<
 	settingsImportedAt?: number
 	historyPreviewCollapsed?: boolean
 
-	cloudUserInfo: CloudUserInfo | null
-	cloudIsAuthenticated: boolean
-	cloudApiUrl?: string
-	cloudOrganizations?: CloudOrganizationMembership[]
 	sharingEnabled: boolean
 	publicSharingEnabled: boolean
 	organizationAllowList: OrganizationAllowList
@@ -364,22 +356,22 @@ export type ExtensionState = Pick<
 
 export interface ClineSayTool {
 	tool:
-		| "editedExistingFile"
-		| "appliedDiff"
-		| "newFileCreated"
-		| "codebaseSearch"
-		| "readFile"
-		| "fetchInstructions"
-		| "listFilesTopLevel"
-		| "listFilesRecursive"
-		| "searchFiles"
-		| "switchMode"
-		| "newTask"
-		| "finishTask"
-		| "generateImage"
-		| "imageGenerated"
-		| "runSlashCommand"
-		| "updateTodoList"
+	| "editedExistingFile"
+	| "appliedDiff"
+	| "newFileCreated"
+	| "codebaseSearch"
+	| "readFile"
+	| "fetchInstructions"
+	| "listFilesTopLevel"
+	| "listFilesRecursive"
+	| "searchFiles"
+	| "switchMode"
+	| "newTask"
+	| "finishTask"
+	| "generateImage"
+	| "imageGenerated"
+	| "runSlashCommand"
+	| "updateTodoList"
 	path?: string
 	diff?: string
 	content?: string
