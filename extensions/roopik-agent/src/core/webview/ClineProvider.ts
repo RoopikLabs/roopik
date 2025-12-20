@@ -121,8 +121,7 @@ interface PendingEditOperation {
 
 export class ClineProvider
 	extends EventEmitter<TaskProviderEvents>
-	implements vscode.WebviewViewProvider, TelemetryPropertiesProvider, TaskProviderLike
-{
+	implements vscode.WebviewViewProvider, TelemetryPropertiesProvider, TaskProviderLike {
 	// Used in package.json as the view's id. This value cannot be changed due
 	// to how VSCode caches views based on their id, and updating the id would
 	// break existing instances of the extension.
@@ -231,8 +230,7 @@ export class ClineProvider
 					}
 				} catch (error) {
 					this.log(
-						`[onTaskAborted] Failed to rehydrate after streaming failure: ${
-							error instanceof Error ? error.message : String(error)
+						`[onTaskAborted] Failed to rehydrate after streaming failure: ${error instanceof Error ? error.message : String(error)
 						}`,
 					)
 				}
@@ -896,8 +894,7 @@ export class ClineProvider
 					} catch (error) {
 						// Log the error but continue with task restoration.
 						this.log(
-							`Failed to restore API configuration for mode '${historyItem.mode}': ${
-								error instanceof Error ? error.message : String(error)
+							`Failed to restore API configuration for mode '${historyItem.mode}': ${error instanceof Error ? error.message : String(error)
 							}. Continuing with default configuration.`,
 						)
 						// The task will continue with the current/default configuration.
@@ -1081,7 +1078,7 @@ export class ClineProvider
 			"icons",
 		])
 		const imagesUri = getUri(webview, this.contextProxy.extensionUri, ["assets", "images"])
-		const audioUri = getUri(webview, this.contextProxy.extensionUri, ["webview-ui", "audio"])
+		const audioUri = getUri(webview, this.contextProxy.extensionUri, ["webview", "audio"])
 
 		const file = "src/index.tsx"
 		const scriptUri = `http://${localServerUrl}/${file}`
@@ -1148,13 +1145,13 @@ export class ClineProvider
 
 		// The CSS file from the React build output
 		const stylesUri = getUri(webview, this.contextProxy.extensionUri, [
-			"webview-ui",
+			"webview",
 			"build",
 			"assets",
 			"index.css",
 		])
 
-		const scriptUri = getUri(webview, this.contextProxy.extensionUri, ["webview-ui", "build", "assets", "index.js"])
+		const scriptUri = getUri(webview, this.contextProxy.extensionUri, ["webview", "build", "assets", "index.js"])
 		const codiconsUri = getUri(webview, this.contextProxy.extensionUri, ["assets", "codicons", "codicon.css"])
 		const materialIconsUri = getUri(webview, this.contextProxy.extensionUri, [
 			"assets",
@@ -1162,7 +1159,7 @@ export class ClineProvider
 			"icons",
 		])
 		const imagesUri = getUri(webview, this.contextProxy.extensionUri, ["assets", "images"])
-		const audioUri = getUri(webview, this.contextProxy.extensionUri, ["webview-ui", "audio"])
+		const audioUri = getUri(webview, this.contextProxy.extensionUri, ["webview", "audio"])
 
 		// Use a nonce to only allow a specific script to be run.
 		/*
@@ -1246,7 +1243,7 @@ export class ClineProvider
 				}
 
 				// Only update the task's mode after successful persistence.
-				;(task as any)._taskMode = newMode
+				; (task as any)._taskMode = newMode
 			} catch (error) {
 				// If persistence fails, log the error but don't update the in-memory state.
 				this.log(
@@ -1337,7 +1334,7 @@ export class ClineProvider
 			task.updateApiConfiguration(providerSettings)
 		} else {
 			// No rebuild needed, just sync apiConfiguration
-			;(task as any).apiConfiguration = providerSettings
+			; (task as any).apiConfiguration = providerSettings
 		}
 	}
 
@@ -2990,8 +2987,7 @@ export class ClineProvider
 			await parent.flushPendingToolResultsToHistory()
 		} catch (error) {
 			this.log(
-				`[delegateParentAndOpenChild] Error flushing pending tool results (non-fatal): ${
-					error instanceof Error ? error.message : String(error)
+				`[delegateParentAndOpenChild] Error flushing pending tool results (non-fatal): ${error instanceof Error ? error.message : String(error)
 				}`,
 			)
 		}
@@ -3003,8 +2999,7 @@ export class ClineProvider
 			await this.removeClineFromStack()
 		} catch (error) {
 			this.log(
-				`[delegateParentAndOpenChild] Error during parent disposal (non-fatal): ${
-					error instanceof Error ? error.message : String(error)
+				`[delegateParentAndOpenChild] Error during parent disposal (non-fatal): ${error instanceof Error ? error.message : String(error)
 				}`,
 			)
 			// Non-fatal: proceed with child creation even if parent cleanup had issues
@@ -3018,8 +3013,7 @@ export class ClineProvider
 			await this.handleModeSwitch(mode as any)
 		} catch (e) {
 			this.log(
-				`[delegateParentAndOpenChild] handleModeSwitch failed for mode '${mode}': ${
-					(e as Error)?.message ?? String(e)
+				`[delegateParentAndOpenChild] handleModeSwitch failed for mode '${mode}': ${(e as Error)?.message ?? String(e)
 				}`,
 			)
 		}
@@ -3047,8 +3041,7 @@ export class ClineProvider
 			await this.updateTaskHistory(updatedHistory)
 		} catch (err) {
 			this.log(
-				`[delegateParentAndOpenChild] Failed to persist parent metadata for ${parentTaskId} -> ${child.taskId}: ${
-					(err as Error)?.message ?? String(err)
+				`[delegateParentAndOpenChild] Failed to persist parent metadata for ${parentTaskId} -> ${child.taskId}: ${(err as Error)?.message ?? String(err)
 				}`,
 			)
 		}
@@ -3196,8 +3189,7 @@ export class ClineProvider
 			})
 		} catch (err) {
 			this.log(
-				`[reopenParentFromDelegation] Failed to persist child completed status for ${childTaskId}: ${
-					(err as Error)?.message ?? String(err)
+				`[reopenParentFromDelegation] Failed to persist child completed status for ${childTaskId}: ${(err as Error)?.message ?? String(err)
 				}`,
 			)
 		}

@@ -2,7 +2,7 @@
 
 **Goal**: Convert roopik-agent from dev-mode extension to auto-loading built-in extension (like GitHub Copilot Chat in VSCode)
 
-**Current Status**: ✅ Extension works in dev mode with `--extensionDevelopmentPath`
+**Current Status**: ✅ **Phase 1, 2, 3 COMPLETE** - Extension restructured, registered in build system, cloud removed
 
 **Target Status**: Extension auto-loads when Roopik IDE starts (no dev flag needed)
 
@@ -32,25 +32,155 @@ extensions/roopik-agent/
     └── telemetry/ (REMOVE)   # Telemetry
 ```
 
-### Target Structure (Built-in)
+### Actual Structure After Phase 1 (CURRENT ✅)
 ```
 extensions/roopik-agent/
-├── package.json              # Extension manifest (simplified)
-├── extension.ts              # Entry point
-├── dist/
-│   └── extension.js          # Bundled output
-├── out/                      # Compiled TypeScript (for watch mode)
-│   └── extension.js
-├── webview/                  # React UI
-│   └── build/                # Vite output
-└── tsconfig.json             # Standard VSCode extension config
+├── package.json              # Extension manifest (cleaned, npm-based)
+├── tsconfig.json             # TypeScript config with path mappings
+├── esbuild.mjs               # Bundler configuration
+├── src/                      # Extension source code
+│   ├── extension.ts          # Entry point
+│   ├── activate/             # Activation logic
+│   ├── api/                  # Provider abstractions
+│   ├── core/                 # Agent loop, task management
+│   ├── integrations/         # MCP, editor integrations
+│   ├── services/             # File system, marketplace, etc.
+│   ├── shared/               # Shared utilities
+│   ├── packages/             # Inlined workspace packages
+│   │   ├── types/            # Type definitions (was @roo-code/types)
+│   │   ├── ipc/              # IPC utilities (was @roo-code/ipc)
+│   │   ├── telemetry/        # Telemetry (kept with our PostHog)
+│   │   └── cloud/            # Cloud stub (compatibility layer)
+│   └── dist/                 # Build output
+│       └── extension.js      # Bundled extension
+├── test/                     # Tests (organized)
+│   ├── __mocks__/
+│   ├── __tests__/
+│   ├── vitest.config.ts
+│   └── vitest.setup.ts
+├── webview/                  # React UI (renamed from webview-ui)
+│   ├── src/
+│   ├── public/
+│   ├── build/                # Vite output
+│   └── package.json
+└── .backup-monorepo/         # Archived monorepo files
+    └── root/
+        ├── packages/         # Original workspace packages
+        ├── apps/
+        └── ...
 ```
 
 ---
 
 ## Transition Plan (3 Phases)
 
-### **Phase 1: Restructure to Standard VSCode Extension** (Week 1)
+---
+
+## ✅ **Phase 1: Restructure to Standard VSCode Extension** (COMPLETED)
+
+**What we did:**
+
+1. **Cleaned folder structure**:
+   - Moved monorepo files to `.backup-monorepo/root/` (apps, packages, scripts, pnpm-workspace.yaml, etc.)
+   - Created organized `test/` folder for `__mocks__`, `__tests__`, vitest configs
+   - Renamed `webview-ui/` → `webview/`
+   - Kept extension source in `src/` (NOT flattened to root - better organization)
+
+2. **Updated package.json**:
+   - Changed name: `roo-cline` → `roopik-agent`
+   - Changed publisher: `RooVeterinaryInc` → `roopik`
+   - Removed workspace dependencies: `@roo-code/cloud`, `@roo-code/telemetry`, `@roo-code/ipc`, `@roo-code/types`
+   - Updated all command IDs: `roo-cline.*` → `roopik-agent.*`
+   - Updated scripts: `pnpm` → `npm`, added `compile`, `watch`, `build`, `build:webview`
+   - Main entry: `./src/dist/extension.js`
+
+3. **Inlined workspace packages**:
+   - Copied `packages/types/` → `src/packages/types/` (type definitions)
+   - Copied `packages/ipc/` → `src/packages/ipc/` (IPC utilities)
+   - Copied `packages/telemetry/` → `src/packages/telemetry/` (kept for product insights)
+   - Created `packages/cloud/` stub → `src/packages/cloud/` (compatibility layer)
+
+4. **Updated tsconfig.json**:
+   - Added path mappings:
+     ```json
+     "paths": {
+       "@roo-code/types": ["./src/packages/types/src"],
+       "@roo-code/ipc": ["./src/packages/ipc/src"],
+       "@roo-code/telemetry": ["./src/packages/telemetry/src"],
+       "@roo-code/cloud": ["./src/packages/cloud/src"]
+     }
+     ```
+   - Now imports resolve locally (no npm packages needed)
+
+5. **Installed dependencies**:
+   - Ran `npm install --legacy-peer-deps` (599 packages installed)
+   - Works with npm (no pnpm required)
+
+**Status**: ✅ Phase 1 complete. Extension is now a standard npm-based VSCode extension.
+
+---
+
+## ✅ **Phase 2: Register in VSCode Build System** (COMPLETED)
+
+**What we did:**
+
+1. **Added to Gulp compilation list**:
+   - Modified `build/gulpfile.extensions.ts` line 36
+   - Added `'extensions/roopik-agent/tsconfig.json'` to compilations array
+   - Now included in `npm run watch` and `npm run compile-extensions`
+
+2. **Created .env file for PostHog**:
+   - Created `extensions/roopik-agent/.env`
+   - Added `ROOPIK_POSTHOG_KEY` environment variable
+   - Added `ROOPIK_POSTHOG_HOST` environment variable
+   - User needs to add their PostHog API key from https://posthog.com
+
+**Status**: ✅ Phase 2 complete. Extension registered in build system, ready for auto-loading.
+
+---
+
+## ✅ **Phase 3: Strip Cloud, Keep Telemetry** (COMPLETED)
+
+**What we did:**
+
+1. **Created CloudService stub**:
+   - Created `src/packages/cloud/src/index.ts`
+   - All methods return false/undefined (no-ops)
+   - Kept `getRooCodeApiUrl()` for marketplace (public API)
+   - Zero file rewrites needed (stub maintains interface compatibility)
+
+2. **Kept telemetry with Roopik's PostHog**:
+   - Copied `packages/telemetry/` → `src/packages/telemetry/`
+   - Updated PostHogTelemetryClient.ts to use `ROOPIK_POSTHOG_KEY`
+   - Changed host from `ph.roocode.com` → `us.i.posthog.com`
+   - Added dependency: `posthog-node@^5.0.0`
+
+3. **Updated esbuild.mjs**:
+   - Inlined build utilities (replaced `@roo-code/build` imports)
+   - Added esbuild plugin for @roo-code/* path resolution
+   - Fixed package.json import paths
+   - Added missing dependencies: `@dotenvx/dotenvx`, `reconnecting-eventsource`
+
+4. **Successful build**:
+   - Ran `npm run bundle` → created `src/dist/extension.js` (38MB)
+   - All imports resolve correctly
+   - Ready for testing
+
+**Status**: ✅ Phase 3 complete. Cloud removed, telemetry kept with Roopik's PostHog.
+
+**What was kept vs removed:**
+- ✅ **KEPT**: Telemetry (PostHog analytics with Roopik's account)
+- ✅ **KEPT**: Marketplace (public MCP catalog from api.roocode.com)
+- ❌ **REMOVED**: Cloud login (Roo account system)
+- ❌ **REMOVED**: Cloud sync (data sent to Roo servers)
+- ❌ **REMOVED**: Clerk authentication
+- ❌ **REMOVED**: Organization settings sync
+
+**See**: [TELEMETRY_ANALYSIS.md](./TELEMETRY_ANALYSIS.md) for detailed telemetry decision analysis.
+
+---
+
+### **Phase 1 (Original Plan - REFERENCE ONLY)**
 **Goal**: Flatten monorepo into standard VSCode extension structure
 
 #### 1.1 Move Extension Files to Root
@@ -525,3 +655,109 @@ If you want to keep the monorepo structure (less work, but non-standard):
 4. Extension auto-loads, but with monorepo complexity
 
 **Recommendation**: Go with standard structure (flatten monorepo) for cleaner integration and easier maintenance.
+
+---
+
+## ✅ COMPLETED: What We Actually Did
+
+### **Final Implementation Summary**
+
+Successfully integrated Roo Code as `roopik-agent` built-in extension with all cloud features removed.
+
+#### **Phase 1: Restructure ✅ (COMPLETED)**
+- Kept `src/` structure (better organization than flattening to root)
+- Inlined workspace packages into `src/packages/`:
+  - `@roo-code/types` → `src/packages/types/`
+  - `@roo-code/ipc` → `src/packages/ipc/`
+  - `@roo-code/telemetry` → `src/packages/telemetry/` (kept with our PostHog)
+  - `@roo-code/cloud` → `src/packages/cloud/` (stubbed)
+- Renamed folder: `webview-ui/` → `webview/`
+- Updated `tsconfig.json` with path mappings
+- Converted from pnpm monorepo → standard npm extension
+- Installed dependencies: `npm install --legacy-peer-deps`
+
+#### **Phase 2: Register in Build ✅ (COMPLETED)**
+- Added to `build/gulpfile.extensions.ts` line 36
+- Extension now compiles with `npm run watch`
+
+#### **Phase 3: Strip Cloud ✅ (COMPLETED)**
+- Created CloudService stub (`src/packages/cloud/src/index.ts`):
+  - `static isEnabled()` → returns `false`
+  - `getAllowList()` → returns `ORGANIZATION_ALLOW_ALL`
+  - `isAuthenticated()` → returns `false`
+  - All other methods → no-ops
+- Created BridgeOrchestrator stub (remote control disabled):
+  - `static isEnabled()` → returns `false`
+  - All bridge methods → no-ops
+- Kept telemetry with Roopik's PostHog (not Roo's)
+- Kept marketplace (public MCP catalog)
+
+#### **Runtime Fixes Applied**
+
+**1. Webview Path Errors** (blank screen)
+- **Problem**: Code looked for `webview-ui/build/assets/` but folder renamed to `webview/`
+- **Fixed**: Updated paths in:
+  - `src/core/webview/ClineProvider.ts` (4 occurrences)
+  - `src/core/webview/BrowserSessionPanelManager.ts` (2 occurrences)
+
+**2. Dependency Conflict** (npm install error)
+- **Problem**: `@google/genai@1.34.0` requires `@modelcontextprotocol/sdk@^1.24.0` but had `1.12.0`
+- **Fixed**: Updated `package.json`: `@modelcontextprotocol/sdk@^1.24.0`
+
+**3. CloudService.getAllowList Type Error** (`Cannot read 'anthropic'`)
+- **Problem**: Stub returned `string[]` instead of `OrganizationAllowList`
+- **Fixed**: Return `ORGANIZATION_ALLOW_ALL` (allows all providers/models)
+
+**4. Theme Loading Error** (`dark_modern.json not found`)
+- **Problem**: Looked for `integrations/theme/...` but files at `src/integrations/theme/...`
+- **Fixed**: Updated paths in `src/integrations/theme/getTheme.ts` (2 occurrences)
+
+**5. BridgeOrchestrator.isEnabled Error** (task creation failed)
+- **Problem**: Missing static method in stub
+- **Fixed**: Added all BridgeOrchestrator static/instance methods
+
+**6. CloudService.isEnabled Error** (messages not sending)
+- **Problem**: Missing static method for message tracking check
+- **Fixed**: Added `static isEnabled()` returning `false`
+
+#### **Final State**
+
+**What Works ✅**
+- Extension loads automatically (no dev flag needed)
+- All AI providers (Anthropic, OpenAI, Gemini, Ollama, etc.)
+- User's own API keys (direct to providers, no proxy)
+- Full agent functionality (file editing, terminal, browser tools)
+- Marketplace (public MCP catalog from api.roocode.com)
+- Telemetry (with Roopik's PostHog, not Roo's)
+
+**What's Removed ❌**
+- Roo cloud login/authentication
+- Organization settings sync
+- Remote control (Bridge)
+- Task sharing
+- Settings sync to Roo servers
+
+**Files Changed**
+- `extensions/roopik-agent/package.json` (renamed, updated dependencies)
+- `extensions/roopik-agent/tsconfig.json` (path mappings)
+- `extensions/roopik-agent/src/packages/cloud/src/index.ts` (complete stub)
+- `extensions/roopik-agent/src/core/webview/ClineProvider.ts` (webview paths)
+- `extensions/roopik-agent/src/core/webview/BrowserSessionPanelManager.ts` (webview paths)
+- `extensions/roopik-agent/src/integrations/theme/getTheme.ts` (theme paths)
+- `build/gulpfile.extensions.ts` (added to compilation list)
+
+**Build Commands**
+```bash
+# Install dependencies
+npm install
+
+# Bundle extension
+npm run bundle
+
+# Output
+src/dist/extension.js  # ~38MB bundled extension
+```
+
+**Total Time**: 1 day (iterative debugging of runtime issues)
+
+**Result**: Fully functional agent extension with zero dependency on Roo's cloud services. Users have complete freedom to choose any provider/API. 🎉

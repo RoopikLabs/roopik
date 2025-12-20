@@ -5,10 +5,76 @@ import { fileURLToPath } from "url"
 import process from "node:process"
 import * as console from "node:console"
 
-import { copyPaths, copyWasms, copyLocales, setupLocaleWatcher } from "@roo-code/build"
-
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+// Inline copy utilities (replaced @roo-code/build)
+function copyFileSync(src, dst) {
+	fs.mkdirSync(path.dirname(dst), { recursive: true })
+	fs.copyFileSync(src, dst)
+}
+
+function copyDirSync(src, dst) {
+	fs.mkdirSync(dst, { recursive: true })
+	const entries = fs.readdirSync(src, { withFileTypes: true })
+	for (const entry of entries) {
+		const srcPath = path.join(src, entry.name)
+		const dstPath = path.join(dst, entry.name)
+		if (entry.isDirectory()) {
+			copyDirSync(srcPath, dstPath)
+		} else {
+			fs.copyFileSync(srcPath, dstPath)
+		}
+	}
+}
+
+function copyPaths(paths, srcDir, dstDir) {
+	paths.forEach(([srcRel, dstRel, options = {}]) => {
+		const srcPath = path.join(srcDir, srcRel)
+		const dstPath = path.join(dstDir, dstRel)
+
+		if (!fs.existsSync(srcPath)) {
+			if (options.optional) return
+			throw new Error(`Source not found: ${srcPath}`)
+		}
+
+		const stats = fs.lstatSync(srcPath)
+		if (stats.isDirectory()) {
+			copyDirSync(srcPath, dstPath)
+		} else {
+			copyFileSync(srcPath, dstPath)
+		}
+	})
+}
+
+function copyWasms(srcDir, distDir) {
+	// Copy WASM files for tree-sitter
+	const wasmSrc = path.join(srcDir, "node_modules/tree-sitter-wasms")
+	const wasmDst = path.join(distDir, "tree-sitter-wasms")
+	if (fs.existsSync(wasmSrc)) {
+		copyDirSync(wasmSrc, wasmDst)
+	}
+
+	// Copy web-tree-sitter WASM
+	const webTreeSitterSrc = path.join(srcDir, "node_modules/web-tree-sitter/tree-sitter.wasm")
+	const webTreeSitterDst = path.join(distDir, "tree-sitter.wasm")
+	if (fs.existsSync(webTreeSitterSrc)) {
+		copyFileSync(webTreeSitterSrc, webTreeSitterDst)
+	}
+}
+
+function copyLocales(srcDir, distDir) {
+	// Copy locale files
+	const localeFiles = fs.readdirSync(srcDir).filter(f => f.startsWith("package.nls") && f.endsWith(".json"))
+	localeFiles.forEach(file => {
+		copyFileSync(path.join(srcDir, file), path.join(distDir, file))
+	})
+}
+
+function setupLocaleWatcher(srcDir, distDir) {
+	// Watcher setup (not needed for one-time builds)
+	return () => {}
+}
 
 async function main() {
 	const name = "extension"
@@ -30,9 +96,9 @@ async function main() {
 		platform: "node",
 	}
 
-	const srcDir = __dirname
-	const buildDir = __dirname
-	const distDir = path.join(buildDir, "dist")
+	const rootDir = __dirname  // extensions/roopik-agent/
+	const srcDir = path.join(rootDir, "src")
+	const distDir = path.join(srcDir, "dist")
 
 	if (fs.existsSync(distDir)) {
 		console.log(`[${name}] Cleaning dist directory: ${distDir}`)
@@ -44,20 +110,40 @@ async function main() {
 	 */
 	const plugins = [
 		{
+			name: "resolve-paths",
+			setup(build) {
+				// Resolve @roo-code/* imports to local packages
+				build.onResolve({ filter: /^@roo-code\// }, args => {
+					const packageName = args.path.replace('@roo-code/', '')
+					return {
+						path: path.join(srcDir, 'packages', packageName, 'src', 'index.ts'),
+					}
+				})
+			},
+		},
+		{
 			name: "copyFiles",
 			setup(build) {
 				build.onEnd(() => {
 					copyPaths(
 						[
-							["../README.md", "README.md"],
-							["../CHANGELOG.md", "CHANGELOG.md"],
-							["../LICENSE", "LICENSE"],
-							["../.env", ".env", { optional: true }],
+							["README.md", "README.md"],
+							["CHANGELOG.md", "CHANGELOG.md"],
+							["LICENSE", "LICENSE"],
 							["node_modules/vscode-material-icons/generated", "assets/vscode-material-icons"],
-							["../webview-ui/audio", "webview-ui/audio"],
+							["webview/audio", "webview-ui/audio"],
+						],
+						rootDir,
+						distDir,
+					)
+					// Copy files from src to dist
+					copyPaths(
+						[
+							[".env", ".env", { optional: true }],
+							["i18n/locales", "i18n/locales"],
 						],
 						srcDir,
-						buildDir,
+						distDir,
 					)
 				})
 			},
@@ -98,8 +184,8 @@ async function main() {
 	const extensionConfig = {
 		...buildOptions,
 		plugins,
-		entryPoints: ["extension.ts"],
-		outfile: "dist/extension.js",
+		entryPoints: [path.join(srcDir, "extension.ts")],
+		outfile: path.join(distDir, "extension.js"),
 		external: ["vscode"],
 	}
 
@@ -108,8 +194,8 @@ async function main() {
 	 */
 	const workerConfig = {
 		...buildOptions,
-		entryPoints: ["workers/countTokens.ts"],
-		outdir: "dist/workers",
+		entryPoints: [path.join(srcDir, "workers/countTokens.ts")],
+		outdir: path.join(distDir, "workers"),
 	}
 
 	const [extensionCtx, workerCtx] = await Promise.all([

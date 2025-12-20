@@ -18,7 +18,14 @@
 		"strict": true,
 		"target": "ES2022",
 		"useDefineForClassFields": true,
-		"useUnknownInCatchVariables": false
+		"useUnknownInCatchVariables": false,
+		"baseUrl": ".",
+		"paths": {
+			"@roo-code/types": ["./src/packages/types/src"],
+			"@roo-code/ipc": ["./src/packages/ipc/src"],
+			"@roo-code/telemetry": ["./src/packages/telemetry/src"],
+			"@roo-code/cloud": ["./src/packages/cloud/src"]
+		}
 	},
 	"include": ["."],
 	"exclude": ["node_modules"],

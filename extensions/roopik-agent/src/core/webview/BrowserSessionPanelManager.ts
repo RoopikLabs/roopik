@@ -14,7 +14,7 @@ export class BrowserSessionPanelManager {
 	private pendingNavigateIndex?: number
 	private userManuallyClosedPanel: boolean = false
 
-	private constructor(private readonly provider: ClineProvider) {}
+	private constructor(private readonly provider: ClineProvider) { }
 
 	/**
 	 * Get or create a BrowserSessionPanelManager instance for the given provider
@@ -207,7 +207,7 @@ export class BrowserSessionPanelManager {
 		}
 		try {
 			panelToDispose?.dispose()
-		} catch {}
+		} catch { }
 		this.isReady = false
 		this.pendingUpdate = undefined
 	}
@@ -274,8 +274,8 @@ export class BrowserSessionPanelManager {
 	}
 
 	private getHtmlContent(webview: vscode.Webview, extensionUri: vscode.Uri): string {
-		const stylesUri = getUri(webview, extensionUri, ["webview-ui", "build", "assets", "index.css"])
-		const scriptUri = getUri(webview, extensionUri, ["webview-ui", "build", "assets", "browser-panel.js"])
+		const stylesUri = getUri(webview, extensionUri, ["webview", "build", "assets", "index.css"])
+		const scriptUri = getUri(webview, extensionUri, ["webview", "build", "assets", "browser-panel.js"])
 		const codiconsUri = getUri(webview, extensionUri, ["assets", "codicons", "codicon.css"])
 
 		const nonce = getNonce()

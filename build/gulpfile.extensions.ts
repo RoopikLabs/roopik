@@ -33,6 +33,7 @@ const commit = getVersion(root);
 // });
 const compilations = [
 	'extensions/roopik/tsconfig.json', // ROOPIK: Our canvas-first IDE extension,
+	'extensions/roopik-agent/tsconfig.json', // ROOPIK AGENT: AI agent integration
 	'extensions/configuration-editing/tsconfig.json',
 	'extensions/css-language-features/client/tsconfig.json',
 	'extensions/css-language-features/server/tsconfig.json',

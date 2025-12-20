@@ -233,33 +233,34 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	}
 
-	cloudService = await CloudService.createInstance(context, cloudLogger, {
-		"auth-state-changed": authStateChangedHandler,
-		"settings-updated": settingsUpdatedHandler,
-		"user-info": userInfoHandler,
-	})
+	// ROOPIK: Cloud service disabled - using local-only mode
+	// cloudService = await CloudService.createInstance(context, cloudLogger, {
+	// 	"auth-state-changed": authStateChangedHandler,
+	// 	"settings-updated": settingsUpdatedHandler,
+	// 	"user-info": userInfoHandler,
+	// })
 
-	try {
-		if (cloudService.telemetryClient) {
-			TelemetryService.instance.register(cloudService.telemetryClient)
-		}
-	} catch (error) {
-		outputChannel.appendLine(
-			`[CloudService] Failed to register TelemetryClient: ${error instanceof Error ? error.message : String(error)}`,
-		)
-	}
+	// try {
+	// 	if (cloudService.telemetryClient) {
+	// 		TelemetryService.instance.register(cloudService.telemetryClient)
+	// 	}
+	// } catch (error) {
+	// 	outputChannel.appendLine(
+	// 		`[CloudService] Failed to register TelemetryClient: ${error instanceof Error ? error.message : String(error)}`,
+	// 	)
+	// }
 
-	// Add to subscriptions for proper cleanup on deactivate.
-	context.subscriptions.push(cloudService)
+	// // Add to subscriptions for proper cleanup on deactivate.
+	// context.subscriptions.push(cloudService)
 
-	// Trigger initial cloud profile sync now that CloudService is ready.
-	try {
-		await provider.initializeCloudProfileSyncWhenReady()
-	} catch (error) {
-		outputChannel.appendLine(
-			`[CloudService] Failed to initialize cloud profile sync: ${error instanceof Error ? error.message : String(error)}`,
-		)
-	}
+	// // Trigger initial cloud profile sync now that CloudService is ready.
+	// try {
+	// 	await provider.initializeCloudProfileSyncWhenReady()
+	// } catch (error) {
+	// 	outputChannel.appendLine(
+	// 		`[CloudService] Failed to initialize cloud profile sync: ${error instanceof Error ? error.message : String(error)}`,
+	// 	)
+	// }
 
 	// Finish initializing the provider.
 	TelemetryService.instance.setProvider(provider)

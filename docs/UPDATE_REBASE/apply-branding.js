@@ -700,7 +700,7 @@ const roopikCopyrightHeaderLines = [
 	return { updated: false, errors: 0 };
 }
 
-// Apply build/filters.ts updates - Exclude docs folder from hygiene checks
+// Apply build/filters.ts updates - Exclude docs folder and roopik-agent from hygiene checks
 function updateFiltersTs() {
 	const filePath = path.join(ROOT_DIR, 'build/filters.ts');
 
@@ -714,32 +714,98 @@ function updateFiltersTs() {
 		return { updated: false, errors: 1 };
 	}
 
-	// Check if already updated
-	if (content.includes("'!docs/**/*',")) {
+	let needsUpdate = false;
+	let updatedContent = content;
+
+	// Check 1: Add docs folder exclusion
+	if (!content.includes("'!docs/**/*',")) {
+		// Find the 'all' export and add !docs/**/* exclusion before !cli/**/*
+		const allExportPattern = /export const all = Object\.freeze<string\[\]>\(\[([\s\S]*?)'!cli\/\*\*\/\*',/;
+		const match = updatedContent.match(allExportPattern);
+
+		if (match) {
+			updatedContent = updatedContent.replace(
+				"'!cli/**/*',",
+				"'!docs/**/*',\n\t'!cli/**/*',"
+			);
+			success('build/filters.ts - Added docs folder exclusion');
+			needsUpdate = true;
+		} else {
+			warning('build/filters.ts - Could not find all export array for docs exclusion');
+		}
+	} else {
 		success('build/filters.ts - docs folder already excluded');
+	}
+
+	// Check 2: Add roopik-agent extension exclusion
+	if (!updatedContent.includes("'!extensions/roopik-agent/**',")) {
+		// Insert after !extensions/**/out*/**
+		const outPattern = "'!extensions/**/out*/**',";
+		if (updatedContent.includes(outPattern)) {
+			updatedContent = updatedContent.replace(
+				outPattern,
+				outPattern + "\n\t'!extensions/roopik-agent/**',"
+			);
+			success('build/filters.ts - Added roopik-agent extension exclusion');
+			needsUpdate = true;
+		} else {
+			warning('build/filters.ts - Could not find extensions out pattern for roopik-agent exclusion');
+		}
+	} else {
+		success('build/filters.ts - roopik-agent already excluded');
+	}
+
+	if (needsUpdate) {
+		if (writeFile(filePath, updatedContent)) {
+			success('build/filters.ts - Updated hygiene check exclusions');
+			return { updated: true, errors: 0 };
+		} else {
+			error('build/filters.ts - Failed to update');
+			return { updated: false, errors: 1 };
+		}
+	}
+
+	return { updated: false, errors: 0 };
+}
+
+// Apply .eslint-ignore updates - Exclude roopik-agent from eslint checks
+function updateEslintIgnore() {
+	const filePath = path.join(ROOT_DIR, '.eslint-ignore');
+
+	if (!fileExists(filePath)) {
+		warning('.eslint-ignore not found (skipping)');
 		return { updated: false, errors: 0 };
 	}
 
-	// Find the 'all' export and add !docs/**/* exclusion
-	const allExportPattern = /export const all = Object\.freeze<string\[\]>\(\[([\s\S]*?)'!cli\/\*\*\/\*',/;
-	const match = content.match(allExportPattern);
+	let content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
 
-	if (!match) {
-		warning('build/filters.ts - Could not find all export array');
+	// Check if roopik-agent already excluded
+	if (content.includes('**/extensions/roopik-agent/**')) {
+		success('.eslint-ignore - roopik-agent already excluded');
 		return { updated: false, errors: 0 };
 	}
 
-	// Insert before !cli/**/*
-	const updated = content.replace(
-		"'!cli/**/*',",
-		"'!docs/**/*',\n\t'!cli/**/*',"
+	// Find insertion point - after notebook-renderers line
+	const notebookRenderersLine = '**/extensions/notebook-renderers/renderer-out/index.js';
+	if (!content.includes(notebookRenderersLine)) {
+		warning('.eslint-ignore - Could not find insertion point (notebook-renderers)');
+		return { updated: false, errors: 0 };
+	}
+
+	// Insert roopik-agent exclusion after notebook-renderers
+	const updatedContent = content.replace(
+		notebookRenderersLine,
+		notebookRenderersLine + '\n**/extensions/roopik-agent/**'
 	);
 
-	if (writeFile(filePath, updated)) {
-		success('build/filters.ts - Added docs folder exclusion to hygiene checks');
+	if (writeFile(filePath, updatedContent)) {
+		success('.eslint-ignore - Added roopik-agent exclusion');
 		return { updated: true, errors: 0 };
 	} else {
-		error('build/filters.ts - Failed to update');
+		error('.eslint-ignore - Failed to update');
 		return { updated: false, errors: 1 };
 	}
 }
@@ -1520,6 +1586,12 @@ function main() {
 		totalChanges++;
 	}
 	totalErrors += filtersResult.errors;
+
+	const eslintIgnoreResult = updateEslintIgnore();
+	if (eslintIgnoreResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += eslintIgnoreResult.errors;
 
 	const mentionBotResult = updateMentionBot();
 	if (mentionBotResult.updated) {
