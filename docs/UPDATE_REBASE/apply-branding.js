@@ -546,6 +546,7 @@ function updateGulpfileExtensions() {
 	}
 
 	const roopikLine = "\t'extensions/roopik/tsconfig.json', // ROOPIK: Our canvas-first IDE extension";
+	const roopikAgentLine = "\t'extensions/roopik-agent/tsconfig.json', // ROOPIK AGENT: AI agent integration";
 
 	// Check if roopik extension already exists
 	if (content.includes("'extensions/roopik/tsconfig.json'")) {
@@ -577,17 +578,19 @@ function updateGulpfileExtensions() {
 		const insertIndex = arrayStartIndex + 'const compilations = ['.length;
 		updatedContent = content.substring(0, insertIndex) +
 			'\n' + roopikLine + ',' +
+			'\n' + roopikAgentLine + ',' +
 			content.substring(insertIndex);
 	} else {
 		// No entries yet, just add after opening bracket
 		const insertIndex = arrayStartIndex + 'const compilations = ['.length;
 		updatedContent = content.substring(0, insertIndex) +
-			'\n' + roopikLine +
+			'\n' + roopikLine + ',' +
+			'\n' + roopikAgentLine +
 			content.substring(insertIndex);
 	}
 
 	if (writeFile(filePath, updatedContent)) {
-		success('build/gulpfile.extensions.ts - Added roopik extension registration');
+		success('build/gulpfile.extensions.ts - Added roopik and roopik-agent extension registrations');
 		return { updated: true, errors: 0 };
 	} else {
 		error('build/gulpfile.extensions.ts - Failed to update');
