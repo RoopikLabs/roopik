@@ -140,7 +140,7 @@ const ApiOptions = ({
 	setErrorMessage,
 }: ApiOptionsProps) => {
 	const { t } = useAppTranslation()
-	const { organizationAllowList, cloudIsAuthenticated, claudeCodeIsAuthenticated } = useExtensionState()
+	const { organizationAllowList, claudeCodeIsAuthenticated } = useExtensionState()
 
 	const [customHeaders, setCustomHeaders] = useState<[string, string][]>(() => {
 		const headers = apiConfiguration?.openAiHeaders || {}
@@ -480,16 +480,7 @@ const ApiOptions = ({
 			<div className="flex flex-col gap-1 relative">
 				<div className="flex justify-between items-center">
 					<label className="block font-medium">{t("settings:providers.apiProvider")}</label>
-					{selectedProvider === "roo" && cloudIsAuthenticated ? (
-						<RooBalanceDisplay />
-					) : (
-						docs && (
-							<VSCodeLink href={docs.url} target="_blank" className="flex gap-2">
-								{docs.name}
-								<BookOpenText className="size-4 inline ml-2" />
-							</VSCodeLink>
-						)
-					)}
+<label className="block font-medium">{t("settings:providers.apiProvider")}</label>
 				</div>
 				<SearchableSelect
 					value={selectedProvider}
@@ -769,7 +760,6 @@ const ApiOptions = ({
 					apiConfiguration={apiConfiguration}
 					setApiConfigurationField={setApiConfigurationField}
 					routerModels={routerModels}
-					cloudIsAuthenticated={cloudIsAuthenticated}
 					organizationAllowList={organizationAllowList}
 					modelValidationError={modelValidationError}
 					simplifySettings={fromWelcomeView}
