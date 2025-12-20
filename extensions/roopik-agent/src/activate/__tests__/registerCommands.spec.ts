@@ -48,7 +48,7 @@ describe("getVisibleProviderOrLog", () => {
 
 	it("returns the visible provider if found", () => {
 		const mockProvider = {} as ClineProvider
-		;(ClineProvider.getVisibleInstance as Mock).mockReturnValue(mockProvider)
+			; (ClineProvider.getVisibleInstance as Mock).mockReturnValue(mockProvider)
 
 		const result = getVisibleProviderOrLog(mockOutputChannel)
 
@@ -57,11 +57,11 @@ describe("getVisibleProviderOrLog", () => {
 	})
 
 	it("logs and returns undefined if no provider found", () => {
-		;(ClineProvider.getVisibleInstance as Mock).mockReturnValue(undefined)
+		; (ClineProvider.getVisibleInstance as Mock).mockReturnValue(undefined)
 
 		const result = getVisibleProviderOrLog(mockOutputChannel)
 
 		expect(result).toBeUndefined()
-		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith("Cannot find any visible Roo Code instances.")
+		expect(mockOutputChannel.appendLine).toHaveBeenCalledWith("Cannot find any visible Roopik Agent instances.")
 	})
 })

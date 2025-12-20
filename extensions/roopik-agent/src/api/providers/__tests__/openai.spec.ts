@@ -111,7 +111,7 @@ describe("OpenAiHandler", () => {
 				baseURL: expect.any(String),
 				apiKey: expect.any(String),
 				defaultHeaders: {
-					"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
+					"HTTP-Referer": "https://github.com/RoopikLabs/roopik",
 					"X-Title": "Roo Code",
 					"User-Agent": `RooCode/${Package.version}`,
 				},
@@ -523,7 +523,7 @@ describe("OpenAiHandler", () => {
 		it("should handle rate limiting", async () => {
 			const rateLimitError = new Error("Rate limit exceeded")
 			rateLimitError.name = "Error"
-			;(rateLimitError as any).status = 429
+				; (rateLimitError as any).status = 429
 			mockCreate.mockRejectedValueOnce(rateLimitError)
 
 			const stream = handler.createMessage("system prompt", testMessages)

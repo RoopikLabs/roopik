@@ -60,20 +60,20 @@ vitest.mock("../../transform/caching/vercel-ai-gateway", () => ({
 const mockCreate = vitest.fn()
 const mockConstructor = vitest.fn()
 
-;(OpenAI as any).mockImplementation(() => ({
-	chat: {
-		completions: {
-			create: mockCreate,
+	; (OpenAI as any).mockImplementation(() => ({
+		chat: {
+			completions: {
+				create: mockCreate,
+			},
 		},
-	},
-}))
-;(OpenAI as any).mockImplementation = mockConstructor.mockReturnValue({
-	chat: {
-		completions: {
-			create: mockCreate,
+	}))
+	; (OpenAI as any).mockImplementation = mockConstructor.mockReturnValue({
+		chat: {
+			completions: {
+				create: mockCreate,
+			},
 		},
-	},
-})
+	})
 
 describe("VercelAiGatewayHandler", () => {
 	const mockOptions: ApiHandlerOptions = {
@@ -95,7 +95,7 @@ describe("VercelAiGatewayHandler", () => {
 			baseURL: "https://ai-gateway.vercel.sh/v1",
 			apiKey: mockOptions.vercelAiGatewayApiKey,
 			defaultHeaders: expect.objectContaining({
-				"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
+				"HTTP-Referer": "https://github.com/RoopikLabs/roopik",
 				"X-Title": "Roo Code",
 				"User-Agent": expect.stringContaining("RooCode/"),
 			}),

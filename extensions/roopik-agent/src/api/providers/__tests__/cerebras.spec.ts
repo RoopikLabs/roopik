@@ -12,7 +12,7 @@ vi.mock("../../i18n", () => ({
 // Mock DEFAULT_HEADERS
 vi.mock("../constants", () => ({
 	DEFAULT_HEADERS: {
-		"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
+		"HTTP-Referer": "https://github.com/RoopikLabs/roopik",
 		"X-Title": "Roo Code",
 		"User-Agent": "RooCode/1.0.0",
 	},
@@ -102,7 +102,7 @@ describe("CerebrasHandler", () => {
 					headers: expect.objectContaining({
 						"Content-Type": "application/json",
 						Authorization: "Bearer test-api-key",
-						"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
+						"HTTP-Referer": "https://github.com/RoopikLabs/roopik",
 						"X-Title": "Roo Code",
 						"User-Agent": "RooCode/1.0.0",
 					}),

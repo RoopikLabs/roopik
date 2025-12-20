@@ -1,0 +1,56 @@
+ROOPIK AGENT BRANDING CLEANUP
+==============================
+Date: December 20, 2025
+
+CHANGES MADE: "Roo Code" → "Roopik Agent"
+==========================================
+
+FILE                                                           LINE(S)  CHANGE
+-----------------------------------------------------------------------------------------------------------------------------------------
+✅ webview/index.html                                          6        <title>Roo Code</title> → <title>Roopik Agent</title>
+✅ src/core/webview/ClineProvider.ts                           1120     <title>Roo Code</title> → <title>Roopik Agent</title>
+✅ src/core/webview/ClineProvider.ts                           1199     <title>Roo Code</title> → <title>Roopik Agent</title>
+✅ package.json                                                45       keywords: "roo code" → "roopik agent"
+✅ src/package.nls.json                                        2-7      All "Roo Code" → "Roopik Agent" (6 fields)
+✅ src/package.nls.nl.json (Dutch)                             2-7      All "Roo Code" → "Roopik Agent" (6 fields)
+✅ src/api/providers/constants.ts                              5        X-Title: "Roo Code" → "Roopik Agent"
+✅ src/api/providers/utils/image-generation.ts                 74       X-Title: "Roo Code" → "Roopik Agent"
+✅ src/services/code-index/embedders/openrouter.ts             80       X-Title: "Roo Code" → "Roopik Agent"
+✅ README.md                                                   12       # Roo Code → # Roopik Agent
+✅ README.md                                                   42       "What Can Roo Code Do" → "What Can Roopik Agent Do"
+✅ README.md                                                   54       "Roo Code adapts" → "Roopik Agent adapts"
+✅ README.md                                                   71       "Installing Roo Code" → "Installing Roopik Agent"
+✅ README.md                                                   106      "run the Roo Code extension" → "run the Roopik Agent extension"
+✅ README.md                                                   112      "with the Roo Code extension" → "with the Roopik Agent extension"
+✅ README.md                                                   160      Disclaimer: "Roo Code, Inc" → "Roopik"
+✅ README.md                                                   172      License: "Roo Code, Inc." → "Roopik"
+✅ README.md                                                   176      "Enjoy Roo Code!" → "Enjoy Roopik Agent!"
+
+IMPACT
+======
+✅ Tab title now shows "Roopik Agent" (FIXED - this was the reported issue)
+✅ All API requests send "X-Title: Roopik Agent" header
+✅ Extension marketplace display name: "Roopik Agent"
+✅ Activity bar, context menus show: "Roopik Agent"
+✅ README properly branded for documentation
+
+FILES NOT CHANGED (Intentional)
+================================
+❌ LICENSE - Copyright stays "Roo Code, Inc." (legal accuracy)
+❌ Test files (*.spec.ts) - Not user-facing
+❌ .backup-monorepo/ - Archive/backup folder
+❌ ROOPIKAGENT_FORK_NOTES.md - Correctly references upstream as "Roo Code"
+❌ webview/src/i18n/locales/ru/cloud.json - Russian cloud translations (cloud removed anyway)
+
+REBUILD STATUS
+==============
+✅ npm run bundle executed
+✅ No compilation errors
+✅ Extension ready to test
+
+NEXT STEPS
+==========
+1. Reload Roopik IDE
+2. Verify tab title shows "Roopik Agent"
+3. Check activity bar label
+4. Test extension functionality

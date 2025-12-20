@@ -80,17 +80,17 @@ export async function generateImageWithProvider(options: ImageGenerationOptions)
 						role: "user",
 						content: inputImage
 							? [
-									{
-										type: "text",
-										text: prompt,
+								{
+									type: "text",
+									text: prompt,
+								},
+								{
+									type: "image_url",
+									image_url: {
+										url: inputImage,
 									},
-									{
-										type: "image_url",
-										image_url: {
-											url: inputImage,
-										},
-									},
-								]
+								},
+							]
 							: prompt,
 					},
 				],
@@ -217,7 +217,7 @@ export async function generateImageWithImagesApi(options: ImagesApiOptions): Pro
 				Authorization: `Bearer ${authToken}`,
 				"Content-Type": "application/json",
 				"HTTP-Referer": "https://github.com/RooVetGit/Roo-Code",
-				"X-Title": "Roo Code",
+				"X-Title": "Roopik Agent",
 			},
 			body: JSON.stringify(requestBody),
 		}
