@@ -62,7 +62,7 @@ export class QdrantVectorStore implements IVectorStore {
 				prefix: urlObj.pathname === "/" ? undefined : urlObj.pathname.replace(/\/+$/, ""),
 				apiKey,
 				headers: {
-					"User-Agent": "Roo-Code",
+					"User-Agent": "RoopikAgent",
 				},
 			})
 		} catch (urlError) {
@@ -72,7 +72,7 @@ export class QdrantVectorStore implements IVectorStore {
 				url: parsedUrl,
 				apiKey,
 				headers: {
-					"User-Agent": "Roo-Code",
+					"User-Agent": "RoopikAgent",
 				},
 			})
 		}
@@ -405,9 +405,9 @@ export class QdrantVectorStore implements IVectorStore {
 		try {
 			let filter:
 				| {
-						must: Array<{ key: string; match: { value: string } }>
-						must_not?: Array<{ key: string; match: { value: string } }>
-				  }
+					must: Array<{ key: string; match: { value: string } }>
+					must_not?: Array<{ key: string; match: { value: string } }>
+				}
 				| undefined = undefined
 
 			if (directoryPrefix) {

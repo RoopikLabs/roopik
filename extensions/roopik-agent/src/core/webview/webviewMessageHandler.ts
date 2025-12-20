@@ -2228,11 +2228,6 @@ export const webviewMessageHandler = async (
 			await provider.postStateToWebview()
 			break
 		}
-		case "cloudButtonClicked": {
-			// Navigate to the cloud tab.
-			provider.postMessageToWebview({ type: "action", action: "cloudButtonClicked" })
-			break
-		}
 		case "rooCloudSignIn": {
 			try {
 				TelemetryService.instance.captureEvent(TelemetryEventName.AUTHENTICATION_INITIATED)

@@ -96,7 +96,7 @@ describe("VercelAiGatewayHandler", () => {
 			apiKey: mockOptions.vercelAiGatewayApiKey,
 			defaultHeaders: expect.objectContaining({
 				"HTTP-Referer": "https://github.com/RoopikLabs/roopik",
-				"X-Title": "Roo Code",
+				"X-Title": "Roopik Dot",
 				"User-Agent": expect.stringContaining("RooCode/"),
 			}),
 		})

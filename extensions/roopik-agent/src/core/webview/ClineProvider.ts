@@ -1117,7 +1117,7 @@ export class ClineProvider
 						window.AUDIO_BASE_URI = "${audioUri}"
 						window.MATERIAL_ICONS_BASE_URI = "${materialIconsUri}"
 					</script>
-					<title>Roo Code</title>
+					<title>Dot</title>
 				</head>
 				<body>
 					<div id="root"></div>
@@ -1196,7 +1196,7 @@ export class ClineProvider
 				window.AUDIO_BASE_URI = "${audioUri}"
 				window.MATERIAL_ICONS_BASE_URI = "${materialIconsUri}"
 			</script>
-            <title>Roopik Agent</title>
+            <title>Dot</title>
           </head>
           <body>
             <noscript>You need to enable JavaScript to run this app.</noscript>
@@ -1683,9 +1683,10 @@ export class ClineProvider
 
 		// Check MDM compliance and send user to account tab if not compliant
 		// Only redirect if there's an actual MDM policy requiring authentication
-		if (this.mdmService?.requiresCloudAuth() && !this.checkMdmCompliance()) {
-			await this.postMessageToWebview({ type: "action", action: "cloudButtonClicked" })
-		}
+		// Cloud functionality has been removed
+		// if (this.mdmService?.requiresCloudAuth() && !this.checkMdmCompliance()) {
+		// 	await this.postMessageToWebview({ type: "action", action: "cloudButtonClicked" })
+		// }
 	}
 
 	/**

@@ -77,7 +77,7 @@ export class OpenRouterEmbedder implements IEmbedder {
 				apiKey: apiKey,
 				defaultHeaders: {
 					"HTTP-Referer": "https://github.com/RooCodeInc/Roo-Code",
-					"X-Title": "Roopik Agent",
+					"X-Title": "Roopik Dot",
 				},
 			})
 		} catch (error) {

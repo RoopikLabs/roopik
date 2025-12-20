@@ -13,8 +13,8 @@ vi.mock("../../i18n", () => ({
 vi.mock("../constants", () => ({
 	DEFAULT_HEADERS: {
 		"HTTP-Referer": "https://github.com/RoopikLabs/roopik",
-		"X-Title": "Roo Code",
-		"User-Agent": "RooCode/1.0.0",
+		"X-Title": "Roopik Dot",
+		"User-Agent": "RoopikAgent/1.0.0",
 	},
 }))
 
@@ -103,8 +103,8 @@ describe("CerebrasHandler", () => {
 						"Content-Type": "application/json",
 						Authorization: "Bearer test-api-key",
 						"HTTP-Referer": "https://github.com/RoopikLabs/roopik",
-						"X-Title": "Roo Code",
-						"User-Agent": "RooCode/1.0.0",
+						"X-Title": "Roopik Dot",
+						"User-Agent": "RoopikAgent/1.0.0",
 					}),
 				}),
 			)
