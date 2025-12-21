@@ -540,16 +540,20 @@ function updateGulpfileExtensions() {
 		return { updated: false, errors: 0 };
 	}
 
-	const content = readFile(filePath);
+	let content = readFile(filePath);
 	if (!content) {
 		return { updated: false, errors: 1 };
 	}
 
-	const roopikLine = "\t'extensions/roopik/tsconfig.json', // ROOPIK: Our canvas-first IDE extension";
+	const roopikLine = "\t'extensions/roopik/tsconfig.json', // ROOPIK: Our canvas-first IDE extension,";
+	const roopikDioLine = "\t'extensions/roopik-dio/tsconfig.json', // ROOPIK DIO: AI agent integration";
 
-	// Check if roopik extension already exists
-	if (content.includes("'extensions/roopik/tsconfig.json'")) {
-		success('build/gulpfile.extensions.ts - Roopik extension already registered');
+	// Check which extensions need to be added
+	const hasRoopik = content.includes("'extensions/roopik/tsconfig.json'");
+	const hasRoopikDio = content.includes("'extensions/roopik-dio/tsconfig.json'");
+
+	if (hasRoopik && hasRoopikDio) {
+		success('build/gulpfile.extensions.ts - Both Roopik extensions already registered');
 		return { updated: false, errors: 0 };
 	}
 
@@ -567,6 +571,19 @@ function updateGulpfileExtensions() {
 		return { updated: false, errors: 0 };
 	}
 
+	// Build the lines to insert
+	let linesToInsert = '';
+	const addedExtensions = [];
+
+	if (!hasRoopik) {
+		linesToInsert += '\n' + roopikLine;
+		addedExtensions.push('roopik');
+	}
+	if (!hasRoopikDio) {
+		linesToInsert += '\n' + roopikDioLine + ',';
+		addedExtensions.push('roopik-dio');
+	}
+
 	// Find the first entry after the opening bracket
 	const afterBracket = content.substring(arrayStartIndex + 'const compilations = ['.length);
 	const firstEntryMatch = afterBracket.match(/^\s*['"]([^'"]+)['"]/);
@@ -576,18 +593,18 @@ function updateGulpfileExtensions() {
 		// Insert before the first entry
 		const insertIndex = arrayStartIndex + 'const compilations = ['.length;
 		updatedContent = content.substring(0, insertIndex) +
-			'\n' + roopikLine + ',' +
+			linesToInsert +
 			content.substring(insertIndex);
 	} else {
 		// No entries yet, just add after opening bracket
 		const insertIndex = arrayStartIndex + 'const compilations = ['.length;
 		updatedContent = content.substring(0, insertIndex) +
-			'\n' + roopikLine +
+			linesToInsert +
 			content.substring(insertIndex);
 	}
 
 	if (writeFile(filePath, updatedContent)) {
-		success('build/gulpfile.extensions.ts - Added roopik extension registration');
+		success(`build/gulpfile.extensions.ts - Added ${addedExtensions.join(' and ')} extension registration`);
 		return { updated: true, errors: 0 };
 	} else {
 		error('build/gulpfile.extensions.ts - Failed to update');
@@ -700,7 +717,7 @@ const roopikCopyrightHeaderLines = [
 	return { updated: false, errors: 0 };
 }
 
-// Apply build/filters.ts updates - Exclude docs folder and roopik-agent from hygiene checks
+// Apply build/filters.ts updates - Exclude docs folder and roopik-dio from hygiene checks
 function updateFiltersTs() {
 	const filePath = path.join(ROOT_DIR, 'build/filters.ts');
 
@@ -737,22 +754,22 @@ function updateFiltersTs() {
 		success('build/filters.ts - docs folder already excluded');
 	}
 
-	// Check 2: Add roopik-agent extension exclusion
-	if (!updatedContent.includes("'!extensions/roopik-agent/**',")) {
+	// Check 2: Add roopik-dio agent extension exclusion
+	if (!updatedContent.includes("'!extensions/roopik-dio/**',")) {
 		// Insert after !extensions/**/out*/**
 		const outPattern = "'!extensions/**/out*/**',";
 		if (updatedContent.includes(outPattern)) {
 			updatedContent = updatedContent.replace(
 				outPattern,
-				outPattern + "\n\t'!extensions/roopik-agent/**',"
+				outPattern + "\n\t'!extensions/roopik-dio/**',"
 			);
-			success('build/filters.ts - Added roopik-agent extension exclusion');
+			success('build/filters.ts - Added roopik-dio extension exclusion');
 			needsUpdate = true;
 		} else {
-			warning('build/filters.ts - Could not find extensions out pattern for roopik-agent exclusion');
+			warning('build/filters.ts - Could not find extensions out pattern for roopik-dio agent exclusion');
 		}
 	} else {
-		success('build/filters.ts - roopik-agent already excluded');
+		success('build/filters.ts - roopik-dio already excluded');
 	}
 
 	if (needsUpdate) {
@@ -768,7 +785,7 @@ function updateFiltersTs() {
 	return { updated: false, errors: 0 };
 }
 
-// Apply .eslint-ignore updates - Exclude roopik-agent from eslint checks
+// Apply .eslint-ignore updates - Exclude roopik-dio from eslint checks
 function updateEslintIgnore() {
 	const filePath = path.join(ROOT_DIR, '.eslint-ignore');
 
@@ -782,9 +799,9 @@ function updateEslintIgnore() {
 		return { updated: false, errors: 1 };
 	}
 
-	// Check if roopik-agent already excluded
-	if (content.includes('**/extensions/roopik-agent/**')) {
-		success('.eslint-ignore - roopik-agent already excluded');
+	// Check if roopik-dio already excluded
+	if (content.includes('**/extensions/roopik-dio/**')) {
+		success('.eslint-ignore - roopik-dio already excluded');
 		return { updated: false, errors: 0 };
 	}
 
@@ -795,14 +812,14 @@ function updateEslintIgnore() {
 		return { updated: false, errors: 0 };
 	}
 
-	// Insert roopik-agent exclusion after notebook-renderers
+	// Insert roopik-dio exclusion after notebook-renderers
 	const updatedContent = content.replace(
 		notebookRenderersLine,
-		notebookRenderersLine + '\n**/extensions/roopik-agent/**'
+		notebookRenderersLine + '\n**/extensions/roopik-dio/**'
 	);
 
 	if (writeFile(filePath, updatedContent)) {
-		success('.eslint-ignore - Added roopik-agent exclusion');
+		success('.eslint-ignore - Added roopik-dio exclusion');
 		return { updated: true, errors: 0 };
 	} else {
 		error('.eslint-ignore - Failed to update');

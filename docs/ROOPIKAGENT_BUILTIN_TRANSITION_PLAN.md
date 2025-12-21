@@ -1,6 +1,6 @@
 # RoopikAgent Built-in Extension Transition Plan
 
-**Goal**: Convert roopik-agent from dev-mode extension to auto-loading built-in extension (like GitHub Copilot Chat in VSCode)
+**Goal**: Convert roopik-dio from dev-mode extension to auto-loading built-in extension (like GitHub Copilot Chat in VSCode)
 
 **Current Status**: ✅ **Phase 1, 2, 3 COMPLETE** - Extension restructured, registered in build system, cloud removed
 
@@ -87,10 +87,10 @@ extensions/roopik-agent/
    - Kept extension source in `src/` (NOT flattened to root - better organization)
 
 2. **Updated package.json**:
-   - Changed name: `roo-cline` → `roopik-agent`
+   - Changed name: `roo-cline` → `roopik-dio`
    - Changed publisher: `RooVeterinaryInc` → `roopik`
    - Removed workspace dependencies: `@roo-code/cloud`, `@roo-code/telemetry`, `@roo-code/ipc`, `@roo-code/types`
-   - Updated all command IDs: `roo-cline.*` → `roopik-agent.*`
+   - Updated all command IDs: `roo-cline.*` → `roopik-dio.*`
    - Updated scripts: `pnpm` → `npm`, added `compile`, `watch`, `build`, `build:webview`
    - Main entry: `./src/dist/extension.js`
 
@@ -126,7 +126,7 @@ extensions/roopik-agent/
 
 1. **Added to Gulp compilation list**:
    - Modified `build/gulpfile.extensions.ts` line 36
-   - Added `'extensions/roopik-agent/tsconfig.json'` to compilations array
+   - Added `'extensions/roopik-dio/tsconfig.json'` to compilations array
    - Now included in `npm run watch` and `npm run compile-extensions`
 
 2. **Created .env file for PostHog**:
