@@ -31,7 +31,6 @@ import { MAX_IMAGES_PER_MESSAGE } from "./ChatView"
 import ContextMenu from "./ContextMenu"
 import { IndexingStatusBadge } from "./IndexingStatusBadge"
 import { usePromptHistory } from "./hooks/usePromptHistory"
-import { CloudAccountSwitcher } from "../cloud/CloudAccountSwitcher"
 
 interface ChatTextAreaProps {
 	inputValue: string
@@ -93,18 +92,17 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 			taskHistory,
 			clineMessages,
 			commands,
-			cloudUserInfo,
-			enterBehavior,
-		} = useExtensionState()
+		enterBehavior,
+	} = useExtensionState()
 
-		// Find the ID and display text for the currently selected API configuration.
-		const { currentConfigId, displayName } = useMemo(() => {
-			const currentConfig = listApiConfigMeta?.find((config) => config.name === currentApiConfigName)
-			return {
-				currentConfigId: currentConfig?.id || "",
-				displayName: currentApiConfigName || "", // Use the name directly for display.
-			}
-		}, [listApiConfigMeta, currentApiConfigName])
+	// Find the ID and display text for the currently selected API configuration.
+	const { currentConfigId, displayName } = useMemo(() => {
+		const currentConfig = listApiConfigMeta?.find((config) => config.name === currentApiConfigName)
+		return {
+			currentConfigId: currentConfig?.id || "",
+			displayName: currentApiConfigName || "", // Use the name directly for display.
+		}
+	}, [listApiConfigMeta, currentApiConfigName])
 
 		const [gitCommits, setGitCommits] = useState<any[]>([])
 		const [showDropdown, setShowDropdown] = useState(false)
@@ -1268,7 +1266,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 					<div
 						className={cn(
 							"flex flex-shrink-0 items-center gap-0.5 h-5 leading-none",
-							!isEditMode && cloudUserInfo ? "" : "pr-2",
+							"pr-2",
 						)}>
 						{isTtsPlaying && (
 							<StandardTooltip content={t("chat:stopTts")}>
@@ -1291,7 +1289,6 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 							</StandardTooltip>
 						)}
 						{!isEditMode ? <IndexingStatusBadge /> : null}
-						{!isEditMode && cloudUserInfo && <CloudAccountSwitcher />}
 						{/* keep props referenced after moving browser button */}
 						<div
 							className="hidden"

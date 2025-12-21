@@ -125,7 +125,7 @@ export const StyledPre = styled.div<{
 	overflow-y: auto;
 	padding: 8px 3px;
 	border-radius: 6px;
-	${({ preStyle }) => preStyle && { ...preStyle }}
+	${({ preStyle }) => preStyle && ({ ...preStyle } as any)}
 
 	pre {
 		background-color: ${CODE_BLOCK_BG_COLOR};

@@ -67,10 +67,6 @@ const App = () => {
 		telemetrySetting,
 		telemetryKey,
 		machineId,
-		cloudUserInfo,
-		cloudIsAuthenticated,
-		cloudApiUrl,
-		cloudOrganizations,
 		renderContext,
 		mdmCompliant,
 	} = useExtensionState()

@@ -73,7 +73,7 @@ export const registerCommands = (options: RegisterCommandOptions) => {
 }
 
 const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOptions): Record<CommandId, any> => ({
-	activationCompleted: () => {},
+	activationCompleted: () => { },
 	plusButtonClicked: async () => {
 		const visibleProvider = getVisibleProviderOrLog(outputChannel)
 
