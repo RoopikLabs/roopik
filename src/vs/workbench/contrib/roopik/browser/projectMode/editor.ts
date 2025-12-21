@@ -29,6 +29,7 @@ import { IQuickInputService } from '../../../../../platform/quickinput/common/qu
 import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
+import { Dimension } from '../../../../../base/browser/dom.js';
 // Features (extracted to features/ folder)
 import { InspectMode } from './features/inspectMode.js';
 import { Bookmarks } from './features/bookmarks.js';
@@ -1312,8 +1313,10 @@ export class Editor extends EditorPane {
 			// Stop the server using the actual projectRoot from electron-main
 			await this.devServerService.stopServer(runningServer.projectRoot);
 
-			// Clear browser state
-			this.isProjectMode = false;
+			// Clear active project metadata (fire-and-forget - don't block stop operation!)
+			this.projectStorageService.clearActiveProject()
+				.then(() => this.logger.info('[ProjectMode] Active project metadata cleared'))
+				.catch((err) => this.logger.warn('[ProjectMode] Failed to clear active project metadata (non-fatal):', err));
 			this.currentProjectRoot = undefined;
 
 			// Show home screen after stopping server (don't navigate to about:blank)
@@ -1423,17 +1426,33 @@ export class Editor extends EditorPane {
 			this.isProjectMode = true;
 			this.currentProjectRoot = projectRoot;
 
-			// Save to recent projects storage (project started successfully = valid path)
+			// Save to recent projects storage and set as active project (non-blocking)
 			// Extract project name from the path (folder name)
 			const projectName = projectRoot.split(/[/\\]/).pop() || 'Project';
 
-			// Get server info to capture framework (optional - don't block on this)
-			this.devServerService.getServerInfo(projectRoot).then((serverInfo) => {
-				const framework = serverInfo?.framework;
-				const frameworkDisplayName = serverInfo?.frameworkDisplayName;
-				return this.projectStorageService.upsertProject(projectName, projectRoot, framework, frameworkDisplayName);
+			// Get server info to capture framework, pid, port, url for metadata persistence
+			// IMPORTANT: This is fire-and-forget - don't let metadata saving block browser opening!
+			this.devServerService.getServerInfo(projectRoot).then(async (serverInfo) => {
+				if (serverInfo) {
+					try {
+						const framework = serverInfo.framework;
+						const frameworkDisplayName = serverInfo.frameworkDisplayName;
+						const projectId = await this.projectStorageService.upsertProject(projectName, projectRoot, framework, frameworkDisplayName);
+
+						// Store active project metadata for orphaned process cleanup after IDE restart
+						if (serverInfo.pid && serverInfo.port && serverInfo.url) {
+							await this.projectStorageService.setActiveProject(projectId, serverInfo.pid, serverInfo.port, serverInfo.url);
+							this.logger.info(`[ProjectMode] Active project metadata saved: ${projectId} (PID: ${serverInfo.pid}, Port: ${serverInfo.port})`);
+						} else {
+							this.logger.warn('[ProjectMode] Server info incomplete, skipping active project metadata');
+						}
+					} catch (err) {
+						// Don't let metadata saving failure block browser opening!
+						this.logger.warn('[ProjectMode] Failed to save project metadata (non-fatal):', err);
+					}
+				}
 			}).catch((err) => {
-				this.logger.warn('[ProjectMode] Failed to save project to recent projects:', err);
+				this.logger.warn('[ProjectMode] Failed to get server info for metadata (non-fatal):', err);
 			});
 
 			// Small delay to ensure Vite server is fully ready to accept connections

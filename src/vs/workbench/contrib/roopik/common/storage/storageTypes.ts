@@ -309,11 +309,34 @@ export interface ProjectInfo {
 }
 
 /**
+ * Active dev server metadata (for session restoration and orphaned process cleanup)
+ */
+export interface ActiveProjectMetadata {
+	/** Project ID */
+	projectId: string;
+
+	/** Process ID (for killing orphaned processes) */
+	pid: number;
+
+	/** Server port (for conflict detection) */
+	port: number;
+
+	/** Server URL */
+	url: string;
+
+	/** When server was started */
+	startedAt: number;
+}
+
+/**
  * Project registry (.roopik/projects/projects.json)
  */
 export interface ProjectIndex {
 	/** Registry version for migrations */
 	version: number;
+
+	/** Active dev server (if any) - minimal metadata for cleanup */
+	activeProject?: ActiveProjectMetadata;
 
 	/** List of all projects opened in this workspace */
 	projects: ProjectInfo[];

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as fs from 'fs';
-import * as path from 'path';
+import { join, dirname } from '../../../../../base/common/path.js';
 import {
 	SourceFiles,
 	ComponentMeta,
@@ -237,7 +237,7 @@ export class WorkspaceStorage {
 		this.ensureInitialized();
 
 		const canvasPath = getCanvasPath(this.workspacePath, canvasId);
-		const metaPath = path.join(canvasPath, 'meta.json');
+		const metaPath = join(canvasPath, 'meta.json');
 
 		try {
 			const meta = await this.readJson<CanvasMeta>(metaPath);
@@ -273,7 +273,7 @@ export class WorkspaceStorage {
 		const canvasPath = getCanvasPath(this.workspacePath, canvasId);
 		await this.ensureDir(canvasPath);
 
-		const metaPath = path.join(canvasPath, 'meta.json');
+		const metaPath = join(canvasPath, 'meta.json');
 		await this.writeJson(metaPath, meta);
 
 		// Also update the canvas registry to keep names in sync
@@ -300,7 +300,7 @@ export class WorkspaceStorage {
 
 		// Write each file
 		for (const [filename, content] of Object.entries(files)) {
-			const filePath = path.join(componentPath, filename);
+			const filePath = join(componentPath, filename);
 			await this.writeFile(filePath, content);
 		}
 
@@ -329,7 +329,7 @@ export class WorkspaceStorage {
 
 		for (const entry of entries) {
 			if (entry.isFile() && entry.name !== 'meta.json') {
-				const filePath = path.join(componentPath, entry.name);
+				const filePath = join(componentPath, entry.name);
 				const content = await this.readFile(filePath);
 				files[entry.name] = content;
 			}
@@ -571,6 +571,50 @@ export class WorkspaceStorage {
 		await this.writeJson(getProjectRegistryPath(this.workspacePath), index);
 	}
 
+	// ========================================================================
+	// Active Project Metadata
+	// ========================================================================
+
+	/**
+	 * Set active dev server metadata (called when server starts)
+	 */
+	async setActiveProject(projectId: string, pid: number, port: number, url: string): Promise<void> {
+		this.ensureInitialized();
+
+		const index = await this.getProjectIndex();
+		index.activeProject = {
+			projectId,
+			pid,
+			port,
+			url,
+			startedAt: Date.now()
+		};
+		await this.writeJson(getProjectRegistryPath(this.workspacePath), index);
+	}
+
+	/**
+	 * Clear active project metadata (called when server stops)
+	 */
+	async clearActiveProject(): Promise<void> {
+		this.ensureInitialized();
+
+		const index = await this.getProjectIndex();
+		delete index.activeProject;
+		await this.writeJson(getProjectRegistryPath(this.workspacePath), index);
+	}
+
+	/**
+	 * Get active project metadata (returns undefined if no server running)
+	 */
+	async getActiveProject(): Promise<import('../../common/storage/storageTypes.js').ActiveProjectMetadata | undefined> {
+		const index = await this.getProjectIndex();
+		return index.activeProject;
+	}
+
+	// ========================================================================
+	// Project ID Generator
+	// ========================================================================
+
 	/**
 	 * Generate a unique project ID
 	 */
@@ -638,7 +682,7 @@ export class WorkspaceStorage {
 
 	private async writeFile(filePath: string, content: string): Promise<void> {
 		// Ensure parent directory exists
-		await this.ensureDir(path.dirname(filePath));
+		await this.ensureDir(dirname(filePath));
 		await fs.promises.writeFile(filePath, content, 'utf-8');
 	}
 

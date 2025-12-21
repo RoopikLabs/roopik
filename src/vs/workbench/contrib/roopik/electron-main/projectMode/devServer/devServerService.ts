@@ -3,8 +3,8 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import * as path from 'path';
 import * as fs from 'fs';
+import { join, normalize, dirname } from '../../../../../../base/common/path.js';
 import * as cp from 'child_process';
 import { fileURLToPath } from 'url';
 import { Emitter, Event } from '../../../../../../base/common/event.js';
@@ -32,20 +32,35 @@ interface ServerInstance {
 }
 
 /**
+ * Worker process message types
+ */
+interface WorkerMessageBase {
+	type: string;
+}
+
+interface WorkerReadyMessage extends WorkerMessageBase {
+	type: 'READY';
+	url: string;
+	port: number;
+	framework: Framework;
+}
+
+interface WorkerErrorMessage extends WorkerMessageBase {
+	type: 'ERROR';
+	message: string;
+}
+
+type WorkerMessage = WorkerReadyMessage | WorkerErrorMessage;
+
+/**
  * Get the directory of this module (ES module compatible)
- * Works with both __dirname (CJS) and import.meta.url (ESM)
+ * Uses import.meta.url which is available in ES modules
  */
 function getModuleDir(): string {
-	// In VSCode's compiled output, we're in ESM context
-	// Use import.meta.url if available, otherwise fall back to __dirname
-	try {
-		// This file's URL when running as ESM
-		const thisFileUrl = import.meta.url;
-		return path.dirname(fileURLToPath(thisFileUrl));
-	} catch {
-		// Fallback for CJS context (shouldn't happen in VSCode core)
-		return __dirname;
-	}
+	// In ES modules, import.meta.url gives us the file:// URL of this module
+	const thisFileUrl = import.meta.url;
+	const thisFilePath = fileURLToPath(thisFileUrl);
+	return dirname(thisFilePath);
 }
 
 /**
@@ -87,7 +102,7 @@ export class DevServerService implements IDevServerService {
 		const { projectRoot, port = 5173, forceRegexMode = false, verboseLogging = false } = options;
 
 		// Normalize path
-		const normalizedRoot = path.normalize(projectRoot);
+		const normalizedRoot = normalize(projectRoot);
 
 		// =====================================================
 		// SINGLE SERVER CONSTRAINT (Defense in Depth)
@@ -131,7 +146,7 @@ export class DevServerService implements IDevServerService {
 		return new Promise((resolve, reject) => {
 			// Find worker script (ES module version)
 			const moduleDir = getModuleDir();
-			const workerPath = path.join(moduleDir, 'devServerWorker.mjs');
+			const workerPath = join(moduleDir, 'devServerWorker.mjs');
 
 			// Check if worker exists
 			if (!fs.existsSync(workerPath)) {
@@ -175,13 +190,13 @@ export class DevServerService implements IDevServerService {
 			});
 
 			// Handle IPC messages from worker
-			workerProcess.on('message', (msg: any) => {
+			workerProcess.on('message', (msg: WorkerMessage) => {
 				if (msg.type === 'READY') {
 					// Worker successfully started the server
 					instance.state = 'running';
 					instance.url = msg.url;
 					instance.port = msg.port;
-					instance.framework = msg.framework as Framework;
+					instance.framework = msg.framework;
 
 					this.fireStatus(normalizedRoot, 'running', {
 						url: msg.url,
@@ -189,7 +204,7 @@ export class DevServerService implements IDevServerService {
 						framework: instance.framework
 					});
 
-					this.log(normalizedRoot, 'info', `✅ Server ready at ${msg.url}`);
+					this.log(normalizedRoot, 'info', `Server ready at ${msg.url}`);
 					resolve(msg.url);
 
 				} else if (msg.type === 'ERROR') {
@@ -244,7 +259,7 @@ export class DevServerService implements IDevServerService {
 	}
 
 	async stopServer(projectRoot: string): Promise<void> {
-		const normalizedRoot = path.normalize(projectRoot);
+		const normalizedRoot = normalize(projectRoot);
 		const instance = this.servers.get(normalizedRoot);
 
 		if (!instance) {
@@ -302,7 +317,7 @@ export class DevServerService implements IDevServerService {
 	}
 
 	async getServerInfo(projectRoot: string): Promise<DevServerInfo | undefined> {
-		const normalizedRoot = path.normalize(projectRoot);
+		const normalizedRoot = normalize(projectRoot);
 		const instance = this.servers.get(normalizedRoot);
 
 		if (!instance) {
@@ -318,6 +333,7 @@ export class DevServerService implements IDevServerService {
 			state: instance.state,
 			url: instance.url,
 			port: instance.port,
+			pid: instance.workerProcess?.pid,
 			framework: instance.framework,
 			frameworkDisplayName: frameworkInfo?.displayName,
 			supportsClickToSource: frameworkInfo?.supportsClickToSource
@@ -367,8 +383,8 @@ export class DevServerService implements IDevServerService {
 	// ============================================
 
 	async detectFramework(projectRoot: string): Promise<FrameworkInfo> {
-		const normalizedRoot = path.normalize(projectRoot);
-		const packageJsonPath = path.join(normalizedRoot, 'package.json');
+		const normalizedRoot = normalize(projectRoot);
+		const packageJsonPath = join(normalizedRoot, 'package.json');
 
 		if (!fs.existsSync(packageJsonPath)) {
 			return {
@@ -463,13 +479,13 @@ export class DevServerService implements IDevServerService {
 	}
 
 	async hasNodeModules(projectRoot: string): Promise<boolean> {
-		const normalizedRoot = path.normalize(projectRoot);
-		const nodeModulesPath = path.join(normalizedRoot, 'node_modules');
+		const normalizedRoot = normalize(projectRoot);
+		const nodeModulesPath = join(normalizedRoot, 'node_modules');
 		return fs.existsSync(nodeModulesPath);
 	}
 
 	async installDependencies(projectRoot: string): Promise<void> {
-		const normalizedRoot = path.normalize(projectRoot);
+		const normalizedRoot = normalize(projectRoot);
 
 		return new Promise((resolve, reject) => {
 			const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';

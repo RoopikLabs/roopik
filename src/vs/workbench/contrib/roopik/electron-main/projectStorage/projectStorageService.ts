@@ -125,4 +125,44 @@ export class ProjectStorageService implements IProjectStorageService {
 
 		console.log(`[ProjectStorageService] Deleted project: ${projectId}`);
 	}
+
+	// ========================================================================
+	// Active Project Metadata (for session restoration & orphaned process cleanup)
+	// ========================================================================
+
+	/**
+	 * Set active dev server metadata (called when server starts)
+	 */
+	async setActiveProject(projectId: string, pid: number, port: number, url: string): Promise<void> {
+		if (!this.storage || !this.initialized) {
+			throw new Error('[ProjectStorageService] Not initialized');
+		}
+
+		await this.storage.setActiveProject(projectId, pid, port, url);
+		console.log(`[ProjectStorageService] Set active project: ${projectId} (pid: ${pid}, port: ${port})`);
+	}
+
+	/**
+	 * Clear active project metadata (called when server stops)
+	 */
+	async clearActiveProject(): Promise<void> {
+		if (!this.storage || !this.initialized) {
+			throw new Error('[ProjectStorageService] Not initialized');
+		}
+
+		await this.storage.clearActiveProject();
+		console.log('[ProjectStorageService] Cleared active project');
+	}
+
+	/**
+	 * Get active project metadata (returns undefined if no server running)
+	 */
+	async getActiveProject(): Promise<import('../../common/storage/storageTypes.js').ActiveProjectMetadata | undefined> {
+		if (!this.storage || !this.initialized) {
+			console.warn('[ProjectStorageService] Not initialized, returning undefined');
+			return undefined;
+		}
+
+		return this.storage.getActiveProject();
+	}
 }
