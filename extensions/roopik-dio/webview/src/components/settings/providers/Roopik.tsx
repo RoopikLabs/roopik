@@ -1,14 +1,11 @@
 import { type ProviderSettings, type OrganizationAllowList, rooDefaultModelId } from "@roo-code/types"
-
 import type { RouterModels } from "@roo/api"
-
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { vscode } from "@src/utils/vscode"
 import { Button } from "@src/components/ui"
-
 import { ModelPicker } from "../ModelPicker"
 
-type RooProps = {
+type RoopikProps = {
 	apiConfiguration: ProviderSettings
 	setApiConfigurationField: (field: keyof ProviderSettings, value: ProviderSettings[keyof ProviderSettings]) => void
 	routerModels?: RouterModels
@@ -17,14 +14,14 @@ type RooProps = {
 	simplifySettings?: boolean
 }
 
-export const Roo = ({
+export const Roopik = ({
 	apiConfiguration,
 	setApiConfigurationField,
 	routerModels,
 	organizationAllowList,
 	modelValidationError,
 	simplifySettings,
-}: RooProps) => {
+}: RoopikProps) => {
 	const { t } = useAppTranslation()
 
 	return (
@@ -35,8 +32,8 @@ export const Roo = ({
 				defaultModelId={rooDefaultModelId}
 				models={routerModels?.roo ?? {}}
 				modelIdKey="apiModelId"
-				serviceName="Roo Code Cloud"
-				serviceUrl="https://roocode.com"
+				serviceName="Roopik Cloud"
+				serviceUrl="https://roopik.com"
 				organizationAllowList={organizationAllowList}
 				errorMessage={modelValidationError}
 				simplifySettings={simplifySettings}
