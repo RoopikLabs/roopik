@@ -42,8 +42,8 @@
 		"sonnet",
 		"ai",
 		"llama",
-		"roopik dot",
-		"dot agent"
+		"roopik dio",
+		"dio agent"
 	],
 	"activationEvents": [
 		"onLanguage",

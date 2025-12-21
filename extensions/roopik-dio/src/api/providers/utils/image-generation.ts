@@ -71,7 +71,7 @@ export async function generateImageWithProvider(options: ImageGenerationOptions)
 				Authorization: `Bearer ${authToken}`,
 				"Content-Type": "application/json",
 				"HTTP-Referer": "https://github.com/RooVetGit/Roo-Code",
-				"X-Title": "Roopik Dot",
+				"X-Title": "Roopik Dio",
 			},
 			body: JSON.stringify({
 				model,
@@ -217,7 +217,7 @@ export async function generateImageWithImagesApi(options: ImagesApiOptions): Pro
 				Authorization: `Bearer ${authToken}`,
 				"Content-Type": "application/json",
 				"HTTP-Referer": "https://github.com/RooVetGit/Roo-Code",
-				"X-Title": "Roopik Dot",
+				"X-Title": "Roopik Dio",
 			},
 			body: JSON.stringify(requestBody),
 		}

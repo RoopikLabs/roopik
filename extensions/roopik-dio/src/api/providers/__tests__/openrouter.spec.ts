@@ -104,7 +104,7 @@ describe("OpenRouterHandler", () => {
 			apiKey: mockOptions.openRouterApiKey,
 			defaultHeaders: {
 				"HTTP-Referer": "https://github.com/RoopikLabs/roopik",
-				"X-Title": "Roopik Dot",
+				"X-Title": "Roopik Dio",
 				"User-Agent": `RoopikAgent/${Package.version}`,
 			},
 		})

@@ -66,7 +66,7 @@ describe("RequestyHandler", () => {
 			apiKey: mockOptions.requestyApiKey,
 			defaultHeaders: {
 				"HTTP-Referer": "https://github.com/RoopikLabs/roopik",
-				"X-Title": "Roopik Dot",
+				"X-Title": "Roopik Dio",
 				"User-Agent": `RoopikAgent/${Package.version}`,
 			},
 		})
@@ -81,7 +81,7 @@ describe("RequestyHandler", () => {
 			apiKey: mockOptions.requestyApiKey,
 			defaultHeaders: {
 				"HTTP-Referer": "https://github.com/RoopikLabs/roopik",
-				"X-Title": "Roopik Dot",
+				"X-Title": "Roopik Dio",
 				"User-Agent": `RoopikAgent/${Package.version}`,
 			},
 		})

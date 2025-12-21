@@ -75,16 +75,6 @@ vi.mock("@roo-code/telemetry", () => ({
 	},
 }))
 
-// Mock @roo-code/cloud to prevent socket.io-client initialization issues
-vi.mock("@roo-code/cloud", () => ({
-	CloudService: {
-		isEnabled: () => false,
-	},
-	BridgeOrchestrator: {
-		subscribeToTask: vi.fn(),
-	},
-}))
-
 // Mock delay to prevent actual delays
 vi.mock("delay", () => ({
 	__esModule: true,
@@ -417,8 +407,8 @@ describe("Task reasoning preservation", () => {
 			startTask: false,
 		})
 
-		// Avoid disk writes in this test
-		;(task as any).saveApiConversationHistory = vi.fn().mockResolvedValue(undefined)
+			// Avoid disk writes in this test
+			; (task as any).saveApiConversationHistory = vi.fn().mockResolvedValue(undefined)
 
 		// Mock API handler to provide encrypted reasoning data and response id
 		task.api = {
@@ -463,8 +453,8 @@ describe("Task reasoning preservation", () => {
 			startTask: false,
 		})
 
-		// Avoid disk writes in this test
-		;(task as any).saveApiConversationHistory = vi.fn().mockResolvedValue(undefined)
+			// Avoid disk writes in this test
+			; (task as any).saveApiConversationHistory = vi.fn().mockResolvedValue(undefined)
 
 		// Mock API handler without getEncryptedContent (like Anthropic, Gemini, etc.)
 		task.api = {

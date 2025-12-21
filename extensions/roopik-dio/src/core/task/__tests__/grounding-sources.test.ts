@@ -75,16 +75,6 @@ vi.mock("@roo-code/telemetry", () => ({
 	},
 }))
 
-// Mock @roo-code/cloud to prevent socket.io-client initialization issues
-vi.mock("@roo-code/cloud", () => ({
-	CloudService: {
-		isEnabled: () => false,
-	},
-	BridgeOrchestrator: {
-		subscribeToTask: vi.fn(),
-	},
-}))
-
 // Mock delay to prevent actual delays
 vi.mock("delay", () => ({
 	__esModule: true,

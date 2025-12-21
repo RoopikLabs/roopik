@@ -15,7 +15,7 @@ describe("DEFAULT_HEADERS", () => {
 	})
 
 	it("should have correct X-Title value", () => {
-		expect(DEFAULT_HEADERS["X-Title"]).toBe("Roopik Dot")
+		expect(DEFAULT_HEADERS["X-Title"]).toBe("Roopik Dio")
 	})
 
 	it("should have correct User-Agent format", () => {

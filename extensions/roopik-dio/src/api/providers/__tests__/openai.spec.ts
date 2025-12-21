@@ -112,7 +112,7 @@ describe("OpenAiHandler", () => {
 				apiKey: expect.any(String),
 				defaultHeaders: {
 					"HTTP-Referer": "https://github.com/RoopikLabs/roopik",
-					"X-Title": "Roopik Dot",
+					"X-Title": "Roopik Dio",
 					"User-Agent": `RoopikAgent/${Package.version}`,
 				},
 				timeout: expect.any(Number),

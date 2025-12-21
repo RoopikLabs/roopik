@@ -109,8 +109,8 @@ vi.mock("../../../services/browser/browserDiscovery", () => ({
 
 const mockAddCustomInstructions = vi.fn().mockResolvedValue("Combined instructions")
 
-;(vi.mocked(await import("../../prompts/sections/custom-instructions")) as any).addCustomInstructions =
-	mockAddCustomInstructions
+	; (vi.mocked(await import("../../prompts/sections/custom-instructions")) as any).addCustomInstructions =
+		mockAddCustomInstructions
 
 vi.mock("delay", () => {
 	const delayFn = (_ms: number) => Promise.resolve()
@@ -318,21 +318,6 @@ vi.mock("../diff/strategies/multi-search-replace", () => ({
 	})),
 }))
 
-vi.mock("@roo-code/cloud", () => ({
-	CloudService: {
-		hasInstance: vi.fn().mockReturnValue(true),
-		get instance() {
-			return {
-				isAuthenticated: vi.fn().mockReturnValue(false),
-			}
-		},
-	},
-	BridgeOrchestrator: {
-		isEnabled: vi.fn().mockReturnValue(false),
-	},
-	getRooCodeApiUrl: vi.fn().mockReturnValue("https://app.roocode.com"),
-}))
-
 afterAll(() => {
 	vi.restoreAllMocks()
 })
@@ -496,7 +481,7 @@ describe("ClineProvider", () => {
 			"sidebar",
 			new ContextProxy(mockContext),
 		)
-		;(axios.get as any).mockRejectedValueOnce(new Error("Network error"))
+			; (axios.get as any).mockRejectedValueOnce(new Error("Network error"))
 
 		await provider.resolveWebviewView(mockWebviewView)
 
@@ -570,19 +555,9 @@ describe("ClineProvider", () => {
 			maxReadFileLine: 500,
 			maxImageFileSize: 5,
 			maxTotalImageSize: 20,
-			cloudUserInfo: null,
 			organizationAllowList: ORGANIZATION_ALLOW_ALL,
 			autoCondenseContext: true,
 			autoCondenseContextPercent: 100,
-			cloudIsAuthenticated: false,
-			sharingEnabled: false,
-			publicSharingEnabled: false,
-			profileThresholds: {},
-			hasOpenedModeSelector: false,
-			diagnosticsEnabled: true,
-			openRouterImageApiKey: undefined,
-			openRouterImageGenerationSelectedModel: undefined,
-			remoteControlEnabled: false,
 			taskSyncEnabled: false,
 			featureRoomoteControlEnabled: false,
 			checkpointTimeout: DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
@@ -665,9 +640,9 @@ describe("ClineProvider", () => {
 			const parentTask = new Task(defaultTaskOptions)
 			const childTask = new Task(defaultTaskOptions)
 
-			// Set up parent-child relationship
-			;(childTask as any).parentTask = parentTask
-			;(childTask as any).rootTask = parentTask
+				// Set up parent-child relationship
+				; (childTask as any).parentTask = parentTask
+				; (childTask as any).rootTask = parentTask
 
 			// Mock the provider methods
 			const clearTaskSpy = vi.spyOn(provider, "clearTask").mockResolvedValue(undefined)
@@ -769,7 +744,7 @@ describe("ClineProvider", () => {
 
 	test("language is set to VSCode language", async () => {
 		// Mock VSCode language as Spanish
-		;(vscode.env as any).language = "pt-BR"
+		; (vscode.env as any).language = "pt-BR"
 
 		const state = await provider.getState()
 		expect(state.language).toBe("pt-BR")
@@ -777,7 +752,7 @@ describe("ClineProvider", () => {
 
 	test("diffEnabled defaults to true when not set", async () => {
 		// Mock globalState.get to return undefined for diffEnabled
-		;(mockContext.globalState.get as any).mockReturnValue(undefined)
+		; (mockContext.globalState.get as any).mockReturnValue(undefined)
 
 		const state = await provider.getState()
 
@@ -786,7 +761,7 @@ describe("ClineProvider", () => {
 
 	test("writeDelayMs defaults to 1000ms", async () => {
 		// Mock globalState.get to return undefined for writeDelayMs
-		;(mockContext.globalState.get as any).mockImplementation((key: string) =>
+		; (mockContext.globalState.get as any).mockImplementation((key: string) =>
 			key === "writeDelayMs" ? undefined : null,
 		)
 
@@ -837,7 +812,7 @@ describe("ClineProvider", () => {
 
 	test("autoCondenseContext defaults to true", async () => {
 		// Mock globalState.get to return undefined for autoCondenseContext
-		;(mockContext.globalState.get as any).mockImplementation((key: string) =>
+		; (mockContext.globalState.get as any).mockImplementation((key: string) =>
 			key === "autoCondenseContext" ? undefined : null,
 		)
 		const state = await provider.getState()
@@ -855,7 +830,7 @@ describe("ClineProvider", () => {
 
 	test("autoCondenseContextPercent defaults to 100", async () => {
 		// Mock globalState.get to return undefined for autoCondenseContextPercent
-		;(mockContext.globalState.get as any).mockImplementation((key: string) =>
+		; (mockContext.globalState.get as any).mockImplementation((key: string) =>
 			key === "autoCondenseContextPercent" ? undefined : null,
 		)
 
@@ -880,12 +855,12 @@ describe("ClineProvider", () => {
 
 		const profile: ProviderSettingsEntry = { name: "test-config", id: "test-id", apiProvider: "anthropic" }
 
-		;(provider as any).providerSettingsManager = {
-			getModeConfigId: vi.fn().mockResolvedValue("test-id"),
-			listConfig: vi.fn().mockResolvedValue([profile]),
-			activateProfile: vi.fn().mockResolvedValue(profile),
-			setModeConfig: vi.fn(),
-		} as any
+			; (provider as any).providerSettingsManager = {
+				getModeConfigId: vi.fn().mockResolvedValue("test-id"),
+				listConfig: vi.fn().mockResolvedValue([profile]),
+				activateProfile: vi.fn().mockResolvedValue(profile),
+				setModeConfig: vi.fn(),
+			} as any
 
 		// Switch to architect mode
 		await messageHandler({ type: "mode", text: "architect" })
@@ -900,13 +875,13 @@ describe("ClineProvider", () => {
 		await provider.resolveWebviewView(mockWebviewView)
 		const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
-		;(provider as any).providerSettingsManager = {
-			getModeConfigId: vi.fn().mockResolvedValue(undefined),
-			listConfig: vi
-				.fn()
-				.mockResolvedValue([{ name: "current-config", id: "current-id", apiProvider: "anthropic" }]),
-			setModeConfig: vi.fn(),
-		} as any
+			; (provider as any).providerSettingsManager = {
+				getModeConfigId: vi.fn().mockResolvedValue(undefined),
+				listConfig: vi
+					.fn()
+					.mockResolvedValue([{ name: "current-config", id: "current-id", apiProvider: "anthropic" }]),
+				setModeConfig: vi.fn(),
+			} as any
 
 		provider.setValue("currentApiConfigName", "current-config")
 
@@ -923,12 +898,12 @@ describe("ClineProvider", () => {
 
 		const profile: ProviderSettingsEntry = { apiProvider: "anthropic", id: "new-id", name: "new-config" }
 
-		;(provider as any).providerSettingsManager = {
-			activateProfile: vi.fn().mockResolvedValue(profile),
-			listConfig: vi.fn().mockResolvedValue([profile]),
-			setModeConfig: vi.fn(),
-			getModeConfigId: vi.fn().mockResolvedValue(undefined),
-		} as any
+			; (provider as any).providerSettingsManager = {
+				activateProfile: vi.fn().mockResolvedValue(profile),
+				listConfig: vi.fn().mockResolvedValue([profile]),
+				setModeConfig: vi.fn(),
+				getModeConfigId: vi.fn().mockResolvedValue(undefined),
+			} as any
 
 		// First set the mode
 		await messageHandler({ type: "mode", text: "architect" })
@@ -950,12 +925,12 @@ describe("ClineProvider", () => {
 			apiProvider: "anthropic",
 		}
 
-		;(provider as any).providerSettingsManager = {
-			activateProfile: vi.fn().mockResolvedValue(profile),
-			listConfig: vi.fn().mockResolvedValue([profile]),
-			setModeConfig: vi.fn(),
-			getModeConfigId: vi.fn().mockResolvedValue(undefined),
-		} as any
+			; (provider as any).providerSettingsManager = {
+				activateProfile: vi.fn().mockResolvedValue(profile),
+				listConfig: vi.fn().mockResolvedValue([profile]),
+				setModeConfig: vi.fn(),
+				getModeConfigId: vi.fn().mockResolvedValue(undefined),
+			} as any
 
 		// First set the mode
 		await messageHandler({ type: "mode", text: "architect" })
@@ -1052,7 +1027,7 @@ describe("ClineProvider", () => {
 
 	test("customModePrompts defaults to empty object", async () => {
 		// Mock globalState.get to return undefined for customModePrompts
-		;(mockContext.globalState.get as any).mockImplementation((key: string) => {
+		; (mockContext.globalState.get as any).mockImplementation((key: string) => {
 			if (key === "customModePrompts") {
 				return undefined
 			}
@@ -1135,11 +1110,11 @@ describe("ClineProvider", () => {
 		await provider.resolveWebviewView(mockWebviewView)
 		const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
-		;(provider as any).providerSettingsManager = {
-			listConfig: vi.fn().mockResolvedValue([{ name: "test-config", id: "test-id", apiProvider: "anthropic" }]),
-			saveConfig: vi.fn().mockResolvedValue("test-id"),
-			setModeConfig: vi.fn(),
-		} as any
+			; (provider as any).providerSettingsManager = {
+				listConfig: vi.fn().mockResolvedValue([{ name: "test-config", id: "test-id", apiProvider: "anthropic" }]),
+				saveConfig: vi.fn().mockResolvedValue("test-id"),
+				setModeConfig: vi.fn(),
+			} as any
 
 		// Update API configuration
 		await messageHandler({
@@ -1189,13 +1164,13 @@ describe("ClineProvider", () => {
 			mockCline.apiConversationHistory = mockApiHistory // Set API history
 			await provider.addClineToStack(mockCline) // Add the mocked instance to the stack
 
-			// Mock getTaskWithId
-			;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-				historyItem: { id: "test-task-id" },
-			})
+				// Mock getTaskWithId
+				; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+					historyItem: { id: "test-task-id" },
+				})
 
-			// Mock createTaskWithHistoryItem
-			;(provider as any).createTaskWithHistoryItem = vi.fn()
+				// Mock createTaskWithHistoryItem
+				; (provider as any).createTaskWithHistoryItem = vi.fn()
 
 			// Trigger message deletion
 			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
@@ -1231,7 +1206,7 @@ describe("ClineProvider", () => {
 
 		test("handles case when no current task exists", async () => {
 			// Clear the cline stack
-			;(provider as any).clineStack = []
+			; (provider as any).clineStack = []
 
 			// Trigger message deletion
 			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
@@ -1283,10 +1258,10 @@ describe("ClineProvider", () => {
 
 			await provider.addClineToStack(mockCline) // Add the mocked instance to the stack
 
-			// Mock getTaskWithId
-			;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-				historyItem: { id: "test-task-id" },
-			})
+				// Mock getTaskWithId
+				; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+					historyItem: { id: "test-task-id" },
+				})
 
 			// Trigger message edit
 			// Get the message handler function that was registered with the webview
@@ -1601,12 +1576,12 @@ describe("ClineProvider", () => {
 				apiProvider: "anthropic",
 			}
 
-			;(provider as any).providerSettingsManager = {
-				getModeConfigId: vi.fn().mockResolvedValue("saved-config-id"),
-				listConfig: vi.fn().mockResolvedValue([profile]),
-				activateProfile: vi.fn().mockResolvedValue(profile),
-				setModeConfig: vi.fn(),
-			} as any
+				; (provider as any).providerSettingsManager = {
+					getModeConfigId: vi.fn().mockResolvedValue("saved-config-id"),
+					listConfig: vi.fn().mockResolvedValue([profile]),
+					activateProfile: vi.fn().mockResolvedValue(profile),
+					setModeConfig: vi.fn(),
+				} as any
 
 			// Switch to architect mode
 			await provider.handleModeSwitch("architect")
@@ -1624,7 +1599,7 @@ describe("ClineProvider", () => {
 		})
 
 		test("saves current config when switching to mode without config", async () => {
-			;(provider as any).providerSettingsManager = {
+			; (provider as any).providerSettingsManager = {
 				getModeConfigId: vi.fn().mockResolvedValue(undefined),
 				listConfig: vi
 					.fn()
@@ -1670,7 +1645,7 @@ describe("ClineProvider", () => {
 				]),
 				dispose: vi.fn(),
 			}
-			;(provider as any).customModesManager = mockCustomModesManager
+				; (provider as any).customModesManager = mockCustomModesManager
 
 			// Mock getModeBySlug to return undefined for non-existent mode
 			const { getModeBySlug } = await import("../../../shared/modes")
@@ -1683,11 +1658,11 @@ describe("ClineProvider", () => {
 					groups: ["read", "edit", "browser"],
 				}) // Subsequent calls return default mode
 
-			// Mock provider settings manager
-			;(provider as any).providerSettingsManager = {
-				getModeConfigId: vi.fn().mockResolvedValue(undefined),
-				listConfig: vi.fn().mockResolvedValue([]),
-			}
+				// Mock provider settings manager
+				; (provider as any).providerSettingsManager = {
+					getModeConfigId: vi.fn().mockResolvedValue(undefined),
+					listConfig: vi.fn().mockResolvedValue([]),
+				}
 
 			// Spy on log method to verify warning was logged
 			const logSpy = vi.spyOn(provider, "log")
@@ -1736,7 +1711,7 @@ describe("ClineProvider", () => {
 				]),
 				dispose: vi.fn(),
 			}
-			;(provider as any).customModesManager = mockCustomModesManager
+				; (provider as any).customModesManager = mockCustomModesManager
 
 			// Mock getModeBySlug to return the custom mode
 			const { getModeBySlug } = await import("../../../shared/modes")
@@ -1747,16 +1722,16 @@ describe("ClineProvider", () => {
 				groups: ["read", "edit"],
 			})
 
-			// Mock provider settings manager
-			;(provider as any).providerSettingsManager = {
-				getModeConfigId: vi.fn().mockResolvedValue("config-id"),
-				listConfig: vi
-					.fn()
-					.mockResolvedValue([{ name: "test-config", id: "config-id", apiProvider: "anthropic" }]),
-				activateProfile: vi
-					.fn()
-					.mockResolvedValue({ name: "test-config", id: "config-id", apiProvider: "anthropic" }),
-			}
+				// Mock provider settings manager
+				; (provider as any).providerSettingsManager = {
+					getModeConfigId: vi.fn().mockResolvedValue("config-id"),
+					listConfig: vi
+						.fn()
+						.mockResolvedValue([{ name: "test-config", id: "config-id", apiProvider: "anthropic" }]),
+					activateProfile: vi
+						.fn()
+						.mockResolvedValue({ name: "test-config", id: "config-id", apiProvider: "anthropic" }),
+				}
 
 			// Spy on log method to verify no warning was logged
 			const logSpy = vi.spyOn(provider, "log")
@@ -1796,7 +1771,7 @@ describe("ClineProvider", () => {
 				getCustomModes: vi.fn().mockResolvedValue([]),
 				dispose: vi.fn(),
 			}
-			;(provider as any).customModesManager = mockCustomModesManager
+				; (provider as any).customModesManager = mockCustomModesManager
 
 			// Mock getModeBySlug to return built-in architect mode
 			const { getModeBySlug } = await import("../../../shared/modes")
@@ -1807,11 +1782,11 @@ describe("ClineProvider", () => {
 				groups: ["read", "edit"],
 			})
 
-			// Mock provider settings manager
-			;(provider as any).providerSettingsManager = {
-				getModeConfigId: vi.fn().mockResolvedValue(undefined),
-				listConfig: vi.fn().mockResolvedValue([]),
-			}
+				// Mock provider settings manager
+				; (provider as any).providerSettingsManager = {
+					getModeConfigId: vi.fn().mockResolvedValue(undefined),
+					listConfig: vi.fn().mockResolvedValue([]),
+				}
 
 			// Create history item with built-in mode
 			const historyItem = {
@@ -1838,11 +1813,11 @@ describe("ClineProvider", () => {
 		test("handles history items without mode property", async () => {
 			await provider.resolveWebviewView(mockWebviewView)
 
-			// Mock provider settings manager
-			;(provider as any).providerSettingsManager = {
-				getModeConfigId: vi.fn().mockResolvedValue(undefined),
-				listConfig: vi.fn().mockResolvedValue([]),
-			}
+				// Mock provider settings manager
+				; (provider as any).providerSettingsManager = {
+					getModeConfigId: vi.fn().mockResolvedValue(undefined),
+					listConfig: vi.fn().mockResolvedValue([]),
+				}
 
 			// Create history item without mode
 			const historyItem = {
@@ -1871,7 +1846,7 @@ describe("ClineProvider", () => {
 				getCustomModes: vi.fn().mockResolvedValue([]),
 				dispose: vi.fn(),
 			}
-			;(provider as any).customModesManager = mockCustomModesManager
+				; (provider as any).customModesManager = mockCustomModesManager
 
 			// Mock getModeBySlug to return built-in mode
 			const { getModeBySlug } = await import("../../../shared/modes")
@@ -1882,14 +1857,14 @@ describe("ClineProvider", () => {
 				groups: ["read", "edit", "browser"],
 			})
 
-			// Mock provider settings manager to throw error
-			;(provider as any).providerSettingsManager = {
-				getModeConfigId: vi.fn().mockResolvedValue("config-id"),
-				listConfig: vi
-					.fn()
-					.mockResolvedValue([{ name: "test-config", id: "config-id", apiProvider: "anthropic" }]),
-				activateProfile: vi.fn().mockRejectedValue(new Error("Failed to load config")),
-			}
+				// Mock provider settings manager to throw error
+				; (provider as any).providerSettingsManager = {
+					getModeConfigId: vi.fn().mockResolvedValue("config-id"),
+					listConfig: vi
+						.fn()
+						.mockResolvedValue([{ name: "test-config", id: "config-id", apiProvider: "anthropic" }]),
+					activateProfile: vi.fn().mockRejectedValue(new Error("Failed to load config")),
+				}
 
 			// Spy on log method
 			const logSpy = vi.spyOn(provider, "log")
@@ -1921,19 +1896,19 @@ describe("ClineProvider", () => {
 			await provider.resolveWebviewView(mockWebviewView)
 			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
-			// Mock CustomModesManager methods
-			;(provider as any).customModesManager = {
-				updateCustomMode: vi.fn().mockResolvedValue(undefined),
-				getCustomModes: vi.fn().mockResolvedValue([
-					{
-						slug: "test-mode",
-						name: "Test Mode",
-						roleDefinition: "Updated role definition",
-						groups: ["read"] as const,
-					},
-				]),
-				dispose: vi.fn(),
-			} as any
+				// Mock CustomModesManager methods
+				; (provider as any).customModesManager = {
+					updateCustomMode: vi.fn().mockResolvedValue(undefined),
+					getCustomModes: vi.fn().mockResolvedValue([
+						{
+							slug: "test-mode",
+							name: "Test Mode",
+							roleDefinition: "Updated role definition",
+							groups: ["read"] as const,
+						},
+					]),
+					dispose: vi.fn(),
+				} as any
 
 			// Test updating a custom mode
 			await messageHandler({
@@ -1983,12 +1958,12 @@ describe("ClineProvider", () => {
 			await provider.resolveWebviewView(mockWebviewView)
 			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
-			;(provider as any).providerSettingsManager = {
-				setModeConfig: vi.fn().mockRejectedValue(new Error("Failed to update mode config")),
-				listConfig: vi
-					.fn()
-					.mockResolvedValue([{ name: "test-config", id: "test-id", apiProvider: "anthropic" }]),
-			} as any
+				; (provider as any).providerSettingsManager = {
+					setModeConfig: vi.fn().mockRejectedValue(new Error("Failed to update mode config")),
+					listConfig: vi
+						.fn()
+						.mockResolvedValue([{ name: "test-config", id: "test-id", apiProvider: "anthropic" }]),
+				} as any
 
 			// Mock getState to provide necessary data
 			vi.spyOn(provider, "getState").mockResolvedValue({
@@ -2014,13 +1989,13 @@ describe("ClineProvider", () => {
 			await provider.resolveWebviewView(mockWebviewView)
 			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
-			;(provider as any).providerSettingsManager = {
-				setModeConfig: vi.fn(),
-				saveConfig: vi.fn().mockResolvedValue(undefined),
-				listConfig: vi
-					.fn()
-					.mockResolvedValue([{ name: "test-config", id: "test-id", apiProvider: "anthropic" }]),
-			} as any
+				; (provider as any).providerSettingsManager = {
+					setModeConfig: vi.fn(),
+					saveConfig: vi.fn().mockResolvedValue(undefined),
+					listConfig: vi
+						.fn()
+						.mockResolvedValue([{ name: "test-config", id: "test-id", apiProvider: "anthropic" }]),
+				} as any
 
 			const testApiConfig = {
 				apiProvider: "anthropic" as const,
@@ -2054,16 +2029,16 @@ describe("ClineProvider", () => {
 			// Mock buildApiHandler to throw an error
 			const { buildApiHandler } = await import("../../../api")
 
-			;(buildApiHandler as any).mockImplementationOnce(() => {
-				throw new Error("API handler error")
-			})
-			;(provider as any).providerSettingsManager = {
-				setModeConfig: vi.fn(),
-				saveConfig: vi.fn().mockResolvedValue(undefined),
-				listConfig: vi
-					.fn()
-					.mockResolvedValue([{ name: "test-config", id: "test-id", apiProvider: "anthropic" }]),
-			} as any
+				; (buildApiHandler as any).mockImplementationOnce(() => {
+					throw new Error("API handler error")
+				})
+				; (provider as any).providerSettingsManager = {
+					setModeConfig: vi.fn(),
+					saveConfig: vi.fn().mockResolvedValue(undefined),
+					listConfig: vi
+						.fn()
+						.mockResolvedValue([{ name: "test-config", id: "test-id", apiProvider: "anthropic" }]),
+				} as any
 
 			// Setup Task instance with auto-mock from the top of the file
 			const mockCline = new Task(defaultTaskOptions) // Create a new mocked instance
@@ -2098,13 +2073,13 @@ describe("ClineProvider", () => {
 			await provider.resolveWebviewView(mockWebviewView)
 			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
-			;(provider as any).providerSettingsManager = {
-				setModeConfig: vi.fn(),
-				saveConfig: vi.fn().mockResolvedValue(undefined),
-				listConfig: vi
-					.fn()
-					.mockResolvedValue([{ name: "test-config", id: "test-id", apiProvider: "anthropic" }]),
-			} as any
+				; (provider as any).providerSettingsManager = {
+					setModeConfig: vi.fn(),
+					saveConfig: vi.fn().mockResolvedValue(undefined),
+					listConfig: vi
+						.fn()
+						.mockResolvedValue([{ name: "test-config", id: "test-id", apiProvider: "anthropic" }]),
+				} as any
 
 			const testApiConfig = {
 				apiProvider: "anthropic" as const,
@@ -2261,7 +2236,7 @@ describe("Project MCP Settings", () => {
 
 	test.skip("handles openProjectMcpSettings message", async () => {
 		// Mock workspace folders first
-		;(vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: "/test/workspace" } }]
+		; (vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: "/test/workspace" } }]
 
 		// Mock fs functions
 		const fs = await import("fs/promises")
@@ -2306,8 +2281,8 @@ describe("Project MCP Settings", () => {
 		await provider.resolveWebviewView(mockWebviewView)
 		const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
-		// Mock no workspace folders
-		;(vscode.workspace as any).workspaceFolders = []
+			// Mock no workspace folders
+			; (vscode.workspace as any).workspaceFolders = []
 
 		// Trigger openProjectMcpSettings
 		await messageHandler({ type: "openProjectMcpSettings" })
@@ -2320,8 +2295,8 @@ describe("Project MCP Settings", () => {
 		await provider.resolveWebviewView(mockWebviewView)
 		const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
-		// Mock workspace folders
-		;(vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: "/test/workspace" } }]
+			// Mock workspace folders
+			; (vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: "/test/workspace" } }]
 
 		// Mock fs functions to fail
 		const fs = require("fs/promises")
@@ -2462,96 +2437,6 @@ describe("getTelemetryProperties", () => {
 		const properties = await provider.getTelemetryProperties()
 
 		expect(properties).toHaveProperty("modelId", "claude-sonnet-4-20250514")
-	})
-
-	describe("cloud authentication telemetry", () => {
-		beforeEach(() => {
-			// Reset all mocks before each test
-			vi.clearAllMocks()
-		})
-
-		test("includes cloud authentication property when user is authenticated", async () => {
-			// Import the CloudService mock and update it
-			const { CloudService } = await import("@roo-code/cloud")
-			const mockCloudService = {
-				isAuthenticated: vi.fn().mockReturnValue(true),
-			}
-
-			// Update the existing mock
-			Object.defineProperty(CloudService, "instance", {
-				get: vi.fn().mockReturnValue(mockCloudService),
-				configurable: true,
-			})
-
-			const properties = await provider.getTelemetryProperties()
-
-			expect(properties).toHaveProperty("cloudIsAuthenticated", true)
-		})
-
-		test("includes cloud authentication property when user is not authenticated", async () => {
-			// Import the CloudService mock and update it
-			const { CloudService } = await import("@roo-code/cloud")
-			const mockCloudService = {
-				isAuthenticated: vi.fn().mockReturnValue(false),
-			}
-
-			// Update the existing mock
-			Object.defineProperty(CloudService, "instance", {
-				get: vi.fn().mockReturnValue(mockCloudService),
-				configurable: true,
-			})
-
-			const properties = await provider.getTelemetryProperties()
-
-			expect(properties).toHaveProperty("cloudIsAuthenticated", false)
-		})
-
-		test("handles CloudService errors gracefully", async () => {
-			// Import the CloudService mock and update it to throw an error
-			const { CloudService } = await import("@roo-code/cloud")
-			Object.defineProperty(CloudService, "instance", {
-				get: vi.fn().mockImplementation(() => {
-					throw new Error("CloudService not available")
-				}),
-				configurable: true,
-			})
-
-			const properties = await provider.getTelemetryProperties()
-
-			// Should still include basic telemetry properties
-			expect(properties).toHaveProperty("vscodeVersion")
-			expect(properties).toHaveProperty("platform")
-			expect(properties).toHaveProperty("appVersion", "1.0.0")
-
-			// Cloud property should be undefined when CloudService is not available
-			expect(properties).toHaveProperty("cloudIsAuthenticated", undefined)
-		})
-
-		test("handles CloudService method errors gracefully", async () => {
-			// Import the CloudService mock and update it
-			const { CloudService } = await import("@roo-code/cloud")
-			const mockCloudService = {
-				isAuthenticated: vi.fn().mockImplementation(() => {
-					throw new Error("Authentication check error")
-				}),
-			}
-
-			// Update the existing mock
-			Object.defineProperty(CloudService, "instance", {
-				get: vi.fn().mockReturnValue(mockCloudService),
-				configurable: true,
-			})
-
-			const properties = await provider.getTelemetryProperties()
-
-			// Should still include basic telemetry properties
-			expect(properties).toHaveProperty("vscodeVersion")
-			expect(properties).toHaveProperty("platform")
-			expect(properties).toHaveProperty("appVersion", "1.0.0")
-
-			// Property that errored should be undefined
-			expect(properties).toHaveProperty("cloudIsAuthenticated", undefined)
-		})
 	})
 })
 
@@ -3017,9 +2902,9 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 			mockCline.submitUserMessage = vi.fn()
 
 			await provider.addClineToStack(mockCline)
-			;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-				historyItem: { id: "test-task-id" },
-			})
+				; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+					historyItem: { id: "test-task-id" },
+				})
 
 			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 			await messageHandler({
@@ -3073,9 +2958,9 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 			mockCline.submitUserMessage = vi.fn()
 
 			await provider.addClineToStack(mockCline)
-			;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-				historyItem: { id: "test-task-id" },
-			})
+				; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+					historyItem: { id: "test-task-id" },
+				})
 
 			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 			await messageHandler({
@@ -3107,7 +2992,7 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 
 	describe("Network Failure Scenarios", () => {
 		beforeEach(async () => {
-			;(vscode.window.showInformationMessage as any) = vi.fn()
+			; (vscode.window.showInformationMessage as any) = vi.fn()
 			await provider.resolveWebviewView(mockWebviewView)
 		})
 
@@ -3123,9 +3008,9 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 			mockCline.handleWebviewAskResponse = vi.fn().mockRejectedValue(new Error("Network timeout"))
 
 			await provider.addClineToStack(mockCline)
-			;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-				historyItem: { id: "test-task-id" },
-			})
+				; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+					historyItem: { id: "test-task-id" },
+				})
 
 			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
@@ -3165,9 +3050,9 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 			mockCline.handleWebviewAskResponse = vi.fn()
 
 			await provider.addClineToStack(mockCline)
-			;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-				historyItem: { id: "test-task-id" },
-			})
+				; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+					historyItem: { id: "test-task-id" },
+				})
 
 			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
@@ -3199,7 +3084,7 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 
 	describe("Concurrent Edit Operations", () => {
 		beforeEach(async () => {
-			;(vscode.window.showInformationMessage as any) = vi.fn()
+			; (vscode.window.showInformationMessage as any) = vi.fn()
 			await provider.resolveWebviewView(mockWebviewView)
 		})
 
@@ -3217,9 +3102,9 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 			mockCline.handleWebviewAskResponse = vi.fn()
 
 			await provider.addClineToStack(mockCline)
-			;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-				historyItem: { id: "test-task-id" },
-			})
+				; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+					historyItem: { id: "test-task-id" },
+				})
 
 			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
@@ -3265,7 +3150,7 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 
 	describe("Edit Permissions and Authorization", () => {
 		beforeEach(async () => {
-			;(vscode.window.showInformationMessage as any) = vi.fn()
+			; (vscode.window.showInformationMessage as any) = vi.fn()
 			await provider.resolveWebviewView(mockWebviewView)
 		})
 
@@ -3297,9 +3182,9 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 			mockCline.handleWebviewAskResponse = vi.fn()
 
 			await provider.addClineToStack(mockCline)
-			;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-				historyItem: { id: "test-task-id" },
-			})
+				; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+					historyItem: { id: "test-task-id" },
+				})
 
 			const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
@@ -3372,7 +3257,7 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 			})
 
 			test("handles invalid timestamp values", async () => {
-				;(vscode.window.showInformationMessage as any) = vi.fn()
+				; (vscode.window.showInformationMessage as any) = vi.fn()
 
 				const mockCline = new Task(defaultTaskOptions)
 				mockCline.clineMessages = [
@@ -3404,7 +3289,7 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 
 		describe("Operations on Deleted or Non-existent Messages", () => {
 			beforeEach(async () => {
-				;(vscode.window.showInformationMessage as any) = vi.fn()
+				; (vscode.window.showInformationMessage as any) = vi.fn()
 				await provider.resolveWebviewView(mockWebviewView)
 			})
 
@@ -3419,9 +3304,9 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 				mockCline.handleWebviewAskResponse = vi.fn()
 
 				await provider.addClineToStack(mockCline)
-				;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-					historyItem: { id: "test-task-id" },
-				})
+					; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+						historyItem: { id: "test-task-id" },
+					})
 
 				const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
@@ -3463,9 +3348,9 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 				mockCline.overwriteApiConversationHistory = vi.fn()
 
 				await provider.addClineToStack(mockCline)
-				;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-					historyItem: { id: "test-task-id" },
-				})
+					; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+						historyItem: { id: "test-task-id" },
+					})
 
 				const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
@@ -3492,7 +3377,7 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 
 		describe("Resource Cleanup During Failed Operations", () => {
 			beforeEach(async () => {
-				;(vscode.window.showInformationMessage as any) = vi.fn()
+				; (vscode.window.showInformationMessage as any) = vi.fn()
 				await provider.resolveWebviewView(mockWebviewView)
 			})
 
@@ -3514,9 +3399,9 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 				mockCline.handleWebviewAskResponse = vi.fn()
 
 				await provider.addClineToStack(mockCline)
-				;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-					historyItem: { id: "test-task-id" },
-				})
+					; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+						historyItem: { id: "test-task-id" },
+					})
 
 				const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
@@ -3560,9 +3445,9 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 				mockCline.overwriteApiConversationHistory = vi.fn()
 
 				await provider.addClineToStack(mockCline)
-				;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-					historyItem: { id: "test-task-id" },
-				})
+					; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+						historyItem: { id: "test-task-id" },
+					})
 
 				const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
@@ -3586,7 +3471,7 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 
 		describe("Large Message Payloads", () => {
 			beforeEach(async () => {
-				;(vscode.window.showInformationMessage as any) = vi.fn()
+				; (vscode.window.showInformationMessage as any) = vi.fn()
 				await provider.resolveWebviewView(mockWebviewView)
 			})
 
@@ -3606,9 +3491,9 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 				mockCline.submitUserMessage = vi.fn()
 
 				await provider.addClineToStack(mockCline)
-				;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-					historyItem: { id: "test-task-id" },
-				})
+					; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+						historyItem: { id: "test-task-id" },
+					})
 
 				const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
@@ -3652,9 +3537,9 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 				mockCline.overwriteApiConversationHistory = vi.fn()
 
 				await provider.addClineToStack(mockCline)
-				;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-					historyItem: { id: "test-task-id" },
-				})
+					; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+						historyItem: { id: "test-task-id" },
+					})
 
 				const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
@@ -3694,10 +3579,10 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 				mockCline.overwriteApiConversationHistory = vi.fn()
 
 				await provider.addClineToStack(mockCline)
-				;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-					historyItem: { id: "test-task-id" },
-				})
-				;(provider as any).createTaskWithHistoryItem = vi.fn()
+					; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+						historyItem: { id: "test-task-id" },
+					})
+					; (provider as any).createTaskWithHistoryItem = vi.fn()
 
 				const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
@@ -3752,7 +3637,7 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 
 		describe("Edge Cases with Message Timestamps", () => {
 			beforeEach(async () => {
-				;(vscode.window.showInformationMessage as any) = vi.fn()
+				; (vscode.window.showInformationMessage as any) = vi.fn()
 				await provider.resolveWebviewView(mockWebviewView)
 			})
 
@@ -3769,9 +3654,9 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 				mockCline.overwriteApiConversationHistory = vi.fn()
 
 				await provider.addClineToStack(mockCline)
-				;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-					historyItem: { id: "test-task-id" },
-				})
+					; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+						historyItem: { id: "test-task-id" },
+					})
 
 				const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 
@@ -3815,9 +3700,9 @@ describe("ClineProvider - Comprehensive Edit/Delete Edge Cases", () => {
 				mockCline.submitUserMessage = vi.fn()
 
 				await provider.addClineToStack(mockCline)
-				;(provider as any).getTaskWithId = vi.fn().mockResolvedValue({
-					historyItem: { id: "test-task-id" },
-				})
+					; (provider as any).getTaskWithId = vi.fn().mockResolvedValue({
+						historyItem: { id: "test-task-id" },
+					})
 
 				const messageHandler = (mockWebviewView.webview.onDidReceiveMessage as any).mock.calls[0][0]
 

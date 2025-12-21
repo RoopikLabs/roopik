@@ -104,21 +104,6 @@ vi.mock("../../diff/strategies/multi-search-replace", () => ({
 	})),
 }))
 
-vi.mock("@roo-code/cloud", () => ({
-	CloudService: {
-		hasInstance: vi.fn().mockReturnValue(true),
-		get instance() {
-			return {
-				isAuthenticated: vi.fn().mockReturnValue(false),
-			}
-		},
-	},
-	BridgeOrchestrator: {
-		isEnabled: vi.fn().mockReturnValue(false),
-	},
-	getRooCodeApiUrl: vi.fn().mockReturnValue("https://app.roocode.com"),
-}))
-
 vi.mock("../../../shared/modes", () => ({
 	modes: [
 		{
@@ -962,7 +947,7 @@ describe("ClineProvider - Sticky Mode", () => {
 			vi.spyOn(provider, "updateTaskHistory").mockImplementation(() => Promise.resolve([]))
 
 			// Mock console.error to suppress error output
-			const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+			const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
 
 			// Clear previous mock calls to isolate this test
 			vi.mocked(mockContext.globalState.update).mockClear()
@@ -1018,7 +1003,7 @@ describe("ClineProvider - Sticky Mode", () => {
 			vi.spyOn(provider, "updateTaskHistory").mockRejectedValue(new Error("Update failed"))
 
 			// Mock console.error
-			const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+			const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => { })
 
 			// The updateTaskHistory failure will cause handleModeSwitch to throw
 			// This is the actual behavior based on the test failure
