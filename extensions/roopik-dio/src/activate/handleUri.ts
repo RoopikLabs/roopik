@@ -35,12 +35,14 @@ export const handleUri = async (uri: vscode.Uri) => {
 			const organizationId = query.get("organizationId")
 			const providerModel = query.get("provider_model")
 
-			await CloudService.instance.handleAuthCallback(
-				code,
-				state,
-				organizationId === "null" ? null : organizationId,
-				providerModel,
-			)
+			// await CloudService.instance.handleAuthCallback(
+			// 	code,
+			// 	state,
+			// 	organizationId === "null" ? null : organizationId,
+			// 	providerModel,
+			// )
+			// Cloud auth callback removed
+			// await CloudService.instance.handleAuthCallback(...)
 			break
 		}
 		default:

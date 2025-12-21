@@ -14,6 +14,13 @@ export default defineConfig({
 		testTimeout: 20_000,
 		hookTimeout: 20_000,
 		onConsoleLog,
+		exclude: [
+			"**/node_modules/**",
+			"**/dist/**",
+			"**/.backup-monorepo/**",
+			"**/cypress/**",
+			"**/.{idea,git,cache,output,temp}/**",
+		],
 	},
 	resolve: {
 		alias: {

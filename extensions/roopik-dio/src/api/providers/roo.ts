@@ -32,8 +32,8 @@ type RooChatCompletionParams = OpenAI.Chat.ChatCompletionCreateParamsStreaming &
 }
 
 function getSessionToken(): string {
-	const token = CloudService.hasInstance() ? CloudService.instance.authService?.getSessionToken() : undefined
-	return token ?? "unauthenticated"
+	// Cloud service removed - return unauthenticated
+	return "unauthenticated"
 }
 
 export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
@@ -54,7 +54,7 @@ export class RooHandler extends BaseOpenAiCompatibleProvider<string> {
 		// The provider-proxy server will return 401 if authentication fails.
 		super({
 			...options,
-			providerName: "Roo Code Cloud",
+			providerName: "Roopik Cloud",
 			baseURL, // Already has /v1 suffix
 			apiKey: sessionToken,
 			defaultProviderModelId: rooDefaultModelId,

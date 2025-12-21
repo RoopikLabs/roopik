@@ -150,10 +150,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		const handleRooModelsCache = async () => {
 			try {
 				if (data.state === "active-session") {
-					// Refresh with auth token to get authenticated models
-					const sessionToken = CloudService.hasInstance()
-						? CloudService.instance.authService?.getSessionToken()
-						: undefined
+					// Refresh models (cloud auth removed)
+					const sessionToken = undefined
 					await refreshModels({
 						provider: "roo",
 						baseUrl: process.env.ROO_CODE_PROVIDER_URL ?? "https://api.roocode.com/proxy",
@@ -201,36 +199,20 @@ export async function activate(context: vscode.ExtensionContext) {
 	}
 
 	settingsUpdatedHandler = async () => {
-		const userInfo = CloudService.instance.getUserInfo()
-
-		if (userInfo && CloudService.instance.cloudAPI) {
-			try {
-				provider.remoteControlEnabled(CloudService.instance.isTaskSyncEnabled())
-			} catch (error) {
-				cloudLogger(
-					`[settingsUpdatedHandler] remoteControlEnabled failed: ${error instanceof Error ? error.message : String(error)}`,
-				)
-			}
-		}
-
+		// Cloud service removed
 		postStateListener()
 	}
 
 	userInfoHandler = async ({ userInfo }: { userInfo: CloudUserInfo }) => {
+		// Cloud service removed
 		postStateListener()
-
-		if (!CloudService.instance.cloudAPI) {
-			cloudLogger("[userInfoHandler] CloudAPI is not initialized")
-			return
-		}
-
-		try {
-			provider.remoteControlEnabled(CloudService.instance.isTaskSyncEnabled())
-		} catch (error) {
-			cloudLogger(
-				`[userInfoHandler] remoteControlEnabled failed: ${error instanceof Error ? error.message : String(error)}`,
-			)
-		}
+		// try {
+		// 	provider.remoteControlEnabled(CloudService.instance.isTaskSyncEnabled())
+		// } catch (error) {
+		// 	cloudLogger(
+		// 		`[userInfoHandler] remoteControlEnabled failed: ${error instanceof Error ? error.message : String(error)}`,
+		// 	)
+		// }
 	}
 
 	// ROOPIK: Cloud service disabled - using local-only mode
@@ -393,33 +375,22 @@ export async function activate(context: vscode.ExtensionContext) {
 export async function deactivate() {
 	outputChannel.appendLine(`${Package.name} extension deactivated`)
 
-	if (cloudService && CloudService.hasInstance()) {
-		try {
-			if (authStateChangedHandler) {
-				CloudService.instance.off("auth-state-changed", authStateChangedHandler)
-			}
+	// Cloud service removed - event handlers no longer needed
+	// if (cloudService && CloudService.hasInstance()) {
+	// 	try {
+	// 		if (authStateChangedHandler) {
+	// 			CloudService.instance.off("auth-state-changed", authStateChangedHandler)
+	// 		}
+	// 	} catch (error) {
+	// 		outputChannel.appendLine(`Failed to clean up CloudService: ${error}`)
+	// 	}
+	// }
 
-			if (settingsUpdatedHandler) {
-				CloudService.instance.off("settings-updated", settingsUpdatedHandler)
-			}
-
-			if (userInfoHandler) {
-				CloudService.instance.off("user-info", userInfoHandler as any)
-			}
-
-			outputChannel.appendLine("CloudService event handlers cleaned up")
-		} catch (error) {
-			outputChannel.appendLine(
-				`Failed to clean up CloudService event handlers: ${error instanceof Error ? error.message : String(error)}`,
-			)
-		}
-	}
-
-	const bridge = BridgeOrchestrator.getInstance()
-
-	if (bridge) {
-		await bridge.disconnect()
-	}
+	// Bridge orchestrator removed
+	// const bridge = BridgeOrchestrator.getInstance()
+	// if (bridge) {
+	// 	await bridge.disconnect()
+	// }
 
 	await McpServerManager.cleanup(extensionContext)
 	TelemetryService.instance.shutdown()
