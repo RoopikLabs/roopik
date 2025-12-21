@@ -7,6 +7,11 @@ package-lock.json
 coverage/
 mock/
 
+# Test build artifacts (compiled TypeScript test files)
+test/**/*.js
+test/**/*.js.map
+!test/**/*.config.js
+
 .DS_Store
 
 # IDEs
