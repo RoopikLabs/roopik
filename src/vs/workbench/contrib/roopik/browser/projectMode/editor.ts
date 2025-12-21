@@ -9,7 +9,7 @@ import { IThemeService } from '../../../../../platform/theme/common/themeService
 import { IStorageService } from '../../../../../platform/storage/common/storage.js';
 import { EditorTabInput } from './editorTabInput.js';
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
-import { Dimension } from '../../../../../base/browser/dom.js';
+import * as DOM from '../../../../../base/browser/dom.js';
 import { IEditorOpenContext } from '../../../../common/editor.js';
 import { RoopikLogger } from '../../common/roopikLogger.js';
 import { ILoggerService, ILogger } from '../../../../../platform/log/common/log.js';
@@ -198,8 +198,8 @@ export class Editor extends EditorPane {
 	 * Subscribe to events from the central event bus for UI updates
 	 * This demonstrates the event-driven architecture where:
 	 * 1. IPC event comes from main process
-	 * 2. We publish to EventService (📤 PUBLISH)
-	 * 3. Subscribers receive and update UI (📥 RECEIVED)
+	 * 2. We publish to EventService (PUBLISH)
+	 * 3. Subscribers receive and update UI (RECEIVED)
 	 */
 	private setupEventSubscriptions(): void {
 		// Subscribe to navigation events - update URL bar
@@ -749,8 +749,8 @@ export class Editor extends EditorPane {
 		// Immediate update (may get wrong bounds if layout not complete)
 		this.updateViewBounds();
 
-		// Use requestAnimationFrame to wait for next paint
-		requestAnimationFrame(() => {
+		// Use DOM.scheduleAtNextAnimationFrame to wait for next paint
+		DOM.scheduleAtNextAnimationFrame(DOM.getWindow(this.browserContainer), () => {
 			this.updateViewBounds();
 
 			// Additional delayed updates to catch late layout changes
@@ -1292,15 +1292,27 @@ export class Editor extends EditorPane {
 	/**
 	 * Stop Dev Server
 	 * Stops the Vite dev server for the current project
+	 * Queries electron-main for running server (survives IDE reload)
 	 */
 	private async stopDevServer(): Promise<void> {
-		if (!this.currentProjectRoot) {
-			this.logger.warn('[ProjectMode] No project to stop');
-			return;
-		}
-
 		try {
-			await this.devServerService.stopServer(this.currentProjectRoot);
+			// Check electron-main for actually running server (not browser state)
+			const runningServer = await this.devServerService.getRunningServer();
+
+			if (!runningServer) {
+				this.logger.warn('[ProjectMode] No project to stop');
+				this.notificationService.notify({
+					severity: Severity.Warning,
+					message: 'No dev server is running',
+					sticky: false
+				});
+				return;
+			}
+
+			// Stop the server using the actual projectRoot from electron-main
+			await this.devServerService.stopServer(runningServer.projectRoot);
+
+			// Clear browser state
 			this.isProjectMode = false;
 			this.currentProjectRoot = undefined;
 
