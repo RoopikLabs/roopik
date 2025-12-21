@@ -546,7 +546,7 @@ export class WorkspaceStorage {
 		}
 
 		// Create new project
-		const projectId = this.generateProjectId();
+		const projectId = this.generateProjectId(name);
 		index.projects.push({
 			id: projectId,
 			name,
@@ -616,12 +616,21 @@ export class WorkspaceStorage {
 	// ========================================================================
 
 	/**
-	 * Generate a unique project ID
+	 * Generate a unique project ID based on project name
+	 * Format: proj_{sanitized-name}_{random}
+	 * Example: proj_vue-taskflow_k0
 	 */
-	private generateProjectId(): string {
-		const timestamp = Date.now().toString(36);
-		const random = Math.random().toString(36).substring(2, 8);
-		return `proj_${timestamp}_${random}`;
+	private generateProjectId(projectName: string): string {
+		// Sanitize: lowercase, replace spaces/special chars with hyphens
+		const sanitized = projectName
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-')  // Replace non-alphanumeric with hyphens
+			.replace(/^-+|-+$/g, '')       // Remove leading/trailing hyphens
+			.substring(0, 50);              // Limit length to 50 chars
+
+		// Add 2-char random suffix for uniqueness
+		const random = Math.random().toString(36).substring(2, 4);  // 2 chars
+		return `proj_${sanitized}_${random}`;
 	}
 
 	// ========================================================================

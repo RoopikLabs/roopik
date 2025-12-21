@@ -105,6 +105,21 @@ export class DevServerService implements IDevServerService {
 		const normalizedRoot = normalize(projectRoot);
 
 		// =====================================================
+		// VALIDATE PROJECT DIRECTORY EXISTS
+		// =====================================================
+		if (!fs.existsSync(normalizedRoot)) {
+			const error = new Error(`Project directory not found: ${normalizedRoot}`);
+			this.setError(normalizedRoot, error.message);
+			throw error;
+		}
+
+		if (!fs.statSync(normalizedRoot).isDirectory()) {
+			const error = new Error(`Path is not a directory: ${normalizedRoot}`);
+			this.setError(normalizedRoot, error.message);
+			throw error;
+		}
+
+		// =====================================================
 		// SINGLE SERVER CONSTRAINT (Defense in Depth)
 		// Only ONE dev server can run at a time globally!
 		// The Editor should enforce this, but we double-check here.
