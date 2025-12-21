@@ -34,7 +34,7 @@ This is slow the first time (big React app + WASM assets). Later runs are faster
 From Roopik repo root (`c:/Users/Humblebee/Documents/GitHub/roopik` on Windows):
 
 ```bash
-scripts\code.bat --extensionDevelopmentPath=c:\Users\Humblebee\Documents\GitHub\roopik\extensions\roopik-agent\src
+scripts\code.bat --extensionDevelopmentPath=c:\Users\Humblebee\Documents\GitHub\roopik\extensions\roopik-dio\src
 ```
 
 Then in the dev Roopik window:

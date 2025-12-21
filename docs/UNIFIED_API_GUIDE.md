@@ -187,7 +187,7 @@ For an IDE project focused on developer experience, **OpenRouter is the clear ch
 
 ### Update Settings UI
 
-Add OpenRouter as a first-class provider in `extensions/roopik-agent/webview/src/components/settings`:
+Add OpenRouter as a first-class provider in `extensions/roopik-dio/webview/src/components/settings`:
 
 ```typescript
 const providers = [

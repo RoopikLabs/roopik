@@ -1,6 +1,6 @@
 {
-	"name": "roopik-dot",
-	"displayName": "Roopik Dot",
+	"name": "roopik-dio",
+	"displayName": "Roopik Dio",
 	"description": "AI coding agent for Roopik IDE",
 	"publisher": "roopik",
 	"version": "0.1.0",
@@ -54,115 +54,115 @@
 		"viewsContainers": {
 			"activitybar": [
 				{
-					"id": "roopik-dot-ActivityBar",
+					"id": "roopik-dio-ActivityBar",
 					"title": "%views.activitybar.title%",
 					"icon": "assets/icons/icon.svg"
 				}
 			]
 		},
 		"views": {
-			"roopik-dot-ActivityBar": [
+			"roopik-dio-ActivityBar": [
 				{
 					"type": "webview",
-					"id": "roopik-dot.SidebarProvider",
+					"id": "roopik-dio.SidebarProvider",
 					"name": "%views.sidebar.name%"
 				}
 			]
 		},
 		"commands": [
 			{
-				"command": "roopik-dot.plusButtonClicked",
+				"command": "roopik-dio.plusButtonClicked",
 				"title": "%command.newTask.title%",
 				"icon": "$(edit)"
 			},
 			{
-				"command": "roopik-dot.historyButtonClicked",
+				"command": "roopik-dio.historyButtonClicked",
 				"title": "%command.history.title%",
 				"icon": "$(history)"
 			},
 			{
-				"command": "roopik-dot.marketplaceButtonClicked",
+				"command": "roopik-dio.marketplaceButtonClicked",
 				"title": "%command.marketplace.title%",
 				"icon": "$(extensions)"
 			},
 			{
-				"command": "roopik-dot.popoutButtonClicked",
+				"command": "roopik-dio.popoutButtonClicked",
 				"title": "%command.openInEditor.title%",
 				"icon": "$(link-external)"
 			},
 			{
 
-				"command": "roopik-dot.settingsButtonClicked",
+				"command": "roopik-dio.settingsButtonClicked",
 				"title": "%command.settings.title%",
 				"icon": "$(settings-gear)"
 			},
 			{
-				"command": "roopik-dot.openInNewTab",
+				"command": "roopik-dio.openInNewTab",
 				"title": "%command.openInNewTab.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roopik-dot.explainCode",
+				"command": "roopik-dio.explainCode",
 				"title": "%command.explainCode.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roopik-dot.fixCode",
+				"command": "roopik-dio.fixCode",
 				"title": "%command.fixCode.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roopik-dot.improveCode",
+				"command": "roopik-dio.improveCode",
 				"title": "%command.improveCode.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roopik-dot.addToContext",
+				"command": "roopik-dio.addToContext",
 				"title": "%command.addToContext.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roopik-dot.newTask",
+				"command": "roopik-dio.newTask",
 				"title": "%command.newTask.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roopik-dot.terminalAddToContext",
+				"command": "roopik-dio.terminalAddToContext",
 				"title": "%command.terminal.addToContext.title%",
 				"category": "Terminal"
 			},
 			{
-				"command": "roopik-dot.terminalFixCommand",
+				"command": "roopik-dio.terminalFixCommand",
 				"title": "%command.terminal.fixCommand.title%",
 				"category": "Terminal"
 			},
 			{
-				"command": "roopik-dot.terminalExplainCommand",
+				"command": "roopik-dio.terminalExplainCommand",
 				"title": "%command.terminal.explainCommand.title%",
 				"category": "Terminal"
 			},
 			{
-				"command": "roopik-dot.setCustomStoragePath",
+				"command": "roopik-dio.setCustomStoragePath",
 				"title": "%command.setCustomStoragePath.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roopik-dot.importSettings",
+				"command": "roopik-dio.importSettings",
 				"title": "%command.importSettings.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roopik-dot.focusInput",
+				"command": "roopik-dio.focusInput",
 				"title": "%command.focusInput.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roopik-dot.acceptInput",
+				"command": "roopik-dio.acceptInput",
 				"title": "%command.acceptInput.title%",
 				"category": "%configuration.title%"
 			},
 			{
-				"command": "roopik-dot.toggleAutoApprove",
+				"command": "roopik-dio.toggleAutoApprove",
 				"title": "%command.toggleAutoApprove.title%",
 				"category": "%configuration.title%"
 			}
@@ -170,102 +170,102 @@
 		"menus": {
 			"editor/context": [
 				{
-					"submenu": "roopik-dot.contextMenu",
+					"submenu": "roopik-dio.contextMenu",
 					"group": "1"
 				}
 			],
-			"roopik-dot.contextMenu": [
+			"roopik-dio.contextMenu": [
 				{
-					"command": "roopik-dot.addToContext",
+					"command": "roopik-dio.addToContext",
 					"group": "1_actions@1"
 				},
 				{
-					"command": "roopik-dot.explainCode",
+					"command": "roopik-dio.explainCode",
 					"group": "1_actions@2"
 				},
 				{
-					"command": "roopik-dot.improveCode",
+					"command": "roopik-dio.improveCode",
 					"group": "1_actions@3"
 				}
 			],
 			"terminal/context": [
 				{
-					"submenu": "roopik-dot.terminalMenu",
+					"submenu": "roopik-dio.terminalMenu",
 					"group": "2"
 				}
 			],
-			"roopik-dot.terminalMenu": [
+			"roopik-dio.terminalMenu": [
 				{
-					"command": "roopik-dot.terminalAddToContext",
+					"command": "roopik-dio.terminalAddToContext",
 					"group": "1_actions@1"
 				},
 				{
-					"command": "roopik-dot.terminalFixCommand",
+					"command": "roopik-dio.terminalFixCommand",
 					"group": "1_actions@2"
 				},
 				{
-					"command": "roopik-dot.terminalExplainCommand",
+					"command": "roopik-dio.terminalExplainCommand",
 					"group": "1_actions@3"
 				}
 			],
 			"view/title": [
 				{
-					"command": "roopik-dot.plusButtonClicked",
+					"command": "roopik-dio.plusButtonClicked",
 					"group": "navigation@1",
-					"when": "view == roopik-dot.SidebarProvider"
+					"when": "view == roopik-dio.SidebarProvider"
 				},
 				{
-					"command": "roopik-dot.settingsButtonClicked",
+					"command": "roopik-dio.settingsButtonClicked",
 					"group": "navigation@2",
-					"when": "view == roopik-dot.SidebarProvider"
+					"when": "view == roopik-dio.SidebarProvider"
 				},
 				{
-					"command": "roopik-dot.marketplaceButtonClicked",
+					"command": "roopik-dio.marketplaceButtonClicked",
 					"group": "navigation@3",
-					"when": "view == roopik-dot.SidebarProvider"
+					"when": "view == roopik-dio.SidebarProvider"
 				},
 				{
-					"command": "roopik-dot.historyButtonClicked",
+					"command": "roopik-dio.historyButtonClicked",
 					"group": "overflow@1",
-					"when": "view == roopik-dot.SidebarProvider"
+					"when": "view == roopik-dio.SidebarProvider"
 				},
 				{
-					"command": "roopik-dot.popoutButtonClicked",
+					"command": "roopik-dio.popoutButtonClicked",
 					"group": "overflow@2",
-					"when": "view == roopik-dot.SidebarProvider"
+					"when": "view == roopik-dio.SidebarProvider"
 				}
 			],
 			"editor/title": [
 				{
-					"command": "roopik-dot.plusButtonClicked",
+					"command": "roopik-dio.plusButtonClicked",
 					"group": "navigation@1",
-					"when": "activeWebviewPanelId == roopik-dot.TabPanelProvider"
+					"when": "activeWebviewPanelId == roopik-dio.TabPanelProvider"
 				},
 				{
-					"command": "roopik-dot.settingsButtonClicked",
+					"command": "roopik-dio.settingsButtonClicked",
 					"group": "navigation@2",
-					"when": "activeWebviewPanelId == roopik-dot.TabPanelProvider"
+					"when": "activeWebviewPanelId == roopik-dio.TabPanelProvider"
 				},
 				{
-					"command": "roopik-dot.marketplaceButtonClicked",
+					"command": "roopik-dio.marketplaceButtonClicked",
 					"group": "navigation@3",
-					"when": "activeWebviewPanelId == roopik-dot.TabPanelProvider"
+					"when": "activeWebviewPanelId == roopik-dio.TabPanelProvider"
 				},
 				{
-					"command": "roopik-dot.historyButtonClicked",
+					"command": "roopik-dio.historyButtonClicked",
 					"group": "overflow@1",
-					"when": "activeWebviewPanelId == roopik-dot.TabPanelProvider"
+					"when": "activeWebviewPanelId == roopik-dio.TabPanelProvider"
 				},
 				{
-					"command": "roopik-dot.popoutButtonClicked",
+					"command": "roopik-dio.popoutButtonClicked",
 					"group": "overflow@2",
-					"when": "activeWebviewPanelId == roopik-dot.TabPanelProvider"
+					"when": "activeWebviewPanelId == roopik-dio.TabPanelProvider"
 				}
 			]
 		},
 		"keybindings": [
 			{
-				"command": "roopik-dot.addToContext",
+				"command": "roopik-dio.addToContext",
 				"key": "cmd+k cmd+a",
 				"mac": "cmd+k cmd+a",
 				"win": "ctrl+k ctrl+a",
@@ -273,7 +273,7 @@
 				"when": "editorTextFocus && editorHasSelection"
 			},
 			{
-				"command": "roopik-dot.toggleAutoApprove",
+				"command": "roopik-dio.toggleAutoApprove",
 				"key": "cmd+alt+a",
 				"mac": "cmd+alt+a",
 				"win": "ctrl+alt+a",
@@ -282,18 +282,18 @@
 		],
 		"submenus": [
 			{
-				"id": "roopik-dot.contextMenu",
+				"id": "roopik-dio.contextMenu",
 				"label": "%views.contextMenu.label%"
 			},
 			{
-				"id": "roopik-dot.terminalMenu",
+				"id": "roopik-dio.terminalMenu",
 				"label": "%views.terminalMenu.label%"
 			}
 		],
 		"configuration": {
 			"title": "%configuration.title%",
 			"properties": {
-				"roopik-dot.allowedCommands": {
+				"roopik-dio.allowedCommands": {
 					"type": "array",
 					"items": {
 						"type": "string"
@@ -305,7 +305,7 @@
 					],
 					"description": "%commands.allowedCommands.description%"
 				},
-				"roopik-dot.deniedCommands": {
+				"roopik-dio.deniedCommands": {
 					"type": "array",
 					"items": {
 						"type": "string"
@@ -313,14 +313,14 @@
 					"default": [],
 					"description": "%commands.deniedCommands.description%"
 				},
-				"roopik-dot.commandExecutionTimeout": {
+				"roopik-dio.commandExecutionTimeout": {
 					"type": "number",
 					"default": 0,
 					"minimum": 0,
 					"maximum": 600,
 					"description": "%commands.commandExecutionTimeout.description%"
 				},
-				"roopik-dot.commandTimeoutAllowlist": {
+				"roopik-dio.commandTimeoutAllowlist": {
 					"type": "array",
 					"items": {
 						"type": "string"
@@ -328,12 +328,12 @@
 					"default": [],
 					"description": "%commands.commandTimeoutAllowlist.description%"
 				},
-				"roopik-dot.preventCompletionWithOpenTodos": {
+				"roopik-dio.preventCompletionWithOpenTodos": {
 					"type": "boolean",
 					"default": false,
 					"description": "%commands.preventCompletionWithOpenTodos.description%"
 				},
-				"roopik-dot.vsCodeLmModelSelector": {
+				"roopik-dio.vsCodeLmModelSelector": {
 					"type": "object",
 					"properties": {
 						"vendor": {
@@ -347,53 +347,53 @@
 					},
 					"description": "%settings.vsCodeLmModelSelector.description%"
 				},
-				"roopik-dot.customStoragePath": {
+				"roopik-dio.customStoragePath": {
 					"type": "string",
 					"default": "",
 					"description": "%settings.customStoragePath.description%"
 				},
-				"roopik-dot.enableCodeActions": {
+				"roopik-dio.enableCodeActions": {
 					"type": "boolean",
 					"default": true,
 					"description": "%settings.enableCodeActions.description%"
 				},
-				"roopik-dot.autoImportSettingsPath": {
+				"roopik-dio.autoImportSettingsPath": {
 					"type": "string",
 					"default": "",
 					"description": "%settings.autoImportSettingsPath.description%"
 				},
-				"roopik-dot.maximumIndexedFilesForFileSearch": {
+				"roopik-dio.maximumIndexedFilesForFileSearch": {
 					"type": "number",
 					"default": 10000,
 					"minimum": 5000,
 					"maximum": 500000,
 					"description": "%settings.maximumIndexedFilesForFileSearch.description%"
 				},
-				"roopik-dot.useAgentRules": {
+				"roopik-dio.useAgentRules": {
 					"type": "boolean",
 					"default": true,
 					"description": "%settings.useAgentRules.description%"
 				},
-				"roopik-dot.apiRequestTimeout": {
+				"roopik-dio.apiRequestTimeout": {
 					"type": "number",
 					"default": 600,
 					"minimum": 0,
 					"maximum": 3600,
 					"description": "%settings.apiRequestTimeout.description%"
 				},
-				"roopik-dot.newTaskRequireTodos": {
+				"roopik-dio.newTaskRequireTodos": {
 					"type": "boolean",
 					"default": false,
 					"description": "%settings.newTaskRequireTodos.description%"
 				},
-				"roopik-dot.codeIndex.embeddingBatchSize": {
+				"roopik-dio.codeIndex.embeddingBatchSize": {
 					"type": "number",
 					"default": 60,
 					"minimum": 1,
 					"maximum": 200,
 					"description": "%settings.codeIndex.embeddingBatchSize.description%"
 				},
-				"roopik-dot.debug": {
+				"roopik-dio.debug": {
 					"type": "boolean",
 					"default": false,
 					"description": "%settings.debug.description%"

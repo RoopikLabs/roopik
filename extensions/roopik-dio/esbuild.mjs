@@ -73,7 +73,7 @@ function copyLocales(srcDir, distDir) {
 
 function setupLocaleWatcher(srcDir, distDir) {
 	// Watcher setup (not needed for one-time builds)
-	return () => {}
+	return () => { }
 }
 
 async function main() {
@@ -96,7 +96,7 @@ async function main() {
 		platform: "node",
 	}
 
-	const rootDir = __dirname  // extensions/roopik-agent/
+	const rootDir = __dirname  // extensions/roopik-dio/
 	const srcDir = path.join(rootDir, "src")
 	const distDir = path.join(srcDir, "dist")
 

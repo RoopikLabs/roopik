@@ -4,7 +4,7 @@ Short summary of how this fork differs from upstream Roo Code (`RooCodeInc/Roo-C
 
 ## 1. Removed from upstream clone
 
-From `extensions/roopik-agent/` root we **deleted**:
+From `extensions/roopik-dio/` root we **deleted**:
 
 - `.git/` – upstream repo metadata (we track history in Roopik repo instead)
 - `.husky/` – upstream git hooks
@@ -19,7 +19,7 @@ We **kept** (for now):
 
 ## 2. Localization simplification
 
-In `extensions/roopik-agent/src/`:
+In `extensions/roopik-dio/src/`:
 
 - **Kept**: `package.json`, `package.nls.json` (base English)
 - **Deleted**: all language-specific `package.nls.<lang>.json` files:
@@ -29,7 +29,7 @@ The built `dist/i18n/locales/*` are still present; this change only affects mani
 
 ## 3. Root package.json tweak (workspace root inside fork)
 
-File: `extensions/roopik-agent/package.json`
+File: `extensions/roopik-dio/package.json`
 
 - **Added**:
   - `"version": "0.0.0-dev"` at the top level (Roopik’s extension loader expects `version` on any `package.json` under `extensions/*`).
@@ -47,7 +47,7 @@ Added two docs to the fork root:
     - `pnpm --filter @roo-code/vscode-webview build`
     - `pnpm --filter roo-cline bundle`
   - run Roopik with the extension in dev mode:
-    - `scripts\code.bat --extensionDevelopmentPath=...\extensions\roopik-agent\src`
+    - `scripts\code.bat --extensionDevelopmentPath=...\extensions\roopik-dio\src`
 
 - `ROOPIKAGENT_FORK_NOTES.md` (this file) – summary of structural edits.
 
@@ -55,7 +55,7 @@ Added two docs to the fork root:
 
 Upstream expects an env file for the extension:
 
-- **New file (manual)**: `extensions/roopik-agent/src/.env`
+- **New file (manual)**: `extensions/roopik-dio/src/.env`
   - Created by copying from upstream `.env.sample` in the fork root and adjusting values as needed.
   - Used for provider keys / telemetry; may be further customized or disabled as Roopik integrates its own config.
 
@@ -65,5 +65,5 @@ When updating from upstream Roo Code:
 
 1. Reapply deletions in section 1 if those folders reappear.
 2. Re-delete extra `package.nls.*.json` files if reintroduced.
-3. Ensure `extensions/roopik-agent/package.json` still has a `version` field.
+3. Ensure `extensions/roopik-dio/package.json` still has a `version` field.
 4. Keep `ROOPIKAGENT_*` docs at the fork root for Roopik-specific usage.
