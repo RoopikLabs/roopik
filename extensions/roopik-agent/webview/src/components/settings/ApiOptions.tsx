@@ -307,23 +307,33 @@ const ApiOptions = ({
 			// OpenRouter, Unbound, and Requesty.
 			// If you switch to one of these providers and the corresponding
 			// modelId is not set then you immediately end up in an error state.
-			// To address that we set the modelId to the default value for th
-			// provider if it's not already set.
+			// To address that we set the modelId to the default value for the
+			// provider if it's not already set OR if the current modelId is
+			// invalid for the new provider.
 			const validateAndResetModel = (
 				modelId: string | undefined,
 				field: keyof ProviderSettings,
 				defaultValue?: string,
+				newProvider?: ProviderName,
 			) => {
 				// in case we haven't set a default value for a provider
 				if (!defaultValue) return
 
-				// only set default if no model is set, but don't reset invalid models
-				// let users see and decide what to do with invalid model selections
-				const shouldSetDefault = !modelId
+				// Check if we should set the default model:
+				// 1. If no model is currently set, always set default
+				// 2. If a model is set, check if it's valid for the NEW provider
+				const shouldSetDefault = !modelId || (newProvider && !isModelValidForProvider(modelId, newProvider))
 
 				if (shouldSetDefault) {
 					setApiConfigurationField(field, defaultValue, false)
 				}
+			}
+
+			// Helper to check if a model ID is valid for a given provider
+			const isModelValidForProvider = (modelId: string, provider: ProviderName): boolean => {
+				const models = MODELS_BY_PROVIDER[provider]
+				if (!models) return false
+				return modelId in models
 			}
 
 			// Define a mapping object that associates each provider with its model configuration
@@ -382,6 +392,7 @@ const ApiOptions = ({
 					apiConfiguration[config.field] as string | undefined,
 					config.field,
 					config.default,
+					value, // Pass the new provider to check model validity
 				)
 			}
 		},
