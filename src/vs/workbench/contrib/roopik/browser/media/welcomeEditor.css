@@ -45,6 +45,7 @@
 	margin: 0 auto;
 	padding: 40px 56px 80px;
 	box-sizing: border-box;
+	min-width: 0;
 }
 
 .welcome-hero {
@@ -56,6 +57,8 @@
 	border: 1px solid var(--vscode-widget-border);
 	border-radius: 12px;
 	box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
+	min-width: 480px;
+	box-sizing: border-box;
 }
 
 .hero-content {
@@ -164,13 +167,13 @@
 }
 
 .hero-button.primary {
-	background-color: var(--vscode-button-primaryBackground);
-	color: var(--vscode-button-primaryForeground);
-	border-color: var(--vscode-button-primaryBackground);
+	background-color: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border-color: var(--vscode-button-background);
 }
 
 .hero-button.primary .codicon {
-	color: var(--vscode-button-primaryForeground);
+	color: var(--vscode-button-foreground);
 }
 
 .hero-button:hover {
@@ -180,8 +183,8 @@
 }
 
 .hero-button.primary:hover {
-	background-color: var(--vscode-button-primaryHoverBackground);
-	border-color: var(--vscode-button-primaryHoverBackground);
+	background-color: var(--vscode-button-hoverBackground);
+	border-color: var(--vscode-button-hoverBackground);
 }
 
 .hero-showcase {
@@ -194,7 +197,9 @@
 	flex-direction: column;
 	gap: 12px;
 	min-height: 220px;
+	min-width: 240px;
 	overflow: hidden;
+	box-sizing: border-box;
 }
 
 .hero-showcase::after {
@@ -233,10 +238,10 @@
 	margin: 0;
 }
 
-/* Quick Start Container - Two Column Layout */
+/* Quick Start Container - Three Column Layout */
 .quick-start-container {
 	display: grid;
-	grid-template-columns: 1fr 1fr;
+	grid-template-columns: 1fr 1fr 1fr;
 	gap: 32px;
 }
 
@@ -450,6 +455,14 @@
 		padding: 32px 24px 64px;
 	}
 
+	.welcome-hero {
+		min-width: calc(100% - 48px);
+	}
+
+	.hero-showcase {
+		min-width: 240px;
+	}
+
 	.hero-actions {
 		flex-direction: column;
 		width: 100%;
@@ -468,6 +481,18 @@
 
 	.checkbox-container {
 		justify-content: center;
+	}
+}
+
+/* Prevent hero from shrinking too much on medium screens */
+@media (max-width: 900px) and (min-width: 701px) {
+	.welcome-hero {
+		min-width: 460px;
+	}
+
+	.quick-start-container {
+		grid-template-columns: 1fr 1fr;
+		gap: 24px;
 	}
 }
 
@@ -506,8 +531,8 @@
 }
 
 /* ============================================
-   Settings Icon Button (in footer)
-   ============================================ */
+Settings Icon Button (in footer)
+============================================ */
 
 .settings-icon-button {
 	margin-left: 32px;
@@ -540,8 +565,8 @@
 }
 
 /* ============================================
-   Inline Settings View (replaces modal)
-   ============================================ */
+Inline Settings View (replaces modal)
+============================================ */
 
 .settings-view-container {
 	display: flex;
@@ -700,8 +725,8 @@
 }
 
 /* ============================================
-   Toggle Switch
-   ============================================ */
+Toggle Switch
+============================================ */
 
 .settings-toggle {
 	position: relative;
@@ -765,8 +790,8 @@
 }
 
 /* ============================================
-   Number Input
-   ============================================ */
+Number Input
+============================================ */
 
 .settings-number-input {
 	width: 80px;
@@ -793,8 +818,8 @@
 }
 
 /* ============================================
-   Select Dropdown
-   ============================================ */
+Select Dropdown
+============================================ */
 
 .settings-select {
 	width: 200px;
@@ -823,8 +848,8 @@
 }
 
 /* ============================================
-   Settings View Responsive
-   ============================================ */
+Settings View Responsive
+============================================ */
 
 @media (max-width: 700px) {
 	.settings-item {
