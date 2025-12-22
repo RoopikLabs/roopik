@@ -35,12 +35,26 @@ export function registerBrowserTools(
 	// --------------------------------------------------------------
 	server.tool(
 		'roopik_takeScreenshot',
-		'Capture a screenshot of the browser view as a base64-encoded image. This is how AI agents "see" the results of their work.',
-		{
-			browserViewId: z.number().describe('The browser view ID to capture')
-		},
-		async ({ browserViewId }: { browserViewId: number }) => {
+		'Capture a screenshot of the active browser view as a base64-encoded image. Works on the currently open browser (requires a running project).',
+		{},
+		async () => {
 			try {
+				// Auto-resolve active browser view
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				if (browserViewId === undefined) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'No browser is currently open. Start a project first with roopik_startProject.'
+							})
+						}],
+						isError: true
+					};
+				}
+
 				const base64Image = await browserViewService.takeScreenshot(browserViewId);
 
 				return {
@@ -48,7 +62,6 @@ export function registerBrowserTools(
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: true,
-							browserViewId,
 							image: base64Image,
 							format: 'data-url'
 						})
@@ -62,8 +75,7 @@ export function registerBrowserTools(
 						text: JSON.stringify({
 							success: false,
 							isError: true,
-							error: errorMessage,
-							browserViewId
+							error: errorMessage
 						})
 					}],
 					isError: true
@@ -77,13 +89,27 @@ export function registerBrowserTools(
 	// --------------------------------------------------------------
 	server.tool(
 		'roopik_navigate',
-		'Navigate the browser to a URL. Use this to load a specific page or dev server.',
+		'Navigate the active browser to a URL. Use this to load a specific page or dev server.',
 		{
-			browserViewId: z.number().describe('The browser view ID to navigate'),
 			url: z.string().describe('The URL to navigate to (e.g., http://localhost:3000)')
 		},
-		async ({ browserViewId, url }: { browserViewId: number; url: string }) => {
+		async ({ url }: { url: string }) => {
 			try {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				if (browserViewId === undefined) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'No browser is currently open. Start a project first with roopik_startProject.'
+							})
+						}],
+						isError: true
+					};
+				}
+
 				await browserViewService.navigate(browserViewId, url);
 
 				return {
@@ -91,7 +117,6 @@ export function registerBrowserTools(
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: true,
-							browserViewId,
 							url
 						})
 					}]
@@ -105,7 +130,6 @@ export function registerBrowserTools(
 							success: false,
 							isError: true,
 							error: errorMessage,
-							browserViewId,
 							url
 						})
 					}],
@@ -120,13 +144,27 @@ export function registerBrowserTools(
 	// --------------------------------------------------------------
 	server.tool(
 		'roopik_reload',
-		'Reload the current page. Optionally clear cache for hard reload.',
+		'Reload the current page in the active browser. Optionally clear cache for hard reload.',
 		{
-			browserViewId: z.number().describe('The browser view ID to reload'),
 			ignoreCache: z.boolean().optional().describe('If true, clears cache before reloading (hard reload)')
 		},
-		async ({ browserViewId, ignoreCache }: { browserViewId: number; ignoreCache?: boolean }) => {
+		async ({ ignoreCache }: { ignoreCache?: boolean }) => {
 			try {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				if (browserViewId === undefined) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'No browser is currently open. Start a project first with roopik_startProject.'
+							})
+						}],
+						isError: true
+					};
+				}
+
 				await browserViewService.reload(browserViewId, ignoreCache);
 
 				return {
@@ -134,7 +172,6 @@ export function registerBrowserTools(
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: true,
-							browserViewId,
 							ignoreCache: ignoreCache || false
 						})
 					}]
@@ -147,8 +184,7 @@ export function registerBrowserTools(
 						text: JSON.stringify({
 							success: false,
 							isError: true,
-							error: errorMessage,
-							browserViewId
+							error: errorMessage
 						})
 					}],
 					isError: true
@@ -162,12 +198,25 @@ export function registerBrowserTools(
 	// --------------------------------------------------------------
 	server.tool(
 		'roopik_getCurrentUrl',
-		'Get the current URL and navigation state of the browser view.',
-		{
-			browserViewId: z.number().describe('The browser view ID to query')
-		},
-		async ({ browserViewId }: { browserViewId: number }) => {
+		'Get the current URL and navigation state of the active browser.',
+		{},
+		async () => {
 			try {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				if (browserViewId === undefined) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'No browser is currently open. Start a project first with roopik_startProject.'
+							})
+						}],
+						isError: true
+					};
+				}
+
 				const navState = await browserViewService.getNavigationState(browserViewId);
 
 				return {
@@ -175,7 +224,6 @@ export function registerBrowserTools(
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: true,
-							browserViewId,
 							url: navState.url,
 							title: navState.title,
 							isLoading: navState.isLoading,
@@ -193,8 +241,7 @@ export function registerBrowserTools(
 						text: JSON.stringify({
 							success: false,
 							isError: true,
-							error: errorMessage,
-							browserViewId
+							error: errorMessage
 						})
 					}],
 					isError: true
@@ -209,19 +256,31 @@ export function registerBrowserTools(
 	server.tool(
 		'roopik_goBack',
 		'Navigate back in browser history.',
-		{
-			browserViewId: z.number().describe('The browser view ID')
-		},
-		async ({ browserViewId }: { browserViewId: number }) => {
+		{},
+		async () => {
 			try {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				if (browserViewId === undefined) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'No browser is currently open. Start a project first with roopik_startProject.'
+							})
+						}],
+						isError: true
+					};
+				}
+
 				await browserViewService.goBack(browserViewId);
 
 				return {
 					content: [{
 						type: 'text' as const,
 						text: JSON.stringify({
-							success: true,
-							browserViewId
+							success: true
 						})
 					}]
 				};
@@ -233,8 +292,7 @@ export function registerBrowserTools(
 						text: JSON.stringify({
 							success: false,
 							isError: true,
-							error: errorMessage,
-							browserViewId
+							error: errorMessage
 						})
 					}],
 					isError: true
@@ -249,19 +307,31 @@ export function registerBrowserTools(
 	server.tool(
 		'roopik_goForward',
 		'Navigate forward in browser history.',
-		{
-			browserViewId: z.number().describe('The browser view ID')
-		},
-		async ({ browserViewId }: { browserViewId: number }) => {
+		{},
+		async () => {
 			try {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				if (browserViewId === undefined) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'No browser is currently open. Start a project first with roopik_startProject.'
+							})
+						}],
+						isError: true
+					};
+				}
+
 				await browserViewService.goForward(browserViewId);
 
 				return {
 					content: [{
 						type: 'text' as const,
 						text: JSON.stringify({
-							success: true,
-							browserViewId
+							success: true
 						})
 					}]
 				};
@@ -273,8 +343,7 @@ export function registerBrowserTools(
 						text: JSON.stringify({
 							success: false,
 							isError: true,
-							error: errorMessage,
-							browserViewId
+							error: errorMessage
 						})
 					}],
 					isError: true
@@ -289,19 +358,31 @@ export function registerBrowserTools(
 	server.tool(
 		'roopik_stopLoading',
 		'Stop the current page from loading.',
-		{
-			browserViewId: z.number().describe('The browser view ID')
-		},
-		async ({ browserViewId }: { browserViewId: number }) => {
+		{},
+		async () => {
 			try {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				if (browserViewId === undefined) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'No browser is currently open. Start a project first with roopik_startProject.'
+							})
+						}],
+						isError: true
+					};
+				}
+
 				await browserViewService.stop(browserViewId);
 
 				return {
 					content: [{
 						type: 'text' as const,
 						text: JSON.stringify({
-							success: true,
-							browserViewId
+							success: true
 						})
 					}]
 				};
@@ -313,8 +394,7 @@ export function registerBrowserTools(
 						text: JSON.stringify({
 							success: false,
 							isError: true,
-							error: errorMessage,
-							browserViewId
+							error: errorMessage
 						})
 					}],
 					isError: true
@@ -330,11 +410,25 @@ export function registerBrowserTools(
 		'roopik_executeScript',
 		'Execute JavaScript in the browser context and return the result. Useful for querying DOM, checking state, or running custom logic.',
 		{
-			browserViewId: z.number().describe('The browser view ID'),
 			script: z.string().describe('JavaScript code to execute')
 		},
-		async ({ browserViewId, script }: { browserViewId: number; script: string }) => {
+		async ({ script }: { script: string }) => {
 			try {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				if (browserViewId === undefined) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'No browser is currently open. Start a project first with roopik_startProject.'
+							})
+						}],
+						isError: true
+					};
+				}
+
 				const result = await browserViewService.executeScript(browserViewId, script);
 
 				return {
@@ -342,7 +436,6 @@ export function registerBrowserTools(
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: true,
-							browserViewId,
 							result
 						})
 					}]
@@ -355,8 +448,7 @@ export function registerBrowserTools(
 						text: JSON.stringify({
 							success: false,
 							isError: true,
-							error: errorMessage,
-							browserViewId
+							error: errorMessage
 						})
 					}],
 					isError: true
@@ -371,11 +463,24 @@ export function registerBrowserTools(
 	server.tool(
 		'roopik_getPageHTML',
 		'Get the complete HTML of the current page (document.documentElement.outerHTML).',
-		{
-			browserViewId: z.number().describe('The browser view ID')
-		},
-		async ({ browserViewId }: { browserViewId: number }) => {
+		{},
+		async () => {
 			try {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				if (browserViewId === undefined) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'No browser is currently open. Start a project first with roopik_startProject.'
+							})
+						}],
+						isError: true
+					};
+				}
+
 				const html = await browserViewService.getPageHTML(browserViewId);
 
 				return {
@@ -383,7 +488,6 @@ export function registerBrowserTools(
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: true,
-							browserViewId,
 							html
 						})
 					}]
@@ -396,8 +500,7 @@ export function registerBrowserTools(
 						text: JSON.stringify({
 							success: false,
 							isError: true,
-							error: errorMessage,
-							browserViewId
+							error: errorMessage
 						})
 					}],
 					isError: true
@@ -413,21 +516,21 @@ export function registerBrowserTools(
 		'roopik_inspectElement',
 		'Get deep CSS inspection for an element including resolved styles, source file locations with line:column, computed values, and overridden properties. This is THE MOAT - unique Roopik capability that gives AI precise CSS context with source maps.',
 		{
-			browserViewId: z.number().describe('The browser view ID'),
-			selector: z.string().optional().describe('CSS selector to find element (e.g., ".btn-primary")'),
+			selector: z.string().describe('CSS selector to find element (e.g., ".btn-primary")'),
 			includeUserAgent: z.boolean().optional().describe('Include browser default styles (default: false)'),
 			includeInherited: z.boolean().optional().describe('Include inherited styles from parents (default: true)')
 		},
-		async ({ browserViewId, selector, includeUserAgent, includeInherited }: { browserViewId: number; selector?: string; includeUserAgent?: boolean; includeInherited?: boolean }) => {
+		async ({ selector, includeUserAgent, includeInherited }: { selector: string; includeUserAgent?: boolean; includeInherited?: boolean }) => {
 			try {
-				if (!selector) {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				if (browserViewId === undefined) {
 					return {
 						content: [{
 							type: 'text' as const,
 							text: JSON.stringify({
 								success: false,
 								isError: true,
-								error: 'Selector is required for element inspection'
+								error: 'No browser is currently open. Start a project first with roopik_startProject.'
 							})
 						}],
 						isError: true
@@ -467,7 +570,6 @@ export function registerBrowserTools(
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: true,
-							browserViewId,
 							selector,
 							element: {
 								tag: data.tagName,
@@ -500,7 +602,6 @@ export function registerBrowserTools(
 							success: false,
 							isError: true,
 							error: errorMessage,
-							browserViewId,
 							selector
 						})
 					}],
@@ -510,5 +611,5 @@ export function registerBrowserTools(
 		}
 	);
 
-	console.log('[MCP] Registered 10 browser tools (takeScreenshot, navigate, reload, getCurrentUrl, goBack, goForward, stopLoading, executeScript, getPageHTML, inspectElement)');
+	console.log('[MCP] Registered 10 browser tools (all auto-resolve active browser - no browserViewId needed)');
 }

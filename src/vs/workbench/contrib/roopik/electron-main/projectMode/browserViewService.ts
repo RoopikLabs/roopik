@@ -312,6 +312,18 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		}
 	}
 
+	/**
+	 * Get the active browser view ID
+	 * Since Roopik has single project constraint (one server at a time),
+	 * there's at most one browser view open.
+	 *
+	 * @returns browserViewId if a browser is open, undefined otherwise
+	 */
+	getActiveBrowserViewId(): number | undefined {
+		const ids = Array.from(this.browserViews.keys());
+		return ids.length > 0 ? ids[0] : undefined;
+	}
+
 	async setBrowserBounds(browserViewId: number, bounds: ViewBounds): Promise<void> {
 		const browserView = this.browserViews.get(browserViewId);
 		if (browserView) {
