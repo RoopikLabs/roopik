@@ -1330,7 +1330,15 @@ export class CodeApplication extends Disposable {
 
 		// ROOPIK: MCP Server - AI Agent integration via Model Context Protocol
 		// Allows Claude Code, Copilot, and other AI agents to control Roopik IDE
-		const mcpServerService = new McpServerService(devServerService, projectStorageService, projectModeService, this.configurationService);
+		const mcpServerService = new McpServerService(
+			devServerService,
+			projectStorageService,
+			projectModeService,
+			componentService,
+			canvasService,
+			roopikStorageService,
+			this.configurationService
+		);
 		const mcpServerChannel = new McpServerChannel(mcpServerService);
 		mainProcessElectronServer.registerChannel(MCP_SERVER_CHANNEL, mcpServerChannel);
 

@@ -11,6 +11,7 @@
  */
 
 import type { BrowserViewService } from '../../projectMode/browserViewService.js';
+import type { IRoopikStorageService } from '../../../common/storage/storageService.js';
 
 /**
  * Register all browser-related MCP tools
@@ -18,13 +19,15 @@ import type { BrowserViewService } from '../../projectMode/browserViewService.js
  * @param server - McpServer instance (dynamically imported)
  * @param z - Zod validation library (dynamically imported)
  * @param browserViewService - BrowserView service instance
+ * @param storageService - Storage service instance (for workspace path)
  */
 export function registerBrowserTools(
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	server: any,
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	z: any,
-	browserViewService: BrowserViewService
+	browserViewService: BrowserViewService,
+	storageService: IRoopikStorageService
 ): void {
 
 	// --------------------------------------------------------------
@@ -403,5 +406,109 @@ export function registerBrowserTools(
 		}
 	);
 
-	console.log('[MCP] Registered 9 browser tools (takeScreenshot, navigate, reload, getCurrentUrl, goBack, goForward, stopLoading, executeScript, getPageHTML)');
+	// --------------------------------------------------------------
+	// TOOL: Inspect Element Styles
+	// --------------------------------------------------------------
+	server.tool(
+		'roopik_inspectElement',
+		'Get deep CSS inspection for an element including resolved styles, source file locations with line:column, computed values, and overridden properties. This is THE MOAT - unique Roopik capability that gives AI precise CSS context with source maps.',
+		{
+			browserViewId: z.number().describe('The browser view ID'),
+			selector: z.string().optional().describe('CSS selector to find element (e.g., ".btn-primary")'),
+			includeUserAgent: z.boolean().optional().describe('Include browser default styles (default: false)'),
+			includeInherited: z.boolean().optional().describe('Include inherited styles from parents (default: true)')
+		},
+		async ({ browserViewId, selector, includeUserAgent, includeInherited }: { browserViewId: number; selector?: string; includeUserAgent?: boolean; includeInherited?: boolean }) => {
+			try {
+				if (!selector) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'Selector is required for element inspection'
+							})
+						}],
+						isError: true
+					};
+				}
+
+				const workspacePath = storageService.getWorkspacePath();
+
+				const result = await browserViewService.getElementStyles({
+					browserViewId,
+					target: selector,
+					projectRoot: workspacePath,
+					includeUserAgent: includeUserAgent ?? false,
+					includeInherited: includeInherited ?? true
+				});
+
+				if (!result.success || !result.data) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: result.error || 'Failed to inspect element',
+								selector
+							})
+						}],
+						isError: true
+					};
+				}
+
+				const data = result.data;
+
+				// Return rich CSS context with source file locations
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: true,
+							browserViewId,
+							selector,
+							element: {
+								tag: data.tagName,
+								classes: data.classes,
+								componentName: data.componentName,
+								componentSource: data.htmlSource
+							},
+							matchedRules: data.matchedRules?.map((rule: import('../../../common/cssResolvers/types.js').MatchedCSSRule) => ({
+								selector: rule.selector,
+								file: rule.file,
+								location: rule.location,
+								properties: rule.properties,
+								specificity: rule.specificity,
+								origin: rule.origin
+							})),
+							inlineStyles: data.inlineStyles,
+							inheritedStyles: data.inheritedStyles,
+							properties: data.properties,
+							cssInJs: data.cssInJs,
+							stats: result.diagnostics
+						})
+					}]
+				};
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: false,
+							isError: true,
+							error: errorMessage,
+							browserViewId,
+							selector
+						})
+					}],
+					isError: true
+				};
+			}
+		}
+	);
+
+	console.log('[MCP] Registered 10 browser tools (takeScreenshot, navigate, reload, getCurrentUrl, goBack, goForward, stopLoading, executeScript, getPageHTML, inspectElement)');
 }

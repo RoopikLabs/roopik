@@ -27,9 +27,15 @@ import { IMcpServerService, McpServerStatus } from '../../common/mcp/mcpServerSe
 import type { DevServerService } from '../projectMode/devServer/devServerService.js';
 import type { ProjectStorageService } from '../projectStorage/projectStorageService.js';
 import type { BrowserViewService } from '../projectMode/browserViewService.js';
+import type { ComponentService } from '../component/componentService.js';
+import type { ICanvasService } from '../../common/canvas/canvasService.js';
+import type { IRoopikStorageService } from '../../common/storage/storageService.js';
 import { registerSystemTools } from './tools/systemTools.js';
 import { registerProjectTools } from './tools/projectTools.js';
 import { registerBrowserTools } from './tools/browserTools.js';
+import { registerCanvasTools } from './tools/canvasTools.js';
+import { registerWorkspaceTools } from './tools/workspaceTools.js';
+import { registerContextPrompts } from './tools/contextPrompts.js';
 
 // ============================================================================
 // Types
@@ -61,6 +67,9 @@ export class McpServerService implements IMcpServerService {
 		private readonly devServerService: DevServerService,
 		private readonly projectStorageService: ProjectStorageService,
 		private readonly browserViewService: BrowserViewService,
+		private readonly componentService: ComponentService,
+		private readonly canvasService: ICanvasService,
+		private readonly storageService: IRoopikStorageService,
 		private readonly configurationService: IConfigurationService
 	) {
 		// We do NOT initialize in constructor to keep startup fast
@@ -107,7 +116,12 @@ export class McpServerService implements IMcpServerService {
 		// Register tools from modular tool files
 		registerSystemTools(this.mcpServer, z);
 		registerProjectTools(this.mcpServer, z, this.devServerService, this.projectStorageService);
-		registerBrowserTools(this.mcpServer, z, this.browserViewService);
+		registerBrowserTools(this.mcpServer, z, this.browserViewService, this.storageService);
+		registerCanvasTools(this.mcpServer, z, this.componentService);
+		registerWorkspaceTools(this.mcpServer, z, this.canvasService, this.storageService);
+
+		// Register contextual prompts (workflow guides)
+		registerContextPrompts(this.mcpServer);
 
 		// Start HTTP server with retry logic (auto-finds available port)
 		this.actualPort = await this.listenWithRetry(configuredPort, StreamableHTTPServerTransport);
