@@ -20,6 +20,7 @@ import { INotificationService, Severity } from '../../../../../platform/notifica
 import { IStorageService, StorageScope } from '../../../../../platform/storage/common/storage.js';
 import { EditorTabInput } from '../projectMode/editorTabInput.js';
 import { Editor as ProjectModeEditor } from '../projectMode/editor.js';
+import { IMcpServerService } from '../../common/mcp/index.js';
 
 /**
  * Arguments for openProjectPreview command
@@ -103,6 +104,48 @@ export function registerBrowserCommands(): void {
 					sticky: false
 				});
 				storageService.store(hintKey, true, StorageScope.APPLICATION, 0 /* StorageTarget.USER */);
+			}
+		}
+	});
+
+	// Restart MCP Server (for development/troubleshooting)
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.restartMcpServer',
+				title: localize2('roopik.restartMcpServer', 'Restart MCP Server'),
+				category: localize2('roopik.category', 'Roopik'),
+				f1: true
+			});
+		}
+
+		async run(accessor: ServicesAccessor): Promise<void> {
+			const notificationService = accessor.get(INotificationService);
+			const mcpServerService = accessor.get(IMcpServerService);
+
+			try {
+				// Get status before restart
+				const statusBefore = await mcpServerService.getStatus();
+				const portBefore = statusBefore.port;
+
+				// Show notification that restart is in progress
+				notificationService.info('Restarting MCP Server...');
+
+				// Perform restart
+				await mcpServerService.restart();
+
+				// Get status after restart
+				const statusAfter = await mcpServerService.getStatus();
+				const portAfter = statusAfter.port;
+
+				// Show success message
+				if (portBefore === portAfter) {
+					notificationService.info(`MCP Server restarted successfully on port ${portAfter}`);
+				} else {
+					notificationService.info(`MCP Server restarted on port ${portAfter} (was ${portBefore})`);
+				}
+			} catch (error) {
+				notificationService.error(`Failed to restart MCP Server: ${error}`);
 			}
 		}
 	});

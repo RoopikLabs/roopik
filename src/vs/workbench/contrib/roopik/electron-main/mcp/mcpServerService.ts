@@ -22,38 +22,14 @@
 
 import * as http from 'http';
 import { Emitter, Event } from '../../../../../base/common/event.js';
+import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
+import { IMcpServerService, McpServerStatus } from '../../common/mcp/mcpServerService.js';
 import type { DevServerService } from '../projectMode/devServer/devServerService.js';
 import type { ProjectStorageService } from '../projectStorage/projectStorageService.js';
 
 // ============================================================================
 // Types
 // ============================================================================
-
-export interface IMcpServerService {
-	readonly _serviceBrand: undefined;
-
-	/** Event fired when MCP server status changes */
-	readonly onStatusChanged: Event<McpServerStatus>;
-
-	/** Start the MCP server */
-	start(): Promise<void>;
-
-	/** Stop the MCP server */
-	stop(): Promise<void>;
-
-	/** Get current server status */
-	getStatus(): McpServerStatus;
-
-	/** Get the port the server is running on */
-	getPort(): number;
-}
-
-export interface McpServerStatus {
-	running: boolean;
-	port: number;
-	url: string;
-	error?: string;
-}
 
 // ============================================================================
 // MCP Server Service Implementation
@@ -63,6 +39,7 @@ export class McpServerService implements IMcpServerService {
 	readonly _serviceBrand: undefined;
 
 	private static readonly DEFAULT_PORT = 3333;
+	private static readonly MAX_PORT_ATTEMPTS = 10;
 
 	// Events
 	private readonly _onStatusChanged = new Emitter<McpServerStatus>();
@@ -70,7 +47,7 @@ export class McpServerService implements IMcpServerService {
 
 	// State
 	private httpServer: http.Server | null = null;
-	private port: number = McpServerService.DEFAULT_PORT;
+	private actualPort: number = McpServerService.DEFAULT_PORT; // Track the port we successfully bound to
 
 	// SDK instances (loaded dynamically via import())
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- McpServer type from dynamic import
@@ -78,7 +55,8 @@ export class McpServerService implements IMcpServerService {
 
 	constructor(
 		private readonly devServerService: DevServerService,
-		private readonly projectStorageService: ProjectStorageService
+		private readonly projectStorageService: ProjectStorageService,
+		private readonly configurationService: IConfigurationService
 	) {
 		// We do NOT initialize in constructor to keep startup fast
 		// SDK is loaded dynamically in start()
@@ -88,6 +66,13 @@ export class McpServerService implements IMcpServerService {
 	// Server Lifecycle
 	// ============================================================================
 
+	async restart(): Promise<void> {
+		console.log('[MCP] Restarting server...');
+		await this.stop();
+		await this.start();
+		console.log('[MCP] Server restarted successfully');
+	}
+
 	async start(): Promise<void> {
 		if (this.httpServer) {
 			console.log('[MCP] Server already running');
@@ -96,7 +81,11 @@ export class McpServerService implements IMcpServerService {
 
 		console.log('[MCP] Initializing MCP Server...');
 
-		// ------------------------------------------------------------------
+		// Get configured port from user settings (default: 3333)
+		const configuredPort = this.configurationService.getValue<number>('roopik.mcp.port') || McpServerService.DEFAULT_PORT;
+		console.log(`[MCP] Configured port: ${configuredPort}`);
+
+		// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 		// DYNAMIC IMPORTS (Bypasses VSCode Layering Restrictions)
 		// Using StreamableHTTPServerTransport (modern standard)
 		// ------------------------------------------------------------------
@@ -113,8 +102,9 @@ export class McpServerService implements IMcpServerService {
 		// Register tools with SDK + Zod validation
 		await this.registerTools(z);
 
-		// Start HTTP server with Streamable HTTP transport
-		await this.startHttpServer(StreamableHTTPServerTransport);
+		// Start HTTP server with retry logic (auto-finds available port)
+		this.actualPort = await this.listenWithRetry(configuredPort, StreamableHTTPServerTransport);
+		this._onStatusChanged.fire(this.getStatus());
 	}
 
 	// ============================================================================
@@ -256,12 +246,23 @@ export class McpServerService implements IMcpServerService {
 	}
 
 	// ============================================================================
-	// HTTP Server with Streamable HTTP Transport (Modern Standard)
+	// HTTP Server with Streamable HTTP Transport + Retry Logic
 	// Single endpoint /mcp handles both SSE streaming and POST messages
+	// Automatically retries with next port if configured port is busy
 	// ============================================================================
 
+	/**
+	 * Tries to listen on 'startPort'. If busy, tries 'startPort + 1', etc.
+	 * Returns the port successfully bound to.
+	 */
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- StreamableHTTPServerTransport class from dynamic import
-	private async startHttpServer(StreamableHTTPServerTransport: any): Promise<void> {
+	private async listenWithRetry(startPort: number, StreamableHTTPServerTransport: any, attempt: number = 0): Promise<number> {
+		const currentPort = startPort + attempt;
+
+		if (attempt >= McpServerService.MAX_PORT_ATTEMPTS) {
+			throw new Error(`Could not find an open port after ${McpServerService.MAX_PORT_ATTEMPTS} attempts (tried ${startPort}-${currentPort - 1})`);
+		}
+
 		return new Promise((resolve, reject) => {
 			this.httpServer = http.createServer(async (req, res) => {
 				// CORS headers (crucial for Streamable HTTP)
@@ -277,7 +278,7 @@ export class McpServerService implements IMcpServerService {
 					return;
 				}
 
-				const url = new URL(req.url || '/', `http://localhost:${this.port}`);
+				const url = new URL(req.url || '/', `http://localhost:${currentPort}`);
 
 				// ------------------------------------------------------------------
 				// SINGLE ENDPOINT: /mcp handles everything (SSE streaming + POST)
@@ -318,7 +319,7 @@ export class McpServerService implements IMcpServerService {
 						server: 'roopik-mcp',
 						version: '1.0.0',
 						protocol: 'streamable-http',
-						endpoint: `http://127.0.0.1:${this.port}/mcp`
+						endpoint: `http://127.0.0.1:${currentPort}/mcp`
 					}));
 					return;
 				}
@@ -336,23 +337,28 @@ export class McpServerService implements IMcpServerService {
 
 			this.httpServer.on('error', (error: NodeJS.ErrnoException) => {
 				if (error.code === 'EADDRINUSE') {
-					console.error(`[MCP] Port ${this.port} is in use, trying ${this.port + 1}`);
-					this.port++;
+					console.warn(`[MCP] Port ${currentPort} is busy, trying ${currentPort + 1}...`);
 					this.httpServer?.close();
 					this.httpServer = null;
-					this.startHttpServer(StreamableHTTPServerTransport).then(resolve).catch(reject);
+
+					// Recursive retry with next port
+					this.listenWithRetry(startPort, StreamableHTTPServerTransport, attempt + 1)
+						.then(resolve)
+						.catch(reject);
 				} else {
 					console.error('[MCP] Server error:', error);
 					reject(error);
 				}
 			});
 
-			this.httpServer.listen(this.port, '127.0.0.1', () => {
-				console.log(`[MCP] 	  Server running at http://127.0.0.1:${this.port}/mcp`);
-				console.log(`[MCP]    Health check: http://127.0.0.1:${this.port}/health`);
+			this.httpServer.listen(currentPort, '127.0.0.1', () => {
+				console.log(`[MCP]    Server running at http://127.0.0.1:${currentPort}/mcp`);
+				console.log(`[MCP]    Health check: http://127.0.0.1:${currentPort}/health`);
 				console.log(`[MCP]    Protocol: Streamable HTTP (modern)`);
-				this._onStatusChanged.fire(this.getStatus());
-				resolve();
+				if (attempt > 0) {
+					console.log(`[MCP]    Note: Started on port ${currentPort} (configured port ${startPort} was busy)`);
+				}
+				resolve(currentPort); // Return the actual port we bound to
 			});
 		});
 	}
@@ -375,12 +381,12 @@ export class McpServerService implements IMcpServerService {
 	getStatus(): McpServerStatus {
 		return {
 			running: this.httpServer !== null,
-			port: this.port,
-			url: `http://127.0.0.1:${this.port}/mcp`
+			port: this.actualPort,
+			url: `http://127.0.0.1:${this.actualPort}/mcp`
 		};
 	}
 
 	getPort(): number {
-		return this.port;
+		return this.actualPort;
 	}
 }
