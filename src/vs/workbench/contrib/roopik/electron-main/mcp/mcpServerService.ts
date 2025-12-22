@@ -85,7 +85,7 @@ export class McpServerService implements IMcpServerService {
 		const configuredPort = this.configurationService.getValue<number>('roopik.mcp.port') || McpServerService.DEFAULT_PORT;
 		console.log(`[MCP] Configured port: ${configuredPort}`);
 
-		// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+		// ------------------------------------------------------------------
 		// DYNAMIC IMPORTS (Bypasses VSCode Layering Restrictions)
 		// Using StreamableHTTPServerTransport (modern standard)
 		// ------------------------------------------------------------------
