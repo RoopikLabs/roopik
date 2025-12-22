@@ -3,9 +3,15 @@
 		"vscode-playwright-mcp": {
 			"type": "stdio",
 			"command": "npm",
-			// Look at the [README](../test/mcp/README.md) to see what arguments are supported
-			"args": ["run", "start-stdio"],
+			"args": [
+				"run",
+				"start-stdio"
+			],
 			"cwd": "${workspaceFolder}/test/mcp"
+		},
+		"roopik": {
+			"url": "http://127.0.0.1:3333/mcp",
+			"type": "sse"
 		}
 	},
 	"inputs": []

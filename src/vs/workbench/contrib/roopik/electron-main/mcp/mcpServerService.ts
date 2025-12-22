@@ -288,7 +288,10 @@ export class McpServerService implements IMcpServerService {
 						// Create transport for this request
 						// Stateless mode: sessionIdGenerator returns undefined
 						const transport = new StreamableHTTPServerTransport({
-							sessionIdGenerator: () => undefined
+							// sessionIdGenerator: () => undefined // Stateless mode
+							// OR
+							// Let the SDK generate UUIDs by default.
+							// This allows the agent to maintain a persistent connection context.
 						});
 
 						// Connect transport to MCP server
