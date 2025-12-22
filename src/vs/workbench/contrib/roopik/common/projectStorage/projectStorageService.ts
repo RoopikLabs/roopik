@@ -84,4 +84,27 @@ export interface IProjectStorageService {
 	 * Delete a project from registry
 	 */
 	deleteProject(projectId: string): Promise<void>;
+
+	// ========================================================================
+	// Active Project Metadata (for session restoration & orphaned process cleanup)
+	// ========================================================================
+
+	/**
+	 * Set active dev server metadata (called when server starts)
+	 * @param projectId Project ID
+	 * @param pid Process ID
+	 * @param port Server port
+	 * @param url Server URL
+	 */
+	setActiveProject(projectId: string, pid: number, port: number, url: string): Promise<void>;
+
+	/**
+	 * Clear active project metadata (called when server stops)
+	 */
+	clearActiveProject(): Promise<void>;
+
+	/**
+	 * Get active project metadata (returns undefined if no server running)
+	 */
+	getActiveProject(): Promise<import('../storage/storageTypes.js').ActiveProjectMetadata | undefined>;
 }

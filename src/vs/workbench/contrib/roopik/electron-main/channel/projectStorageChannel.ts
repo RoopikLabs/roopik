@@ -23,7 +23,8 @@ export class ProjectStorageChannel implements IServerChannel {
 	/**
 	 * Handle event subscriptions from renderer
 	 */
-	listen(_context: unknown, event: string): Event<any> {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	listen(_context: any, event: string): Event<any> {
 		switch (event) {
 			case 'onDidInitialize':
 				return this.service.onDidInitialize;
@@ -37,7 +38,8 @@ export class ProjectStorageChannel implements IServerChannel {
 	/**
 	 * Handle method calls from renderer
 	 */
-	call(_context: unknown, command: string, arg?: any): Promise<any> {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	call(_context: any, command: string, arg?: any): Promise<any> {
 		switch (command) {
 			// Lifecycle
 			case 'initialize':
@@ -54,6 +56,16 @@ export class ProjectStorageChannel implements IServerChannel {
 			}
 			case 'deleteProject':
 				return this.service.deleteProject(arg as string);
+
+			// Active Project Metadata
+			case 'setActiveProject': {
+				const { projectId, pid, port, url } = arg as { projectId: string; pid: number; port: number; url: string };
+				return this.service.setActiveProject(projectId, pid, port, url);
+			}
+			case 'clearActiveProject':
+				return this.service.clearActiveProject();
+			case 'getActiveProject':
+				return this.service.getActiveProject();
 
 			default:
 				throw new Error(`[ProjectStorageChannel] Unknown command: ${command}`);

@@ -9,7 +9,7 @@ import { IThemeService } from '../../../../../platform/theme/common/themeService
 import { IStorageService } from '../../../../../platform/storage/common/storage.js';
 import { EditorTabInput } from './editorTabInput.js';
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
-import { Dimension } from '../../../../../base/browser/dom.js';
+import * as DOM from '../../../../../base/browser/dom.js';
 import { IEditorOpenContext } from '../../../../common/editor.js';
 import { RoopikLogger } from '../../common/roopikLogger.js';
 import { ILoggerService, ILogger } from '../../../../../platform/log/common/log.js';
@@ -29,6 +29,7 @@ import { IQuickInputService } from '../../../../../platform/quickinput/common/qu
 import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
+import { Dimension } from '../../../../../base/browser/dom.js';
 // Features (extracted to features/ folder)
 import { InspectMode } from './features/inspectMode.js';
 import { Bookmarks } from './features/bookmarks.js';
@@ -198,8 +199,8 @@ export class Editor extends EditorPane {
 	 * Subscribe to events from the central event bus for UI updates
 	 * This demonstrates the event-driven architecture where:
 	 * 1. IPC event comes from main process
-	 * 2. We publish to EventService (📤 PUBLISH)
-	 * 3. Subscribers receive and update UI (📥 RECEIVED)
+	 * 2. We publish to EventService (PUBLISH)
+	 * 3. Subscribers receive and update UI (RECEIVED)
 	 */
 	private setupEventSubscriptions(): void {
 		// Subscribe to navigation events - update URL bar
@@ -749,8 +750,8 @@ export class Editor extends EditorPane {
 		// Immediate update (may get wrong bounds if layout not complete)
 		this.updateViewBounds();
 
-		// Use requestAnimationFrame to wait for next paint
-		requestAnimationFrame(() => {
+		// Use DOM.scheduleAtNextAnimationFrame to wait for next paint
+		DOM.scheduleAtNextAnimationFrame(DOM.getWindow(this.browserContainer), () => {
 			this.updateViewBounds();
 
 			// Additional delayed updates to catch late layout changes
@@ -1292,16 +1293,30 @@ export class Editor extends EditorPane {
 	/**
 	 * Stop Dev Server
 	 * Stops the Vite dev server for the current project
+	 * Queries electron-main for running server (survives IDE reload)
 	 */
 	private async stopDevServer(): Promise<void> {
-		if (!this.currentProjectRoot) {
-			this.logger.warn('[ProjectMode] No project to stop');
-			return;
-		}
-
 		try {
-			await this.devServerService.stopServer(this.currentProjectRoot);
-			this.isProjectMode = false;
+			// Check electron-main for actually running server (not browser state)
+			const runningServer = await this.devServerService.getRunningServer();
+
+			if (!runningServer) {
+				this.logger.warn('[ProjectMode] No project to stop');
+				this.notificationService.notify({
+					severity: Severity.Warning,
+					message: 'No dev server is running',
+					sticky: false
+				});
+				return;
+			}
+
+			// Stop the server using the actual projectRoot from electron-main
+			await this.devServerService.stopServer(runningServer.projectRoot);
+
+			// Clear active project metadata (fire-and-forget - don't block stop operation!)
+			this.projectStorageService.clearActiveProject()
+				.then(() => this.logger.info('[ProjectMode] Active project metadata cleared'))
+				.catch((err) => this.logger.warn('[ProjectMode] Failed to clear active project metadata (non-fatal):', err));
 			this.currentProjectRoot = undefined;
 
 			// Show home screen after stopping server (don't navigate to about:blank)
@@ -1411,17 +1426,33 @@ export class Editor extends EditorPane {
 			this.isProjectMode = true;
 			this.currentProjectRoot = projectRoot;
 
-			// Save to recent projects storage (project started successfully = valid path)
+			// Save to recent projects storage and set as active project (non-blocking)
 			// Extract project name from the path (folder name)
 			const projectName = projectRoot.split(/[/\\]/).pop() || 'Project';
 
-			// Get server info to capture framework (optional - don't block on this)
-			this.devServerService.getServerInfo(projectRoot).then((serverInfo) => {
-				const framework = serverInfo?.framework;
-				const frameworkDisplayName = serverInfo?.frameworkDisplayName;
-				return this.projectStorageService.upsertProject(projectName, projectRoot, framework, frameworkDisplayName);
+			// Get server info to capture framework, pid, port, url for metadata persistence
+			// IMPORTANT: This is fire-and-forget - don't let metadata saving block browser opening!
+			this.devServerService.getServerInfo(projectRoot).then(async (serverInfo) => {
+				if (serverInfo) {
+					try {
+						const framework = serverInfo.framework;
+						const frameworkDisplayName = serverInfo.frameworkDisplayName;
+						const projectId = await this.projectStorageService.upsertProject(projectName, projectRoot, framework, frameworkDisplayName);
+
+						// Store active project metadata for orphaned process cleanup after IDE restart
+						if (serverInfo.pid && serverInfo.port && serverInfo.url) {
+							await this.projectStorageService.setActiveProject(projectId, serverInfo.pid, serverInfo.port, serverInfo.url);
+							this.logger.info(`[ProjectMode] Active project metadata saved: ${projectId} (PID: ${serverInfo.pid}, Port: ${serverInfo.port})`);
+						} else {
+							this.logger.warn('[ProjectMode] Server info incomplete, skipping active project metadata');
+						}
+					} catch (err) {
+						// Don't let metadata saving failure block browser opening!
+						this.logger.warn('[ProjectMode] Failed to save project metadata (non-fatal):', err);
+					}
+				}
 			}).catch((err) => {
-				this.logger.warn('[ProjectMode] Failed to save project to recent projects:', err);
+				this.logger.warn('[ProjectMode] Failed to get server info for metadata (non-fatal):', err);
 			});
 
 			// Small delay to ensure Vite server is fully ready to accept connections
