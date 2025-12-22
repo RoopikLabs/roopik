@@ -10,7 +10,6 @@
  */
 
 import type { DevServerService } from '../../projectMode/devServer/devServerService.js';
-import type { ProjectStorageService } from '../../projectStorage/projectStorageService.js';
 
 /**
  * Register all project-related MCP tools
@@ -18,15 +17,13 @@ import type { ProjectStorageService } from '../../projectStorage/projectStorageS
  * @param server - McpServer instance (dynamically imported)
  * @param z - Zod validation library (dynamically imported)
  * @param devServerService - DevServer service instance
- * @param projectStorageService - ProjectStorage service instance
  */
 export function registerProjectTools(
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	server: any,
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	z: any,
-	devServerService: DevServerService,
-	projectStorageService: ProjectStorageService
+	devServerService: DevServerService
 ): void {
 
 	// --------------------------------------------------------------
@@ -89,16 +86,18 @@ export function registerProjectTools(
 
 	// --------------------------------------------------------------
 	// TOOL: Get Active Project
+	// Uses DevServerService to get the currently running server (in-memory state)
 	// --------------------------------------------------------------
 	server.tool(
 		'roopik_getActiveProject',
-		'Get the currently active/running project in Roopik IDE. Returns project info including URL if running.',
+		'Get the currently active/running project in Roopik IDE. Returns project info including URL, port, framework if a dev server is running.',
 		{},
 		async () => {
 			try {
-				const activeProject = await projectStorageService.getActiveProject();
+				// Use DevServerService to get actual running server state (in-memory)
+				const runningServer = await devServerService.getRunningServer();
 
-				if (!activeProject) {
+				if (!runningServer) {
 					return {
 						content: [{
 							type: 'text' as const,
@@ -117,7 +116,12 @@ export function registerProjectTools(
 						text: JSON.stringify({
 							success: true,
 							hasActiveProject: true,
-							...activeProject
+							projectPath: runningServer.projectRoot,
+							url: runningServer.url,
+							port: runningServer.port,
+							state: runningServer.state,
+							framework: runningServer.framework,
+							frameworkDisplayName: runningServer.frameworkDisplayName
 						})
 					}]
 				};
@@ -185,15 +189,32 @@ export function registerProjectTools(
 
 	// --------------------------------------------------------------
 	// TOOL: Stop Project
+	// No parameters needed - stops whatever project is currently running
+	// (Single server constraint means at most one project runs at a time)
 	// --------------------------------------------------------------
 	server.tool(
 		'roopik_stopProject',
-		'Stop the dev server for a project.',
-		{
-			projectPath: z.string().describe('Absolute path to the project folder')
-		},
-		async ({ projectPath }: { projectPath: string }) => {
+		'Stop the currently running dev server. No parameters needed - automatically stops whatever project is active.',
+		{},
+		async () => {
 			try {
+				// Find the running server first
+				const runningServer = await devServerService.getRunningServer();
+
+				if (!runningServer) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: true,
+								message: 'No project is currently running'
+							})
+						}]
+					};
+				}
+
+				// Stop the running server
+				const projectPath = runningServer.projectRoot;
 				await devServerService.stopServer(projectPath);
 
 				return {
@@ -213,8 +234,7 @@ export function registerProjectTools(
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: false,
-							error: message,
-							projectPath
+							error: message
 						})
 					}],
 					isError: true

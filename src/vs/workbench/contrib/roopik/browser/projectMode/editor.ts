@@ -1437,26 +1437,18 @@ export class Editor extends EditorPane {
 			this.isProjectMode = true;
 			this.currentProjectRoot = projectRoot;
 
-			// Save to recent projects storage and set as active project (non-blocking)
-			// Extract project name from the path (folder name)
+			// Save to recent projects storage (non-blocking)
+			// NOTE: setActiveProject is now called by DevServerService when server starts (unified flow)
 			const projectName = projectRoot.split(/[/\\]/).pop() || 'Project';
 
-			// Get server info to capture framework, pid, port, url for metadata persistence
+			// Get server info to capture framework for recent projects list
 			// IMPORTANT: This is fire-and-forget - don't let metadata saving block browser opening!
 			this.devServerService.getServerInfo(projectRoot).then(async (serverInfo) => {
 				if (serverInfo) {
 					try {
 						const framework = serverInfo.framework;
 						const frameworkDisplayName = serverInfo.frameworkDisplayName;
-						const projectId = await this.projectStorageService.upsertProject(projectName, projectRoot, framework, frameworkDisplayName);
-
-						// Store active project metadata for orphaned process cleanup after IDE restart
-						if (serverInfo.pid && serverInfo.port && serverInfo.url) {
-							await this.projectStorageService.setActiveProject(projectId, serverInfo.pid, serverInfo.port, serverInfo.url);
-							this.logger.info(`[ProjectMode] Active project metadata saved: ${projectId} (PID: ${serverInfo.pid}, Port: ${serverInfo.port})`);
-						} else {
-							this.logger.warn('[ProjectMode] Server info incomplete, skipping active project metadata');
-						}
+						await this.projectStorageService.upsertProject(projectName, projectRoot, framework, frameworkDisplayName);
 					} catch (err) {
 						// Don't let metadata saving failure block browser opening!
 						this.logger.warn('[ProjectMode] Failed to save project metadata (non-fatal):', err);

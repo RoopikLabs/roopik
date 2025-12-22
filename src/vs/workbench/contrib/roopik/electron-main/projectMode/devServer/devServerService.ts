@@ -18,6 +18,7 @@ import type {
 	Framework,
 	FrameworkInfo
 } from '../../../common/projectMode/devServer.js';
+import type { ProjectStorageService } from '../../projectStorage/projectStorageService.js';
 
 /**
  * Server instance data
@@ -93,6 +94,14 @@ export class DevServerService implements IDevServerService {
 	// ============================================
 
 	private servers = new Map<string, ServerInstance>();
+
+	// ============================================
+	// Dependencies
+	// ============================================
+
+	constructor(
+		private readonly projectStorageService?: ProjectStorageService
+	) { }
 
 	// ============================================
 	// Server Lifecycle
@@ -213,6 +222,9 @@ export class DevServerService implements IDevServerService {
 					instance.port = msg.port;
 					instance.framework = msg.framework;
 
+					// Update active project in storage (unified flow for UI and MCP)
+					this.updateActiveProjectStorage(normalizedRoot, instance.workerProcess?.pid, msg.port, msg.url);
+
 					this.fireStatus(normalizedRoot, 'running', {
 						url: msg.url,
 						port: msg.port,
@@ -316,6 +328,9 @@ export class DevServerService implements IDevServerService {
 		instance.url = undefined;
 		instance.port = undefined;
 		instance.workerProcess = undefined;
+
+		// Clear active project in storage (unified flow for UI and MCP)
+		this.clearActiveProjectStorage();
 
 		this.fireStatus(normalizedRoot, 'stopped');
 		this.log(normalizedRoot, 'info', 'Server stopped');
@@ -561,6 +576,47 @@ export class DevServerService implements IDevServerService {
 
 	private log(projectRoot: string, level: 'info' | 'warn' | 'error', message: string): void {
 		this._onLog.fire({ projectRoot, level, message });
+	}
+
+	// ============================================
+	// Project Storage (Unified Flow)
+	// ============================================
+
+	/**
+	 * Update active project in storage when server starts
+	 * Called from both UI and MCP flows
+	 */
+	private async updateActiveProjectStorage(projectRoot: string, pid: number | undefined, port: number, url: string): Promise<void> {
+		if (!this.projectStorageService) {
+			return;
+		}
+
+		try {
+			// Generate project ID from path
+			const projectName = projectRoot.split(/[/\\]/).pop() || 'project';
+			const projectId = `proj_${projectName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+
+			await this.projectStorageService.setActiveProject(projectId, pid || 0, port, url);
+			this.log(projectRoot, 'info', `Active project set: ${projectId}`);
+		} catch (error) {
+			this.log(projectRoot, 'warn', `Failed to update active project storage: ${error}`);
+		}
+	}
+
+	/**
+	 * Clear active project in storage when server stops
+	 * Called from both UI and MCP flows
+	 */
+	private async clearActiveProjectStorage(): Promise<void> {
+		if (!this.projectStorageService) {
+			return;
+		}
+
+		try {
+			await this.projectStorageService.clearActiveProject();
+		} catch (error) {
+			console.warn('[DevServerService] Failed to clear active project storage:', error);
+		}
 	}
 
 	// ============================================

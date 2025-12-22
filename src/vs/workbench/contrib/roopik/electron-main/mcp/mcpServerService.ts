@@ -25,7 +25,6 @@ import { Emitter, Event } from '../../../../../base/common/event.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { IMcpServerService, McpServerStatus } from '../../common/mcp/mcpServerService.js';
 import type { DevServerService } from '../projectMode/devServer/devServerService.js';
-import type { ProjectStorageService } from '../projectStorage/projectStorageService.js';
 import type { BrowserViewService } from '../projectMode/browserViewService.js';
 import type { ComponentService } from '../component/componentService.js';
 import type { ICanvasService } from '../../common/canvas/canvasService.js';
@@ -65,7 +64,6 @@ export class McpServerService implements IMcpServerService {
 
 	constructor(
 		private readonly devServerService: DevServerService,
-		private readonly projectStorageService: ProjectStorageService,
 		private readonly browserViewService: BrowserViewService,
 		private readonly componentService: ComponentService,
 		private readonly canvasService: ICanvasService,
@@ -115,7 +113,7 @@ export class McpServerService implements IMcpServerService {
 
 		// Register tools from modular tool files
 		registerSystemTools(this.mcpServer, z);
-		registerProjectTools(this.mcpServer, z, this.devServerService, this.projectStorageService);
+		registerProjectTools(this.mcpServer, z, this.devServerService);
 		registerBrowserTools(this.mcpServer, z, this.browserViewService, this.storageService);
 		registerCanvasTools(this.mcpServer, z, this.componentService);
 		registerWorkspaceTools(this.mcpServer, z, this.canvasService, this.storageService);

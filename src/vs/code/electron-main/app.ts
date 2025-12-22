@@ -1304,8 +1304,15 @@ export class CodeApplication extends Disposable {
 		const projectModeChannel = new ProjectModeChannel(projectModeService);
 		mainProcessElectronServer.registerChannel(PROJECT_MODE_CHANNEL, projectModeChannel);
 
+		// ROOPIK: Project Storage Service - Recent projects for Project Mode
+		// NOTE: Created before DevServerService so it can be injected
+		const projectStorageService = new ProjectStorageService();
+		const projectStorageChannel = new ProjectStorageChannel(projectStorageService);
+		mainProcessElectronServer.registerChannel(PROJECT_STORAGE_CHANNEL, projectStorageChannel);
+
 		// ROOPIK: DevServer - Vite dev server management for project preview
-		const devServerService = new DevServerService();
+		// Injects ProjectStorageService for unified active project tracking
+		const devServerService = new DevServerService(projectStorageService);
 		const devServerChannel = new DevServerChannel(devServerService);
 		mainProcessElectronServer.registerChannel(DEV_SERVER_CHANNEL, devServerChannel);
 
@@ -1323,16 +1330,10 @@ export class CodeApplication extends Disposable {
 		const componentChannel = new ComponentChannel(componentService);
 		mainProcessElectronServer.registerChannel(COMPONENT_CHANNEL_NAME, componentChannel);
 
-		// ROOPIK: Project Storage Service - Recent projects for Project Mode
-		const projectStorageService = new ProjectStorageService();
-		const projectStorageChannel = new ProjectStorageChannel(projectStorageService);
-		mainProcessElectronServer.registerChannel(PROJECT_STORAGE_CHANNEL, projectStorageChannel);
-
 		// ROOPIK: MCP Server - AI Agent integration via Model Context Protocol
 		// Allows Claude Code, Copilot, and other AI agents to control Roopik IDE
 		const mcpServerService = new McpServerService(
 			devServerService,
-			projectStorageService,
 			projectModeService,
 			componentService,
 			canvasService,
