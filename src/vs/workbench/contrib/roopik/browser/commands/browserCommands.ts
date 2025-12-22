@@ -20,8 +20,11 @@ import { INotificationService, Severity } from '../../../../../platform/notifica
 import { IStorageService, StorageScope } from '../../../../../platform/storage/common/storage.js';
 import { INativeHostService } from '../../../../../platform/native/common/native.js';
 import { ICommandService } from '../../../../../platform/commands/common/commands.js';
+import { IMainProcessService } from '../../../../../platform/ipc/common/mainProcessService.js';
 import { EditorTabInput } from '../projectMode/editorTabInput.js';
 import { Editor as ProjectModeEditor } from '../projectMode/editor.js';
+import { DevServerBridge } from '../projectMode/devServerBridge.js';
+import { DEV_SERVER_CHANNEL } from '../../common/projectMode/devServer.js';
 import { IMcpServerService } from '../../common/mcp/index.js';
 
 /**
@@ -142,16 +145,106 @@ export function registerBrowserCommands(): void {
 
 				const projectPath = result.filePaths[0];
 
-				// Extract project name from path
-				const projectName = projectPath.split(/[\\/]/).pop() || 'Project';
-
-				// Now open the browser preview with this project
-				await commandService.executeCommand('roopik.openProjectPreview', {
-					projectPath,
-					projectName
+				// Use the unified startProject command
+				// Flow: Start dev server FIRST → open browser only on success
+				await commandService.executeCommand('roopik.startProject', {
+					projectPath
 				});
 			} catch (error) {
 				notificationService.error(`Failed to open project: ${error}`);
+			}
+		}
+	});
+
+	// ============================================================================
+	// UNIFIED PROJECT START COMMAND
+	// All entry points (UI buttons, MCP agent) should use this command
+	// Flow: Start dev server FIRST → if success → open browser → navigate to URL
+	// ============================================================================
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.startProject',
+				title: localize2('roopik.startProject', 'Start Project'),
+				category: localize2('roopik.category', 'Roopik'),
+				f1: true
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: { projectPath: string }): Promise<{ url: string; success: boolean } | undefined> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const editorService = accessor.get(IEditorService);
+			const editorGroupsService = accessor.get(IEditorGroupsService);
+			const configurationService = accessor.get(IConfigurationService);
+			const notificationService = accessor.get(INotificationService);
+
+			// Validate projectPath
+			if (!args?.projectPath) {
+				notificationService.error('Project path is required');
+				return { url: '', success: false };
+			}
+
+			const projectPath = args.projectPath;
+			const projectName = projectPath.split(/[\\/]/).pop() || 'Project';
+
+			// Show starting notification
+			notificationService.info(`Starting project: ${projectName}...`);
+
+			try {
+				// ============================================
+				// STEP 1: Start dev server FIRST
+				// ============================================
+				const devServerService = new DevServerBridge(mainProcessService.getChannel(DEV_SERVER_CHANNEL));
+				const url = await devServerService.startServer({
+					projectRoot: projectPath,
+					port: 5173
+				});
+
+				// ============================================
+				// STEP 2: Server started successfully → Open browser
+				// ============================================
+
+				// Get the singleton browser input
+				const input = EditorTabInput.getInstance();
+
+				// Check if browser editor is already open
+				const visibleEditors = editorService.visibleEditorPanes;
+				let existingPane = visibleEditors.find(
+					pane => pane.input instanceof EditorTabInput
+				);
+
+				if (existingPane && existingPane instanceof ProjectModeEditor) {
+					// Browser already open → just navigate to URL
+					await existingPane.group.openEditor(input, { pinned: true });
+					await existingPane.navigateToUrl(url, projectPath);
+				} else {
+					// Browser not open → open it first, then navigate
+					const direction = preferredSideBySideGroupDirection(configurationService);
+					let targetGroup = editorGroupsService.findGroup({ direction });
+					if (!targetGroup) {
+						targetGroup = editorGroupsService.addGroup(editorGroupsService.activeGroup, direction);
+					}
+					await targetGroup.openEditor(input, { pinned: true });
+
+					// Find the newly opened editor pane and navigate
+					const newPane = editorService.visibleEditorPanes.find(
+						pane => pane.input instanceof EditorTabInput
+					);
+					if (newPane && newPane instanceof ProjectModeEditor) {
+						// Small delay to ensure editor is fully initialized
+						await new Promise(resolve => setTimeout(resolve, 100));
+						await newPane.navigateToUrl(url, projectPath);
+					}
+				}
+
+				notificationService.info(`Project started at: ${url}`);
+				return { url, success: true };
+
+			} catch (error) {
+				// Server failed to start → DON'T open browser, show error
+				const errorMsg = error instanceof Error ? error.message : String(error);
+				notificationService.error(`Failed to start project: ${errorMsg}`);
+				return { url: '', success: false };
 			}
 		}
 	});

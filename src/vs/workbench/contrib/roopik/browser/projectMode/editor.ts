@@ -1088,6 +1088,29 @@ export class Editor extends EditorPane {
 	// Navigation
 	// ============================================
 
+	/**
+	 * Public method to navigate to a URL with project context
+	 * Called by roopik.startProject command after dev server starts
+	 * @param url - The URL to navigate to (e.g., http://localhost:5173)
+	 * @param projectRoot - The project root path (for state tracking)
+	 */
+	public async navigateToUrl(url: string, projectRoot?: string): Promise<void> {
+		// Ensure browser view is initialized
+		if (!this.browserViewId) {
+			this.logger.info('[ProjectMode] Browser view not ready, initializing...');
+			await this.initializeBrowserView();
+		}
+
+		// Update project state if projectRoot provided
+		if (projectRoot) {
+			this.isProjectMode = true;
+			this.currentProjectRoot = projectRoot;
+		}
+
+		// Navigate to the URL
+		await this.navigate(url);
+	}
+
 	private async navigate(url: string): Promise<void> {
 		if (!url) {
 			this.logger.warn('[ProjectMode] Navigation aborted: No URL provided');

@@ -47,7 +47,8 @@ import { registerAllCommands } from './commands/index.js';
 import {
 	RoopikStartupContribution,
 	RoopikCanvasContribution,
-	RoopikComponentContribution
+	RoopikComponentContribution,
+	RoopikProjectModeContribution
 } from './contributions/index.js';
 import { RoopikViewsContribution } from './roopikViewPane.js';
 
@@ -154,6 +155,13 @@ registerWorkbenchContribution2(
 registerWorkbenchContribution2(
 	RoopikComponentContribution.ID,
 	RoopikComponentContribution,
+	WorkbenchPhase.AfterRestored
+);
+
+// Project Mode: Auto-open browser when dev server starts
+registerWorkbenchContribution2(
+	RoopikProjectModeContribution.ID,
+	RoopikProjectModeContribution,
 	WorkbenchPhase.AfterRestored
 );
 

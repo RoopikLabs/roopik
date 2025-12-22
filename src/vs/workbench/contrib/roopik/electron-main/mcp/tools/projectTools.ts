@@ -139,10 +139,11 @@ export function registerProjectTools(
 
 	// --------------------------------------------------------------
 	// TOOL: Start Project
+	// UNIVERSAL FLOW: Starts dev server, browser automatically opens via internal event
 	// --------------------------------------------------------------
 	server.tool(
 		'roopik_startProject',
-		'Start a dev server for a project. Returns the server URL when ready.',
+		'Start a dev server for a project. The browser will automatically open and navigate to the URL when the server is ready. Returns the server URL and success status.',
 		{
 			projectPath: z.string().describe('Absolute path to the project folder'),
 			port: z.number().optional().describe('Preferred port number (optional, auto-selects if not provided)')
