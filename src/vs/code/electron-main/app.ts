@@ -147,6 +147,8 @@ import { FileWatcher } from '../../workbench/contrib/roopik/electron-main/watch/
 import { ProjectStorageService } from '../../workbench/contrib/roopik/electron-main/projectStorage/projectStorageService.js';
 import { ProjectStorageChannel } from '../../workbench/contrib/roopik/electron-main/channel/projectStorageChannel.js';
 import { PROJECT_STORAGE_CHANNEL } from '../../workbench/contrib/roopik/common/projectStorage/index.js';
+// ROOPIK: MCP Server - AI Agent integration via Model Context Protocol
+import { McpServerService } from '../../workbench/contrib/roopik/electron-main/mcp/mcpServerService.js';
 
 /**
  * The main VS Code application. There will only ever be one instance,
@@ -1323,6 +1325,15 @@ export class CodeApplication extends Disposable {
 		const projectStorageService = new ProjectStorageService();
 		const projectStorageChannel = new ProjectStorageChannel(projectStorageService);
 		mainProcessElectronServer.registerChannel(PROJECT_STORAGE_CHANNEL, projectStorageChannel);
+
+		// ROOPIK: MCP Server - AI Agent integration via Model Context Protocol
+		// Allows Claude Code, Copilot, and other AI agents to control Roopik IDE
+		const mcpServerService = new McpServerService(devServerService, projectStorageService);
+		mcpServerService.start().then(() => {
+			console.log('[Roopik] MCP Server started successfully');
+		}).catch((error) => {
+			console.error('[Roopik] Failed to start MCP Server:', error);
+		});
 		// ROOPIK END
 	}
 

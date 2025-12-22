@@ -1450,6 +1450,9 @@ export default tseslint.config(
 					// - electron-main
 					'when': 'hasNode',
 					'allow': [
+						'@modelcontextprotocol/sdk',
+						'@modelcontextprotocol/sdk/server/mcp.js',
+						'@modelcontextprotocol/sdk/server/sse.js',
 						'@parcel/watcher',
 						'@vscode/sqlite3',
 						'@vscode/vscode-languagedetection',
@@ -1503,7 +1506,8 @@ export default tseslint.config(
 						'@xterm/xterm',
 						'yauzl',
 						'yazl',
-						'zlib'
+						'zlib',
+						'zod'
 					]
 				},
 				{
