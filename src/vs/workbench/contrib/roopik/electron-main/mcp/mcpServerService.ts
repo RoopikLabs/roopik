@@ -26,6 +26,10 @@ import { IConfigurationService } from '../../../../../platform/configuration/com
 import { IMcpServerService, McpServerStatus } from '../../common/mcp/mcpServerService.js';
 import type { DevServerService } from '../projectMode/devServer/devServerService.js';
 import type { ProjectStorageService } from '../projectStorage/projectStorageService.js';
+import type { BrowserViewService } from '../projectMode/browserViewService.js';
+import { registerSystemTools } from './tools/systemTools.js';
+import { registerProjectTools } from './tools/projectTools.js';
+import { registerBrowserTools } from './tools/browserTools.js';
 
 // ============================================================================
 // Types
@@ -56,6 +60,7 @@ export class McpServerService implements IMcpServerService {
 	constructor(
 		private readonly devServerService: DevServerService,
 		private readonly projectStorageService: ProjectStorageService,
+		private readonly browserViewService: BrowserViewService,
 		private readonly configurationService: IConfigurationService
 	) {
 		// We do NOT initialize in constructor to keep startup fast
@@ -99,150 +104,14 @@ export class McpServerService implements IMcpServerService {
 			version: '1.0.0',
 		});
 
-		// Register tools with SDK + Zod validation
-		await this.registerTools(z);
+		// Register tools from modular tool files
+		registerSystemTools(this.mcpServer, z);
+		registerProjectTools(this.mcpServer, z, this.devServerService, this.projectStorageService);
+		registerBrowserTools(this.mcpServer, z, this.browserViewService);
 
 		// Start HTTP server with retry logic (auto-finds available port)
 		this.actualPort = await this.listenWithRetry(configuredPort, StreamableHTTPServerTransport);
-		this._onStatusChanged.fire(this.getStatus());
-	}
-
-	// ============================================================================
-	// Tool Registration (Using SDK + Zod)
-	// ============================================================================
-
-	private async registerTools(z: typeof import('zod').z): Promise<void> {
-		// ------------------------------------------------------------------
-		// TOOL 1: Ping (health check)
-		// ------------------------------------------------------------------
-		this.mcpServer.tool(
-			'roopik_ping',
-			'Health check - verifies MCP server is running and responsive',
-			{},
-			async () => {
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: true,
-							message: 'Roopik MCP Server is running',
-							timestamp: new Date().toISOString(),
-							version: '1.0.0'
-						})
-					}]
-				};
-			}
-		);
-
-		// ------------------------------------------------------------------
-		// TOOL 2: Get Project Status
-		// ------------------------------------------------------------------
-		this.mcpServer.tool(
-			'roopik_getProjectStatus',
-			'Get the status of a dev server for a project. Returns running state, URL, port, and framework.',
-			{
-				projectPath: z.string().describe('Absolute path to the project folder')
-			},
-			async ({ projectPath }: { projectPath: string }) => {
-				try {
-					const serverInfo = await this.devServerService.getServerInfo(projectPath);
-
-					if (!serverInfo) {
-						return {
-							content: [{
-								type: 'text' as const,
-								text: JSON.stringify({
-									success: true,
-									projectPath,
-									running: false,
-									message: 'No dev server running for this project'
-								})
-							}]
-						};
-					}
-
-					return {
-						content: [{
-							type: 'text' as const,
-							text: JSON.stringify({
-								success: true,
-								projectPath,
-								running: serverInfo.state === 'running',
-								state: serverInfo.state,
-								url: serverInfo.url,
-								port: serverInfo.port,
-								framework: serverInfo.framework
-							})
-						}]
-					};
-				} catch (error: unknown) {
-					const message = error instanceof Error ? error.message : String(error);
-					return {
-						content: [{
-							type: 'text' as const,
-							text: JSON.stringify({
-								success: false,
-								error: message,
-								projectPath
-							})
-						}],
-						isError: true
-					};
-				}
-			}
-		);
-
-		// ------------------------------------------------------------------
-		// TOOL 3: Get Active Project
-		// ------------------------------------------------------------------
-		this.mcpServer.tool(
-			'roopik_getActiveProject',
-			'Get the currently active/running project in Roopik IDE. Returns project info including URL if running.',
-			{},
-			async () => {
-				try {
-					const activeProject = await this.projectStorageService.getActiveProject();
-
-					if (!activeProject) {
-						return {
-							content: [{
-								type: 'text' as const,
-								text: JSON.stringify({
-									success: true,
-									hasActiveProject: false,
-									message: 'No project is currently running'
-								})
-							}]
-						};
-					}
-
-					return {
-						content: [{
-							type: 'text' as const,
-							text: JSON.stringify({
-								success: true,
-								hasActiveProject: true,
-								...activeProject
-							})
-						}]
-					};
-				} catch (error: unknown) {
-					const message = error instanceof Error ? error.message : String(error);
-					return {
-						content: [{
-							type: 'text' as const,
-							text: JSON.stringify({
-								success: false,
-								error: message
-							})
-						}],
-						isError: true
-					};
-				}
-			}
-		);
-
-		console.log('[MCP] Registered 3 tools: roopik_ping, roopik_getProjectStatus, roopik_getActiveProject');
+		this._onStatusChanged.fire(await this.getStatus());
 	}
 
 	// ============================================================================
@@ -369,16 +238,16 @@ export class McpServerService implements IMcpServerService {
 		}
 
 		return new Promise((resolve) => {
-			this.httpServer!.close(() => {
+			this.httpServer!.close(async () => {
 				console.log('[MCP] Server stopped');
 				this.httpServer = null;
-				this._onStatusChanged.fire(this.getStatus());
+				this._onStatusChanged.fire(await this.getStatus());
 				resolve();
 			});
 		});
 	}
 
-	getStatus(): McpServerStatus {
+	async getStatus(): Promise<McpServerStatus> {
 		return {
 			running: this.httpServer !== null,
 			port: this.actualPort,
@@ -386,7 +255,7 @@ export class McpServerService implements IMcpServerService {
 		};
 	}
 
-	getPort(): number {
+	async getPort(): Promise<number> {
 		return this.actualPort;
 	}
 }
