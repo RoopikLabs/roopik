@@ -18,6 +18,8 @@ import { IEditorGroupsService, preferredSideBySideGroupDirection } from '../../.
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { IStorageService, StorageScope } from '../../../../../platform/storage/common/storage.js';
+import { INativeHostService } from '../../../../../platform/native/common/native.js';
+import { ICommandService } from '../../../../../platform/commands/common/commands.js';
 import { EditorTabInput } from '../projectMode/editorTabInput.js';
 import { Editor as ProjectModeEditor } from '../projectMode/editor.js';
 import { IMcpServerService } from '../../common/mcp/index.js';
@@ -104,6 +106,52 @@ export function registerBrowserCommands(): void {
 					sticky: false
 				});
 				storageService.store(hintKey, true, StorageScope.APPLICATION, 0 /* StorageTarget.USER */);
+			}
+		}
+	});
+
+	// Open Project Picker - Opens file explorer directly, then starts project in browser
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.openProjectPicker',
+				title: localize2('roopik.openProjectPicker', 'Open Project'),
+				category: localize2('roopik.category', 'Roopik'),
+				f1: true
+			});
+		}
+
+		async run(accessor: ServicesAccessor): Promise<void> {
+			const nativeHostService = accessor.get(INativeHostService);
+			const commandService = accessor.get(ICommandService);
+			const notificationService = accessor.get(INotificationService);
+
+			try {
+				// Open folder picker dialog
+				// Returns { canceled: boolean, filePaths: string[] }
+				const result = await nativeHostService.showOpenDialog({
+					title: 'Select Project Folder',
+					properties: ['openDirectory'],
+					buttonLabel: 'Open Project'
+				});
+
+				// User cancelled or no selection
+				if (!result || result.canceled || result.filePaths.length === 0) {
+					return;
+				}
+
+				const projectPath = result.filePaths[0];
+
+				// Extract project name from path
+				const projectName = projectPath.split(/[\\/]/).pop() || 'Project';
+
+				// Now open the browser preview with this project
+				await commandService.executeCommand('roopik.openProjectPreview', {
+					projectPath,
+					projectName
+				});
+			} catch (error) {
+				notificationService.error(`Failed to open project: ${error}`);
 			}
 		}
 	});

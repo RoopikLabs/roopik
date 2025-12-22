@@ -273,7 +273,8 @@ export class RoopikDashboardView extends ViewPane {
 		modeButtonsRow.style.flexWrap = 'wrap'; // Allow wrapping when space is limited
 
 		const newCanvasBtn = this.createPrimaryActionButton('Canvas', 'codicon-new-file', 'roopik.openCanvas', true, true);
-		const projectModeBtn = this.createSecondaryActionButton('Project', 'codicon-globe', 'roopik.openProjectPreview', true, true);
+		// Project button opens file explorer directly (folder icon)
+		const projectModeBtn = this.createSecondaryActionButton('Project', 'codicon-folder', 'roopik.openProjectPicker', true, true);
 
 		modeButtonsRow.appendChild(newCanvasBtn);
 		modeButtonsRow.appendChild(projectModeBtn);
@@ -285,14 +286,17 @@ export class RoopikDashboardView extends ViewPane {
 		separator.style.background = 'var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
 		separator.style.margin = '4px 0';
 
-		// Second row: Import button (always on separate row)
+		// Second row: Import and Browse buttons (always on separate row)
 		const importButtonsRow = document.createElement('div');
 		importButtonsRow.style.display = 'flex';
 		importButtonsRow.style.alignItems = 'center';
 		importButtonsRow.style.gap = '4px';
 
 		const importBtn = this.createSecondaryActionButton('Import', 'codicon-cloud-download', 'roopik.import.showPicker', true, false);
+		// Browse button opens browser preview with default welcome screen (globe icon)
+		const browseBtn = this.createSecondaryActionButton('Browse', 'codicon-globe', 'roopik.openProjectPreview', true, false);
 		importButtonsRow.appendChild(importBtn);
+		importButtonsRow.appendChild(browseBtn);
 
 		actionsContainer.appendChild(modeButtonsRow);
 		actionsContainer.appendChild(separator);

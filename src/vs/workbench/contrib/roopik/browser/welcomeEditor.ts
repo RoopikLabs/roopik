@@ -117,7 +117,8 @@ export class RoopikWelcomeEditor extends EditorPane {
 
 		const heroActions = append(heroContent, $('.hero-actions'));
 		this.createHeroButton(heroActions, 'codicon-new-file', 'New Canvas', 'roopik.openCanvas', true);
-		this.createHeroButton(heroActions, 'codicon-globe', 'Project Mode', 'roopik.openProjectPreview');
+		// Project button opens file explorer directly (folder icon)
+		this.createHeroButton(heroActions, 'codicon-folder', 'Open Project', 'roopik.openProjectPicker');
 
 		const heroShowcase = append(hero, $('.hero-showcase'));
 		const showcaseLabel = append(heroShowcase, $('.showcase-label'));
@@ -139,9 +140,10 @@ export class RoopikWelcomeEditor extends EditorPane {
 
 		const startActions = [
 			{ icon: 'codicon-new-file', label: 'New Canvas', commandId: 'roopik.openCanvas' },
-			{ icon: 'codicon-folder', label: 'Open Canvas', commandId: 'roopik.openCanvas' },
+			{ icon: 'codicon-folder-opened', label: 'Open Canvas', commandId: 'roopik.openCanvas' },
 			{ icon: 'codicon-file-symlink-directory', label: 'Import Canvas', commandId: 'roopik.openCanvas' },
-			{ icon: 'codicon-globe', label: 'Project Mode', commandId: 'roopik.openProjectPreview' },
+			{ icon: 'codicon-folder', label: 'Open Project', commandId: 'roopik.openProjectPicker' },
+			{ icon: 'codicon-globe', label: 'Browse Web', commandId: 'roopik.openProjectPreview' },
 			{ icon: 'codicon-keyboard', label: 'Run Command...', commandId: 'workbench.action.showCommands' }
 		];
 

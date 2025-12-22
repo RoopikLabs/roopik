@@ -692,28 +692,16 @@ export class Editor extends EditorPane {
 	 * Open project folder picker
 	 */
 	private async openProjectPicker(): Promise<void> {
-		// Use VSCode's quick pick to select from open workspaces
-		// or show folder picker dialog
-		const items = [
-			{ label: '$(folder) Select Folder...', description: 'Choose a project folder to preview' }
-		];
-
-		const selected = await this.quickInputService.pick(items, {
-			placeHolder: 'Select a project to preview',
-			canPickMany: false
+		// Show native folder picker directly
+		const result = await this.nativeHostService.showOpenDialog({
+			title: 'Select Project Folder',
+			properties: ['openDirectory'],
+			buttonLabel: 'Open Project'
 		});
 
-		if (selected && selected.label.includes('Select Folder')) {
-			// Show native folder picker
-			const result = await this.nativeHostService.showOpenDialog({
-				title: 'Select Project Folder',
-				properties: ['openDirectory']
-			});
-
-			if (result && !result.canceled && result.filePaths.length > 0) {
-				const projectPath = result.filePaths[0];
-				await this.startProjectPreview(projectPath);
-			}
+		if (result && !result.canceled && result.filePaths.length > 0) {
+			const projectPath = result.filePaths[0];
+			await this.startProjectPreview(projectPath);
 		}
 	}
 
