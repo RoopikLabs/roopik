@@ -6,16 +6,20 @@
 /**
  * File Watcher Implementation
  *
- * Watches .roopik/canvases/{canvasId}/components/{componentId}/ for file changes.
- * Emits events when source files are modified - ComponentService handles rebuilds.
+ * Watches component folders in their ORIGINAL locations (metadata-only architecture).
+ * NO LONGER watches .roopik/ - components are referenced, not copied.
+ *
+ * Key Changes:
+ * - Per-component folder registration: registerFolderWatch(componentId, folderPath)
+ * - Multiple fs.FSWatcher instances: one per component
+ * - Unregister when component deleted: unregisterFolderWatch(componentId)
  *
  * Features:
  * - Enable/Disable: Master switch to turn watching on/off completely
  * - Pause/Resume: Temporarily hold events (queues changes, emits on resume)
  * - Per-component ignore: Exclude specific components from watching
  * - Debouncing: Batches rapid changes (300ms) to same component
- * - Path parsing: Extracts canvasId/componentId from file paths
- * - Source filtering: Only watches code files, ignores metadata
+ * - Source filtering: Only watches code files, ignores node_modules/dist/build
  */
 
 import * as fs from 'fs';
@@ -23,6 +27,16 @@ import * as path from 'path';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { IFileWatcher, FileChangeEvent } from '../../common/watch/fileWatcher.js';
+
+/**
+ * Registered folder watch for a component
+ */
+interface RegisteredWatch {
+	componentId: string;
+	canvasId: string;
+	folderPath: string;
+	watcher: fs.FSWatcher;
+}
 
 /**
  * Debounce/queued change tracking per component
@@ -52,7 +66,9 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	// State
 	// ============================================================================
 
-	private watcher: fs.FSWatcher | null = null;
+	/** Per-component folder watches: componentId → RegisteredWatch */
+	private readonly registeredWatches = new Map<string, RegisteredWatch>();
+
 	private workspacePath: string = '';
 	private watching: boolean = false;
 
@@ -65,7 +81,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	/** Components to ignore */
 	private readonly ignoredComponents = new Set<string>();
 
-	/** Debounce map: "canvasId/componentId" → pending change with timeout */
+	/** Debounce map: componentId → pending change with timeout */
 	private readonly debounceMap = new Map<string, PendingChange>();
 
 	/** Queue of changes that occurred while paused */
@@ -91,10 +107,13 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 
 	/**
 	 * Start watching for file changes
+	 *
+	 * With metadata-only architecture, this just sets the watching flag.
+	 * Actual folder watches are registered per-component via registerFolderWatch()
 	 */
 	start(workspacePath?: string): void {
 		if (this.watching) {
-			console.log('[FileWatcher] Already watching');
+			console.log('[Roopik FileWatcher] Already watching');
 			return;
 		}
 
@@ -103,46 +122,29 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 		}
 
 		if (!this.workspacePath) {
-			console.error('[FileWatcher] No workspace path provided');
+			console.error('[Roopik FileWatcher] No workspace path provided');
 			return;
 		}
 
-		const canvasesPath = path.join(this.workspacePath, '.roopik', 'canvases');
-
-		// Check if canvases folder exists
-		if (!fs.existsSync(canvasesPath)) {
-			console.log('[FileWatcher] Canvases folder does not exist yet:', canvasesPath);
-			// Don't fail - folder may be created later
-		}
-
-		try {
-			// Watch recursively for all changes under canvases/
-			this.watcher = fs.watch(canvasesPath, { recursive: true }, (eventType, filename) => {
-				if (filename) {
-					this.handleFileChange(eventType, filename);
-				}
-			});
-
-			this.watcher.on('error', (error) => {
-				console.error('[FileWatcher] Watcher error:', error);
-			});
-
-			this.watching = true;
-			console.log('[FileWatcher] Started watching:', canvasesPath);
-
-		} catch (error) {
-			console.error('[FileWatcher] Failed to start watcher:', error);
-		}
+		this.watching = true;
+		console.log('[Roopik FileWatcher] Started (metadata-only mode - use registerFolderWatch for each component)');
 	}
 
 	/**
 	 * Stop watching completely
+	 * Closes all registered folder watchers
 	 */
 	stop(): void {
-		if (this.watcher) {
-			this.watcher.close();
-			this.watcher = null;
+		// Close all registered watchers
+		for (const [componentId, registered] of this.registeredWatches) {
+			try {
+				registered.watcher.close();
+				console.log(`[Roopik FileWatcher] Closed watcher for component: ${componentId}`);
+			} catch (error) {
+				console.error(`[Roopik FileWatcher] Error closing watcher for ${componentId}:`, error);
+			}
 		}
+		this.registeredWatches.clear();
 
 		// Clear all pending debounces
 		for (const [, pending] of this.debounceMap) {
@@ -156,7 +158,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 		this.pausedQueue.clear();
 
 		this.watching = false;
-		console.log('[FileWatcher] Stopped watching');
+		console.log('[Roopik FileWatcher] Stopped watching');
 	}
 
 	/**
@@ -193,9 +195,9 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 			}
 			this.debounceMap.clear();
 			this.pausedQueue.clear();
-			console.log('[FileWatcher] Disabled');
+			console.log('[Roopik FileWatcher] Disabled');
 		} else if (!wasEnabled && enabled) {
-			console.log('[FileWatcher] Enabled');
+			console.log('[Roopik FileWatcher] Enabled');
 		}
 	}
 
@@ -230,7 +232,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 		}
 		this.debounceMap.clear();
 
-		console.log('[FileWatcher] Paused');
+		console.log('[Roopik FileWatcher] Paused');
 	}
 
 	/**
@@ -242,7 +244,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 		}
 
 		this.paused = false;
-		console.log('[FileWatcher] Resumed');
+		console.log('[Roopik FileWatcher] Resumed');
 
 		// Emit all queued changes
 		for (const [, pending] of this.pausedQueue) {
@@ -267,7 +269,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	 */
 	ignoreComponent(componentId: string): void {
 		this.ignoredComponents.add(componentId);
-		console.log(`[FileWatcher] Ignoring component: ${componentId}`);
+		console.log(`[Roopik FileWatcher] Ignoring component: ${componentId}`);
 	}
 
 	/**
@@ -275,7 +277,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	 */
 	unignoreComponent(componentId: string): void {
 		this.ignoredComponents.delete(componentId);
-		console.log(`[FileWatcher] Unignoring component: ${componentId}`);
+		console.log(`[Roopik FileWatcher] Unignoring component: ${componentId}`);
 	}
 
 	/**
@@ -297,7 +299,96 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	 */
 	clearIgnoredComponents(): void {
 		this.ignoredComponents.clear();
-		console.log('[FileWatcher] Cleared all ignored components');
+		console.log('[Roopik FileWatcher] Cleared all ignored components');
+	}
+
+	// ============================================================================
+	// Folder Watch Registration (Metadata-Only Architecture)
+	// ============================================================================
+
+	/**
+	 * Register a folder to watch for a specific component
+	 *
+	 * Creates an fs.watch on the original component folder (NOT .roopik/)
+	 */
+	registerFolderWatch(componentId: string, folderPath: string, canvasId: string): void {
+		// Check if already registered
+		if (this.registeredWatches.has(componentId)) {
+			console.warn(`[Roopik FileWatcher] Component already has a registered watch: ${componentId}`);
+			return;
+		}
+
+		try {
+			// Create fs.watch for this folder
+			const watcher = fs.watch(
+				folderPath,
+				{ recursive: true },
+				(eventType, filename) => {
+					if (filename) {
+						this.handleComponentFileChange(componentId, canvasId, folderPath, eventType, filename);
+					}
+				}
+			);
+
+			// Store registration
+			this.registeredWatches.set(componentId, {
+				componentId,
+				canvasId,
+				folderPath,
+				watcher
+			});
+
+			console.log(`[Roopik FileWatcher] Registered watch for ${componentId} at ${folderPath}`);
+
+		} catch (error) {
+			console.error(`[Roopik FileWatcher] Failed to register watch for ${componentId}:`, error);
+		}
+	}
+
+	/**
+	 * Unregister folder watch for a component
+	 */
+	unregisterFolderWatch(componentId: string): void {
+		const registered = this.registeredWatches.get(componentId);
+		if (!registered) {
+			console.warn(`[Roopik FileWatcher] No registered watch found for: ${componentId}`);
+			return;
+		}
+
+		try {
+			registered.watcher.close();
+			this.registeredWatches.delete(componentId);
+			console.log(`[Roopik FileWatcher] Unregistered watch for: ${componentId}`);
+		} catch (error) {
+			console.error(`[Roopik FileWatcher] Error unregistering watch for ${componentId}:`, error);
+		}
+
+		// Clean up any pending changes for this component
+		const key = `${registered.canvasId}/${componentId}`;
+		const pending = this.debounceMap.get(key);
+		if (pending?.timeout) {
+			clearTimeout(pending.timeout);
+		}
+		this.debounceMap.delete(key);
+		this.pausedQueue.delete(key);
+	}
+
+	/**
+	 * Check if a folder is currently being watched for a component
+	 */
+	isFolderWatched(componentId: string): boolean {
+		return this.registeredWatches.has(componentId);
+	}
+
+	/**
+	 * Get all registered folder watches
+	 */
+	getRegisteredWatches(): Map<string, string> {
+		const result = new Map<string, string>();
+		for (const [componentId, registered] of this.registeredWatches) {
+			result.set(componentId, registered.folderPath);
+		}
+		return result;
 	}
 
 	// ============================================================================
@@ -305,71 +396,68 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	// ============================================================================
 
 	/**
-	 * Handle raw file change from fs.watch
+	 * Handle file change from a registered component folder watch
 	 */
-	private handleFileChange(eventType: string, relativePath: string): void {
+	private handleComponentFileChange(
+		componentId: string,
+		canvasId: string,
+		folderPath: string,
+		eventType: string,
+		filename: string
+	): void {
 		// Check if enabled
 		if (!this.enabled) {
 			return;
 		}
-
-		// Normalize path separators (Windows uses \, we want /)
-		const normalizedPath = relativePath.replace(/\\/g, '/');
-
-		// Parse the path to extract canvasId, componentId, and file
-		const parsed = this.parsePath(normalizedPath);
-		if (!parsed) {
-			return;
-		}
-
-		const { canvasId, componentId, file } = parsed;
 
 		// Check if component is ignored
 		if (this.ignoredComponents.has(componentId)) {
 			return;
 		}
 
+		// Normalize filename (Windows uses \, we want /)
+		const normalizedFilename = filename.replace(/\\/g, '/');
+
 		// Check if this is a source file we care about
-		if (!this.isSourceFile(file)) {
+		if (!this.isSourceFile(normalizedFilename)) {
 			return;
 		}
 
 		// Map fs.watch event type to our change type
-		const changeType = this.mapEventType(eventType, canvasId, componentId, file);
+		const changeType = this.mapComponentEventType(eventType, folderPath, normalizedFilename);
 
 		// Handle based on pause state
 		if (this.paused) {
-			this.queueChange(canvasId, componentId, file, changeType);
+			this.queueChange(canvasId, componentId, normalizedFilename, changeType);
 		} else {
-			this.debounceChange(canvasId, componentId, file, changeType);
+			this.debounceChange(canvasId, componentId, normalizedFilename, changeType);
 		}
 	}
 
 	/**
-	 * Parse path to extract canvasId, componentId, and file
+	 * Map fs.watch event type to our change type (for component folder watches)
 	 */
-	private parsePath(relativePath: string): { canvasId: string; componentId: string; file: string } | null {
-		const parts = relativePath.split('/');
-
-		// Expected: canvasId/components/componentId/file (at least 4 parts)
-		if (parts.length < 4) {
-			return null;
+	private mapComponentEventType(
+		eventType: string,
+		folderPath: string,
+		filename: string
+	): 'create' | 'change' | 'delete' {
+		if (eventType === 'change') {
+			return 'change';
 		}
 
-		// Check if this is under components/ folder
-		if (parts[1] !== 'components') {
-			return null;
+		// For 'rename', check if file exists
+		const fullPath = path.join(folderPath, filename);
+
+		try {
+			if (fs.existsSync(fullPath)) {
+				return 'create';
+			} else {
+				return 'delete';
+			}
+		} catch {
+			return 'delete';
 		}
-
-		const canvasId = parts[0];
-		const componentId = parts[2];
-		const file = parts.slice(3).join('/');
-
-		if (!canvasId || !componentId || !file) {
-			return null;
-		}
-
-		return { canvasId, componentId, file };
 	}
 
 	/**
@@ -383,41 +471,6 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 
 		const ext = path.extname(file).toLowerCase();
 		return SOURCE_EXTENSIONS.includes(ext);
-	}
-
-	/**
-	 * Map fs.watch event type to our change type
-	 */
-	private mapEventType(
-		eventType: string,
-		canvasId: string,
-		componentId: string,
-		file: string
-	): 'create' | 'change' | 'delete' {
-		if (eventType === 'change') {
-			return 'change';
-		}
-
-		// For 'rename', check if file exists
-		const fullPath = path.join(
-			this.workspacePath,
-			'.roopik',
-			'canvases',
-			canvasId,
-			'components',
-			componentId,
-			file
-		);
-
-		try {
-			if (fs.existsSync(fullPath)) {
-				return 'create';
-			} else {
-				return 'delete';
-			}
-		} catch {
-			return 'delete';
-		}
 	}
 
 	/**
@@ -473,7 +526,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 			return;
 		}
 
-		console.log(`[FileWatcher] ${changeType}: ${canvasId}/${componentId}/${file}`);
+		console.log(`[Roopik FileWatcher] ${changeType}: ${canvasId}/${componentId}/${file}`);
 
 		this._onFileChanged.fire({
 			canvasId,

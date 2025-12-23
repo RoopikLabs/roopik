@@ -17,7 +17,7 @@
 import { Event } from '../../../../../base/common/event.js';
 import { IServerChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import { IComponentService } from '../../common/component/componentService.js';
-import { CreateComponentRequest } from '../../common/component/types.js';
+import { AddComponentRequest } from '../../common/component/types.js';
 
 export class ComponentChannel implements IServerChannel {
 	constructor(private readonly service: IComponentService) { }
@@ -56,8 +56,10 @@ export class ComponentChannel implements IServerChannel {
 			// ================================================================
 			// Create
 			// ================================================================
-			case 'createComponent':
-				return this.service.createComponent(arg as CreateComponentRequest);
+			case 'addComponent':
+				return this.service.addComponent(arg as AddComponentRequest);
+			case 'addComponents':
+				return this.service.addComponents(arg as AddComponentRequest[]);
 
 			// ================================================================
 			// Read
@@ -70,25 +72,25 @@ export class ComponentChannel implements IServerChannel {
 				return Promise.resolve(this.service.getAllComponents());
 
 			// ================================================================
+			// Component Info (Unified API)
+			// ================================================================
+			case 'getComponentInfo':
+				return this.service.getComponentInfo(arg as string);
+
+			// ================================================================
 			// Code Access
 			// ================================================================
 			case 'getComponentSource':
 				return this.service.getComponentSource(arg as string);
 			case 'getBundledCode':
 				return this.service.getBundledCode(arg as string);
-			case 'getCdnUrls':
-				return this.service.getCdnUrls(arg as string);
 
 			// ================================================================
 			// Update
 			// ================================================================
-			case 'updateComponentSource': {
-				const { id, files } = arg as { id: string; files: Record<string, string> };
-				return this.service.updateComponentSource(id, files);
-			}
-			case 'updateComponentMeta': {
-				const { id, updates } = arg as { id: string; updates: { name?: string } };
-				return this.service.updateComponentMeta(id, updates);
+			case 'updateComponentName': {
+				const { id, componentName } = arg as { id: string; componentName: string };
+				return this.service.updateComponentName(id, componentName);
 			}
 
 			// ================================================================

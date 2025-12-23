@@ -7,12 +7,8 @@ import {
 	IRoopikStorageService
 } from '../../common/storage/storageService.js';
 import {
-	SourceFiles,
-	ComponentMeta,
 	BundledOutput,
 	CanvasInfo,
-	ComponentIndex,
-	ComponentIndexEntry,
 	WorkspaceConfig
 } from '../../common/storage/storageTypes.js';
 import { CanvasMeta } from '../../common/canvas/types.js';
@@ -21,7 +17,6 @@ import { AppDataStorage } from './appDataStorage.js';
 import {
 	getWorkspaceRoopikPath,
 	getWorkspaceAppDataPath,
-	getComponentPath,
 	getCacheComponentPath
 } from './paths.js';
 
@@ -43,9 +38,6 @@ export class RoopikStorageService implements IRoopikStorageService {
 	private readonly workspaceStorage: WorkspaceStorage;
 	private readonly appDataStorage: AppDataStorage;
 	private workspacePath: string = '';
-
-	// Active canvas tracking
-	private _activeCanvasId: string | null = null;
 
 	constructor() {
 		this.workspaceStorage = new WorkspaceStorage();
@@ -117,68 +109,39 @@ export class RoopikStorageService implements IRoopikStorageService {
 	}
 
 	// ========================================================================
-	// Component Source (Workspace)
+	// Canvas File Operations (Metadata-Only Architecture)
 	// ========================================================================
 
-	async saveComponentSource(
-		canvasId: string,
-		componentId: string,
-		files: SourceFiles
-	): Promise<string> {
-		return this.workspaceStorage.saveComponentSource(canvasId, componentId, files);
+	async loadCanvasFile(canvasId: string) {
+		return this.workspaceStorage.loadCanvasFile(canvasId);
 	}
 
-	async loadComponentSource(
-		canvasId: string,
-		componentId: string
-	): Promise<SourceFiles> {
-		return this.workspaceStorage.loadComponentSource(canvasId, componentId);
+	async saveCanvasFile(canvasFile: any): Promise<void> {
+		return this.workspaceStorage.saveCanvasFile(canvasFile);
 	}
 
-	async saveComponentMeta(
-		canvasId: string,
-		componentId: string,
-		meta: ComponentMeta
-	): Promise<void> {
-		return this.workspaceStorage.saveComponentMeta(canvasId, componentId, meta);
+	async addComponentReference(canvasId: string, componentId: string, reference: any): Promise<void> {
+		return this.workspaceStorage.addComponentReference(canvasId, componentId, reference);
 	}
 
-	async loadComponentMeta(
-		canvasId: string,
-		componentId: string
-	): Promise<ComponentMeta | null> {
-		return this.workspaceStorage.loadComponentMeta(canvasId, componentId);
+	async removeComponentReference(canvasId: string, componentId: string): Promise<void> {
+		return this.workspaceStorage.removeComponentReference(canvasId, componentId);
+	}
+
+	async getComponentReference(canvasId: string, componentId: string) {
+		return this.workspaceStorage.getComponentReference(canvasId, componentId);
+	}
+
+	async listCanvasComponents(canvasId: string) {
+		return this.workspaceStorage.listCanvasComponents(canvasId);
+	}
+
+	async updateComponentReference(canvasId: string, componentId: string, updates: any): Promise<void> {
+		return this.workspaceStorage.updateComponentReference(canvasId, componentId, updates);
 	}
 
 	async deleteComponent(canvasId: string, componentId: string): Promise<void> {
-		// Delete from workspace
-		await this.workspaceStorage.deleteComponent(canvasId, componentId);
-
-		// Remove from index
-		await this.workspaceStorage.removeFromComponentIndex(canvasId, componentId);
-
-		// Delete from cache
-		await this.appDataStorage.invalidateCache(canvasId, componentId);
-	}
-
-	// ========================================================================
-	// Component Index
-	// ========================================================================
-
-	async getComponentIndex(canvasId: string): Promise<ComponentIndex> {
-		return this.workspaceStorage.getComponentIndex(canvasId);
-	}
-
-	async updateComponentIndex(
-		canvasId: string,
-		componentId: string,
-		entry: ComponentIndexEntry
-	): Promise<void> {
-		return this.workspaceStorage.updateComponentIndex(canvasId, componentId, entry);
-	}
-
-	async removeFromComponentIndex(canvasId: string, componentId: string): Promise<void> {
-		return this.workspaceStorage.removeFromComponentIndex(canvasId, componentId);
+		return this.workspaceStorage.deleteComponent(canvasId, componentId);
 	}
 
 	// ========================================================================
@@ -203,9 +166,9 @@ export class RoopikStorageService implements IRoopikStorageService {
 	async isCacheValid(
 		canvasId: string,
 		componentId: string,
-		sourceHash: string
+		contentHash: string
 	): Promise<boolean> {
-		return this.appDataStorage.isCacheValid(canvasId, componentId, sourceHash);
+		return this.appDataStorage.isCacheValid(canvasId, componentId, contentHash);
 	}
 
 	async invalidateCache(canvasId: string, componentId: string): Promise<void> {
@@ -216,16 +179,18 @@ export class RoopikStorageService implements IRoopikStorageService {
 	// Active Canvas
 	// ========================================================================
 
+	/**
+	 * Get the active canvas ID from canvases.json
+	 */
 	async getActiveCanvasId(): Promise<string | null> {
-		// TODO: In Phase 7 (Browser Client), this will call:
-		// await vscode.commands.executeCommand('roopik.canvas.getActive')
-		// For now, return cached value
-		return this._activeCanvasId;
+		return this.workspaceStorage.getActiveCanvasId();
 	}
 
-	setActiveCanvasId(canvasId: string | null): void {
-		// TODO: Later, whenver any canvas is created or deleted or focused, this will be called to update the cached value
-		this._activeCanvasId = canvasId;
+	/**
+	 * Set the active canvas ID in canvases.json
+	 */
+	async setActiveCanvasId(canvasId: string | null): Promise<void> {
+		return this.workspaceStorage.setActiveCanvasId(canvasId);
 	}
 
 	// ========================================================================
@@ -238,10 +203,6 @@ export class RoopikStorageService implements IRoopikStorageService {
 
 	getAppDataPath(): string {
 		return getWorkspaceAppDataPath(this.workspacePath);
-	}
-
-	getComponentPath(canvasId: string, componentId: string): string {
-		return getComponentPath(this.workspacePath, canvasId, componentId);
 	}
 
 	getCachePath(canvasId: string, componentId: string): string {

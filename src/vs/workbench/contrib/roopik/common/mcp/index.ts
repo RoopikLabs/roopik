@@ -4,18 +4,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 /**
- * Import Module - Public API (electron-main)
+ * MCP Server Module - Public API
  */
 
-// Service
-export { ImportService } from './importService.js';
-
-// Adapters (re-export for custom adapters)
 export {
-	IImportAdapter,
-	BaseImportAdapter,
-	AIAgentAdapter,
-	LocalFileAdapter,
-	GitHubAdapter,
-	ManualAdapter
-} from './adapters/index.js';
+	IMcpServerService,
+	McpServerStatus
+} from './mcpServerService.js';
+
+export const MCP_SERVER_CHANNEL = 'roopik:mcpServer';

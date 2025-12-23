@@ -6,56 +6,54 @@
 /**
  * Component Pipeline V2 - Component Types
  *
- * Types for component creation requests and runtime component state.
- * Storage-related types are in ../storage/storageTypes.ts
+ * Simplified architecture:
+ * - AddComponentRequest: Just name, folderPath, entryFile, origin (optional auto-detect)
+ * - No ImportResult needed (we don't transform source anymore)
+ * - Component: Runtime in-memory state (with folderPath instead of storagePath)
  */
 
-import { ComponentSource, SourceInfo, Framework, BuildState } from '../storage/storageTypes.js';
+import { Framework, BuildState } from '../storage/storageTypes.js';
 
 // ============================================================================
 // Component (Runtime State)
 // ============================================================================
 
 /**
- * Component as seen by Core services
- * This is the in-memory representation with full state
+ * Component as seen by Core services (Runtime state)
+ *
+ * This represents a fully-resolved component after addComponent() completes.
+ * All required fields ARE present (resolved from input + auto-detection).
+ *
+ * Key change from V1: folderPath instead of storagePath
+ * This points to the ORIGINAL location, not a copy in .roopik/
  */
 export interface Component {
-	/** Unique ID (also folder name) */
+	/** Unique ID */
 	id: string;
-
-	/** Display name */
-	name: string;
 
 	/** Parent canvas */
 	canvasId: string;
 
-	/** How the component was created */
-	source: ComponentSource;
+	/** Workspace-relative path to component folder ("/src/components/Button") */
+	folderPath: string;
 
-	/** Additional source info */
-	sourceInfo?: SourceInfo;
-
-	/** Absolute path to component folder in workspace */
-	storagePath: string;
-
-	/** Main entry file (relative) */
+	/** Entry file (relative to folderPath, e.g., "Button.tsx") - always resolved */
 	entryFile: string;
 
-	/** All source files (relative) */
-	files: string[];
-
-	/** Framework */
+	/** Detected framework - always resolved */
 	framework: Framework;
 
-	/** NPM dependencies */
-	dependencies: Record<string, string>;
-
-	/** Current build state */
+	/** Current build state - always present */
 	buildState: BuildState;
 
-	/** Hash of source files (for cache) */
+	/** Hash of source files (for cache) - always computed */
 	contentHash: string;
+
+	/** Display name for the component (e.g., "Button", "Card") */
+	componentName?: string;
+
+	/** Origin hint: 'local' | 'ai' | 'figma' | 'github' (informational) */
+	origin?: string;
 
 	/** Timestamps */
 	createdAt: number;
@@ -63,141 +61,72 @@ export interface Component {
 }
 
 // ============================================================================
-// Create Requests
+// Add Component Request (Minimal!)
 // ============================================================================
 
 /**
- * Request to create a new component
+ * Request to add a component to a canvas
+ *
+ * Pipeline architecture - only folderPath is required, rest is auto-resolved:
+ * 1. folderPath: Can be folder OR file path (smart parsing extracts both)
+ * 2. entryFile: Auto-detected if not provided (index.tsx, {folderName}.tsx, etc.)
+ * 3. componentName: Derived from entryFile if not provided (capitalized)
+ * 4. canvasId: Uses active canvas, or creates new canvas if none available
+ * 5. framework: Auto-detected from imports
+ * 6. origin: Informational only, doesn't change flow
+ *
+ * This design supports:
+ * - UI file picker (user selects file → extracts folder + entry)
+ * - AI agents passing folder paths (auto-detects entry file)
+ * - AI agents passing file paths (extracts folder + entry)
+ * - AI agents with full context (can provide all fields)
  */
-export interface CreateComponentRequest {
-	/** Display name */
-	name: string;
+export interface AddComponentRequest {
+	/**
+	 * Path to component folder OR file (REQUIRED)
+	 *
+	 * Smart parsing handles both:
+	 * - Folder path: "/src/components/Button/" → auto-detect entry file
+	 * - File path: "/src/components/Button/Button.tsx" → extracts folder + entry
+	 */
+	folderPath: string;
 
-	/** Target canvas (if not provided, uses active canvas) */
+	/**
+	 * Entry file relative to folderPath (e.g., "Button.tsx")
+	 * Auto-detected if not provided: index.tsx > index.ts > {folderName}.tsx > {folderName}.ts
+	 */
+	entryFile?: string;
+
+	/**
+	 * Display name for the component (e.g., "Primary Button")
+	 * Auto-derived from entryFile if not provided: "button.tsx" → "Button"
+	 */
+	componentName?: string;
+
+	/**
+	 * Target canvas ID
+	 * Resolution: provided > active canvas > create new canvas with componentName
+	 * AI agents can pass this, but it's optional - we handle fallbacks gracefully
+	 */
 	canvasId?: string;
 
-	/** Source type */
-	source: ComponentSource;
-
-	/** Source-specific data */
-	sourceData: SourceData;
-
-	/** Override detected framework */
+	/**
+	 * Framework hint (react, vue, svelte, etc.)
+	 * Auto-detected from imports if not provided
+	 */
 	framework?: Framework;
 
-	/** Additional dependencies */
-	dependencies?: Record<string, string>;
-}
+	/**
+	 * Origin hint: 'local' | 'ai' | 'figma' | 'github'
+	 * Informational only - doesn't change processing flow
+	 */
+	origin?: string;
 
-/**
- * Source-specific data for component creation
- */
-export type SourceData =
-	| AIAgentSourceData
-	| LocalFileSourceData
-	| DragDropSourceData
-	| GitHubSourceData
-	| FigmaSourceData
-	| ManualSourceData;
-
-/**
- * AI Agent generated code
- */
-export interface AIAgentSourceData {
-	type: 'ai-agent';
-	/** Single file content */
-	code: string;
-	/** Or multiple files */
-	files?: Record<string, string>;
-	/** Prompt ID for tracking */
-	promptId?: string;
-	/** Model used */
-	model?: string;
-}
-
-/**
- * Import from local file in user's project
- */
-export interface LocalFileSourceData {
-	type: 'local-file';
-	/** Absolute path to file */
-	filePath: string;
-}
-
-/**
- * Drag-and-drop from OS file manager onto canvas
- *
- * Unlike local-file, we don't have the file path (browser security).
- * Instead, we receive the file content directly from the webview.
- * Supports single file now, can be extended to multiple files in future.
- */
-export interface DragDropSourceData {
-	type: 'drag-drop';
-	/** File name with extension (e.g., "Button.tsx") */
-	fileName: string;
-	/** File content as string */
-	content: string;
-	/** For future: multiple files support */
-	files?: Record<string, string>;
-}
-
-/**
- * Import from GitHub
- */
-export interface GitHubSourceData {
-	type: 'github';
-	/** Repository URL */
-	repoUrl: string;
-	/** Path to file in repo */
-	filePath: string;
-	/** Branch (default: main) */
-	branch?: string;
-}
-
-/**
- * Import from Figma design
- */
-export interface FigmaSourceData {
-	type: 'figma';
-	/** Figma file ID */
-	fileId: string;
-	/** Node ID */
-	nodeId: string;
-}
-
-/**
- * Create blank component manually
- */
-export interface ManualSourceData {
-	type: 'manual';
-	/** Framework to use */
-	framework: Framework;
-	/** Template type */
-	template?: 'blank' | 'basic' | 'with-state';
-}
-
-// ============================================================================
-// Import Result
-// ============================================================================
-
-/**
- * Result from ImportService after processing a source
- */
-export interface ImportResult {
-	/** Source files (filename → content) */
-	files: Record<string, string>;
-
-	/** Main entry file */
-	entryFile: string;
-
-	/** Detected framework */
-	framework: Framework;
-
-	/** Detected dependencies */
-	dependencies: Record<string, string>;
-
-	/** Source info for metadata */
-	sourceInfo: SourceInfo;
+	/**
+	 * Unique component ID (auto-generated if not provided)
+	 * Rarely needed - mainly for deterministic testing or migrations
+	 */
+	componentId?: string;
 }
 
 // ============================================================================
@@ -282,4 +211,83 @@ export interface BuildErrorInfo {
 
 	/** Build time before failure (ms) */
 	buildTime: number;
+}
+
+// ============================================================================
+// Component Info (Unified view for AI agents)
+// ============================================================================
+
+/**
+ * Unified component information for AI agents
+ *
+ * Single call to get everything an agent needs:
+ * - Component metadata
+ * - Build status (building/ready/error)
+ * - Error details if build failed
+ * - Cache status
+ * - CDN URLs for dependencies
+ *
+ * This reduces round trips - agent gets full context in one call.
+ */
+export interface ComponentInfo {
+	/** Component ID */
+	id: string;
+
+	/** Parent canvas ID */
+	canvasId: string;
+
+	/** Display name */
+	componentName?: string;
+
+	/** Workspace-relative folder path */
+	folderPath: string;
+
+	/** Entry file (relative to folderPath) */
+	entryFile: string;
+
+	/** Detected framework */
+	framework: Framework;
+
+	/** Origin hint */
+	origin?: string;
+
+	/** Timestamps */
+	createdAt: number;
+	updatedAt: number;
+
+	// === Build Status ===
+
+	/** Current build status: 'building' | 'ready' | 'error' */
+	buildStatus: 'building' | 'ready' | 'error';
+
+	/** Is component currently in build queue? */
+	isBuilding: boolean;
+
+	/** Error message if build failed (null if success or building) */
+	buildError: string | null;
+
+	/** Structured error info if available */
+	buildErrorInfo?: BuildErrorInfo;
+
+	// === Cache Status ===
+
+	/** Is the cached bundle valid (matches current content hash)? */
+	cacheValid: boolean;
+
+	/** Content hash of source files */
+	contentHash: string;
+
+	// === Build Output (only if build succeeded and cache valid) ===
+
+	/** CDN URLs for dependencies (empty if not built) */
+	cdnUrls: string[];
+
+	/** Last build time in ms (0 if not built) */
+	lastBuildTime: number;
+
+	/** Bundle size in bytes (0 if not built) */
+	bundleSize: number;
+
+	/** When the component was last built (0 if never) */
+	lastBuiltAt: number;
 }

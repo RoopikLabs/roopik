@@ -27,11 +27,9 @@ export type {
 // Component types
 export type {
 	Component,
-	ComponentSource,
 	ComponentFramework,
 	ComponentBuildState,
-	SourceData,
-	CreateComponentRequest,
+	AddComponentRequest,
 	BuildResult,
 	BuildErrorInfo
 } from './component';

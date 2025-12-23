@@ -11,17 +11,13 @@
 
 // Types
 export {
-	SourceFiles,
-	ComponentMeta,
-	ComponentSource,
-	SourceInfo,
 	Framework,
 	BundledOutput,
 	BuildMeta,
 	CanvasInfo,
-	CanvasIndex,
-	ComponentIndexEntry,
-	ComponentIndex,
+	CanvasRegistry,
+	ComponentReference,
+	CanvasFile,
 	BuildState,
 	WorkspaceConfig,
 	DEFAULT_WORKSPACE_CONFIG

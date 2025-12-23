@@ -26,7 +26,8 @@ import {
 } from '../common/component/componentService.js';
 import {
 	Component,
-	CreateComponentRequest
+	AddComponentRequest,
+	ComponentInfo
 } from '../common/component/types.js';
 
 import { COMPONENT_CHANNEL_NAME } from '../common/component/index.js';
@@ -88,8 +89,12 @@ export class ComponentServiceClient implements IComponentService {
 	// Create
 	// ========================================================================
 
-	async createComponent(request: CreateComponentRequest): Promise<Component> {
-		return this.channel.call('createComponent', request);
+	async addComponent(request: AddComponentRequest): Promise<Component> {
+		return this.channel.call('addComponent', request);
+	}
+
+	async addComponents(requests: AddComponentRequest[]): Promise<Component[]> {
+		return this.channel.call('addComponents', requests);
 	}
 
 	// ========================================================================
@@ -132,6 +137,14 @@ export class ComponentServiceClient implements IComponentService {
 	}
 
 	// ========================================================================
+	// Component Info (Unified API)
+	// ========================================================================
+
+	async getComponentInfo(id: string): Promise<ComponentInfo> {
+		return this.channel.call('getComponentInfo', id);
+	}
+
+	// ========================================================================
 	// Code Access
 	// ========================================================================
 
@@ -143,20 +156,12 @@ export class ComponentServiceClient implements IComponentService {
 		return this.channel.call('getBundledCode', id);
 	}
 
-	async getCdnUrls(id: string): Promise<string[]> {
-		return this.channel.call('getCdnUrls', id);
-	}
-
 	// ========================================================================
 	// Update
 	// ========================================================================
 
-	async updateComponentSource(id: string, files: Record<string, string>): Promise<void> {
-		return this.channel.call('updateComponentSource', { id, files });
-	}
-
-	async updateComponentMeta(id: string, updates: { name?: string }): Promise<void> {
-		return this.channel.call('updateComponentMeta', { id, updates });
+	async updateComponentName(id: string, componentName: string): Promise<void> {
+		return this.channel.call('updateComponentName', { id, componentName });
 	}
 
 	// ========================================================================

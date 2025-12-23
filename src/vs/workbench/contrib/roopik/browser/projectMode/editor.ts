@@ -692,28 +692,16 @@ export class Editor extends EditorPane {
 	 * Open project folder picker
 	 */
 	private async openProjectPicker(): Promise<void> {
-		// Use VSCode's quick pick to select from open workspaces
-		// or show folder picker dialog
-		const items = [
-			{ label: '$(folder) Select Folder...', description: 'Choose a project folder to preview' }
-		];
-
-		const selected = await this.quickInputService.pick(items, {
-			placeHolder: 'Select a project to preview',
-			canPickMany: false
+		// Show native folder picker directly
+		const result = await this.nativeHostService.showOpenDialog({
+			title: 'Select Project Folder',
+			properties: ['openDirectory'],
+			buttonLabel: 'Open Project'
 		});
 
-		if (selected && selected.label.includes('Select Folder')) {
-			// Show native folder picker
-			const result = await this.nativeHostService.showOpenDialog({
-				title: 'Select Project Folder',
-				properties: ['openDirectory']
-			});
-
-			if (result && !result.canceled && result.filePaths.length > 0) {
-				const projectPath = result.filePaths[0];
-				await this.startProjectPreview(projectPath);
-			}
+		if (result && !result.canceled && result.filePaths.length > 0) {
+			const projectPath = result.filePaths[0];
+			await this.startProjectPreview(projectPath);
 		}
 	}
 
@@ -1100,6 +1088,29 @@ export class Editor extends EditorPane {
 	// Navigation
 	// ============================================
 
+	/**
+	 * Public method to navigate to a URL with project context
+	 * Called by roopik.startProject command after dev server starts
+	 * @param url - The URL to navigate to (e.g., http://localhost:5173)
+	 * @param projectRoot - The project root path (for state tracking)
+	 */
+	public async navigateToUrl(url: string, projectRoot?: string): Promise<void> {
+		// Ensure browser view is initialized
+		if (!this.browserViewId) {
+			this.logger.info('[ProjectMode] Browser view not ready, initializing...');
+			await this.initializeBrowserView();
+		}
+
+		// Update project state if projectRoot provided
+		if (projectRoot) {
+			this.isProjectMode = true;
+			this.currentProjectRoot = projectRoot;
+		}
+
+		// Navigate to the URL
+		await this.navigate(url);
+	}
+
 	private async navigate(url: string): Promise<void> {
 		if (!url) {
 			this.logger.warn('[ProjectMode] Navigation aborted: No URL provided');
@@ -1426,26 +1437,18 @@ export class Editor extends EditorPane {
 			this.isProjectMode = true;
 			this.currentProjectRoot = projectRoot;
 
-			// Save to recent projects storage and set as active project (non-blocking)
-			// Extract project name from the path (folder name)
+			// Save to recent projects storage (non-blocking)
+			// NOTE: setActiveProject is now called by DevServerService when server starts (unified flow)
 			const projectName = projectRoot.split(/[/\\]/).pop() || 'Project';
 
-			// Get server info to capture framework, pid, port, url for metadata persistence
+			// Get server info to capture framework for recent projects list
 			// IMPORTANT: This is fire-and-forget - don't let metadata saving block browser opening!
 			this.devServerService.getServerInfo(projectRoot).then(async (serverInfo) => {
 				if (serverInfo) {
 					try {
 						const framework = serverInfo.framework;
 						const frameworkDisplayName = serverInfo.frameworkDisplayName;
-						const projectId = await this.projectStorageService.upsertProject(projectName, projectRoot, framework, frameworkDisplayName);
-
-						// Store active project metadata for orphaned process cleanup after IDE restart
-						if (serverInfo.pid && serverInfo.port && serverInfo.url) {
-							await this.projectStorageService.setActiveProject(projectId, serverInfo.pid, serverInfo.port, serverInfo.url);
-							this.logger.info(`[ProjectMode] Active project metadata saved: ${projectId} (PID: ${serverInfo.pid}, Port: ${serverInfo.port})`);
-						} else {
-							this.logger.warn('[ProjectMode] Server info incomplete, skipping active project metadata');
-						}
+						await this.projectStorageService.upsertProject(projectName, projectRoot, framework, frameworkDisplayName);
 					} catch (err) {
 						// Don't let metadata saving failure block browser opening!
 						this.logger.warn('[ProjectMode] Failed to save project metadata (non-fatal):', err);

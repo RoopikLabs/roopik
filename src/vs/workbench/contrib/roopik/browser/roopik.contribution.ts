@@ -25,6 +25,7 @@ import { EditorExtensions, IEditorFactoryRegistry } from '../../../common/editor
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
 import { registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+import { IConfigurationRegistry, Extensions as ConfigurationExtensions } from '../../../../platform/configuration/common/configurationRegistry.js';
 
 // ============================================================================
 // Editor Imports
@@ -46,7 +47,8 @@ import { registerAllCommands } from './commands/index.js';
 import {
 	RoopikStartupContribution,
 	RoopikCanvasContribution,
-	RoopikComponentContribution
+	RoopikComponentContribution,
+	RoopikProjectModeContribution
 } from './contributions/index.js';
 import { RoopikViewsContribution } from './roopikViewPane.js';
 
@@ -63,6 +65,8 @@ import { ISourceNavigationService } from '../common/navigation/index.js';
 import { SourceNavigationService } from './services/index.js';
 import { IProjectStorageService } from '../common/projectStorage/index.js';
 import { ProjectStorageServiceClient } from './projectStorageServiceClient.js';
+import { IMcpServerService } from '../common/mcp/index.js';
+import { McpServerServiceClient } from './mcpServerServiceClient.js';
 // MenubarStateService - registers singleton for browser pause detection
 import './services/menubarStateService.js';
 
@@ -103,6 +107,26 @@ Registry.as<IEditorFactoryRegistry>(EditorExtensions.EditorFactory).registerEdit
 );
 
 // ============================================================================
+// Configuration Registration
+// ============================================================================
+
+Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).registerConfiguration({
+	id: 'roopik',
+	order: 1,
+	title: 'Roopik IDE',
+	type: 'object',
+	properties: {
+		'roopik.mcp.port': {
+			type: 'number',
+			default: 3333,
+			minimum: 1024,
+			maximum: 65535,
+			description: 'Port for the internal Roopik MCP Server. If the port is already in use, Roopik will automatically try the next available port.'
+		}
+	}
+});
+
+// ============================================================================
 // Command Registration
 // ============================================================================
 
@@ -131,6 +155,13 @@ registerWorkbenchContribution2(
 registerWorkbenchContribution2(
 	RoopikComponentContribution.ID,
 	RoopikComponentContribution,
+	WorkbenchPhase.AfterRestored
+);
+
+// Project Mode: Auto-open browser when dev server starts
+registerWorkbenchContribution2(
+	RoopikProjectModeContribution.ID,
+	RoopikProjectModeContribution,
 	WorkbenchPhase.AfterRestored
 );
 
@@ -166,3 +197,7 @@ registerSingleton(ISourceNavigationService, SourceNavigationService, Instantiati
 // Project Storage Service (recent projects for Project Mode)
 // Browser-side client that communicates with ProjectStorageService in main process via IPC
 registerSingleton(IProjectStorageService, ProjectStorageServiceClient, InstantiationType.Delayed);
+
+// MCP Server Service (AI agent integration control)
+// Browser-side client that communicates with McpServerService in main process via IPC
+registerSingleton(IMcpServerService, McpServerServiceClient, InstantiationType.Delayed);

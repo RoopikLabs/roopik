@@ -12,3 +12,4 @@
 export { RoopikStartupContribution } from './startupContribution.js';
 export { RoopikCanvasContribution } from './canvasContribution.js';
 export { RoopikComponentContribution } from './componentContribution.js';
+export { RoopikProjectModeContribution } from './projectModeContribution.js';

@@ -116,7 +116,7 @@ export class DefaultBrowserScreen {
 		const openProjectBtn = this.createButton({
 			text: 'Open Project',
 			iconClass: 'codicon-folder',
-			primary: true,
+			primary: false,
 			title: 'Select a project folder to preview with live reload',
 			onClick: () => this.callbacks.onOpenProject()
 		});
