@@ -55,19 +55,28 @@ interface SandboxData {
 }
 
 /**
- * Component entry with position and hash (subset of Core's ComponentIndexEntry)
+ * Component reference (matches Core's ComponentReference in storageTypes.ts)
+ * New architecture: stored directly in canvas file, not separate index.json
  */
-interface ComponentIndexEntry {
+interface ComponentReference {
+	componentName?: string;
+	folderPath: string;
+	entryFile: string;
 	contentHash: string;
-	name?: string;
-	sandboxPosition?: SandboxPosition;
+	position?: SandboxPosition;
 	// Other fields exist but we only care about these here
 	[key: string]: unknown;
 }
 
-interface ComponentIndex {
-	components: Record<string, ComponentIndexEntry>;
+/**
+ * Canvas file structure (matches Core's CanvasFile in storageTypes.ts)
+ * New architecture: .roopik/canvases/{canvas-id}.json (flat file, not folder)
+ */
+interface CanvasFile {
+	id: string;
+	name: string;
 	preferences: CanvasPreferences;
+	components: Record<string, ComponentReference>;
 }
 
 /**
@@ -270,12 +279,12 @@ export class CanvasPanel implements vscode.Disposable {
 	 * Handle component created event (routed from manager)
 	 */
 	public onComponentCreated(event: ComponentCreatedEvent): void {
-		this.logger.debug(`Component created: ${event.componentId}, name: ${event.component?.name}`);
+		this.logger.debug(`Component created: ${event.componentId}, name: ${event.component?.componentName}`);
 		// Extract fields webview expects: { componentId, canvasId, name }
 		this.postToWebview('componentCreated', {
 			componentId: event.componentId,
 			canvasId: event.canvasId,
-			name: event.component?.name
+			name: event.component?.componentName
 		});
 	}
 
@@ -535,18 +544,19 @@ export class CanvasPanel implements vscode.Disposable {
 	}
 
 	// ============================================================================
-	// Canvas State Loading (file-based, reads from index.json)
+	// Canvas State Loading (file-based, reads from canvas file)
 	// ============================================================================
 
 	/**
-	 * Get the path to the canvas index.json file
+	 * Get the path to the canvas file
+	 * New architecture: .roopik/canvases/{canvas-id}.json (flat file, not folder)
 	 */
-	private getIndexJsonPath(): string {
-		return path.join(this.workspacePath, '.roopik', 'canvases', this.canvasId, 'components', 'index.json');
+	private getCanvasFilePath(): string {
+		return path.join(this.workspacePath, '.roopik', 'canvases', `${this.canvasId}.json`);
 	}
 
 	/**
-	 * Load canvas state from index.json on panel init
+	 * Load canvas state from canvas file on panel init
 	 * Extracts:
 	 * - Canvas preferences (background color, pattern, viewport)
 	 * - Sandbox positions (for restoring component placement)
@@ -555,19 +565,19 @@ export class CanvasPanel implements vscode.Disposable {
 	 * Does NOT send to webview - call sendPreferencesToWebview() after webview is ready
 	 */
 	private loadCanvasStateFromFile(): void {
-		const indexPath = this.getIndexJsonPath();
-		this.logger.debug(`Loading canvas state from: ${indexPath}`);
+		const canvasFilePath = this.getCanvasFilePath();
+		this.logger.debug(`Loading canvas state from: ${canvasFilePath}`);
 
 		try {
-			if (fs.existsSync(indexPath)) {
-				const content = fs.readFileSync(indexPath, 'utf-8');
-				const index: ComponentIndex = JSON.parse(content);
+			if (fs.existsSync(canvasFilePath)) {
+				const content = fs.readFileSync(canvasFilePath, 'utf-8');
+				const canvasFile: CanvasFile = JSON.parse(content);
 
-				if (index.preferences) {
+				if (canvasFile.preferences) {
 					this.currentPreferences = {
-						backgroundColor: index.preferences.backgroundColor || DEFAULT_CANVAS_PREFERENCES.backgroundColor,
-						backgroundPattern: index.preferences.backgroundPattern || DEFAULT_CANVAS_PREFERENCES.backgroundPattern,
-						viewport: index.preferences.viewport || { ...DEFAULT_CANVAS_PREFERENCES.viewport }
+						backgroundColor: canvasFile.preferences.backgroundColor || DEFAULT_CANVAS_PREFERENCES.backgroundColor,
+						backgroundPattern: canvasFile.preferences.backgroundPattern || DEFAULT_CANVAS_PREFERENCES.backgroundPattern,
+						viewport: canvasFile.preferences.viewport || { ...DEFAULT_CANVAS_PREFERENCES.viewport }
 					};
 					this.lastSavedBackgroundColor = this.currentPreferences.backgroundColor;
 					this.lastSavedBackgroundPattern = this.currentPreferences.backgroundPattern;
@@ -581,18 +591,18 @@ export class CanvasPanel implements vscode.Disposable {
 				// Extract sandbox positions and component info from components map
 				this.loadedSandboxPositions = {};
 				this.loadedComponents = [];
-				if (index.components) {
-					for (const [componentId, entry] of Object.entries(index.components)) {
-						// Extract position
-						if (entry.sandboxPosition) {
-							this.loadedSandboxPositions[componentId] = entry.sandboxPosition;
+				if (canvasFile.components) {
+					for (const [componentId, ref] of Object.entries(canvasFile.components)) {
+						// Extract position (new architecture uses 'position' not 'sandboxPosition')
+						if (ref.position) {
+							this.loadedSandboxPositions[componentId] = ref.position;
 						}
 						// Extract component info for loading (need contentHash for cache validation, name for display)
-						if (entry.contentHash) {
+						if (ref.contentHash) {
 							this.loadedComponents.push({
 								componentId,
-								contentHash: entry.contentHash,
-								name: entry.name
+								contentHash: ref.contentHash,
+								name: ref.componentName
 							});
 						}
 					}
@@ -607,7 +617,7 @@ export class CanvasPanel implements vscode.Disposable {
 			} else {
 				// File doesn't exist - will be created by Core on canvas creation
 				// Use defaults for now
-				this.logger.debug('Index file not found, using defaults');
+				this.logger.debug('Canvas file not found, using defaults');
 			}
 		} catch (error) {
 			this.logger.error(`Failed to load canvas state: ${error}`);
@@ -691,33 +701,29 @@ export class CanvasPanel implements vscode.Disposable {
 	}
 
 	/**
-	 * Save preferences to index.json
+	 * Save preferences to canvas file
 	 * Preserves existing components data, only updates preferences
 	 */
 	private savePreferencesToFile(): void {
-		const indexPath = this.getIndexJsonPath();
-		this.logger.debug(`Saving preferences to: ${indexPath}`);
+		const canvasFilePath = this.getCanvasFilePath();
+		this.logger.debug(`Saving preferences to: ${canvasFilePath}`);
 
 		try {
-			let index: ComponentIndex = { components: {}, preferences: { ...DEFAULT_CANVAS_PREFERENCES } };
-
-			// Read existing file to preserve components
-			if (fs.existsSync(indexPath)) {
-				const content = fs.readFileSync(indexPath, 'utf-8');
-				index = JSON.parse(content);
+			// Canvas file must exist (created by Core on canvas creation)
+			if (!fs.existsSync(canvasFilePath)) {
+				this.logger.debug('Canvas file not found, skipping preferences save');
+				return;
 			}
+
+			// Read existing file to preserve components and other data
+			const content = fs.readFileSync(canvasFilePath, 'utf-8');
+			const canvasFile: CanvasFile = JSON.parse(content);
 
 			// Update preferences
-			index.preferences = { ...this.currentPreferences };
-
-			// Ensure directory exists
-			const dir = path.dirname(indexPath);
-			if (!fs.existsSync(dir)) {
-				fs.mkdirSync(dir, { recursive: true });
-			}
+			canvasFile.preferences = { ...this.currentPreferences };
 
 			// Write file
-			fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf-8');
+			fs.writeFileSync(canvasFilePath, JSON.stringify(canvasFile, null, 2), 'utf-8');
 			this.logger.debug('Preferences saved to file');
 		} catch (error) {
 			this.logger.error(`Failed to save preferences: ${error}`);
@@ -749,36 +755,36 @@ export class CanvasPanel implements vscode.Disposable {
 	}
 
 	/**
-	 * Actually write sandbox positions to index.json
+	 * Actually write sandbox positions to canvas file
 	 */
 	private doSaveComponentPositions(): void {
 		if (this.pendingPositions.length === 0) {
 			return;
 		}
 
-		const indexPath = this.getIndexJsonPath();
+		const canvasFilePath = this.getCanvasFilePath();
 
 		try {
-			if (!fs.existsSync(indexPath)) {
-				this.logger.debug('Index file not found, skipping position save');
+			if (!fs.existsSync(canvasFilePath)) {
+				this.logger.debug('Canvas file not found, skipping position save');
 				return;
 			}
 
-			const content = fs.readFileSync(indexPath, 'utf-8');
-			const index: ComponentIndex = JSON.parse(content);
+			const content = fs.readFileSync(canvasFilePath, 'utf-8');
+			const canvasFile: CanvasFile = JSON.parse(content);
 			let changed = false;
 
 			// Update each sandbox's position
 			for (const sandbox of this.pendingPositions) {
-				const entry = index.components[sandbox.id];
-				if (entry) {
-					const currentPos = entry.sandboxPosition;
+				const ref = canvasFile.components[sandbox.id];
+				if (ref) {
+					const currentPos = ref.position;
 					// Only update if position actually changed
 					if (!currentPos ||
 						currentPos.x !== sandbox.x ||
 						currentPos.y !== sandbox.y ||
 						currentPos.zIndex !== sandbox.zIndex) {
-						entry.sandboxPosition = {
+						ref.position = {
 							x: sandbox.x,
 							y: sandbox.y,
 							zIndex: sandbox.zIndex
@@ -790,7 +796,7 @@ export class CanvasPanel implements vscode.Disposable {
 
 			// Only write if something changed
 			if (changed) {
-				fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf-8');
+				fs.writeFileSync(canvasFilePath, JSON.stringify(canvasFile, null, 2), 'utf-8');
 				this.logger.debug(`Saved positions for ${this.pendingPositions.length} sandboxes`);
 			}
 

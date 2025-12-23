@@ -48,8 +48,8 @@ export interface BuildMeta {
 	/** Canvas ID */
 	canvasId: string;
 
-	/** Hash of source files used for this build */
-	sourceHash: string;
+	/** Hash of source files used for this build (matches Component.contentHash) */
+	contentHash: string;
 
 	/** CDN URLs for external dependencies */
 	cdnUrls: string[];

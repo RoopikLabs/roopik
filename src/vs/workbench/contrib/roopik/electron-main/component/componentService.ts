@@ -44,10 +44,26 @@ import { loadSourceFiles } from '../../common/source/sourceLoader.js';
 // ============================================================================
 
 /**
- * Generate a unique component ID
+ * Generate a human-readable component ID
+ * Format: {sanitized-name}_{2-char-alphanumeric}
+ * Example: "Button_a3", "UserProfile_x7"
+ *
+ * This makes IDs interpretable by AI agents and users while avoiding duplicates.
  */
-function generateComponentId(): string {
-	return crypto.randomBytes(8).toString('hex');
+function generateComponentId(componentName: string): string {
+	// Sanitize component name: lowercase, replace non-alphanumeric with hyphen, trim
+	const sanitized = componentName
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')  // Replace non-alphanumeric sequences with hyphen
+		.replace(/^-+|-+$/g, '')       // Trim leading/trailing hyphens
+		.substring(0, 30);             // Limit length
+
+	// Generate 2-char alphanumeric suffix (a-z, 0-9 = 36 chars, 36^2 = 1296 combinations)
+	const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+	const randomBytes = crypto.randomBytes(2);
+	const suffix = chars[randomBytes[0] % 36] + chars[randomBytes[1] % 36];
+
+	return `${sanitized || 'component'}_${suffix}`;
 }
 
 /**
@@ -358,7 +374,7 @@ export class ComponentService extends Disposable implements IComponentService {
 		// ====================================================================
 		// PIPELINE STEP 9: Generate Component ID
 		// ====================================================================
-		const componentId = request.componentId || generateComponentId();
+		const componentId = request.componentId || generateComponentId(componentName);
 		const now = Date.now();
 
 		// ====================================================================
@@ -625,7 +641,7 @@ export class ComponentService extends Disposable implements IComponentService {
 				buildMeta: {
 					componentId,
 					canvasId,
-					sourceHash: component.contentHash || '', // Will update with new hash below
+					contentHash: component.contentHash || '', // Will update with new hash below
 					cdnUrls: buildOutput.cdnUrls,
 					buildTime: buildOutput.buildTime,
 					bundleSize: buildOutput.bundleSize,

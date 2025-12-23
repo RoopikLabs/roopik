@@ -166,9 +166,9 @@ export class RoopikStorageService implements IRoopikStorageService {
 	async isCacheValid(
 		canvasId: string,
 		componentId: string,
-		sourceHash: string
+		contentHash: string
 	): Promise<boolean> {
-		return this.appDataStorage.isCacheValid(canvasId, componentId, sourceHash);
+		return this.appDataStorage.isCacheValid(canvasId, componentId, contentHash);
 	}
 
 	async invalidateCache(canvasId: string, componentId: string): Promise<void> {
