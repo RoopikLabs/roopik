@@ -118,12 +118,6 @@ export function registerImportCommands(): void {
 					id: 'third-party',
 					description: 'Coming Soon',
 					detail: 'Import from npm packages like shadcn/ui, Chakra, etc.'
-				},
-				{
-					label: '$(edit) Create Blank Component',
-					id: 'manual',
-					description: 'Start with a template',
-					detail: 'Create a new component from scratch'
 				}
 			];
 
@@ -139,11 +133,7 @@ export function registerImportCommands(): void {
 			// Handle each source type
 			switch (selectedSource.id) {
 				case 'local-file':
-					await this.handleLocalFileImport(fileDialogService, componentService, notificationService, canvasId);
-					break;
-
-				case 'manual':
-					await this.handleManualCreate(quickInputService, componentService, notificationService, canvasId);
+					await this.handleFileImport(fileDialogService, componentService, notificationService, canvasId);
 					break;
 
 				case 'github':
@@ -156,7 +146,13 @@ export function registerImportCommands(): void {
 			}
 		}
 
-		private async handleLocalFileImport(
+		/**
+		 * Handle file picker import (UI-specific)
+		 *
+		 * Shows file dialog and passes selected path to componentService.
+		 * AI agents bypass this and call componentService.addComponent() directly via MCP.
+		 */
+		private async handleFileImport(
 			fileDialogService: IFileDialogService,
 			componentService: IComponentService,
 			notificationService: INotificationService,
@@ -177,71 +173,21 @@ export function registerImportCommands(): void {
 				return;
 			}
 
-			const selectedUri = uris[0];
-			const filePath = selectedUri.fsPath;
+			const selectedPath = uris[0].fsPath;
 
 			try {
-				const fileName = filePath.split(/[\\/]/).pop() || 'Component';
-				const componentName = fileName.replace(/\.[^/.]+$/, '');
-
-				await componentService.createComponent({
-					name: componentName,
+				// Pass selected path to componentService
+				// ComponentService handles smart path parsing (file vs folder)
+				// and all other logic (entry file detection, framework detection, etc.)
+				await componentService.addComponent({
+					folderPath: selectedPath,
 					canvasId: canvasId,
-					source: 'local-file',
-					sourceData: { type: 'local-file', filePath: filePath }
+					origin: 'local'  // This is local file import, AI agents use 'ai'
 				});
-
-				notificationService.info(
-					localize('roopik.import.success', 'Importing component: {0}', componentName)
-				);
 			} catch (err) {
 				const errorMsg = err instanceof Error ? err.message : String(err);
 				notificationService.error(
 					localize('roopik.import.error', 'Failed to import: {0}', errorMsg)
-				);
-			}
-		}
-
-		private async handleManualCreate(
-			quickInputService: IQuickInputService,
-			componentService: IComponentService,
-			notificationService: INotificationService,
-			canvasId: string
-		): Promise<void> {
-			const componentName = await quickInputService.input({
-				title: localize('roopik.import.manual.title', 'Create Blank Component'),
-				prompt: localize('roopik.import.manual.prompt', 'Enter a name for your component'),
-				placeHolder: localize('roopik.import.manual.placeholder', 'e.g., MyComponent'),
-				validateInput: async (value: string) => {
-					if (!value || !value.trim()) {
-						return localize('roopik.import.manual.required', 'Component name is required');
-					}
-					if (!/^[A-Z][a-zA-Z0-9]*$/.test(value)) {
-						return localize('roopik.import.manual.invalidName', 'Use PascalCase (e.g., MyComponent)');
-					}
-					return undefined;
-				}
-			});
-
-			if (!componentName) {
-				return;
-			}
-
-			try {
-				await componentService.createComponent({
-					name: componentName,
-					canvasId: canvasId,
-					source: 'manual',
-					sourceData: { type: 'manual', framework: 'react', template: 'basic' }
-				});
-
-				notificationService.info(
-					localize('roopik.import.created', 'Creating component: {0}', componentName)
-				);
-			} catch (err) {
-				const errorMsg = err instanceof Error ? err.message : String(err);
-				notificationService.error(
-					localize('roopik.import.error', 'Failed to create: {0}', errorMsg)
 				);
 			}
 		}

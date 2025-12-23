@@ -29,7 +29,6 @@ import type { BrowserViewService } from '../projectMode/browserViewService.js';
 import type { ComponentService } from '../component/componentService.js';
 import type { ICanvasService } from '../../common/canvas/canvasService.js';
 import type { IRoopikStorageService } from '../../common/storage/storageService.js';
-import { registerSystemTools } from './tools/systemTools.js';
 import { registerProjectTools } from './tools/projectTools.js';
 import { registerBrowserTools } from './tools/browserTools.js';
 import { registerCDPTools } from './tools/cdpTools.js';
@@ -113,12 +112,11 @@ export class McpServerService implements IMcpServerService {
 		});
 
 		// Register tools from modular tool files
-		registerSystemTools(this.mcpServer, z);
 		registerProjectTools(this.mcpServer, z, this.devServerService);
 		registerBrowserTools(this.mcpServer, z, this.browserViewService, this.storageService);
 		registerCDPTools(this.mcpServer, this.browserViewService, z);
 		registerCanvasTools(this.mcpServer, z, this.componentService);
-		registerWorkspaceTools(this.mcpServer, z, this.canvasService, this.storageService);
+		registerWorkspaceTools(this.mcpServer, z, this.canvasService);
 
 		// Register contextual prompts (workflow guides)
 		registerContextPrompts(this.mcpServer);
@@ -176,27 +174,6 @@ export class McpServerService implements IMcpServerService {
 				if (url.pathname === '/mcp') {
 					console.log(`[MCP] [${timestamp}] Processing /mcp endpoint | Method: ${req.method}`);
 
-					// LOG: If this is a POST with body data (tool call or other request)
-					if (req.method === 'POST') {
-						let body = '';
-						req.on('data', chunk => {
-							body += chunk.toString();
-						});
-						req.on('end', () => {
-							try {
-								const parsed = JSON.parse(body);
-								if (parsed.method === 'tools/call') {
-									console.log(`[MCP] [${timestamp}] 🔧 Tool Call: ${parsed.params?.name || 'unknown'}`);
-									console.log(`[MCP] [${timestamp}] Arguments:`, JSON.stringify(parsed.params?.arguments || {}, null, 2));
-								} else {
-									console.log(`[MCP] [${timestamp}] MCP Request: ${parsed.method || 'unknown'}`);
-								}
-							} catch {
-								// Not JSON or parsing failed, ignore
-							}
-						});
-					}
-
 					try {
 						// Create transport for this request
 						// Stateless mode: sessionIdGenerator returns undefined
@@ -226,6 +203,12 @@ export class McpServerService implements IMcpServerService {
 						if (!res.headersSent) {
 							res.writeHead(500, { 'Content-Type': 'application/json' });
 							res.end(JSON.stringify({ error: 'Internal Server Error' }));
+						}
+					} catch (error) {
+						console.error(`[MCP] [${timestamp}] Error handling MCP request | Session: ${sessionId}`, error);
+						if (!res.headersSent) {
+							res.writeHead(500, { 'Content-Type': 'application/json' });
+							res.end(JSON.stringify({ error: 'Internal Server Error', message: error instanceof Error ? error.message : String(error) }));
 						}
 					}
 					return;

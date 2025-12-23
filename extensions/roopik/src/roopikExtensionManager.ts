@@ -15,7 +15,7 @@ import type {
 	ComponentDeletedEvent,
 	ComponentUpdatedEvent
 } from './types/componentEvents';
-import type { CreateComponentRequest, Component } from './types/component';
+import type { AddComponentRequest, Component } from './types/component';
 import type { CreateCanvasResult } from './types/canvas';
 
 /**
@@ -319,13 +319,10 @@ export class RoopikExtensionManager implements vscode.Disposable {
 	/**
 	 * Create a component via Core's ComponentService
 	 */
-	public async createComponent(request: CreateComponentRequest): Promise<Component> {
-		this.logger.info(`Creating component in canvas: ${request.canvasId}`);
+	public async createComponent(request: AddComponentRequest): Promise<Component> {
+		this.logger.info(`Creating component: ${request.componentName || '(auto)'} in canvas: ${request.canvasId}`);
 
-		// TODO: Call Core via IPC
-		// return this.componentClient.createComponent(request);
-
-		// Temporary: Use command to call Core
+		// Call Core via command
 		const result = await vscode.commands.executeCommand<Component>(
 			'roopik.core.createComponent',
 			request
@@ -392,17 +389,6 @@ export class RoopikExtensionManager implements vscode.Disposable {
 		return result || {};
 	}
 
-	/**
-	 * Update component source files
-	 */
-	public async updateComponentSource(componentId: string, files: Record<string, string>): Promise<void> {
-		this.logger.info(`Updating component source: ${componentId}`);
-
-		// TODO: Call Core via IPC
-		// return this.componentClient.updateComponentSource(componentId, files);
-
-		await vscode.commands.executeCommand('roopik.core.updateComponentSource', componentId, files);
-	}
 
 	// ============================================================================
 	// Core Notifications (panel state tracking)

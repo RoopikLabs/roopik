@@ -141,7 +141,6 @@ import { ComponentService } from '../../workbench/contrib/roopik/electron-main/c
 import { ComponentChannel } from '../../workbench/contrib/roopik/electron-main/channel/componentChannel.js';
 import { COMPONENT_CHANNEL_NAME } from '../../workbench/contrib/roopik/common/component/index.js';
 import { BuildService } from '../../workbench/contrib/roopik/electron-main/build/buildService.js';
-import { ImportService } from '../../workbench/contrib/roopik/electron-main/import/importService.js';
 import { FileWatcher } from '../../workbench/contrib/roopik/electron-main/watch/fileWatcher.js';
 // ROOPIK: Project Storage Service - Recent projects for Project Mode
 import { ProjectStorageService } from '../../workbench/contrib/roopik/electron-main/projectStorage/projectStorageService.js';
@@ -1324,9 +1323,8 @@ export class CodeApplication extends Disposable {
 
 		// ROOPIK: Component Service - Component lifecycle, build queue, file watching
 		const buildService = new BuildService();
-		const importService = new ImportService();
 		const fileWatcher = new FileWatcher();
-		const componentService = new ComponentService(roopikStorageService, buildService, importService, fileWatcher);
+		const componentService = new ComponentService(roopikStorageService, buildService, canvasService, fileWatcher);
 		const componentChannel = new ComponentChannel(componentService);
 		mainProcessElectronServer.registerChannel(COMPONENT_CHANNEL_NAME, componentChannel);
 

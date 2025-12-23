@@ -5,13 +5,10 @@
 
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
 import {
-	SourceFiles,
-	ComponentMeta,
-	BundledOutput,
+	WorkspaceConfig,
 	CanvasInfo,
-	ComponentIndex,
-	ComponentIndexEntry,
-	WorkspaceConfig
+	CanvasFile,
+	ComponentReference
 } from './storageTypes.js';
 import { CanvasMeta } from '../canvas/types.js';
 
@@ -102,108 +99,80 @@ export interface IRoopikStorageService {
 	saveCanvasMeta(canvasId: string, meta: CanvasMeta): Promise<void>;
 
 	// ========================================================================
-	// Component Source (Workspace)
+	// Canvas File Operations (Metadata-Only Architecture)
 	// ========================================================================
 
 	/**
-	 * Save component source files to workspace
-	 * Creates component folder if it doesn't exist
-	 * @returns Absolute path to component folder
+	 * Load canvas file with all component references
+	 * Atomic read of entire canvas state
 	 */
-	saveComponentSource(
-		canvasId: string,
-		componentId: string,
-		files: SourceFiles
-	): Promise<string>;
+	loadCanvasFile(canvasId: string): Promise<CanvasFile | null>;
 
 	/**
-	 * Load component source files from workspace
+	 * Save canvas file with all component references
+	 * Atomic write of entire canvas state
 	 */
-	loadComponentSource(
-		canvasId: string,
-		componentId: string
-	): Promise<SourceFiles>;
+	saveCanvasFile(canvasFile: CanvasFile): Promise<void>;
 
 	/**
-	 * Save component metadata
+	 * Add component reference to canvas (NO copying files!)
+	 * Just stores metadata pointing to original location
 	 */
-	saveComponentMeta(
+	addComponentReference(
 		canvasId: string,
 		componentId: string,
-		meta: ComponentMeta
+		reference: ComponentReference
 	): Promise<void>;
 
 	/**
-	 * Load component metadata
+	 * Remove component reference from canvas
 	 */
-	loadComponentMeta(
-		canvasId: string,
-		componentId: string
-	): Promise<ComponentMeta | null>;
+	removeComponentReference(canvasId: string, componentId: string): Promise<void>;
 
 	/**
-	 * Delete a component (workspace + cache)
+	 * Get single component reference
+	 */
+	getComponentReference(canvasId: string, componentId: string): Promise<ComponentReference | null>;
+
+	/**
+	 * List all component references in a canvas
+	 */
+	listCanvasComponents(canvasId: string): Promise<Array<{ id: string; reference: ComponentReference }>>;
+
+	/**
+	 * Update component reference (after build, when buildState/contentHash change)
+	 */
+	updateComponentReference(
+		canvasId: string,
+		componentId: string,
+		updates: Partial<ComponentReference>
+	): Promise<void>;
+
+	/**
+	 * Delete a component (removes reference from canvas file)
 	 */
 	deleteComponent(canvasId: string, componentId: string): Promise<void>;
 
 	// ========================================================================
-	// Component Index (Fast Lookup)
+	// Build Cache (App Data Storage)
 	// ========================================================================
 
 	/**
-	 * Get component index for a canvas
-	 */
-	getComponentIndex(canvasId: string): Promise<ComponentIndex>;
-
-	/**
-	 * Update a component in the index
-	 */
-	updateComponentIndex(
-		canvasId: string,
-		componentId: string,
-		entry: ComponentIndexEntry
-	): Promise<void>;
-
-	/**
-	 * Remove a component from the index
-	 */
-	removeFromComponentIndex(canvasId: string, componentId: string): Promise<void>;
-
-	// ========================================================================
-	// Build Cache (App Data)
-	// ========================================================================
-
-	/**
-	 * Save bundled code to cache
+	 * Save bundled code and build metadata to cache
 	 */
 	saveBundleCache(
 		canvasId: string,
 		componentId: string,
-		bundle: BundledOutput
+		bundle: { bundledCode: string; buildMeta: any }
 	): Promise<void>;
 
 	/**
 	 * Load bundled code from cache
-	 * @returns null if cache doesn't exist or is invalid
 	 */
 	loadBundleCache(
 		canvasId: string,
 		componentId: string
-	): Promise<BundledOutput | null>;
-
-	/**
-	 * Check if cache is valid for given source hash
-	 */
-	isCacheValid(
-		canvasId: string,
-		componentId: string,
-		sourceHash: string
-	): Promise<boolean>;
-
-	/**
-	 * Invalidate cache for a component
-	 */
-	invalidateCache(canvasId: string, componentId: string): Promise<void>;
+	): Promise<{ bundledCode: string; buildMeta: any } | null>;
 
 	// ========================================================================
 	// Active Canvas (for agents and UI)
@@ -216,9 +185,9 @@ export interface IRoopikStorageService {
 	getActiveCanvasId(): Promise<string | null>;
 
 	/**
-	 * Set the active canvas ID (called by Extension when focus changes)
+	 * Set the active canvas ID in canvases.json
 	 */
-	setActiveCanvasId(canvasId: string | null): void;
+	setActiveCanvasId(canvasId: string | null): Promise<void>;
 
 	// ========================================================================
 	// Paths (for external use)
@@ -233,11 +202,6 @@ export interface IRoopikStorageService {
 	 * Get app data path (cache)
 	 */
 	getAppDataPath(): string;
-
-	/**
-	 * Get absolute path to component folder in workspace
-	 */
-	getComponentPath(canvasId: string, componentId: string): string;
 
 	/**
 	 * Get absolute path to component cache folder

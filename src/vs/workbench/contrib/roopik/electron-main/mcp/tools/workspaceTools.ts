@@ -16,23 +16,22 @@
  */
 
 import type { ICanvasService } from '../../../common/canvas/canvasService.js';
-import type { IRoopikStorageService } from '../../../common/storage/storageService.js';
 
 /**
  * Register all workspace-related MCP tools
  *
+ * Essential tools only - agents have file access for everything else.
+ *
  * @param server - McpServer instance (dynamically imported)
  * @param z - Zod validation library (dynamically imported)
  * @param canvasService - Canvas service instance
- * @param storageService - Storage service instance
  */
 export function registerWorkspaceTools(
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	server: any,
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	z: any,
-	canvasService: ICanvasService,
-	storageService: IRoopikStorageService
+	canvasService: ICanvasService
 ): void {
 
 	// --------------------------------------------------------------
@@ -216,144 +215,5 @@ export function registerWorkspaceTools(
 		}
 	);
 
-	// --------------------------------------------------------------
-	// TOOL: Get Workspace Path
-	// --------------------------------------------------------------
-	server.tool(
-		'roopik_getWorkspacePath',
-		'Get the absolute path to the workspace root. This is where the .roopik/ folder is located.',
-		{},
-		async () => {
-			try {
-				const workspacePath = storageService.getWorkspacePath();
-
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: true,
-							workspacePath,
-							roopikFolderPath: `${workspacePath}/.roopik`
-						})
-					}]
-				};
-			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: false,
-							isError: true,
-							error: errorMessage
-						})
-					}],
-					isError: true
-				};
-			}
-		}
-	);
-
-	// --------------------------------------------------------------
-	// TOOL: Get Canvas Details
-	// --------------------------------------------------------------
-	server.tool(
-		'roopik_getCanvasDetails',
-		'Get detailed information about a specific canvas including panel state.',
-		{
-			canvasId: z.string().describe('The canvas ID to query')
-		},
-		async ({ canvasId }: { canvasId: string }) => {
-			try {
-				const canvas = await canvasService.getCanvasAsync(canvasId);
-
-				if (!canvas) {
-					return {
-						content: [{
-							type: 'text' as const,
-							text: JSON.stringify({
-								success: false,
-								isError: true,
-								error: `Canvas not found: ${canvasId}`
-							})
-						}],
-						isError: true
-					};
-				}
-
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: true,
-							canvas: {
-								id: canvas.id,
-								name: canvas.name,
-								componentCount: canvas.componentCount,
-								description: canvas.description,
-								icon: canvas.icon,
-								color: canvas.color,
-								createdAt: canvas.createdAt,
-								updatedAt: canvas.updatedAt,
-								isOpen: canvas.isOpen,
-								isFocused: canvas.isFocused
-							}
-						})
-					}]
-				};
-			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: false,
-							isError: true,
-							error: errorMessage
-						})
-					}],
-					isError: true
-				};
-			}
-		}
-	);
-
-	// --------------------------------------------------------------
-	// TOOL: Get Workspace Config
-	// --------------------------------------------------------------
-	server.tool(
-		'roopik_getWorkspaceConfig',
-		'Get the Roopik workspace configuration (.roopik/config.json). Contains workspace-level settings and preferences.',
-		{},
-		async () => {
-			try {
-				const config = await storageService.getConfig();
-
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: true,
-							config
-						})
-					}]
-				};
-			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: false,
-							isError: true,
-							error: errorMessage
-						})
-					}],
-					isError: true
-				};
-			}
-		}
-	);
-
-	console.log('[MCP] Registered 6 workspace tools (listCanvases, getActiveCanvas, createCanvas, getWorkspacePath, getCanvasDetails, getWorkspaceConfig)');
+	console.log('[MCP] Registered 3 workspace tools (listCanvases, getActiveCanvas, createCanvas)');
 }

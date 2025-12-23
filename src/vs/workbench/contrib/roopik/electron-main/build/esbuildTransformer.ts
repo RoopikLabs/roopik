@@ -208,6 +208,10 @@ const FRAMEWORK_BUILD_CONFIGS: Record<Framework, FrameworkBuildConfig> = {
 	html: {
 		mode: 'virtual',
 		getPlugins: () => []
+	},
+	unknown: {
+		mode: 'virtual',
+		getPlugins: () => []
 	}
 };
 

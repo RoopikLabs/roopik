@@ -4,19 +4,17 @@
  *--------------------------------------------------------------------------------------------*/
 
 /**
- * Component Service Implementation
+ * Component Auto-Detection Utilities
  *
- * Main orchestrator for component operations. Coordinates:
- * - ImportService: Import components from various sources
- * - BuildService: Bundle source files
- * - StorageService: Save/load from disk
- * - FileWatcher: React to file changes
- * - BuildQueue: Deduplicate and limit concurrent builds
+ * Plugin-based detectors for:
+ * - Entry file detection (index.tsx, index.ts, {folderName}.tsx, etc.)
+ * - Framework detection (react, vue, svelte, solid, preact, unknown)
  *
- * This is the primary entry point for component operations.
+ * These run during addComponent ingestion when optional fields are missing.
  */
 
 import * as crypto from 'crypto';
+import * as path from 'path';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import {
@@ -28,39 +26,75 @@ import {
 } from '../../common/component/componentService.js';
 import {
 	Component,
-	CreateComponentRequest
+	AddComponentRequest,
+	ComponentInfo,
+	BuildErrorInfo
 } from '../../common/component/types.js';
-import { ComponentMeta, ComponentIndexEntry } from '../../common/storage/storageTypes.js';
+import { ComponentReference } from '../../common/storage/storageTypes.js';
 import { IRoopikStorageService } from '../../common/storage/storageService.js';
-import { IBuildService, BuildInput, BuildOutput } from '../../common/build/buildService.js';
-import { IImportService } from '../../common/import/importService.js';
+import { IBuildService } from '../../common/build/buildService.js';
+import { ICanvasService } from '../../common/canvas/canvasService.js';
 import { IFileWatcher, FileChangeEvent } from '../../common/watch/fileWatcher.js';
 import { BuildQueue, BuildRequest, QueueBuildResult } from './buildQueue.js';
 import { getBundlePath } from '../storage/paths.js';
+import { detectEntryFile, detectFramework } from './detectors.js';
+import { computeContentHashFromFolder } from '../../common/hash/contentHash.js';
+import { loadSourceFiles } from '../../common/source/sourceLoader.js';
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
 /**
- * Generate a unique component ID
+ * Generate a human-readable component ID
+ * Format: {sanitized-name}_{2-char-alphanumeric}
+ * Example: "Button_a3", "UserProfile_x7"
+ *
+ * This makes IDs interpretable by AI agents and users while avoiding duplicates.
  */
-function generateComponentId(): string {
-	return crypto.randomBytes(8).toString('hex');
+function generateComponentId(componentName: string): string {
+	// Sanitize component name: lowercase, replace non-alphanumeric with hyphen, trim
+	const sanitized = componentName
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')  // Replace non-alphanumeric sequences with hyphen
+		.replace(/^-+|-+$/g, '')       // Trim leading/trailing hyphens
+		.substring(0, 30);             // Limit length
+
+	// Generate 2-char alphanumeric suffix (a-z, 0-9 = 36 chars, 36^2 = 1296 combinations)
+	const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+	const randomBytes = crypto.randomBytes(2);
+	const suffix = chars[randomBytes[0] % 36] + chars[randomBytes[1] % 36];
+
+	return `${sanitized || 'component'}_${suffix}`;
 }
 
 /**
- * Compute hash of source files for cache invalidation
+ * Check if folder path exists
  */
-function computeContentHash(files: Record<string, string>): string {
-	const hash = crypto.createHash('sha256');
-	// Sort keys for deterministic hash
-	const sortedKeys = Object.keys(files).sort();
-	for (const key of sortedKeys) {
-		hash.update(key);
-		hash.update(files[key]);
+async function folderExists(folderPath: string): Promise<boolean> {
+	try {
+		const fs = await import('fs');
+		const stats = await fs.promises.stat(folderPath);
+		return stats.isDirectory();
+	} catch {
+		return false;
 	}
-	return hash.digest('hex').substring(0, 16);
+}
+
+/**
+ * Get list of files in a folder (non-recursive, just immediate children)
+ */
+async function getFolderContents(folderPath: string): Promise<string[]> {
+	try {
+		const fs = await import('fs');
+		const entries = await fs.promises.readdir(folderPath, { withFileTypes: true });
+		// Return only files, not directories
+		return entries
+			.filter(entry => entry.isFile())
+			.map(entry => entry.name);
+	} catch {
+		return [];
+	}
 }
 
 // ============================================================================
@@ -76,7 +110,7 @@ export class ComponentService extends Disposable implements IComponentService {
 
 	private readonly storageService: IRoopikStorageService;
 	private readonly buildService: IBuildService;
-	private readonly importService: IImportService;
+	private readonly canvasService: ICanvasService;
 	private readonly fileWatcher: IFileWatcher;
 
 	// ========================================================================
@@ -118,14 +152,14 @@ export class ComponentService extends Disposable implements IComponentService {
 	constructor(
 		storageService: IRoopikStorageService,
 		buildService: IBuildService,
-		importService: IImportService,
+		canvasService: ICanvasService,
 		fileWatcher: IFileWatcher
 	) {
 		super();
 
 		this.storageService = storageService;
 		this.buildService = buildService;
-		this.importService = importService;
+		this.canvasService = canvasService;
 		this.fileWatcher = fileWatcher;
 
 		// Create build queue with concurrency limit
@@ -190,114 +224,270 @@ export class ComponentService extends Disposable implements IComponentService {
 	// Create
 	// ========================================================================
 
-	async createComponent(request: CreateComponentRequest): Promise<Component> {
+	async addComponent(request: AddComponentRequest): Promise<Component> {
 		this.ensureInitialized();
 
-		// 1. Resolve canvas ID
-		const canvasId = request.canvasId || await this.storageService.getActiveCanvasId();
-		if (!canvasId) {
-			throw new Error('ComponentService: No canvas specified and no active canvas');
+		// ====================================================================
+		// PIPELINE STEP 1: Smart Path Parsing
+		// ====================================================================
+		// Handles both file paths and folder paths flexibly:
+		// - Full file path (C:\project\src\Button.tsx) → Extract folder + entry file
+		// - Folder path only (C:\project\src\Button\) → Auto-detect entry file later
+		//
+		// This supports:
+		// - UI file picker (user selects a file)
+		// - AI agents passing folder paths
+		// - AI agents passing file paths (if they know the entry file)
+		let folderPath = request.folderPath;
+		let entryFile = request.entryFile;
+
+		// Check if folderPath actually contains a file (has extension)
+		const pathParts = folderPath.split(/[\\/]/);
+		const lastPart = pathParts[pathParts.length - 1];
+		const hasExtension = /\.[a-zA-Z0-9]+$/.test(lastPart);
+
+		if (hasExtension && !entryFile) {
+			// folderPath contains a file - extract folder and entry file
+			const fileName = pathParts.pop()!;
+			folderPath = pathParts.join(path.sep);
+			entryFile = fileName;
+			console.log(`[ComponentService] Path parsing: extracted folder=${folderPath}, entry=${entryFile}`);
 		}
 
-		// 2. Import files via ImportService
-		const importResult = await this.importService.import(request.sourceData);
+		// ====================================================================
+		// PIPELINE STEP 2: Folder Validation
+		// ====================================================================
+		// 2a. Check folder exists
+		if (!await folderExists(folderPath)) {
+			throw new Error(`ComponentService: Folder not found: ${folderPath}`);
+		}
 
-		// 3. Generate component ID
-		const componentId = generateComponentId();
+		// 2b. Check folder is not empty (has at least one file)
+		const folderContents = await getFolderContents(folderPath);
+		if (folderContents.length === 0) {
+			throw new Error(`ComponentService: Folder is empty: ${folderPath}`);
+		}
 
-		// 4. Compute content hash
-		const contentHash = computeContentHash(importResult.files);
+		// ====================================================================
+		// PIPELINE STEP 3: File Type Validation
+		// ====================================================================
+		// Supported component file extensions
+		const SUPPORTED_EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js', '.vue', '.svelte'];
 
-		// 5. Determine framework (request override > detected)
-		const framework = request.framework || importResult.framework;
+		if (entryFile) {
+			// 3a. If entryFile provided, validate it's a supported type
+			const ext = path.extname(entryFile).toLowerCase();
+			if (!SUPPORTED_EXTENSIONS.includes(ext)) {
+				throw new Error(`ComponentService: Unsupported file type '${ext}'. Supported: ${SUPPORTED_EXTENSIONS.join(', ')}`);
+			}
+		} else {
+			// 3b. If no entryFile, check folder has at least one supported file
+			const hasSupportedFile = folderContents.some(file => {
+				const ext = path.extname(file).toLowerCase();
+				return SUPPORTED_EXTENSIONS.includes(ext);
+			});
+			if (!hasSupportedFile) {
+				throw new Error(`ComponentService: No supported component files found in folder. Supported: ${SUPPORTED_EXTENSIONS.join(', ')}`);
+			}
+		}
 
-		// 6. Merge dependencies
-		const dependencies = {
-			...importResult.dependencies,
-			...request.dependencies
+		// ====================================================================
+		// PIPELINE STEP 4: Entry File Resolution
+		// ====================================================================
+		if (!entryFile) {
+			console.log(`[ComponentService] 🔍 Auto-detecting entry file...`);
+			try {
+				entryFile = await detectEntryFile(folderPath);
+				console.log(`[ComponentService] ✅ Entry file detected: ${entryFile}`);
+			} catch (error) {
+				throw new Error(`ComponentService: Could not auto-detect entry file: ${error}`);
+			}
+		}
+
+		// ====================================================================
+		// PIPELINE STEP 5: Component Name Resolution
+		// ====================================================================
+		// Priority: request.componentName > derived from entryFile (capitalized)
+		let componentName = request.componentName;
+		if (!componentName) {
+			// Derive from entry file: "button.tsx" → "Button", "MyComponent.tsx" → "MyComponent"
+			const baseName = entryFile.replace(/\.[^/.]+$/, ''); // Remove extension
+			componentName = baseName.charAt(0).toUpperCase() + baseName.slice(1); // Capitalize first letter
+			console.log(`[ComponentService] 📝 Component name derived from entry file: ${componentName}`);
+		}
+
+		// ====================================================================
+		// PIPELINE STEP 6: Canvas ID Resolution
+		// ====================================================================
+		// Priority: request.canvasId > active canvas > create new canvas
+		let canvasId: string | undefined = request.canvasId;
+
+		if (!canvasId) {
+			// Try to get active/focused canvas (returns string | null)
+			const activeCanvasId = await this.canvasService.getFocusedCanvasIdAsync();
+			if (activeCanvasId) {
+				canvasId = activeCanvasId;
+				console.log(`[ComponentService] 🎨 Using active canvas: ${canvasId}`);
+			}
+		}
+
+		if (!canvasId) {
+			// No canvas provided and no active canvas - create new canvas with componentName
+			console.log(`[ComponentService] 🆕 No canvas available, creating new canvas: ${componentName}`);
+			const newCanvas = await this.canvasService.createCanvas(componentName);
+			canvasId = newCanvas.canvasId; // CreateCanvasResult has canvasId, not id
+			console.log(`[ComponentService] ✅ Created new canvas: ${canvasId}`);
+		}
+
+		// At this point canvasId is guaranteed to be defined
+		const resolvedCanvasId = canvasId as string;
+
+		// ====================================================================
+		// PIPELINE STEP 7: Framework Detection
+		// ====================================================================
+		let framework = request.framework;
+		if (!framework) {
+			console.log(`[ComponentService] 🔧 Auto-detecting framework...`);
+			try {
+				const entryFilePath = path.join(folderPath, entryFile);
+				framework = await detectFramework(entryFilePath);
+				console.log(`[ComponentService] ✅ Framework detected: ${framework}`);
+			} catch (error) {
+				console.warn(`[ComponentService] ⚠️ Framework detection failed, defaulting to 'unknown':`, error);
+				framework = 'unknown';
+			}
+		}
+
+		// ====================================================================
+		// PIPELINE STEP 8: Content Hash Computation
+		// ====================================================================
+		// Critical for cache validation and detecting file changes
+		console.log(`[ComponentService] 🔢 Computing content hash...`);
+		const hashResult = await computeContentHashFromFolder(folderPath);
+		const { hash: contentHash, filesHashed, filesSkipped, bytesHashed, warnings } = hashResult;
+		console.log(`[ComponentService] ✅ Hash: ${contentHash} (${filesHashed} files, ${bytesHashed} bytes)`);
+		if (filesSkipped > 0) {
+			console.warn(`[ComponentService] ⚠️ Skipped ${filesSkipped} files due to read errors`);
+		}
+		if (warnings.length > 0) {
+			console.warn(`[ComponentService] Hash warnings:`, warnings);
+		}
+
+		// ====================================================================
+		// PIPELINE STEP 9: Generate Component ID
+		// ====================================================================
+		const componentId = request.componentId || generateComponentId(componentName);
+		const now = Date.now();
+
+		// ====================================================================
+		// PIPELINE COMPLETE - All fields resolved, ready to save
+		// ====================================================================
+		console.log(`[ComponentService] 📊 Pipeline complete:`, JSON.stringify({
+			componentId,
+			componentName,
+			folderPath,
+			entryFile,
+			canvasId: resolvedCanvasId,
+			framework,
+			origin: request.origin
+		}, null, 2));
+
+		// ====================================================================
+		// SAVE: Create ComponentReference and persist to canvas file
+		// ====================================================================
+		const reference: ComponentReference = {
+			componentName,
+			folderPath,
+			entryFile,
+			framework: framework || 'unknown',
+			position: { x: 0, y: 0, zIndex: 0 },
+			buildState: { status: 'building' },
+			contentHash,
+			origin: request.origin,
+			createdAt: now,
+			updatedAt: now
 		};
 
-		// 7. Pause file watcher for this component during write
-		this.fileWatcher.ignoreComponent(componentId);
+		await this.storageService.addComponentReference(resolvedCanvasId, componentId, reference);
+		console.log(`[ComponentService] 💾 Saved to canvas file`);
 
+		// ====================================================================
+		// REGISTRY: Create in-memory Component object
+		// ====================================================================
+		const resolvedFramework = framework || 'unknown';
+		const component: Component = {
+			id: componentId,
+			canvasId: resolvedCanvasId,
+			folderPath,
+			entryFile,
+			framework: resolvedFramework,
+			buildState: { status: 'building' }, // Initial state
+			contentHash,                        // Always computed
+			componentName,
+			origin: request.origin,
+			createdAt: now,
+			updatedAt: now
+		};
+
+		// Add to in-memory registry
+		this.components.set(componentId, component);
+
+		// Emit created event
+		this._onComponentCreated.fire({ component });
+
+		// ====================================================================
+		// POST-SAVE: Register file watcher and queue build
+		// ====================================================================
 		try {
-			// 8. Save source files to workspace
-			const storagePath = await this.storageService.saveComponentSource(
-				canvasId,
-				componentId,
-				importResult.files
-			);
-
-			// 9. Create metadata
-			const now = Date.now();
-			const meta: ComponentMeta = {
-				id: componentId,
-				name: request.name,
-				source: request.source,
-				sourceInfo: importResult.sourceInfo,
-				entryFile: importResult.entryFile,
-				files: Object.keys(importResult.files),
-				framework,
-				dependencies,
-				contentHash,
-				createdAt: now,
-				updatedAt: now
-			};
-
-			// 10. Save metadata
-			await this.storageService.saveComponentMeta(canvasId, componentId, meta);
-
-			// 11. Create Component object
-			const component: Component = {
-				id: componentId,
-				name: request.name,
-				canvasId,
-				source: request.source,
-				sourceInfo: importResult.sourceInfo,
-				storagePath,
-				entryFile: importResult.entryFile,
-				files: Object.keys(importResult.files),
-				framework,
-				dependencies,
-				buildState: { status: 'building' },
-				contentHash,
-				createdAt: now,
-				updatedAt: now
-			};
-
-			// 12. Update component index
-			await this.storageService.updateComponentIndex(canvasId, componentId, {
-				name: component.name,
-				framework: component.framework,
-				source: component.source,
-				entryFile: component.entryFile,
-				buildState: component.buildState,
-				contentHash: component.contentHash,
-				createdAt: component.createdAt,
-				updatedAt: component.updatedAt
-			});
-
-			// 13. Add to in-memory registry
-			this.components.set(componentId, component);
-
-			// 14. Emit created event
-			this._onComponentCreated.fire({ component });
-
-			// 15. Queue build (async, result via event)
-			this.buildQueue.enqueue({
-				componentId,
-				canvasId,
-				trigger: 'create',
-				priority: 'high',
-				createdAt: now
-			});
-
-			return component;
-
-		} finally {
-			// 16. Resume file watcher for this component
-			this.fileWatcher.unignoreComponent(componentId);
+			this.fileWatcher.registerFolderWatch(componentId, folderPath, resolvedCanvasId);
+			console.log(`[ComponentService] 👁️ Registered folder watch`);
+		} catch (error) {
+			console.warn(`[ComponentService] ⚠️ Could not register folder watch:`, error);
 		}
+
+		// Queue build (async, result via event)
+		this.buildQueue.enqueue({
+			componentId,
+			canvasId: resolvedCanvasId,
+			trigger: 'create',
+			priority: 'high',
+			createdAt: now
+		});
+		console.log(`[ComponentService] 🔨 Queued build`);
+
+		console.log(`[ComponentService] ✅ Component added successfully: ${componentId}`);
+		return component;
+	}
+
+	/**
+	 * Add multiple components in batch
+	 * More efficient than calling addComponent() in a loop
+	 */
+	async addComponents(requests: AddComponentRequest[]): Promise<Component[]> {
+		this.ensureInitialized();
+
+		if (requests.length === 0) {
+			return [];
+		}
+
+		console.log(`[ComponentService] 📦 Batch adding ${requests.length} components`);
+
+		// Pause file watcher during batch operation
+		this.fileWatcher.pause();
+
+		const components: Component[] = [];
+		try {
+			for (const request of requests) {
+				const component = await this.addComponent(request);
+				components.push(component);
+			}
+		} finally {
+			// Resume file watcher
+			this.fileWatcher.resume();
+		}
+
+		console.log(`[ComponentService] ✅ Batch add complete: ${components.length} components`);
+		return components;
 	}
 
 	// ========================================================================
@@ -318,140 +508,6 @@ export class ComponentService extends Disposable implements IComponentService {
 	}
 
 	// ========================================================================
-	// Code Access
-	// ========================================================================
-
-	async getComponentSource(id: string): Promise<Record<string, string>> {
-		this.ensureInitialized();
-
-		const component = this.components.get(id);
-		if (!component) {
-			throw new Error(`ComponentService: Component not found: ${id}`);
-		}
-
-		return this.storageService.loadComponentSource(component.canvasId, id);
-	}
-
-	async getBundledCode(id: string): Promise<string> {
-		this.ensureInitialized();
-
-		const component = this.components.get(id);
-		if (!component) {
-			throw new Error(`ComponentService: Component not found: ${id}`);
-		}
-
-		const cached = await this.storageService.loadBundleCache(component.canvasId, id);
-		if (!cached) {
-			throw new Error(`ComponentService: Component not built yet: ${id}`);
-		}
-
-		return cached.bundledCode;
-	}
-
-	async getCdnUrls(id: string): Promise<string[]> {
-		this.ensureInitialized();
-
-		const component = this.components.get(id);
-		if (!component) {
-			throw new Error(`ComponentService: Component not found: ${id}`);
-		}
-
-		const cached = await this.storageService.loadBundleCache(component.canvasId, id);
-		if (!cached) {
-			throw new Error(`ComponentService: Component not built yet: ${id}`);
-		}
-
-		return cached.buildMeta.cdnUrls;
-	}
-
-	// ========================================================================
-	// Update
-	// ========================================================================
-
-	async updateComponentSource(id: string, files: Record<string, string>): Promise<void> {
-		this.ensureInitialized();
-
-		const component = this.components.get(id);
-		if (!component) {
-			throw new Error(`ComponentService: Component not found: ${id}`);
-		}
-
-		// Pause file watcher during write
-		this.fileWatcher.ignoreComponent(id);
-
-		try {
-			// Save files
-			await this.storageService.saveComponentSource(component.canvasId, id, files);
-
-			// Update component state
-			const now = Date.now();
-			const contentHash = computeContentHash(files);
-			component.files = Object.keys(files);
-			component.contentHash = contentHash;
-			component.updatedAt = now;
-			component.buildState = { status: 'building' };
-
-			// Update metadata
-			const meta = await this.storageService.loadComponentMeta(component.canvasId, id);
-			if (meta) {
-				meta.files = component.files;
-				meta.contentHash = contentHash;
-				meta.updatedAt = now;
-				await this.storageService.saveComponentMeta(component.canvasId, id, meta);
-			}
-
-			// Update index
-			await this.updateComponentIndex(component);
-
-			// Queue rebuild
-			this.buildQueue.enqueue({
-				componentId: id,
-				canvasId: component.canvasId,
-				trigger: 'update',
-				priority: 'high',
-				createdAt: now
-			});
-
-		} finally {
-			this.fileWatcher.unignoreComponent(id);
-		}
-	}
-
-	async updateComponentMeta(id: string, updates: { name?: string }): Promise<void> {
-		this.ensureInitialized();
-
-		const component = this.components.get(id);
-		if (!component) {
-			throw new Error(`ComponentService: Component not found: ${id}`);
-		}
-
-		const changes: ('name' | 'source')[] = [];
-
-		if (updates.name && updates.name !== component.name) {
-			component.name = updates.name;
-			changes.push('name');
-		}
-
-		if (changes.length === 0) {
-			return;
-		}
-
-		// Update metadata
-		const meta = await this.storageService.loadComponentMeta(component.canvasId, id);
-		if (meta) {
-			if (updates.name) meta.name = updates.name;
-			meta.updatedAt = Date.now();
-			await this.storageService.saveComponentMeta(component.canvasId, id, meta);
-		}
-
-		// Update index
-		await this.updateComponentIndex(component);
-
-		// Emit event
-		this._onComponentUpdated.fire({ component, changes });
-	}
-
-	// ========================================================================
 	// Build
 	// ========================================================================
 
@@ -463,12 +519,8 @@ export class ComponentService extends Disposable implements IComponentService {
 			throw new Error(`ComponentService: Component not found: ${id}`);
 		}
 
-		// Invalidate cache
-		await this.storageService.invalidateCache(component.canvasId, id);
-
 		// Update state
 		component.buildState = { status: 'building' };
-		await this.updateComponentIndex(component);
 
 		// Queue build
 		this.buildQueue.enqueue({
@@ -511,6 +563,14 @@ export class ComponentService extends Disposable implements IComponentService {
 
 		// Cancel any pending builds
 		this.buildQueue.cancel(id);
+
+		// Unregister folder watch
+		try {
+			this.fileWatcher.unregisterFolderWatch(id);
+			console.log(`[ComponentService] Unregistered folder watch for ${id}`);
+		} catch (error) {
+			console.warn(`[ComponentService] Could not unregister folder watch:`, error);
+		}
 
 		// Delete from storage
 		await this.storageService.deleteComponent(component.canvasId, id);
@@ -574,47 +634,78 @@ export class ComponentService extends Disposable implements IComponentService {
 				};
 			}
 
-			// Load source files
-			const files = await this.storageService.loadComponentSource(canvasId, componentId);
+			// Step 1: Load source files from original folderPath
+			console.log(`[ComponentService] Loading source files from: ${component.folderPath}`);
+			const sourceResult = await loadSourceFiles(component.folderPath);
 
-			// Build
-			const buildInput: BuildInput = {
+			if (sourceResult.filesLoaded === 0) {
+				return {
+					componentId,
+					canvasId,
+					success: false,
+					errorInfo: {
+						message: 'No source files found in component folder',
+						errors: [{ message: `Folder: ${component.folderPath}`, category: 'unknown' }],
+						buildTime: Date.now() - startTime
+					},
+					trigger
+				};
+			}
+
+			console.log(`[ComponentService] Loaded ${sourceResult.filesLoaded} files (${(sourceResult.bytesLoaded / 1024).toFixed(2)}KB)`);
+			if (sourceResult.warnings.length > 0) {
+				console.warn(`[ComponentService] Source load warnings:`, sourceResult.warnings);
+			}
+
+			// Step 2: Build component using buildService
+			const buildOutput = await this.buildService.build({
 				id: componentId,
-				files,
+				files: sourceResult.files,
 				entryFile: component.entryFile,
 				framework: component.framework,
-				dependencies: component.dependencies
-			};
+				dependencies: {} // NOTE: Could read from package.json in future if needed
+			});
 
-			const buildOutput: BuildOutput = await this.buildService.build(buildInput);
+			console.log(`[ComponentService] Build completed: ${buildOutput.bundleSize} bytes in ${buildOutput.buildTime}ms`);
 
-			// Save to cache
+			// Step 3: Save bundle to cache
 			await this.storageService.saveBundleCache(canvasId, componentId, {
 				bundledCode: buildOutput.bundledCode,
 				buildMeta: {
 					componentId,
 					canvasId,
-					sourceHash: component.contentHash,
+					contentHash: component.contentHash || '', // Will update with new hash below
 					cdnUrls: buildOutput.cdnUrls,
 					buildTime: buildOutput.buildTime,
 					bundleSize: buildOutput.bundleSize,
 					builtAt: Date.now()
 				}
 			});
-			console.log(`[ComponentService] 💾 Bundle saved: ${componentId} (${buildOutput.bundleSize} bytes)`);
 
-			// Update component state
+			// Step 4: Compute content hash AFTER successful build
+			console.log(`[ComponentService] Computing content hash for validation...`);
+			const hashResult = await computeContentHashFromFolder(component.folderPath);
+			console.log(`[ComponentService] Hash computed: ${hashResult.hash} (${hashResult.filesHashed} files, ${(hashResult.bytesHashed / 1024).toFixed(2)}KB)`);
+
+			// Step 5: Update component metadata
 			component.buildState = { status: 'ready' };
-			component.dependencies = buildOutput.resolvedDependencies;
-			await this.updateComponentIndex(component);
+			component.contentHash = hashResult.hash;
+			component.framework = buildOutput.framework; // In case it was detected during build
+			component.updatedAt = Date.now();
 
+			// Step 6: Persist to storage
+			await this.storageService.updateComponentReference(canvasId, componentId, {
+				buildState: component.buildState,
+				contentHash: component.contentHash,
+				framework: component.framework,
+				updatedAt: component.updatedAt
+			});
+
+			// Step 7: Return success
 			return {
 				componentId,
 				canvasId,
 				success: true,
-				cdnUrls: buildOutput.cdnUrls,
-				buildTime: Date.now() - startTime,
-				bundleSize: buildOutput.bundleSize,
 				trigger
 			};
 
@@ -628,7 +719,10 @@ export class ComponentService extends Disposable implements IComponentService {
 			const component = this.components.get(componentId);
 			if (component) {
 				component.buildState = { status: 'error', error: errorInfo.message };
-				await this.updateComponentIndex(component);
+				await this.storageService.updateComponentReference(canvasId, componentId, {
+					buildState: component.buildState,
+					updatedAt: Date.now()
+				});
 			}
 
 			return {
@@ -783,6 +877,51 @@ export class ComponentService extends Disposable implements IComponentService {
 	// ========================================================================
 
 	/**
+	 * Load all components from storage on startup
+	 */
+	private async loadAllComponents(): Promise<void> {
+		const canvases = await this.storageService.getCanvases();
+
+		for (const canvas of canvases) {
+			const canvasFile = await this.storageService.loadCanvasFile(canvas.id);
+			if (!canvasFile) {
+				console.warn(`[ComponentService] Could not load canvas file: ${canvas.id}`);
+				continue;
+			}
+
+			// Load each component reference
+			for (const [componentId, reference] of Object.entries(canvasFile.components)) {
+				const ref = reference as ComponentReference;
+				// ComponentReference has all required fields, map to Component
+				const component: Component = {
+					id: componentId,
+					canvasId: canvas.id,
+					folderPath: ref.folderPath,
+					entryFile: ref.entryFile,
+					framework: ref.framework,
+					buildState: ref.buildState,
+					contentHash: ref.contentHash,
+					componentName: ref.componentName,
+					origin: ref.origin,
+					createdAt: ref.createdAt,
+					updatedAt: ref.updatedAt
+				};
+
+				this.components.set(componentId, component);
+
+				// Register folder watch for this component
+				try {
+					this.fileWatcher.registerFolderWatch(componentId, ref.folderPath, canvas.id);
+				} catch (error) {
+					console.warn(`[ComponentService] Could not register watch for ${componentId}:`, error);
+				}
+			}
+		}
+
+		console.log(`[ComponentService] Loaded ${this.components.size} components`);
+	}
+
+	/**
 	 * Ensure service is initialized
 	 */
 	private ensureInitialized(): void {
@@ -791,63 +930,139 @@ export class ComponentService extends Disposable implements IComponentService {
 		}
 	}
 
+	// ========================================================================
+	// Component Data Access
+	// ========================================================================
+
 	/**
-	 * Load all components from storage on startup
+	 * Get component source code
+	 * Loads from original folderPath
 	 */
-	private async loadAllComponents(): Promise<void> {
-		const canvases = await this.storageService.getCanvases();
-
-		for (const canvas of canvases) {
-			const index = await this.storageService.getComponentIndex(canvas.id);
-
-			for (const [componentId, entry] of Object.entries(index.components)) {
-				// Load full metadata
-				const meta = await this.storageService.loadComponentMeta(canvas.id, componentId);
-				if (!meta) {
-					console.warn(`[ComponentService] Missing metadata for component: ${componentId}`);
-					continue;
-				}
-
-				// Create Component object
-				const component: Component = {
-					id: componentId,
-					name: meta.name,
-					canvasId: canvas.id,
-					source: meta.source,
-					sourceInfo: meta.sourceInfo,
-					storagePath: this.storageService.getComponentPath(canvas.id, componentId),
-					entryFile: meta.entryFile,
-					files: meta.files,
-					framework: meta.framework,
-					dependencies: meta.dependencies,
-					buildState: entry.buildState,
-					contentHash: meta.contentHash,
-					createdAt: meta.createdAt,
-					updatedAt: meta.updatedAt
-				};
-
-				this.components.set(componentId, component);
-			}
+	async getComponentSource(id: string): Promise<Record<string, string>> {
+		this.ensureInitialized();
+		const component = this.components.get(id);
+		if (!component) {
+			throw new Error(`Component not found: ${id}`);
 		}
-
-		console.log(`[ComponentService] Loaded ${this.components.size} components`);
+		const result = await loadSourceFiles(component.folderPath);
+		return result.files;
 	}
 
 	/**
-	 * Update component index entry
+	 * Get bundled code
+	 * Loads from cache
 	 */
-	private async updateComponentIndex(component: Component): Promise<void> {
-		const entry: ComponentIndexEntry = {
-			name: component.name,
-			framework: component.framework,
-			source: component.source,
-			entryFile: component.entryFile,
-			buildState: component.buildState,
-			contentHash: component.contentHash,
-			createdAt: component.createdAt,
-			updatedAt: component.updatedAt
-		};
+	async getBundledCode(id: string): Promise<string> {
+		this.ensureInitialized();
+		const component = this.components.get(id);
+		if (!component) {
+			throw new Error(`Component not found: ${id}`);
+		}
+		const bundle = await this.storageService.loadBundleCache(component.canvasId, id);
+		if (!bundle) {
+			throw new Error(`Bundle not found for component: ${id}`);
+		}
+		return bundle.bundledCode;
+	}
 
-		await this.storageService.updateComponentIndex(component.canvasId, component.id, entry);
+	// ========================================================================
+	// Component Info (Unified API for AI agents)
+	// ========================================================================
+
+	/**
+	 * Get comprehensive component info in a single call
+	 * This is the primary API for AI agents to understand component state.
+	 */
+	async getComponentInfo(id: string): Promise<ComponentInfo> {
+		this.ensureInitialized();
+
+		const component = this.components.get(id);
+		if (!component) {
+			throw new Error(`Component not found: ${id}`);
+		}
+
+		// Check if currently building
+		const isBuilding = this.buildQueue.isBuilding(id);
+
+		// Try to load cache to get build stats
+		const bundle = await this.storageService.loadBundleCache(component.canvasId, id);
+
+		// Determine cache validity
+		const cacheValid = bundle !== null && bundle.buildMeta.contentHash === component.contentHash;
+
+		// Map buildState.status to ComponentInfo.buildStatus
+		// 'pending' maps to 'building' (both mean "not ready yet")
+		const rawStatus = component.buildState.status;
+		const buildStatus: 'building' | 'ready' | 'error' =
+			rawStatus === 'pending' ? 'building' : rawStatus;
+
+		// Extract error message (only exists when status === 'error')
+		const buildError = component.buildState.status === 'error'
+			? component.buildState.error
+			: null;
+
+		// Extract build error info if present
+		let buildErrorInfo: BuildErrorInfo | undefined;
+		if (buildError) {
+			buildErrorInfo = {
+				message: buildError,
+				errors: [{ message: buildError, category: 'unknown' }],
+				buildTime: 0
+			};
+		}
+
+		return {
+			// Basic info
+			id: component.id,
+			canvasId: component.canvasId,
+			componentName: component.componentName,
+			folderPath: component.folderPath,
+			entryFile: component.entryFile,
+			framework: component.framework,
+			origin: component.origin,
+			createdAt: component.createdAt,
+			updatedAt: component.updatedAt,
+
+			// Build status
+			buildStatus,
+			isBuilding,
+			buildError,
+			buildErrorInfo,
+
+			// Cache status
+			cacheValid,
+			contentHash: component.contentHash,
+
+			// Build output (from cache if available)
+			cdnUrls: bundle?.buildMeta.cdnUrls || [],
+			lastBuildTime: bundle?.buildMeta.buildTime || 0,
+			bundleSize: bundle?.buildMeta.bundleSize || 0,
+			lastBuiltAt: bundle?.buildMeta.builtAt || 0
+		};
+	}
+
+	// ========================================================================
+	// Update
+	// ========================================================================
+
+	/**
+	 * Update component display name
+	 */
+	async updateComponentName(id: string, componentName: string): Promise<void> {
+		this.ensureInitialized();
+		const component = this.components.get(id);
+		if (!component) {
+			throw new Error(`Component not found: ${id}`);
+		}
+
+		component.componentName = componentName;
+		component.updatedAt = Date.now();
+
+		await this.storageService.updateComponentReference(component.canvasId, id, {
+			componentName,
+			updatedAt: component.updatedAt
+		});
+
+		this._onComponentUpdated.fire({ component, changes: ['componentName'] });
 	}
 }
