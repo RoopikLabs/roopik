@@ -934,16 +934,6 @@ export class ComponentService extends Disposable implements IComponentService {
 	}
 
 	/**
-	 * Update component source
-	 * NOTE: Not implemented - use VS Code's native file editing instead
-	 * We don't write to original component folders from the service
-	 */
-	async updateComponentSource(_id: string, _files: Record<string, string>): Promise<void> {
-		this.ensureInitialized();
-		throw new Error('ComponentService: updateComponentSource not supported - edit files directly in VS Code');
-	}
-
-	/**
 	 * Update component metadata
 	 * Updates componentName in canvas file
 	 */

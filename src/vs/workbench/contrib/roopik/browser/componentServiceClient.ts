@@ -151,10 +151,6 @@ export class ComponentServiceClient implements IComponentService {
 	// Update
 	// ========================================================================
 
-	async updateComponentSource(id: string, files: Record<string, string>): Promise<void> {
-		return this.channel.call('updateComponentSource', { id, files });
-	}
-
 	async updateComponentMeta(id: string, updates: { componentName?: string }): Promise<void> {
 		return this.channel.call('updateComponentMeta', { id, updates });
 	}

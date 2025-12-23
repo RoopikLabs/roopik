@@ -197,13 +197,8 @@ export interface IComponentService {
 	// ========================================================================
 
 	/**
-	 * Update component source code
-	 * Writes to workspace, triggers rebuild (async, result via event)
-	 */
-	updateComponentSource(id: string, files: Record<string, string>): Promise<void>;
-
-	/**
 	 * Update component metadata (componentName only)
+	 * NOTE: Source code is edited directly via VS Code, FileWatcher triggers rebuild
 	 */
 	updateComponentMeta(id: string, updates: { componentName?: string }): Promise<void>;
 

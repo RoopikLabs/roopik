@@ -13,7 +13,9 @@
  * - roopik.core.deleteComponent: Delete a component
  * - roopik.core.getBundledCode: Get bundled code for a component
  * - roopik.core.getComponentSource: Get source files for a component
- * - roopik.core.updateComponentSource: Update source files for a component
+ *
+ * NOTE: Source updates are done via VS Code's native file editing.
+ * FileWatcher detects changes and triggers rebuild automatically.
  */
 
 import { localize2 } from '../../../../../nls.js';
@@ -178,34 +180,6 @@ export function registerComponentCommands(): void {
 
 			const componentService = accessor.get(IComponentService);
 			return componentService.getComponentSource(componentId);
-		}
-	});
-
-	// Update Component Source
-	registerAction2(class extends Action2 {
-		constructor() {
-			super({
-				id: 'roopik.core.updateComponentSource',
-				title: localize2('roopik.core.updateComponentSource', 'Update Component Source (Internal)'),
-				category: localize2('roopik.category', 'Roopik'),
-				f1: false
-			});
-		}
-
-		async run(accessor: ServicesAccessor, componentId: string, files: Record<string, string>): Promise<void> {
-			if (!componentId) {
-				console.error('[ComponentCommands] roopik.core.updateComponentSource: componentId is required');
-				return;
-			}
-			if (!files) {
-				console.error('[ComponentCommands] roopik.core.updateComponentSource: files is required');
-				return;
-			}
-
-			console.log('[ComponentCommands] Updating component source:', componentId);
-
-			const componentService = accessor.get(IComponentService);
-			await componentService.updateComponentSource(componentId, files);
 		}
 	});
 }

@@ -389,17 +389,6 @@ export class RoopikExtensionManager implements vscode.Disposable {
 		return result || {};
 	}
 
-	/**
-	 * Update component source files
-	 */
-	public async updateComponentSource(componentId: string, files: Record<string, string>): Promise<void> {
-		this.logger.info(`Updating component source: ${componentId}`);
-
-		// TODO: Call Core via IPC
-		// return this.componentClient.updateComponentSource(componentId, files);
-
-		await vscode.commands.executeCommand('roopik.core.updateComponentSource', componentId, files);
-	}
 
 	// ============================================================================
 	// Core Notifications (panel state tracking)

@@ -139,48 +139,6 @@ export function registerCanvasTools(
 	);
 
 	// --------------------------------------------------------------
-	// TOOL: Update Component Source
-	// --------------------------------------------------------------
-	server.tool(
-		'roopik_updateComponentSource',
-		'Update the source code files for a component. Provide files as a record of filename -> new content. This triggers a rebuild.',
-		{
-			componentId: z.string().describe('Component ID to update'),
-			files: z.record(z.string(), z.string()).describe('Files to update: { "Component.tsx": "...", "styles.css": "..." }')
-		},
-		async ({ componentId, files }: { componentId: string; files: Record<string, string> }) => {
-			try {
-				await componentService.updateComponentSource(componentId, files);
-
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: true,
-							componentId,
-							updatedFiles: Object.keys(files)
-						})
-					}]
-				};
-			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: false,
-							isError: true,
-							error: errorMessage,
-							componentId
-						})
-					}],
-					isError: true
-				};
-			}
-		}
-	);
-
-	// --------------------------------------------------------------
 	// TOOL: Delete Component
 	// --------------------------------------------------------------
 	server.tool(
@@ -374,5 +332,5 @@ export function registerCanvasTools(
 		}
 	);
 
-	console.log('[MCP] Registered 7 canvas tools (createComponent, getComponentSource, updateComponentSource, deleteComponent, getComponentInfo, listComponentsInCanvas, rebuildComponent)');
+	console.log('[MCP] Registered 6 canvas tools (createComponent, getComponentSource, deleteComponent, getComponentInfo, listComponentsInCanvas, rebuildComponent)');
 }

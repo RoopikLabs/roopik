@@ -381,14 +381,6 @@ export class CanvasPanel implements vscode.Disposable {
 					}
 					break;
 
-				case 'createComponent':
-					await this.handleCreateComponent(message.payload as {
-						name: string;
-						sourceData: unknown;
-						position?: { x: number; y: number };
-					});
-					break;
-
 				case 'dropComponent':
 					await this.handleDropComponent(message.payload as {
 						fileName: string;
@@ -405,13 +397,6 @@ export class CanvasPanel implements vscode.Disposable {
 					await this.handleDeleteComponent(message.payload as { componentId: string });
 					break;
 
-				case 'updateComponentSource':
-					await this.handleUpdateComponentSource(message.payload as {
-						componentId: string;
-						files: Record<string, string>;
-					});
-					break;
-
 				case 'saveCanvas':
 					// Handle canvas state save from webview
 					await this.handleSaveCanvas(message.payload as {
@@ -424,23 +409,22 @@ export class CanvasPanel implements vscode.Disposable {
 					});
 					break;
 
-				case 'loadComponentFiles':
-					await this.handleLoadComponentFiles(message.payload as { componentId: string });
-					break;
-
-				case 'saveComponentFile':
-					await this.handleSaveComponentFile(message.payload as {
-						componentId: string;
-						filename: string;
-						content: string;
-					});
-					break;
 
 				case 'showNotification':
 					this.handleShowNotification(message.payload as {
 						level: 'info' | 'warning' | 'error';
 						message: string;
 					});
+					break;
+
+				case 'command':
+					// Handle command messages from webview (e.g., open component in editor)
+					const cmd = (message as { command?: string; args?: unknown }).command;
+					const args = (message as { command?: string; args?: unknown }).args;
+					if (cmd && cmd.startsWith('roopik.')) {
+						// Execute VS Code command with arguments
+						vscode.commands.executeCommand(cmd, args);
+					}
 					break;
 
 				case 'error':
@@ -456,26 +440,6 @@ export class CanvasPanel implements vscode.Disposable {
 				message: error instanceof Error ? error.message : String(error)
 			});
 		}
-	}
-
-	/**
-	 * Handle create component request from webview (local file picker)
-	 */
-	private async handleCreateComponent(payload: {
-		folderPath: string;
-		componentName?: string;
-	}): Promise<void> {
-		this.logger.info(`Creating component: ${payload.componentName || '(auto)'} from ${payload.folderPath}`);
-
-		const component = await this.manager.createComponent({
-			folderPath: payload.folderPath,
-			canvasId: this.canvasId,
-			componentName: payload.componentName,
-			origin: 'local'
-		});
-
-		// Component created - onComponentCreated event will be routed back
-		this.logger.info(`Component creation initiated: ${component.id}`);
 	}
 
 	/**
@@ -549,213 +513,6 @@ export class CanvasPanel implements vscode.Disposable {
 	}
 
 	/**
-	 * Handle update component source request from webview
-	 */
-	private async handleUpdateComponentSource(payload: {
-		componentId: string;
-		files: Record<string, string>;
-	}): Promise<void> {
-		this.logger.info(`Updating component source: ${payload.componentId}`);
-		await this.manager.updateComponentSource(payload.componentId, payload.files);
-		// This triggers rebuild, onComponentBuilt event will be routed back
-	}
-
-	// ============================================================================
-	// Code Editor Popup - File Operations
-	// ============================================================================
-
-	/**
-	 * Handle load component files request from webview (for code editor popup)
-	 * Returns all source files in the component directory, excluding metadata files
-	 */
-	private async handleLoadComponentFiles(payload: { componentId: string }): Promise<void> {
-		this.logger.info(`Loading component files for editor: ${payload.componentId}`);
-
-		try {
-			// Build the component directory path
-			// Structure: .roopik/canvases/{canvasId}/components/{componentId}/
-			const componentDir = path.join(
-				this.workspacePath,
-				'.roopik',
-				'canvases',
-				this.canvasId,
-				'components',
-				payload.componentId
-			);
-
-			this.logger.info(`[CodePopup] Reading files from: ${componentDir}`);
-
-			// Check if directory exists
-			if (!fs.existsSync(componentDir)) {
-				this.logger.warn(`[CodePopup] Component directory does not exist: ${componentDir}`);
-				this.postToWebview('componentFilesLoaded', {
-					componentId: payload.componentId,
-					files: []
-				});
-				return;
-			}
-
-			// Read component name from meta.json if it exists
-			let componentName: string | undefined;
-			const metaJsonPath = path.join(componentDir, 'meta.json');
-			if (fs.existsSync(metaJsonPath)) {
-				try {
-					const metaContent = fs.readFileSync(metaJsonPath, 'utf-8');
-					const meta = JSON.parse(metaContent);
-					componentName = meta.name;
-					this.logger.debug(`[CodePopup] Found component name: ${componentName}`);
-				} catch (metaError) {
-					this.logger.warn(`[CodePopup] Failed to read meta.json: ${metaError}`);
-				}
-			}
-
-			// Read all files in the component directory
-			const allFiles = fs.readdirSync(componentDir);
-			this.logger.info(`[CodePopup] Found files in directory: ${JSON.stringify(allFiles)}`);
-
-			// Read source files (exclude metadata and non-source files)
-			const source: Record<string, string> = {};
-			const sourceExtensions = ['.tsx', '.jsx', '.ts', '.js', '.css', '.scss', '.less', '.html', '.vue', '.svelte', '.json', '.md'];
-
-			for (const filename of allFiles) {
-				const ext = path.extname(filename).toLowerCase();
-				if (sourceExtensions.includes(ext)) {
-					const filePath = path.join(componentDir, filename);
-					try {
-						const content = fs.readFileSync(filePath, 'utf-8');
-						source[filename] = content;
-					} catch (readError) {
-						this.logger.warn(`[CodePopup] Failed to read file: ${filePath}`);
-					}
-				}
-			}
-
-			this.logger.info(`[CodePopup] Loaded ${Object.keys(source).length} source files: ${JSON.stringify(Object.keys(source))}`);
-
-			// Transform to array format with metadata
-			const sourceFiles = Object.entries(source)
-				.filter(([filename]) => {
-					// Exclude metadata files
-					const excludePatterns = ['component.json', 'component.meta.json', '.meta.json', 'meta.json', 'index.json'];
-					return !excludePatterns.some(pattern => filename.endsWith(pattern));
-				});
-
-			// Detect entry file by common patterns (index.tsx, index.jsx, Component.tsx, etc.)
-			const entryPriority = ['.tsx', '.jsx', '.ts', '.js', '.vue', '.svelte'];
-			let detectedEntryFile: string | undefined;
-
-			// First try: look for index.* or main.*
-			for (const ext of entryPriority) {
-				const indexFile = sourceFiles.find(([f]) => f === `index${ext}` || f === `main${ext}`);
-				if (indexFile) {
-					detectedEntryFile = indexFile[0];
-					break;
-				}
-			}
-
-			// Second try: look for file matching component ID name
-			if (!detectedEntryFile) {
-				for (const ext of entryPriority) {
-					const namedFile = sourceFiles.find(([f]) =>
-						f.toLowerCase() === `${payload.componentId.toLowerCase()}${ext}`
-					);
-					if (namedFile) {
-						detectedEntryFile = namedFile[0];
-						break;
-					}
-				}
-			}
-
-			// Third try: first .tsx/.jsx file
-			if (!detectedEntryFile) {
-				const firstComponent = sourceFiles.find(([f]) =>
-					f.endsWith('.tsx') || f.endsWith('.jsx')
-				);
-				if (firstComponent) {
-					detectedEntryFile = firstComponent[0];
-				}
-			}
-
-			const files = sourceFiles.map(([filename, content]) => ({
-				filename,
-				content,
-				isEntry: filename === detectedEntryFile
-			}));
-
-			// Sort: entry file first, then alphabetically
-			files.sort((a, b) => {
-				if (a.isEntry && !b.isEntry) { return -1; }
-				if (!a.isEntry && b.isEntry) { return 1; }
-				return a.filename.localeCompare(b.filename);
-			});
-
-			this.postToWebview('componentFilesLoaded', {
-				componentId: payload.componentId,
-				componentName,
-				files
-			});
-
-			this.logger.debug(`Loaded ${files.length} files for component ${payload.componentId} (name: ${componentName})`);
-		} catch (error) {
-			this.logger.error(`Failed to load component files: ${error}`);
-			this.postToWebview('componentFilesLoaded', {
-				componentId: payload.componentId,
-				files: []
-			});
-		}
-	}
-
-	/**
-	 * Handle save component file request from webview (from code editor popup)
-	 * Saves a single file and triggers rebuild via file watcher
-	 */
-	private async handleSaveComponentFile(payload: {
-		componentId: string;
-		filename: string;
-		content: string;
-	}): Promise<void> {
-		this.logger.info(`Saving component file: ${payload.componentId}/${payload.filename}`);
-
-		try {
-			// Build the file path
-			// Structure: .roopik/canvases/{canvasId}/components/{componentId}/{filename}
-			const filePath = path.join(
-				this.workspacePath,
-				'.roopik',
-				'canvases',
-				this.canvasId,
-				'components',
-				payload.componentId,
-				payload.filename
-			);
-
-			this.logger.info(`[CodePopup] Writing file to: ${filePath}`);
-
-			// Write the file directly
-			fs.writeFileSync(filePath, payload.content, 'utf-8');
-
-			this.postToWebview('componentFileSaved', {
-				componentId: payload.componentId,
-				filename: payload.filename,
-				success: true
-			});
-
-			this.logger.debug(`Saved file ${payload.filename} for component ${payload.componentId}`);
-		} catch (error) {
-			this.logger.error(`Failed to save component file: ${error}`);
-			this.postToWebview('componentFileSaved', {
-				componentId: payload.componentId,
-				filename: payload.filename,
-				success: false
-			});
-		}
-	}
-
-	// ============================================================================
-	// End Code Editor Popup - File Operations
-	// ============================================================================
-
-	/**
 	 * Handle show notification request from webview
 	 */
 	private handleShowNotification(payload: {
@@ -785,6 +542,79 @@ export class CanvasPanel implements vscode.Disposable {
 
 		this.logger.error(`Webview error: ${errorMessage}`);
 		vscode.window.showErrorMessage(`Canvas error: ${errorMessage}`);
+	}
+
+	/**
+	 * Open component source files in VS Code editor
+	 * Opens the entry file (or first source file) from the component folder
+	 */
+	public async openComponentInEditor(componentId: string, entryFile?: string): Promise<void> {
+		try {
+			// Read index.json to get component metadata (folderPath, entryFile)
+			const indexJsonPath = this.getIndexJsonPath();
+			if (!fs.existsSync(indexJsonPath)) {
+				vscode.window.showErrorMessage('Canvas index not found');
+				return;
+			}
+
+			const indexData = JSON.parse(fs.readFileSync(indexJsonPath, 'utf-8'));
+			const componentData = indexData.components?.[componentId];
+			if (!componentData) {
+				vscode.window.showErrorMessage(`Component data not found: ${componentId}`);
+				return;
+			}
+
+			// Get folderPath from metadata
+			const componentPath = componentData.folderPath;
+			if (!componentPath || !fs.existsSync(componentPath)) {
+				vscode.window.showErrorMessage(`Component folder not found: ${componentPath}`);
+				return;
+			}
+
+			// Determine which file to open
+			// Priority: entryFile passed from webview > entryFile from metadata > first source file
+			const fileToOpen = entryFile || componentData.entryFile || this.findFirstSourceFile(componentPath);
+			if (!fileToOpen) {
+				vscode.window.showWarningMessage('No source files found in component folder');
+				return;
+			}
+
+			const filePath = path.join(componentPath, fileToOpen);
+			if (!fs.existsSync(filePath)) {
+				vscode.window.showErrorMessage(`File not found: ${fileToOpen}`);
+				return;
+			}
+
+			// Open the file in VS Code editor
+			const document = await vscode.workspace.openTextDocument(filePath);
+			await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
+
+			this.logger.info(`Opened component file in editor: ${fileToOpen}`);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			this.logger.error(`Failed to open component in editor: ${errorMessage}`);
+			vscode.window.showErrorMessage(`Failed to open component files: ${errorMessage}`);
+		}
+	}
+
+	/**
+	 * Find the first source file in a folder (non-recursive)
+	 */
+	private findFirstSourceFile(folderPath: string): string | undefined {
+		const sourceExtensions = ['.tsx', '.jsx', '.ts', '.js'];
+
+		try {
+			const entries = fs.readdirSync(folderPath);
+			for (const entry of entries) {
+				if (sourceExtensions.some(ext => entry.endsWith(ext))) {
+					return entry;
+				}
+			}
+		} catch (error) {
+			// Ignore read errors
+		}
+
+		return undefined;
 	}
 
 	// ============================================================================
@@ -1145,7 +975,6 @@ export class CanvasPanel implements vscode.Disposable {
 		);
 
 		// CSP: Allow esm.sh for CDN imports in sandbox iframes
-		// font-src includes data: for Monaco's inline codicon font
 		const csp = `
 			default-src 'none';
 			style-src ${webview.cspSource} 'unsafe-inline';
