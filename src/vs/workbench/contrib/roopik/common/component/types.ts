@@ -6,11 +6,13 @@
 /**
  * Component Pipeline V2 - Component Types
  *
- * Types for component creation requests and runtime component state.
- * Storage-related types are in ../storage/storageTypes.ts
+ * Simplified architecture:
+ * - AddComponentRequest: Just name, folderPath, entryFile, origin (optional auto-detect)
+ * - No ImportResult needed (we don't transform source anymore)
+ * - Component: Runtime in-memory state (with folderPath instead of storagePath)
  */
 
-import { ComponentSource, SourceInfo, Framework, BuildState } from '../storage/storageTypes.js';
+import { Framework, BuildState } from '../storage/storageTypes.js';
 
 // ============================================================================
 // Component (Runtime State)
@@ -18,44 +20,37 @@ import { ComponentSource, SourceInfo, Framework, BuildState } from '../storage/s
 
 /**
  * Component as seen by Core services
- * This is the in-memory representation with full state
+ *
+ * Key change: folderPath instead of storagePath
+ * This points to the ORIGINAL location, not a copy in .roopik/
  */
 export interface Component {
-	/** Unique ID (also folder name) */
+	/** Unique ID */
 	id: string;
 
 	/** Display name */
-	name: string;
+	name?: string;
 
 	/** Parent canvas */
 	canvasId: string;
 
-	/** How the component was created */
-	source: ComponentSource;
+	/** Workspace-relative path to component folder ("/src/components/Button") */
+	folderPath: string;
 
-	/** Additional source info */
-	sourceInfo?: SourceInfo;
+	/** Entry file (relative to folderPath, e.g., "Button.tsx") */
+	entryFile?: string;
 
-	/** Absolute path to component folder in workspace */
-	storagePath: string;
-
-	/** Main entry file (relative) */
-	entryFile: string;
-
-	/** All source files (relative) */
-	files: string[];
-
-	/** Framework */
-	framework: Framework;
-
-	/** NPM dependencies */
-	dependencies: Record<string, string>;
+	/** Detected framework */
+	framework?: Framework;
 
 	/** Current build state */
-	buildState: BuildState;
+	buildState?: BuildState;
 
 	/** Hash of source files (for cache) */
-	contentHash: string;
+	contentHash?: string;
+
+	/** Origin hint: 'local' | 'ai' | 'figma' | 'github' (informational) */
+	origin?: string;
 
 	/** Timestamps */
 	createdAt: number;
@@ -63,141 +58,32 @@ export interface Component {
 }
 
 // ============================================================================
-// Create Requests
+// Add Component Request (Minimal!)
 // ============================================================================
 
 /**
- * Request to create a new component
+ * Request to add a component to a canvas
+ *
+ * Simple and clean:
+ * 1. Point to component folder (original location!)
+ * 2. Specify entry file (or auto-detect)
+ * 3. Optional: provide origin for info (doesn't change flow)
  */
-export interface CreateComponentRequest {
+export interface AddComponentRequest {
 	/** Display name */
 	name: string;
 
 	/** Target canvas (if not provided, uses active canvas) */
 	canvasId?: string;
 
-	/** Source type */
-	source: ComponentSource;
+	/** Workspace-relative path to component folder ("/src/components/Button") */
+	folderPath: string;
 
-	/** Source-specific data */
-	sourceData: SourceData;
+	/** Entry file relative to folderPath (e.g., "Button.tsx") - auto-detect if not provided */
+	entryFile?: string;
 
-	/** Override detected framework */
-	framework?: Framework;
-
-	/** Additional dependencies */
-	dependencies?: Record<string, string>;
-}
-
-/**
- * Source-specific data for component creation
- */
-export type SourceData =
-	| AIAgentSourceData
-	| LocalFileSourceData
-	| DragDropSourceData
-	| GitHubSourceData
-	| FigmaSourceData
-	| ManualSourceData;
-
-/**
- * AI Agent generated code
- */
-export interface AIAgentSourceData {
-	type: 'ai-agent';
-	/** Single file content */
-	code: string;
-	/** Or multiple files */
-	files?: Record<string, string>;
-	/** Prompt ID for tracking */
-	promptId?: string;
-	/** Model used */
-	model?: string;
-}
-
-/**
- * Import from local file in user's project
- */
-export interface LocalFileSourceData {
-	type: 'local-file';
-	/** Absolute path to file */
-	filePath: string;
-}
-
-/**
- * Drag-and-drop from OS file manager onto canvas
- *
- * Unlike local-file, we don't have the file path (browser security).
- * Instead, we receive the file content directly from the webview.
- * Supports single file now, can be extended to multiple files in future.
- */
-export interface DragDropSourceData {
-	type: 'drag-drop';
-	/** File name with extension (e.g., "Button.tsx") */
-	fileName: string;
-	/** File content as string */
-	content: string;
-	/** For future: multiple files support */
-	files?: Record<string, string>;
-}
-
-/**
- * Import from GitHub
- */
-export interface GitHubSourceData {
-	type: 'github';
-	/** Repository URL */
-	repoUrl: string;
-	/** Path to file in repo */
-	filePath: string;
-	/** Branch (default: main) */
-	branch?: string;
-}
-
-/**
- * Import from Figma design
- */
-export interface FigmaSourceData {
-	type: 'figma';
-	/** Figma file ID */
-	fileId: string;
-	/** Node ID */
-	nodeId: string;
-}
-
-/**
- * Create blank component manually
- */
-export interface ManualSourceData {
-	type: 'manual';
-	/** Framework to use */
-	framework: Framework;
-	/** Template type */
-	template?: 'blank' | 'basic' | 'with-state';
-}
-
-// ============================================================================
-// Import Result
-// ============================================================================
-
-/**
- * Result from ImportService after processing a source
- */
-export interface ImportResult {
-	/** Source files (filename → content) */
-	files: Record<string, string>;
-
-	/** Main entry file */
-	entryFile: string;
-
-	/** Detected framework */
-	framework: Framework;
-
-	/** Detected dependencies */
-	dependencies: Record<string, string>;
-
-	/** Source info for metadata */
-	sourceInfo: SourceInfo;
+	/** Origin hint: 'local' | 'ai' | 'figma' | 'github' (informational only, doesn't change flow) */
+	origin?: string;
 }
 
 // ============================================================================

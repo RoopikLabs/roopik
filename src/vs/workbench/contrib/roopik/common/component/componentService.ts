@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import { Component, CreateComponentRequest, BuildResult, BuildErrorInfo } from './types.js';
+import { Component, AddComponentRequest, BuildResult, BuildErrorInfo } from './types.js';
 
 // ============================================================================
 // Event Types
@@ -127,23 +127,28 @@ export interface IComponentService {
 	dispose(): void;
 
 	// ========================================================================
-	// Create
+	// Create/Add Component
 	// ========================================================================
 
 	/**
-	 * Create a new component from any source
+	 * Add component to canvas by reference (metadata-only architecture)
 	 *
-	 * Flow:
-	 * 1. Get canvasId (from request or active canvas)
-	 * 2. Import files via ImportService
-	 * 3. Save to workspace via StorageService
-	 * 4. Build via BuildService (async, result via event)
-	 * 5. Return Component (with buildState: 'building')
+	 * Simple workflow:
+	 * 1. Validate folder exists
+	 * 2. Auto-detect entryFile if not provided (index.tsx → index.ts → {folderName}.tsx)
+	 * 3. Auto-detect framework from imports (react/vue/svelte/unknown)
+	 * 4. Save reference to .roopik/canvases/{canvas-id}.json (NO copying!)
+	 * 5. Register folder watcher on original folderPath
+	 * 6. Queue build (reads from original location)
+	 * 7. Return Component (with buildState: 'building')
 	 *
-	 * The returned component may still be building. Listen to onComponentBuilt
+	 * The returned component may still be building. Listen to onComponentAdded/onComponentBuilt
 	 * for the final result.
+	 *
+	 * @param request AddComponentRequest with name, folderPath, optional entryFile/origin
+	 * @returns Component with populated id, canvasId, folderPath, framework
 	 */
-	createComponent(request: CreateComponentRequest): Promise<Component>;
+	addComponent(request: AddComponentRequest): Promise<Component>;
 
 	// ========================================================================
 	// Read
