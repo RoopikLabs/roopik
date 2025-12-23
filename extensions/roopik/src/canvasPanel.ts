@@ -417,16 +417,6 @@ export class CanvasPanel implements vscode.Disposable {
 					});
 					break;
 
-				case 'command':
-					// Handle command messages from webview (e.g., open component in editor)
-					const cmd = (message as { command?: string; args?: unknown }).command;
-					const args = (message as { command?: string; args?: unknown }).args;
-					if (cmd && cmd.startsWith('roopik.')) {
-						// Execute VS Code command with arguments
-						vscode.commands.executeCommand(cmd, args);
-					}
-					break;
-
 				case 'error':
 					this.handleWebviewError(message.payload);
 					break;
@@ -542,79 +532,6 @@ export class CanvasPanel implements vscode.Disposable {
 
 		this.logger.error(`Webview error: ${errorMessage}`);
 		vscode.window.showErrorMessage(`Canvas error: ${errorMessage}`);
-	}
-
-	/**
-	 * Open component source files in VS Code editor
-	 * Opens the entry file (or first source file) from the component folder
-	 */
-	public async openComponentInEditor(componentId: string, entryFile?: string): Promise<void> {
-		try {
-			// Read index.json to get component metadata (folderPath, entryFile)
-			const indexJsonPath = this.getIndexJsonPath();
-			if (!fs.existsSync(indexJsonPath)) {
-				vscode.window.showErrorMessage('Canvas index not found');
-				return;
-			}
-
-			const indexData = JSON.parse(fs.readFileSync(indexJsonPath, 'utf-8'));
-			const componentData = indexData.components?.[componentId];
-			if (!componentData) {
-				vscode.window.showErrorMessage(`Component data not found: ${componentId}`);
-				return;
-			}
-
-			// Get folderPath from metadata
-			const componentPath = componentData.folderPath;
-			if (!componentPath || !fs.existsSync(componentPath)) {
-				vscode.window.showErrorMessage(`Component folder not found: ${componentPath}`);
-				return;
-			}
-
-			// Determine which file to open
-			// Priority: entryFile passed from webview > entryFile from metadata > first source file
-			const fileToOpen = entryFile || componentData.entryFile || this.findFirstSourceFile(componentPath);
-			if (!fileToOpen) {
-				vscode.window.showWarningMessage('No source files found in component folder');
-				return;
-			}
-
-			const filePath = path.join(componentPath, fileToOpen);
-			if (!fs.existsSync(filePath)) {
-				vscode.window.showErrorMessage(`File not found: ${fileToOpen}`);
-				return;
-			}
-
-			// Open the file in VS Code editor
-			const document = await vscode.workspace.openTextDocument(filePath);
-			await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
-
-			this.logger.info(`Opened component file in editor: ${fileToOpen}`);
-		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : String(error);
-			this.logger.error(`Failed to open component in editor: ${errorMessage}`);
-			vscode.window.showErrorMessage(`Failed to open component files: ${errorMessage}`);
-		}
-	}
-
-	/**
-	 * Find the first source file in a folder (non-recursive)
-	 */
-	private findFirstSourceFile(folderPath: string): string | undefined {
-		const sourceExtensions = ['.tsx', '.jsx', '.ts', '.js'];
-
-		try {
-			const entries = fs.readdirSync(folderPath);
-			for (const entry of entries) {
-				if (sourceExtensions.some(ext => entry.endsWith(ext))) {
-					return entry;
-				}
-			}
-		} catch (error) {
-			// Ignore read errors
-		}
-
-		return undefined;
 	}
 
 	// ============================================================================

@@ -832,28 +832,10 @@ function App() {
 		});
 	}, []);
 
-	// Open component source files in VS Code editor
+	// Stub: Open component source files in VS Code editor (coming soon)
 	const handleSandboxShowCode = useCallback((sandboxId: string) => {
-		console.log("[Canvas] Opening component in editor:", sandboxId);
-
-		// Find the sandbox to get its component metadata
-		const sandbox = sandboxes.find((s) => s.id === sandboxId);
-		if (!sandbox) {
-			console.error("[Canvas] Sandbox not found:", sandboxId);
-			return;
-		}
-
-		// Call VS Code command to open component files in editor
-		vscode.postMessage({
-			type: "command",
-			command: "roopik.component.openInEditor",
-			args: {
-				componentId: sandboxId,
-				canvasId: CANVAS_CONFIG.canvasId,
-				entryFile: sandbox.componentInput?.entryFile,
-			},
-		});
-	}, [sandboxes]);
+		console.log("[Canvas] Show code for component:", sandboxId, "(coming soon)");
+	}, []);
 
 	// Sandbox update handler
 	const handleSandboxUpdate = useCallback(

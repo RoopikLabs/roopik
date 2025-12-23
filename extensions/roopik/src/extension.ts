@@ -174,27 +174,6 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	);
 
-	// Open component source files in VS Code editor
-	const openComponentInEditorCommand = vscode.commands.registerCommand(
-		'roopik.component.openInEditor',
-		async (args: { componentId: string; canvasId: string; entryFile?: string }) => {
-			logger.info('Extension', `Opening component ${args.componentId} from canvas ${args.canvasId} in editor`);
-
-			try {
-				const panel = manager!.getPanel(args.canvasId);
-				if (!panel) {
-					throw new Error(`Canvas panel not found: ${args.canvasId}`);
-				}
-
-				await panel.openComponentInEditor(args.componentId, args.entryFile);
-			} catch (err) {
-				const errorMsg = err instanceof Error ? err.message : String(err);
-				logger.error('Extension', `Failed to open component in editor: ${errorMsg}`);
-				vscode.window.showErrorMessage(`Failed to open component files: ${errorMsg}`);
-			}
-		}
-	);
-
 	// ============================================================================
 	// Component Event Commands (received from Core via RoopikComponentContribution)
 	// ============================================================================
@@ -257,7 +236,6 @@ export async function activate(context: vscode.ExtensionContext) {
 		closeCanvasCommand,
 		updateCanvasCommand,
 		importComponentCommand,
-		openComponentInEditorCommand,
 		componentCreatedCommand,
 		componentBuiltCommand,
 		componentDeletedCommand,
@@ -266,7 +244,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	logger.info('Extension', 'Roopik Canvas extension activated');
 	logger.info('Extension', 'Canvas commands: roopik.canvas.open, roopik.canvas.close, roopik.canvas.update, roopik.canvas.importComponent');
-	logger.info('Extension', 'Component commands: roopik.component.openInEditor');
 	logger.info('Extension', 'Component event commands: roopik.component.created, roopik.component.built, roopik.component.deleted, roopik.component.updated');
 }
 
