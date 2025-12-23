@@ -171,18 +171,18 @@ export function registerImportCommands(): void {
 			const filePath = selectedUri.fsPath;
 
 			try {
-				const fileName = filePath.split(/[\\/]/).pop() || 'Component';
+				// Extract folder path and entry file from the selected file
+				const pathParts = filePath.split(/[\\/]/);
+				const fileName = pathParts.pop() || 'Component';
+				const folderPath = pathParts.join('\\');
 				const componentName = fileName.replace(/\.[^/.]+$/, '');
 
 				await componentService.addComponent({
 					name: componentName,
 					canvasId: canvasId,
-					folderPath: filePath
+					folderPath: folderPath,
+					entryFile: fileName
 				});
-
-				notificationService.info(
-					localize('roopik.import.success', 'Importing component: {0}', componentName)
-				);
 			} catch (err) {
 				const errorMsg = err instanceof Error ? err.message : String(err);
 				notificationService.error(
