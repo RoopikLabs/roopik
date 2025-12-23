@@ -16,7 +16,6 @@ import type {
 	ComponentDeletedEvent,
 	ComponentUpdatedEvent
 } from './types/componentEvents';
-import type { SourceData } from './types/component';
 
 // ============================================================================
 // Canvas Preferences (matches Core's storageTypes.ts)
@@ -460,20 +459,19 @@ export class CanvasPanel implements vscode.Disposable {
 	}
 
 	/**
-	 * Handle create component request from webview
+	 * Handle create component request from webview (local file picker)
 	 */
 	private async handleCreateComponent(payload: {
-		name: string;
-		sourceData: unknown;
-		position?: { x: number; y: number };
+		folderPath: string;
+		componentName?: string;
 	}): Promise<void> {
-		this.logger.info(`Creating component: ${payload.name}`);
+		this.logger.info(`Creating component: ${payload.componentName || '(auto)'} from ${payload.folderPath}`);
 
 		const component = await this.manager.createComponent({
+			folderPath: payload.folderPath,
 			canvasId: this.canvasId,
-			name: payload.name,
-			sourceData: payload.sourceData as SourceData,
-			position: payload.position
+			componentName: payload.componentName,
+			origin: 'local'
 		});
 
 		// Component created - onComponentCreated event will be routed back
@@ -482,6 +480,9 @@ export class CanvasPanel implements vscode.Disposable {
 
 	/**
 	 * Handle drop component request from webview (drag-drop from OS file manager)
+	 *
+	 * NOTE: Webview can only get file content from drag-drop (browser security),
+	 * so we save it temporarily and pass the path to Core.
 	 */
 	private async handleDropComponent(payload: {
 		fileName: string;
@@ -490,14 +491,35 @@ export class CanvasPanel implements vscode.Disposable {
 	}): Promise<void> {
 		this.logger.info(`Dropping component: ${payload.componentName} (${payload.fileName})`);
 
+		// Save dropped file to temp location in workspace
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder) {
+			throw new Error('No workspace folder open');
+		}
+
+		// Create temp folder for dropped components if it doesn't exist
+		const tempDir = path.join(workspaceFolder.uri.fsPath, '.roopik', 'temp', 'drag-drop');
+		if (!fs.existsSync(tempDir)) {
+			fs.mkdirSync(tempDir, { recursive: true });
+		}
+
+		// Save file with timestamp to avoid conflicts
+		const timestamp = Date.now();
+		const safeFileName = payload.fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+		const componentFolder = path.join(tempDir, `${payload.componentName}_${timestamp}`);
+		fs.mkdirSync(componentFolder, { recursive: true });
+
+		const filePath = path.join(componentFolder, safeFileName);
+		fs.writeFileSync(filePath, payload.content, 'utf8');
+
+		this.logger.info(`Saved dropped file to: ${filePath}`);
+
+		// Now create component with the file path
 		const component = await this.manager.createComponent({
+			folderPath: filePath, // Core will extract folder + entry file
 			canvasId: this.canvasId,
-			name: payload.componentName,
-			sourceData: {
-				type: 'drag-drop',
-				fileName: payload.fileName,
-				content: payload.content
-			}
+			componentName: payload.componentName,
+			origin: 'drag-drop'
 		});
 
 		// Component created - onComponentCreated event will be routed back

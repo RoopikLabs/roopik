@@ -155,15 +155,12 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 
 				// Create component via manager (which calls Core)
+				// With new API, just pass folderPath - Core handles everything else
 				await manager!.createComponent({
+					folderPath: filePath, // Core will smart-parse this (extract folder + entry file)
 					canvasId,
-					name: componentName,
-					sourceData: {
-						type: 'local-file',
-						filePath,
-						files: { [fileName]: code }
-					},
-					position
+					componentName,
+					origin: 'local'
 				});
 
 				logger.info('Extension', `Component ${componentName} import initiated for canvas ${canvasId}`);
