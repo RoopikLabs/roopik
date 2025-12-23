@@ -139,8 +139,8 @@ export interface SandboxPosition {
  * We read from there during build, watch that folder, etc.
  */
 export interface ComponentReference {
-	/** Display name */
-	name: string;
+	/** Display name (optional) */
+	name?: string;
 
 	/** Workspace-relative folder path ("/src/components/Button") */
 	folderPath: string;

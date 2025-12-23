@@ -118,12 +118,6 @@ export function registerImportCommands(): void {
 					id: 'third-party',
 					description: 'Coming Soon',
 					detail: 'Import from npm packages like shadcn/ui, Chakra, etc.'
-				},
-				{
-					label: '$(edit) Create Blank Component',
-					id: 'manual',
-					description: 'Start with a template',
-					detail: 'Create a new component from scratch'
 				}
 			];
 
@@ -140,10 +134,6 @@ export function registerImportCommands(): void {
 			switch (selectedSource.id) {
 				case 'local-file':
 					await this.handleLocalFileImport(fileDialogService, componentService, notificationService, canvasId);
-					break;
-
-				case 'manual':
-					await this.handleManualCreate(quickInputService, componentService, notificationService, canvasId);
 					break;
 
 				case 'github':
@@ -184,11 +174,10 @@ export function registerImportCommands(): void {
 				const fileName = filePath.split(/[\\/]/).pop() || 'Component';
 				const componentName = fileName.replace(/\.[^/.]+$/, '');
 
-				await componentService.createComponent({
+				await componentService.addComponent({
 					name: componentName,
 					canvasId: canvasId,
-					source: 'local-file',
-					sourceData: { type: 'local-file', filePath: filePath }
+					folderPath: filePath
 				});
 
 				notificationService.info(
@@ -198,50 +187,6 @@ export function registerImportCommands(): void {
 				const errorMsg = err instanceof Error ? err.message : String(err);
 				notificationService.error(
 					localize('roopik.import.error', 'Failed to import: {0}', errorMsg)
-				);
-			}
-		}
-
-		private async handleManualCreate(
-			quickInputService: IQuickInputService,
-			componentService: IComponentService,
-			notificationService: INotificationService,
-			canvasId: string
-		): Promise<void> {
-			const componentName = await quickInputService.input({
-				title: localize('roopik.import.manual.title', 'Create Blank Component'),
-				prompt: localize('roopik.import.manual.prompt', 'Enter a name for your component'),
-				placeHolder: localize('roopik.import.manual.placeholder', 'e.g., MyComponent'),
-				validateInput: async (value: string) => {
-					if (!value || !value.trim()) {
-						return localize('roopik.import.manual.required', 'Component name is required');
-					}
-					if (!/^[A-Z][a-zA-Z0-9]*$/.test(value)) {
-						return localize('roopik.import.manual.invalidName', 'Use PascalCase (e.g., MyComponent)');
-					}
-					return undefined;
-				}
-			});
-
-			if (!componentName) {
-				return;
-			}
-
-			try {
-				await componentService.createComponent({
-					name: componentName,
-					canvasId: canvasId,
-					source: 'manual',
-					sourceData: { type: 'manual', framework: 'react', template: 'basic' }
-				});
-
-				notificationService.info(
-					localize('roopik.import.created', 'Creating component: {0}', componentName)
-				);
-			} catch (err) {
-				const errorMsg = err instanceof Error ? err.message : String(err);
-				notificationService.error(
-					localize('roopik.import.error', 'Failed to create: {0}', errorMsg)
 				);
 			}
 		}

@@ -21,7 +21,7 @@ import { registerAction2, Action2 } from '../../../../../platform/actions/common
 import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { ICanvasService, CreateCanvasResult } from '../../common/canvas/index.js';
 import { IComponentService } from '../../common/component/componentService.js';
-import { CreateComponentRequest, Component } from '../../common/component/types.js';
+import { Component, AddComponentRequest } from '../../common/component/types.js';
 
 /**
  * Register all component-related commands (Extension → Core)
@@ -68,7 +68,7 @@ export function registerComponentCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor, request: CreateComponentRequest): Promise<Component | undefined> {
+		async run(accessor: ServicesAccessor, request: AddComponentRequest): Promise<Component | undefined> {
 			if (!request) {
 				console.error('[ComponentCommands] roopik.core.createComponent: request is required');
 				return undefined;
@@ -79,7 +79,7 @@ export function registerComponentCommands(): void {
 			const componentService = accessor.get(IComponentService);
 
 			try {
-				const component = await componentService.createComponent(request);
+				const component = await componentService.addComponent(request);
 				console.log('[ComponentCommands] Component created:', component.id);
 				return component;
 			} catch (err) {

@@ -46,12 +46,9 @@ export function registerCanvasTools(
 			sourceData: any;
 		}) => {
 			try {
-				const component = await componentService.createComponent({
-					canvasId,
-					name,
-					source,
-					sourceData
-				});
+				// Note: MCP tool needs to be updated for metadata-only architecture
+				// For now, this will fail as we need folderPath instead of source/sourceData
+				throw new Error('MCP add_component tool not yet updated for metadata-only architecture');
 
 				return {
 					content: [{

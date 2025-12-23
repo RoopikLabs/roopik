@@ -176,27 +176,6 @@ export class McpServerService implements IMcpServerService {
 				if (url.pathname === '/mcp') {
 					console.log(`[MCP] [${timestamp}] Processing /mcp endpoint | Method: ${req.method}`);
 
-					// LOG: If this is a POST with body data (tool call or other request)
-					if (req.method === 'POST') {
-						let body = '';
-						req.on('data', chunk => {
-							body += chunk.toString();
-						});
-						req.on('end', () => {
-							try {
-								const parsed = JSON.parse(body);
-								if (parsed.method === 'tools/call') {
-									console.log(`[MCP] [${timestamp}] 🔧 Tool Call: ${parsed.params?.name || 'unknown'}`);
-									console.log(`[MCP] [${timestamp}] Arguments:`, JSON.stringify(parsed.params?.arguments || {}, null, 2));
-								} else {
-									console.log(`[MCP] [${timestamp}] MCP Request: ${parsed.method || 'unknown'}`);
-								}
-							} catch {
-								// Not JSON or parsing failed, ignore
-							}
-						});
-					}
-
 					try {
 						// Create transport for this request
 						// Stateless mode: sessionIdGenerator returns undefined

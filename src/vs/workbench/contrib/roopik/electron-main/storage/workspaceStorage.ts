@@ -267,7 +267,8 @@ export class WorkspaceStorage {
 			id: canvasFile.id,
 			name: canvasFile.name,
 			createdAt: canvasFile.createdAt,
-			updatedAt: canvasFile.updatedAt
+			updatedAt: canvasFile.updatedAt,
+			componentCount: Object.keys(canvasFile.components).length
 		};
 	}
 
@@ -592,15 +593,6 @@ export class WorkspaceStorage {
 		try {
 			await fs.promises.access(filePath, fs.constants.F_OK);
 			return true;
-		} catch {
-			return false;
-		}
-	}
-
-	private async dirExists(dirPath: string): Promise<boolean> {
-		try {
-			const stat = await fs.promises.stat(dirPath);
-			return stat.isDirectory();
 		} catch {
 			return false;
 		}

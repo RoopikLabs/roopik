@@ -26,7 +26,7 @@ import {
 } from '../common/component/componentService.js';
 import {
 	Component,
-	CreateComponentRequest
+	AddComponentRequest
 } from '../common/component/types.js';
 
 import { COMPONENT_CHANNEL_NAME } from '../common/component/index.js';
@@ -88,7 +88,7 @@ export class ComponentServiceClient implements IComponentService {
 	// Create
 	// ========================================================================
 
-	async addComponent(request: AddComponentRequest): Promise<string> {
+	async addComponent(request: AddComponentRequest): Promise<Component> {
 		return this.channel.call('addComponent', request);
 	}
 

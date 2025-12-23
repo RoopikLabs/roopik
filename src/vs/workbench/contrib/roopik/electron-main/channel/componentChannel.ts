@@ -17,7 +17,7 @@
 import { Event } from '../../../../../base/common/event.js';
 import { IServerChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import { IComponentService } from '../../common/component/componentService.js';
-import { CreateComponentRequest } from '../../common/component/types.js';
+import { AddComponentRequest } from '../../common/component/types.js';
 
 export class ComponentChannel implements IServerChannel {
 	constructor(private readonly service: IComponentService) { }
@@ -56,8 +56,8 @@ export class ComponentChannel implements IServerChannel {
 			// ================================================================
 			// Create
 			// ================================================================
-			case 'createComponent':
-				return this.service.createComponent(arg as CreateComponentRequest);
+			case 'addComponent':
+				return this.service.addComponent(arg as AddComponentRequest);
 
 			// ================================================================
 			// Read

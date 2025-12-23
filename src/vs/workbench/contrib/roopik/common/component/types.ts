@@ -70,8 +70,11 @@ export interface Component {
  * 3. Optional: provide origin for info (doesn't change flow)
  */
 export interface AddComponentRequest {
-	/** Display name */
-	name: string;
+	/** Unique component ID (auto-generated if not provided) */
+	componentId?: string;
+
+	/** Display name (optional) */
+	name?: string;
 
 	/** Target canvas (if not provided, uses active canvas) */
 	canvasId?: string;

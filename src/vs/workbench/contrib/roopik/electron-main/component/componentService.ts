@@ -197,6 +197,7 @@ export class ComponentService extends Disposable implements IComponentService {
 		}
 
 		// 3. Auto-detect entry file if not provided
+		console.log(`[ComponentService] 🔍 ENTRY FILE DETECTION START - Request data:`, JSON.stringify({ componentId: request.componentId, name: request.name, folderPath: request.folderPath, entryFile: request.entryFile, framework: request.framework, origin: request.origin }, null, 2));
 		let entryFile = request.entryFile;
 		if (!entryFile) {
 			console.log(`[ComponentService] Auto-detecting entry file for ${request.name}...`);
@@ -236,8 +237,8 @@ export class ComponentService extends Disposable implements IComponentService {
 			console.warn(`[ComponentService] Hash warnings:`, warnings);
 		}
 
-		// 6. Generate component ID
-		const componentId = generateComponentId();
+		// 6. Generate component ID (or use provided one)
+		const componentId = request.componentId || generateComponentId();
 		const now = Date.now();
 
 		// 7. Create ComponentReference (metadata-only, stored in canvas file)

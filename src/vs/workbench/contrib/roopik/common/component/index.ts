@@ -11,7 +11,6 @@
 export {
 	Component,
 	AddComponentRequest,
-	BuildRequest,
 	BuildResult,
 	BuildError,
 	BuildErrorInfo,
