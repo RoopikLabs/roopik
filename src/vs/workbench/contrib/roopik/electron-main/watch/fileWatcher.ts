@@ -113,7 +113,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	 */
 	start(workspacePath?: string): void {
 		if (this.watching) {
-			console.log('[FileWatcher] Already watching');
+			console.log('[Roopik FileWatcher] Already watching');
 			return;
 		}
 
@@ -122,12 +122,12 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 		}
 
 		if (!this.workspacePath) {
-			console.error('[FileWatcher] No workspace path provided');
+			console.error('[Roopik FileWatcher] No workspace path provided');
 			return;
 		}
 
 		this.watching = true;
-		console.log('[FileWatcher] Started (metadata-only mode - use registerFolderWatch for each component)');
+		console.log('[Roopik FileWatcher] Started (metadata-only mode - use registerFolderWatch for each component)');
 	}
 
 	/**
@@ -139,9 +139,9 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 		for (const [componentId, registered] of this.registeredWatches) {
 			try {
 				registered.watcher.close();
-				console.log(`[FileWatcher] Closed watcher for component: ${componentId}`);
+				console.log(`[Roopik FileWatcher] Closed watcher for component: ${componentId}`);
 			} catch (error) {
-				console.error(`[FileWatcher] Error closing watcher for ${componentId}:`, error);
+				console.error(`[Roopik FileWatcher] Error closing watcher for ${componentId}:`, error);
 			}
 		}
 		this.registeredWatches.clear();
@@ -158,7 +158,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 		this.pausedQueue.clear();
 
 		this.watching = false;
-		console.log('[FileWatcher] Stopped watching');
+		console.log('[Roopik FileWatcher] Stopped watching');
 	}
 
 	/**
@@ -195,9 +195,9 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 			}
 			this.debounceMap.clear();
 			this.pausedQueue.clear();
-			console.log('[FileWatcher] Disabled');
+			console.log('[Roopik FileWatcher] Disabled');
 		} else if (!wasEnabled && enabled) {
-			console.log('[FileWatcher] Enabled');
+			console.log('[Roopik FileWatcher] Enabled');
 		}
 	}
 
@@ -232,7 +232,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 		}
 		this.debounceMap.clear();
 
-		console.log('[FileWatcher] Paused');
+		console.log('[Roopik FileWatcher] Paused');
 	}
 
 	/**
@@ -244,7 +244,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 		}
 
 		this.paused = false;
-		console.log('[FileWatcher] Resumed');
+		console.log('[Roopik FileWatcher] Resumed');
 
 		// Emit all queued changes
 		for (const [, pending] of this.pausedQueue) {
@@ -269,7 +269,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	 */
 	ignoreComponent(componentId: string): void {
 		this.ignoredComponents.add(componentId);
-		console.log(`[FileWatcher] Ignoring component: ${componentId}`);
+		console.log(`[Roopik FileWatcher] Ignoring component: ${componentId}`);
 	}
 
 	/**
@@ -277,7 +277,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	 */
 	unignoreComponent(componentId: string): void {
 		this.ignoredComponents.delete(componentId);
-		console.log(`[FileWatcher] Unignoring component: ${componentId}`);
+		console.log(`[Roopik FileWatcher] Unignoring component: ${componentId}`);
 	}
 
 	/**
@@ -299,7 +299,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	 */
 	clearIgnoredComponents(): void {
 		this.ignoredComponents.clear();
-		console.log('[FileWatcher] Cleared all ignored components');
+		console.log('[Roopik FileWatcher] Cleared all ignored components');
 	}
 
 	// ============================================================================
@@ -314,7 +314,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	registerFolderWatch(componentId: string, folderPath: string, canvasId: string): void {
 		// Check if already registered
 		if (this.registeredWatches.has(componentId)) {
-			console.warn(`[FileWatcher] Component already has a registered watch: ${componentId}`);
+			console.warn(`[Roopik FileWatcher] Component already has a registered watch: ${componentId}`);
 			return;
 		}
 
@@ -338,10 +338,10 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 				watcher
 			});
 
-			console.log(`[FileWatcher] Registered watch for ${componentId} at ${folderPath}`);
+			console.log(`[Roopik FileWatcher] Registered watch for ${componentId} at ${folderPath}`);
 
 		} catch (error) {
-			console.error(`[FileWatcher] Failed to register watch for ${componentId}:`, error);
+			console.error(`[Roopik FileWatcher] Failed to register watch for ${componentId}:`, error);
 		}
 	}
 
@@ -351,16 +351,16 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	unregisterFolderWatch(componentId: string): void {
 		const registered = this.registeredWatches.get(componentId);
 		if (!registered) {
-			console.warn(`[FileWatcher] No registered watch found for: ${componentId}`);
+			console.warn(`[Roopik FileWatcher] No registered watch found for: ${componentId}`);
 			return;
 		}
 
 		try {
 			registered.watcher.close();
 			this.registeredWatches.delete(componentId);
-			console.log(`[FileWatcher] Unregistered watch for: ${componentId}`);
+			console.log(`[Roopik FileWatcher] Unregistered watch for: ${componentId}`);
 		} catch (error) {
-			console.error(`[FileWatcher] Error unregistering watch for ${componentId}:`, error);
+			console.error(`[Roopik FileWatcher] Error unregistering watch for ${componentId}:`, error);
 		}
 
 		// Clean up any pending changes for this component
@@ -526,7 +526,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 			return;
 		}
 
-		console.log(`[FileWatcher] ${changeType}: ${canvasId}/${componentId}/${file}`);
+		console.log(`[Roopik FileWatcher] ${changeType}: ${canvasId}/${componentId}/${file}`);
 
 		this._onFileChanged.fire({
 			canvasId,
