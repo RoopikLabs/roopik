@@ -6,8 +6,8 @@
 /**
  * Browser Tools (Project Mode)
  *
- * MCP tools for browser navigation, screenshots, and page interaction.
- * These tools are part of Project Mode - giving AI agents eyes to see results.
+ * MCP tools for browser interaction in Project Mode.
+ * These give AI agents visual verification and DOM inspection capabilities.
  */
 
 import type { BrowserViewService } from '../../projectMode/browserViewService.js';
@@ -34,12 +34,11 @@ export function registerBrowserTools(
 	// TOOL: Take Screenshot
 	// --------------------------------------------------------------
 	server.tool(
-		'roopik_takeScreenshot',
-		'Capture a screenshot of the active browser view as a base64-encoded image. Works on the currently open browser (requires a running project).',
+		'rpk_screenshot',
+		'[Roopik IDE] Capture a screenshot of the browser in Project Mode. Returns base64-encoded image. Use this for visual verification after making UI changes.',
 		{},
 		async () => {
 			try {
-				// Auto-resolve active browser view
 				const browserViewId = browserViewService.getActiveBrowserViewId();
 				if (browserViewId === undefined) {
 					return {
@@ -48,7 +47,7 @@ export function registerBrowserTools(
 							text: JSON.stringify({
 								success: false,
 								isError: true,
-								error: 'No browser is currently open. Start a project first with roopik_startProject.'
+								error: 'No browser is open. Start a project first with rpk_startProject.'
 							})
 						}],
 						isError: true
@@ -88,10 +87,10 @@ export function registerBrowserTools(
 	// TOOL: Navigate
 	// --------------------------------------------------------------
 	server.tool(
-		'roopik_navigate',
-		'Navigate the active browser to a URL. Use this to load a specific page or dev server.',
+		'rpk_navigate',
+		'[Roopik IDE] Navigate the browser to a URL. Use this to load specific pages in the project (e.g., /login, /dashboard) or external URLs.',
 		{
-			url: z.string().describe('The URL to navigate to (e.g., http://localhost:3000)')
+			url: z.string().describe('The URL to navigate to (e.g., http://localhost:3000/login)')
 		},
 		async ({ url }: { url: string }) => {
 			try {
@@ -103,7 +102,7 @@ export function registerBrowserTools(
 							text: JSON.stringify({
 								success: false,
 								isError: true,
-								error: 'No browser is currently open. Start a project first with roopik_startProject.'
+								error: 'No browser is open. Start a project first with rpk_startProject.'
 							})
 						}],
 						isError: true
@@ -117,7 +116,8 @@ export function registerBrowserTools(
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: true,
-							url
+							url,
+							message: `Navigated to ${url}`
 						})
 					}]
 				};
@@ -143,8 +143,8 @@ export function registerBrowserTools(
 	// TOOL: Reload Page
 	// --------------------------------------------------------------
 	server.tool(
-		'roopik_reload',
-		'Reload the current page in the active browser. Optionally clear cache for hard reload.',
+		'rpk_reload',
+		'[Roopik IDE] Reload the current page in the browser. Use ignoreCache=true for hard reload after changing assets.',
 		{
 			ignoreCache: z.boolean().optional().describe('If true, clears cache before reloading (hard reload)')
 		},
@@ -158,7 +158,7 @@ export function registerBrowserTools(
 							text: JSON.stringify({
 								success: false,
 								isError: true,
-								error: 'No browser is currently open. Start a project first with roopik_startProject.'
+								error: 'No browser is open. Start a project first with rpk_startProject.'
 							})
 						}],
 						isError: true
@@ -172,217 +172,8 @@ export function registerBrowserTools(
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: true,
-							ignoreCache: ignoreCache || false
-						})
-					}]
-				};
-			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: false,
-							isError: true,
-							error: errorMessage
-						})
-					}],
-					isError: true
-				};
-			}
-		}
-	);
-
-	// --------------------------------------------------------------
-	// TOOL: Get Current URL
-	// --------------------------------------------------------------
-	server.tool(
-		'roopik_getCurrentUrl',
-		'Get the current URL and navigation state of the active browser.',
-		{},
-		async () => {
-			try {
-				const browserViewId = browserViewService.getActiveBrowserViewId();
-				if (browserViewId === undefined) {
-					return {
-						content: [{
-							type: 'text' as const,
-							text: JSON.stringify({
-								success: false,
-								isError: true,
-								error: 'No browser is currently open. Start a project first with roopik_startProject.'
-							})
-						}],
-						isError: true
-					};
-				}
-
-				const navState = await browserViewService.getNavigationState(browserViewId);
-
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: true,
-							url: navState.url,
-							title: navState.title,
-							isLoading: navState.isLoading,
-							canGoBack: navState.canGoBack,
-							canGoForward: navState.canGoForward,
-							lastError: navState.lastError
-						})
-					}]
-				};
-			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: false,
-							isError: true,
-							error: errorMessage
-						})
-					}],
-					isError: true
-				};
-			}
-		}
-	);
-
-	// --------------------------------------------------------------
-	// TOOL: Go Back
-	// --------------------------------------------------------------
-	server.tool(
-		'roopik_goBack',
-		'Navigate back in browser history.',
-		{},
-		async () => {
-			try {
-				const browserViewId = browserViewService.getActiveBrowserViewId();
-				if (browserViewId === undefined) {
-					return {
-						content: [{
-							type: 'text' as const,
-							text: JSON.stringify({
-								success: false,
-								isError: true,
-								error: 'No browser is currently open. Start a project first with roopik_startProject.'
-							})
-						}],
-						isError: true
-					};
-				}
-
-				await browserViewService.goBack(browserViewId);
-
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: true
-						})
-					}]
-				};
-			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: false,
-							isError: true,
-							error: errorMessage
-						})
-					}],
-					isError: true
-				};
-			}
-		}
-	);
-
-	// --------------------------------------------------------------
-	// TOOL: Go Forward
-	// --------------------------------------------------------------
-	server.tool(
-		'roopik_goForward',
-		'Navigate forward in browser history.',
-		{},
-		async () => {
-			try {
-				const browserViewId = browserViewService.getActiveBrowserViewId();
-				if (browserViewId === undefined) {
-					return {
-						content: [{
-							type: 'text' as const,
-							text: JSON.stringify({
-								success: false,
-								isError: true,
-								error: 'No browser is currently open. Start a project first with roopik_startProject.'
-							})
-						}],
-						isError: true
-					};
-				}
-
-				await browserViewService.goForward(browserViewId);
-
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: true
-						})
-					}]
-				};
-			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: false,
-							isError: true,
-							error: errorMessage
-						})
-					}],
-					isError: true
-				};
-			}
-		}
-	);
-
-	// --------------------------------------------------------------
-	// TOOL: Stop Loading
-	// --------------------------------------------------------------
-	server.tool(
-		'roopik_stopLoading',
-		'Stop the current page from loading.',
-		{},
-		async () => {
-			try {
-				const browserViewId = browserViewService.getActiveBrowserViewId();
-				if (browserViewId === undefined) {
-					return {
-						content: [{
-							type: 'text' as const,
-							text: JSON.stringify({
-								success: false,
-								isError: true,
-								error: 'No browser is currently open. Start a project first with roopik_startProject.'
-							})
-						}],
-						isError: true
-					};
-				}
-
-				await browserViewService.stop(browserViewId);
-
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: true
+							hardReload: ignoreCache || false,
+							message: ignoreCache ? 'Page hard-reloaded (cache cleared)' : 'Page reloaded'
 						})
 					}]
 				};
@@ -407,10 +198,10 @@ export function registerBrowserTools(
 	// TOOL: Execute JavaScript
 	// --------------------------------------------------------------
 	server.tool(
-		'roopik_executeScript',
-		'Execute JavaScript in the browser context and return the result. Useful for querying DOM, checking state, or running custom logic.',
+		'rpk_executeScript',
+		'[Roopik IDE] Execute JavaScript in the browser context. Use for DOM queries, checking state, clicking elements, or any browser-side logic. Returns the result.',
 		{
-			script: z.string().describe('JavaScript code to execute')
+			script: z.string().describe('JavaScript code to execute (e.g., "document.querySelector(\'.btn\').click()")')
 		},
 		async ({ script }: { script: string }) => {
 			try {
@@ -422,7 +213,7 @@ export function registerBrowserTools(
 							text: JSON.stringify({
 								success: false,
 								isError: true,
-								error: 'No browser is currently open. Start a project first with roopik_startProject.'
+								error: 'No browser is open. Start a project first with rpk_startProject.'
 							})
 						}],
 						isError: true
@@ -458,69 +249,16 @@ export function registerBrowserTools(
 	);
 
 	// --------------------------------------------------------------
-	// TOOL: Get Page HTML
-	// --------------------------------------------------------------
-	server.tool(
-		'roopik_getPageHTML',
-		'Get the complete HTML of the current page (document.documentElement.outerHTML).',
-		{},
-		async () => {
-			try {
-				const browserViewId = browserViewService.getActiveBrowserViewId();
-				if (browserViewId === undefined) {
-					return {
-						content: [{
-							type: 'text' as const,
-							text: JSON.stringify({
-								success: false,
-								isError: true,
-								error: 'No browser is currently open. Start a project first with roopik_startProject.'
-							})
-						}],
-						isError: true
-					};
-				}
-
-				const html = await browserViewService.getPageHTML(browserViewId);
-
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: true,
-							html
-						})
-					}]
-				};
-			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: false,
-							isError: true,
-							error: errorMessage
-						})
-					}],
-					isError: true
-				};
-			}
-		}
-	);
-
-	// --------------------------------------------------------------
 	// TOOL: Inspect Element Styles
 	// --------------------------------------------------------------
 	server.tool(
-		'roopik_inspectElement',
-		'Get deep CSS inspection for an element including resolved styles, source file locations with line:column, computed values, and overridden properties. This is THE MOAT - unique Roopik capability that gives AI precise CSS context with source maps.',
+		'rpk_inspectElement',
+		'[Roopik IDE] Deep CSS inspection for an element. Returns matched CSS rules with source file locations (file:line:column), computed styles, and specificity. This is THE MOAT - precise CSS context with source maps for accurate edits.',
 		{
-			selector: z.string().describe('CSS selector to find element (e.g., ".btn-primary")'),
-			includeUserAgent: z.boolean().optional().describe('Include browser default styles (default: false)'),
+			selector: z.string().describe('CSS selector to find element (e.g., ".btn-primary", "#header")'),
 			includeInherited: z.boolean().optional().describe('Include inherited styles from parents (default: true)')
 		},
-		async ({ selector, includeUserAgent, includeInherited }: { selector: string; includeUserAgent?: boolean; includeInherited?: boolean }) => {
+		async ({ selector, includeInherited }: { selector: string; includeInherited?: boolean }) => {
 			try {
 				const browserViewId = browserViewService.getActiveBrowserViewId();
 				if (browserViewId === undefined) {
@@ -530,7 +268,7 @@ export function registerBrowserTools(
 							text: JSON.stringify({
 								success: false,
 								isError: true,
-								error: 'No browser is currently open. Start a project first with roopik_startProject.'
+								error: 'No browser is open. Start a project first with rpk_startProject.'
 							})
 						}],
 						isError: true
@@ -543,7 +281,7 @@ export function registerBrowserTools(
 					browserViewId,
 					target: selector,
 					projectRoot: workspacePath,
-					includeUserAgent: includeUserAgent ?? false,
+					includeUserAgent: false,
 					includeInherited: includeInherited ?? true
 				});
 
@@ -554,7 +292,7 @@ export function registerBrowserTools(
 							text: JSON.stringify({
 								success: false,
 								isError: true,
-								error: result.error || 'Failed to inspect element',
+								error: result.error || 'Element not found',
 								selector
 							})
 						}],
@@ -564,7 +302,6 @@ export function registerBrowserTools(
 
 				const data = result.data;
 
-				// Return rich CSS context with source file locations
 				return {
 					content: [{
 						type: 'text' as const,
@@ -588,8 +325,7 @@ export function registerBrowserTools(
 							inlineStyles: data.inlineStyles,
 							inheritedStyles: data.inheritedStyles,
 							properties: data.properties,
-							cssInJs: data.cssInJs,
-							stats: result.diagnostics
+							cssInJs: data.cssInJs
 						})
 					}]
 				};
@@ -611,5 +347,5 @@ export function registerBrowserTools(
 		}
 	);
 
-	console.log('[MCP] Registered 10 browser tools (all auto-resolve active browser - no browserViewId needed)');
+	console.log('[MCP] Registered 5 browser tools: rpk_screenshot, rpk_navigate, rpk_reload, rpk_executeScript, rpk_inspectElement');
 }

@@ -4,9 +4,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 /**
- * Project Lifecycle Tools
+ * Project Mode Tools
  *
- * MCP tools for starting/stopping dev servers and detecting frameworks.
+ * MCP tools for dev server lifecycle in Project Mode.
+ * These give AI agents control over the live preview browser.
  */
 
 import type { DevServerService } from '../../projectMode/devServer/devServerService.js';
@@ -27,74 +28,14 @@ export function registerProjectTools(
 ): void {
 
 	// --------------------------------------------------------------
-	// TOOL: Get Project Status
-	// --------------------------------------------------------------
-	server.tool(
-		'roopik_getProjectStatus',
-		'Get the status of a dev server for a project. Returns running state, URL, port, and framework.',
-		{
-			projectPath: z.string().describe('Absolute path to the project folder')
-		},
-		async ({ projectPath }: { projectPath: string }) => {
-			try {
-				const serverInfo = await devServerService.getServerInfo(projectPath);
-
-				if (!serverInfo) {
-					return {
-						content: [{
-							type: 'text' as const,
-							text: JSON.stringify({
-								success: true,
-								projectPath,
-								running: false,
-								message: 'No dev server running for this project'
-							})
-						}]
-					};
-				}
-
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: true,
-							projectPath,
-							running: serverInfo.state === 'running',
-							state: serverInfo.state,
-							url: serverInfo.url,
-							port: serverInfo.port,
-							framework: serverInfo.framework
-						})
-					}]
-				};
-			} catch (error: unknown) {
-				const message = error instanceof Error ? error.message : String(error);
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: false,
-							error: message,
-							projectPath
-						})
-					}],
-					isError: true
-				};
-			}
-		}
-	);
-
-	// --------------------------------------------------------------
 	// TOOL: Get Active Project
-	// Uses DevServerService to get the currently running server (in-memory state)
 	// --------------------------------------------------------------
 	server.tool(
-		'roopik_getActiveProject',
-		'Get the currently active/running project in Roopik IDE. Returns project info including URL, port, framework if a dev server is running.',
+		'rpk_getActiveProject',
+		'[Roopik IDE] Get the currently running project in Project Mode. Returns the dev server URL, port, framework, and project path. Use this to check if a project is running before using browser tools.',
 		{},
 		async () => {
 			try {
-				// Use DevServerService to get actual running server state (in-memory)
 				const runningServer = await devServerService.getRunningServer();
 
 				if (!runningServer) {
@@ -104,7 +45,7 @@ export function registerProjectTools(
 							text: JSON.stringify({
 								success: true,
 								hasActiveProject: false,
-								message: 'No project is currently running'
+								message: 'No project is currently running. Use rpk_startProject to start one.'
 							})
 						}]
 					};
@@ -132,6 +73,7 @@ export function registerProjectTools(
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: false,
+							isError: true,
 							error: message
 						})
 					}],
@@ -143,11 +85,10 @@ export function registerProjectTools(
 
 	// --------------------------------------------------------------
 	// TOOL: Start Project
-	// UNIVERSAL FLOW: Starts dev server, browser automatically opens via internal event
 	// --------------------------------------------------------------
 	server.tool(
-		'roopik_startProject',
-		'Start a dev server for a project. The browser will automatically open and navigate to the URL when the server is ready. Returns the server URL and success status.',
+		'rpk_startProject',
+		'[Roopik IDE] Start a dev server for a project and open it in the IDE browser. The browser will automatically navigate to the dev server URL. Use rpk_getActiveProject to check if already running.',
 		{
 			projectPath: z.string().describe('Absolute path to the project folder'),
 			port: z.number().optional().describe('Preferred port number (optional, auto-selects if not provided)')
@@ -166,7 +107,7 @@ export function registerProjectTools(
 							success: true,
 							url,
 							projectPath,
-							message: `Dev server started successfully at ${url}`
+							message: `Dev server started at ${url}. Browser is now showing the project.`
 						})
 					}]
 				};
@@ -177,6 +118,7 @@ export function registerProjectTools(
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: false,
+							isError: true,
 							error: message,
 							projectPath
 						})
@@ -189,16 +131,13 @@ export function registerProjectTools(
 
 	// --------------------------------------------------------------
 	// TOOL: Stop Project
-	// No parameters needed - stops whatever project is currently running
-	// (Single server constraint means at most one project runs at a time)
 	// --------------------------------------------------------------
 	server.tool(
-		'roopik_stopProject',
-		'Stop the currently running dev server. No parameters needed - automatically stops whatever project is active.',
+		'rpk_stopProject',
+		'[Roopik IDE] Stop the currently running dev server. No parameters needed - automatically stops whatever project is active.',
 		{},
 		async () => {
 			try {
-				// Find the running server first
 				const runningServer = await devServerService.getRunningServer();
 
 				if (!runningServer) {
@@ -213,7 +152,6 @@ export function registerProjectTools(
 					};
 				}
 
-				// Stop the running server
 				const projectPath = runningServer.projectRoot;
 				await devServerService.stopServer(projectPath);
 
@@ -234,6 +172,7 @@ export function registerProjectTools(
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: false,
+							isError: true,
 							error: message
 						})
 					}],
@@ -243,48 +182,5 @@ export function registerProjectTools(
 		}
 	);
 
-	// --------------------------------------------------------------
-	// TOOL: Detect Framework
-	// --------------------------------------------------------------
-	server.tool(
-		'roopik_detectFramework',
-		'Detect the framework used by a project (React, Vue, Svelte, Next.js, etc.).',
-		{
-			projectPath: z.string().describe('Absolute path to the project folder')
-		},
-		async ({ projectPath }: { projectPath: string }) => {
-			try {
-				const frameworkInfo = await devServerService.detectFramework(projectPath);
-
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: true,
-							projectPath,
-							framework: frameworkInfo.framework,
-							displayName: frameworkInfo.displayName,
-							supported: frameworkInfo.supported,
-							supportsClickToSource: frameworkInfo.supportsClickToSource
-						})
-					}]
-				};
-			} catch (error: unknown) {
-				const message = error instanceof Error ? error.message : String(error);
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: false,
-							error: message,
-							projectPath
-						})
-					}],
-					isError: true
-				};
-			}
-		}
-	);
-
-	console.log('[MCP] Registered 5 project tools: getProjectStatus, getActiveProject, startProject, stopProject, detectFramework');
+	console.log('[MCP] Registered 3 project tools: rpk_getActiveProject, rpk_startProject, rpk_stopProject');
 }
