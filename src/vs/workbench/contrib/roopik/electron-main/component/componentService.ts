@@ -51,12 +51,32 @@ function generateComponentId(): string {
 }
 
 /**
- * Check if folder path exists (basic validation)
+ * Check if folder path exists
  */
 async function folderExists(folderPath: string): Promise<boolean> {
-	// For now, just check if path is absolute and looks valid
-	// In production, would use IFileService to check actual existence
-	return path.isAbsolute(folderPath) && folderPath.length > 0;
+	try {
+		const fs = await import('fs');
+		const stats = await fs.promises.stat(folderPath);
+		return stats.isDirectory();
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Get list of files in a folder (non-recursive, just immediate children)
+ */
+async function getFolderContents(folderPath: string): Promise<string[]> {
+	try {
+		const fs = await import('fs');
+		const entries = await fs.promises.readdir(folderPath, { withFileTypes: true });
+		// Return only files, not directories
+		return entries
+			.filter(entry => entry.isFile())
+			.map(entry => entry.name);
+	} catch {
+		return [];
+	}
 }
 
 // ============================================================================
@@ -189,20 +209,19 @@ export class ComponentService extends Disposable implements IComponentService {
 	async addComponent(request: AddComponentRequest): Promise<Component> {
 		this.ensureInitialized();
 
-		// 1. Smart path parsing: Handle both file paths and folder paths
-		// This allows both UI (file picker) and AI agents to pass either format
-		//
-		// Cases:
+		// ====================================================================
+		// PIPELINE STEP 1: Smart Path Parsing
+		// ====================================================================
+		// Handles both file paths and folder paths flexibly:
 		// - Full file path (C:\project\src\Button.tsx) → Extract folder + entry file
-		// - Folder path only (C:\project\src\) → Auto-detect entry file later
+		// - Folder path only (C:\project\src\Button\) → Auto-detect entry file later
 		//
-		// This makes it flexible for:
-		// - Users selecting a file via file picker
+		// This supports:
+		// - UI file picker (user selects a file)
 		// - AI agents passing folder paths
-		// - AI agents passing file paths (if they detected the entry file)
+		// - AI agents passing file paths (if they know the entry file)
 		let folderPath = request.folderPath;
 		let entryFile = request.entryFile;
-		let componentName = request.name;
 
 		// Check if folderPath actually contains a file (has extension)
 		const pathParts = folderPath.split(/[\\/]/);
@@ -214,94 +233,176 @@ export class ComponentService extends Disposable implements IComponentService {
 			const fileName = pathParts.pop()!;
 			folderPath = pathParts.join(path.sep);
 			entryFile = fileName;
-			// If name not provided, derive from filename
-			if (!componentName) {
-				componentName = fileName.replace(/\.[^/.]+$/, '');
-			}
-			console.log(`[ComponentService] Extracted from file path: folder=${folderPath}, entry=${entryFile}, name=${componentName}`);
+			console.log(`[ComponentService] Path parsing: extracted folder=${folderPath}, entry=${entryFile}`);
 		}
 
-		// 2. Validate folder path
+		// ====================================================================
+		// PIPELINE STEP 2: Folder Validation
+		// ====================================================================
+		// 2a. Check folder exists
 		if (!await folderExists(folderPath)) {
 			throw new Error(`ComponentService: Folder not found: ${folderPath}`);
 		}
 
-		// 3. Get or create canvas ID
-		const canvasId = request.canvasId || await this.canvasService.getFocusedCanvasIdAsync();
-		if (!canvasId) {
-			throw new Error('ComponentService: No canvas specified and no active canvas');
+		// 2b. Check folder is not empty (has at least one file)
+		const folderContents = await getFolderContents(folderPath);
+		if (folderContents.length === 0) {
+			throw new Error(`ComponentService: Folder is empty: ${folderPath}`);
 		}
 
-		// 4. Auto-detect entry file if not provided
-		console.log(`[ComponentService] 🔍 ENTRY FILE DETECTION START - Request data:`, JSON.stringify({ componentId: request.componentId, name: componentName, folderPath: folderPath, entryFile: entryFile, framework: request.framework, origin: request.origin }, null, 2));
+		// ====================================================================
+		// PIPELINE STEP 3: File Type Validation
+		// ====================================================================
+		// Supported component file extensions
+		const SUPPORTED_EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js', '.vue', '.svelte'];
+
+		if (entryFile) {
+			// 3a. If entryFile provided, validate it's a supported type
+			const ext = path.extname(entryFile).toLowerCase();
+			if (!SUPPORTED_EXTENSIONS.includes(ext)) {
+				throw new Error(`ComponentService: Unsupported file type '${ext}'. Supported: ${SUPPORTED_EXTENSIONS.join(', ')}`);
+			}
+		} else {
+			// 3b. If no entryFile, check folder has at least one supported file
+			const hasSupportedFile = folderContents.some(file => {
+				const ext = path.extname(file).toLowerCase();
+				return SUPPORTED_EXTENSIONS.includes(ext);
+			});
+			if (!hasSupportedFile) {
+				throw new Error(`ComponentService: No supported component files found in folder. Supported: ${SUPPORTED_EXTENSIONS.join(', ')}`);
+			}
+		}
+
+		// ====================================================================
+		// PIPELINE STEP 4: Entry File Resolution
+		// ====================================================================
 		if (!entryFile) {
-			console.log(`[ComponentService] Auto-detecting entry file for ${componentName}...`);
+			console.log(`[ComponentService] 🔍 Auto-detecting entry file...`);
 			try {
 				entryFile = await detectEntryFile(folderPath);
+				console.log(`[ComponentService] ✅ Entry file detected: ${entryFile}`);
 			} catch (error) {
 				throw new Error(`ComponentService: Could not auto-detect entry file: ${error}`);
 			}
 		}
 
-		// 5. Auto-detect framework if not provided
+		// ====================================================================
+		// PIPELINE STEP 5: Component Name Resolution
+		// ====================================================================
+		// Priority: request.componentName > derived from entryFile (capitalized)
+		let componentName = request.componentName;
+		if (!componentName) {
+			// Derive from entry file: "button.tsx" → "Button", "MyComponent.tsx" → "MyComponent"
+			const baseName = entryFile.replace(/\.[^/.]+$/, ''); // Remove extension
+			componentName = baseName.charAt(0).toUpperCase() + baseName.slice(1); // Capitalize first letter
+			console.log(`[ComponentService] 📝 Component name derived from entry file: ${componentName}`);
+		}
+
+		// ====================================================================
+		// PIPELINE STEP 6: Canvas ID Resolution
+		// ====================================================================
+		// Priority: request.canvasId > active canvas > create new canvas
+		let canvasId: string | undefined = request.canvasId;
+
+		if (!canvasId) {
+			// Try to get active/focused canvas (returns string | null)
+			const activeCanvasId = await this.canvasService.getFocusedCanvasIdAsync();
+			if (activeCanvasId) {
+				canvasId = activeCanvasId;
+				console.log(`[ComponentService] 🎨 Using active canvas: ${canvasId}`);
+			}
+		}
+
+		if (!canvasId) {
+			// No canvas provided and no active canvas - create new canvas with componentName
+			console.log(`[ComponentService] 🆕 No canvas available, creating new canvas: ${componentName}`);
+			const newCanvas = await this.canvasService.createCanvas(componentName);
+			canvasId = newCanvas.canvasId; // CreateCanvasResult has canvasId, not id
+			console.log(`[ComponentService] ✅ Created new canvas: ${canvasId}`);
+		}
+
+		// At this point canvasId is guaranteed to be defined
+		const resolvedCanvasId = canvasId as string;
+
+		// ====================================================================
+		// PIPELINE STEP 7: Framework Detection
+		// ====================================================================
 		let framework = request.framework;
 		if (!framework) {
-			console.log(`[ComponentService] Auto-detecting framework for ${componentName}...`);
+			console.log(`[ComponentService] 🔧 Auto-detecting framework...`);
 			try {
 				const entryFilePath = path.join(folderPath, entryFile);
 				framework = await detectFramework(entryFilePath);
+				console.log(`[ComponentService] ✅ Framework detected: ${framework}`);
 			} catch (error) {
-				console.warn(`[ComponentService] Framework detection failed:`, error);
+				console.warn(`[ComponentService] ⚠️ Framework detection failed, defaulting to 'unknown':`, error);
 				framework = 'unknown';
 			}
 		}
 
-		// 6. Compute content hash from all files in folder
-		// This is critical for cache validation and detecting changes
-		// Uses defensive hashing - never fails, always returns a hash
-		console.log(`[ComponentService] Computing content hash for ${componentName}...`);
+		// ====================================================================
+		// PIPELINE STEP 8: Content Hash Computation
+		// ====================================================================
+		// Critical for cache validation and detecting file changes
+		console.log(`[ComponentService] 🔢 Computing content hash...`);
 		const hashResult = await computeContentHashFromFolder(folderPath);
 		const { hash: contentHash, filesHashed, filesSkipped, bytesHashed, warnings } = hashResult;
-
-		// Log hash computation results
-		console.log(`[ComponentService] Hash computed: ${contentHash} (${filesHashed} files, ${bytesHashed} bytes)`);
+		console.log(`[ComponentService] ✅ Hash: ${contentHash} (${filesHashed} files, ${bytesHashed} bytes)`);
 		if (filesSkipped > 0) {
-			console.warn(`[ComponentService] ⚠️  Skipped ${filesSkipped} files due to read errors`);
+			console.warn(`[ComponentService] ⚠️ Skipped ${filesSkipped} files due to read errors`);
 		}
 		if (warnings.length > 0) {
 			console.warn(`[ComponentService] Hash warnings:`, warnings);
 		}
 
-		// 7. Generate component ID (or use provided one)
+		// ====================================================================
+		// PIPELINE STEP 9: Generate Component ID
+		// ====================================================================
 		const componentId = request.componentId || generateComponentId();
 		const now = Date.now();
 
-		// 8. Create ComponentReference (metadata-only, stored in canvas file)
+		// ====================================================================
+		// PIPELINE COMPLETE - All fields resolved, ready to save
+		// ====================================================================
+		console.log(`[ComponentService] 📊 Pipeline complete:`, JSON.stringify({
+			componentId,
+			componentName,
+			folderPath,
+			entryFile,
+			canvasId: resolvedCanvasId,
+			framework,
+			origin: request.origin
+		}, null, 2));
+
+		// ====================================================================
+		// SAVE: Create ComponentReference and persist to canvas file
+		// ====================================================================
 		const reference: ComponentReference = {
 			name: componentName,
-			folderPath: folderPath,
+			folderPath,
 			entryFile,
 			framework: framework || 'unknown',
 			position: { x: 0, y: 0, zIndex: 0 },
 			buildState: { status: 'building' },
-			contentHash, // Store computed hash for later comparison
+			contentHash,
 			origin: request.origin,
 			createdAt: now,
 			updatedAt: now
 		};
 
-		// 9. Save reference to canvas file (atomic)
-		await this.storageService.addComponentReference(canvasId, componentId, reference);
+		await this.storageService.addComponentReference(resolvedCanvasId, componentId, reference);
+		console.log(`[ComponentService] 💾 Saved to canvas file`);
 
-		// 10. Create Component object for in-memory registry
-		// All required fields are now resolved (entryFile, framework, contentHash)
+		// ====================================================================
+		// REGISTRY: Create in-memory Component object
+		// ====================================================================
 		const resolvedFramework = framework || 'unknown';
 		const component: Component = {
 			id: componentId,
-			canvasId,
-			folderPath: folderPath,
-			entryFile,                          // Always resolved (auto-detected if not provided)
-			framework: resolvedFramework,       // Always resolved (auto-detected if not provided)
+			canvasId: resolvedCanvasId,
+			folderPath,
+			entryFile,
+			framework: resolvedFramework,
 			buildState: { status: 'building' }, // Initial state
 			contentHash,                        // Always computed
 			name: componentName,
@@ -310,36 +411,33 @@ export class ComponentService extends Disposable implements IComponentService {
 			updatedAt: now
 		};
 
-		// 11. Add to in-memory registry
+		// Add to in-memory registry
 		this.components.set(componentId, component);
 
-		// 12. Emit created event
+		// Emit created event
 		this._onComponentCreated.fire({ component });
 
-		console.log(`[ComponentService] ✅ Component added: ${componentId} (${componentName})`);
-		console.log(`   folderPath: ${folderPath}`);
-		console.log(`   entryFile: ${entryFile}`);
-		console.log(`   framework: ${framework}`);
-		console.log(`   contentHash: ${contentHash}`);
-		console.log(`   origin: ${request.origin || 'unknown'}`);
-
-		// 13. Register folder watcher for original location
+		// ====================================================================
+		// POST-SAVE: Register file watcher and queue build
+		// ====================================================================
 		try {
-			this.fileWatcher.registerFolderWatch(componentId, folderPath, canvasId);
-			console.log(`[ComponentService] Registered folder watch for ${componentId}`);
+			this.fileWatcher.registerFolderWatch(componentId, folderPath, resolvedCanvasId);
+			console.log(`[ComponentService] 👁️ Registered folder watch`);
 		} catch (error) {
-			console.warn(`[ComponentService] Could not register folder watch:`, error);
+			console.warn(`[ComponentService] ⚠️ Could not register folder watch:`, error);
 		}
 
-		// 14. Queue build (async, result via event)
+		// Queue build (async, result via event)
 		this.buildQueue.enqueue({
 			componentId,
-			canvasId,
+			canvasId: resolvedCanvasId,
 			trigger: 'create',
 			priority: 'high',
 			createdAt: now
 		});
+		console.log(`[ComponentService] 🔨 Queued build`);
 
+		console.log(`[ComponentService] ✅ Component added successfully: ${componentId}`);
 		return component;
 	}
 

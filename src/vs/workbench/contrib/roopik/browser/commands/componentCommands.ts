@@ -74,7 +74,7 @@ export function registerComponentCommands(): void {
 				return undefined;
 			}
 
-			console.log('[ComponentCommands] Creating component:', request.name, 'for canvas:', request.canvasId);
+			console.log('[ComponentCommands] Creating component:', request.componentName || '(auto)', 'for canvas:', request.canvasId || '(auto)');
 
 			const componentService = accessor.get(IComponentService);
 

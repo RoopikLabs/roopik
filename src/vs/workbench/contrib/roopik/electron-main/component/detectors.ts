@@ -22,13 +22,18 @@ import { Framework } from '../../common/storage/storageTypes.js';
 // ============================================================================
 
 /**
+ * Supported component file extensions
+ */
+const SUPPORTED_EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js', '.vue', '.svelte'];
+
+/**
  * Auto-detect entry file in component folder
  *
- * Priority order:
- * 1. index.tsx
- * 2. index.ts
- * 3. {folderName}.tsx
- * 4. {folderName}.ts
+ * Detection priority:
+ * 1. SINGLE FILE: If folder has exactly one supported file → use it (simple case!)
+ * 2. index.tsx / index.ts / index.jsx / index.js
+ * 3. {folderName}.tsx / {folderName}.ts / {folderName}.jsx / {folderName}.js
+ * 4. Any single .vue or .svelte file
  *
  * @param folderPath Absolute path to component folder
  * @returns Entry file name (e.g., "Button.tsx")
@@ -36,30 +41,79 @@ import { Framework } from '../../common/storage/storageTypes.js';
  */
 export async function detectEntryFile(folderPath: string): Promise<string> {
 	try {
-		// Get folder name for {folderName}.tsx pattern
-		const folderName = path.basename(folderPath);
+		// Get all files in folder
+		const entries = await fs.readdir(folderPath, { withFileTypes: true });
+		const files = entries
+			.filter(e => e.isFile())
+			.map(e => e.name);
 
-		// Check each candidate in priority order
-		const candidates = [
-			'index.tsx',
-			'index.ts',
-			`${folderName}.tsx`,
-			`${folderName}.ts`
-		];
+		// Filter to only supported component files
+		const supportedFiles = files.filter(f => {
+			const ext = path.extname(f).toLowerCase();
+			return SUPPORTED_EXTENSIONS.includes(ext);
+		});
 
-		for (const candidate of candidates) {
-			const filePath = path.join(folderPath, candidate);
-			const exists = await fileExists(filePath);
-			if (exists) {
-				console.log(`[Detector] Found entry file: ${candidate}`);
+		console.log(`[Detector] Found ${supportedFiles.length} supported files in ${folderPath}`);
+
+		// ================================================================
+		// PRIORITY 1: Single supported file → use it directly!
+		// ================================================================
+		// This is the simplest and most common case
+		if (supportedFiles.length === 1) {
+			console.log(`[Detector] ✅ Single file detected: ${supportedFiles[0]}`);
+			return supportedFiles[0];
+		}
+
+		// ================================================================
+		// PRIORITY 2: Check for index files
+		// ================================================================
+		const indexCandidates = ['index.tsx', 'index.ts', 'index.jsx', 'index.js'];
+		for (const candidate of indexCandidates) {
+			if (supportedFiles.includes(candidate)) {
+				console.log(`[Detector] ✅ Found index file: ${candidate}`);
 				return candidate;
 			}
 		}
 
-		// No entry file found
+		// ================================================================
+		// PRIORITY 3: Check for {folderName}.ext files
+		// ================================================================
+		const folderName = path.basename(folderPath);
+		const folderNameCandidates = [
+			`${folderName}.tsx`,
+			`${folderName}.ts`,
+			`${folderName}.jsx`,
+			`${folderName}.js`
+		];
+		for (const candidate of folderNameCandidates) {
+			if (supportedFiles.includes(candidate)) {
+				console.log(`[Detector] ✅ Found folder-named file: ${candidate}`);
+				return candidate;
+			}
+		}
+
+		// ================================================================
+		// PRIORITY 4: Single .vue or .svelte file
+		// ================================================================
+		const vueFiles = supportedFiles.filter(f => f.endsWith('.vue'));
+		if (vueFiles.length === 1) {
+			console.log(`[Detector] ✅ Found single Vue file: ${vueFiles[0]}`);
+			return vueFiles[0];
+		}
+
+		const svelteFiles = supportedFiles.filter(f => f.endsWith('.svelte'));
+		if (svelteFiles.length === 1) {
+			console.log(`[Detector] ✅ Found single Svelte file: ${svelteFiles[0]}`);
+			return svelteFiles[0];
+		}
+
+		// ================================================================
+		// FALLBACK: No clear entry file found
+		// ================================================================
 		throw new Error(
-			`Could not find entry file in ${folderPath}. ` +
-			`Looked for: ${candidates.join(', ')}`
+			`Could not determine entry file in ${folderPath}. ` +
+			`Found ${supportedFiles.length} files: ${supportedFiles.join(', ')}. ` +
+			`Expected: single file, index.*, or ${folderName}.*`
 		);
 	} catch (error) {
 		console.error(`[Detector] Entry file detection failed:`, error);
@@ -128,12 +182,6 @@ export async function detectFramework(entryFilePath: string): Promise<Framework>
 			return 'preact';
 		}
 
-		// Check for JSX/TSX without explicit imports (might be plain HTML or Vue template)
-		if (entryFilePath.endsWith('.html')) {
-			console.log(`[Detector] Framework detected: html`);
-			return 'html';
-		}
-
 		// Default to unknown
 		console.log(`[Detector] Framework not detected, defaulting to 'unknown'`);
 		return 'unknown';
@@ -147,18 +195,6 @@ export async function detectFramework(entryFilePath: string): Promise<Framework>
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/**
- * Check if file exists
- */
-async function fileExists(filePath: string): Promise<boolean> {
-	try {
-		await fs.access(filePath);
-		return true;
-	} catch {
-		return false;
-	}
-}
 
 /**
  * Read file content

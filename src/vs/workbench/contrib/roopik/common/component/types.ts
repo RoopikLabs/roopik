@@ -67,32 +67,66 @@ export interface Component {
 /**
  * Request to add a component to a canvas
  *
- * Simple and clean:
- * 1. Point to component folder (original location!)
- * 2. Specify entry file (or auto-detect)
- * 3. Optional: provide origin for info (doesn't change flow)
+ * Pipeline architecture - only folderPath is required, rest is auto-resolved:
+ * 1. folderPath: Can be folder OR file path (smart parsing extracts both)
+ * 2. entryFile: Auto-detected if not provided (index.tsx, {folderName}.tsx, etc.)
+ * 3. componentName: Derived from entryFile if not provided (capitalized)
+ * 4. canvasId: Uses active canvas, or creates new canvas if none available
+ * 5. framework: Auto-detected from imports
+ * 6. origin: Informational only, doesn't change flow
+ *
+ * This design supports:
+ * - UI file picker (user selects file → extracts folder + entry)
+ * - AI agents passing folder paths (auto-detects entry file)
+ * - AI agents passing file paths (extracts folder + entry)
+ * - AI agents with full context (can provide all fields)
  */
 export interface AddComponentRequest {
-	/** Unique component ID (auto-generated if not provided) */
-	componentId?: string;
-
-	/** Display name (optional) */
-	name?: string;
-
-	/** Target canvas (if not provided, uses active canvas) */
-	canvasId?: string;
-
-	/** Workspace-relative path to component folder ("/src/components/Button") */
+	/**
+	 * Path to component folder OR file (REQUIRED)
+	 *
+	 * Smart parsing handles both:
+	 * - Folder path: "/src/components/Button/" → auto-detect entry file
+	 * - File path: "/src/components/Button/Button.tsx" → extracts folder + entry
+	 */
 	folderPath: string;
 
-	/** Entry file relative to folderPath (e.g., "Button.tsx") - auto-detect if not provided */
+	/**
+	 * Entry file relative to folderPath (e.g., "Button.tsx")
+	 * Auto-detected if not provided: index.tsx > index.ts > {folderName}.tsx > {folderName}.ts
+	 */
 	entryFile?: string;
 
-	/** Detected framework - auto-detect if not provided */
+	/**
+	 * Display name for the component (e.g., "Primary Button")
+	 * Auto-derived from entryFile if not provided: "button.tsx" → "Button"
+	 */
+	componentName?: string;
+
+	/**
+	 * Target canvas ID
+	 * Resolution: provided > active canvas > create new canvas with componentName
+	 * AI agents can pass this, but it's optional - we handle fallbacks gracefully
+	 */
+	canvasId?: string;
+
+	/**
+	 * Framework hint (react, vue, svelte, etc.)
+	 * Auto-detected from imports if not provided
+	 */
 	framework?: Framework;
 
-	/** Origin hint: 'local' | 'ai' | 'figma' | 'github' (informational only, doesn't change flow) */
+	/**
+	 * Origin hint: 'local' | 'ai' | 'figma' | 'github'
+	 * Informational only - doesn't change processing flow
+	 */
 	origin?: string;
+
+	/**
+	 * Unique component ID (auto-generated if not provided)
+	 * Rarely needed - mainly for deterministic testing or migrations
+	 */
+	componentId?: string;
 }
 
 // ============================================================================
