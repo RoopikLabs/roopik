@@ -421,6 +421,11 @@ export class CanvasService implements ICanvasService {
 		// Update focus if needed
 		if (this.focusedCanvasId === canvasId) {
 			this.focusedCanvasId = null;
+
+			// Persist to canvases.json
+			this.storageService.setActiveCanvasId(null).catch((err: Error) => {
+				console.error('[CanvasService] Failed to persist activeCanvasId=null on delete:', err);
+			});
 		}
 
 		// Fire event
@@ -466,6 +471,11 @@ export class CanvasService implements ICanvasService {
 				previousCanvasId: previousId,
 				currentCanvasId: null
 			});
+
+			// Persist to canvases.json
+			this.storageService.setActiveCanvasId(null).catch((err: Error) => {
+				console.error('[CanvasService] Failed to persist activeCanvasId=null on close:', err);
+			});
 		}
 
 		console.log('[CanvasService] Panel closed:', canvasId);
@@ -507,6 +517,11 @@ export class CanvasService implements ICanvasService {
 				currentCanvasId: canvasId
 			});
 			console.log('[CanvasService] Focus changed:', previousId, '->', canvasId);
+
+			// Persist to canvases.json (async, don't block)
+			this.storageService.setActiveCanvasId(canvasId).catch((err: Error) => {
+				console.error('[CanvasService] Failed to persist activeCanvasId:', err);
+			});
 		}
 	}
 

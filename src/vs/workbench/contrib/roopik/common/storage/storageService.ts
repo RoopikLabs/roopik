@@ -185,9 +185,9 @@ export interface IRoopikStorageService {
 	getActiveCanvasId(): Promise<string | null>;
 
 	/**
-	 * Set the active canvas ID (called by Extension when focus changes)
+	 * Set the active canvas ID in canvases.json
 	 */
-	setActiveCanvasId(canvasId: string | null): void;
+	setActiveCanvasId(canvasId: string | null): Promise<void>;
 
 	// ========================================================================
 	// Paths (for external use)

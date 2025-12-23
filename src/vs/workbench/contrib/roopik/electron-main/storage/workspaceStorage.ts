@@ -241,6 +241,26 @@ export class WorkspaceStorage {
 	}
 
 	/**
+	 * Get the active canvas ID from registry
+	 */
+	async getActiveCanvasId(): Promise<string | null> {
+		this.ensureInitialized();
+		const registry = await this.getCanvasRegistry();
+		return registry.activeCanvasId ?? null;
+	}
+
+	/**
+	 * Set the active canvas ID in registry
+	 */
+	async setActiveCanvasId(canvasId: string | null): Promise<void> {
+		this.ensureInitialized();
+		const registry = await this.getCanvasRegistry();
+		registry.activeCanvasId = canvasId;
+		const registryPath = getCanvasRegistryPath(this.workspacePath);
+		await this.writeJson(registryPath, registry);
+	}
+
+	/**
 	 * List all canvas IDs
 	 */
 	async listCanvases(): Promise<string[]> {

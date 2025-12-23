@@ -31,6 +31,7 @@ import {
 import { ComponentReference } from '../../common/storage/storageTypes.js';
 import { IRoopikStorageService } from '../../common/storage/storageService.js';
 import { IBuildService } from '../../common/build/buildService.js';
+import { ICanvasService } from '../../common/canvas/canvasService.js';
 import { IFileWatcher, FileChangeEvent } from '../../common/watch/fileWatcher.js';
 import { BuildQueue, BuildRequest, QueueBuildResult } from './buildQueue.js';
 import { getBundlePath } from '../storage/paths.js';
@@ -71,6 +72,7 @@ export class ComponentService extends Disposable implements IComponentService {
 
 	private readonly storageService: IRoopikStorageService;
 	private readonly buildService: IBuildService;
+	private readonly canvasService: ICanvasService;
 	private readonly fileWatcher: IFileWatcher;
 
 	// ========================================================================
@@ -112,12 +114,14 @@ export class ComponentService extends Disposable implements IComponentService {
 	constructor(
 		storageService: IRoopikStorageService,
 		buildService: IBuildService,
+		canvasService: ICanvasService,
 		fileWatcher: IFileWatcher
 	) {
 		super();
 
 		this.storageService = storageService;
 		this.buildService = buildService;
+		this.canvasService = canvasService;
 		this.fileWatcher = fileWatcher;
 
 		// Create build queue with concurrency limit
@@ -223,7 +227,7 @@ export class ComponentService extends Disposable implements IComponentService {
 		}
 
 		// 3. Get or create canvas ID
-		const canvasId = request.canvasId || await this.storageService.getActiveCanvasId();
+		const canvasId = request.canvasId || await this.canvasService.getFocusedCanvasIdAsync();
 		if (!canvasId) {
 			throw new Error('ComponentService: No canvas specified and no active canvas');
 		}
@@ -290,15 +294,17 @@ export class ComponentService extends Disposable implements IComponentService {
 		await this.storageService.addComponentReference(canvasId, componentId, reference);
 
 		// 10. Create Component object for in-memory registry
+		// All required fields are now resolved (entryFile, framework, contentHash)
+		const resolvedFramework = framework || 'unknown';
 		const component: Component = {
 			id: componentId,
-			name: componentName,
 			canvasId,
 			folderPath: folderPath,
-			entryFile,
-			framework: framework || 'unknown',
-			buildState: { status: 'building' },
-			contentHash, // Include computed hash
+			entryFile,                          // Always resolved (auto-detected if not provided)
+			framework: resolvedFramework,       // Always resolved (auto-detected if not provided)
+			buildState: { status: 'building' }, // Initial state
+			contentHash,                        // Always computed
+			name: componentName,
 			origin: request.origin,
 			createdAt: now,
 			updatedAt: now
@@ -739,15 +745,16 @@ export class ComponentService extends Disposable implements IComponentService {
 			// Load each component reference
 			for (const [componentId, reference] of Object.entries(canvasFile.components)) {
 				const ref = reference as ComponentReference;
+				// ComponentReference has all required fields, map to Component
 				const component: Component = {
 					id: componentId,
-					name: ref.name,
 					canvasId: canvas.id,
 					folderPath: ref.folderPath,
 					entryFile: ref.entryFile,
 					framework: ref.framework,
 					buildState: ref.buildState,
 					contentHash: ref.contentHash,
+					name: ref.name,
 					origin: ref.origin,
 					createdAt: ref.createdAt,
 					updatedAt: ref.updatedAt
@@ -833,7 +840,7 @@ export class ComponentService extends Disposable implements IComponentService {
 	 * NOTE: Not implemented - use VS Code's native file editing instead
 	 * We don't write to original component folders from the service
 	 */
-	async updateComponentSource(id: string, files: Record<string, string>): Promise<void> {
+	async updateComponentSource(_id: string, _files: Record<string, string>): Promise<void> {
 		this.ensureInitialized();
 		throw new Error('ComponentService: updateComponentSource not supported - edit files directly in VS Code');
 	}

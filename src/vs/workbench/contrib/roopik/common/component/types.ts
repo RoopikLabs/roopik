@@ -19,17 +19,17 @@ import { Framework, BuildState } from '../storage/storageTypes.js';
 // ============================================================================
 
 /**
- * Component as seen by Core services
+ * Component as seen by Core services (Runtime state)
  *
- * Key change: folderPath instead of storagePath
+ * This represents a fully-resolved component after addComponent() completes.
+ * All required fields ARE present (resolved from input + auto-detection).
+ *
+ * Key change from V1: folderPath instead of storagePath
  * This points to the ORIGINAL location, not a copy in .roopik/
  */
 export interface Component {
 	/** Unique ID */
 	id: string;
-
-	/** Display name */
-	name?: string;
 
 	/** Parent canvas */
 	canvasId: string;
@@ -37,17 +37,20 @@ export interface Component {
 	/** Workspace-relative path to component folder ("/src/components/Button") */
 	folderPath: string;
 
-	/** Entry file (relative to folderPath, e.g., "Button.tsx") */
-	entryFile?: string;
+	/** Entry file (relative to folderPath, e.g., "Button.tsx") - always resolved */
+	entryFile: string;
 
-	/** Detected framework */
-	framework?: Framework;
+	/** Detected framework - always resolved */
+	framework: Framework;
 
-	/** Current build state */
-	buildState?: BuildState;
+	/** Current build state - always present */
+	buildState: BuildState;
 
-	/** Hash of source files (for cache) */
-	contentHash?: string;
+	/** Hash of source files (for cache) - always computed */
+	contentHash: string;
+
+	/** Display name (optional) */
+	name?: string;
 
 	/** Origin hint: 'local' | 'ai' | 'figma' | 'github' (informational) */
 	origin?: string;

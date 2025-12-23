@@ -39,9 +39,6 @@ export class RoopikStorageService implements IRoopikStorageService {
 	private readonly appDataStorage: AppDataStorage;
 	private workspacePath: string = '';
 
-	// Active canvas tracking
-	private _activeCanvasId: string | null = null;
-
 	constructor() {
 		this.workspaceStorage = new WorkspaceStorage();
 		this.appDataStorage = new AppDataStorage();
@@ -182,16 +179,18 @@ export class RoopikStorageService implements IRoopikStorageService {
 	// Active Canvas
 	// ========================================================================
 
+	/**
+	 * Get the active canvas ID from canvases.json
+	 */
 	async getActiveCanvasId(): Promise<string | null> {
-		// TODO: In Phase 7 (Browser Client), this will call:
-		// await vscode.commands.executeCommand('roopik.canvas.getActive')
-		// For now, return cached value
-		return this._activeCanvasId;
+		return this.workspaceStorage.getActiveCanvasId();
 	}
 
-	setActiveCanvasId(canvasId: string | null): void {
-		// TODO: Later, whenver any canvas is created or deleted or focused, this will be called to update the cached value
-		this._activeCanvasId = canvasId;
+	/**
+	 * Set the active canvas ID in canvases.json
+	 */
+	async setActiveCanvasId(canvasId: string | null): Promise<void> {
+		return this.workspaceStorage.setActiveCanvasId(canvasId);
 	}
 
 	// ========================================================================

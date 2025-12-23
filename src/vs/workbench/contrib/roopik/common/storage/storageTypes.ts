@@ -129,6 +129,8 @@ export interface CanvasInfo {
  */
 export interface CanvasRegistry {
 	canvases: CanvasInfo[];
+	/** Currently active/focused canvas ID (persisted for session restore) */
+	activeCanvasId?: string | null;
 }
 
 /**

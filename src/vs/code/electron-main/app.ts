@@ -1324,7 +1324,7 @@ export class CodeApplication extends Disposable {
 		// ROOPIK: Component Service - Component lifecycle, build queue, file watching
 		const buildService = new BuildService();
 		const fileWatcher = new FileWatcher();
-		const componentService = new ComponentService(roopikStorageService, buildService, fileWatcher);
+		const componentService = new ComponentService(roopikStorageService, buildService, canvasService, fileWatcher);
 		const componentChannel = new ComponentChannel(componentService);
 		mainProcessElectronServer.registerChannel(COMPONENT_CHANNEL_NAME, componentChannel);
 
