@@ -15,6 +15,7 @@ import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { CDPCssService } from './cssResolvers/cdpCssService.js';
 import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.js';
 import contextMenu from 'electron-context-menu';
+import { cleanupCDPMonitoring } from '../mcp/tools/cdpTools.js';
 
 /**
  * Browser View Service
@@ -253,6 +254,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 	async destroyBrowserView(browserViewId: number): Promise<void> {
 		console.log('[ProjectMode][Main] destroyBrowserView() called for', browserViewId);
+
+		// Cleanup CDP monitoring if active (from MCP CDP tools)
+		cleanupCDPMonitoring(browserViewId);
 
 		// Close DevTools if open
 		await this.closeDevTools(browserViewId);

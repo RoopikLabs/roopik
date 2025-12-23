@@ -32,6 +32,7 @@ import type { IRoopikStorageService } from '../../common/storage/storageService.
 import { registerSystemTools } from './tools/systemTools.js';
 import { registerProjectTools } from './tools/projectTools.js';
 import { registerBrowserTools } from './tools/browserTools.js';
+import { registerCDPTools } from './tools/cdpTools.js';
 import { registerCanvasTools } from './tools/canvasTools.js';
 import { registerWorkspaceTools } from './tools/workspaceTools.js';
 import { registerContextPrompts } from './tools/contextPrompts.js';
@@ -115,6 +116,7 @@ export class McpServerService implements IMcpServerService {
 		registerSystemTools(this.mcpServer, z);
 		registerProjectTools(this.mcpServer, z, this.devServerService);
 		registerBrowserTools(this.mcpServer, z, this.browserViewService, this.storageService);
+		registerCDPTools(this.mcpServer, this.browserViewService, z);
 		registerCanvasTools(this.mcpServer, z, this.componentService);
 		registerWorkspaceTools(this.mcpServer, z, this.canvasService, this.storageService);
 
@@ -146,6 +148,11 @@ export class McpServerService implements IMcpServerService {
 
 		return new Promise((resolve, reject) => {
 			this.httpServer = http.createServer(async (req, res) => {
+				// LOG: All incoming requests at the single entry point
+				const timestamp = new Date().toISOString();
+				const sessionId = req.headers['mcp-session-id'] || 'new';
+				console.log(`[MCP] [${timestamp}] ${req.method} ${req.url} | Session: ${sessionId}`);
+
 				// CORS headers (crucial for Streamable HTTP)
 				res.setHeader('Access-Control-Allow-Origin', '*');
 				res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
@@ -154,6 +161,7 @@ export class McpServerService implements IMcpServerService {
 
 				// Handle preflight
 				if (req.method === 'OPTIONS') {
+					console.log(`[MCP] [${timestamp}] Preflight response sent`);
 					res.writeHead(204);
 					res.end();
 					return;
@@ -166,6 +174,29 @@ export class McpServerService implements IMcpServerService {
 				// The SDK manages session lifecycle via Mcp-Session-Id header
 				// ------------------------------------------------------------------
 				if (url.pathname === '/mcp') {
+					console.log(`[MCP] [${timestamp}] Processing /mcp endpoint | Method: ${req.method}`);
+
+					// LOG: If this is a POST with body data (tool call or other request)
+					if (req.method === 'POST') {
+						let body = '';
+						req.on('data', chunk => {
+							body += chunk.toString();
+						});
+						req.on('end', () => {
+							try {
+								const parsed = JSON.parse(body);
+								if (parsed.method === 'tools/call') {
+									console.log(`[MCP] [${timestamp}] 🔧 Tool Call: ${parsed.params?.name || 'unknown'}`);
+									console.log(`[MCP] [${timestamp}] Arguments:`, JSON.stringify(parsed.params?.arguments || {}, null, 2));
+								} else {
+									console.log(`[MCP] [${timestamp}] MCP Request: ${parsed.method || 'unknown'}`);
+								}
+							} catch {
+								// Not JSON or parsing failed, ignore
+							}
+						});
+					}
+
 					try {
 						// Create transport for this request
 						// Stateless mode: sessionIdGenerator returns undefined
@@ -178,12 +209,20 @@ export class McpServerService implements IMcpServerService {
 
 						// Connect transport to MCP server
 						await this.mcpServer.connect(transport);
+						console.log(`[MCP] [${timestamp}] Transport connected to MCP server`);
+
+						// Log when connection closes
+						res.on('close', () => {
+							console.log(`[MCP] [${timestamp}] Connection closed | Session: ${sessionId}`);
+						});
+
+						res.on('error', (err) => {
+							console.error(`[MCP] [${timestamp}] Response error | Session: ${sessionId}`, err);
+						});
 
 						// Hand off request to transport - it handles SSE/POST internally
 						await transport.handleRequest(req, res);
-
-					} catch (err) {
-						console.error('[MCP] Transport Error:', err);
+						console.log(`[MCP] [${timestamp}] Request handled successfully`);
 						if (!res.headersSent) {
 							res.writeHead(500, { 'Content-Type': 'application/json' });
 							res.end(JSON.stringify({ error: 'Internal Server Error' }));
