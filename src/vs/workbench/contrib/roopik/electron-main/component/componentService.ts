@@ -185,35 +185,66 @@ export class ComponentService extends Disposable implements IComponentService {
 	async addComponent(request: AddComponentRequest): Promise<Component> {
 		this.ensureInitialized();
 
-		// 1. Validate folder path
-		if (!await folderExists(request.folderPath)) {
-			throw new Error(`ComponentService: Folder not found: ${request.folderPath}`);
+		// 1. Smart path parsing: Handle both file paths and folder paths
+		// This allows both UI (file picker) and AI agents to pass either format
+		//
+		// Cases:
+		// - Full file path (C:\project\src\Button.tsx) → Extract folder + entry file
+		// - Folder path only (C:\project\src\) → Auto-detect entry file later
+		//
+		// This makes it flexible for:
+		// - Users selecting a file via file picker
+		// - AI agents passing folder paths
+		// - AI agents passing file paths (if they detected the entry file)
+		let folderPath = request.folderPath;
+		let entryFile = request.entryFile;
+		let componentName = request.name;
+
+		// Check if folderPath actually contains a file (has extension)
+		const pathParts = folderPath.split(/[\\/]/);
+		const lastPart = pathParts[pathParts.length - 1];
+		const hasExtension = /\.[a-zA-Z0-9]+$/.test(lastPart);
+
+		if (hasExtension && !entryFile) {
+			// folderPath contains a file - extract folder and entry file
+			const fileName = pathParts.pop()!;
+			folderPath = pathParts.join(path.sep);
+			entryFile = fileName;
+			// If name not provided, derive from filename
+			if (!componentName) {
+				componentName = fileName.replace(/\.[^/.]+$/, '');
+			}
+			console.log(`[ComponentService] Extracted from file path: folder=${folderPath}, entry=${entryFile}, name=${componentName}`);
 		}
 
-		// 2. Get or create canvas ID
+		// 2. Validate folder path
+		if (!await folderExists(folderPath)) {
+			throw new Error(`ComponentService: Folder not found: ${folderPath}`);
+		}
+
+		// 3. Get or create canvas ID
 		const canvasId = request.canvasId || await this.storageService.getActiveCanvasId();
 		if (!canvasId) {
 			throw new Error('ComponentService: No canvas specified and no active canvas');
 		}
 
-		// 3. Auto-detect entry file if not provided
-		console.log(`[ComponentService] 🔍 ENTRY FILE DETECTION START - Request data:`, JSON.stringify({ componentId: request.componentId, name: request.name, folderPath: request.folderPath, entryFile: request.entryFile, framework: request.framework, origin: request.origin }, null, 2));
-		let entryFile = request.entryFile;
+		// 4. Auto-detect entry file if not provided
+		console.log(`[ComponentService] 🔍 ENTRY FILE DETECTION START - Request data:`, JSON.stringify({ componentId: request.componentId, name: componentName, folderPath: folderPath, entryFile: entryFile, framework: request.framework, origin: request.origin }, null, 2));
 		if (!entryFile) {
-			console.log(`[ComponentService] Auto-detecting entry file for ${request.name}...`);
+			console.log(`[ComponentService] Auto-detecting entry file for ${componentName}...`);
 			try {
-				entryFile = await detectEntryFile(request.folderPath);
+				entryFile = await detectEntryFile(folderPath);
 			} catch (error) {
 				throw new Error(`ComponentService: Could not auto-detect entry file: ${error}`);
 			}
 		}
 
-		// 4. Auto-detect framework if not provided
+		// 5. Auto-detect framework if not provided
 		let framework = request.framework;
 		if (!framework) {
-			console.log(`[ComponentService] Auto-detecting framework for ${request.name}...`);
+			console.log(`[ComponentService] Auto-detecting framework for ${componentName}...`);
 			try {
-				const entryFilePath = path.join(request.folderPath, entryFile);
+				const entryFilePath = path.join(folderPath, entryFile);
 				framework = await detectFramework(entryFilePath);
 			} catch (error) {
 				console.warn(`[ComponentService] Framework detection failed:`, error);
@@ -221,11 +252,11 @@ export class ComponentService extends Disposable implements IComponentService {
 			}
 		}
 
-		// 5. Compute content hash from all files in folder
+		// 6. Compute content hash from all files in folder
 		// This is critical for cache validation and detecting changes
 		// Uses defensive hashing - never fails, always returns a hash
-		console.log(`[ComponentService] Computing content hash for ${request.name}...`);
-		const hashResult = await computeContentHashFromFolder(request.folderPath);
+		console.log(`[ComponentService] Computing content hash for ${componentName}...`);
+		const hashResult = await computeContentHashFromFolder(folderPath);
 		const { hash: contentHash, filesHashed, filesSkipped, bytesHashed, warnings } = hashResult;
 
 		// Log hash computation results
@@ -237,14 +268,14 @@ export class ComponentService extends Disposable implements IComponentService {
 			console.warn(`[ComponentService] Hash warnings:`, warnings);
 		}
 
-		// 6. Generate component ID (or use provided one)
+		// 7. Generate component ID (or use provided one)
 		const componentId = request.componentId || generateComponentId();
 		const now = Date.now();
 
-		// 7. Create ComponentReference (metadata-only, stored in canvas file)
+		// 8. Create ComponentReference (metadata-only, stored in canvas file)
 		const reference: ComponentReference = {
-			name: request.name,
-			folderPath: request.folderPath,
+			name: componentName,
+			folderPath: folderPath,
 			entryFile,
 			framework: framework || 'unknown',
 			position: { x: 0, y: 0, zIndex: 0 },
@@ -255,15 +286,15 @@ export class ComponentService extends Disposable implements IComponentService {
 			updatedAt: now
 		};
 
-		// 8. Save reference to canvas file (atomic)
+		// 9. Save reference to canvas file (atomic)
 		await this.storageService.addComponentReference(canvasId, componentId, reference);
 
-		// 9. Create Component object for in-memory registry
+		// 10. Create Component object for in-memory registry
 		const component: Component = {
 			id: componentId,
-			name: request.name,
+			name: componentName,
 			canvasId,
-			folderPath: request.folderPath,
+			folderPath: folderPath,
 			entryFile,
 			framework: framework || 'unknown',
 			buildState: { status: 'building' },
@@ -273,27 +304,28 @@ export class ComponentService extends Disposable implements IComponentService {
 			updatedAt: now
 		};
 
-		// 10. Add to in-memory registry
+		// 11. Add to in-memory registry
 		this.components.set(componentId, component);
 
-		// 11. Emit created event
+		// 12. Emit created event
 		this._onComponentCreated.fire({ component });
 
-		console.log(`[ComponentService] ✅ Component added: ${componentId} (${request.name})`);
-		console.log(`   folderPath: ${request.folderPath}`);
+		console.log(`[ComponentService] ✅ Component added: ${componentId} (${componentName})`);
+		console.log(`   folderPath: ${folderPath}`);
 		console.log(`   entryFile: ${entryFile}`);
 		console.log(`   framework: ${framework}`);
 		console.log(`   contentHash: ${contentHash}`);
+		console.log(`   origin: ${request.origin || 'unknown'}`);
 
-		// 12. Register folder watcher for original location
+		// 13. Register folder watcher for original location
 		try {
-			this.fileWatcher.registerFolderWatch(componentId, request.folderPath, canvasId);
+			this.fileWatcher.registerFolderWatch(componentId, folderPath, canvasId);
 			console.log(`[ComponentService] Registered folder watch for ${componentId}`);
 		} catch (error) {
 			console.warn(`[ComponentService] Could not register folder watch:`, error);
 		}
 
-		// 13. Queue build (async, result via event)
+		// 14. Queue build (async, result via event)
 		this.buildQueue.enqueue({
 			componentId,
 			canvasId,

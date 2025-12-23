@@ -17,7 +17,6 @@ import { AppDataStorage } from './appDataStorage.js';
 import {
 	getWorkspaceRoopikPath,
 	getWorkspaceAppDataPath,
-	getComponentPath,
 	getCacheComponentPath
 } from './paths.js';
 
@@ -205,10 +204,6 @@ export class RoopikStorageService implements IRoopikStorageService {
 
 	getAppDataPath(): string {
 		return getWorkspaceAppDataPath(this.workspacePath);
-	}
-
-	getComponentPath(canvasId: string, componentId: string): string {
-		return getComponentPath(this.workspacePath, canvasId, componentId);
 	}
 
 	getCachePath(canvasId: string, componentId: string): string {

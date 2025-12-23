@@ -69,11 +69,23 @@ export interface BuildMeta {
 // ============================================================================
 
 /**
+ * Viewport state (zoom and pan position)
+ */
+export interface CanvasViewport {
+	/** Viewport center X coordinate */
+	x: number;
+
+	/** Viewport center Y coordinate */
+	y: number;
+
+	/** Zoom scale (1.0 = 100%) */
+	scale: number;
+}
+
+/**
  * Canvas UI preferences
- * These are stored per-canvas in index.json and managed by the Extension.
+ * These are stored per-canvas and managed by the Extension.
  * Core only sets default values on canvas creation.
- *
- * Note: Viewport (zoom/pan) is NOT persisted - auto-fit on load is preferred.
  */
 export interface CanvasPreferences {
 	/** Background color (hex) */
@@ -81,6 +93,9 @@ export interface CanvasPreferences {
 
 	/** Background pattern */
 	backgroundPattern: 'grid' | 'dots' | 'plain';
+
+	/** Viewport state (zoom/pan) */
+	viewport: CanvasViewport;
 }
 
 /**
@@ -89,7 +104,8 @@ export interface CanvasPreferences {
  */
 export const DEFAULT_CANVAS_PREFERENCES: CanvasPreferences = {
 	backgroundColor: '#1e1e1e',
-	backgroundPattern: 'dots'
+	backgroundPattern: 'dots',
+	viewport: { x: 0, y: 0, scale: 1.0 }
 };
 
 // ============================================================================

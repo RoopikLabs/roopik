@@ -204,11 +204,6 @@ export interface IRoopikStorageService {
 	getAppDataPath(): string;
 
 	/**
-	 * Get absolute path to component folder in workspace
-	 */
-	getComponentPath(canvasId: string, componentId: string): string;
-
-	/**
 	 * Get absolute path to component cache folder
 	 */
 	getCachePath(canvasId: string, componentId: string): string;

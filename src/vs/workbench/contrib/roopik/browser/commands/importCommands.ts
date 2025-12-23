@@ -133,7 +133,7 @@ export function registerImportCommands(): void {
 			// Handle each source type
 			switch (selectedSource.id) {
 				case 'local-file':
-					await this.handleLocalFileImport(fileDialogService, componentService, notificationService, canvasId);
+					await this.handleFileImport(fileDialogService, componentService, notificationService, canvasId);
 					break;
 
 				case 'github':
@@ -146,7 +146,13 @@ export function registerImportCommands(): void {
 			}
 		}
 
-		private async handleLocalFileImport(
+		/**
+		 * Handle file picker import (UI-specific)
+		 *
+		 * Shows file dialog and passes selected path to componentService.
+		 * AI agents bypass this and call componentService.addComponent() directly via MCP.
+		 */
+		private async handleFileImport(
 			fileDialogService: IFileDialogService,
 			componentService: IComponentService,
 			notificationService: INotificationService,
@@ -167,21 +173,16 @@ export function registerImportCommands(): void {
 				return;
 			}
 
-			const selectedUri = uris[0];
-			const filePath = selectedUri.fsPath;
+			const selectedPath = uris[0].fsPath;
 
 			try {
-				// Extract folder path and entry file from the selected file
-				const pathParts = filePath.split(/[\\/]/);
-				const fileName = pathParts.pop() || 'Component';
-				const folderPath = pathParts.join('\\');
-				const componentName = fileName.replace(/\.[^/.]+$/, '');
-
+				// Pass selected path to componentService
+				// ComponentService handles smart path parsing (file vs folder)
+				// and all other logic (entry file detection, framework detection, etc.)
 				await componentService.addComponent({
-					name: componentName,
+					folderPath: selectedPath,
 					canvasId: canvasId,
-					folderPath: folderPath,
-					entryFile: fileName
+					origin: 'local'  // This is local file import, AI agents use 'ai'
 				});
 			} catch (err) {
 				const errorMsg = err instanceof Error ? err.message : String(err);

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as fs from 'fs';
-import { join, dirname } from '../../../../../base/common/path.js';
+import { dirname } from '../../../../../base/common/path.js';
 import {
 	CanvasInfo,
 	CanvasRegistry,
@@ -159,9 +159,8 @@ export class WorkspaceStorage {
 			components: {}
 		};
 
-		const canvasPath = getCanvasPath(this.workspacePath, id);
-		await this.ensureDir(canvasPath); // Ensure folder exists even though we don't use it much
-		await this.writeJson(join(canvasPath, `${id}.json`), canvasFile);
+		const canvasFilePath = getCanvasPath(this.workspacePath, id);
+		await this.writeJson(canvasFilePath, canvasFile);
 
 		// Update registry
 		const registry = await this.getCanvasRegistry();
@@ -192,8 +191,7 @@ export class WorkspaceStorage {
 	async loadCanvasFile(canvasId: string): Promise<CanvasFile | null> {
 		this.ensureInitialized();
 
-		const canvasPath = getCanvasPath(this.workspacePath, canvasId);
-		const canvasFilePath = join(canvasPath, `${canvasId}.json`);
+		const canvasFilePath = getCanvasPath(this.workspacePath, canvasId);
 
 		try {
 			return await this.readJson<CanvasFile>(canvasFilePath);
@@ -209,12 +207,9 @@ export class WorkspaceStorage {
 	async saveCanvasFile(canvasFile: CanvasFile): Promise<void> {
 		this.ensureInitialized();
 
-		const canvasPath = getCanvasPath(this.workspacePath, canvasFile.id);
-		await this.ensureDir(canvasPath);
-
-		// Save canvas file
-		const filePath = join(canvasPath, `${canvasFile.id}.json`);
-		await this.writeJson(filePath, canvasFile);
+		// Save canvas file directly
+		const canvasFilePath = getCanvasPath(this.workspacePath, canvasFile.id);
+		await this.writeJson(canvasFilePath, canvasFile);
 
 		// Update registry timestamp
 		const registry = await this.getCanvasRegistry();
@@ -231,9 +226,13 @@ export class WorkspaceStorage {
 	async deleteCanvas(canvasId: string): Promise<void> {
 		this.ensureInitialized();
 
-		// Delete canvas folder
-		const canvasPath = getCanvasPath(this.workspacePath, canvasId);
-		await this.removeDir(canvasPath);
+		// Delete canvas file
+		const canvasFilePath = getCanvasPath(this.workspacePath, canvasId);
+		try {
+			await fs.promises.unlink(canvasFilePath);
+		} catch {
+			// Ignore if already deleted
+		}
 
 		// Update registry
 		const registry = await this.getCanvasRegistry();
@@ -579,14 +578,6 @@ export class WorkspaceStorage {
 
 	private async ensureDir(dirPath: string): Promise<void> {
 		await fs.promises.mkdir(dirPath, { recursive: true });
-	}
-
-	private async removeDir(dirPath: string): Promise<void> {
-		try {
-			await fs.promises.rm(dirPath, { recursive: true, force: true });
-		} catch {
-			// Ignore if already deleted
-		}
 	}
 
 	private async fileExists(filePath: string): Promise<boolean> {
