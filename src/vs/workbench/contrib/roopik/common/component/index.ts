@@ -10,14 +10,8 @@
 // Types
 export {
 	Component,
-	CreateComponentRequest,
-	SourceData,
-	AIAgentSourceData,
-	LocalFileSourceData,
-	GitHubSourceData,
-	FigmaSourceData,
-	ManualSourceData,
-	ImportResult,
+	AddComponentRequest,
+	BuildRequest,
 	BuildResult,
 	BuildError,
 	BuildErrorInfo,

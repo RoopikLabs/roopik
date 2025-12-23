@@ -44,6 +44,11 @@ export class ComponentParser {
 			extensions: ['.html'],
 			loader: 'js',
 			entryFileNames: ['index', 'main']
+		},
+		unknown: {
+			extensions: ['.js', '.ts'],
+			loader: 'js',
+			entryFileNames: ['index', 'main']
 		}
 	};
 
@@ -59,7 +64,7 @@ export class ComponentParser {
 	 */
 	detectFramework(files: { [filename: string]: string }): Framework {
 		const scores: Record<Framework, number> = {
-			react: 0, vue: 0, svelte: 0, solid: 0, preact: 0, html: 0
+			react: 0, vue: 0, svelte: 0, solid: 0, preact: 0, html: 0, unknown: 0
 		};
 
 		let hasJsxTsx = false;

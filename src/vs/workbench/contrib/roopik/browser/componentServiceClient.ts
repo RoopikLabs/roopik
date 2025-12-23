@@ -88,8 +88,8 @@ export class ComponentServiceClient implements IComponentService {
 	// Create
 	// ========================================================================
 
-	async createComponent(request: CreateComponentRequest): Promise<Component> {
-		return this.channel.call('createComponent', request);
+	async addComponent(request: AddComponentRequest): Promise<string> {
+		return this.channel.call('addComponent', request);
 	}
 
 	// ========================================================================

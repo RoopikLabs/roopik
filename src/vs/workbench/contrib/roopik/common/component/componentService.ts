@@ -71,7 +71,7 @@ export const IComponentService = createDecorator<IComponentService>('roopikCompo
  * that agents and UI will use to create, build, and manage components.
  *
  * Responsibilities:
- * - Coordinate ImportService, BuildService, StorageService, FileWatcher
+ * - Coordinate BuildService, StorageService, FileWatcher
  * - Maintain in-memory component registry
  * - Handle component lifecycle (create → build → ready)
  * - React to file changes (via FileWatcher)

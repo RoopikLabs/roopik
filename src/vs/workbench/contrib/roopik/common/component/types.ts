@@ -82,6 +82,9 @@ export interface AddComponentRequest {
 	/** Entry file relative to folderPath (e.g., "Button.tsx") - auto-detect if not provided */
 	entryFile?: string;
 
+	/** Detected framework - auto-detect if not provided */
+	framework?: Framework;
+
 	/** Origin hint: 'local' | 'ai' | 'figma' | 'github' (informational only, doesn't change flow) */
 	origin?: string;
 }
