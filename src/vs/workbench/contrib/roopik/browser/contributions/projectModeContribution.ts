@@ -21,13 +21,13 @@
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { IWorkbenchContribution } from '../../../../common/contributions.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
-import { IEditorGroupsService, preferredSideBySideGroupDirection } from '../../../../services/editor/common/editorGroupsService.js';
+import { IEditorGroupsService } from '../../../../services/editor/common/editorGroupsService.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { IMainProcessService } from '../../../../../platform/ipc/common/mainProcessService.js';
 import { EditorTabInput } from '../projectMode/editorTabInput.js';
-import { Editor as ProjectModeEditor } from '../projectMode/editor.js';
 import { DevServerBridge } from '../projectMode/devServerBridge.js';
 import { DEV_SERVER_CHANNEL } from '../../common/projectMode/devServer.js';
+import { openBrowserEditor } from '../commands/browserCommands.js';
 
 export class RoopikProjectModeContribution extends Disposable implements IWorkbenchContribution {
 	static readonly ID = 'roopik.projectModeContribution';
@@ -92,38 +92,17 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 	 * Reuses existing browser if already open, otherwise creates new one
 	 */
 	private async openBrowserAndNavigate(url: string, projectRoot: string): Promise<void> {
-		// Get the singleton browser input
-		const input = EditorTabInput.getInstance();
-
-		// Check if browser editor is already open
-		const visibleEditors = this.editorService.visibleEditorPanes;
-		const existingPane = visibleEditors.find(
-			pane => pane.input instanceof EditorTabInput
+		// Open/focus browser editor and lock its group (centralized logic)
+		const browserPane = await openBrowserEditor(
+			this.editorService,
+			this.editorGroupsService,
+			this.configurationService
 		);
 
-		if (existingPane && existingPane instanceof ProjectModeEditor) {
-			// Browser already open → just navigate to URL
-			await existingPane.group.openEditor(input, { pinned: true });
-			await existingPane.navigateToUrl(url, projectRoot);
-			console.log('[ProjectModeContribution] Reused existing browser, navigated to:', url);
-		} else {
-			// Browser not open → open it first, then navigate
-			const direction = preferredSideBySideGroupDirection(this.configurationService);
-			let targetGroup = this.editorGroupsService.findGroup({ direction });
-			if (!targetGroup) {
-				targetGroup = this.editorGroupsService.addGroup(this.editorGroupsService.activeGroup, direction);
-			}
-			await targetGroup.openEditor(input, { pinned: true });
-
-			// Find the newly opened editor pane and navigate
-			const newPane = this.editorService.visibleEditorPanes.find(
-				pane => pane.input instanceof EditorTabInput
-			);
-
-			if (newPane && newPane instanceof ProjectModeEditor) {
-				await newPane.navigateToUrl(url, projectRoot);
-				console.log('[ProjectModeContribution] Opened new browser and navigated to:', url);
-			}
+		// Navigate to the dev server URL
+		if (browserPane) {
+			await browserPane.navigateToUrl(url, projectRoot);
+			console.log('[ProjectModeContribution] Browser navigated to:', url);
 		}
 	}
 

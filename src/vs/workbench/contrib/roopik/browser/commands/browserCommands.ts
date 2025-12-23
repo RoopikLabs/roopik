@@ -36,6 +36,60 @@ interface OpenProjectPreviewArgs {
 }
 
 /**
+ * Helper function to open/focus the browser editor and lock its group
+ * This centralizes the logic since the browser is a singleton.
+ *
+ * @returns The opened browser editor pane, or undefined if failed
+ */
+export async function openBrowserEditor(
+	editorService: IEditorService,
+	editorGroupsService: IEditorGroupsService,
+	configurationService: IConfigurationService
+): Promise<ProjectModeEditor | undefined> {
+	const input = EditorTabInput.getInstance();
+
+	// Check if browser editor is already open in any group
+	const visibleEditors = editorService.visibleEditorPanes;
+	const existingPane = visibleEditors.find(
+		pane => pane.input instanceof EditorTabInput
+	);
+
+	if (existingPane && existingPane instanceof ProjectModeEditor) {
+		// Browser already open → focus it and lock the group
+		await existingPane.group.openEditor(input, { pinned: true });
+
+		// Lock the group to prevent new editors from opening here
+		// Only lock if there are multiple groups (locking requires >1 group)
+		if (editorGroupsService.groups.length > 1) {
+			existingPane.group.lock(true);
+		}
+
+		return existingPane;
+	}
+
+	// Browser not open → open it in a side group, then lock
+	const direction = preferredSideBySideGroupDirection(configurationService);
+	let targetGroup = editorGroupsService.findGroup({ direction });
+	if (!targetGroup) {
+		targetGroup = editorGroupsService.addGroup(editorGroupsService.activeGroup, direction);
+	}
+	await targetGroup.openEditor(input, { pinned: true });
+
+	// Lock the group to prevent new editors from opening here
+	// Only lock if there are multiple groups (locking requires >1 group)
+	if (editorGroupsService.groups.length > 1) {
+		targetGroup.lock(true);
+	}
+
+	// Find the newly opened editor pane
+	const newPane = editorService.visibleEditorPanes.find(
+		pane => pane.input instanceof EditorTabInput
+	);
+
+	return newPane instanceof ProjectModeEditor ? newPane : undefined;
+}
+
+/**
  * Register all browser-related commands
  */
 export function registerBrowserCommands(): void {
@@ -57,45 +111,14 @@ export function registerBrowserCommands(): void {
 			const notificationService = accessor.get(INotificationService);
 			const storageService = accessor.get(IStorageService);
 
-			// SINGLETON: Get the one and only browser instance
-			const input = EditorTabInput.getInstance();
+			// Open/focus browser editor and lock its group (centralized logic)
+			const browserPane = await openBrowserEditor(editorService, editorGroupsService, configurationService);
 
-			// Check if browser editor is already open in any group
-			const visibleEditors = editorService.visibleEditorPanes;
-			let existingPane = visibleEditors.find(
-				pane => pane.input instanceof EditorTabInput
-			);
-
-			if (existingPane) {
-				// Focus existing editor in its current group
-				await existingPane.group.openEditor(input, { pinned: true });
-
-				// If projectPath provided, start that project in the existing editor
-				if (args?.projectPath && existingPane instanceof ProjectModeEditor) {
-					await existingPane.startProjectPreview(args.projectPath);
-				}
-				return;
-			}
-
-			// Open in side group (SIDE_GROUP) by default
-			const direction = preferredSideBySideGroupDirection(configurationService);
-			let targetGroup = editorGroupsService.findGroup({ direction });
-			if (!targetGroup) {
-				targetGroup = editorGroupsService.addGroup(editorGroupsService.activeGroup, direction);
-			}
-			await targetGroup.openEditor(input, { pinned: true });
-
-			// If projectPath provided, start that project after opening
-			if (args?.projectPath) {
-				// Find the newly opened editor pane
-				const newPane = editorService.visibleEditorPanes.find(
-					pane => pane.input instanceof EditorTabInput
-				);
-				if (newPane && newPane instanceof ProjectModeEditor) {
-					// Small delay to ensure editor is fully initialized
-					await new Promise(resolve => setTimeout(resolve, 100));
-					await newPane.startProjectPreview(args.projectPath);
-				}
+			// If projectPath provided, start that project
+			if (args?.projectPath && browserPane) {
+				// Small delay to ensure editor is fully initialized (only needed for new panes)
+				await new Promise(resolve => setTimeout(resolve, 100));
+				await browserPane.startProjectPreview(args.projectPath);
 			}
 
 			// Show hint notification (once per installation)
@@ -204,37 +227,14 @@ export function registerBrowserCommands(): void {
 				// STEP 2: Server started successfully → Open browser
 				// ============================================
 
-				// Get the singleton browser input
-				const input = EditorTabInput.getInstance();
+				// Open/focus browser editor and lock its group (centralized logic)
+				const browserPane = await openBrowserEditor(editorService, editorGroupsService, configurationService);
 
-				// Check if browser editor is already open
-				const visibleEditors = editorService.visibleEditorPanes;
-				let existingPane = visibleEditors.find(
-					pane => pane.input instanceof EditorTabInput
-				);
-
-				if (existingPane && existingPane instanceof ProjectModeEditor) {
-					// Browser already open → just navigate to URL
-					await existingPane.group.openEditor(input, { pinned: true });
-					await existingPane.navigateToUrl(url, projectPath);
-				} else {
-					// Browser not open → open it first, then navigate
-					const direction = preferredSideBySideGroupDirection(configurationService);
-					let targetGroup = editorGroupsService.findGroup({ direction });
-					if (!targetGroup) {
-						targetGroup = editorGroupsService.addGroup(editorGroupsService.activeGroup, direction);
-					}
-					await targetGroup.openEditor(input, { pinned: true });
-
-					// Find the newly opened editor pane and navigate
-					const newPane = editorService.visibleEditorPanes.find(
-						pane => pane.input instanceof EditorTabInput
-					);
-					if (newPane && newPane instanceof ProjectModeEditor) {
-						// Small delay to ensure editor is fully initialized
-						await new Promise(resolve => setTimeout(resolve, 100));
-						await newPane.navigateToUrl(url, projectPath);
-					}
+				// Navigate to the dev server URL
+				if (browserPane) {
+					// Small delay to ensure editor is fully initialized (only needed for new panes)
+					await new Promise(resolve => setTimeout(resolve, 100));
+					await browserPane.navigateToUrl(url, projectPath);
 				}
 
 				notificationService.info(`Project started at: ${url}`);
