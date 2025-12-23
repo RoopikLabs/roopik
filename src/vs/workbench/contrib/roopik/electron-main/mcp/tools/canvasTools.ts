@@ -27,28 +27,36 @@ export function registerCanvasTools(
 	componentService: ComponentService
 ): void {
 
+
 	// --------------------------------------------------------------
-	// TOOL: Create Component
+	// TOOL: Add Component (Import from local folder)
 	// --------------------------------------------------------------
 	server.tool(
 		'roopik_createComponent',
-		'Create a new component in Canvas Mode. Supports React, Vue, Svelte components from AI generation, local files, GitHub, or Figma. Note: Position is managed separately by the canvas UI.',
+		'Add/import a component to Canvas Mode from a local folder. The folder must contain component source files. Auto-detects entry file and framework. Can pass either file path or folder path.',
 		{
-			canvasId: z.string().describe('Canvas ID to create component in'),
-			name: z.string().describe('Component name (e.g., "Button", "Card")'),
-			source: z.enum(['ai-agent', 'local-file', 'drag-drop', 'github', 'figma', 'manual']).describe('Source type: ai-agent (AI generated), local-file (from project), github (from GitHub), figma (from Figma design), drag-drop (file drop), manual (manual creation)'),
-			sourceData: z.any().describe('Source-specific data matching the source type. Structure varies by source.')
+			canvasId: z.string().optional().describe('Canvas ID to add component to (optional, uses active canvas if not provided)'),
+			folderPath: z.string().describe('Absolute path to component folder (e.g., C:\\project\\src\\Button) or file path (e.g., C:\\project\\src\\Button\\Button.tsx)'),
+			name: z.string().optional().describe('Component name (optional, auto-detected from folder/file if not provided)'),
+			entryFile: z.string().optional().describe('Entry file name relative to folder (optional, auto-detected if not provided)'),
+			framework: z.enum(['react', 'vue', 'svelte', 'solid', 'preact', 'html']).optional().describe('Framework type (optional, auto-detected if not provided)')
 		},
-		async ({ canvasId, name, source, sourceData }: {
-			canvasId: string;
-			name: string;
-			source: 'ai-agent' | 'local-file' | 'drag-drop' | 'github' | 'figma' | 'manual';
-			sourceData: any;
+		async ({ canvasId, folderPath, name, entryFile, framework }: {
+			canvasId?: string;
+			folderPath: string;
+			name?: string;
+			entryFile?: string;
+			framework?: 'react' | 'vue' | 'svelte' | 'solid' | 'preact' | 'html';
 		}) => {
 			try {
-				// Note: MCP tool needs to be updated for metadata-only architecture
-				// For now, this will fail as we need folderPath instead of source/sourceData
-				throw new Error('MCP add_component tool not yet updated for metadata-only architecture');
+				const component = await componentService.addComponent({
+					folderPath,
+					canvasId,
+					componentName: name,
+					entryFile,
+					framework,
+					origin: 'ai'
+				});
 
 				return {
 					content: [{
@@ -57,12 +65,16 @@ export function registerCanvasTools(
 							success: true,
 							component: {
 								id: component.id,
-								name: component.name,
 								canvasId: component.canvasId,
-								framework: component.framework,
+								folderPath: component.folderPath,
 								entryFile: component.entryFile,
-								files: component.files,
-								buildState: component.buildState
+								framework: component.framework,
+								buildState: component.buildState,
+								contentHash: component.contentHash,
+								componentName: component.componentName,
+								origin: component.origin,
+								createdAt: component.createdAt,
+								updatedAt: component.updatedAt
 							}
 						})
 					}]
@@ -76,8 +88,7 @@ export function registerCanvasTools(
 							success: false,
 							isError: true,
 							error: errorMessage,
-							canvasId,
-							name
+							folderPath
 						})
 					}],
 					isError: true
@@ -244,7 +255,7 @@ export function registerCanvasTools(
 							success: true,
 							component: {
 								id: component.id,
-								name: component.name,
+								componentName: component.componentName,
 								canvasId: component.canvasId,
 								framework: component.framework,
 								folderPath: component.folderPath,
@@ -296,7 +307,7 @@ export function registerCanvasTools(
 							canvasId,
 							components: components.map(c => ({
 								id: c.id,
-								name: c.name,
+								componentName: c.componentName,
 								framework: c.framework,
 								entryFile: c.entryFile,
 								buildState: c.buildState

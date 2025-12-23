@@ -378,7 +378,7 @@ export class ComponentService extends Disposable implements IComponentService {
 		// SAVE: Create ComponentReference and persist to canvas file
 		// ====================================================================
 		const reference: ComponentReference = {
-			name: componentName,
+			componentName,
 			folderPath,
 			entryFile,
 			framework: framework || 'unknown',
@@ -405,7 +405,7 @@ export class ComponentService extends Disposable implements IComponentService {
 			framework: resolvedFramework,
 			buildState: { status: 'building' }, // Initial state
 			contentHash,                        // Always computed
-			name: componentName,
+			componentName,
 			origin: request.origin,
 			createdAt: now,
 			updatedAt: now
@@ -852,7 +852,7 @@ export class ComponentService extends Disposable implements IComponentService {
 					framework: ref.framework,
 					buildState: ref.buildState,
 					contentHash: ref.contentHash,
-					name: ref.name,
+					componentName: ref.componentName,
 					origin: ref.origin,
 					createdAt: ref.createdAt,
 					updatedAt: ref.updatedAt
@@ -945,22 +945,22 @@ export class ComponentService extends Disposable implements IComponentService {
 
 	/**
 	 * Update component metadata
-	 * Updates name in canvas file
+	 * Updates componentName in canvas file
 	 */
-	async updateComponentMeta(id: string, updates: { name?: string }): Promise<void> {
+	async updateComponentMeta(id: string, updates: { componentName?: string }): Promise<void> {
 		this.ensureInitialized();
 		const component = this.components.get(id);
 		if (!component) {
 			throw new Error(`Component not found: ${id}`);
 		}
-		if (updates.name) {
-			component.name = updates.name;
+		if (updates.componentName) {
+			component.componentName = updates.componentName;
 			component.updatedAt = Date.now();
 			await this.storageService.updateComponentReference(component.canvasId, id, {
-				name: updates.name,
+				componentName: updates.componentName,
 				updatedAt: component.updatedAt
 			});
-			this._onComponentUpdated.fire({ component, changes: ['name'] });
+			this._onComponentUpdated.fire({ component, changes: ['componentName'] });
 		}
 	}
 }

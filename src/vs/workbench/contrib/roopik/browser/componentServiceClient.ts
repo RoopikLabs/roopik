@@ -155,7 +155,7 @@ export class ComponentServiceClient implements IComponentService {
 		return this.channel.call('updateComponentSource', { id, files });
 	}
 
-	async updateComponentMeta(id: string, updates: { name?: string }): Promise<void> {
+	async updateComponentMeta(id: string, updates: { componentName?: string }): Promise<void> {
 		return this.channel.call('updateComponentMeta', { id, updates });
 	}
 

@@ -49,8 +49,8 @@ export interface Component {
 	/** Hash of source files (for cache) - always computed */
 	contentHash: string;
 
-	/** Display name (optional) */
-	name?: string;
+	/** Display name for the component (e.g., "Button", "Card") */
+	componentName?: string;
 
 	/** Origin hint: 'local' | 'ai' | 'figma' | 'github' (informational) */
 	origin?: string;

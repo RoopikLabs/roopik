@@ -87,7 +87,7 @@ export class ComponentChannel implements IServerChannel {
 				return this.service.updateComponentSource(id, files);
 			}
 			case 'updateComponentMeta': {
-				const { id, updates } = arg as { id: string; updates: { name?: string } };
+				const { id, updates } = arg as { id: string; updates: { componentName?: string } };
 				return this.service.updateComponentMeta(id, updates);
 			}
 

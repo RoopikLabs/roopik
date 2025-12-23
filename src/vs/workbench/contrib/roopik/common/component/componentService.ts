@@ -55,7 +55,7 @@ export interface ComponentDeletedEvent {
  */
 export interface ComponentUpdatedEvent {
 	component: Component;
-	changes: ('name' | 'source')[];
+	changes: ('componentName' | 'source')[];
 }
 
 // ============================================================================
@@ -203,9 +203,9 @@ export interface IComponentService {
 	updateComponentSource(id: string, files: Record<string, string>): Promise<void>;
 
 	/**
-	 * Update component metadata (name only)
+	 * Update component metadata (componentName only)
 	 */
-	updateComponentMeta(id: string, updates: { name?: string }): Promise<void>;
+	updateComponentMeta(id: string, updates: { componentName?: string }): Promise<void>;
 
 	// ========================================================================
 	// Build
