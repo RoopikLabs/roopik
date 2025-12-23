@@ -105,21 +105,26 @@ export function registerBrowserCommands(): void {
 		}
 
 		async run(accessor: ServicesAccessor, args?: OpenProjectPreviewArgs): Promise<void> {
-			const editorService = accessor.get(IEditorService);
-			const editorGroupsService = accessor.get(IEditorGroupsService);
-			const configurationService = accessor.get(IConfigurationService);
+			const commandService = accessor.get(ICommandService);
 			const notificationService = accessor.get(INotificationService);
 			const storageService = accessor.get(IStorageService);
 
-			// Open/focus browser editor and lock its group (centralized logic)
-			const browserPane = await openBrowserEditor(editorService, editorGroupsService, configurationService);
-
-			// If projectPath provided, start that project
-			if (args?.projectPath && browserPane) {
-				// Small delay to ensure editor is fully initialized (only needed for new panes)
-				await new Promise(resolve => setTimeout(resolve, 100));
-				await browserPane.startProjectPreview(args.projectPath);
+			// If projectPath provided, delegate to startProject command
+			// This ensures single flow: start server → event opens browser
+			if (args?.projectPath) {
+				await commandService.executeCommand('roopik.startProject', {
+					projectPath: args.projectPath
+				});
+				return;
 			}
+
+			// No projectPath: Just open empty browser (for "Browse Web" button)
+			const editorService = accessor.get(IEditorService);
+			const editorGroupsService = accessor.get(IEditorGroupsService);
+			const configurationService = accessor.get(IConfigurationService);
+
+			// Open/focus browser editor and lock its group (centralized logic)
+			await openBrowserEditor(editorService, editorGroupsService, configurationService);
 
 			// Show hint notification (once per installation)
 			const hintKey = 'roopik.browserRightSideHintShown';
@@ -196,9 +201,6 @@ export function registerBrowserCommands(): void {
 
 		async run(accessor: ServicesAccessor, args?: { projectPath: string }): Promise<{ url: string; success: boolean } | undefined> {
 			const mainProcessService = accessor.get(IMainProcessService);
-			const editorService = accessor.get(IEditorService);
-			const editorGroupsService = accessor.get(IEditorGroupsService);
-			const configurationService = accessor.get(IConfigurationService);
 			const notificationService = accessor.get(INotificationService);
 
 			// Validate projectPath
@@ -216,26 +218,25 @@ export function registerBrowserCommands(): void {
 			try {
 				// ============================================
 				// STEP 1: Start dev server FIRST
+				// Browser opening is handled by projectModeContribution via event
 				// ============================================
 				const devServerService = new DevServerBridge(mainProcessService.getChannel(DEV_SERVER_CHANNEL));
+
+				// Check if another project is already running (project switching)
+				const runningServer = await devServerService.getRunningServer();
+				if (runningServer && runningServer.projectRoot !== projectPath) {
+					// Mark as project switching - contribution will keep browser open
+					// This is handled via a flag in projectModeContribution
+					console.log('[startProject] Project switching detected - browser will be reused');
+				}
+
 				const url = await devServerService.startServer({
 					projectRoot: projectPath,
 					port: 5173
 				});
 
-				// ============================================
-				// STEP 2: Server started successfully → Open browser
-				// ============================================
-
-				// Open/focus browser editor and lock its group (centralized logic)
-				const browserPane = await openBrowserEditor(editorService, editorGroupsService, configurationService);
-
-				// Navigate to the dev server URL
-				if (browserPane) {
-					// Small delay to ensure editor is fully initialized (only needed for new panes)
-					await new Promise(resolve => setTimeout(resolve, 100));
-					await browserPane.navigateToUrl(url, projectPath);
-				}
+				// Browser opening and navigation is handled by projectModeContribution
+				// via onStatusChanged event when server becomes 'running'
 
 				notificationService.info(`Project started at: ${url}`);
 				return { url, success: true };

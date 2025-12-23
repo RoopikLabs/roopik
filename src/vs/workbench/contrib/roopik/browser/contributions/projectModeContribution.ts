@@ -34,6 +34,9 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 
 	private devServerService: DevServerBridge;
 
+	// Track if we're switching projects (to avoid closing browser unnecessarily)
+	private isProjectSwitching: boolean = false;
+
 	constructor(
 		@IEditorService private readonly editorService: IEditorService,
 		@IEditorGroupsService private readonly editorGroupsService: IEditorGroupsService,
@@ -64,6 +67,9 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 					framework: event.framework
 				});
 
+				// Reset switching flag since new project is now running
+				this.isProjectSwitching = false;
+
 				try {
 					await this.openBrowserAndNavigate(event.url, event.projectRoot);
 				} catch (error) {
@@ -72,12 +78,26 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 				return;
 			}
 
-			// Handle server entering 'stopped' state → close browser
+			// Handle server entering 'stopped' state
 			if (event.state === 'stopped') {
-				console.log('[ProjectModeContribution] Dev server stopped, closing browser:', {
+				console.log('[ProjectModeContribution] Dev server stopped:', {
 					projectRoot: event.projectRoot
 				});
 
+				// Check if browser is already open
+				const browserPane = this.editorService.visibleEditorPanes.find(
+					pane => pane.input instanceof EditorTabInput
+				);
+
+				// If browser is open, it's likely a project switch - keep browser open for reuse
+				// The next 'running' event will navigate to the new project URL
+				if (browserPane) {
+					console.log('[ProjectModeContribution] Browser is open - keeping it open (project switch detected)');
+					this.isProjectSwitching = true;
+					return;
+				}
+
+				// Browser not open - explicit user stop or cleanup, close browser if somehow still exists
 				try {
 					await this.closeBrowser();
 				} catch (error) {
