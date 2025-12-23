@@ -38,8 +38,8 @@ export function registerWorkspaceTools(
 	// TOOL: List All Canvases
 	// --------------------------------------------------------------
 	server.tool(
-		'roopik_listCanvases',
-		'List all canvases in the workspace with metadata (name, component count, timestamps). This is Roopik-specific context that agents need to understand the project structure.',
+		'rpk_listCanvases',
+		'[Roopik IDE] List all Canvases in the workspace. Canvases are visual workspaces in the IDE where components are displayed for live preview. Returns canvas names, component counts, and timestamps.',
 		{
 			nameFilter: z.string().optional().describe('Optional filter to search canvas names'),
 			sortBy: z.enum(['name', 'updatedAt', 'createdAt', 'componentCount']).optional().describe('Sort field (default: updatedAt)'),
@@ -93,8 +93,8 @@ export function registerWorkspaceTools(
 	// TOOL: Get Active Canvas
 	// --------------------------------------------------------------
 	server.tool(
-		'roopik_getActiveCanvas',
-		'Get the currently focused/active canvas in the IDE. Returns null if no canvas is focused. This tells agents which canvas the user is working on.',
+		'rpk_getActiveCanvas',
+		'[Roopik IDE] Get the Canvas currently open/focused in the IDE. Use this to know which Canvas the user is viewing, so you can add components to it. Returns null if no Canvas is open.',
 		{},
 		async () => {
 			try {
@@ -168,8 +168,8 @@ export function registerWorkspaceTools(
 	// TOOL: Create Canvas
 	// --------------------------------------------------------------
 	server.tool(
-		'roopik_createCanvas',
-		'Create a new canvas or return existing one if name already exists. Canvas names are converted to slugs (e.g., "Login Components" -> "login-components").',
+		'rpk_createCanvas',
+		'[Roopik IDE] Create a new Canvas in the IDE for organizing and previewing components. If a Canvas with the same name exists, returns the existing one. Canvases appear as tabs in the IDE where components are visually rendered.',
 		{
 			name: z.string().describe('Canvas display name (e.g., "Login Components")')
 		},
@@ -215,5 +215,5 @@ export function registerWorkspaceTools(
 		}
 	);
 
-	console.log('[MCP] Registered 3 workspace tools (listCanvases, getActiveCanvas, createCanvas)');
+	console.log('[MCP] Registered 3 workspace tools: rpk_listCanvases, rpk_getActiveCanvas, rpk_createCanvas');
 }
