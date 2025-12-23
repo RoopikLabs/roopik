@@ -26,7 +26,9 @@ import {
 } from '../../common/component/componentService.js';
 import {
 	Component,
-	AddComponentRequest
+	AddComponentRequest,
+	ComponentInfo,
+	BuildErrorInfo
 } from '../../common/component/types.js';
 import { ComponentReference } from '../../common/storage/storageTypes.js';
 import { IRoopikStorageService } from '../../common/storage/storageService.js';
@@ -455,6 +457,37 @@ export class ComponentService extends Disposable implements IComponentService {
 
 		console.log(`[ComponentService] ✅ Component added successfully: ${componentId}`);
 		return component;
+	}
+
+	/**
+	 * Add multiple components in batch
+	 * More efficient than calling addComponent() in a loop
+	 */
+	async addComponents(requests: AddComponentRequest[]): Promise<Component[]> {
+		this.ensureInitialized();
+
+		if (requests.length === 0) {
+			return [];
+		}
+
+		console.log(`[ComponentService] 📦 Batch adding ${requests.length} components`);
+
+		// Pause file watcher during batch operation
+		this.fileWatcher.pause();
+
+		const components: Component[] = [];
+		try {
+			for (const request of requests) {
+				const component = await this.addComponent(request);
+				components.push(component);
+			}
+		} finally {
+			// Resume file watcher
+			this.fileWatcher.resume();
+		}
+
+		console.log(`[ComponentService] ✅ Batch add complete: ${components.length} components`);
+		return components;
 	}
 
 	// ========================================================================
@@ -932,41 +965,104 @@ export class ComponentService extends Disposable implements IComponentService {
 		return bundle.bundledCode;
 	}
 
-	/**
-	 * Get CDN URLs
-	 * Loads from cache metadata
-	 */
-	async getCdnUrls(id: string): Promise<string[]> {
-		this.ensureInitialized();
-		const component = this.components.get(id);
-		if (!component) {
-			throw new Error(`Component not found: ${id}`);
-		}
-		const bundle = await this.storageService.loadBundleCache(component.canvasId, id);
-		if (!bundle) {
-			return [];
-		}
-		return bundle.buildMeta.cdnUrls || [];
-	}
+	// ========================================================================
+	// Component Info (Unified API for AI agents)
+	// ========================================================================
 
 	/**
-	 * Update component metadata
-	 * Updates componentName in canvas file
+	 * Get comprehensive component info in a single call
+	 * This is the primary API for AI agents to understand component state.
 	 */
-	async updateComponentMeta(id: string, updates: { componentName?: string }): Promise<void> {
+	async getComponentInfo(id: string): Promise<ComponentInfo> {
+		this.ensureInitialized();
+
+		const component = this.components.get(id);
+		if (!component) {
+			throw new Error(`Component not found: ${id}`);
+		}
+
+		// Check if currently building
+		const isBuilding = this.buildQueue.isBuilding(id);
+
+		// Try to load cache to get build stats
+		const bundle = await this.storageService.loadBundleCache(component.canvasId, id);
+
+		// Determine cache validity
+		const cacheValid = bundle !== null && bundle.buildMeta.contentHash === component.contentHash;
+
+		// Map buildState.status to ComponentInfo.buildStatus
+		// 'pending' maps to 'building' (both mean "not ready yet")
+		const rawStatus = component.buildState.status;
+		const buildStatus: 'building' | 'ready' | 'error' =
+			rawStatus === 'pending' ? 'building' : rawStatus;
+
+		// Extract error message (only exists when status === 'error')
+		const buildError = component.buildState.status === 'error'
+			? component.buildState.error
+			: null;
+
+		// Extract build error info if present
+		let buildErrorInfo: BuildErrorInfo | undefined;
+		if (buildError) {
+			buildErrorInfo = {
+				message: buildError,
+				errors: [{ message: buildError, category: 'unknown' }],
+				buildTime: 0
+			};
+		}
+
+		return {
+			// Basic info
+			id: component.id,
+			canvasId: component.canvasId,
+			componentName: component.componentName,
+			folderPath: component.folderPath,
+			entryFile: component.entryFile,
+			framework: component.framework,
+			origin: component.origin,
+			createdAt: component.createdAt,
+			updatedAt: component.updatedAt,
+
+			// Build status
+			buildStatus,
+			isBuilding,
+			buildError,
+			buildErrorInfo,
+
+			// Cache status
+			cacheValid,
+			contentHash: component.contentHash,
+
+			// Build output (from cache if available)
+			cdnUrls: bundle?.buildMeta.cdnUrls || [],
+			lastBuildTime: bundle?.buildMeta.buildTime || 0,
+			bundleSize: bundle?.buildMeta.bundleSize || 0,
+			lastBuiltAt: bundle?.buildMeta.builtAt || 0
+		};
+	}
+
+	// ========================================================================
+	// Update
+	// ========================================================================
+
+	/**
+	 * Update component display name
+	 */
+	async updateComponentName(id: string, componentName: string): Promise<void> {
 		this.ensureInitialized();
 		const component = this.components.get(id);
 		if (!component) {
 			throw new Error(`Component not found: ${id}`);
 		}
-		if (updates.componentName) {
-			component.componentName = updates.componentName;
-			component.updatedAt = Date.now();
-			await this.storageService.updateComponentReference(component.canvasId, id, {
-				componentName: updates.componentName,
-				updatedAt: component.updatedAt
-			});
-			this._onComponentUpdated.fire({ component, changes: ['componentName'] });
-		}
+
+		component.componentName = componentName;
+		component.updatedAt = Date.now();
+
+		await this.storageService.updateComponentReference(component.canvasId, id, {
+			componentName,
+			updatedAt: component.updatedAt
+		});
+
+		this._onComponentUpdated.fire({ component, changes: ['componentName'] });
 	}
 }

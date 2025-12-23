@@ -212,3 +212,82 @@ export interface BuildErrorInfo {
 	/** Build time before failure (ms) */
 	buildTime: number;
 }
+
+// ============================================================================
+// Component Info (Unified view for AI agents)
+// ============================================================================
+
+/**
+ * Unified component information for AI agents
+ *
+ * Single call to get everything an agent needs:
+ * - Component metadata
+ * - Build status (building/ready/error)
+ * - Error details if build failed
+ * - Cache status
+ * - CDN URLs for dependencies
+ *
+ * This reduces round trips - agent gets full context in one call.
+ */
+export interface ComponentInfo {
+	/** Component ID */
+	id: string;
+
+	/** Parent canvas ID */
+	canvasId: string;
+
+	/** Display name */
+	componentName?: string;
+
+	/** Workspace-relative folder path */
+	folderPath: string;
+
+	/** Entry file (relative to folderPath) */
+	entryFile: string;
+
+	/** Detected framework */
+	framework: Framework;
+
+	/** Origin hint */
+	origin?: string;
+
+	/** Timestamps */
+	createdAt: number;
+	updatedAt: number;
+
+	// === Build Status ===
+
+	/** Current build status: 'building' | 'ready' | 'error' */
+	buildStatus: 'building' | 'ready' | 'error';
+
+	/** Is component currently in build queue? */
+	isBuilding: boolean;
+
+	/** Error message if build failed (null if success or building) */
+	buildError: string | null;
+
+	/** Structured error info if available */
+	buildErrorInfo?: BuildErrorInfo;
+
+	// === Cache Status ===
+
+	/** Is the cached bundle valid (matches current content hash)? */
+	cacheValid: boolean;
+
+	/** Content hash of source files */
+	contentHash: string;
+
+	// === Build Output (only if build succeeded and cache valid) ===
+
+	/** CDN URLs for dependencies (empty if not built) */
+	cdnUrls: string[];
+
+	/** Last build time in ms (0 if not built) */
+	lastBuildTime: number;
+
+	/** Bundle size in bytes (0 if not built) */
+	bundleSize: number;
+
+	/** When the component was last built (0 if never) */
+	lastBuiltAt: number;
+}

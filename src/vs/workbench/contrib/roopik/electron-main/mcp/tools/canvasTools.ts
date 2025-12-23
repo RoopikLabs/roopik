@@ -98,47 +98,6 @@ export function registerCanvasTools(
 	);
 
 	// --------------------------------------------------------------
-	// TOOL: Get Component Source
-	// --------------------------------------------------------------
-	server.tool(
-		'roopik_getComponentSource',
-		'Get the source code files for a component. Returns all files as a record of filename -> content.',
-		{
-			componentId: z.string().describe('Component ID to get source for')
-		},
-		async ({ componentId }: { componentId: string }) => {
-			try {
-				const files = await componentService.getComponentSource(componentId);
-
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: true,
-							componentId,
-							files
-						})
-					}]
-				};
-			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-				return {
-					content: [{
-						type: 'text' as const,
-						text: JSON.stringify({
-							success: false,
-							isError: true,
-							error: errorMessage,
-							componentId
-						})
-					}],
-					isError: true
-				};
-			}
-		}
-	);
-
-	// --------------------------------------------------------------
 	// TOOL: Delete Component
 	// --------------------------------------------------------------
 	server.tool(
@@ -183,46 +142,21 @@ export function registerCanvasTools(
 	// --------------------------------------------------------------
 	server.tool(
 		'roopik_getComponentInfo',
-		'Get detailed information about a component including metadata, build state, and file list.',
+		'Get comprehensive information about a component: metadata, build status, errors, cache validity, CDN URLs. This is the primary API for understanding component state.',
 		{
 			componentId: z.string().describe('Component ID to get info for')
 		},
 		async ({ componentId }: { componentId: string }) => {
 			try {
-				const component = componentService.getComponent(componentId);
-
-				if (!component) {
-					return {
-						content: [{
-							type: 'text' as const,
-							text: JSON.stringify({
-								success: false,
-								isError: true,
-								error: 'Component not found',
-								componentId
-							})
-						}],
-						isError: true
-					};
-				}
+				// Use the new unified getComponentInfo() which includes everything
+				const info = await componentService.getComponentInfo(componentId);
 
 				return {
 					content: [{
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: true,
-							component: {
-								id: component.id,
-								componentName: component.componentName,
-								canvasId: component.canvasId,
-								framework: component.framework,
-								folderPath: component.folderPath,
-								entryFile: component.entryFile,
-								buildState: component.buildState,
-								contentHash: component.contentHash,
-								createdAt: component.createdAt,
-								updatedAt: component.updatedAt
-							}
+							component: info
 						})
 					}]
 				};
@@ -332,5 +266,5 @@ export function registerCanvasTools(
 		}
 	);
 
-	console.log('[MCP] Registered 6 canvas tools (createComponent, getComponentSource, deleteComponent, getComponentInfo, listComponentsInCanvas, rebuildComponent)');
+	console.log('[MCP] Registered 5 canvas tools (createComponent, deleteComponent, getComponentInfo, listComponentsInCanvas, rebuildComponent)');
 }

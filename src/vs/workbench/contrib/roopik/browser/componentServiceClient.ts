@@ -26,7 +26,8 @@ import {
 } from '../common/component/componentService.js';
 import {
 	Component,
-	AddComponentRequest
+	AddComponentRequest,
+	ComponentInfo
 } from '../common/component/types.js';
 
 import { COMPONENT_CHANNEL_NAME } from '../common/component/index.js';
@@ -92,6 +93,10 @@ export class ComponentServiceClient implements IComponentService {
 		return this.channel.call('addComponent', request);
 	}
 
+	async addComponents(requests: AddComponentRequest[]): Promise<Component[]> {
+		return this.channel.call('addComponents', requests);
+	}
+
 	// ========================================================================
 	// Read
 	// ========================================================================
@@ -132,6 +137,14 @@ export class ComponentServiceClient implements IComponentService {
 	}
 
 	// ========================================================================
+	// Component Info (Unified API)
+	// ========================================================================
+
+	async getComponentInfo(id: string): Promise<ComponentInfo> {
+		return this.channel.call('getComponentInfo', id);
+	}
+
+	// ========================================================================
 	// Code Access
 	// ========================================================================
 
@@ -143,16 +156,12 @@ export class ComponentServiceClient implements IComponentService {
 		return this.channel.call('getBundledCode', id);
 	}
 
-	async getCdnUrls(id: string): Promise<string[]> {
-		return this.channel.call('getCdnUrls', id);
-	}
-
 	// ========================================================================
 	// Update
 	// ========================================================================
 
-	async updateComponentMeta(id: string, updates: { componentName?: string }): Promise<void> {
-		return this.channel.call('updateComponentMeta', { id, updates });
+	async updateComponentName(id: string, componentName: string): Promise<void> {
+		return this.channel.call('updateComponentName', { id, componentName });
 	}
 
 	// ========================================================================

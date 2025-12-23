@@ -58,6 +58,8 @@ export class ComponentChannel implements IServerChannel {
 			// ================================================================
 			case 'addComponent':
 				return this.service.addComponent(arg as AddComponentRequest);
+			case 'addComponents':
+				return this.service.addComponents(arg as AddComponentRequest[]);
 
 			// ================================================================
 			// Read
@@ -70,21 +72,25 @@ export class ComponentChannel implements IServerChannel {
 				return Promise.resolve(this.service.getAllComponents());
 
 			// ================================================================
+			// Component Info (Unified API)
+			// ================================================================
+			case 'getComponentInfo':
+				return this.service.getComponentInfo(arg as string);
+
+			// ================================================================
 			// Code Access
 			// ================================================================
 			case 'getComponentSource':
 				return this.service.getComponentSource(arg as string);
 			case 'getBundledCode':
 				return this.service.getBundledCode(arg as string);
-			case 'getCdnUrls':
-				return this.service.getCdnUrls(arg as string);
 
 			// ================================================================
 			// Update
 			// ================================================================
-			case 'updateComponentMeta': {
-				const { id, updates } = arg as { id: string; updates: { componentName?: string } };
-				return this.service.updateComponentMeta(id, updates);
+			case 'updateComponentName': {
+				const { id, componentName } = arg as { id: string; componentName: string };
+				return this.service.updateComponentName(id, componentName);
 			}
 
 			// ================================================================

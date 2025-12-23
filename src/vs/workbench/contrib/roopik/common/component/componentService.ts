@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import { Component, AddComponentRequest, BuildResult, BuildErrorInfo } from './types.js';
+import { Component, AddComponentRequest, BuildResult, BuildErrorInfo, ComponentInfo } from './types.js';
 
 // ============================================================================
 // Event Types
@@ -150,6 +150,19 @@ export interface IComponentService {
 	 */
 	addComponent(request: AddComponentRequest): Promise<Component>;
 
+	/**
+	 * Add multiple components in batch (for AI agents generating multiple variants)
+	 *
+	 * More efficient than calling addComponent() in a loop:
+	 * - Single canvas file write (not N writes)
+	 * - Builds are queued together
+	 * - Returns all components with their IDs
+	 *
+	 * @param requests Array of AddComponentRequest
+	 * @returns Array of created Components (in same order as requests)
+	 */
+	addComponents(requests: AddComponentRequest[]): Promise<Component[]>;
+
 	// ========================================================================
 	// Read
 	// ========================================================================
@@ -170,6 +183,24 @@ export interface IComponentService {
 	getAllComponents(): Component[];
 
 	// ========================================================================
+	// Component Info (Unified API for AI agents)
+	// ========================================================================
+
+	/**
+	 * Get comprehensive component info in a single call
+	 *
+	 * Returns everything an AI agent needs:
+	 * - Component metadata (name, path, framework)
+	 * - Build status (building/ready/error)
+	 * - Error details if build failed
+	 * - Cache validity
+	 * - CDN URLs and build stats
+	 *
+	 * This is the primary API for AI agents to understand component state.
+	 */
+	getComponentInfo(id: string): Promise<ComponentInfo>;
+
+	// ========================================================================
 	// Code Access
 	// ========================================================================
 
@@ -187,20 +218,15 @@ export interface IComponentService {
 	 */
 	getBundledCode(id: string): Promise<string>;
 
-	/**
-	 * Get CDN URLs for a component's dependencies
-	 */
-	getCdnUrls(id: string): Promise<string[]>;
-
 	// ========================================================================
 	// Update
 	// ========================================================================
 
 	/**
-	 * Update component metadata (componentName only)
+	 * Update component display name
 	 * NOTE: Source code is edited directly via VS Code, FileWatcher triggers rebuild
 	 */
-	updateComponentMeta(id: string, updates: { componentName?: string }): Promise<void>;
+	updateComponentName(id: string, componentName: string): Promise<void>;
 
 	// ========================================================================
 	// Build
