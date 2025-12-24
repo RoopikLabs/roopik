@@ -327,9 +327,9 @@ export function registerBrowserTools(
 	// --------------------------------------------------------------
 	server.tool(
 		'browser_open',
-		'[Roopik IDE] Check if browser is open or navigate to a URL. If browser is already open and URL is provided, navigates to that URL. If browser is not open, use project_start to start the dev server which will open the browser with proper UI.',
+		'[Roopik IDE] Open the browser or navigate to a URL. If browser is not open, opens it with proper editor UI. If URL is provided, navigates to that URL after opening.',
 		{
-			url: z.string().optional().describe('URL to navigate to if browser is already open (optional)')
+			url: z.string().optional().describe('URL to navigate to after browser opens (optional)')
 		},
 		async ({ url }: { url?: string }) => {
 			try {
@@ -337,23 +337,25 @@ export function registerBrowserTools(
 				const browserViewId = browserViewService.getActiveBrowserViewId();
 
 				if (browserViewId === undefined) {
-					// Browser not open - direct to use project_start for proper UI flow
-					// This ensures consistent behavior with the native agent-dio flow
+					// Browser not open - fire event for renderer to open it with proper UI
+					// The renderer's projectModeContribution listens and opens browser editor
+					// URL normalization is done in browserViewService.navigate()
+					browserViewService.requestBrowserOpen(url);
+
 					return {
 						content: [{
 							type: 'text' as const,
 							text: JSON.stringify({
-								success: false,
-								isError: true,
-								error: 'Browser is not open. Use project_start to start the dev server which will open the browser with proper editor UI. Alternatively, the user can manually open the browser from the IDE.',
-								hint: 'project_start automatically opens the browser preview when the dev server starts.'
+								success: true,
+								message: 'Browser open request sent. The browser will open shortly.',
+								url: url || undefined
 							})
-						}],
-						isError: true
+						}]
 					};
 				}
 
 				// Browser is already open - navigate if URL provided
+				// URL normalization is done in browserViewService.navigate()
 				if (url) {
 					await browserViewService.navigate(browserViewId, url);
 					return {
@@ -765,6 +767,7 @@ Actions:
 					};
 				}
 
+				// URL normalization is done in browserViewService.navigate()
 				await browserViewService.navigate(browserViewId, url);
 
 				return {

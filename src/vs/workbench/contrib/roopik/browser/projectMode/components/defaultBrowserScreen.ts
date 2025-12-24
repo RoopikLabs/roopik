@@ -162,7 +162,7 @@ export class DefaultBrowserScreen {
 			text-align: center;
 			max-width: 400px;
 		`;
-		hint.textContent = 'Tip: You can also enter a URL directly in the address bar above';
+		hint.textContent = 'You can also enter a URL directly in the address bar above';
 		this.element.appendChild(hint);
 
 		this.container.appendChild(this.element);

@@ -26,13 +26,16 @@ import { IConfigurationService } from '../../../../../platform/configuration/com
 import { IMainProcessService } from '../../../../../platform/ipc/common/mainProcessService.js';
 import { EditorTabInput } from '../projectMode/editorTabInput.js';
 import { DevServerBridge } from '../projectMode/devServerBridge.js';
+import { ServiceBridge } from '../projectMode/serviceBridge.js';
 import { DEV_SERVER_CHANNEL } from '../../common/projectMode/devServer.js';
+import { PROJECT_MODE_CHANNEL } from '../../common/projectMode/ipc.js';
 import { openBrowserEditor } from '../commands/browserCommands.js';
 
 export class RoopikProjectModeContribution extends Disposable implements IWorkbenchContribution {
 	static readonly ID = 'roopik.projectModeContribution';
 
 	private devServerService: DevServerBridge;
+	private projectModeService: ServiceBridge;
 
 	constructor(
 		@IEditorService private readonly editorService: IEditorService,
@@ -45,8 +48,14 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 		// Get DevServerService via IPC
 		this.devServerService = new DevServerBridge(mainProcessService.getChannel(DEV_SERVER_CHANNEL));
 
+		// Get ProjectModeService via IPC (for MCP browser open events)
+		this.projectModeService = new ServiceBridge(mainProcessService.getChannel(PROJECT_MODE_CHANNEL));
+
 		// Listen to server status changes
 		this.setupDevServerListener();
+
+		// Listen for MCP browser open requests
+		this.setupMcpBrowserOpenListener();
 	}
 
 	/**
@@ -97,6 +106,18 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 					console.error('[ProjectModeContribution] Failed to close browser:', error);
 				}
 			}
+		}));
+	}
+
+	/**
+	 * Setup listener for MCP browser open requests
+	 * When MCP tool browser_open is called and no browser is open,
+	 * this opens the browser editor with proper UI
+	 */
+	private setupMcpBrowserOpenListener(): void {
+		this._register(this.projectModeService.onMcpBrowserOpenRequest(async (event) => {
+			// Same as roopik.openProjectPreview command (Browse Web button)
+			await this.openBrowserAndNavigate(event.url || '', '');
 		}));
 	}
 

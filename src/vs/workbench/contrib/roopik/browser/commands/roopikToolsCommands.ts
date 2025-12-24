@@ -127,6 +127,7 @@ export function registerRoopikToolsCommands(): void {
 
 					const mainProcessService = accessor.get(IMainProcessService);
 					const channel = getToolsChannel(mainProcessService);
+					// URL normalization is done in browserViewService.navigate()
 					const navResult = await channel.call('browser_navigate', { url: args.url }) as RoopikToolResult;
 
 					if (navResult?.success) {
@@ -222,9 +223,10 @@ export function registerRoopikToolsCommands(): void {
 			if (!args?.url) {
 				return { success: false, error: 'URL is required' };
 			}
+			// URL normalization is done in browserViewService.navigate()
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('browser_navigate', args);
+			return channel.call('browser_navigate', { url: args.url });
 		}
 	});
 

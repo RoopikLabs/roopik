@@ -6,7 +6,7 @@
 import { BrowserWindow, WebContentsView, session, app } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserBridgeMessage } from '../../common/projectMode/types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserBridgeMessage, McpBrowserOpenRequestEvent } from '../../common/projectMode/types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
 import type { ILifecycleMainService } from '../../../../../platform/lifecycle/electron-main/lifecycleMainService.js';
@@ -48,6 +48,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 	private readonly _onBrowserKeyPress = new Emitter<import('../../common/projectMode/types.js').BrowserKeyEvent>();
 	readonly onBrowserKeyPress: Event<import('../../common/projectMode/types.js').BrowserKeyEvent> = this._onBrowserKeyPress.event;
+
+	private readonly _onMcpBrowserOpenRequest = new Emitter<McpBrowserOpenRequestEvent>();
+	readonly onMcpBrowserOpenRequest: Event<McpBrowserOpenRequestEvent> = this._onMcpBrowserOpenRequest.event;
 
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
@@ -352,7 +355,10 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// ============================================
 
 	async navigate(browserViewId: number, url: string): Promise<void> {
-		console.log('[ProjectMode][Main] navigate() requested', { browserViewId, url });
+		// Normalize URL - add protocol if missing (centralized for all callers: MCP, native, UI)
+		const normalizedUrl = this.normalizeUrl(url);
+
+		console.log('[ProjectMode][Main] navigate() requested', { browserViewId, url, normalizedUrl });
 
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView) {
@@ -380,7 +386,38 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			webContentsId: browserView.webContents.id
 		});
 
-		await browserView.webContents.loadURL(url);
+		await browserView.webContents.loadURL(normalizedUrl);
+	}
+
+	/**
+	 * Normalize URL by adding protocol if missing
+	 * - Empty or about: URLs pass through unchanged
+	 * - localhost URLs get http://
+	 * - All other URLs get https://
+	 */
+	private normalizeUrl(url: string): string {
+		if (!url) {
+			return url;
+		}
+		const trimmed = url.trim();
+		// Empty string - pass through
+		if (!trimmed) {
+			return trimmed;
+		}
+		// about: URLs (about:blank, about:srcdoc, etc.) - pass through unchanged
+		if (/^about:/i.test(trimmed)) {
+			return trimmed;
+		}
+		// Already has protocol
+		if (/^https?:\/\//i.test(trimmed)) {
+			return trimmed;
+		}
+		// Localhost should use http
+		if (/^localhost(:\d+)?/i.test(trimmed)) {
+			return `http://${trimmed}`;
+		}
+		// Everything else gets https
+		return `https://${trimmed}`;
 	}
 
 	async goBack(browserViewId: number): Promise<void> {
@@ -1010,6 +1047,22 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		return browserView.webContents.debugger.isAttached()
 			? `ws://127.0.0.1:9222/devtools/page/${browserViewId}`
 			: '';
+	}
+
+	// ============================================
+	// MCP Browser Open Request
+	// ============================================
+
+	/**
+	 * Request browser to be opened from MCP
+	 * Fires event that renderer listens to and opens the browser editor with proper UI
+	 * This is used by MCP tools (browser_open) when no browser is currently open
+	 *
+	 * @param url - Optional URL to navigate to after browser opens
+	 */
+	requestBrowserOpen(url?: string): void {
+		console.log('[ProjectMode][Main] MCP browser open request', { url });
+		this._onMcpBrowserOpenRequest.fire({ url });
 	}
 
 	// ============================================
