@@ -1089,6 +1089,217 @@ export const ROOPIK_TOOL_DEFINITIONS = [
 
 ---
 
+## 11. Adding New Tools: Complete Checklist
+
+> **WARNING:** The current architecture requires modifications in 15+ files to add a new tool with auto-approval. This is a known pain point and should be refactored to a config-driven approach.
+
+### 11.1 Files Modified for Roopik Tools Integration
+
+Based on commits `d5deb102` and `1ea1b093`, here's every file that was touched:
+
+#### A. Tool Definitions (LLM sees these)
+
+| File | What to Add |
+|------|-------------|
+| `src/core/prompts/tools/roopik/index.ts` | XML tool descriptions for legacy protocol |
+| `src/core/prompts/tools/native-tools/roopik.ts` | Native tool definitions (JSON schema) |
+| `src/core/prompts/tools/native-tools/index.ts` | Import and spread `roopikNativeTools` |
+| `src/core/prompts/tools/index.ts` | Add tool group to `getToolsForMode()` |
+
+#### B. Tool Execution (Backend)
+
+| File | What to Add |
+|------|-------------|
+| `src/core/tools/roopik/RoopikToolHandler.ts` | Tool handler with switch cases |
+| `src/core/tools/roopik/index.ts` | Export handler |
+| `src/services/roopik/RoopikToolClient.ts` | Client methods for each tool |
+| `src/services/roopik/index.ts` | Export client |
+| `src/core/assistant-message/presentAssistantMessage.ts` | Add cases to tool dispatcher switch |
+
+#### C. Type Definitions
+
+| File | What to Add |
+|------|-------------|
+| `src/packages/types/src/tool.ts` | Add tool names to `ToolName` type |
+| `src/packages/types/src/mode.ts` | Add tool group to each mode's `groups` array |
+| `src/packages/types/src/global-settings.ts` | Add `alwaysAllow<ToolGroup>` setting |
+| `src/shared/tools.ts` | Add tool args types to `NativeToolArgs` |
+| `src/shared/ExtensionMessage.ts` | Add tools to `ClineSayTool` interface |
+
+#### D. Auto-Approval System (The Painful Part)
+
+| File | What to Add | Line Count |
+|------|-------------|------------|
+| `src/core/auto-approval/index.ts` | Add to `AutoApprovalState` type + check logic | ~10 lines |
+| `src/core/webview/ClineProvider.ts` | Add to state in **3 separate places** | ~3 lines |
+| `webview/src/context/ExtensionStateContext.tsx` | Add to initial state + setter | ~2 lines |
+| `webview/src/hooks/useAutoApprovalToggles.ts` | Destructure + add to toggles object | ~3 lines |
+| `webview/src/hooks/useAutoApprovalState.ts` | Add to interface | ~1 line |
+| `webview/src/components/settings/AutoApproveToggle.tsx` | Add config entry | ~7 lines |
+| `webview/src/components/settings/AutoApproveSettings.tsx` | Pass prop | ~1 line |
+| `webview/src/components/settings/SettingsView.tsx` | Destructure + pass to component | ~2 lines |
+| `webview/src/components/chat/AutoApproveDropdown.tsx` | Add setter to switch statement | ~3 lines |
+| `webview/src/i18n/locales/en/settings.json` | Add label and description | ~4 lines |
+
+#### E. Core IDE Integration (VSCode side)
+
+| File | What to Add |
+|------|-------------|
+| `src/vs/workbench/contrib/roopik/browser/commands/roopikToolsCommands.ts` | VSCode command handlers |
+| `src/vs/workbench/contrib/roopik/electron-main/channel/roopikToolsChannel.ts` | IPC channel handlers |
+| `src/vs/code/electron-main/app.ts` | Register IPC channel |
+
+### 11.2 Step-by-Step: Adding a New Auto-Approval Option
+
+```
+TOTAL FILES TO MODIFY: 15+
+ESTIMATED TIME: 1-2 hours (if you know what you're doing)
+```
+
+**Step 1: Types Package**
+```typescript
+// src/packages/types/src/global-settings.ts
+alwaysAllowMyTool: z.boolean().optional(),
+```
+
+**Step 2: Auto-Approval Logic**
+```typescript
+// src/core/auto-approval/index.ts
+export type AutoApprovalState =
+  | "alwaysAllowMyTool"  // Add here
+  // ...
+
+// In checkAutoApproval():
+if (tool?.tool?.startsWith("my_tool_")) {
+  return state.alwaysAllowMyTool === true ? { decision: "approve" } : { decision: "ask" }
+}
+```
+
+**Step 3: ClineProvider (3 places!)**
+```typescript
+// src/core/webview/ClineProvider.ts
+// Search for "alwaysAllowMcp" and add "alwaysAllowMyTool" next to it in ALL 3 locations
+```
+
+**Step 4: ExtensionMessage**
+```typescript
+// src/shared/ExtensionMessage.ts
+// Add to ExtensionState Pick type:
+| "alwaysAllowMyTool"
+```
+
+**Step 5: ExtensionStateContext**
+```typescript
+// webview/src/context/ExtensionStateContext.tsx
+// Add to initial state:
+alwaysAllowMyTool: false,
+
+// Add setter:
+setAlwaysAllowMyTool: (value) => setState((prevState) => ({ ...prevState, alwaysAllowMyTool: value })),
+```
+
+**Step 6: useAutoApprovalToggles**
+```typescript
+// webview/src/hooks/useAutoApprovalToggles.ts
+const { alwaysAllowMyTool, /* ... */ } = useExtensionState()
+const toggles = useMemo(() => ({
+  alwaysAllowMyTool,
+  // ...
+}), [alwaysAllowMyTool, /* ... */])
+```
+
+**Step 7: useAutoApprovalState**
+```typescript
+// webview/src/hooks/useAutoApprovalState.ts
+interface AutoApprovalToggles {
+  alwaysAllowMyTool?: boolean
+  // ...
+}
+```
+
+**Step 8: AutoApproveToggle Config**
+```typescript
+// webview/src/components/settings/AutoApproveToggle.tsx
+alwaysAllowMyTool: {
+  key: "alwaysAllowMyTool",
+  labelKey: "settings:autoApprove.myTool.label",
+  descriptionKey: "settings:autoApprove.myTool.description",
+  icon: "tools",
+  testId: "always-allow-mytool-toggle",
+},
+```
+
+**Step 9: AutoApproveDropdown**
+```typescript
+// webview/src/components/chat/AutoApproveDropdown.tsx
+// Add to destructuring:
+setAlwaysAllowMyTool,
+
+// Add to switch statement in onAutoApproveToggle:
+case "alwaysAllowMyTool":
+  setAlwaysAllowMyTool(value)
+  break
+```
+
+**Step 10: SettingsView**
+```typescript
+// webview/src/components/settings/SettingsView.tsx
+// Add to destructuring from useExtensionState()
+// Add to updatedSettings object
+// Add to AutoApproveSettings props
+```
+
+**Step 11: Translations**
+```json
+// webview/src/i18n/locales/en/settings.json
+"myTool": {
+  "label": "My Tool",
+  "description": "Auto-approve My Tool actions"
+}
+```
+
+**Step 12: REBUILD WEBVIEW!**
+```bash
+cd extensions/roopik-dio/webview && npm run build
+```
+
+### 11.3 Common Pitfalls
+
+1. **Stale `.js` files** - Delete any `.js` files in `webview/src/` that shouldn't exist
+2. **Forgetting ClineProvider** - It has 3 separate places where state is synced
+3. **Missing from initial state** - ExtensionStateContext needs the value in initial state
+4. **Webview not rebuilt** - Changes to webview require `npm run build` in webview folder
+5. **Missing from useAutoApprovalToggles** - The hook needs to destructure AND include in toggles object
+
+### 11.4 Future Improvement: Config-Driven Approach
+
+The current architecture should be refactored to:
+
+```typescript
+// ONE file to define everything
+// src/core/auto-approval/config.ts
+export const AUTO_APPROVAL_OPTIONS = [
+  {
+    key: "alwaysAllowRoopik",
+    icon: "preview",
+    labelKey: "settings:autoApprove.roopik.label",
+    descriptionKey: "settings:autoApprove.roopik.description",
+    check: (tool: string) => tool?.startsWith("rpk_"),
+  },
+  // Add new options here - everything else derives automatically
+]
+```
+
+Then all other files would import and derive from this single config:
+- Types generated from config keys
+- UI components iterate over config
+- Approval logic loops through config checks
+- State management auto-generated
+
+**Result:** Adding a new tool = 1 file change instead of 15+
+
+---
+
 ## Summary
 
 | Aspect | Before | After |
