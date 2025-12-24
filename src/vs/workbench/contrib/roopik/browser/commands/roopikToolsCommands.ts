@@ -107,6 +107,8 @@ export function registerRoopikToolsCommands(): void {
 				const editorService = accessor.get(IEditorService);
 				const editorGroupsService = accessor.get(IEditorGroupsService);
 				const configurationService = accessor.get(IConfigurationService);
+				// Get mainProcessService immediately - accessor is only valid during synchronous execution
+				const mainProcessService = accessor.get(IMainProcessService);
 
 				// Open/focus the browser editor tab (this triggers createBrowserView internally)
 				const browserPane = await openBrowserEditor(editorService, editorGroupsService, configurationService);
@@ -125,7 +127,6 @@ export function registerRoopikToolsCommands(): void {
 					// Small delay to let browser initialize
 					await new Promise(resolve => setTimeout(resolve, 500));
 
-					const mainProcessService = accessor.get(IMainProcessService);
 					const channel = getToolsChannel(mainProcessService);
 					// URL normalization is done in browserViewService.navigate()
 					const navResult = await channel.call('browser_navigate', { url: args.url }) as RoopikToolResult;
