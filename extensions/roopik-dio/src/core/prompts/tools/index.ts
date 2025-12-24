@@ -28,6 +28,28 @@ import { getCodebaseSearchDescription } from "./codebase-search"
 import { getUpdateTodoListDescription } from "./update-todo-list"
 import { getRunSlashCommandDescription } from "./run-slash-command"
 import { getGenerateImageDescription } from "./generate-image"
+// Roopik IDE Tool Descriptions
+import {
+	getRpkScreenshotDescription,
+	getRpkNavigateDescription,
+	getRpkReloadDescription,
+	getRpkExecuteScriptDescription,
+	getRpkInspectElementDescription,
+	getRpkGetErrorsDescription,
+	getRpkGetConsoleLogsDescription,
+	getRpkGetActiveProjectDescription,
+	getRpkStartProjectDescription,
+	getRpkStopProjectDescription,
+	getRpkListCanvasesDescription,
+	getRpkGetActiveCanvasDescription,
+	getRpkCreateCanvasDescription,
+	getRpkAddComponentDescription,
+	getRpkAddComponentsDescription,
+	getRpkRemoveComponentDescription,
+	getRpkGetComponentInfoDescription,
+	getRpkListComponentsDescription,
+	getRpkRebuildComponentDescription,
+} from "./roopik"
 
 // Map of tool names to their description functions
 const toolDescriptionMap: Record<string, (args: ToolArgs) => string | undefined> = {
@@ -57,6 +79,26 @@ const toolDescriptionMap: Record<string, (args: ToolArgs) => string | undefined>
 	update_todo_list: (args) => getUpdateTodoListDescription(args),
 	run_slash_command: () => getRunSlashCommandDescription(),
 	generate_image: (args) => getGenerateImageDescription(args),
+	// Roopik IDE Tools
+	rpk_screenshot: () => getRpkScreenshotDescription(),
+	rpk_navigate: () => getRpkNavigateDescription(),
+	rpk_reload: () => getRpkReloadDescription(),
+	rpk_executeScript: () => getRpkExecuteScriptDescription(),
+	rpk_inspectElement: () => getRpkInspectElementDescription(),
+	rpk_getErrors: () => getRpkGetErrorsDescription(),
+	rpk_getConsoleLogs: () => getRpkGetConsoleLogsDescription(),
+	rpk_getActiveProject: () => getRpkGetActiveProjectDescription(),
+	rpk_startProject: (args) => getRpkStartProjectDescription(args),
+	rpk_stopProject: () => getRpkStopProjectDescription(),
+	rpk_listCanvases: () => getRpkListCanvasesDescription(),
+	rpk_getActiveCanvas: () => getRpkGetActiveCanvasDescription(),
+	rpk_createCanvas: () => getRpkCreateCanvasDescription(),
+	rpk_addComponent: () => getRpkAddComponentDescription(),
+	rpk_addComponents: () => getRpkAddComponentsDescription(),
+	rpk_removeComponent: () => getRpkRemoveComponentDescription(),
+	rpk_getComponentInfo: () => getRpkGetComponentInfoDescription(),
+	rpk_listComponents: () => getRpkListComponentsDescription(),
+	rpk_rebuildComponent: () => getRpkRebuildComponentDescription(),
 }
 
 export function getToolDescriptionsForMode(

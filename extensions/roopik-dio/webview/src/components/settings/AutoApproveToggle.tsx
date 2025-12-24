@@ -10,6 +10,7 @@ type AutoApproveToggles = Pick<
 	| "alwaysAllowWrite"
 	| "alwaysAllowBrowser"
 	| "alwaysAllowMcp"
+	| "alwaysAllowRoopik"
 	| "alwaysAllowModeSwitch"
 	| "alwaysAllowSubtasks"
 	| "alwaysAllowExecute"
@@ -54,6 +55,13 @@ export const autoApproveSettingsConfig: Record<AutoApproveSetting, AutoApproveCo
 		descriptionKey: "settings:autoApprove.mcp.description",
 		icon: "plug",
 		testId: "always-allow-mcp-toggle",
+	},
+	alwaysAllowRoopik: {
+		key: "alwaysAllowRoopik",
+		labelKey: "settings:autoApprove.roopik.label",
+		descriptionKey: "settings:autoApprove.roopik.description",
+		icon: "preview",
+		testId: "always-allow-roopik-toggle",
 	},
 	alwaysAllowModeSwitch: {
 		key: "alwaysAllowModeSwitch",

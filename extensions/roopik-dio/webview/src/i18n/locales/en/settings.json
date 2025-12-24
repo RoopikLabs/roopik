@@ -214,6 +214,10 @@
 			"label": "MCP",
 			"description": "Enable auto-approval of individual MCP tools in the MCP Servers view (requires both this setting and the tool's individual \"Always allow\" checkbox)"
 		},
+		"roopik": {
+			"label": "Roopik",
+			"description": "Automatically approve Roopik IDE tools for browser preview, CSS inspection, canvas, and component management"
+		},
 		"modeSwitch": {
 			"label": "Mode",
 			"description": "Automatically switch between different modes without requiring approval"

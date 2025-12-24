@@ -231,6 +231,7 @@ export type ExtensionState = Pick<
 	| "alwaysAllowWriteProtected"
 	| "alwaysAllowBrowser"
 	| "alwaysAllowMcp"
+	| "alwaysAllowRoopik"
 	| "alwaysAllowModeSwitch"
 	| "alwaysAllowSubtasks"
 	| "alwaysAllowFollowupQuestions"

@@ -25,6 +25,7 @@ type AutoApproveSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	alwaysAllowWriteProtected?: boolean
 	alwaysAllowBrowser?: boolean
 	alwaysAllowMcp?: boolean
+	alwaysAllowRoopik?: boolean
 	alwaysAllowModeSwitch?: boolean
 	alwaysAllowSubtasks?: boolean
 	alwaysAllowExecute?: boolean
@@ -42,6 +43,7 @@ type AutoApproveSettingsProps = HTMLAttributes<HTMLDivElement> & {
 		| "alwaysAllowWriteProtected"
 		| "alwaysAllowBrowser"
 		| "alwaysAllowMcp"
+		| "alwaysAllowRoopik"
 		| "alwaysAllowModeSwitch"
 		| "alwaysAllowSubtasks"
 		| "alwaysAllowExecute"
@@ -62,6 +64,7 @@ export const AutoApproveSettings = ({
 	alwaysAllowWriteProtected,
 	alwaysAllowBrowser,
 	alwaysAllowMcp,
+	alwaysAllowRoopik,
 	alwaysAllowModeSwitch,
 	alwaysAllowSubtasks,
 	alwaysAllowExecute,
@@ -156,6 +159,7 @@ export const AutoApproveSettings = ({
 						alwaysAllowWrite={alwaysAllowWrite}
 						alwaysAllowBrowser={alwaysAllowBrowser}
 						alwaysAllowMcp={alwaysAllowMcp}
+						alwaysAllowRoopik={alwaysAllowRoopik}
 						alwaysAllowModeSwitch={alwaysAllowModeSwitch}
 						alwaysAllowSubtasks={alwaysAllowSubtasks}
 						alwaysAllowExecute={alwaysAllowExecute}
