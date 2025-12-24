@@ -150,6 +150,8 @@ import { PROJECT_STORAGE_CHANNEL } from '../../workbench/contrib/roopik/common/p
 import { McpServerService } from '../../workbench/contrib/roopik/electron-main/mcp/mcpServerService.js';
 import { McpServerChannel } from '../../workbench/contrib/roopik/electron-main/channel/mcpServerChannel.js';
 import { MCP_SERVER_CHANNEL } from '../../workbench/contrib/roopik/common/mcp/index.js';
+// ROOPIK: Tools Channel - Direct IPC for agent-dio (faster than MCP HTTP)
+import { RoopikToolsChannel, ROOPIK_TOOLS_CHANNEL_NAME } from '../../workbench/contrib/roopik/electron-main/channel/roopikToolsChannel.js';
 
 /**
  * The main VS Code application. There will only ever be one instance,
@@ -1346,6 +1348,18 @@ export class CodeApplication extends Disposable {
 		}).catch((error) => {
 			console.error('[Roopik] Failed to start MCP Server:', error);
 		});
+
+		// ROOPIK: Tools Channel - Direct IPC for agent-dio extension
+		// Provides faster, timeout-free access to IDE tools (alternative to MCP HTTP)
+		const roopikToolsChannel = new RoopikToolsChannel(
+			projectModeService,    // BrowserViewService
+			devServerService,      // DevServerService
+			componentService,      // ComponentService
+			canvasService,         // ICanvasService
+			roopikStorageService   // IRoopikStorageService
+		);
+		mainProcessElectronServer.registerChannel(ROOPIK_TOOLS_CHANNEL_NAME, roopikToolsChannel);
+		console.log('[Roopik] Tools Channel registered for agent-dio IPC');
 		// ROOPIK END
 	}
 

@@ -41,6 +41,7 @@ import { generateImageTool } from "../tools/GenerateImageTool"
 import { applyDiffTool as applyDiffToolClass } from "../tools/ApplyDiffTool"
 import { validateToolUse } from "../tools/validateToolUse"
 import { codebaseSearchTool } from "../tools/CodebaseSearchTool"
+import { handleRoopikTool, isRoopikTool } from "../tools/roopik"
 
 import { formatResponse } from "../prompts/responses"
 
@@ -437,6 +438,45 @@ export async function presentAssistantMessage(cline: Task) {
 						return `[${block.name} for '${block.params.command}'${block.params.args ? ` with args: ${block.params.args}` : ""}]`
 					case "generate_image":
 						return `[${block.name} for '${block.params.path}']`
+					// Roopik IDE Tools
+					case "rpk_screenshot":
+						return `[rpk_screenshot]`
+					case "rpk_navigate":
+						return `[rpk_navigate to '${block.params.url}']`
+					case "rpk_reload":
+						return `[rpk_reload${block.params.ignoreCache === "true" ? " (hard reload)" : ""}]`
+					case "rpk_executeScript":
+						return `[rpk_executeScript]`
+					case "rpk_inspectElement":
+						return `[rpk_inspectElement for '${block.params.selector}']`
+					case "rpk_getErrors":
+						return `[rpk_getErrors]`
+					case "rpk_getConsoleLogs":
+						return `[rpk_getConsoleLogs${block.params.type ? ` (${block.params.type})` : ""}]`
+					case "rpk_getActiveProject":
+						return `[rpk_getActiveProject]`
+					case "rpk_startProject":
+						return `[rpk_startProject for '${block.params.projectPath || block.params.path}']`
+					case "rpk_stopProject":
+						return `[rpk_stopProject]`
+					case "rpk_listCanvases":
+						return `[rpk_listCanvases]`
+					case "rpk_getActiveCanvas":
+						return `[rpk_getActiveCanvas]`
+					case "rpk_createCanvas":
+						return `[rpk_createCanvas '${block.params.name}']`
+					case "rpk_addComponent":
+						return `[rpk_addComponent '${block.params.folderPath || block.params.path}']`
+					case "rpk_addComponents":
+						return `[rpk_addComponents]`
+					case "rpk_removeComponent":
+						return `[rpk_removeComponent '${block.params.componentId}']`
+					case "rpk_getComponentInfo":
+						return `[rpk_getComponentInfo '${block.params.componentId}']`
+					case "rpk_listComponents":
+						return `[rpk_listComponents '${block.params.canvasId}']`
+					case "rpk_rebuildComponent":
+						return `[rpk_rebuildComponent '${block.params.componentId}']`
 					default:
 						return `[${block.name}]`
 				}
@@ -1067,6 +1107,33 @@ export async function presentAssistantMessage(cline: Task) {
 						pushToolResult,
 						removeClosingTag,
 						toolProtocol,
+					})
+					break
+				// Roopik IDE Tools (19 tools)
+				case "rpk_screenshot":
+				case "rpk_navigate":
+				case "rpk_reload":
+				case "rpk_executeScript":
+				case "rpk_inspectElement":
+				case "rpk_getErrors":
+				case "rpk_getConsoleLogs":
+				case "rpk_getActiveProject":
+				case "rpk_startProject":
+				case "rpk_stopProject":
+				case "rpk_listCanvases":
+				case "rpk_getActiveCanvas":
+				case "rpk_createCanvas":
+				case "rpk_addComponent":
+				case "rpk_addComponents":
+				case "rpk_removeComponent":
+				case "rpk_getComponentInfo":
+				case "rpk_listComponents":
+				case "rpk_rebuildComponent":
+					await handleRoopikTool(cline, block, {
+						askApproval,
+						handleError,
+						pushToolResult,
+						removeClosingTag,
 					})
 					break
 				default: {

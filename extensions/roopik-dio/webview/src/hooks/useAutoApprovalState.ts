@@ -6,6 +6,7 @@ interface AutoApprovalToggles {
 	alwaysAllowExecute?: boolean
 	alwaysAllowBrowser?: boolean
 	alwaysAllowMcp?: boolean
+	alwaysAllowRoopik?: boolean
 	alwaysAllowModeSwitch?: boolean
 	alwaysAllowSubtasks?: boolean
 	alwaysAllowFollowupQuestions?: boolean

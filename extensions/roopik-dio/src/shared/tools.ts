@@ -76,6 +76,25 @@ export const toolParamNames = [
 	"old_string", // search_replace and edit_file parameter
 	"new_string", // search_replace and edit_file parameter
 	"expected_replacements", // edit_file parameter for multiple occurrences
+	// Roopik tool parameters
+	"selector", // rpk_inspectElement
+	"includeInherited", // rpk_inspectElement
+	"script", // rpk_executeScript
+	"ignoreCache", // rpk_reload
+	"limit", // rpk_getErrors, rpk_getConsoleLogs
+	"type", // rpk_getConsoleLogs
+	"projectPath", // rpk_startProject
+	"port", // rpk_startProject
+	"name", // rpk_createCanvas, rpk_addComponent
+	"nameFilter", // rpk_listCanvases
+	"sortBy", // rpk_listCanvases
+	"sortDirection", // rpk_listCanvases
+	"canvasId", // rpk_addComponent, rpk_listComponents
+	"folderPath", // rpk_addComponent
+	"entryFile", // rpk_addComponent
+	"framework", // rpk_addComponent
+	"componentId", // rpk_removeComponent, rpk_getComponentInfo, rpk_rebuildComponent
+	"components", // rpk_addComponents
 ] as const
 
 export type ToolParamName = (typeof toolParamNames)[number]
@@ -266,6 +285,26 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	update_todo_list: "update todo list",
 	run_slash_command: "run slash command",
 	generate_image: "generate images",
+	// Roopik IDE Tools
+	rpk_screenshot: "take browser screenshot",
+	rpk_navigate: "navigate browser",
+	rpk_reload: "reload browser page",
+	rpk_executeScript: "execute browser script",
+	rpk_inspectElement: "inspect element styles",
+	rpk_getErrors: "get browser errors",
+	rpk_getConsoleLogs: "get console logs",
+	rpk_getActiveProject: "get active project",
+	rpk_startProject: "start project",
+	rpk_stopProject: "stop project",
+	rpk_listCanvases: "list canvases",
+	rpk_getActiveCanvas: "get active canvas",
+	rpk_createCanvas: "create canvas",
+	rpk_addComponent: "add component",
+	rpk_addComponents: "add components",
+	rpk_removeComponent: "remove component",
+	rpk_getComponentInfo: "get component info",
+	rpk_listComponents: "list components",
+	rpk_rebuildComponent: "rebuild component",
 } as const
 
 // Define available tool groups.
@@ -289,6 +328,34 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 	modes: {
 		tools: ["switch_mode", "new_task"],
 		alwaysAvailable: true,
+	},
+	roopik: {
+		tools: [
+			// Browser
+			"rpk_screenshot",
+			"rpk_navigate",
+			"rpk_reload",
+			"rpk_executeScript",
+			"rpk_inspectElement",
+			// CDP
+			"rpk_getErrors",
+			"rpk_getConsoleLogs",
+			// Project
+			"rpk_getActiveProject",
+			"rpk_startProject",
+			"rpk_stopProject",
+			// Canvas
+			"rpk_listCanvases",
+			"rpk_getActiveCanvas",
+			"rpk_createCanvas",
+			// Component
+			"rpk_addComponent",
+			"rpk_addComponents",
+			"rpk_removeComponent",
+			"rpk_getComponentInfo",
+			"rpk_listComponents",
+			"rpk_rebuildComponent",
+		],
 	},
 }
 

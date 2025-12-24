@@ -786,14 +786,14 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	const shouldDisableImages = !model?.supportsImages || selectedImages.length >= MAX_IMAGES_PER_MESSAGE
 
 	// Debug logging
-	console.log('[ChatView] Image debug:', {
-		model,
-		supportsImages: model?.supportsImages,
-		selectedImagesLength: selectedImages.length,
-		maxImages: MAX_IMAGES_PER_MESSAGE,
-		shouldDisableImages,
-		apiConfiguration: apiConfiguration?.apiProvider
-	})
+	// console.log('[ChatView] Image debug:', {
+	// 	model,
+	// 	supportsImages: model?.supportsImages,
+	// 	selectedImagesLength: selectedImages.length,
+	// 	maxImages: MAX_IMAGES_PER_MESSAGE,
+	// 	shouldDisableImages,
+	// 	apiConfiguration: apiConfiguration?.apiProvider
+	// })
 
 	const handleMessage = useCallback(
 		(e: MessageEvent) => {
