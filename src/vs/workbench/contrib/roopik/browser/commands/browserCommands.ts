@@ -55,7 +55,7 @@ export async function openBrowserEditor(
 	);
 
 	if (existingPane && existingPane instanceof ProjectModeEditor) {
-		// Browser already open → focus it and lock the group
+		// Browser already open -> focus it and lock the group
 		await existingPane.group.openEditor(input, { pinned: true });
 
 		// Lock the group to prevent new editors from opening here
@@ -67,7 +67,7 @@ export async function openBrowserEditor(
 		return existingPane;
 	}
 
-	// Browser not open → open it in a side group, then lock
+	// Browser not open -> open it in a side group, then lock
 	const direction = preferredSideBySideGroupDirection(configurationService);
 	let targetGroup = editorGroupsService.findGroup({ direction });
 	if (!targetGroup) {
@@ -110,7 +110,7 @@ export function registerBrowserCommands(): void {
 			const storageService = accessor.get(IStorageService);
 
 			// If projectPath provided, delegate to startProject command
-			// This ensures single flow: start server → event opens browser
+			// This ensures single flow: start server -> event opens browser
 			if (args?.projectPath) {
 				await commandService.executeCommand('roopik.startProject', {
 					projectPath: args.projectPath
@@ -174,7 +174,7 @@ export function registerBrowserCommands(): void {
 				const projectPath = result.filePaths[0];
 
 				// Use the unified startProject command
-				// Flow: Start dev server FIRST → open browser only on success
+				// Flow: Start dev server FIRST -> open browser only on success
 				await commandService.executeCommand('roopik.startProject', {
 					projectPath
 				});
@@ -187,7 +187,7 @@ export function registerBrowserCommands(): void {
 	// ============================================================================
 	// UNIFIED PROJECT START COMMAND
 	// All entry points (UI buttons, MCP agent) should use this command
-	// Flow: Start dev server FIRST → if success → open browser → navigate to URL
+	// Flow: Start dev server FIRST -> if success -> open browser -> navigate to URL
 	// ============================================================================
 	registerAction2(class extends Action2 {
 		constructor() {
@@ -242,7 +242,7 @@ export function registerBrowserCommands(): void {
 				return { url, success: true };
 
 			} catch (error) {
-				// Server failed to start → DON'T open browser, show error
+				// Server failed to start -> DON'T open browser, show error
 				const errorMsg = error instanceof Error ? error.message : String(error);
 				notificationService.error(`Failed to start project: ${errorMsg}`);
 				return { url: '', success: false };

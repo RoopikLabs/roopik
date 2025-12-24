@@ -22,7 +22,11 @@
 import { registerAction2, Action2 } from '../../../../../platform/actions/common/actions.js';
 import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { IMainProcessService } from '../../../../../platform/ipc/common/mainProcessService.js';
+import { IEditorService } from '../../../../services/editor/common/editorService.js';
+import { IEditorGroupsService } from '../../../../services/editor/common/editorGroupsService.js';
+import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { ROOPIK_TOOLS_CHANNEL_NAME, RoopikToolResult } from '../../common/tools/types.js';
+import { openBrowserEditor } from './browserCommands.js';
 
 /**
  * Generic tool call interface for extensions
@@ -99,9 +103,63 @@ export function registerRoopikToolsCommands(): void {
 		}
 
 		async run(accessor: ServicesAccessor, args?: { url?: string }): Promise<RoopikToolResult> {
-			const mainProcessService = accessor.get(IMainProcessService);
-			const channel = getToolsChannel(mainProcessService);
-			return channel.call('browser_open', args || {});
+			try {
+				const editorService = accessor.get(IEditorService);
+				const editorGroupsService = accessor.get(IEditorGroupsService);
+				const configurationService = accessor.get(IConfigurationService);
+
+				// Open/focus the browser editor tab (this triggers createBrowserView internally)
+				const browserPane = await openBrowserEditor(editorService, editorGroupsService, configurationService);
+
+				if (!browserPane) {
+					return {
+						success: false,
+						error: 'Failed to open browser editor'
+					};
+				}
+
+				// If URL provided, navigate via IPC channel
+				// The editor creates the browser asynchronously, so we use a short delay
+				// to ensure the browser is ready before navigating
+				if (args?.url) {
+					// Small delay to let browser initialize
+					await new Promise(resolve => setTimeout(resolve, 500));
+
+					const mainProcessService = accessor.get(IMainProcessService);
+					const channel = getToolsChannel(mainProcessService);
+					const navResult = await channel.call('browser_navigate', { url: args.url });
+
+					if (navResult?.success) {
+						return {
+							success: true,
+							data: {
+								url: args.url,
+								message: `Browser opened at ${args.url}`
+							}
+						};
+					}
+					// Navigation may fail if browser not ready yet, but browser is open
+					return {
+						success: true,
+						data: {
+							url: args.url,
+							message: `Browser opened. Navigation to ${args.url} may still be in progress.`
+						}
+					};
+				}
+
+				return {
+					success: true,
+					data: {
+						message: 'Browser opened'
+					}
+				};
+			} catch (error) {
+				return {
+					success: false,
+					error: error instanceof Error ? error.message : String(error)
+				};
+			}
 		}
 	});
 

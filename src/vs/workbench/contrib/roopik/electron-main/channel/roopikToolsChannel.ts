@@ -26,7 +26,6 @@
  *                        component_get_info, component_list, component_rebuild
  */
 
-import { BrowserWindow } from 'electron';
 import { Event } from '../../../../../base/common/event.js';
 import { IServerChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import type { BrowserViewService } from '../projectMode/browserViewService.js';
@@ -183,11 +182,15 @@ export class RoopikToolsChannel implements IServerChannel {
 
 	/**
 	 * Open a browser view without requiring a project.
-	 * If URL is provided, navigates to that URL after opening.
-	 * If no URL is provided, opens an empty browser (about:blank).
 	 *
-	 * This is the primary way for agents to get browser access without needing
-	 * to start a dev server first.
+	 * NOTE: This handler is kept for backwards compatibility but browser_open
+	 * should be handled in the renderer process (roopikToolsCommands.ts) to
+	 * properly open the editor tab. Direct IPC calls here only create the
+	 * BrowserView without the editor UI.
+	 *
+	 * If browser is already open, this will work correctly for navigation.
+	 * If browser is not open, this will return an error directing to use
+	 * the proper command.
 	 */
 	private async handleBrowserOpen(args: { url?: string }): Promise<RoopikToolResult> {
 		// Check if browser is already open
@@ -214,49 +217,11 @@ export class RoopikToolsChannel implements IServerChannel {
 			};
 		}
 
-		// Get the focused window to attach the browser view to
-		const focusedWindow = BrowserWindow.getFocusedWindow();
-		if (!focusedWindow) {
-			// Try to get any window
-			const allWindows = BrowserWindow.getAllWindows().filter(w => !w.isDestroyed());
-			if (allWindows.length === 0) {
-				return {
-					success: false,
-					error: 'No window available to open browser in'
-				};
-			}
-			// Use the first available window
-			const windowId = allWindows[0].id;
-			const result = await this.browserViewService.createBrowserView(windowId);
-
-			// Navigate to URL or about:blank
-			const targetUrl = args.url || 'about:blank';
-			await this.browserViewService.navigate(result.browserViewId, targetUrl);
-
-			return {
-				success: true,
-				data: {
-					browserViewId: result.browserViewId,
-					url: targetUrl,
-					message: args.url ? `Browser opened at ${args.url}` : 'Empty browser opened'
-				}
-			};
-		}
-
-		// Create browser view in focused window
-		const result = await this.browserViewService.createBrowserView(focusedWindow.id);
-
-		// Navigate to URL or about:blank
-		const targetUrl = args.url || 'about:blank';
-		await this.browserViewService.navigate(result.browserViewId, targetUrl);
-
+		// Browser not open - this should be handled via the renderer command
+		// which properly opens the editor tab
 		return {
-			success: true,
-			data: {
-				browserViewId: result.browserViewId,
-				url: targetUrl,
-				message: args.url ? `Browser opened at ${args.url}` : 'Empty browser opened'
-			}
+			success: false,
+			error: 'Browser is not open. Use the roopik.tools.browserOpen command (not direct IPC) to open the browser with proper UI.'
 		};
 	}
 
