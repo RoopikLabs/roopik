@@ -89,7 +89,7 @@ export function registerRoopikToolsCommands(): void {
 	// ============================================================================
 
 	// --------------------------------------------------------------------------
-	// Browser Tools (10)
+	// Browser Tools (12)
 	// --------------------------------------------------------------------------
 
 	registerAction2(class extends Action2 {
@@ -127,7 +127,7 @@ export function registerRoopikToolsCommands(): void {
 
 					const mainProcessService = accessor.get(IMainProcessService);
 					const channel = getToolsChannel(mainProcessService);
-					const navResult = await channel.call('browser_navigate', { url: args.url });
+					const navResult = await channel.call('browser_navigate', { url: args.url }) as RoopikToolResult;
 
 					if (navResult?.success) {
 						return {
@@ -160,6 +160,51 @@ export function registerRoopikToolsCommands(): void {
 					error: error instanceof Error ? error.message : String(error)
 				};
 			}
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserClose',
+				title: { value: 'Close Browser', original: 'Close Browser' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('browser_close');
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserAction',
+				title: { value: 'Browser Action', original: 'Browser Action' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: {
+			action: string;
+			coordinate?: string;
+			text?: string;
+			key?: string;
+			modifiers?: string[];
+			deltaX?: number;
+			deltaY?: number;
+		}): Promise<RoopikToolResult> {
+			if (!args?.action) {
+				return { success: false, error: 'Action is required' };
+			}
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('browser_action_input', args);
 		}
 	});
 
@@ -579,5 +624,5 @@ export function registerRoopikToolsCommands(): void {
 		}
 	});
 
-	console.log('[Roopik] Registered 22 tool bridge commands for agent-dio');
+	console.log('[Roopik] Registered 24 tool bridge commands for agent-dio');
 }

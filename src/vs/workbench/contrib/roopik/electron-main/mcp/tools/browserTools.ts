@@ -319,15 +319,89 @@ export function registerBrowserTools(
 ): void {
 
 	// ============================================================================
-	// CORE BROWSER TOOLS (5)
+	// CORE BROWSER TOOLS (12)
 	// ============================================================================
 
 	// --------------------------------------------------------------
-	// TOOL: Take Screenshot
+	// TOOL: Open Browser
+	// --------------------------------------------------------------
+	server.tool(
+		'browser_open',
+		'[Roopik IDE] Check if browser is open or navigate to a URL. If browser is already open and URL is provided, navigates to that URL. If browser is not open, use project_start to start the dev server which will open the browser with proper UI.',
+		{
+			url: z.string().optional().describe('URL to navigate to if browser is already open (optional)')
+		},
+		async ({ url }: { url?: string }) => {
+			try {
+				// Check if browser is already open
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+
+				if (browserViewId === undefined) {
+					// Browser not open - direct to use project_start for proper UI flow
+					// This ensures consistent behavior with the native agent-dio flow
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'Browser is not open. Use project_start to start the dev server which will open the browser with proper editor UI. Alternatively, the user can manually open the browser from the IDE.',
+								hint: 'project_start automatically opens the browser preview when the dev server starts.'
+							})
+						}],
+						isError: true
+					};
+				}
+
+				// Browser is already open - navigate if URL provided
+				if (url) {
+					await browserViewService.navigate(browserViewId, url);
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: true,
+								browserViewId,
+								url,
+								message: `Navigated to ${url}`
+							})
+						}]
+					};
+				}
+
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: true,
+							browserViewId,
+							message: 'Browser is already open'
+						})
+					}]
+				};
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: false,
+							isError: true,
+							error: errorMessage
+						})
+					}],
+					isError: true
+				};
+			}
+		}
+	);
+
+	// --------------------------------------------------------------
+	// TOOL: Take Screenshot (with viewport metadata)
 	// --------------------------------------------------------------
 	server.tool(
 		'browser_screenshot',
-		'[Roopik IDE] Capture a screenshot of the browser in Project Mode. Returns base64-encoded image. Use this for visual verification after making UI changes.',
+		'[Roopik IDE] Capture a screenshot of the browser. Returns base64-encoded image with viewport metadata (width, height, devicePixelRatio) for pixel-perfect clicking with browser_action_input.',
 		{},
 		async () => {
 			try {
@@ -346,15 +420,305 @@ export function registerBrowserTools(
 					};
 				}
 
-				const base64Image = await browserViewService.takeScreenshot(browserViewId);
+				const result = await browserViewService.takeScreenshotWithMetadata(browserViewId);
 
 				return {
 					content: [{
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: true,
-							image: base64Image,
-							format: 'data-url'
+							image: result.image,
+							format: 'data-url',
+							viewport: {
+								width: result.width,
+								height: result.height,
+								devicePixelRatio: result.devicePixelRatio
+							}
+						})
+					}]
+				};
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: false,
+							isError: true,
+							error: errorMessage
+						})
+					}],
+					isError: true
+				};
+			}
+		}
+	);
+
+	// --------------------------------------------------------------
+	// TOOL: Close Browser
+	// --------------------------------------------------------------
+	server.tool(
+		'browser_close',
+		'[Roopik IDE] Close the browser view. Use this when done with browser testing or to free resources.',
+		{},
+		async () => {
+			try {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				if (browserViewId === undefined) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: true,
+								message: 'No browser is open'
+							})
+						}]
+					};
+				}
+
+				await browserViewService.destroyBrowserView(browserViewId);
+
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: true,
+							message: 'Browser closed'
+						})
+					}]
+				};
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: false,
+							isError: true,
+							error: errorMessage
+						})
+					}],
+					isError: true
+				};
+			}
+		}
+	);
+
+	// --------------------------------------------------------------
+	// TOOL: Browser Action (click, type, press, scroll, hover, drag)
+	// --------------------------------------------------------------
+	server.tool(
+		'browser_action_input',
+		`[Roopik IDE] Perform native input events in the browser. Supports click, right_click, double_click, hover, drag, type, press, scroll.
+
+Coordinate format: 'x,y@WIDTHxHEIGHT' where WIDTH/HEIGHT are from browser_screenshot viewport.
+Example: '450,203@900x600' means click at (450,203) on a 900x600 viewport.
+
+Actions:
+- click/right_click/double_click/hover: requires 'coordinate'
+- drag: requires 'coordinate' (start) + 'deltaX'/'deltaY' (offset to end)
+- type: requires 'text'
+- press: requires 'key' (e.g., 'Enter', 'Escape', 'Tab'), optional 'modifiers' (['ctrl', 'shift'])
+- scroll: requires 'deltaX' and/or 'deltaY' (negative = up/left)`,
+		{
+			action: z.enum(['click', 'right_click', 'double_click', 'hover', 'drag', 'type', 'press', 'scroll'])
+				.describe('The action to perform'),
+			coordinate: z.string().optional()
+				.describe("Coordinate string: 'x,y' or 'x,y@WIDTHxHEIGHT' for scaled coordinates"),
+			text: z.string().optional()
+				.describe("Text to type (for 'type' action)"),
+			key: z.string().optional()
+				.describe("Key to press (for 'press' action): Enter, Escape, Tab, ArrowDown, etc."),
+			modifiers: z.array(z.string()).optional()
+				.describe("Modifier keys (for 'press' action): ['ctrl', 'shift', 'alt', 'meta']"),
+			deltaX: z.number().optional()
+				.describe("Horizontal offset for drag/scroll (negative = left)"),
+			deltaY: z.number().optional()
+				.describe("Vertical offset for drag/scroll (negative = up)")
+		},
+		async (args: {
+			action: string;
+			coordinate?: string;
+			text?: string;
+			key?: string;
+			modifiers?: string[];
+			deltaX?: number;
+			deltaY?: number;
+		}) => {
+			try {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				if (browserViewId === undefined) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'No browser is open. Start a project first with project_start.'
+							})
+						}],
+						isError: true
+					};
+				}
+
+				const { action, coordinate, text, key, modifiers, deltaX, deltaY } = args;
+
+				// Parse coordinate string: 'x,y@WIDTHxHEIGHT'
+				let x = 0, y = 0, refWidth: number | undefined, refHeight: number | undefined;
+
+				if (coordinate) {
+					const match = coordinate.match(/^(\d+),(\d+)(?:@(\d+)x(\d+))?$/);
+					if (!match) {
+						return {
+							content: [{
+								type: 'text' as const,
+								text: JSON.stringify({
+									success: false,
+									isError: true,
+									error: `Invalid coordinate format: '${coordinate}'. Expected 'x,y' or 'x,y@WIDTHxHEIGHT'`
+								})
+							}],
+							isError: true
+						};
+					}
+					x = parseInt(match[1], 10);
+					y = parseInt(match[2], 10);
+					if (match[3] && match[4]) {
+						refWidth = parseInt(match[3], 10);
+						refHeight = parseInt(match[4], 10);
+					}
+				}
+
+				let resultData: Record<string, unknown> = { action };
+
+				switch (action) {
+					case 'click':
+					case 'right_click':
+					case 'double_click':
+					case 'hover':
+						if (!coordinate) {
+							return {
+								content: [{
+									type: 'text' as const,
+									text: JSON.stringify({
+										success: false,
+										isError: true,
+										error: `'${action}' requires 'coordinate' parameter`
+									})
+								}],
+								isError: true
+							};
+						}
+						await browserViewService.sendMouseEvent(
+							browserViewId,
+							action as 'click' | 'right_click' | 'double_click' | 'hover',
+							x, y, refWidth, refHeight
+						);
+						resultData = { action, coordinate, x, y, message: `${action} at (${x}, ${y})` };
+						break;
+
+					case 'drag':
+						if (!coordinate || deltaX === undefined || deltaY === undefined) {
+							return {
+								content: [{
+									type: 'text' as const,
+									text: JSON.stringify({
+										success: false,
+										isError: true,
+										error: "'drag' requires 'coordinate' (start) and 'deltaX'/'deltaY' (offset)"
+									})
+								}],
+								isError: true
+							};
+						}
+						await browserViewService.sendDragEvent(
+							browserViewId,
+							x, y, x + deltaX, y + deltaY,
+							refWidth, refHeight
+						);
+						resultData = { action, from: { x, y }, to: { x: x + deltaX, y: y + deltaY }, message: 'Drag completed' };
+						break;
+
+					case 'type':
+						if (!text) {
+							return {
+								content: [{
+									type: 'text' as const,
+									text: JSON.stringify({
+										success: false,
+										isError: true,
+										error: "'type' requires 'text' parameter"
+									})
+								}],
+								isError: true
+							};
+						}
+						await browserViewService.sendTypeEvent(browserViewId, text);
+						resultData = { action, textLength: text.length, message: `Typed ${text.length} characters` };
+						break;
+
+					case 'press':
+						if (!key) {
+							return {
+								content: [{
+									type: 'text' as const,
+									text: JSON.stringify({
+										success: false,
+										isError: true,
+										error: "'press' requires 'key' parameter"
+									})
+								}],
+								isError: true
+							};
+						}
+						await browserViewService.sendKeyEvent(browserViewId, key, modifiers);
+						resultData = { action, key, modifiers, message: `Pressed ${key}` };
+						break;
+
+					case 'scroll':
+						if (deltaX === undefined && deltaY === undefined) {
+							return {
+								content: [{
+									type: 'text' as const,
+									text: JSON.stringify({
+										success: false,
+										isError: true,
+										error: "'scroll' requires 'deltaX' and/or 'deltaY' parameters"
+									})
+								}],
+								isError: true
+							};
+						}
+						await browserViewService.sendScrollEvent(
+							browserViewId,
+							deltaX ?? 0,
+							deltaY ?? 0,
+							coordinate ? x : undefined,
+							coordinate ? y : undefined
+						);
+						resultData = { action, deltaX: deltaX ?? 0, deltaY: deltaY ?? 0, message: 'Scrolled' };
+						break;
+
+					default:
+						return {
+							content: [{
+								type: 'text' as const,
+								text: JSON.stringify({
+									success: false,
+									isError: true,
+									error: `Unknown action: '${action}'`
+								})
+							}],
+							isError: true
+						};
+				}
+
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: true,
+							...resultData
 						})
 					}]
 				};
@@ -780,5 +1144,187 @@ export function registerBrowserTools(
 		}
 	);
 
-	console.log('[MCP] Registered 7 browser tools: browser_screenshot, browser_navigate, browser_reload, browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs');
+	// --------------------------------------------------------------
+	// TOOL: Get Performance Metrics
+	// --------------------------------------------------------------
+	server.tool(
+		'browser_get_performance',
+		'[Roopik IDE] Get performance metrics from the browser including Web Vitals (LCP, CLS) and runtime metrics (JS heap, DOM nodes, layout count). Uses Chrome DevTools Protocol for accurate measurements.',
+		{},
+		async () => {
+			try {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				if (browserViewId === undefined) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'No browser is open. Start a project first with project_start.'
+							})
+						}],
+						isError: true
+					};
+				}
+
+				// Ensure CDP is attached
+				await browserViewService.attachDebugger(browserViewId);
+
+				// Get performance metrics via CDP
+				const metricsResult = await browserViewService.sendCDPCommand(browserViewId, 'Performance.getMetrics') as { metrics: Array<{ name: string; value: number }> };
+
+				// Get Web Vitals via script injection
+				const webVitalsScript = `
+					(function() {
+						const result = {};
+
+						// LCP (Largest Contentful Paint)
+						if (window.PerformanceObserver) {
+							const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
+							if (lcpEntries.length > 0) {
+								result.lcp = lcpEntries[lcpEntries.length - 1].startTime;
+							}
+						}
+
+						// CLS (Cumulative Layout Shift)
+						const layoutShiftEntries = performance.getEntriesByType('layout-shift');
+						if (layoutShiftEntries.length > 0) {
+							result.cls = layoutShiftEntries.reduce((sum, entry) => sum + (entry.hadRecentInput ? 0 : entry.value), 0);
+						}
+
+						// FCP (First Contentful Paint)
+						const fcpEntries = performance.getEntriesByType('paint').filter(e => e.name === 'first-contentful-paint');
+						if (fcpEntries.length > 0) {
+							result.fcp = fcpEntries[0].startTime;
+						}
+
+						// Navigation timing
+						const nav = performance.getEntriesByType('navigation')[0];
+						if (nav) {
+							result.ttfb = nav.responseStart;
+							result.domContentLoaded = nav.domContentLoadedEventEnd;
+							result.load = nav.loadEventEnd;
+						}
+
+						return result;
+					})()
+				`;
+
+				const webVitals = await browserViewService.executeScript(browserViewId, webVitalsScript);
+
+				// Format metrics
+				const metrics: Record<string, number> = {};
+				if (metricsResult?.metrics) {
+					for (const metric of metricsResult.metrics) {
+						metrics[metric.name] = metric.value;
+					}
+				}
+
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: true,
+							webVitals: webVitals || {},
+							runtimeMetrics: {
+								jsHeapUsedSize: metrics['JSHeapUsedSize'],
+								jsHeapTotalSize: metrics['JSHeapTotalSize'],
+								domNodes: metrics['Nodes'],
+								layoutCount: metrics['LayoutCount'],
+								recalcStyleCount: metrics['RecalcStyleCount'],
+								layoutDuration: metrics['LayoutDuration'],
+								recalcStyleDuration: metrics['RecalcStyleDuration'],
+								scriptDuration: metrics['ScriptDuration'],
+								taskDuration: metrics['TaskDuration']
+							}
+						}, null, 2)
+					}]
+				};
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: false,
+							isError: true,
+							error: errorMessage
+						})
+					}],
+					isError: true
+				};
+			}
+		}
+	);
+
+	// --------------------------------------------------------------
+	// TOOL: Get CDP Info
+	// --------------------------------------------------------------
+	server.tool(
+		'browser_get_cdp_info',
+		'[Roopik IDE] Get information about browser state and available Roopik tools for browser automation. Returns current URL, dev server status, and list of available browser tools.',
+		{},
+		async () => {
+			try {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+
+				// Get current URL if browser is open
+				let currentUrl: string | undefined;
+				let devServerRunning = false;
+
+				if (browserViewId !== undefined) {
+					currentUrl = await browserViewService.executeScript(browserViewId, 'window.location.href') as string;
+					devServerRunning = true;
+				}
+
+				const availableTools = [
+					'browser_open',
+					'browser_close',
+					'browser_action_input',
+					'browser_navigate',
+					'browser_reload',
+					'browser_screenshot',
+					'browser_execute_script',
+					'browser_inspect_element',
+					'browser_get_errors',
+					'browser_get_console_logs',
+					'browser_get_performance',
+					'browser_get_cdp_info'
+				];
+
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: true,
+							browserOpen: browserViewId !== undefined,
+							browserViewId,
+							currentUrl,
+							devServerRunning,
+							availableTools,
+							message: browserViewId !== undefined
+								? `Browser is open at ${currentUrl}`
+								: 'No browser is currently open. Use browser_open or project_start to open one.'
+						}, null, 2)
+					}]
+				};
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: false,
+							isError: true,
+							error: errorMessage
+						})
+					}],
+					isError: true
+				};
+			}
+		}
+	);
+
+	console.log('[MCP] Registered 12 browser tools: browser_open, browser_screenshot, browser_close, browser_action_input, browser_navigate, browser_reload, browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs, browser_get_performance, browser_get_cdp_info');
 }

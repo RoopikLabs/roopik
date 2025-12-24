@@ -4,11 +4,24 @@
 
 **Tool Naming Convention:** `category_action` (e.g., `browser_screenshot`, `component_add`)
 
-**Categories:**
-- `browser_*` - Browser tools (7 tools: screenshot, navigate, reload, execute_script, inspect_element, get_errors, get_console_logs)
-- `project_*` - Project/dev server tools (3 tools: get_active, start, stop)
-- `canvas_*` - Canvas management tools (3 tools: list, get_active, create)
-- `component_*` - Component CRUD tools (6 tools: add, add_batch, remove, get_info, list, rebuild)
+---
+
+## Tool Inventory (24 Total)
+
+| # | browser_* (12) | project_* (3) | canvas_* (3) | component_* (6) |
+|---|----------------|---------------|--------------|-----------------|
+| 1 | browser_open | project_get_active | canvas_list | component_add |
+| 2 | browser_close | project_start | canvas_get_active | component_add_batch |
+| 3 | browser_action_input | project_stop | canvas_create | component_remove |
+| 4 | browser_screenshot | | | component_get_info |
+| 5 | browser_navigate | | | component_list |
+| 6 | browser_reload | | | component_rebuild |
+| 7 | browser_execute_script | | | |
+| 8 | browser_inspect_element | | | |
+| 9 | browser_get_errors | | | |
+| 10 | browser_get_console_logs | | | |
+| 11 | browser_get_performance | | | |
+| 12 | browser_get_cdp_info | | | |
 
 ---
 
@@ -52,15 +65,15 @@ Files in `src/vs/code/`:
 
 ---
 
-## MCP Server Side (External Agent Access)
+## MCP Server Side (External Agent Access) - Add same tools here also which you added in the native
 
 Files in `src/vs/workbench/contrib/roopik/electron-main/mcp/tools/`:
 
 | # | File | Purpose |
 |---|------|---------|
-| 1 | `browserTools.ts` | MCP tools: browser_screenshot, browser_navigate, browser_reload, browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs (includes CDP monitoring) |
-| 2 | `projectTools.ts` | MCP tools: project_get_active, project_start, project_stop |
-| 3 | `canvasTools.ts` | MCP tools: canvas_list, canvas_get_active, canvas_create, component_add, component_add_batch, component_remove, component_get_info, component_list, component_rebuild |
+| 1 | `browserTools.ts` | 12 browser tools: browser_open, browser_close, browser_action_input, browser_screenshot, browser_navigate, browser_reload, browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs, browser_get_performance, browser_get_cdp_info |
+| 2 | `projectTools.ts` | 3 project tools: project_get_active, project_start, project_stop |
+| 3 | `canvasTools.ts` | 9 canvas/component tools: canvas_list, canvas_get_active, canvas_create, component_add, component_add_batch, component_remove, component_get_info, component_list, component_rebuild |
 
 ---
 

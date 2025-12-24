@@ -33,11 +33,47 @@ export interface RoopikToolResult<T = unknown> {
 }
 
 /**
- * Screenshot result data
+ * Screenshot result data (with viewport metadata for pixel-perfect clicking)
  */
 export interface ScreenshotData {
 	image: string // base64 data URL
 	format: "data-url"
+	viewport?: {
+		width: number
+		height: number
+		devicePixelRatio: number
+	}
+}
+
+/**
+ * Browser action types
+ */
+export type BrowserActionType = "click" | "right_click" | "double_click" | "hover" | "drag" | "type" | "press" | "scroll"
+
+/**
+ * Browser action result data
+ */
+export interface BrowserActionData {
+	action: BrowserActionType
+	coordinate?: string
+	x?: number
+	y?: number
+	text?: string
+	textLength?: number
+	key?: string
+	modifiers?: string[]
+	deltaX?: number
+	deltaY?: number
+	from?: { x: number; y: number }
+	to?: { x: number; y: number }
+	message: string
+}
+
+/**
+ * Browser close result data
+ */
+export interface BrowserCloseData {
+	message: string
 }
 
 /**
@@ -328,10 +364,33 @@ export class RoopikToolClient {
 
 	/**
 	 * Take a screenshot of the browser
-	 * Returns base64-encoded image
+	 * Returns base64-encoded image with viewport metadata for pixel-perfect clicking
 	 */
 	async screenshot(): Promise<RoopikToolResult<ScreenshotData>> {
 		return this.executeCommand<ScreenshotData>("roopik.tools.screenshot")
+	}
+
+	/**
+	 * Close the browser view
+	 */
+	async browserClose(): Promise<RoopikToolResult<BrowserCloseData>> {
+		return this.executeCommand<BrowserCloseData>("roopik.tools.browserClose")
+	}
+
+	/**
+	 * Perform browser input actions (click, type, press, scroll, hover, drag)
+	 * Coordinate format: 'x,y@WIDTHxHEIGHT' where WIDTH/HEIGHT are from screenshot viewport
+	 */
+	async browserAction(options: {
+		action: BrowserActionType
+		coordinate?: string
+		text?: string
+		key?: string
+		modifiers?: string[]
+		deltaX?: number
+		deltaY?: number
+	}): Promise<RoopikToolResult<BrowserActionData>> {
+		return this.executeCommand<BrowserActionData>("roopik.tools.browserAction", options)
 	}
 
 	/**

@@ -438,9 +438,13 @@ export async function presentAssistantMessage(cline: Task) {
 						return `[${block.name} for '${block.params.command}'${block.params.args ? ` with args: ${block.params.args}` : ""}]`
 					case "generate_image":
 						return `[${block.name} for '${block.params.path}']`
-					// Roopik IDE Tools - Browser (10)
+					// Roopik IDE Tools - Browser (12)
 					case "browser_open":
 						return `[browser_open${block.params.url ? ` to '${block.params.url}'` : ""}]`
+					case "browser_close":
+						return `[browser_close]`
+					case "browser_action_input":
+						return `[browser_action_input: ${block.params.action}${block.params.coordinate ? ` at ${block.params.coordinate}` : ""}]`
 					case "browser_navigate":
 						return `[browser_navigate to '${block.params.url}']`
 					case "browser_reload":
@@ -1118,9 +1122,11 @@ export async function presentAssistantMessage(cline: Task) {
 						toolProtocol,
 					})
 					break
-				// Roopik IDE Tools (22 tools)
-				// Browser (10)
+				// Roopik IDE Tools (24 tools)
+				// Browser (12)
 				case "browser_open":
+				case "browser_close":
+				case "browser_action_input":
 				case "browser_navigate":
 				case "browser_reload":
 				case "browser_screenshot":

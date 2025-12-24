@@ -1,7 +1,7 @@
 import type OpenAI from "openai"
 
 // ============================================================================
-// Browser Tools (10)
+// Browser Tools (12)
 // ============================================================================
 
 export const browser_open: OpenAI.Chat.ChatCompletionTool = {
@@ -73,12 +73,84 @@ export const browser_screenshot: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_screenshot",
 		description:
-			"[Roopik IDE] Take a screenshot of the browser preview. Returns a base64-encoded image of the current browser state. Use this for visual verification after making UI changes or to see what the user sees.",
+			"[Roopik IDE] Take a screenshot of the browser preview. Returns base64-encoded image with viewport metadata (width, height, devicePixelRatio). Use this for visual verification and to get coordinates for browser_action_input.",
 		strict: true,
 		parameters: {
 			type: "object",
 			properties: {},
 			required: [],
+			additionalProperties: false,
+		},
+	},
+}
+
+export const browser_close: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "browser_close",
+		description:
+			"[Roopik IDE] Close the browser view. Use this when done with browser testing or to free resources.",
+		strict: true,
+		parameters: {
+			type: "object",
+			properties: {},
+			required: [],
+			additionalProperties: false,
+		},
+	},
+}
+
+export const browser_action_input: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "browser_action_input",
+		description: `[Roopik IDE] Perform native input events in the browser. Supports click, right_click, double_click, hover, drag, type, press, scroll.
+
+Coordinate format: 'x,y@WIDTHxHEIGHT' where WIDTH/HEIGHT are from browser_screenshot viewport.
+Example: '450,203@900x600' means click at (450,203) on a 900x600 viewport.
+
+Actions:
+- click/right_click/double_click/hover: requires 'coordinate'
+- drag: requires 'coordinate' (start) + 'deltaX'/'deltaY' (offset to end)
+- type: requires 'text'
+- press: requires 'key' (e.g., 'Enter', 'Escape', 'Tab'), optional 'modifiers' (['ctrl', 'shift'])
+- scroll: requires 'deltaX' and/or 'deltaY' (negative = up/left)`,
+		strict: false,
+		parameters: {
+			type: "object",
+			properties: {
+				action: {
+					type: "string",
+					description: "The action to perform: click, right_click, double_click, hover, drag, type, press, scroll",
+					enum: ["click", "right_click", "double_click", "hover", "drag", "type", "press", "scroll"],
+				},
+				coordinate: {
+					type: "string",
+					description: "Coordinate string: 'x,y' or 'x,y@WIDTHxHEIGHT' for scaled coordinates",
+				},
+				text: {
+					type: "string",
+					description: "Text to type (for 'type' action)",
+				},
+				key: {
+					type: "string",
+					description: "Key to press (for 'press' action): Enter, Escape, Tab, ArrowDown, etc.",
+				},
+				modifiers: {
+					type: "array",
+					items: { type: "string" },
+					description: "Modifier keys (for 'press' action): ['ctrl', 'shift', 'alt', 'meta']",
+				},
+				deltaX: {
+					type: "number",
+					description: "Horizontal offset for drag/scroll (negative = left)",
+				},
+				deltaY: {
+					type: "number",
+					description: "Vertical offset for drag/scroll (negative = up)",
+				},
+			},
+			required: ["action"],
 			additionalProperties: false,
 		},
 	},
@@ -508,8 +580,10 @@ export const component_rebuild: OpenAI.Chat.ChatCompletionTool = {
 // ============================================================================
 
 export const roopikNativeTools: OpenAI.Chat.ChatCompletionTool[] = [
-	// Browser (10 tools)
+	// Browser (12 tools)
 	browser_open,
+	browser_close,
+	browser_action_input,
 	browser_navigate,
 	browser_reload,
 	browser_screenshot,

@@ -373,8 +373,10 @@ export interface ClineSayTool {
 	| "imageGenerated"
 	| "runSlashCommand"
 	| "updateTodoList"
-	// Roopik IDE tools - Browser (10)
+	// Roopik IDE tools - Browser (12)
 	| "browser_open"
+	| "browser_close"
+	| "browser_action_input"
 	| "browser_navigate"
 	| "browser_reload"
 	| "browser_screenshot"

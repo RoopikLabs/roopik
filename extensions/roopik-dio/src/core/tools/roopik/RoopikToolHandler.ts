@@ -71,9 +71,15 @@ export async function handleRoopikTool(
 		let result: RoopikToolResult
 
 		switch (toolName) {
-			// Browser Tools (10)
+			// Browser Tools (12)
 			case "browser_open":
 				result = await handleBrowserOpen(task, block, callbacks)
+				break
+			case "browser_close":
+				result = await handleBrowserClose(task, block, callbacks)
+				break
+			case "browser_action_input":
+				result = await handleBrowserActionInput(task, block, callbacks)
 				break
 			case "browser_navigate":
 				result = await handleNavigate(task, block, callbacks)
@@ -182,6 +188,12 @@ async function handleRoopikToolPartial(
 		case "browser_open":
 			displayMessage = `Opening browser${params.url ? `: ${removeClosingTag("url", params.url)}` : "..."}`
 			break
+		case "browser_close":
+			displayMessage = `Closing browser...`
+			break
+		case "browser_action_input":
+			displayMessage = `Browser action: ${removeClosingTag("action", params.action)}${params.coordinate ? ` at ${removeClosingTag("coordinate", params.coordinate)}` : ""}`
+			break
 		case "browser_navigate":
 			displayMessage = `Navigating to: ${removeClosingTag("url", params.url)}`
 			break
@@ -221,6 +233,37 @@ async function handleRoopikToolPartial(
 async function handleBrowserOpen(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
 	const url = block.params.url || block.params.args
 	return roopikClient.browserOpen(url)
+}
+
+async function handleBrowserClose(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	return roopikClient.browserClose()
+}
+
+async function handleBrowserActionInput(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const action = block.params.action as any
+	if (!action) {
+		return { success: false, error: "Missing required parameter: action" }
+	}
+
+	// Parse modifiers from JSON string if provided
+	let modifiers: string[] | undefined
+	if (block.params.modifiers) {
+		try {
+			modifiers = JSON.parse(block.params.modifiers)
+		} catch {
+			modifiers = [block.params.modifiers] // Single modifier as string
+		}
+	}
+
+	return roopikClient.browserAction({
+		action,
+		coordinate: block.params.coordinate,
+		text: block.params.text,
+		key: (block.params as any).key || block.params.args, // 'key' param or fallback to args
+		modifiers,
+		deltaX: (block.params as any).deltaX ? parseFloat((block.params as any).deltaX) : undefined,
+		deltaY: (block.params as any).deltaY ? parseFloat((block.params as any).deltaY) : undefined,
+	})
 }
 
 async function handleScreenshot(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
@@ -402,9 +445,9 @@ async function handleRebuildComponent(task: Task, block: ToolUse, callbacks: Too
 function formatToolResult(toolName: RoopikToolName, result: RoopikToolResult): ToolResponse {
 	const data = result.data
 
-	// Special handling for screenshot - include the image
+	// Special handling for screenshot - include the image and viewport metadata
 	if (toolName === "browser_screenshot" && data && typeof data === "object" && "image" in data) {
-		const imageData = data as { image: string; format: string }
+		const imageData = data as { image: string; format: string; viewport?: { width: number; height: number; devicePixelRatio: number } }
 		const blocks: Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> = []
 
 		// Add the image
@@ -423,10 +466,14 @@ function formatToolResult(toolName: RoopikToolName, result: RoopikToolResult): T
 			}
 		}
 
-		// Add text description
+		// Add text description with viewport metadata for browser_action_input
+		let description = "Screenshot captured successfully."
+		if (imageData.viewport) {
+			description += ` Viewport: ${imageData.viewport.width}x${imageData.viewport.height} (devicePixelRatio: ${imageData.viewport.devicePixelRatio}). Use coordinate format 'x,y@${imageData.viewport.width}x${imageData.viewport.height}' with browser_action_input.`
+		}
 		blocks.push({
 			type: "text",
-			text: "Screenshot captured successfully. The image shows the current state of the browser preview.",
+			text: description,
 		})
 
 		return blocks

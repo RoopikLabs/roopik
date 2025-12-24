@@ -71,10 +71,13 @@ export class RoopikToolsChannel implements IServerChannel {
 		try {
 			switch (command) {
 				// ============================================================
-				// Browser Tools (10)
+				// Browser Tools (14)
 				// ============================================================
 				case 'browser_open':
 					return this.handleBrowserOpen(arg as { url?: string });
+
+				case 'browser_close':
+					return this.handleBrowserClose();
 
 				case 'browser_navigate':
 					return this.handleNavigate(arg as { url: string });
@@ -84,6 +87,17 @@ export class RoopikToolsChannel implements IServerChannel {
 
 				case 'browser_screenshot':
 					return this.handleScreenshot();
+
+				case 'browser_action_input':
+					return this.handleBrowserAction(arg as {
+						action: string;
+						coordinate?: string;
+						text?: string;
+						key?: string;
+						modifiers?: string[];
+						deltaX?: number;
+						deltaY?: number;
+					});
 
 				case 'browser_execute_script':
 					return this.handleExecuteScript(arg as { script: string });
@@ -459,11 +473,169 @@ export class RoopikToolsChannel implements IServerChannel {
 			};
 		}
 
-		const image = await this.browserViewService.takeScreenshot(browserViewId);
+		// Use takeScreenshotWithMetadata to include viewport dimensions for pixel-perfect clicking
+		const result = await this.browserViewService.takeScreenshotWithMetadata(browserViewId);
 		return {
 			success: true,
-			data: { image, format: 'data-url' }
+			data: {
+				image: result.image,
+				format: 'data-url',
+				// Viewport metadata for coordinate scaling
+				viewport: {
+					width: result.width,
+					height: result.height,
+					devicePixelRatio: result.devicePixelRatio
+				}
+			}
 		};
+	}
+
+	/**
+	 * Close the browser view
+	 */
+	private async handleBrowserClose(): Promise<RoopikToolResult> {
+		const browserViewId = this.browserViewService.getActiveBrowserViewId();
+		if (browserViewId === undefined) {
+			return {
+				success: true,
+				data: { message: 'No browser is open' }
+			};
+		}
+
+		await this.browserViewService.destroyBrowserView(browserViewId);
+		return {
+			success: true,
+			data: { message: 'Browser closed' }
+		};
+	}
+
+	/**
+	 * Perform browser input actions (click, type, press, scroll, hover, drag)
+	 *
+	 * Coordinate format: 'x,y@WIDTHxHEIGHT' (e.g., '450,203@900x600')
+	 * The coordinates are automatically scaled to the actual viewport size.
+	 */
+	private async handleBrowserAction(args: {
+		action: string;
+		coordinate?: string;
+		text?: string;
+		key?: string;
+		modifiers?: string[];
+		deltaX?: number;
+		deltaY?: number;
+	}): Promise<RoopikToolResult> {
+		const browserViewId = this.browserViewService.getActiveBrowserViewId();
+		if (browserViewId === undefined) {
+			return {
+				success: false,
+				error: 'No browser is open. Use browser_open or project_start first.'
+			};
+		}
+
+		const { action, coordinate, text, key, modifiers, deltaX, deltaY } = args;
+
+		try {
+			// Parse coordinate string: 'x,y@WIDTHxHEIGHT'
+			let x = 0, y = 0, refWidth: number | undefined, refHeight: number | undefined;
+
+			if (coordinate) {
+				const match = coordinate.match(/^(\d+),(\d+)(?:@(\d+)x(\d+))?$/);
+				if (!match) {
+					return {
+						success: false,
+						error: `Invalid coordinate format: '${coordinate}'. Expected 'x,y' or 'x,y@WIDTHxHEIGHT'`
+					};
+				}
+				x = parseInt(match[1], 10);
+				y = parseInt(match[2], 10);
+				if (match[3] && match[4]) {
+					refWidth = parseInt(match[3], 10);
+					refHeight = parseInt(match[4], 10);
+				}
+			}
+
+			switch (action) {
+				case 'click':
+				case 'right_click':
+				case 'double_click':
+				case 'hover':
+					if (!coordinate) {
+						return { success: false, error: `'${action}' requires 'coordinate' parameter` };
+					}
+					await this.browserViewService.sendMouseEvent(
+						browserViewId,
+						action as 'click' | 'right_click' | 'double_click' | 'hover',
+						x, y, refWidth, refHeight
+					);
+					return {
+						success: true,
+						data: { action, coordinate, message: `${action} at (${x}, ${y})` }
+					};
+
+				case 'drag':
+					// For drag, coordinate is start, and we need end coordinates
+					// Format: coordinate='startX,startY@WIDTHxHEIGHT', deltaX/deltaY for end offset
+					if (!coordinate || deltaX === undefined || deltaY === undefined) {
+						return { success: false, error: "'drag' requires 'coordinate' (start) and 'deltaX'/'deltaY' (offset)" };
+					}
+					await this.browserViewService.sendDragEvent(
+						browserViewId,
+						x, y, x + deltaX, y + deltaY,
+						refWidth, refHeight
+					);
+					return {
+						success: true,
+						data: { action, from: { x, y }, to: { x: x + deltaX, y: y + deltaY }, message: 'Drag completed' }
+					};
+
+				case 'type':
+					if (!text) {
+						return { success: false, error: "'type' requires 'text' parameter" };
+					}
+					await this.browserViewService.sendTypeEvent(browserViewId, text);
+					return {
+						success: true,
+						data: { action, text, message: `Typed ${text.length} characters` }
+					};
+
+				case 'press':
+					if (!key) {
+						return { success: false, error: "'press' requires 'key' parameter" };
+					}
+					await this.browserViewService.sendKeyEvent(browserViewId, key, modifiers);
+					return {
+						success: true,
+						data: { action, key, modifiers, message: `Pressed ${key}` }
+					};
+
+				case 'scroll':
+					if (deltaX === undefined && deltaY === undefined) {
+						return { success: false, error: "'scroll' requires 'deltaX' and/or 'deltaY' parameters" };
+					}
+					await this.browserViewService.sendScrollEvent(
+						browserViewId,
+						deltaX ?? 0,
+						deltaY ?? 0,
+						coordinate ? x : undefined,
+						coordinate ? y : undefined
+					);
+					return {
+						success: true,
+						data: { action, deltaX: deltaX ?? 0, deltaY: deltaY ?? 0, message: 'Scrolled' }
+					};
+
+				default:
+					return {
+						success: false,
+						error: `Unknown action: '${action}'. Valid actions: click, right_click, double_click, hover, drag, type, press, scroll`
+					};
+			}
+		} catch (error) {
+			return {
+				success: false,
+				error: `Browser action failed: ${error instanceof Error ? error.message : String(error)}`
+			};
+		}
 	}
 
 	private async handleNavigate(args: { url: string }): Promise<RoopikToolResult> {

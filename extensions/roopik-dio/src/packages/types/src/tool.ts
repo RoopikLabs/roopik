@@ -37,8 +37,10 @@ export const toolNames = [
 	"update_todo_list",
 	"run_slash_command",
 	"generate_image",
-	// Roopik IDE Tools - Browser (10 tools)
+	// Roopik IDE Tools - Browser (12 tools)
 	"browser_open",
+	"browser_close",
+	"browser_action_input",
 	"browser_navigate",
 	"browser_reload",
 	"browser_screenshot",

@@ -31,6 +31,8 @@ import { getGenerateImageDescription } from "./generate-image"
 // Roopik IDE Tool Descriptions
 import {
 	getBrowserOpenDescription,
+	getBrowserCloseDescription,
+	getRoopikBrowserActionDescription,
 	getBrowserNavigateDescription,
 	getBrowserReloadDescription,
 	getBrowserScreenshotDescription,
@@ -82,8 +84,10 @@ const toolDescriptionMap: Record<string, (args: ToolArgs) => string | undefined>
 	update_todo_list: (args) => getUpdateTodoListDescription(args),
 	run_slash_command: () => getRunSlashCommandDescription(),
 	generate_image: (args) => getGenerateImageDescription(args),
-	// Roopik IDE Tools - Browser (10)
+	// Roopik IDE Tools - Browser (12)
 	browser_open: () => getBrowserOpenDescription(),
+	browser_close: () => getBrowserCloseDescription(),
+	browser_action_input: () => getRoopikBrowserActionDescription(),
 	browser_navigate: () => getBrowserNavigateDescription(),
 	browser_reload: () => getBrowserReloadDescription(),
 	browser_screenshot: () => getBrowserScreenshotDescription(),

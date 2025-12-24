@@ -15,7 +15,7 @@ import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { CDPCssService } from './cssResolvers/cdpCssService.js';
 import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.js';
 import contextMenu from 'electron-context-menu';
-import { cleanupCDPMonitoring } from '../mcp/tools/cdpTools.js';
+import { cleanupCDPMonitoring } from '../mcp/tools/browserTools.js';
 
 /**
  * Browser View Service
@@ -759,6 +759,232 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		const image = await browserView.webContents.capturePage();
 		return image.toDataURL();
+	}
+
+	/**
+	 * Take screenshot with viewport metadata for pixel-perfect clicking
+	 * Returns image data URL plus width, height, and devicePixelRatio
+	 */
+	async takeScreenshotWithMetadata(browserViewId: number): Promise<{
+		image: string;
+		width: number;
+		height: number;
+		devicePixelRatio: number;
+	}> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		const image = await browserView.webContents.capturePage();
+		const size = image.getSize();
+
+		// Get device pixel ratio from the page
+		let devicePixelRatio = 1;
+		try {
+			devicePixelRatio = await browserView.webContents.executeJavaScript('window.devicePixelRatio || 1');
+		} catch {
+			// Default to 1 if we can't get it
+		}
+
+		return {
+			image: image.toDataURL(),
+			width: size.width,
+			height: size.height,
+			devicePixelRatio
+		};
+	}
+
+	// ============================================
+	// Input Automation (for AI agents)
+	// ============================================
+
+	/**
+	 * Send mouse input event to the browser
+	 * Coordinates are scaled based on reference dimensions
+	 */
+	async sendMouseEvent(
+		browserViewId: number,
+		action: 'click' | 'right_click' | 'double_click' | 'hover' | 'mouseDown' | 'mouseUp',
+		x: number,
+		y: number,
+		refWidth?: number,
+		refHeight?: number
+	): Promise<void> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		// Get actual viewport size for scaling
+		const bounds = browserView.getBounds();
+		const actualWidth = bounds.width;
+		const actualHeight = bounds.height;
+
+		// Scale coordinates if reference dimensions provided
+		let finalX = x;
+		let finalY = y;
+		if (refWidth && refHeight) {
+			finalX = Math.round(x * (actualWidth / refWidth));
+			finalY = Math.round(y * (actualHeight / refHeight));
+		}
+
+		const webContents = browserView.webContents;
+
+		switch (action) {
+			case 'click':
+				webContents.sendInputEvent({ type: 'mouseDown', x: finalX, y: finalY, button: 'left', clickCount: 1 });
+				webContents.sendInputEvent({ type: 'mouseUp', x: finalX, y: finalY, button: 'left', clickCount: 1 });
+				break;
+			case 'right_click':
+				webContents.sendInputEvent({ type: 'mouseDown', x: finalX, y: finalY, button: 'right', clickCount: 1 });
+				webContents.sendInputEvent({ type: 'mouseUp', x: finalX, y: finalY, button: 'right', clickCount: 1 });
+				break;
+			case 'double_click':
+				webContents.sendInputEvent({ type: 'mouseDown', x: finalX, y: finalY, button: 'left', clickCount: 2 });
+				webContents.sendInputEvent({ type: 'mouseUp', x: finalX, y: finalY, button: 'left', clickCount: 2 });
+				break;
+			case 'hover':
+				webContents.sendInputEvent({ type: 'mouseMove', x: finalX, y: finalY });
+				break;
+			case 'mouseDown':
+				webContents.sendInputEvent({ type: 'mouseDown', x: finalX, y: finalY, button: 'left', clickCount: 1 });
+				break;
+			case 'mouseUp':
+				webContents.sendInputEvent({ type: 'mouseUp', x: finalX, y: finalY, button: 'left', clickCount: 1 });
+				break;
+		}
+	}
+
+	/**
+	 * Send drag event (mouseDown at start, mouseMove, mouseUp at end)
+	 */
+	async sendDragEvent(
+		browserViewId: number,
+		startX: number,
+		startY: number,
+		endX: number,
+		endY: number,
+		refWidth?: number,
+		refHeight?: number
+	): Promise<void> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		const bounds = browserView.getBounds();
+		const actualWidth = bounds.width;
+		const actualHeight = bounds.height;
+
+		let finalStartX = startX;
+		let finalStartY = startY;
+		let finalEndX = endX;
+		let finalEndY = endY;
+
+		if (refWidth && refHeight) {
+			finalStartX = Math.round(startX * (actualWidth / refWidth));
+			finalStartY = Math.round(startY * (actualHeight / refHeight));
+			finalEndX = Math.round(endX * (actualWidth / refWidth));
+			finalEndY = Math.round(endY * (actualHeight / refHeight));
+		}
+
+		const webContents = browserView.webContents;
+
+		// Drag sequence: mouseDown -> mouseMove -> mouseUp
+		webContents.sendInputEvent({ type: 'mouseDown', x: finalStartX, y: finalStartY, button: 'left', clickCount: 1 });
+		webContents.sendInputEvent({ type: 'mouseMove', x: finalEndX, y: finalEndY });
+		webContents.sendInputEvent({ type: 'mouseUp', x: finalEndX, y: finalEndY, button: 'left', clickCount: 1 });
+	}
+
+	/**
+	 * Type text into the browser (sends char events)
+	 */
+	async sendTypeEvent(browserViewId: number, text: string): Promise<void> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		const webContents = browserView.webContents;
+
+		for (const char of text) {
+			webContents.sendInputEvent({ type: 'char', keyCode: char });
+		}
+	}
+
+	/**
+	 * Press a key (sends keyDown + keyUp)
+	 */
+	async sendKeyEvent(browserViewId: number, key: string, modifiers?: string[]): Promise<void> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		const webContents = browserView.webContents;
+
+		// Build modifiers array for Electron
+		const electronModifiers: ('shift' | 'control' | 'alt' | 'meta')[] = [];
+		if (modifiers) {
+			for (const mod of modifiers) {
+				const lower = mod.toLowerCase();
+				if (lower === 'shift' || lower === 'control' || lower === 'ctrl' || lower === 'alt' || lower === 'meta' || lower === 'cmd') {
+					if (lower === 'ctrl') {
+						electronModifiers.push('control');
+					} else if (lower === 'cmd') {
+						electronModifiers.push('meta');
+					} else {
+						electronModifiers.push(lower as 'shift' | 'control' | 'alt' | 'meta');
+					}
+				}
+			}
+		}
+
+		webContents.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers: electronModifiers });
+		webContents.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers: electronModifiers });
+	}
+
+	/**
+	 * Scroll the page
+	 */
+	async sendScrollEvent(
+		browserViewId: number,
+		deltaX: number,
+		deltaY: number,
+		x?: number,
+		y?: number
+	): Promise<void> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		const bounds = browserView.getBounds();
+		// Default to center of viewport if no position specified
+		const scrollX = x ?? Math.round(bounds.width / 2);
+		const scrollY = y ?? Math.round(bounds.height / 2);
+
+		browserView.webContents.sendInputEvent({
+			type: 'mouseWheel',
+			x: scrollX,
+			y: scrollY,
+			deltaX,
+			deltaY,
+			canScroll: true
+		});
+	}
+
+	/**
+	 * Get current viewport dimensions
+	 */
+	getViewportSize(browserViewId: number): { width: number; height: number } | null {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			return null;
+		}
+		const bounds = browserView.getBounds();
+		return { width: bounds.width, height: bounds.height };
 	}
 
 	async executeScript(browserViewId: number, script: string): Promise<any> {

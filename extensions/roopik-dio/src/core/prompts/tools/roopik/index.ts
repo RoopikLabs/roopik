@@ -5,7 +5,7 @@
  * These tools integrate with Roopik IDE's browser preview, canvas, and component features.
  *
  * Tool Categories:
- * - Browser (10): open, navigate, reload, screenshot, execute_script, inspect_element,
+ * - Browser (12): open, close, action, navigate, reload, screenshot, execute_script, inspect_element,
  *                 get_errors, get_console_logs, get_performance, get_cdp_info
  * - Project (3): get_active, start, stop
  * - Canvas (3): list, get_active, create
@@ -67,11 +67,69 @@ Usage:
 
 export function getBrowserScreenshotDescription(): string {
 	return `## browser_screenshot
-Description: [Roopik IDE] Take a screenshot of the browser preview. Returns a base64-encoded image of the current browser state. Use this for visual verification after making UI changes or to see what the user sees.
+Description: [Roopik IDE] Take a screenshot of the browser preview. Returns base64-encoded image with viewport metadata (width, height, devicePixelRatio). Use this for visual verification and to get coordinates for browser_action_input.
 Parameters: None
 Usage:
 <browser_screenshot>
 </browser_screenshot>`
+}
+
+export function getBrowserCloseDescription(): string {
+	return `## browser_close
+Description: [Roopik IDE] Close the browser view. Use this when done with browser testing or to free resources.
+Parameters: None
+Usage:
+<browser_close>
+</browser_close>`
+}
+
+export function getRoopikBrowserActionDescription(): string {
+	return `## browser_action_input
+Description: [Roopik IDE] Perform native input events in the browser. Supports click, right_click, double_click, hover, drag, type, press, scroll.
+
+Coordinate format: 'x,y@WIDTHxHEIGHT' where WIDTH/HEIGHT are from browser_screenshot viewport.
+Example: '450,203@900x600' means click at (450,203) on a 900x600 viewport.
+
+Actions:
+- click/right_click/double_click/hover: requires 'coordinate'
+- drag: requires 'coordinate' (start) + 'deltaX'/'deltaY' (offset to end)
+- type: requires 'text'
+- press: requires 'key' (e.g., 'Enter', 'Escape', 'Tab'), optional 'modifiers' (['ctrl', 'shift'])
+- scroll: requires 'deltaX' and/or 'deltaY' (negative = up/left)
+
+Parameters:
+- action: (required) The action to perform: click, right_click, double_click, hover, drag, type, press, scroll
+- coordinate: (optional) Coordinate string: 'x,y' or 'x,y@WIDTHxHEIGHT' for scaled coordinates
+- text: (optional) Text to type (for 'type' action)
+- key: (optional) Key to press (for 'press' action): Enter, Escape, Tab, ArrowDown, etc.
+- modifiers: (optional) JSON array of modifier keys: ["ctrl", "shift", "alt", "meta"]
+- deltaX: (optional) Horizontal offset for drag/scroll (negative = left)
+- deltaY: (optional) Vertical offset for drag/scroll (negative = up)
+
+Usage:
+<browser_action_input>
+<action>action type</action>
+<coordinate>x,y@WIDTHxHEIGHT (optional)</coordinate>
+<text>text to type (optional)</text>
+</browser_action_input>
+
+Example: Click at coordinates
+<browser_action_input>
+<action>click</action>
+<coordinate>450,203@900x600</coordinate>
+</browser_action_input>
+
+Example: Type text
+<browser_action_input>
+<action>type</action>
+<text>Hello World</text>
+</browser_action_input>
+
+Example: Press Enter
+<browser_action_input>
+<action>press</action>
+<key>Enter</key>
+</browser_action_input>`
 }
 
 export function getBrowserExecuteScriptDescription(): string {
@@ -317,8 +375,10 @@ Usage:
  */
 export function getRoopikToolDescriptions(args: ToolArgs): string {
 	const descriptions = [
-		// Browser (10 tools)
+		// Browser (12 tools)
 		getBrowserOpenDescription(),
+		getBrowserCloseDescription(),
+		getRoopikBrowserActionDescription(),
 		getBrowserNavigateDescription(),
 		getBrowserReloadDescription(),
 		getBrowserScreenshotDescription(),
@@ -353,8 +413,10 @@ export function getRoopikToolDescriptions(args: ToolArgs): string {
  * Used for tool validation and routing.
  */
 export const ROOPIK_TOOL_NAMES = [
-	// Browser (10 tools)
+	// Browser (12 tools)
 	"browser_open",
+	"browser_close",
+	"browser_action_input",
 	"browser_navigate",
 	"browser_reload",
 	"browser_screenshot",

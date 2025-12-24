@@ -95,6 +95,11 @@ export const toolParamNames = [
 	"framework", // component_add
 	"componentId", // component_remove, component_get_info, component_rebuild
 	"components", // component_add_batch
+	// browser_action parameters
+	"key", // browser_action (press)
+	"modifiers", // browser_action (press)
+	"deltaX", // browser_action (drag, scroll)
+	"deltaY", // browser_action (drag, scroll)
 ] as const
 
 export type ToolParamName = (typeof toolParamNames)[number]
@@ -287,6 +292,8 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	generate_image: "generate images",
 	// Roopik IDE Tools - Browser
 	browser_open: "open browser",
+	browser_close: "close browser",
+	browser_action_input: "perform browser input action",
 	browser_navigate: "navigate browser",
 	browser_reload: "reload browser page",
 	browser_screenshot: "take browser screenshot",
@@ -337,8 +344,10 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 	},
 	roopik: {
 		tools: [
-			// Browser (10 tools)
+			// Browser (12 tools)
 			"browser_open",
+			"browser_close",
+			"browser_action_input",
 			"browser_navigate",
 			"browser_reload",
 			"browser_screenshot",
