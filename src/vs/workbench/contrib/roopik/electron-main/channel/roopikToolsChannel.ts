@@ -15,13 +15,14 @@
  * - Same tools as MCP but via direct IPC (faster, no timeouts)
  *
  * Tool Categories:
- * - Browser Tools (5): screenshot, navigate, reload, executeScript, inspectElement
+ * - Browser Tools (7): browser_open, browser_get_performance, screenshot, navigate, reload, executeScript, inspectElement
  * - CDP Tools (2): getErrors, getConsoleLogs
  * - Project Tools (3): getActiveProject, startProject, stopProject
  * - Workspace Tools (3): listCanvases, getActiveCanvas, createCanvas
  * - Component Tools (6): addComponent, addComponents, removeComponent, getComponentInfo, listComponents, rebuildComponent
  */
 
+import { BrowserWindow } from 'electron';
 import { Event } from '../../../../../base/common/event.js';
 import { IServerChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import type { BrowserViewService } from '../projectMode/browserViewService.js';
@@ -73,8 +74,14 @@ export class RoopikToolsChannel implements IServerChannel {
 		try {
 			switch (command) {
 				// ============================================================
-				// Browser Tools (5)
+				// Browser Tools (6)
 				// ============================================================
+				case 'browser_open':
+					return this.handleBrowserOpen(arg as { url?: string });
+
+				case 'browser_get_performance':
+					return this.handleBrowserGetPerformance();
+
 				case 'rpk_screenshot':
 					return this.handleScreenshot();
 
@@ -175,6 +182,234 @@ export class RoopikToolsChannel implements IServerChannel {
 	// ========================================================================
 	// Browser Tool Handlers
 	// ========================================================================
+
+	/**
+	 * Open a browser view without requiring a project.
+	 * If URL is provided, navigates to that URL after opening.
+	 * If no URL is provided, opens an empty browser (about:blank).
+	 *
+	 * This is the primary way for agents to get browser access without needing
+	 * to start a dev server first.
+	 */
+	private async handleBrowserOpen(args: { url?: string }): Promise<RoopikToolResult> {
+		// Check if browser is already open
+		const existingBrowserViewId = this.browserViewService.getActiveBrowserViewId();
+		if (existingBrowserViewId !== undefined) {
+			// Browser already open - just navigate if URL provided
+			if (args.url) {
+				await this.browserViewService.navigate(existingBrowserViewId, args.url);
+				return {
+					success: true,
+					data: {
+						browserViewId: existingBrowserViewId,
+						url: args.url,
+						message: `Navigated existing browser to ${args.url}`
+					}
+				};
+			}
+			return {
+				success: true,
+				data: {
+					browserViewId: existingBrowserViewId,
+					message: 'Browser is already open'
+				}
+			};
+		}
+
+		// Get the focused window to attach the browser view to
+		const focusedWindow = BrowserWindow.getFocusedWindow();
+		if (!focusedWindow) {
+			// Try to get any window
+			const allWindows = BrowserWindow.getAllWindows().filter(w => !w.isDestroyed());
+			if (allWindows.length === 0) {
+				return {
+					success: false,
+					error: 'No window available to open browser in'
+				};
+			}
+			// Use the first available window
+			const windowId = allWindows[0].id;
+			const result = await this.browserViewService.createBrowserView(windowId);
+
+			// Navigate to URL or about:blank
+			const targetUrl = args.url || 'about:blank';
+			await this.browserViewService.navigate(result.browserViewId, targetUrl);
+
+			return {
+				success: true,
+				data: {
+					browserViewId: result.browserViewId,
+					url: targetUrl,
+					message: args.url ? `Browser opened at ${args.url}` : 'Empty browser opened'
+				}
+			};
+		}
+
+		// Create browser view in focused window
+		const result = await this.browserViewService.createBrowserView(focusedWindow.id);
+
+		// Navigate to URL or about:blank
+		const targetUrl = args.url || 'about:blank';
+		await this.browserViewService.navigate(result.browserViewId, targetUrl);
+
+		return {
+			success: true,
+			data: {
+				browserViewId: result.browserViewId,
+				url: targetUrl,
+				message: args.url ? `Browser opened at ${args.url}` : 'Empty browser opened'
+			}
+		};
+	}
+
+	/**
+	 * Get performance metrics from the browser including Web Vitals.
+	 * Returns LCP (Largest Contentful Paint), CLS (Cumulative Layout Shift),
+	 * FID (First Input Delay), and other performance metrics.
+	 */
+	private async handleBrowserGetPerformance(): Promise<RoopikToolResult> {
+		const browserViewId = this.browserViewService.getActiveBrowserViewId();
+		if (browserViewId === undefined) {
+			return {
+				success: false,
+				error: 'No browser is open. Use browser_open first.'
+			};
+		}
+
+		try {
+			// Attach debugger if not already attached
+			await this.browserViewService.attachDebugger(browserViewId);
+
+			// Enable Performance domain
+			await this.browserViewService.sendCDPCommand(browserViewId, 'Performance.enable');
+
+			// Get CDP performance metrics
+			const cdpMetrics = await this.browserViewService.sendCDPCommand(browserViewId, 'Performance.getMetrics');
+
+			// Execute JavaScript to get Web Vitals and Navigation Timing API data
+			const webVitalsScript = `
+				(function() {
+					const result = {
+						navigationTiming: {},
+						webVitals: {},
+						resources: []
+					};
+
+					// Navigation Timing API
+					if (performance.timing) {
+						const t = performance.timing;
+						result.navigationTiming = {
+							dns: t.domainLookupEnd - t.domainLookupStart,
+							tcp: t.connectEnd - t.connectStart,
+							ttfb: t.responseStart - t.requestStart,
+							domContentLoaded: t.domContentLoadedEventEnd - t.navigationStart,
+							domComplete: t.domComplete - t.navigationStart,
+							loadComplete: t.loadEventEnd - t.navigationStart
+						};
+					}
+
+					// Performance Navigation Timing (newer API)
+					const navEntries = performance.getEntriesByType('navigation');
+					if (navEntries.length > 0) {
+						const nav = navEntries[0];
+						result.navigationTiming.transferSize = nav.transferSize;
+						result.navigationTiming.encodedBodySize = nav.encodedBodySize;
+						result.navigationTiming.decodedBodySize = nav.decodedBodySize;
+					}
+
+					// Largest Contentful Paint (LCP)
+					const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
+					if (lcpEntries.length > 0) {
+						const lcp = lcpEntries[lcpEntries.length - 1];
+						result.webVitals.lcp = {
+							value: Math.round(lcp.startTime),
+							element: lcp.element ? lcp.element.tagName : null,
+							url: lcp.url || null,
+							size: lcp.size
+						};
+					}
+
+					// First Contentful Paint (FCP)
+					const fcpEntries = performance.getEntriesByType('paint');
+					const fcp = fcpEntries.find(e => e.name === 'first-contentful-paint');
+					if (fcp) {
+						result.webVitals.fcp = Math.round(fcp.startTime);
+					}
+					const fp = fcpEntries.find(e => e.name === 'first-paint');
+					if (fp) {
+						result.webVitals.fp = Math.round(fp.startTime);
+					}
+
+					// Cumulative Layout Shift (CLS) - if PerformanceObserver was used
+					const layoutShiftEntries = performance.getEntriesByType('layout-shift');
+					if (layoutShiftEntries.length > 0) {
+						let cls = 0;
+						layoutShiftEntries.forEach(entry => {
+							if (!entry.hadRecentInput) {
+								cls += entry.value;
+							}
+						});
+						result.webVitals.cls = Math.round(cls * 1000) / 1000;
+					}
+
+					// Resource timing (top 10 slowest resources)
+					const resources = performance.getEntriesByType('resource');
+					result.resources = resources
+						.map(r => ({
+							name: r.name.split('/').pop().split('?')[0],
+							type: r.initiatorType,
+							duration: Math.round(r.duration),
+							size: r.transferSize || 0
+						}))
+						.sort((a, b) => b.duration - a.duration)
+						.slice(0, 10);
+
+					// Memory info (if available, Chrome only)
+					if (performance.memory) {
+						result.memory = {
+							usedJSHeapSize: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024),
+							totalJSHeapSize: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024)
+						};
+					}
+
+					return result;
+				})();
+			`;
+
+			const webVitals = await this.browserViewService.executeScript(browserViewId, webVitalsScript);
+
+			// Format CDP metrics into a more readable object
+			const metricsMap: Record<string, number> = {};
+			if (cdpMetrics && cdpMetrics.metrics) {
+				for (const metric of cdpMetrics.metrics) {
+					metricsMap[metric.name] = metric.value;
+				}
+			}
+
+			return {
+				success: true,
+				data: {
+					cdpMetrics: metricsMap,
+					navigationTiming: webVitals?.navigationTiming || {},
+					webVitals: webVitals?.webVitals || {},
+					slowestResources: webVitals?.resources || [],
+					memory: webVitals?.memory || null,
+					summary: {
+						lcp: webVitals?.webVitals?.lcp?.value ? `${webVitals.webVitals.lcp.value}ms` : 'N/A',
+						fcp: webVitals?.webVitals?.fcp ? `${webVitals.webVitals.fcp}ms` : 'N/A',
+						cls: webVitals?.webVitals?.cls !== undefined ? webVitals.webVitals.cls : 'N/A',
+						ttfb: webVitals?.navigationTiming?.ttfb ? `${webVitals.navigationTiming.ttfb}ms` : 'N/A',
+						domComplete: webVitals?.navigationTiming?.domComplete ? `${webVitals.navigationTiming.domComplete}ms` : 'N/A'
+					}
+				}
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: `Failed to get performance metrics: ${error instanceof Error ? error.message : String(error)}`
+			};
+		}
+	}
 
 	private async handleScreenshot(): Promise<RoopikToolResult> {
 		const browserViewId = this.browserViewService.getActiveBrowserViewId();
