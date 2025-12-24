@@ -116,6 +116,12 @@ export const BrowserSettings = ({
 			</SectionHeader>
 
 			<Section>
+				{/* Roopik IDE Note */}
+				<div className="p-2 mb-3 rounded-sm bg-vscode-textBlockQuote-background border-l-2 border-vscode-textLink-foreground">
+					<span className="text-sm text-vscode-descriptionForeground">
+						Browser is now provided by Roopik IDE. These settings are for legacy Puppeteer browser (disabled).
+					</span>
+				</div>
 				<div>
 					<VSCodeCheckbox
 						checked={browserToolEnabled}

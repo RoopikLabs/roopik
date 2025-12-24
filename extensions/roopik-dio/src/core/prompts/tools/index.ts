@@ -17,7 +17,8 @@ import { getFetchInstructionsDescription } from "./fetch-instructions"
 import { getWriteToFileDescription } from "./write-to-file"
 import { getSearchFilesDescription } from "./search-files"
 import { getListFilesDescription } from "./list-files"
-import { getBrowserActionDescription } from "./browser-action"
+// DISABLED: Roopik IDE provides superior browser tools (browser_open, browser_screenshot, etc.)
+// import { getBrowserActionDescription } from "./browser-action"
 import { getAskFollowupQuestionDescription } from "./ask-followup-question"
 import { getAttemptCompletionDescription } from "./attempt-completion"
 import { getUseMcpToolDescription } from "./use-mcp-tool"
@@ -71,7 +72,8 @@ const toolDescriptionMap: Record<string, (args: ToolArgs) => string | undefined>
 	write_to_file: (args) => getWriteToFileDescription(args),
 	search_files: (args) => getSearchFilesDescription(args),
 	list_files: (args) => getListFilesDescription(args),
-	browser_action: (args) => getBrowserActionDescription(args),
+	// DISABLED: browser_action - Roopik IDE provides browser_open, browser_screenshot, etc.
+	// browser_action: (args) => getBrowserActionDescription(args),
 	ask_followup_question: () => getAskFollowupQuestionDescription(),
 	attempt_completion: (args) => getAttemptCompletionDescription(args),
 	use_mcp_tool: (args) => getUseMcpToolDescription(args),
@@ -222,7 +224,7 @@ export {
 	getWriteToFileDescription,
 	getSearchFilesDescription,
 	getListFilesDescription,
-	getBrowserActionDescription,
+	// DISABLED: getBrowserActionDescription - Roopik IDE provides browser_open, browser_screenshot, etc.
 	getAskFollowupQuestionDescription,
 	getAttemptCompletionDescription,
 	getUseMcpToolDescription,

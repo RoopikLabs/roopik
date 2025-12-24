@@ -330,7 +330,8 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 		customTools: ["search_and_replace", "search_replace", "edit_file", "apply_patch"],
 	},
 	browser: {
-		tools: ["browser_action"],
+		// DISABLED: browser_action - Roopik IDE provides browser_open, browser_screenshot, etc. via 'roopik' group
+		tools: [],
 	},
 	command: {
 		tools: ["execute_command"],

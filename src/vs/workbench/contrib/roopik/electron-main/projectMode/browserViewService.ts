@@ -803,7 +803,16 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 	/**
 	 * Take screenshot with viewport metadata for pixel-perfect clicking
-	 * Returns image data URL plus width, height, and devicePixelRatio
+	 * Returns image data URL plus CSS viewport dimensions (not scaled pixel dimensions)
+	 *
+	 * IMPORTANT: We return CSS viewport dimensions (window.innerWidth/innerHeight),
+	 * NOT the image pixel dimensions. On high-DPI displays, capturePage() returns
+	 * an image scaled by devicePixelRatio, but agents need CSS coordinates for clicking.
+	 *
+	 * Example on 2x display:
+	 * - CSS viewport: 900x600
+	 * - Image pixels: 1800x1200 (scaled by devicePixelRatio)
+	 * - We return: width=900, height=600 (CSS coordinates for clicking)
 	 */
 	async takeScreenshotWithMetadata(browserViewId: number): Promise<{
 		image: string;
@@ -816,21 +825,42 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			throw new Error(`Browser view ${browserViewId} not found`);
 		}
 
-		const image = await browserView.webContents.capturePage();
-		const size = image.getSize();
-
-		// Get device pixel ratio from the page
+		// Get CSS viewport dimensions and devicePixelRatio from the page
+		// These are the dimensions agents need to calculate click coordinates
+		let viewportWidth = 0;
+		let viewportHeight = 0;
 		let devicePixelRatio = 1;
+
 		try {
-			devicePixelRatio = await browserView.webContents.executeJavaScript('window.devicePixelRatio || 1');
-		} catch {
-			// Default to 1 if we can't get it
+			const viewportInfo = await browserView.webContents.executeJavaScript(`
+				JSON.stringify({
+					width: window.innerWidth,
+					height: window.innerHeight,
+					devicePixelRatio: window.devicePixelRatio || 1
+				})
+			`);
+			const parsed = JSON.parse(viewportInfo);
+			viewportWidth = parsed.width;
+			viewportHeight = parsed.height;
+			devicePixelRatio = parsed.devicePixelRatio;
+		} catch (e) {
+			// Fallback: use image dimensions divided by a default DPR
+			console.warn('[ProjectMode] Failed to get viewport info from page, using fallback', e);
+		}
+
+		const image = await browserView.webContents.capturePage();
+
+		// If we couldn't get viewport info, fall back to image size / devicePixelRatio
+		if (viewportWidth === 0 || viewportHeight === 0) {
+			const imageSize = image.getSize();
+			viewportWidth = Math.round(imageSize.width / devicePixelRatio);
+			viewportHeight = Math.round(imageSize.height / devicePixelRatio);
 		}
 
 		return {
 			image: image.toDataURL(),
-			width: size.width,
-			height: size.height,
+			width: viewportWidth,
+			height: viewportHeight,
 			devicePixelRatio
 		};
 	}

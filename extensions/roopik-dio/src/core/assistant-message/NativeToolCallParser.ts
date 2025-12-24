@@ -408,18 +408,19 @@ export class NativeToolCallParser {
 				}
 				break
 
-			case "browser_action":
-				if (partialArgs.action !== undefined) {
-					nativeArgs = {
-						action: partialArgs.action,
-						url: partialArgs.url,
-						coordinate: partialArgs.coordinate,
-						size: partialArgs.size,
-						text: partialArgs.text,
-						path: partialArgs.path,
-					}
-				}
-				break
+			// DISABLED: browser_action - Roopik IDE provides browser_open, browser_screenshot, etc.
+			// case "browser_action":
+			// 	if (partialArgs.action !== undefined) {
+			// 		nativeArgs = {
+			// 			action: partialArgs.action,
+			// 			url: partialArgs.url,
+			// 			coordinate: partialArgs.coordinate,
+			// 			size: partialArgs.size,
+			// 			text: partialArgs.text,
+			// 			path: partialArgs.path,
+			// 		}
+			// 	}
+			// 	break
 
 			case "codebase_search":
 				if (partialArgs.query !== undefined) {
@@ -674,18 +675,19 @@ export class NativeToolCallParser {
 					}
 					break
 
-				case "browser_action":
-					if (args.action !== undefined) {
-						nativeArgs = {
-							action: args.action,
-							url: args.url,
-							coordinate: args.coordinate,
-							size: args.size,
-							text: args.text,
-							path: args.path,
-						} as NativeArgsFor<TName>
-					}
-					break
+				// DISABLED: browser_action - Roopik IDE provides browser_open, browser_screenshot, etc.
+				// case "browser_action":
+				// 	if (args.action !== undefined) {
+				// 		nativeArgs = {
+				// 			action: args.action,
+				// 			url: args.url,
+				// 			coordinate: args.coordinate,
+				// 			size: args.size,
+				// 			text: args.text,
+				// 			path: args.path,
+				// 		} as NativeArgsFor<TName>
+				// 	}
+				// 	break
 
 				case "codebase_search":
 					if (args.query !== undefined) {
