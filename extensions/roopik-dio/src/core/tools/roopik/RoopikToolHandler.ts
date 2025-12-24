@@ -71,70 +71,77 @@ export async function handleRoopikTool(
 		let result: RoopikToolResult
 
 		switch (toolName) {
-			// Browser Tools
-			case "rpk_screenshot":
-				result = await handleScreenshot(task, block, callbacks)
+			// Browser Tools (10)
+			case "browser_open":
+				result = await handleBrowserOpen(task, block, callbacks)
 				break
-			case "rpk_navigate":
+			case "browser_navigate":
 				result = await handleNavigate(task, block, callbacks)
 				break
-			case "rpk_reload":
+			case "browser_reload":
 				result = await handleReload(task, block, callbacks)
 				break
-			case "rpk_executeScript":
+			case "browser_screenshot":
+				result = await handleScreenshot(task, block, callbacks)
+				break
+			case "browser_execute_script":
 				result = await handleExecuteScript(task, block, callbacks)
 				break
-			case "rpk_inspectElement":
+			case "browser_inspect_element":
 				result = await handleInspectElement(task, block, callbacks)
 				break
-
-			// CDP Tools
-			case "rpk_getErrors":
+			case "browser_get_errors":
 				result = await handleGetErrors(task, block, callbacks)
 				break
-			case "rpk_getConsoleLogs":
+			case "browser_get_console_logs":
 				result = await handleGetConsoleLogs(task, block, callbacks)
 				break
+			case "browser_get_performance":
+				result = await handleBrowserGetPerformance(task, block, callbacks)
+				break
+			case "browser_get_cdp_info":
+				result = await handleBrowserGetCdpInfo(task, block, callbacks)
+				break
 
-			// Project Tools
-			case "rpk_getActiveProject":
+			// Project Tools (3)
+			case "project_get_active":
 				result = await handleGetActiveProject(task, block, callbacks)
 				break
-			case "rpk_startProject":
+			case "project_start":
 				result = await handleStartProject(task, block, callbacks)
 				break
-			case "rpk_stopProject":
+			case "project_stop":
 				result = await handleStopProject(task, block, callbacks)
 				break
 
-			// Canvas Tools
-			case "rpk_listCanvases":
+			// Canvas Tools (3)
+			case "canvas_list":
 				result = await handleListCanvases(task, block, callbacks)
 				break
-			case "rpk_getActiveCanvas":
+			case "canvas_get_active":
 				result = await handleGetActiveCanvas(task, block, callbacks)
 				break
-			case "rpk_createCanvas":
+			case "canvas_create":
 				result = await handleCreateCanvas(task, block, callbacks)
 				break
 
-			// Component Tools
-			case "rpk_addComponent":
+			// Component Tools (6)
+			case "component_add":
 				result = await handleAddComponent(task, block, callbacks)
 				break
-			case "rpk_addComponents":
+			case "component_add_batch":
 				result = await handleAddComponents(task, block, callbacks)
 				break
-			case "rpk_removeComponent":
+			case "component_remove":
 				result = await handleRemoveComponent(task, block, callbacks)
 				break
-			case "rpk_getComponentInfo":
+			case "component_get_info":
 				result = await handleGetComponentInfo(task, block, callbacks)
 				break
-			case "rpk_listComponents":
+			case "component_list":
 				result = await handleListComponents(task, block, callbacks)
 				break
-			case "rpk_rebuildComponent":
+			case "component_rebuild":
 				result = await handleRebuildComponent(task, block, callbacks)
 				break
 
@@ -172,22 +179,31 @@ async function handleRoopikToolPartial(
 	let displayMessage = ""
 
 	switch (toolName) {
-		case "rpk_navigate":
+		case "browser_open":
+			displayMessage = `Opening browser${params.url ? `: ${removeClosingTag("url", params.url)}` : "..."}`
+			break
+		case "browser_navigate":
 			displayMessage = `Navigating to: ${removeClosingTag("url", params.url)}`
 			break
-		case "rpk_executeScript":
+		case "browser_execute_script":
 			displayMessage = `Executing script...`
 			break
-		case "rpk_inspectElement":
+		case "browser_inspect_element":
 			displayMessage = `Inspecting: ${removeClosingTag("selector", params.args || params.path)}`
 			break
-		case "rpk_startProject":
+		case "browser_get_performance":
+			displayMessage = `Getting performance metrics...`
+			break
+		case "browser_get_cdp_info":
+			displayMessage = `Getting CDP info...`
+			break
+		case "project_start":
 			displayMessage = `Starting project: ${removeClosingTag("projectPath", params.path || params.args)}`
 			break
-		case "rpk_createCanvas":
+		case "canvas_create":
 			displayMessage = `Creating canvas: ${removeClosingTag("name", params.args)}`
 			break
-		case "rpk_addComponent":
+		case "component_add":
 			displayMessage = `Adding component: ${removeClosingTag("folderPath", params.path || params.args)}`
 			break
 		default:
@@ -202,8 +218,21 @@ async function handleRoopikToolPartial(
 // Browser Tool Handlers
 // ============================================================================
 
+async function handleBrowserOpen(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const url = block.params.url || block.params.args
+	return roopikClient.browserOpen(url)
+}
+
 async function handleScreenshot(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
 	return roopikClient.screenshot()
+}
+
+async function handleBrowserGetPerformance(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	return roopikClient.browserGetPerformance()
+}
+
+async function handleBrowserGetCdpInfo(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	return roopikClient.browserGetCdpInfo()
 }
 
 async function handleNavigate(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
@@ -374,7 +403,7 @@ function formatToolResult(toolName: RoopikToolName, result: RoopikToolResult): T
 	const data = result.data
 
 	// Special handling for screenshot - include the image
-	if (toolName === "rpk_screenshot" && data && typeof data === "object" && "image" in data) {
+	if (toolName === "browser_screenshot" && data && typeof data === "object" && "image" in data) {
 		const imageData = data as { image: string; format: string }
 		const blocks: Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> = []
 

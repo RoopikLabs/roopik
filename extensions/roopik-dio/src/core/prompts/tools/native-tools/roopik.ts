@@ -1,29 +1,34 @@
 import type OpenAI from "openai"
 
 // ============================================================================
-// Browser Tools
+// Browser Tools (10)
 // ============================================================================
 
-export const rpk_screenshot: OpenAI.Chat.ChatCompletionTool = {
+export const browser_open: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_screenshot",
+		name: "browser_open",
 		description:
-			"[Roopik IDE] Take a screenshot of the browser preview. Returns a base64-encoded image of the current browser state. Use this for visual verification after making UI changes or to see what the user sees.",
+			"[Roopik IDE] Open the browser preview. Optionally navigate to a URL after opening. If browser is already open and URL is provided, navigates to that URL. Use this to get browser access without needing to start a dev server first.",
 		strict: true,
 		parameters: {
 			type: "object",
-			properties: {},
+			properties: {
+				url: {
+					type: "string",
+					description: "URL to open after the browser is ready (optional)",
+				},
+			},
 			required: [],
 			additionalProperties: false,
 		},
 	},
 }
 
-export const rpk_navigate: OpenAI.Chat.ChatCompletionTool = {
+export const browser_navigate: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_navigate",
+		name: "browser_navigate",
 		description:
 			"[Roopik IDE] Navigate the browser preview to a URL. Use this to load specific pages in the project (e.g., /login, /dashboard) or view different routes.",
 		strict: true,
@@ -42,10 +47,10 @@ export const rpk_navigate: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-export const rpk_reload: OpenAI.Chat.ChatCompletionTool = {
+export const browser_reload: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_reload",
+		name: "browser_reload",
 		description:
 			"[Roopik IDE] Reload the current page in the browser preview. Use ignoreCache=true for hard reload after changing static assets like CSS or images.",
 		strict: true,
@@ -63,10 +68,26 @@ export const rpk_reload: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-export const rpk_executeScript: OpenAI.Chat.ChatCompletionTool = {
+export const browser_screenshot: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_executeScript",
+		name: "browser_screenshot",
+		description:
+			"[Roopik IDE] Take a screenshot of the browser preview. Returns a base64-encoded image of the current browser state. Use this for visual verification after making UI changes or to see what the user sees.",
+		strict: true,
+		parameters: {
+			type: "object",
+			properties: {},
+			required: [],
+			additionalProperties: false,
+		},
+	},
+}
+
+export const browser_execute_script: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "browser_execute_script",
 		description:
 			"[Roopik IDE] Execute JavaScript in the browser context. Use for DOM queries, checking application state, triggering interactions, or any browser-side logic. Returns the result of the script execution.",
 		strict: true,
@@ -84,10 +105,10 @@ export const rpk_executeScript: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-export const rpk_inspectElement: OpenAI.Chat.ChatCompletionTool = {
+export const browser_inspect_element: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_inspectElement",
+		name: "browser_inspect_element",
 		description:
 			"[Roopik IDE] Deep CSS inspection for an element. Returns matched CSS rules with source file locations (file:line:column), computed styles, specificity, and inheritance chain. This is THE critical tool for understanding exactly what CSS is applied to an element and WHERE it comes from - enabling precise, surgical CSS edits.",
 		strict: true,
@@ -110,14 +131,10 @@ export const rpk_inspectElement: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-// ============================================================================
-// CDP Tools
-// ============================================================================
-
-export const rpk_getErrors: OpenAI.Chat.ChatCompletionTool = {
+export const browser_get_errors: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_getErrors",
+		name: "browser_get_errors",
 		description:
 			"[Roopik IDE] Get all errors from the browser: console errors (JavaScript exceptions, console.error) AND failed network requests (4xx, 5xx, network failures). This is the primary debugging tool - shows what is broken in the application.",
 		strict: true,
@@ -135,12 +152,12 @@ export const rpk_getErrors: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-export const rpk_getConsoleLogs: OpenAI.Chat.ChatCompletionTool = {
+export const browser_get_console_logs: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_getConsoleLogs",
+		name: "browser_get_console_logs",
 		description:
-			"[Roopik IDE] Get console output from the browser (console.log, console.warn, console.info, etc.). Use type filter to focus on specific log types. For errors only, prefer rpk_getErrors.",
+			"[Roopik IDE] Get console output from the browser (console.log, console.warn, console.info, etc.). Use type filter to focus on specific log types. For errors only, prefer browser_get_errors.",
 		strict: true,
 		parameters: {
 			type: "object",
@@ -161,14 +178,46 @@ export const rpk_getConsoleLogs: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-// ============================================================================
-// Project Tools
-// ============================================================================
-
-export const rpk_getActiveProject: OpenAI.Chat.ChatCompletionTool = {
+export const browser_get_performance: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_getActiveProject",
+		name: "browser_get_performance",
+		description:
+			"[Roopik IDE] Get performance metrics from the browser including Web Vitals (LCP, CLS) and runtime metrics (JS heap, DOM nodes, layout count). Uses Chrome DevTools Protocol for accurate measurements.",
+		strict: true,
+		parameters: {
+			type: "object",
+			properties: {},
+			required: [],
+			additionalProperties: false,
+		},
+	},
+}
+
+export const browser_get_cdp_info: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "browser_get_cdp_info",
+		description:
+			"[Roopik IDE] Get information about browser state and available Roopik tools for browser automation. Returns current URL, dev server status, and list of available browser tools.",
+		strict: true,
+		parameters: {
+			type: "object",
+			properties: {},
+			required: [],
+			additionalProperties: false,
+		},
+	},
+}
+
+// ============================================================================
+// Project Tools (3)
+// ============================================================================
+
+export const project_get_active: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "project_get_active",
 		description:
 			"[Roopik IDE] Get information about the currently running project. Returns project path, URL, port, framework detection, and server state. Use this to understand the current context.",
 		strict: true,
@@ -181,10 +230,10 @@ export const rpk_getActiveProject: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-export const rpk_startProject: OpenAI.Chat.ChatCompletionTool = {
+export const project_start: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_startProject",
+		name: "project_start",
 		description:
 			"[Roopik IDE] Start a project's dev server and open it in the browser preview. Automatically detects the project's framework (React, Vue, Next.js, etc.) and starts the appropriate dev server.",
 		strict: true,
@@ -206,10 +255,10 @@ export const rpk_startProject: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-export const rpk_stopProject: OpenAI.Chat.ChatCompletionTool = {
+export const project_stop: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_stopProject",
+		name: "project_stop",
 		description:
 			"[Roopik IDE] Stop the currently running dev server. Use when switching projects or cleaning up.",
 		strict: true,
@@ -223,13 +272,13 @@ export const rpk_stopProject: OpenAI.Chat.ChatCompletionTool = {
 }
 
 // ============================================================================
-// Canvas Tools
+// Canvas Tools (3)
 // ============================================================================
 
-export const rpk_listCanvases: OpenAI.Chat.ChatCompletionTool = {
+export const canvas_list: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_listCanvases",
+		name: "canvas_list",
 		description:
 			"[Roopik IDE] List all canvases in the workspace. Canvases are containers for organizing components in Mode 1 (component builder).",
 		strict: true,
@@ -257,10 +306,10 @@ export const rpk_listCanvases: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-export const rpk_getActiveCanvas: OpenAI.Chat.ChatCompletionTool = {
+export const canvas_get_active: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_getActiveCanvas",
+		name: "canvas_get_active",
 		description:
 			"[Roopik IDE] Get the currently focused canvas. Returns canvas details including id, name, component count, and state.",
 		strict: true,
@@ -273,10 +322,10 @@ export const rpk_getActiveCanvas: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-export const rpk_createCanvas: OpenAI.Chat.ChatCompletionTool = {
+export const canvas_create: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_createCanvas",
+		name: "canvas_create",
 		description:
 			"[Roopik IDE] Create a new canvas for organizing components. If a canvas with the same name exists, returns the existing one.",
 		strict: true,
@@ -295,13 +344,13 @@ export const rpk_createCanvas: OpenAI.Chat.ChatCompletionTool = {
 }
 
 // ============================================================================
-// Component Tools
+// Component Tools (6)
 // ============================================================================
 
-export const rpk_addComponent: OpenAI.Chat.ChatCompletionTool = {
+export const component_add: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_addComponent",
+		name: "component_add",
 		description:
 			"[Roopik IDE] Add a component to a canvas. The component will be built and made available for preview. Automatically detects the framework (React, Vue, etc.) from the code.",
 		strict: true,
@@ -337,12 +386,12 @@ export const rpk_addComponent: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-export const rpk_addComponents: OpenAI.Chat.ChatCompletionTool = {
+export const component_add_batch: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_addComponents",
+		name: "component_add_batch",
 		description:
-			"[Roopik IDE] Add multiple components at once. More efficient than calling rpk_addComponent multiple times.",
+			"[Roopik IDE] Add multiple components at once. More efficient than calling component_add multiple times.",
 		strict: false,
 		parameters: {
 			type: "object",
@@ -370,10 +419,10 @@ export const rpk_addComponents: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-export const rpk_removeComponent: OpenAI.Chat.ChatCompletionTool = {
+export const component_remove: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_removeComponent",
+		name: "component_remove",
 		description:
 			"[Roopik IDE] Remove a component from its canvas. This stops the build watcher but does not delete the source files.",
 		strict: true,
@@ -382,7 +431,7 @@ export const rpk_removeComponent: OpenAI.Chat.ChatCompletionTool = {
 			properties: {
 				componentId: {
 					type: "string",
-					description: "The component's unique ID (from rpk_listComponents)",
+					description: "The component's unique ID (from component_list)",
 				},
 			},
 			required: ["componentId"],
@@ -391,10 +440,10 @@ export const rpk_removeComponent: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-export const rpk_getComponentInfo: OpenAI.Chat.ChatCompletionTool = {
+export const component_get_info: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_getComponentInfo",
+		name: "component_get_info",
 		description:
 			"[Roopik IDE] Get detailed information about a specific component, including build state, file paths, and metadata.",
 		strict: true,
@@ -412,10 +461,10 @@ export const rpk_getComponentInfo: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-export const rpk_listComponents: OpenAI.Chat.ChatCompletionTool = {
+export const component_list: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_listComponents",
+		name: "component_list",
 		description:
 			"[Roopik IDE] List all components in a canvas. Returns component IDs, names, frameworks, and build states.",
 		strict: true,
@@ -433,10 +482,10 @@ export const rpk_listComponents: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-export const rpk_rebuildComponent: OpenAI.Chat.ChatCompletionTool = {
+export const component_rebuild: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "rpk_rebuildComponent",
+		name: "component_rebuild",
 		description:
 			"[Roopik IDE] Force rebuild a component. Use after making changes that weren't picked up by the file watcher, or to refresh after errors.",
 		strict: true,
@@ -459,28 +508,30 @@ export const rpk_rebuildComponent: OpenAI.Chat.ChatCompletionTool = {
 // ============================================================================
 
 export const roopikNativeTools: OpenAI.Chat.ChatCompletionTool[] = [
-	// Browser
-	rpk_screenshot,
-	rpk_navigate,
-	rpk_reload,
-	rpk_executeScript,
-	rpk_inspectElement,
-	// CDP
-	rpk_getErrors,
-	rpk_getConsoleLogs,
-	// Project
-	rpk_getActiveProject,
-	rpk_startProject,
-	rpk_stopProject,
-	// Canvas
-	rpk_listCanvases,
-	rpk_getActiveCanvas,
-	rpk_createCanvas,
-	// Component
-	rpk_addComponent,
-	rpk_addComponents,
-	rpk_removeComponent,
-	rpk_getComponentInfo,
-	rpk_listComponents,
-	rpk_rebuildComponent,
+	// Browser (10 tools)
+	browser_open,
+	browser_navigate,
+	browser_reload,
+	browser_screenshot,
+	browser_execute_script,
+	browser_inspect_element,
+	browser_get_errors,
+	browser_get_console_logs,
+	browser_get_performance,
+	browser_get_cdp_info,
+	// Project (3 tools)
+	project_get_active,
+	project_start,
+	project_stop,
+	// Canvas (3 tools)
+	canvas_list,
+	canvas_get_active,
+	canvas_create,
+	// Component (6 tools)
+	component_add,
+	component_add_batch,
+	component_remove,
+	component_get_info,
+	component_list,
+	component_rebuild,
 ]

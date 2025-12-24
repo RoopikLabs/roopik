@@ -31,7 +31,7 @@ export function registerProjectTools(
 	// TOOL: Get Active Project
 	// --------------------------------------------------------------
 	server.tool(
-		'rpk_getActiveProject',
+		'project_get_active',
 		'[Roopik IDE] Get the currently running project in Project Mode. Returns the dev server URL, port, framework, and project path. Use this to check if a project is running before using browser tools.',
 		{},
 		async () => {
@@ -45,7 +45,7 @@ export function registerProjectTools(
 							text: JSON.stringify({
 								success: true,
 								hasActiveProject: false,
-								message: 'No project is currently running. Use rpk_startProject to start one.'
+								message: 'No project is currently running. Use project_start to start one.'
 							})
 						}]
 					};
@@ -87,8 +87,8 @@ export function registerProjectTools(
 	// TOOL: Start Project
 	// --------------------------------------------------------------
 	server.tool(
-		'rpk_startProject',
-		'[Roopik IDE] Start a dev server for a project and open it in the IDE browser. The browser will automatically navigate to the dev server URL. Use rpk_getActiveProject to check if already running.',
+		'project_start',
+		'[Roopik IDE] Start a dev server for a project and open it in the IDE browser. The browser will automatically navigate to the dev server URL. Use project_get_active to check if already running.',
 		{
 			projectPath: z.string().describe('Absolute path to the project folder'),
 			port: z.number().optional().describe('Preferred port number (optional, auto-selects if not provided)')
@@ -133,7 +133,7 @@ export function registerProjectTools(
 	// TOOL: Stop Project
 	// --------------------------------------------------------------
 	server.tool(
-		'rpk_stopProject',
+		'project_stop',
 		'[Roopik IDE] Stop the currently running dev server. No parameters needed - automatically stops whatever project is active.',
 		{},
 		async () => {
@@ -182,5 +182,5 @@ export function registerProjectTools(
 		}
 	);
 
-	console.log('[MCP] Registered 3 project tools: rpk_getActiveProject, rpk_startProject, rpk_stopProject');
+	console.log('[MCP] Registered 3 project tools: project_get_active, project_start, project_stop');
 }

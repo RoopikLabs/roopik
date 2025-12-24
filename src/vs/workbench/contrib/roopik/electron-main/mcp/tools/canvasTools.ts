@@ -4,19 +4,24 @@
  *--------------------------------------------------------------------------------------------*/
 
 /**
- * Canvas Mode Component Tools
+ * Canvas & Component Tools
  *
- * MCP tools for component CRUD operations in Canvas Mode.
- * These tools let AI agents create, modify, and manage React/Vue/Svelte components.
+ * MCP tools for Canvas and Component operations in Canvas Mode.
+ * - Canvas tools: list, get active, create
+ * - Component tools: add, batch add, remove, get info, list, rebuild
+ *
+ * These tools let AI agents manage canvases and components for live preview.
  */
 
+import type { ICanvasService } from '../../../common/canvas/canvasService.js';
 import type { ComponentService } from '../../component/componentService.js';
 
 /**
- * Register all canvas/component-related MCP tools
+ * Register all canvas and component MCP tools
  *
  * @param server - McpServer instance (dynamically imported)
  * @param z - Zod validation library (dynamically imported)
+ * @param canvasService - Canvas service instance
  * @param componentService - Component service instance
  */
 export function registerCanvasTools(
@@ -24,15 +29,204 @@ export function registerCanvasTools(
 	server: any,
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	z: any,
+	canvasService: ICanvasService,
 	componentService: ComponentService
 ): void {
 
+	// ============================================================================
+	// CANVAS TOOLS (3)
+	// ============================================================================
+
+	// --------------------------------------------------------------
+	// TOOL: List All Canvases
+	// --------------------------------------------------------------
+	server.tool(
+		'canvas_list',
+		'[Roopik IDE] List all Canvases in the workspace. Canvases are visual workspaces in the IDE where components are displayed for live preview. Returns canvas names, component counts, and timestamps.',
+		{
+			nameFilter: z.string().optional().describe('Optional filter to search canvas names'),
+			sortBy: z.enum(['name', 'updatedAt', 'createdAt', 'componentCount']).optional().describe('Sort field (default: updatedAt)'),
+			sortDirection: z.enum(['asc', 'desc']).optional().describe('Sort direction (default: desc)')
+		},
+		async ({ nameFilter, sortBy, sortDirection }: { nameFilter?: string; sortBy?: 'name' | 'updatedAt' | 'createdAt' | 'componentCount'; sortDirection?: 'asc' | 'desc' }) => {
+			try {
+				const canvases = await canvasService.listCanvasesAsync({
+					nameFilter,
+					sortBy,
+					sortDirection
+				});
+
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: true,
+							canvases: canvases.map(c => ({
+								id: c.id,
+								name: c.name,
+								componentCount: c.componentCount,
+								description: c.description,
+								icon: c.icon,
+								color: c.color,
+								createdAt: c.createdAt,
+								updatedAt: c.updatedAt
+							})),
+							count: canvases.length
+						})
+					}]
+				};
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: false,
+							isError: true,
+							error: errorMessage
+						})
+					}],
+					isError: true
+				};
+			}
+		}
+	);
+
+	// --------------------------------------------------------------
+	// TOOL: Get Active Canvas
+	// --------------------------------------------------------------
+	server.tool(
+		'canvas_get_active',
+		'[Roopik IDE] Get the Canvas currently open/focused in the IDE. Use this to know which Canvas the user is viewing, so you can add components to it. Returns null if no Canvas is open.',
+		{},
+		async () => {
+			try {
+				const focusedCanvasId = await canvasService.getFocusedCanvasIdAsync();
+
+				if (!focusedCanvasId) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: true,
+								activeCanvas: null,
+								message: 'No canvas is currently focused'
+							})
+						}]
+					};
+				}
+
+				const canvas = await canvasService.getCanvasAsync(focusedCanvasId);
+				if (!canvas) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: true,
+								activeCanvas: null,
+								message: 'Focused canvas not found'
+							})
+						}]
+					};
+				}
+
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: true,
+							activeCanvas: {
+								id: canvas.id,
+								name: canvas.name,
+								componentCount: canvas.componentCount,
+								description: canvas.description,
+								icon: canvas.icon,
+								color: canvas.color,
+								createdAt: canvas.createdAt,
+								updatedAt: canvas.updatedAt,
+								isOpen: canvas.isOpen,
+								isFocused: canvas.isFocused
+							}
+						})
+					}]
+				};
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: false,
+							isError: true,
+							error: errorMessage
+						})
+					}],
+					isError: true
+				};
+			}
+		}
+	);
+
+	// --------------------------------------------------------------
+	// TOOL: Create Canvas
+	// --------------------------------------------------------------
+	server.tool(
+		'canvas_create',
+		'[Roopik IDE] Create a new Canvas in the IDE for organizing and previewing components. If a Canvas with the same name exists, returns the existing one. Canvases appear as tabs in the IDE where components are visually rendered.',
+		{
+			name: z.string().describe('Canvas display name (e.g., "Login Components")')
+		},
+		async ({ name }: { name: string }) => {
+			try {
+				const result = await canvasService.createCanvas(name);
+
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: true,
+							canvasId: result.canvasId,
+							isNew: result.isNew,
+							canvas: {
+								id: result.canvas.id,
+								name: result.canvas.name,
+								componentCount: result.canvas.componentCount,
+								description: result.canvas.description,
+								icon: result.canvas.icon,
+								color: result.canvas.color,
+								createdAt: result.canvas.createdAt,
+								updatedAt: result.canvas.updatedAt
+							},
+							message: result.isNew ? 'Canvas created successfully' : 'Canvas already exists with this name'
+						})
+					}]
+				};
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: false,
+							isError: true,
+							error: errorMessage
+						})
+					}],
+					isError: true
+				};
+			}
+		}
+	);
+
+	// ============================================================================
+	// COMPONENT TOOLS (6)
+	// ============================================================================
 
 	// --------------------------------------------------------------
 	// TOOL: Add Component (Import from local folder)
 	// --------------------------------------------------------------
 	server.tool(
-		'rpk_addComponent',
+		'component_add',
 		'[Roopik IDE] Add a component to the visual Canvas for live preview. The component will be bundled and displayed in the IDE canvas where users can see it rendered. Auto-detects entry file and framework from the folder.',
 		{
 			canvasId: z.string().optional().describe('Canvas ID to add component to (optional, uses active canvas if not provided)'),
@@ -101,7 +295,7 @@ export function registerCanvasTools(
 	// TOOL: Add Multiple Components (Batch)
 	// --------------------------------------------------------------
 	server.tool(
-		'rpk_addComponents',
+		'component_add_batch',
 		'[Roopik IDE] Batch add multiple components to the visual Canvas. Efficient for adding component variants or multiple components at once. All components will be bundled and displayed in the IDE canvas for live preview.',
 		{
 			components: z.array(z.object({
@@ -171,7 +365,7 @@ export function registerCanvasTools(
 	// TOOL: Delete Component
 	// --------------------------------------------------------------
 	server.tool(
-		'rpk_removeComponent',
+		'component_remove',
 		'[Roopik IDE] Remove a component from the visual Canvas. The component will no longer be displayed in the IDE canvas. This cleans up cached builds but does not delete source files.',
 		{
 			componentId: z.string().describe('Component ID to delete')
@@ -211,7 +405,7 @@ export function registerCanvasTools(
 	// TOOL: Get Component Info
 	// --------------------------------------------------------------
 	server.tool(
-		'rpk_getComponentInfo',
+		'component_get_info',
 		'[Roopik IDE] Get full component status from the Canvas: build state (building/ready/error), error details, CDN URLs for preview. Use this to check if a component built successfully or to get error messages for debugging.',
 		{
 			componentId: z.string().describe('Component ID to get info for')
@@ -252,7 +446,7 @@ export function registerCanvasTools(
 	// TOOL: List Components in Canvas
 	// --------------------------------------------------------------
 	server.tool(
-		'rpk_listComponents',
+		'component_list',
 		'[Roopik IDE] List all components currently displayed on a Canvas. Returns component IDs, names, frameworks, and build states. Use this to see what components are available for preview in the IDE.',
 		{
 			canvasId: z.string().describe('Canvas ID to list components from')
@@ -299,8 +493,8 @@ export function registerCanvasTools(
 	// TOOL: Rebuild Component
 	// --------------------------------------------------------------
 	server.tool(
-		'rpk_rebuildComponent',
-		'[Roopik IDE] Trigger a rebuild of a component on the Canvas. Use this after fixing code errors to refresh the live preview. Check rpk_getComponentInfo afterward to verify the build succeeded.',
+		'component_rebuild',
+		'[Roopik IDE] Trigger a rebuild of a component on the Canvas. Use this after fixing code errors to refresh the live preview. Check component_get_info afterward to verify the build succeeded.',
 		{
 			componentId: z.string().describe('Component ID to rebuild')
 		},
@@ -336,5 +530,5 @@ export function registerCanvasTools(
 		}
 	);
 
-	console.log('[MCP] Registered 6 canvas tools: rpk_addComponent, rpk_addComponents, rpk_removeComponent, rpk_getComponentInfo, rpk_listComponents, rpk_rebuildComponent');
+	console.log('[MCP] Registered 9 canvas/component tools: canvas_list, canvas_get_active, canvas_create, component_add, component_add_batch, component_remove, component_get_info, component_list, component_rebuild');
 }

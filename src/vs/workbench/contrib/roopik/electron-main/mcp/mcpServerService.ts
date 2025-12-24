@@ -31,9 +31,7 @@ import type { ICanvasService } from '../../common/canvas/canvasService.js';
 import type { IRoopikStorageService } from '../../common/storage/storageService.js';
 import { registerProjectTools } from './tools/projectTools.js';
 import { registerBrowserTools } from './tools/browserTools.js';
-import { registerCDPTools } from './tools/cdpTools.js';
 import { registerCanvasTools } from './tools/canvasTools.js';
-import { registerWorkspaceTools } from './tools/workspaceTools.js';
 import { registerContextPrompts } from './tools/contextPrompts.js';
 
 // ============================================================================
@@ -114,9 +112,7 @@ export class McpServerService implements IMcpServerService {
 		// Register tools from modular tool files
 		registerProjectTools(this.mcpServer, z, this.devServerService);
 		registerBrowserTools(this.mcpServer, z, this.browserViewService, this.storageService);
-		registerCDPTools(this.mcpServer, this.browserViewService, z);
-		registerCanvasTools(this.mcpServer, z, this.componentService);
-		registerWorkspaceTools(this.mcpServer, z, this.canvasService);
+		registerCanvasTools(this.mcpServer, z, this.canvasService, this.componentService);
 
 		// Register contextual prompts (workflow guides)
 		registerContextPrompts(this.mcpServer);

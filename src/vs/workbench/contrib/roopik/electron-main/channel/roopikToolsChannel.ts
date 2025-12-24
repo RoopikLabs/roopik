@@ -14,12 +14,16 @@
  * - Replaces HTTP-based MCP for internal agent communication
  * - Same tools as MCP but via direct IPC (faster, no timeouts)
  *
+ * Tool Naming Convention: category_action (e.g., browser_navigate, component_add)
+ *
  * Tool Categories:
- * - Browser Tools (7): browser_open, browser_get_performance, screenshot, navigate, reload, executeScript, inspectElement
- * - CDP Tools (2): getErrors, getConsoleLogs
- * - Project Tools (3): getActiveProject, startProject, stopProject
- * - Workspace Tools (3): listCanvases, getActiveCanvas, createCanvas
- * - Component Tools (6): addComponent, addComponents, removeComponent, getComponentInfo, listComponents, rebuildComponent
+ * - Browser Tools (10): browser_open, browser_navigate, browser_reload, browser_screenshot,
+ *                       browser_execute_script, browser_inspect_element, browser_get_errors,
+ *                       browser_get_console_logs, browser_get_performance, browser_get_cdp_info
+ * - Project Tools (3): project_get_active, project_start, project_stop
+ * - Canvas Tools (3): canvas_list, canvas_get_active, canvas_create
+ * - Component Tools (6): component_add, component_add_batch, component_remove,
+ *                        component_get_info, component_list, component_rebuild
  */
 
 import { BrowserWindow } from 'electron';
@@ -30,18 +34,10 @@ import type { DevServerService } from '../projectMode/devServer/devServerService
 import type { ComponentService } from '../component/componentService.js';
 import type { ICanvasService } from '../../common/canvas/canvasService.js';
 import type { IRoopikStorageService } from '../../common/storage/storageService.js';
+import { ROOPIK_TOOLS_CHANNEL_NAME, RoopikToolResult } from '../../common/tools/types.js';
 
-// Channel name for IPC registration
-export const ROOPIK_TOOLS_CHANNEL_NAME = 'roopik.tools';
-
-/**
- * Standard result format for all tool calls
- */
-export interface RoopikToolResult<T = unknown> {
-	success: boolean;
-	data?: T;
-	error?: string;
-}
+// Re-export for backwards compatibility with app.ts import
+export { ROOPIK_TOOLS_CHANNEL_NAME, RoopikToolResult };
 
 /**
  * RoopikToolsChannel - IPC handler for Roopik IDE tools
@@ -63,77 +59,79 @@ export class RoopikToolsChannel implements IServerChannel {
 	 * Handle event subscriptions from extensions
 	 * Future: Can expose events like onComponentBuilt, onProjectStarted, etc.
 	 */
-	listen(_context: unknown, event: string): Event<unknown> {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- IServerChannel interface requires any
+	listen(_context: unknown, event: string): Event<any> {
 		throw new Error(`[RoopikToolsChannel] Unknown event: ${event}`);
 	}
 
 	/**
 	 * Handle tool calls from extensions
 	 */
-	async call(_context: unknown, command: string, arg?: unknown): Promise<RoopikToolResult> {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- IServerChannel interface requires any
+	async call(_context: unknown, command: string, arg?: any): Promise<any> {
 		try {
 			switch (command) {
 				// ============================================================
-				// Browser Tools (6)
+				// Browser Tools (10)
 				// ============================================================
 				case 'browser_open':
 					return this.handleBrowserOpen(arg as { url?: string });
 
+				case 'browser_navigate':
+					return this.handleNavigate(arg as { url: string });
+
+				case 'browser_reload':
+					return this.handleReload(arg as { ignoreCache?: boolean });
+
+				case 'browser_screenshot':
+					return this.handleScreenshot();
+
+				case 'browser_execute_script':
+					return this.handleExecuteScript(arg as { script: string });
+
+				case 'browser_inspect_element':
+					return this.handleInspectElement(arg as { selector: string; includeInherited?: boolean });
+
+				case 'browser_get_errors':
+					return this.handleGetErrors(arg as { limit?: number });
+
+				case 'browser_get_console_logs':
+					return this.handleGetConsoleLogs(arg as { limit?: number; type?: string });
+
 				case 'browser_get_performance':
 					return this.handleBrowserGetPerformance();
 
-				case 'rpk_screenshot':
-					return this.handleScreenshot();
-
-				case 'rpk_navigate':
-					return this.handleNavigate(arg as { url: string });
-
-				case 'rpk_reload':
-					return this.handleReload(arg as { ignoreCache?: boolean });
-
-				case 'rpk_executeScript':
-					return this.handleExecuteScript(arg as { script: string });
-
-				case 'rpk_inspectElement':
-					return this.handleInspectElement(arg as { selector: string; includeInherited?: boolean });
-
-				// ============================================================
-				// CDP Tools (2)
-				// ============================================================
-				case 'rpk_getErrors':
-					return this.handleGetErrors(arg as { limit?: number });
-
-				case 'rpk_getConsoleLogs':
-					return this.handleGetConsoleLogs(arg as { limit?: number; type?: string });
+				case 'browser_get_cdp_info':
+					return this.handleBrowserGetCdpInfo();
 
 				// ============================================================
 				// Project Tools (3)
 				// ============================================================
-				case 'rpk_getActiveProject':
+				case 'project_get_active':
 					return this.handleGetActiveProject();
 
-				case 'rpk_startProject':
+				case 'project_start':
 					return this.handleStartProject(arg as { projectPath: string; port?: number });
 
-				case 'rpk_stopProject':
+				case 'project_stop':
 					return this.handleStopProject();
 
 				// ============================================================
-				// Workspace/Canvas Tools (3)
+				// Canvas Tools (3)
 				// ============================================================
-				case 'rpk_listCanvases':
+				case 'canvas_list':
 					return this.handleListCanvases(arg as { nameFilter?: string; sortBy?: string; sortDirection?: string });
 
-				case 'rpk_getActiveCanvas':
+				case 'canvas_get_active':
 					return this.handleGetActiveCanvas();
 
-				case 'rpk_createCanvas':
+				case 'canvas_create':
 					return this.handleCreateCanvas(arg as { name: string });
 
 				// ============================================================
 				// Component Tools (6)
 				// ============================================================
-				case 'rpk_addComponent':
+				case 'component_add':
 					return this.handleAddComponent(arg as {
 						folderPath: string;
 						canvasId?: string;
@@ -142,7 +140,7 @@ export class RoopikToolsChannel implements IServerChannel {
 						framework?: string;
 					});
 
-				case 'rpk_addComponents':
+				case 'component_add_batch':
 					return this.handleAddComponents(arg as {
 						components: Array<{
 							folderPath: string;
@@ -153,16 +151,16 @@ export class RoopikToolsChannel implements IServerChannel {
 						}>;
 					});
 
-				case 'rpk_removeComponent':
+				case 'component_remove':
 					return this.handleRemoveComponent(arg as { componentId: string });
 
-				case 'rpk_getComponentInfo':
+				case 'component_get_info':
 					return this.handleGetComponentInfo(arg as { componentId: string });
 
-				case 'rpk_listComponents':
+				case 'component_list':
 					return this.handleListComponents(arg as { canvasId: string });
 
-				case 'rpk_rebuildComponent':
+				case 'component_rebuild':
 					return this.handleRebuildComponent(arg as { componentId: string });
 
 				default:
@@ -264,8 +262,8 @@ export class RoopikToolsChannel implements IServerChannel {
 
 	/**
 	 * Get performance metrics from the browser including Web Vitals.
-	 * Returns LCP (Largest Contentful Paint), CLS (Cumulative Layout Shift),
-	 * FID (First Input Delay), and other performance metrics.
+	 * Uses CDP's PerformanceTimeline domain for LCP, CLS data,
+	 * and Performance domain for runtime metrics.
 	 */
 	private async handleBrowserGetPerformance(): Promise<RoopikToolResult> {
 		const browserViewId = this.browserViewService.getActiveBrowserViewId();
@@ -280,105 +278,52 @@ export class RoopikToolsChannel implements IServerChannel {
 			// Attach debugger if not already attached
 			await this.browserViewService.attachDebugger(browserViewId);
 
-			// Enable Performance domain
+			// Enable Performance domain for runtime metrics
 			await this.browserViewService.sendCDPCommand(browserViewId, 'Performance.enable');
 
-			// Get CDP performance metrics
+			// Get CDP runtime performance metrics (JSHeap, Nodes, Layouts, etc.)
 			const cdpMetrics = await this.browserViewService.sendCDPCommand(browserViewId, 'Performance.getMetrics');
 
-			// Execute JavaScript to get Web Vitals and Navigation Timing API data
-			const webVitalsScript = `
-				(function() {
-					const result = {
-						navigationTiming: {},
-						webVitals: {},
-						resources: []
-					};
+			// Enable PerformanceTimeline domain for Web Vitals (LCP, LayoutShift)
+			// Note: This returns buffered events from page load
+			interface TimelineEvent {
+				type: string;
+				lcpDetails?: { renderTime?: number; loadTime?: number; size?: number; nodeId?: number };
+				layoutShiftDetails?: { value?: number; hadRecentInput?: boolean };
+			}
+			let timelineEvents: TimelineEvent[] = [];
+			try {
+				const timelineResult = await this.browserViewService.sendCDPCommand(
+					browserViewId,
+					'PerformanceTimeline.enable',
+					{ eventTypes: ['largest-contentful-paint', 'layout-shift', 'first-contentful-paint'] }
+				);
+				if (timelineResult && timelineResult.timelineEvents) {
+					timelineEvents = timelineResult.timelineEvents;
+				}
+			} catch (e) {
+				// PerformanceTimeline may not be available in all Chromium versions
+				console.warn('[RoopikTools] PerformanceTimeline not available:', e);
+			}
 
-					// Navigation Timing API
-					if (performance.timing) {
-						const t = performance.timing;
-						result.navigationTiming = {
-							dns: t.domainLookupEnd - t.domainLookupStart,
-							tcp: t.connectEnd - t.connectStart,
-							ttfb: t.responseStart - t.requestStart,
-							domContentLoaded: t.domContentLoadedEventEnd - t.navigationStart,
-							domComplete: t.domComplete - t.navigationStart,
-							loadComplete: t.loadEventEnd - t.navigationStart
-						};
+			// Process timeline events for Web Vitals
+			let lcp: { renderTime?: number; loadTime?: number; size?: number; nodeId?: number } | null = null;
+			let cls = 0;
+			const layoutShifts: TimelineEvent['layoutShiftDetails'][] = [];
+
+			for (const event of timelineEvents) {
+				if (event.type === 'LargestContentfulPaint' && event.lcpDetails) {
+					lcp = event.lcpDetails;
+				} else if (event.type === 'LayoutShift' && event.layoutShiftDetails) {
+					const shift = event.layoutShiftDetails;
+					if (!shift.hadRecentInput) {
+						cls += shift.value || 0;
 					}
+					layoutShifts.push(shift);
+				}
+			}
 
-					// Performance Navigation Timing (newer API)
-					const navEntries = performance.getEntriesByType('navigation');
-					if (navEntries.length > 0) {
-						const nav = navEntries[0];
-						result.navigationTiming.transferSize = nav.transferSize;
-						result.navigationTiming.encodedBodySize = nav.encodedBodySize;
-						result.navigationTiming.decodedBodySize = nav.decodedBodySize;
-					}
-
-					// Largest Contentful Paint (LCP)
-					const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
-					if (lcpEntries.length > 0) {
-						const lcp = lcpEntries[lcpEntries.length - 1];
-						result.webVitals.lcp = {
-							value: Math.round(lcp.startTime),
-							element: lcp.element ? lcp.element.tagName : null,
-							url: lcp.url || null,
-							size: lcp.size
-						};
-					}
-
-					// First Contentful Paint (FCP)
-					const fcpEntries = performance.getEntriesByType('paint');
-					const fcp = fcpEntries.find(e => e.name === 'first-contentful-paint');
-					if (fcp) {
-						result.webVitals.fcp = Math.round(fcp.startTime);
-					}
-					const fp = fcpEntries.find(e => e.name === 'first-paint');
-					if (fp) {
-						result.webVitals.fp = Math.round(fp.startTime);
-					}
-
-					// Cumulative Layout Shift (CLS) - if PerformanceObserver was used
-					const layoutShiftEntries = performance.getEntriesByType('layout-shift');
-					if (layoutShiftEntries.length > 0) {
-						let cls = 0;
-						layoutShiftEntries.forEach(entry => {
-							if (!entry.hadRecentInput) {
-								cls += entry.value;
-							}
-						});
-						result.webVitals.cls = Math.round(cls * 1000) / 1000;
-					}
-
-					// Resource timing (top 10 slowest resources)
-					const resources = performance.getEntriesByType('resource');
-					result.resources = resources
-						.map(r => ({
-							name: r.name.split('/').pop().split('?')[0],
-							type: r.initiatorType,
-							duration: Math.round(r.duration),
-							size: r.transferSize || 0
-						}))
-						.sort((a, b) => b.duration - a.duration)
-						.slice(0, 10);
-
-					// Memory info (if available, Chrome only)
-					if (performance.memory) {
-						result.memory = {
-							usedJSHeapSize: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024),
-							totalJSHeapSize: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024)
-						};
-					}
-
-					return result;
-				})();
-			`;
-
-			const webVitals = await this.browserViewService.executeScript(browserViewId, webVitalsScript);
-
-			// Format CDP metrics into a more readable object
+			// Format CDP runtime metrics into a more readable object
 			const metricsMap: Record<string, number> = {};
 			if (cdpMetrics && cdpMetrics.metrics) {
 				for (const metric of cdpMetrics.metrics) {
@@ -386,20 +331,45 @@ export class RoopikToolsChannel implements IServerChannel {
 				}
 			}
 
+			// Extract key metrics from CDP Performance.getMetrics
+			const jsHeapUsedMB = metricsMap['JSHeapUsedSize'] ? Math.round(metricsMap['JSHeapUsedSize'] / 1024 / 1024) : null;
+			const jsHeapTotalMB = metricsMap['JSHeapTotalSize'] ? Math.round(metricsMap['JSHeapTotalSize'] / 1024 / 1024) : null;
+
 			return {
 				success: true,
 				data: {
+					// Web Vitals from CDP PerformanceTimeline
+					webVitals: {
+						lcp: lcp ? {
+							renderTime: lcp.renderTime,
+							loadTime: lcp.loadTime,
+							size: lcp.size
+						} : null,
+						cls: Math.round(cls * 1000) / 1000,
+						layoutShiftCount: layoutShifts.length
+					},
+					// Runtime metrics from CDP Performance.getMetrics
+					runtime: {
+						jsHeapUsedMB,
+						jsHeapTotalMB,
+						documents: metricsMap['Documents'],
+						frames: metricsMap['Frames'],
+						nodes: metricsMap['Nodes'],
+						layoutCount: metricsMap['LayoutCount'],
+						recalcStyleCount: metricsMap['RecalcStyleCount'],
+						scriptDuration: metricsMap['ScriptDuration'] ? Math.round(metricsMap['ScriptDuration'] * 1000) : null,
+						layoutDuration: metricsMap['LayoutDuration'] ? Math.round(metricsMap['LayoutDuration'] * 1000) : null,
+						taskDuration: metricsMap['TaskDuration'] ? Math.round(metricsMap['TaskDuration'] * 1000) : null
+					},
+					// Full CDP metrics for advanced users
 					cdpMetrics: metricsMap,
-					navigationTiming: webVitals?.navigationTiming || {},
-					webVitals: webVitals?.webVitals || {},
-					slowestResources: webVitals?.resources || [],
-					memory: webVitals?.memory || null,
+					// Human-readable summary
 					summary: {
-						lcp: webVitals?.webVitals?.lcp?.value ? `${webVitals.webVitals.lcp.value}ms` : 'N/A',
-						fcp: webVitals?.webVitals?.fcp ? `${webVitals.webVitals.fcp}ms` : 'N/A',
-						cls: webVitals?.webVitals?.cls !== undefined ? webVitals.webVitals.cls : 'N/A',
-						ttfb: webVitals?.navigationTiming?.ttfb ? `${webVitals.navigationTiming.ttfb}ms` : 'N/A',
-						domComplete: webVitals?.navigationTiming?.domComplete ? `${webVitals.navigationTiming.domComplete}ms` : 'N/A'
+						lcp: lcp?.renderTime ? `${Math.round(lcp.renderTime)}ms` : (lcp?.loadTime ? `${Math.round(lcp.loadTime)}ms` : 'N/A'),
+						cls: Math.round(cls * 1000) / 1000,
+						jsHeap: jsHeapUsedMB ? `${jsHeapUsedMB}MB / ${jsHeapTotalMB}MB` : 'N/A',
+						domNodes: metricsMap['Nodes'] || 'N/A',
+						layoutCount: metricsMap['LayoutCount'] || 'N/A'
 					}
 				}
 			};
@@ -411,12 +381,116 @@ export class RoopikToolsChannel implements IServerChannel {
 		}
 	}
 
+	/**
+	 * Get CDP connection info for external agents to connect to the browser.
+	 *
+	 * Returns information about the current browser state and how external
+	 * agents (Claude Code, Copilot, etc.) can interact with it.
+	 *
+	 * Note: Electron's BrowserView doesn't expose a WebSocket server by default.
+	 * External agents should use Roopik's IPC tools instead of direct CDP connection.
+	 * This tool provides context about what's available.
+	 */
+	private async handleBrowserGetCdpInfo(): Promise<RoopikToolResult> {
+		const browserViewId = this.browserViewService.getActiveBrowserViewId();
+
+		// Get dev server info if running
+		const runningServer = await this.devServerService.getRunningServer();
+
+		const availableTools = [
+			// Browser tools
+			'browser_open',
+			'browser_navigate',
+			'browser_reload',
+			'browser_screenshot',
+			'browser_execute_script',
+			'browser_inspect_element',
+			'browser_get_errors',
+			'browser_get_console_logs',
+			'browser_get_performance',
+			'browser_get_cdp_info',
+			// Project tools
+			'project_get_active',
+			'project_start',
+			'project_stop',
+			// Canvas tools
+			'canvas_list',
+			'canvas_get_active',
+			'canvas_create',
+			// Component tools
+			'component_add',
+			'component_add_batch',
+			'component_remove',
+			'component_get_info',
+			'component_list',
+			'component_rebuild'
+		];
+
+		if (browserViewId === undefined) {
+			return {
+				success: true,
+				data: {
+					browserOpen: false,
+					devServer: runningServer ? {
+						running: true,
+						url: runningServer.url,
+						projectRoot: runningServer.projectRoot,
+						port: runningServer.port,
+						framework: runningServer.framework
+					} : null,
+					cdpAccess: {
+						// Electron BrowserView uses in-process debugger, not WebSocket
+						type: 'internal',
+						note: 'Roopik uses Electron in-process CDP. External agents should use Roopik IPC tools.',
+						availableTools
+					},
+					message: 'No browser open. Use browser_open to open a browser.'
+				}
+			};
+		}
+
+		// Get navigation state (includes current URL)
+		const navState = await this.browserViewService.getNavigationState(browserViewId);
+
+		return {
+			success: true,
+			data: {
+				browserOpen: true,
+				browserViewId,
+				currentUrl: navState.url,
+				title: navState.title,
+				isLoading: navState.isLoading,
+				devServer: runningServer ? {
+					running: true,
+					url: runningServer.url,
+					projectRoot: runningServer.projectRoot,
+					port: runningServer.port,
+					framework: runningServer.framework
+				} : null,
+				cdpAccess: {
+					// Electron BrowserView uses in-process debugger
+					type: 'internal',
+					note: 'Roopik uses Electron in-process CDP. External agents should use Roopik IPC tools instead of WebSocket CDP.',
+					availableTools,
+					// For future: If we want to expose remote debugging, we'd need to:
+					// 1. Start Chromium with --remote-debugging-port
+					// 2. Or use a CDP proxy that exposes WebSocket
+					remoteDebugging: {
+						enabled: false,
+						reason: 'Electron BrowserView does not expose WebSocket CDP by default. Use Roopik IPC tools for full CDP access.'
+					}
+				},
+				message: `Browser open at ${navState.url}. Use Roopik tools for CDP operations.`
+			}
+		};
+	}
+
 	private async handleScreenshot(): Promise<RoopikToolResult> {
 		const browserViewId = this.browserViewService.getActiveBrowserViewId();
 		if (browserViewId === undefined) {
 			return {
 				success: false,
-				error: 'No browser is open. Start a project first with rpk_startProject.'
+				error: 'No browser is open. Use browser_open or project_start first.'
 			};
 		}
 
@@ -432,7 +506,7 @@ export class RoopikToolsChannel implements IServerChannel {
 		if (browserViewId === undefined) {
 			return {
 				success: false,
-				error: 'No browser is open. Start a project first with rpk_startProject.'
+				error: 'No browser is open. Use browser_open or project_start first.'
 			};
 		}
 
@@ -448,7 +522,7 @@ export class RoopikToolsChannel implements IServerChannel {
 		if (browserViewId === undefined) {
 			return {
 				success: false,
-				error: 'No browser is open. Start a project first with rpk_startProject.'
+				error: 'No browser is open. Use browser_open or project_start first.'
 			};
 		}
 
@@ -467,7 +541,7 @@ export class RoopikToolsChannel implements IServerChannel {
 		if (browserViewId === undefined) {
 			return {
 				success: false,
-				error: 'No browser is open. Start a project first with rpk_startProject.'
+				error: 'No browser is open. Use browser_open or project_start first.'
 			};
 		}
 
@@ -483,7 +557,7 @@ export class RoopikToolsChannel implements IServerChannel {
 		if (browserViewId === undefined) {
 			return {
 				success: false,
-				error: 'No browser is open. Start a project first with rpk_startProject.'
+				error: 'No browser is open. Use browser_open or project_start first.'
 			};
 		}
 
@@ -540,14 +614,14 @@ export class RoopikToolsChannel implements IServerChannel {
 		// This will be connected once we wire up CDP monitoring to the channel
 		return {
 			success: false,
-			error: 'CDP tools require browser to be open with monitoring enabled. Use rpk_startProject first.'
+			error: 'CDP tools require browser to be open with monitoring enabled. Use project_start first.'
 		};
 	}
 
 	private async handleGetConsoleLogs(args: { limit?: number; type?: string }): Promise<RoopikToolResult> {
 		return {
 			success: false,
-			error: 'CDP tools require browser to be open with monitoring enabled. Use rpk_startProject first.'
+			error: 'CDP tools require browser to be open with monitoring enabled. Use project_start first.'
 		};
 	}
 
@@ -563,7 +637,7 @@ export class RoopikToolsChannel implements IServerChannel {
 				success: true,
 				data: {
 					hasActiveProject: false,
-					message: 'No project is currently running. Use rpk_startProject to start one.'
+					message: 'No project is currently running. Use project_start to start one.'
 				}
 			};
 		}
@@ -834,7 +908,7 @@ export class RoopikToolsChannel implements IServerChannel {
 			success: true,
 			data: {
 				componentId: args.componentId,
-				message: 'Rebuild queued - use rpk_getComponentInfo to check build state'
+				message: 'Rebuild queued - use component_get_info to check build state'
 			}
 		};
 	}

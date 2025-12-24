@@ -164,8 +164,9 @@ export async function checkAutoApproval({
 			return state.alwaysAllowSubtasks === true ? { decision: "approve" } : { decision: "ask" }
 		}
 
-		// Roopik IDE tools (rpk_*)
-		if (tool?.tool?.startsWith("rpk_")) {
+		// Roopik IDE tools (browser_*, project_*, canvas_*, component_*)
+		const roopikToolPrefixes = ["browser_", "project_", "canvas_", "component_"]
+		if (roopikToolPrefixes.some((prefix) => tool?.tool?.startsWith(prefix))) {
 			return state.alwaysAllowRoopik === true ? { decision: "approve" } : { decision: "ask" }
 		}
 

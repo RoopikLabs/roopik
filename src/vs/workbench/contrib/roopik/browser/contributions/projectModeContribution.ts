@@ -34,9 +34,6 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 
 	private devServerService: DevServerBridge;
 
-	// Track if we're switching projects (to avoid closing browser unnecessarily)
-	private isProjectSwitching: boolean = false;
-
 	constructor(
 		@IEditorService private readonly editorService: IEditorService,
 		@IEditorGroupsService private readonly editorGroupsService: IEditorGroupsService,
@@ -67,9 +64,6 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 					framework: event.framework
 				});
 
-				// Reset switching flag since new project is now running
-				this.isProjectSwitching = false;
-
 				try {
 					await this.openBrowserAndNavigate(event.url, event.projectRoot);
 				} catch (error) {
@@ -93,7 +87,6 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 				// The next 'running' event will navigate to the new project URL
 				if (browserPane) {
 					console.log('[ProjectModeContribution] Browser is open - keeping it open (project switch detected)');
-					this.isProjectSwitching = true;
 					return;
 				}
 

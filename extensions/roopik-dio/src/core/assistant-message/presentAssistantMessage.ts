@@ -438,45 +438,54 @@ export async function presentAssistantMessage(cline: Task) {
 						return `[${block.name} for '${block.params.command}'${block.params.args ? ` with args: ${block.params.args}` : ""}]`
 					case "generate_image":
 						return `[${block.name} for '${block.params.path}']`
-					// Roopik IDE Tools
-					case "rpk_screenshot":
-						return `[rpk_screenshot]`
-					case "rpk_navigate":
-						return `[rpk_navigate to '${block.params.url}']`
-					case "rpk_reload":
-						return `[rpk_reload${block.params.ignoreCache === "true" ? " (hard reload)" : ""}]`
-					case "rpk_executeScript":
-						return `[rpk_executeScript]`
-					case "rpk_inspectElement":
-						return `[rpk_inspectElement for '${block.params.selector}']`
-					case "rpk_getErrors":
-						return `[rpk_getErrors]`
-					case "rpk_getConsoleLogs":
-						return `[rpk_getConsoleLogs${block.params.type ? ` (${block.params.type})` : ""}]`
-					case "rpk_getActiveProject":
-						return `[rpk_getActiveProject]`
-					case "rpk_startProject":
-						return `[rpk_startProject for '${block.params.projectPath || block.params.path}']`
-					case "rpk_stopProject":
-						return `[rpk_stopProject]`
-					case "rpk_listCanvases":
-						return `[rpk_listCanvases]`
-					case "rpk_getActiveCanvas":
-						return `[rpk_getActiveCanvas]`
-					case "rpk_createCanvas":
-						return `[rpk_createCanvas '${block.params.name}']`
-					case "rpk_addComponent":
-						return `[rpk_addComponent '${block.params.folderPath || block.params.path}']`
-					case "rpk_addComponents":
-						return `[rpk_addComponents]`
-					case "rpk_removeComponent":
-						return `[rpk_removeComponent '${block.params.componentId}']`
-					case "rpk_getComponentInfo":
-						return `[rpk_getComponentInfo '${block.params.componentId}']`
-					case "rpk_listComponents":
-						return `[rpk_listComponents '${block.params.canvasId}']`
-					case "rpk_rebuildComponent":
-						return `[rpk_rebuildComponent '${block.params.componentId}']`
+					// Roopik IDE Tools - Browser (10)
+					case "browser_open":
+						return `[browser_open${block.params.url ? ` to '${block.params.url}'` : ""}]`
+					case "browser_navigate":
+						return `[browser_navigate to '${block.params.url}']`
+					case "browser_reload":
+						return `[browser_reload${block.params.ignoreCache === "true" ? " (hard reload)" : ""}]`
+					case "browser_screenshot":
+						return `[browser_screenshot]`
+					case "browser_execute_script":
+						return `[browser_execute_script]`
+					case "browser_inspect_element":
+						return `[browser_inspect_element for '${block.params.selector}']`
+					case "browser_get_errors":
+						return `[browser_get_errors]`
+					case "browser_get_console_logs":
+						return `[browser_get_console_logs${block.params.type ? ` (${block.params.type})` : ""}]`
+					case "browser_get_performance":
+						return `[browser_get_performance]`
+					case "browser_get_cdp_info":
+						return `[browser_get_cdp_info]`
+					// Roopik IDE Tools - Project (3)
+					case "project_get_active":
+						return `[project_get_active]`
+					case "project_start":
+						return `[project_start for '${block.params.projectPath || block.params.path}']`
+					case "project_stop":
+						return `[project_stop]`
+					// Roopik IDE Tools - Canvas (3)
+					case "canvas_list":
+						return `[canvas_list]`
+					case "canvas_get_active":
+						return `[canvas_get_active]`
+					case "canvas_create":
+						return `[canvas_create '${block.params.name}']`
+					// Roopik IDE Tools - Component (6)
+					case "component_add":
+						return `[component_add '${block.params.folderPath || block.params.path}']`
+					case "component_add_batch":
+						return `[component_add_batch]`
+					case "component_remove":
+						return `[component_remove '${block.params.componentId}']`
+					case "component_get_info":
+						return `[component_get_info '${block.params.componentId}']`
+					case "component_list":
+						return `[component_list '${block.params.canvasId}']`
+					case "component_rebuild":
+						return `[component_rebuild '${block.params.componentId}']`
 					default:
 						return `[${block.name}]`
 				}
@@ -1109,26 +1118,33 @@ export async function presentAssistantMessage(cline: Task) {
 						toolProtocol,
 					})
 					break
-				// Roopik IDE Tools (19 tools)
-				case "rpk_screenshot":
-				case "rpk_navigate":
-				case "rpk_reload":
-				case "rpk_executeScript":
-				case "rpk_inspectElement":
-				case "rpk_getErrors":
-				case "rpk_getConsoleLogs":
-				case "rpk_getActiveProject":
-				case "rpk_startProject":
-				case "rpk_stopProject":
-				case "rpk_listCanvases":
-				case "rpk_getActiveCanvas":
-				case "rpk_createCanvas":
-				case "rpk_addComponent":
-				case "rpk_addComponents":
-				case "rpk_removeComponent":
-				case "rpk_getComponentInfo":
-				case "rpk_listComponents":
-				case "rpk_rebuildComponent":
+				// Roopik IDE Tools (22 tools)
+				// Browser (10)
+				case "browser_open":
+				case "browser_navigate":
+				case "browser_reload":
+				case "browser_screenshot":
+				case "browser_execute_script":
+				case "browser_inspect_element":
+				case "browser_get_errors":
+				case "browser_get_console_logs":
+				case "browser_get_performance":
+				case "browser_get_cdp_info":
+				// Project (3)
+				case "project_get_active":
+				case "project_start":
+				case "project_stop":
+				// Canvas (3)
+				case "canvas_list":
+				case "canvas_get_active":
+				case "canvas_create":
+				// Component (6)
+				case "component_add":
+				case "component_add_batch":
+				case "component_remove":
+				case "component_get_info":
+				case "component_list":
+				case "component_rebuild":
 					await handleRoopikTool(cline, block, {
 						askApproval,
 						handleError,

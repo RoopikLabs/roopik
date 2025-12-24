@@ -15,12 +15,14 @@
  * 1. Extensions to call Roopik tools without direct IPC access
  * 2. Future bidirectional communication (browser events → extension)
  * 3. Consistent tool interface for AI agents
+ *
+ * Tool Naming Convention: category_action (e.g., browser_navigate, component_add)
  */
 
 import { registerAction2, Action2 } from '../../../../../platform/actions/common/actions.js';
 import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { IMainProcessService } from '../../../../../platform/ipc/common/mainProcessService.js';
-import { ROOPIK_TOOLS_CHANNEL_NAME, RoopikToolResult } from '../../electron-main/channel/roopikToolsChannel.js';
+import { ROOPIK_TOOLS_CHANNEL_NAME, RoopikToolResult } from '../../common/tools/types.js';
 
 /**
  * Generic tool call interface for extensions
@@ -46,7 +48,7 @@ export function registerRoopikToolsCommands(): void {
 
 	// ============================================================================
 	// UNIFIED TOOL EXECUTOR
-	// Extensions call: vscode.commands.executeCommand('roopik.executeTool', { tool: 'rpk_screenshot', args: {} })
+	// Extensions call: vscode.commands.executeCommand('roopik.executeTool', { tool: 'browser_screenshot', args: {} })
 	// ============================================================================
 	registerAction2(class extends Action2 {
 		constructor() {
@@ -83,23 +85,23 @@ export function registerRoopikToolsCommands(): void {
 	// ============================================================================
 
 	// --------------------------------------------------------------------------
-	// Browser Tools
+	// Browser Tools (10)
 	// --------------------------------------------------------------------------
 
 	registerAction2(class extends Action2 {
 		constructor() {
 			super({
-				id: 'roopik.tools.screenshot',
-				title: { value: 'Take Browser Screenshot', original: 'Take Browser Screenshot' },
+				id: 'roopik.tools.browserOpen',
+				title: { value: 'Open Browser', original: 'Open Browser' },
 				category: { value: 'Roopik', original: 'Roopik' },
 				f1: false
 			});
 		}
 
-		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
+		async run(accessor: ServicesAccessor, args?: { url?: string }): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_screenshot');
+			return channel.call('browser_open', args || {});
 		}
 	});
 
@@ -119,7 +121,7 @@ export function registerRoopikToolsCommands(): void {
 			}
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_navigate', args);
+			return channel.call('browser_navigate', args);
 		}
 	});
 
@@ -136,7 +138,24 @@ export function registerRoopikToolsCommands(): void {
 		async run(accessor: ServicesAccessor, args?: { ignoreCache?: boolean }): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_reload', args || {});
+			return channel.call('browser_reload', args || {});
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.screenshot',
+				title: { value: 'Take Browser Screenshot', original: 'Take Browser Screenshot' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('browser_screenshot');
 		}
 	});
 
@@ -156,7 +175,7 @@ export function registerRoopikToolsCommands(): void {
 			}
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_executeScript', args);
+			return channel.call('browser_execute_script', args);
 		}
 	});
 
@@ -176,13 +195,9 @@ export function registerRoopikToolsCommands(): void {
 			}
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_inspectElement', args);
+			return channel.call('browser_inspect_element', args);
 		}
 	});
-
-	// --------------------------------------------------------------------------
-	// CDP Tools
-	// --------------------------------------------------------------------------
 
 	registerAction2(class extends Action2 {
 		constructor() {
@@ -197,7 +212,7 @@ export function registerRoopikToolsCommands(): void {
 		async run(accessor: ServicesAccessor, args?: { limit?: number }): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_getErrors', args || {});
+			return channel.call('browser_get_errors', args || {});
 		}
 	});
 
@@ -214,12 +229,46 @@ export function registerRoopikToolsCommands(): void {
 		async run(accessor: ServicesAccessor, args?: { limit?: number; type?: string }): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_getConsoleLogs', args || {});
+			return channel.call('browser_get_console_logs', args || {});
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserGetPerformance',
+				title: { value: 'Get Browser Performance Metrics', original: 'Get Browser Performance Metrics' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('browser_get_performance');
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserGetCdpInfo',
+				title: { value: 'Get Browser CDP Info', original: 'Get Browser CDP Info' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('browser_get_cdp_info');
 		}
 	});
 
 	// --------------------------------------------------------------------------
-	// Project Tools
+	// Project Tools (3)
 	// --------------------------------------------------------------------------
 
 	registerAction2(class extends Action2 {
@@ -235,7 +284,7 @@ export function registerRoopikToolsCommands(): void {
 		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_getActiveProject');
+			return channel.call('project_get_active');
 		}
 	});
 
@@ -255,7 +304,7 @@ export function registerRoopikToolsCommands(): void {
 			}
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_startProject', args);
+			return channel.call('project_start', args);
 		}
 	});
 
@@ -272,12 +321,12 @@ export function registerRoopikToolsCommands(): void {
 		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_stopProject');
+			return channel.call('project_stop');
 		}
 	});
 
 	// --------------------------------------------------------------------------
-	// Canvas Tools
+	// Canvas Tools (3)
 	// --------------------------------------------------------------------------
 
 	registerAction2(class extends Action2 {
@@ -293,7 +342,7 @@ export function registerRoopikToolsCommands(): void {
 		async run(accessor: ServicesAccessor, args?: { nameFilter?: string; sortBy?: string; sortDirection?: string }): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_listCanvases', args || {});
+			return channel.call('canvas_list', args || {});
 		}
 	});
 
@@ -310,7 +359,7 @@ export function registerRoopikToolsCommands(): void {
 		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_getActiveCanvas');
+			return channel.call('canvas_get_active');
 		}
 	});
 
@@ -330,12 +379,12 @@ export function registerRoopikToolsCommands(): void {
 			}
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_createCanvas', args);
+			return channel.call('canvas_create', args);
 		}
 	});
 
 	// --------------------------------------------------------------------------
-	// Component Tools
+	// Component Tools (6)
 	// --------------------------------------------------------------------------
 
 	registerAction2(class extends Action2 {
@@ -360,7 +409,7 @@ export function registerRoopikToolsCommands(): void {
 			}
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_addComponent', args);
+			return channel.call('component_add', args);
 		}
 	});
 
@@ -388,7 +437,7 @@ export function registerRoopikToolsCommands(): void {
 			}
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_addComponents', args);
+			return channel.call('component_add_batch', args);
 		}
 	});
 
@@ -408,7 +457,7 @@ export function registerRoopikToolsCommands(): void {
 			}
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_removeComponent', args);
+			return channel.call('component_remove', args);
 		}
 	});
 
@@ -428,7 +477,7 @@ export function registerRoopikToolsCommands(): void {
 			}
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_getComponentInfo', args);
+			return channel.call('component_get_info', args);
 		}
 	});
 
@@ -448,7 +497,7 @@ export function registerRoopikToolsCommands(): void {
 			}
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_listComponents', args);
+			return channel.call('component_list', args);
 		}
 	});
 
@@ -468,9 +517,9 @@ export function registerRoopikToolsCommands(): void {
 			}
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('rpk_rebuildComponent', args);
+			return channel.call('component_rebuild', args);
 		}
 	});
 
-	console.log('[Roopik] Registered 19 tool bridge commands for agent-dio');
+	console.log('[Roopik] Registered 22 tool bridge commands for agent-dio');
 }

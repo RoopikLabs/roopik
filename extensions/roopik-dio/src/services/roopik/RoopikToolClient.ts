@@ -319,11 +319,33 @@ export class RoopikToolClient {
 	// ========================================================================
 
 	/**
+	 * Open the browser preview
+	 * Optionally navigate to a URL after opening
+	 */
+	async browserOpen(url?: string): Promise<RoopikToolResult<{ browserViewId: number; url?: string; message: string }>> {
+		return this.executeCommand<{ browserViewId: number; url?: string; message: string }>("roopik.tools.browserOpen", { url })
+	}
+
+	/**
 	 * Take a screenshot of the browser
 	 * Returns base64-encoded image
 	 */
 	async screenshot(): Promise<RoopikToolResult<ScreenshotData>> {
 		return this.executeCommand<ScreenshotData>("roopik.tools.screenshot")
+	}
+
+	/**
+	 * Get browser performance metrics including Web Vitals
+	 */
+	async browserGetPerformance(): Promise<RoopikToolResult<unknown>> {
+		return this.executeCommand<unknown>("roopik.tools.browserGetPerformance")
+	}
+
+	/**
+	 * Get CDP connection info for external agents
+	 */
+	async browserGetCdpInfo(): Promise<RoopikToolResult<unknown>> {
+		return this.executeCommand<unknown>("roopik.tools.browserGetCdpInfo")
 	}
 
 	/**
