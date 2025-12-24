@@ -56,6 +56,17 @@ export async function handleRoopikTool(
 			return
 		}
 
+		// Ask for approval before executing the tool
+		const approvalMessage = JSON.stringify({
+			tool: toolName,
+			...block.params,
+		})
+		const didApprove = await askApproval("tool", approvalMessage)
+		if (!didApprove) {
+			pushToolResult(formatResponse.toolDenied())
+			return
+		}
+
 		// Dispatch to appropriate handler
 		let result: RoopikToolResult
 
@@ -183,8 +194,8 @@ async function handleRoopikToolPartial(
 			displayMessage = `Running ${toolName}...`
 	}
 
-	// Use task.say to show the partial message
-	await task.say("tool", JSON.stringify({ tool: toolName, message: displayMessage }), undefined, block.partial).catch(() => {})
+	// Use task.ask to show the partial message (for approval UI)
+	await task.ask("tool", JSON.stringify({ tool: toolName, ...params }), block.partial).catch(() => {})
 }
 
 // ============================================================================
