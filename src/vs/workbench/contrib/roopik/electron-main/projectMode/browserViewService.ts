@@ -6,7 +6,7 @@
 import { BrowserWindow, WebContentsView, session, app } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserBridgeMessage, McpBrowserOpenRequestEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserBridgeMessage, McpBrowserOpenRequestEvent, McpBrowserCloseRequestEvent } from '../../common/projectMode/types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
 import type { ILifecycleMainService } from '../../../../../platform/lifecycle/electron-main/lifecycleMainService.js';
@@ -51,6 +51,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 	private readonly _onMcpBrowserOpenRequest = new Emitter<McpBrowserOpenRequestEvent>();
 	readonly onMcpBrowserOpenRequest: Event<McpBrowserOpenRequestEvent> = this._onMcpBrowserOpenRequest.event;
+
+	private readonly _onMcpBrowserCloseRequest = new Emitter<McpBrowserCloseRequestEvent>();
+	readonly onMcpBrowserCloseRequest: Event<McpBrowserCloseRequestEvent> = this._onMcpBrowserCloseRequest.event;
 
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
@@ -1050,7 +1053,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	}
 
 	// ============================================
-	// MCP Browser Open Request
+	// MCP Browser Request Events
 	// ============================================
 
 	/**
@@ -1063,6 +1066,17 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	requestBrowserOpen(url?: string): void {
 		console.log('[ProjectMode][Main] MCP browser open request', { url });
 		this._onMcpBrowserOpenRequest.fire({ url });
+	}
+
+	/**
+	 * Request browser to be closed from MCP
+	 * Fires event that renderer listens to and closes the editor tab properly
+	 * This triggers the full cleanup chain (stop dev server, destroy browser view, etc.)
+	 * This is the CORRECT way to close the browser - NOT calling destroyBrowserView directly!
+	 */
+	requestBrowserClose(): void {
+		console.log('[ProjectMode][Main] MCP browser close request');
+		this._onMcpBrowserCloseRequest.fire({});
 	}
 
 	// ============================================

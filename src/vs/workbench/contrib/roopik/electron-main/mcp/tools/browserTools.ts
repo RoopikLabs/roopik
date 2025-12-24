@@ -478,14 +478,18 @@ export function registerBrowserTools(
 					};
 				}
 
-				await browserViewService.destroyBrowserView(browserViewId);
+				// Fire event for renderer to close the editor tab properly
+				// This triggers the full cleanup chain: EditorTabInput.dispose -> destroyBrowserNow
+				// which stops dev server, destroys browser view, and cleans up all state
+				// DO NOT call destroyBrowserView directly - it leaves zombie editor tabs!
+				browserViewService.requestBrowserClose();
 
 				return {
 					content: [{
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: true,
-							message: 'Browser closed'
+							message: 'Browser close request sent. The browser will close shortly.'
 						})
 					}]
 				};

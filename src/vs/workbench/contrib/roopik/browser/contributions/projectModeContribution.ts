@@ -56,6 +56,9 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 
 		// Listen for MCP browser open requests
 		this.setupMcpBrowserOpenListener();
+
+		// Listen for MCP browser close requests
+		this.setupMcpBrowserCloseListener();
 	}
 
 	/**
@@ -118,6 +121,18 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 		this._register(this.projectModeService.onMcpBrowserOpenRequest(async (event) => {
 			// Same as roopik.openProjectPreview command (Browse Web button)
 			await this.openBrowserAndNavigate(event.url || '', '');
+		}));
+	}
+
+	/**
+	 * Setup listener for MCP browser close requests
+	 * When MCP tool browser_close is called, this closes the editor tab properly
+	 * This triggers the full cleanup chain (EditorTabInput.dispose -> destroyBrowserNow -> etc.)
+	 */
+	private setupMcpBrowserCloseListener(): void {
+		this._register(this.projectModeService.onMcpBrowserCloseRequest(async () => {
+			console.log('[ProjectModeContribution] MCP browser close request received');
+			await this.closeBrowser();
 		}));
 	}
 

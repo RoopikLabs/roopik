@@ -492,6 +492,7 @@ export class RoopikToolsChannel implements IServerChannel {
 
 	/**
 	 * Close the browser view
+	 * Uses event-based approach to trigger proper cleanup via editor tab close
 	 */
 	private async handleBrowserClose(): Promise<RoopikToolResult> {
 		const browserViewId = this.browserViewService.getActiveBrowserViewId();
@@ -502,10 +503,14 @@ export class RoopikToolsChannel implements IServerChannel {
 			};
 		}
 
-		await this.browserViewService.destroyBrowserView(browserViewId);
+		// Fire event for renderer to close the editor tab properly
+		// This triggers the full cleanup chain: EditorTabInput.dispose -> destroyBrowserNow
+		// which stops dev server, destroys browser view, and cleans up all state
+		// DO NOT call destroyBrowserView directly - it leaves zombie editor tabs!
+		this.browserViewService.requestBrowserClose();
 		return {
 			success: true,
-			data: { message: 'Browser closed' }
+			data: { message: 'Browser close request sent. The browser will close shortly.' }
 		};
 	}
 

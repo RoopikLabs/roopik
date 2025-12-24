@@ -270,7 +270,7 @@ export interface BrowserKeyEvent {
 }
 
 // ============================================
-// MCP Browser Open Request Event
+// MCP Browser Request Events
 // ============================================
 
 /**
@@ -281,5 +281,15 @@ export interface BrowserKeyEvent {
 export interface McpBrowserOpenRequestEvent {
 	/** URL to navigate to after browser opens (optional) */
 	url?: string;
+}
+
+/**
+ * Event payload when MCP requests browser to be closed
+ * Fired from main process when MCP tool browser_close is called
+ * Renderer listens and closes the editor tab properly (which triggers full cleanup chain)
+ */
+export interface McpBrowserCloseRequestEvent {
+	/** Placeholder for future use */
+	_?: undefined;
 }
 

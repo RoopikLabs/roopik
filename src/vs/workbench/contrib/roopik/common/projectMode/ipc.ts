@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserKeyEvent, McpBrowserOpenRequestEvent } from './types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserKeyEvent, McpBrowserOpenRequestEvent, McpBrowserCloseRequestEvent } from './types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../cssResolvers/types.js';
 
 export const IProjectModeService = createDecorator<IProjectModeService>('projectModeService');
@@ -66,6 +66,13 @@ export interface IProjectModeService {
 	 * Used by MCP tools (browser_open) when no browser is currently open
 	 */
 	readonly onMcpBrowserOpenRequest: Event<McpBrowserOpenRequestEvent>;
+
+	/**
+	 * Fired when MCP requests browser to be closed
+	 * Renderer listens and closes the editor tab properly (triggers full cleanup chain)
+	 * Used by MCP tools (browser_close) to ensure proper cleanup
+	 */
+	readonly onMcpBrowserCloseRequest: Event<McpBrowserCloseRequestEvent>;
 
 	// ============================================
 	// Browser View Lifecycle
