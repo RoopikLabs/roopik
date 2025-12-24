@@ -27,7 +27,8 @@ import { searchReplaceTool } from "../tools/SearchReplaceTool"
 import { editFileTool } from "../tools/EditFileTool"
 import { applyPatchTool } from "../tools/ApplyPatchTool"
 import { searchFilesTool } from "../tools/SearchFilesTool"
-import { browserActionTool } from "../tools/BrowserActionTool"
+// DISABLED: Roopik IDE provides superior browser tools (browser_open, browser_screenshot, etc.)
+// import { browserActionTool } from "../tools/BrowserActionTool"
 import { executeCommandTool } from "../tools/ExecuteCommandTool"
 import { useMcpToolTool } from "../tools/UseMcpToolTool"
 import { accessMcpResourceTool } from "../tools/accessMcpResourceTool"
@@ -399,9 +400,8 @@ export async function presentAssistantMessage(cline: Task) {
 						}
 						return `[${block.name}]`
 					case "search_files":
-						return `[${block.name} for '${block.params.regex}'${
-							block.params.file_pattern ? ` in '${block.params.file_pattern}'` : ""
-						}]`
+						return `[${block.name} for '${block.params.regex}'${block.params.file_pattern ? ` in '${block.params.file_pattern}'` : ""
+							}]`
 					case "search_and_replace":
 						return `[${block.name} for '${block.params.path}']`
 					case "search_replace":
@@ -412,8 +412,9 @@ export async function presentAssistantMessage(cline: Task) {
 						return `[${block.name}]`
 					case "list_files":
 						return `[${block.name} for '${block.params.path}']`
-					case "browser_action":
-						return `[${block.name} for '${block.params.action}']`
+					// DISABLED: browser_action - Roopik IDE provides browser_open, browser_screenshot, etc.
+					// case "browser_action":
+					// 	return `[${block.name} for '${block.params.action}']`
 					case "use_mcp_tool":
 						return `[${block.name} for '${block.params.server_name}']`
 					case "access_mcp_resource":
@@ -438,7 +439,8 @@ export async function presentAssistantMessage(cline: Task) {
 						return `[${block.name} for '${block.params.command}'${block.params.args ? ` with args: ${block.params.args}` : ""}]`
 					case "generate_image":
 						return `[${block.name} for '${block.params.path}']`
-					// Roopik IDE Tools - Browser (12)
+
+					// Roopik IDE Tools - Browser (12) -------------------------------
 					case "browser_open":
 						return `[browser_open${block.params.url ? ` to '${block.params.url}'` : ""}]`
 					case "browser_close":
@@ -737,7 +739,7 @@ export async function presentAssistantMessage(cline: Task) {
 						try {
 							const act = JSON.parse(m.text || "{}")
 							isClosed = act.action === "close"
-						} catch {}
+						} catch { }
 						break
 					}
 				}
@@ -1021,16 +1023,17 @@ export async function presentAssistantMessage(cline: Task) {
 						toolProtocol,
 					})
 					break
-				case "browser_action":
-					await browserActionTool(
-						cline,
-						block as ToolUse<"browser_action">,
-						askApproval,
-						handleError,
-						pushToolResult,
-						removeClosingTag,
-					)
-					break
+				// DISABLED: browser_action - Roopik IDE provides browser_open, browser_screenshot, etc.
+				// case "browser_action":
+				// 	await browserActionTool(
+				// 		cline,
+				// 		block as ToolUse<"browser_action">,
+				// 		askApproval,
+				// 		handleError,
+				// 		pushToolResult,
+				// 		removeClosingTag,
+				// 	)
+				// 	break
 				case "execute_command":
 					await executeCommandTool.handle(cline, block as ToolUse<"execute_command">, {
 						askApproval,
