@@ -214,10 +214,6 @@
 			"label": "MCP",
 			"description": "Enable auto-approval of individual MCP tools in the MCP Servers view (requires both this setting and the tool's individual \"Always allow\" checkbox)"
 		},
-		"roopik": {
-			"label": "Roopik",
-			"description": "Automatically approve Roopik IDE tools for browser preview, CSS inspection, canvas, and component management"
-		},
 		"modeSwitch": {
 			"label": "Mode",
 			"description": "Automatically switch between different modes without requiring approval"
@@ -263,6 +259,7 @@
 		"configProfile": "Configuration Profile",
 		"description": "Save different API configurations to quickly switch between providers and settings.",
 		"apiProvider": "API Provider",
+		"apiProviderDocs": "Provider Docs",
 		"model": "Model",
 		"nameEmpty": "Name cannot be empty",
 		"nameExists": "A profile with this name already exists",
@@ -314,6 +311,8 @@
 		"anthropic1MContextBetaDescription": "Extends context window to 1 million tokens for Claude Sonnet 4",
 		"awsBedrock1MContextBetaLabel": "Enable 1M context window (Beta)",
 		"awsBedrock1MContextBetaDescription": "Extends context window to 1 million tokens for Claude Sonnet 4",
+		"vertex1MContextBetaLabel": "Enable 1M context window (Beta)",
+		"vertex1MContextBetaDescription": "Extends context window to 1 million tokens for Claude Sonnet 4",
 		"basetenApiKey": "Baseten API Key",
 		"getBasetenApiKey": "Get Baseten API Key",
 		"cerebrasApiKey": "Cerebras API Key",
@@ -835,6 +834,17 @@
 		"MULTIPLE_NATIVE_TOOL_CALLS": {
 			"name": "Parallel tool calls",
 			"description": "When enabled, the native protocol can execute multiple tools in a single assistant message turn."
+		},
+		"CUSTOM_TOOLS": {
+			"name": "Enable custom tools",
+			"description": "When enabled, Roo can load and use custom TypeScript/JavaScript tools from your project's .roo/tools directory or ~/.roo/tools for global tools. Note: these tools will automatically be auto-approved.",
+			"toolsHeader": "Available Custom Tools",
+			"noTools": "No custom tools loaded. Add .ts or .js files to your project's .roo/tools directory or ~/.roo/tools for global tools.",
+			"refreshButton": "Refresh",
+			"refreshing": "Refreshing...",
+			"refreshSuccess": "Tools refreshed successfully",
+			"refreshError": "Failed to refresh tools",
+			"toolParameters": "Parameters"
 		}
 	},
 	"promptCaching": {
