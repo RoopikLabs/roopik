@@ -479,10 +479,13 @@ export class WorkspaceStorage {
 
 		const index = await this.getProjectIndex();
 		const now = Date.now();
+		// Normalize to forward slashes for storage
 		const normalizedPath = projectPath.replace(/\\/g, '/');
+		// Lowercase for case-insensitive comparison on Windows
+		const pathForComparison = normalizedPath.toLowerCase();
 
-		// Check if project with same path already exists
-		const existing = index.projects.find(p => p.path.replace(/\\/g, '/') === normalizedPath);
+		// Check if project with same path already exists (case-insensitive on Windows)
+		const existing = index.projects.find(p => p.path.replace(/\\/g, '/').toLowerCase() === pathForComparison);
 
 		if (existing) {
 			// Update existing - touch updatedAt and update framework if provided
@@ -503,7 +506,7 @@ export class WorkspaceStorage {
 		index.projects.push({
 			id: projectId,
 			name,
-			path: normalizedPath,
+			path: normalizedPath, // Store with original case, just normalized slashes
 			updatedAt: now,
 			framework,
 			frameworkDisplayName
