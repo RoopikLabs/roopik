@@ -25,3 +25,10 @@ yarn-error.log*
 *storybook.log
 
 tsconfig.tsbuildinfo
+
+# Compiled output (should not exist with noEmit: true, but just in case)
+*.js
+*.js.map
+!*.config.js
+!vite.config.js
+!vitest.config.js

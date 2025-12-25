@@ -1,1 +1,0 @@
-{"version":3,"sources":["../webview/src/utils/url.ts"],"names":[],"mappings":"AAAA,MAAM,CAAC,MAAM,UAAU,GAAG,CAAC,SAAiB,EAAW,EAAE;IACxD,IAAI,CAAC;QACJ,IAAI,GAAG,CAAC,SAAS,CAAC,CAAA;QAClB,OAAO,IAAI,CAAA;IACZ,CAAC;IAAC,MAAM,CAAC;QACR,OAAO,KAAK,CAAA;IACb,CAAC;AACF,CAAC,CAAA","file":"url.js","sourceRoot":"../../../src/"}
