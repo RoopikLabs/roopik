@@ -11,15 +11,15 @@
 		"clean": "rimraf .turbo"
 	},
 	"dependencies": {
-		"@roo-code/types": "workspace:^",
+		"@roo-code/types": "file:../types",
 		"esbuild": "^0.25.0",
 		"execa": "^9.5.2",
 		"openai": "^5.12.2",
 		"zod": "^3.25.61"
 	},
 	"devDependencies": {
-		"@roo-code/config-eslint": "workspace:^",
-		"@roo-code/config-typescript": "workspace:^",
+		"@roo-code/config-eslint": "file:../config-eslint",
+		"@roo-code/config-typescript": "file:../config-typescript",
 		"@types/node": "^24.1.0",
 		"vitest": "^3.2.3"
 	}

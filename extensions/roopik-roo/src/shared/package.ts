@@ -1,4 +1,4 @@
-import { publisher, name, version } from "../package.json"
+import { publisher, name, version } from "../../package.json"
 
 // These ENV variables can be defined by ESBuild when building the extension
 // in order to override the values in package.json. This allows us to build

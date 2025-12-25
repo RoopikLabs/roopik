@@ -30,7 +30,7 @@ async function main() {
 		platform: "node",
 	}
 
-	const srcDir = __dirname
+	const srcDir = path.join(__dirname, "src")
 	const buildDir = __dirname
 	const distDir = path.join(buildDir, "dist")
 
@@ -49,14 +49,14 @@ async function main() {
 				build.onEnd(() => {
 					copyPaths(
 						[
-							["../README.md", "README.md"],
-							["../CHANGELOG.md", "CHANGELOG.md"],
-							["../LICENSE", "LICENSE"],
-							["../.env", ".env", { optional: true }],
-							["node_modules/vscode-material-icons/generated", "assets/vscode-material-icons"],
-							["../webview-ui/audio", "webview-ui/audio"],
+							["README.md", "README.md"],
+							["CHANGELOG.md", "CHANGELOG.md", { optional: true }],
+							["LICENSE", "LICENSE", { optional: true }],
+							[".env", ".env", { optional: true }],
+							["node_modules/vscode-material-icons/generated", "dist/assets/vscode-material-icons"],
+							["webview-ui/audio", "webview-ui/audio"],
 						],
-						srcDir,
+						buildDir,
 						buildDir,
 					)
 				})
@@ -65,7 +65,7 @@ async function main() {
 		{
 			name: "copyWasms",
 			setup(build) {
-				build.onEnd(() => copyWasms(srcDir, distDir))
+				build.onEnd(() => copyWasms(buildDir, distDir))
 			},
 		},
 		{
@@ -98,7 +98,7 @@ async function main() {
 	const extensionConfig = {
 		...buildOptions,
 		plugins,
-		entryPoints: ["extension.ts"],
+		entryPoints: [path.join(srcDir, "extension.ts")],
 		outfile: "dist/extension.js",
 		external: ["vscode", "esbuild"],
 	}
@@ -108,7 +108,7 @@ async function main() {
 	 */
 	const workerConfig = {
 		...buildOptions,
-		entryPoints: ["workers/countTokens.ts"],
+		entryPoints: [path.join(srcDir, "workers/countTokens.ts")],
 		outdir: "dist/workers",
 	}
 
