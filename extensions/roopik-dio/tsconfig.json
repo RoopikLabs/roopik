@@ -23,7 +23,7 @@
 		"baseUrl": ".",
 		"paths": {
 			"@/*": ["./src/*"],
-			"@src/*": ["./webview/src/*"],
+			"@src/*": ["./webview-ui/src/*"],
 			"@roo/*": ["./src/shared/*"],
 			"@roo-code/types": ["./src/packages/types/src"],
 			"@roo-code/ipc": ["./src/packages/ipc/src"],
@@ -32,7 +32,7 @@
 		}
 	},
 	"include": ["."],
-	"exclude": ["node_modules", "webview", ".backup-monorepo", "test"],
+	"exclude": ["node_modules", "webview-ui", ".backup-monorepo", "test"],
 	"watchOptions": {
 		"watchFile": "useFsEvents",
 		"watchDirectory": "useFsEvents",
