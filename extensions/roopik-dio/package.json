@@ -410,7 +410,7 @@
 		"format": "prettier --write .",
 		"bundle": "node esbuild.mjs",
 		"build": "npm run bundle && npm run build:webview",
-		"build:webview": "cd webview && npm install && npm run build",
+		"build:webview": "cd webview-ui && npm install && npm run build",
 		"watch:bundle": "node esbuild.mjs --watch",
 		"clean": "rimraf src/dist .turbo"
 	},

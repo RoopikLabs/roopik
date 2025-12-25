@@ -230,7 +230,7 @@ export class BrowserSessionPanelManager {
 		const nonce = getNonce()
 
 		const stylesUri = getUri(webview, extensionUri, ["webview-ui", "build", "assets", "index.css"])
-		const codiconsUri = getUri(webview, extensionUri, ["assets", "codicons", "codicon.css"])
+		const codiconsUri = getUri(webview, extensionUri, ["src", "assets", "codicons", "codicon.css"])
 
 		const scriptUri = `http://${localServerUrl}/src/browser-panel.tsx`
 
@@ -274,9 +274,9 @@ export class BrowserSessionPanelManager {
 	}
 
 	private getHtmlContent(webview: vscode.Webview, extensionUri: vscode.Uri): string {
-		const stylesUri = getUri(webview, extensionUri, ["webview", "build", "assets", "index.css"])
-		const scriptUri = getUri(webview, extensionUri, ["webview", "build", "assets", "browser-panel.js"])
-		const codiconsUri = getUri(webview, extensionUri, ["assets", "codicons", "codicon.css"])
+		const stylesUri = getUri(webview, extensionUri, ["webview-ui", "build", "assets", "index.css"])
+		const scriptUri = getUri(webview, extensionUri, ["webview-ui", "build", "assets", "browser-panel.js"])
+		const codiconsUri = getUri(webview, extensionUri, ["src", "assets", "codicons", "codicon.css"])
 
 		const nonce = getNonce()
 
