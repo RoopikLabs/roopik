@@ -11,6 +11,7 @@
  */
 
 import type { DevServerService } from '../../projectMode/devServer/devServerService.js';
+import type { BrowserViewService } from '../../projectMode/browserViewService.js';
 
 /**
  * Register all project-related MCP tools
@@ -18,13 +19,15 @@ import type { DevServerService } from '../../projectMode/devServer/devServerServ
  * @param server - McpServer instance (dynamically imported)
  * @param z - Zod validation library (dynamically imported)
  * @param devServerService - DevServer service instance
+ * @param browserViewService - BrowserView service instance (for closing browser on project stop)
  */
 export function registerProjectTools(
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	server: any,
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	z: any,
-	devServerService: DevServerService
+	devServerService: DevServerService,
+	browserViewService: BrowserViewService
 ): void {
 
 	// --------------------------------------------------------------
@@ -155,13 +158,16 @@ export function registerProjectTools(
 				const projectPath = runningServer.projectRoot;
 				await devServerService.stopServer(projectPath);
 
+				// Close browser editor UI (fires event to renderer process)
+				browserViewService.requestBrowserClose();
+
 				return {
 					content: [{
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: true,
 							projectPath,
-							message: 'Dev server stopped successfully'
+							message: 'Dev server stopped and browser closed'
 						})
 					}]
 				};

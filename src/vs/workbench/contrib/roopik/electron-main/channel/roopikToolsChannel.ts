@@ -827,11 +827,14 @@ export class RoopikToolsChannel implements IServerChannel {
 		const projectPath = runningServer.projectRoot;
 		await this.devServerService.stopServer(projectPath);
 
+		// Close browser editor UI (fires event to renderer process)
+		this.browserViewService.requestBrowserClose();
+
 		return {
 			success: true,
 			data: {
 				projectPath,
-				message: 'Dev server stopped successfully'
+				message: 'Dev server stopped and browser closed'
 			}
 		};
 	}

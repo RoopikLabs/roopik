@@ -110,7 +110,7 @@ export class McpServerService implements IMcpServerService {
 		});
 
 		// Register tools from modular tool files
-		registerProjectTools(this.mcpServer, z, this.devServerService);
+		registerProjectTools(this.mcpServer, z, this.devServerService, this.browserViewService);
 		registerBrowserTools(this.mcpServer, z, this.browserViewService, this.storageService);
 		registerCanvasTools(this.mcpServer, z, this.canvasService, this.componentService);
 
