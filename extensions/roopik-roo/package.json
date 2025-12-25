@@ -1,5 +1,5 @@
 {
-	"name": "roo-dio",
+	"name": "roodio",
 	"displayName": "RooDio",
 	"description": "AI Coding Agent with Roopik IDE Integration",
 	"publisher": "roopik",
@@ -14,7 +14,7 @@
 		"node": "20.19.2"
 	},
 	"author": {
-		"name": "Roo Code"
+		"name": "Roo Dio"
 	},
 	"repository": {
 		"type": "git",
@@ -97,12 +97,12 @@
 				"icon": "$(link-external)"
 			},
 			{
-				"command": "roopik-dio.cloudButtonClicked",
+				"command": "roodio.cloudButtonClicked",
 				"title": "%command.cloud.title%",
 				"icon": "$(cloud)"
 			},
 			{
-				"command": "roopik-dio.settingsButtonClicked",
+				"command": "roodio.settingsButtonClicked",
 				"title": "%command.settings.title%",
 				"icon": "$(settings-gear)"
 			},
@@ -428,12 +428,14 @@
 		"test": "vitest run",
 		"format": "prettier --write .",
 		"bundle": "node esbuild.mjs",
+		"build": "npm run bundle && npm run build:webview",
+		"build:webview": "cd webview-ui && npm install && npm run build",
 		"vscode:prepublish": "pnpm bundle --production",
 		"vsix": "mkdirp ../bin && vsce package --no-dependencies --out ../bin",
 		"publish:marketplace": "vsce publish --no-dependencies && ovsx publish --no-dependencies",
-		"watch:bundle": "pnpm bundle --watch",
+		"watch:bundle": "node esbuild.mjs --watch",
 		"watch:tsc": "cd .. && tsc --noEmit --watch --project src/tsconfig.json",
-		"clean": "rimraf README.md CHANGELOG.md LICENSE dist logs mock .turbo"
+		"clean": "rimraf dist src/dist logs mock .turbo"
 	},
 	"dependencies": {
 		"@anthropic-ai/bedrock-sdk": "^0.10.2",
