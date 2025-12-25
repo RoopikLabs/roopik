@@ -149,7 +149,7 @@ export interface IRoopikStorageService {
 	): Promise<void>;
 
 	/**
-	 * Delete a component (removes reference from canvas file)
+	 * Delete a component (removes reference from canvas file + Cache)
 	 */
 	deleteComponent(canvasId: string, componentId: string): Promise<void>;
 

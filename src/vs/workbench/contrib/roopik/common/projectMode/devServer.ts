@@ -44,6 +44,7 @@ export interface DevServerStatusEvent {
 	url?: string;
 	port?: number;
 	framework?: Framework;
+	frameworkDisplayName?: string;
 	error?: string;
 }
 

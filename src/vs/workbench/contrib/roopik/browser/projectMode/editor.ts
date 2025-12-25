@@ -1437,26 +1437,8 @@ export class Editor extends EditorPane {
 			this.isProjectMode = true;
 			this.currentProjectRoot = projectRoot;
 
-			// Save to recent projects storage (non-blocking)
-			// NOTE: setActiveProject is now called by DevServerService when server starts (unified flow)
-			const projectName = projectRoot.split(/[/\\]/).pop() || 'Project';
-
-			// Get server info to capture framework for recent projects list
-			// IMPORTANT: This is fire-and-forget - don't let metadata saving block browser opening!
-			this.devServerService.getServerInfo(projectRoot).then(async (serverInfo) => {
-				if (serverInfo) {
-					try {
-						const framework = serverInfo.framework;
-						const frameworkDisplayName = serverInfo.frameworkDisplayName;
-						await this.projectStorageService.upsertProject(projectName, projectRoot, framework, frameworkDisplayName);
-					} catch (err) {
-						// Don't let metadata saving failure block browser opening!
-						this.logger.warn('[ProjectMode] Failed to save project metadata (non-fatal):', err);
-					}
-				}
-			}).catch((err) => {
-				this.logger.warn('[ProjectMode] Failed to get server info for metadata (non-fatal):', err);
-			});
+			// NOTE: Project saving is handled by RoopikProjectModeContribution
+			// when it receives the onStatusChanged event (unified flow for all entry points)
 
 			// Small delay to ensure Vite server is fully ready to accept connections
 			// The server reports READY when listening starts, but it may take a few ms

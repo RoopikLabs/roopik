@@ -44,6 +44,7 @@ interface WorkerReadyMessage extends WorkerMessageBase {
 	url: string;
 	port: number;
 	framework: Framework;
+	frameworkName?: string; // Human-readable name (e.g., "React + Vite")
 }
 
 interface WorkerErrorMessage extends WorkerMessageBase {
@@ -223,12 +224,21 @@ export class DevServerService implements IDevServerService {
 					instance.framework = msg.framework;
 
 					// Update active project in storage (unified flow for UI and MCP)
-					this.updateActiveProjectStorage(normalizedRoot, instance.workerProcess?.pid, msg.port, msg.url);
+					// This saves project AND sets it as active in one place
+					this.updateActiveProjectStorage(
+						normalizedRoot,
+						instance.workerProcess?.pid,
+						msg.port,
+						msg.url,
+						msg.framework,
+						msg.frameworkName
+					);
 
 					this.fireStatus(normalizedRoot, 'running', {
 						url: msg.url,
 						port: msg.port,
-						framework: instance.framework
+						framework: instance.framework,
+						frameworkDisplayName: msg.frameworkName
 					});
 
 					this.log(normalizedRoot, 'info', `Server ready at ${msg.url}`);
@@ -556,7 +566,7 @@ export class DevServerService implements IDevServerService {
 	private fireStatus(
 		projectRoot: string,
 		state: DevServerState,
-		extra?: { url?: string; port?: number; framework?: Framework; error?: string }
+		extra?: { url?: string; port?: number; framework?: Framework; frameworkDisplayName?: string; error?: string }
 	): void {
 		this._onStatusChanged.fire({
 			projectRoot,
@@ -585,17 +595,36 @@ export class DevServerService implements IDevServerService {
 	/**
 	 * Update active project in storage when server starts
 	 * Called from both UI and MCP flows
+	 *
+	 * This does TWO things:
+	 * 1. upsertProject - adds/updates project in recent projects list (returns projectId)
+	 * 2. setActiveProject - marks this project as the currently running one (uses that projectId)
 	 */
-	private async updateActiveProjectStorage(projectRoot: string, pid: number | undefined, port: number, url: string): Promise<void> {
+	private async updateActiveProjectStorage(
+		projectRoot: string,
+		pid: number | undefined,
+		port: number,
+		url: string,
+		framework?: string,
+		frameworkDisplayName?: string
+	): Promise<void> {
 		if (!this.projectStorageService) {
 			return;
 		}
 
 		try {
-			// Generate project ID from path
 			const projectName = projectRoot.split(/[/\\]/).pop() || 'project';
-			const projectId = `proj_${projectName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
+			// 1. Upsert project to recent projects list (returns the actual projectId)
+			const projectId = await this.projectStorageService.upsertProject(
+				projectName,
+				projectRoot,
+				framework,
+				frameworkDisplayName
+			);
+			this.log(projectRoot, 'info', `Project saved: ${projectId}`);
+
+			// 2. Set as active project using the SAME projectId
 			await this.projectStorageService.setActiveProject(projectId, pid || 0, port, url);
 			this.log(projectRoot, 'info', `Active project set: ${projectId}`);
 		} catch (error) {

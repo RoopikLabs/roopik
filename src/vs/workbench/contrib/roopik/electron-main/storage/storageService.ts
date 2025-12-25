@@ -141,6 +141,8 @@ export class RoopikStorageService implements IRoopikStorageService {
 	}
 
 	async deleteComponent(canvasId: string, componentId: string): Promise<void> {
+		// Delete from cache
+		await this.invalidateCache(canvasId, componentId);
 		return this.workspaceStorage.deleteComponent(canvasId, componentId);
 	}
 
@@ -163,6 +165,9 @@ export class RoopikStorageService implements IRoopikStorageService {
 		return this.appDataStorage.loadBundleCache(canvasId, componentId);
 	}
 
+	/**
+	 * Check if cache is valid for given source hash
+	 */
 	async isCacheValid(
 		canvasId: string,
 		componentId: string,
@@ -171,6 +176,9 @@ export class RoopikStorageService implements IRoopikStorageService {
 		return this.appDataStorage.isCacheValid(canvasId, componentId, contentHash);
 	}
 
+	/**
+	 * Invalidate cache for a component
+	 */
 	async invalidateCache(canvasId: string, componentId: string): Promise<void> {
 		return this.appDataStorage.invalidateCache(canvasId, componentId);
 	}
@@ -187,7 +195,7 @@ export class RoopikStorageService implements IRoopikStorageService {
 	}
 
 	/**
-	 * Set the active canvas ID in canvases.json
+	 * Set the active canvas ID in canvases.json (called by Extension when focus changes)
 	 */
 	async setActiveCanvasId(canvasId: string | null): Promise<void> {
 		return this.workspaceStorage.setActiveCanvasId(canvasId);

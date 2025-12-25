@@ -76,6 +76,9 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 					framework: event.framework
 				});
 
+				// NOTE: Project saving (upsertProject + setActiveProject) is handled
+				// in DevServerService.updateActiveProjectStorage() - main process unified flow
+
 				try {
 					await this.openBrowserAndNavigate(event.url, event.projectRoot);
 				} catch (error) {

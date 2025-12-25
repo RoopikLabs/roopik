@@ -94,7 +94,7 @@ export interface CanvasPreferences {
 	/** Background pattern */
 	backgroundPattern: 'grid' | 'dots' | 'plain';
 
-	/** Viewport state (zoom/pan) */
+	/** Viewport state (zoom/pan) - But use auto-fit on load */
 	viewport: CanvasViewport;
 }
 
