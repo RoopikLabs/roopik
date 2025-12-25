@@ -112,11 +112,11 @@ async function main() {
 		{
 			name: "resolve-paths",
 			setup(build) {
-				// Resolve @roo-code/* imports to local packages
+				// Resolve @roo-code/* imports to local packages (packages/ is at root, not src/)
 				build.onResolve({ filter: /^@roo-code\// }, args => {
 					const packageName = args.path.replace('@roo-code/', '')
 					return {
-						path: path.join(srcDir, 'packages', packageName, 'src', 'index.ts'),
+						path: path.join(rootDir, 'packages', packageName, 'src', 'index.ts'),
 					}
 				})
 			},

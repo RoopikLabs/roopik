@@ -91,7 +91,7 @@ export default defineConfig(({ mode }) => {
 				"@": resolve(__dirname, "./src"),
 				"@src": resolve(__dirname, "./src"),
 				"@roo": resolve(__dirname, "../src/shared"),
-				"@roo-code/types": resolve(__dirname, "../src/packages/types/src"),
+				"@roo-code/types": resolve(__dirname, "../packages/types/src"),
 			},
 		},
 		build: {

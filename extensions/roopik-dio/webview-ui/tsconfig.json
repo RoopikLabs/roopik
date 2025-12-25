@@ -23,7 +23,7 @@
 			"@/*": ["./src/*"],
 			"@src/*": ["./src/*"],
 			"@roo/*": ["../src/shared/*"],
-			"@roo-code/types": ["../src/packages/types/src"]
+			"@roo-code/types": ["../packages/types/src"]
 		}
 	},
 	"include": ["src", "../src/shared", "vitest.setup.ts"]
