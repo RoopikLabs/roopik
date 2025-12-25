@@ -4,7 +4,7 @@
 	"description": "AI coding agent for Roopik IDE",
 	"publisher": "roopik",
 	"version": "0.1.0",
-	"icon": "assets/icons/icon.png",
+	"icon": "src/assets/icons/icon.png",
 	"galleryBanner": {
 		"color": "#617A91",
 		"theme": "dark"
@@ -56,7 +56,7 @@
 				{
 					"id": "roopik-dio-ActivityBar",
 					"title": "%views.activitybar.title%",
-					"icon": "assets/icons/icon.svg"
+					"icon": "src/assets/icons/icon.svg"
 				}
 			]
 		},
