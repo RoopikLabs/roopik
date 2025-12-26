@@ -26,7 +26,7 @@ export const all = Object.freeze<string[]>([
 	'!cli/**/*',
 	'!out*/**',
 	'!extensions/**/out*/**',
-	'!extensions/roopik-dio/**',
+	'!extensions/roopik-roo/**',
 	'!test/**/out/**',
 	'!**/node_modules/**',
 	'!**/*.js.map',

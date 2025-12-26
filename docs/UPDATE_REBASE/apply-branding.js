@@ -451,6 +451,87 @@ function updateEslintConfig() {
 	let updatedContent = content;
 	let didUpdate = false;
 
+	// ROOPIK CUSTOM LIBRARIES - Ensure these 4 are always in hasNode allow list
+	const roopikLibraries = [
+		"'@modelcontextprotocol/sdk'",
+		"'@modelcontextprotocol/sdk/server/mcp.js'",
+		"'@modelcontextprotocol/sdk/server/sse.js'",
+		"'zod'"
+	];
+
+	// Find the hasNode section
+	const hasNodeMarker = "'when': 'hasNode'";
+	const hasNodeIndex = updatedContent.indexOf(hasNodeMarker);
+
+	if (hasNodeIndex !== -1) {
+		// Find the 'allow': [ after hasNode
+		const allowMarkerStart = updatedContent.indexOf("'allow': [", hasNodeIndex);
+		if (allowMarkerStart !== -1) {
+			const allowArrayStart = allowMarkerStart + "'allow': [".length;
+			const allowArrayEnd = updatedContent.indexOf(']', allowArrayStart);
+
+			if (allowArrayEnd !== -1) {
+				const allowArrayContent = updatedContent.substring(allowArrayStart, allowArrayEnd);
+				let updatedAllowArray = allowArrayContent;
+				let addedLibraries = [];
+
+				// Check and add each Roopik library
+				for (const lib of roopikLibraries) {
+					if (!updatedAllowArray.includes(lib)) {
+						// Find insertion point - after existing MCP entries or at start
+						const lastMcpIndex = updatedAllowArray.lastIndexOf("'@modelcontextprotocol");
+						let insertionPoint;
+
+						if (lastMcpIndex !== -1) {
+							// Find end of that line
+							insertionPoint = updatedAllowArray.indexOf('\n', lastMcpIndex);
+							if (insertionPoint === -1) {
+								insertionPoint = updatedAllowArray.indexOf(',', lastMcpIndex);
+								if (insertionPoint === -1) {
+									insertionPoint = updatedAllowArray.length;
+								}
+							}
+						} else {
+							// No MCP entries, insert near beginning after initial newline
+							insertionPoint = updatedAllowArray.indexOf('\n');
+							if (insertionPoint === -1) {
+								insertionPoint = 0;
+							}
+						}
+
+						// Build insertion string with proper indentation
+						const precedingText = updatedAllowArray.substring(0, insertionPoint);
+						const lastNewlineIndex = precedingText.lastIndexOf('\n');
+						const indentation = lastNewlineIndex !== -1
+							? precedingText.substring(lastNewlineIndex + 1).match(/^\s*/)[0]
+							: '';
+
+						const insertionString = `\n${indentation}${lib},`;
+						updatedAllowArray = updatedAllowArray.substring(0, insertionPoint) + insertionString + updatedAllowArray.substring(insertionPoint);
+						addedLibraries.push(lib);
+					}
+				}
+
+				if (addedLibraries.length > 0) {
+					// Replace the allow array in the content
+					updatedContent = updatedContent.substring(0, allowArrayStart) +
+						updatedAllowArray +
+						updatedContent.substring(allowArrayEnd);
+					didUpdate = true;
+					success(`eslint.config.js - Added ${addedLibraries.length} Roopik library exception(s) to hasNode allow list`);
+				} else {
+					success('eslint.config.js - All Roopik libraries already in hasNode allow list');
+				}
+			} else {
+				warning('eslint.config.js - Could not find closing bracket for allow array');
+			}
+		} else {
+			warning('eslint.config.js - Could not find allow array in hasNode section');
+		}
+	} else {
+		warning('eslint.config.js - Could not find hasNode section');
+	}
+
 	// 1) Ensure Roopik extension header override exists
 	if (updatedContent.includes('// ROOPIK: Override header rule for roopik extension')) {
 		success('eslint.config.js - Override block already exists');
@@ -460,7 +541,7 @@ function updateEslintConfig() {
 		const closingPattern = /\n\);\s*$/;
 		if (!closingPattern.test(updatedContent)) {
 			warning('eslint.config.js - Could not find closing ); anchor point');
-			return { updated: false, errors: 0 };
+			return { updated: didUpdate, errors: 0 };
 		}
 
 		// Insert the Roopik block before the final );
@@ -546,11 +627,11 @@ function updateGulpfileExtensions() {
 	}
 
 	const roopikLine = "\t'extensions/roopik/tsconfig.json', // ROOPIK: Our canvas-first IDE extension,";
-	const roopikDioLine = "\t'extensions/roopik-dio/tsconfig.json', // ROOPIK DIO: AI agent integration";
+	const roopikDioLine = "\t'extensions/roopik-roo/tsconfig.json', // ROOPIK DIO: AI agent integration";
 
 	// Check which extensions need to be added
 	const hasRoopik = content.includes("'extensions/roopik/tsconfig.json'");
-	const hasRoopikDio = content.includes("'extensions/roopik-dio/tsconfig.json'");
+	const hasRoopikDio = content.includes("'extensions/roopik-roo/tsconfig.json'");
 
 	if (hasRoopik && hasRoopikDio) {
 		success('build/gulpfile.extensions.ts - Both Roopik extensions already registered');
@@ -755,13 +836,13 @@ function updateFiltersTs() {
 	}
 
 	// Check 2: Add roopik-dio agent extension exclusion
-	if (!updatedContent.includes("'!extensions/roopik-dio/**',")) {
+	if (!updatedContent.includes("'!extensions/roopik-roo/**',")) {
 		// Insert after !extensions/**/out*/**
 		const outPattern = "'!extensions/**/out*/**',";
 		if (updatedContent.includes(outPattern)) {
 			updatedContent = updatedContent.replace(
 				outPattern,
-				outPattern + "\n\t'!extensions/roopik-dio/**',"
+				outPattern + "\n\t'!extensions/roopik-roo/**',"
 			);
 			success('build/filters.ts - Added roopik-dio extension exclusion');
 			needsUpdate = true;
@@ -800,7 +881,7 @@ function updateEslintIgnore() {
 	}
 
 	// Check if roopik-dio already excluded
-	if (content.includes('**/extensions/roopik-dio/**')) {
+	if (content.includes('**/extensions/roopik-roo/**')) {
 		success('.eslint-ignore - roopik-dio already excluded');
 		return { updated: false, errors: 0 };
 	}
@@ -815,7 +896,7 @@ function updateEslintIgnore() {
 	// Insert roopik-dio exclusion after notebook-renderers
 	const updatedContent = content.replace(
 		notebookRenderersLine,
-		notebookRenderersLine + '\n**/extensions/roopik-dio/**'
+		notebookRenderersLine + '\n**/extensions/roopik-roo/**'
 	);
 
 	if (writeFile(filePath, updatedContent)) {
@@ -1065,37 +1146,120 @@ function updateWorkbenchCommonMain() {
 		return { updated: false, errors: 0 };
 	}
 
+	let content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	let needsUpdate = false;
+	let updatedContent = content;
+
+	// Check 1: Add Roopik main contribution import
+	if (content.includes("import './contrib/roopik/browser/roopik.contribution.js';")) {
+		success('workbench.common.main.ts - Roopik contribution already imported');
+	} else {
+		// Find and replace just the Speech import line (not the comment)
+		const oldImport = `import './contrib/speech/browser/speech.contribution.js';`;
+
+		const newImport = `import './contrib/speech/browser/speech.contribution.js';
+
+// Roopik Design IDE
+import './contrib/roopik/browser/roopik.contribution.js';`;
+
+		if (!updatedContent.includes(oldImport)) {
+			warning('workbench.common.main.ts - Could not find Speech import to anchor Roopik import');
+			return { updated: false, errors: 0 };
+		}
+
+		updatedContent = updatedContent.replace(oldImport, newImport);
+		success('workbench.common.main.ts - Added Roopik contribution import');
+		needsUpdate = true;
+	}
+
+	// Check 2: Add Roopik agent chat actions import
+	if (updatedContent.includes("import './contrib/roopik/browser/roodioChatActions.js';")) {
+		success('workbench.common.main.ts - Roopik chat actions already imported');
+	} else {
+		// Find the roopik.contribution import and add chat actions after it
+		const roopikContribImport = `import './contrib/roopik/browser/roopik.contribution.js';`;
+
+		if (updatedContent.includes(roopikContribImport)) {
+			const chatActionsImport = `import './contrib/roopik/browser/roopik.contribution.js';
+import './contrib/roopik/browser/roodioChatActions.js';  // ROOPIK AGENT CHAT ICON`;
+
+			updatedContent = updatedContent.replace(roopikContribImport, chatActionsImport);
+			success('workbench.common.main.ts - Added Roopik chat actions import');
+			needsUpdate = true;
+		} else {
+			warning('workbench.common.main.ts - Could not find Roopik contribution import to anchor chat actions');
+		}
+	}
+
+	if (needsUpdate) {
+		if (writeFile(filePath, updatedContent)) {
+			success('workbench.common.main.ts - Updated successfully');
+			return { updated: true, errors: 0 };
+		} else {
+			error('workbench.common.main.ts - Failed to update');
+			return { updated: false, errors: 1 };
+		}
+	}
+
+	return { updated: false, errors: 0 };
+}
+
+// Update chat.contribution.ts - Add Roopik agent chat icon setting
+function updateChatContribution() {
+	const filePath = path.join(ROOT_DIR, 'src/vs/workbench/contrib/chat/browser/chat.contribution.ts');
+
+	if (!fileExists(filePath)) {
+		warning('src/vs/workbench/contrib/chat/browser/chat.contribution.ts not found (skipping)');
+		return { updated: false, errors: 0 };
+	}
+
 	const content = readFile(filePath);
 	if (!content) {
 		return { updated: false, errors: 1 };
 	}
 
-	// Check if Roopik import already exists
-	if (content.includes("import './contrib/roopik/browser/roopik.contribution.js';")) {
-		success('workbench.common.main.ts - Roopik contribution already imported');
+	// Check if roodio.titleBarIcon.enabled already exists
+	if (content.includes("'roodio.titleBarIcon.enabled':")) {
+		success('chat.contribution.ts - roodio.titleBarIcon.enabled setting already exists');
 		return { updated: false, errors: 0 };
 	}
 
-	// Find and replace just the Speech import line (not the comment)
-	const oldImport = `import './contrib/speech/browser/speech.contribution.js';`;
+	// Find a reliable anchor point - look for 'chat.commandCenter.enabled' setting
+	// Match the entire setting block including its closing brace and comma
+	const anchorPattern = /'chat\.commandCenter\.enabled':\s*\{[\s\S]*?\n\s*\},/;
+	const match = content.match(anchorPattern);
 
-	const newImport = `import './contrib/speech/browser/speech.contribution.js';
-
-// Roopik Design IDE
-import './contrib/roopik/browser/roopik.contribution.js';`;
-
-	if (!content.includes(oldImport)) {
-		warning('workbench.common.main.ts - Could not find Speech import to anchor Roopik import');
+	if (!match) {
+		warning('chat.contribution.ts - Could not find chat.commandCenter.enabled setting as anchor');
 		return { updated: false, errors: 0 };
 	}
 
-	const updatedContent = content.replace(oldImport, newImport);
+	// Extract indentation from the matched setting by looking at the line it's on
+	const settingStart = content.lastIndexOf('\n', match.index) + 1;
+	const settingLine = content.substring(settingStart, match.index);
+	const indent = settingLine.match(/^\s*/)[0];
+
+	// Build the new setting with proper indentation
+	const newSetting = `${indent}'roodio.titleBarIcon.enabled': {
+${indent}\ttype: 'boolean',
+${indent}\tdescription: nls.localize('roodio.titleBarIcon.enabled', "Controls whether the Roo Dio chat icon is shown in the title bar."),
+${indent}\tdefault: true
+${indent}},
+`;
+
+	// Insert the new setting right after the anchor
+	const insertIndex = match.index + match[0].length;
+	const updatedContent = content.substring(0, insertIndex) + '\n' + newSetting + content.substring(insertIndex);
 
 	if (writeFile(filePath, updatedContent)) {
-		success('workbench.common.main.ts - Added Roopik contribution import');
+		success('chat.contribution.ts - Added roodio.titleBarIcon.enabled setting');
 		return { updated: true, errors: 0 };
 	} else {
-		error('workbench.common.main.ts - Failed to update');
+		error('chat.contribution.ts - Failed to update');
 		return { updated: false, errors: 1 };
 	}
 }
@@ -1644,6 +1808,12 @@ function main() {
 		totalChanges++;
 	}
 	totalErrors += workbenchResult.errors;
+
+	const chatContribResult = updateChatContribution();
+	if (chatContribResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += chatContribResult.errors;
 
 	const windowsResult = updateWindowsTs();
 	if (windowsResult.updated) {

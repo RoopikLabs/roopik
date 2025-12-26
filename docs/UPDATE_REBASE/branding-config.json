@@ -221,6 +221,14 @@
       {
         "name": "electron-context-menu",
         "reason": "Standard browser context menu for ProjectMode BrowserView"
+      },
+      {
+        "name": "@modelcontextprotocol/sdk",
+        "reason": "Model Context Protocol SDK for MCP server integration"
+      },
+      {
+        "name": "zod",
+        "reason": "TypeScript-first schema validation with static type inference"
       }
     ]
   }

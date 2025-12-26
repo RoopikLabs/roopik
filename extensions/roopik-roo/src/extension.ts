@@ -274,6 +274,34 @@ export async function activate(context: vscode.ExtensionContext) {
 		}),
 	)
 
+	// Register ChatPanel provider for auxiliary bar (right sidebar)
+	const chatPanelProvider = new ClineProvider(context, outputChannel, "chat", contextProxy, mdmService)
+	context.subscriptions.push(
+		vscode.window.registerWebviewViewProvider("roodio.ChatPanel", chatPanelProvider, {
+			webviewOptions: { retainContextWhenHidden: true },
+		}),
+	)
+
+	// Register command to open chat panel with optional context
+	context.subscriptions.push(
+		vscode.commands.registerCommand("roodio.openChatPanel", async (options?: { message?: string; code?: string }) => {
+			// Focus the chat panel view (this will automatically show the auxiliary bar)
+			await vscode.commands.executeCommand("roodio.ChatPanel.focus")
+
+			// Small delay to ensure view is ready
+			await new Promise(resolve => setTimeout(resolve, 100))
+
+			// Pass context to webview if provided
+			if (options?.message || options?.code) {
+				chatPanelProvider.postMessageToWebview({
+					type: "openWithContext",
+					text: options.message,
+					selectedText: options.code,
+				})
+			}
+		}),
+	)
+
 	// Auto-import configuration if specified in settings.
 	try {
 		await autoImportSettings(outputChannel, {
