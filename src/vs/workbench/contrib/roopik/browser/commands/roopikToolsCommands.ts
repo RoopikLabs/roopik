@@ -6,14 +6,14 @@
 /**
  * Roopik Tools Commands
  *
- * Bridge between VSCode extensions (agent-dio) and RoopikToolsChannel (main process).
+ * Bridge between VSCode extensions (agent roopik-dio) and RoopikToolsChannel (main process).
  *
  * Architecture:
- * Extension (agent-dio) → vscode.commands.executeCommand() → These Commands → IPC → RoopikToolsChannel
+ * Extension (agent roopik-dio) -> vscode.commands.executeCommand() -> These Commands -> IPC -> RoopikToolsChannel
  *
  * This enables:
  * 1. Extensions to call Roopik tools without direct IPC access
- * 2. Future bidirectional communication (browser events → extension)
+ * 2. Future bidirectional communication (browser events -> extension)
  * 3. Consistent tool interface for AI agents
  *
  * Tool Naming Convention: category_action (e.g., browser_navigate, component_add)
@@ -627,5 +627,5 @@ export function registerRoopikToolsCommands(): void {
 		}
 	});
 
-	console.log('[Roopik] Registered 24 tool bridge commands for agent-dio');
+	console.log('[Roopik] Registered 24 tool bridge commands for agent roopik-dio');
 }

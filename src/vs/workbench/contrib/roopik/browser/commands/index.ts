@@ -28,7 +28,7 @@ export function registerAllCommands(): void {
 	registerImportCommands();
 	registerBrowserCommands();
 	registerComponentCommands();
-	registerRoopikToolsCommands(); // Bridge commands for agent-dio
+	registerRoopikToolsCommands(); // Bridge commands for agent roopik-dio
 }
 
 // Re-export individual register functions for granular control

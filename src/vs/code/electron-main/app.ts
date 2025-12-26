@@ -150,7 +150,7 @@ import { PROJECT_STORAGE_CHANNEL } from '../../workbench/contrib/roopik/common/p
 import { McpServerService } from '../../workbench/contrib/roopik/electron-main/mcp/mcpServerService.js';
 import { McpServerChannel } from '../../workbench/contrib/roopik/electron-main/channel/mcpServerChannel.js';
 import { MCP_SERVER_CHANNEL } from '../../workbench/contrib/roopik/common/mcp/index.js';
-// ROOPIK: Tools Channel - Direct IPC for agent-dio (faster than MCP HTTP)
+// ROOPIK: Tools Channel - Direct IPC for agent-roo (faster than MCP HTTP)
 import { RoopikToolsChannel, ROOPIK_TOOLS_CHANNEL_NAME } from '../../workbench/contrib/roopik/electron-main/channel/roopikToolsChannel.js';
 
 /**
@@ -1349,7 +1349,7 @@ export class CodeApplication extends Disposable {
 			console.error('[Roopik] Failed to start MCP Server:', error);
 		});
 
-		// ROOPIK: Tools Channel - Direct IPC for agent-dio extension
+		// ROOPIK: Tools Channel - Direct IPC for agent roopik-roo extension
 		// Provides faster, timeout-free access to IDE tools (alternative to MCP HTTP)
 		const roopikToolsChannel = new RoopikToolsChannel(
 			projectModeService,    // BrowserViewService
@@ -1359,7 +1359,7 @@ export class CodeApplication extends Disposable {
 			roopikStorageService   // IRoopikStorageService
 		);
 		mainProcessElectronServer.registerChannel(ROOPIK_TOOLS_CHANNEL_NAME, roopikToolsChannel);
-		console.log('[Roopik] Tools Channel registered for agent-dio IPC');
+		console.log('[Roopik] Tools Channel registered for agent roopik-roo IPC');
 		// ROOPIK END
 	}
 

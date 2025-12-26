@@ -6,11 +6,11 @@
 /**
  * Roopik Tools Channel
  *
- * IPC channel that exposes Roopik IDE tools to extensions (agent-dio).
+ * IPC channel that exposes Roopik IDE tools to extensions (agent roopik-dio).
  * This provides a persistent, timeout-free connection for AI agent tool calls.
  *
  * Architecture:
- * - Extension (agent-dio) → IChannel.call() → RoopikToolsChannel.call() → Services
+ * - Extension (agent roopik-dio) -> IChannel.call() -> RoopikToolsChannel.call() -> Services
  * - Replaces HTTP-based MCP for internal agent communication
  * - Same tools as MCP but via direct IPC (faster, no timeouts)
  *
@@ -42,7 +42,7 @@ export { ROOPIK_TOOLS_CHANNEL_NAME, RoopikToolResult };
  * RoopikToolsChannel - IPC handler for Roopik IDE tools
  *
  * Provides direct IPC access to all Roopik IDE capabilities for extensions.
- * This is the core-side handler that receives calls from agent-dio.
+ * This is the core-side handler that receives calls from agent roopik-dio.
  */
 export class RoopikToolsChannel implements IServerChannel {
 
