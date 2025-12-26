@@ -64,6 +64,13 @@
 					"title": "%views.activitybar.title%",
 					"icon": "src/assets/icons/icon.svg"
 				}
+			],
+			"secondarySidebar": [
+				{
+					"id": "roodio-AuxiliaryBar",
+					"title": "Roo Dio Agent",
+					"icon": "src/assets/icons/icon.svg"
+				}
 			]
 		},
 		"views": {
@@ -73,9 +80,25 @@
 					"id": "roodio.SidebarProvider",
 					"name": "%views.sidebar.name%"
 				}
+			],
+			"roodio-AuxiliaryBar": [
+				{
+					"type": "webview",
+					"id": "roodio.ChatPanel",
+					"name": "Chat"
+				}
 			]
 		},
 		"commands": [
+			{
+				"command": "roodio.openChatPanel",
+				"title": "Open Roo Dio Chat",
+				"category": "Roo Dio",
+				"icon": {
+					"light": "src/assets/icons/icon.svg",
+					"dark": "src/assets/icons/icon.svg"
+				}
+			},
 			{
 				"command": "roodio.plusButtonClicked",
 				"title": "%command.newTask.title%",
@@ -178,6 +201,13 @@
 			}
 		],
 		"menus": {
+			"layoutControl": [
+				{
+					"command": "roodio.openChatPanel",
+					"group": "navigation",
+					"order": 0
+				}
+			],
 			"editor/context": [
 				{
 					"submenu": "roodio.contextMenu",
@@ -196,6 +226,10 @@
 				{
 					"command": "roodio.improveCode",
 					"group": "1_actions@3"
+				},
+				{
+					"command": "roodio.fixCode",
+					"group": "1_actions@4"
 				}
 			],
 			"terminal/context": [
@@ -248,6 +282,36 @@
 					"command": "roodio.popoutButtonClicked",
 					"group": "overflow@2",
 					"when": "view == roodio.SidebarProvider"
+				},
+				{
+					"command": "roodio.plusButtonClicked",
+					"group": "navigation@1",
+					"when": "view == roodio.ChatPanel"
+				},
+				{
+					"command": "roodio.settingsButtonClicked",
+					"group": "navigation@2",
+					"when": "view == roodio.ChatPanel"
+				},
+				{
+					"command": "roodio.cloudButtonClicked",
+					"group": "navigation@3",
+					"when": "view == roodio.ChatPanel"
+				},
+				{
+					"command": "roodio.marketplaceButtonClicked",
+					"group": "navigation@4",
+					"when": "view == roodio.ChatPanel"
+				},
+				{
+					"command": "roodio.historyButtonClicked",
+					"group": "overflow@1",
+					"when": "view == roodio.ChatPanel"
+				},
+				{
+					"command": "roodio.popoutButtonClicked",
+					"group": "overflow@2",
+					"when": "view == roodio.ChatPanel"
 				}
 			],
 			"editor/title": [
@@ -284,6 +348,13 @@
 			]
 		},
 		"keybindings": [
+			{
+				"command": "roodio.openChatPanel",
+				"key": "ctrl+alt+b",
+				"mac": "cmd+alt+b",
+				"win": "ctrl+alt+b",
+				"linux": "ctrl+alt+b"
+			},
 			{
 				"command": "roodio.addToContext",
 				"key": "cmd+k cmd+a",
