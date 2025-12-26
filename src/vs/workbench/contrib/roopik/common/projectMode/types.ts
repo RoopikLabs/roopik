@@ -269,3 +269,27 @@ export interface BrowserKeyEvent {
 	type: 'keyDown' | 'keyUp';
 }
 
+// ============================================
+// MCP Browser Request Events
+// ============================================
+
+/**
+ * Event payload when MCP requests browser to be opened
+ * Fired from main process when MCP tool browser_open is called without existing browser
+ * Renderer listens and calls openBrowserEditor() to properly create the browser UI
+ */
+export interface McpBrowserOpenRequestEvent {
+	/** URL to navigate to after browser opens (optional) */
+	url?: string;
+}
+
+/**
+ * Event payload when MCP requests browser to be closed
+ * Fired from main process when MCP tool browser_close is called
+ * Renderer listens and closes the editor tab properly (which triggers full cleanup chain)
+ */
+export interface McpBrowserCloseRequestEvent {
+	/** Placeholder for future use */
+	_?: undefined;
+}
+

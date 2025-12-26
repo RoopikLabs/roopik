@@ -35,6 +35,10 @@ export class RoopikWelcomeEditor extends EditorPane {
 	private recentCanvasesContainer: HTMLElement | undefined;
 	private recentProjectsContainer: HTMLElement | undefined;
 
+	// Loading guards to prevent concurrent loads
+	private isLoadingCanvases: boolean = false;
+	private isLoadingProjects: boolean = false;
+
 	/** Timeout handle for project loading */
 	private projectLoadingTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
 	/** Whether project service is initialized */
@@ -113,11 +117,13 @@ export class RoopikWelcomeEditor extends EditorPane {
 		subtitle.textContent = 'Visual canvas + AI copilots';
 
 		const heroDescription = append(heroContent, $('.hero-description'));
+		// allow-any-unicode-next-line
 		heroDescription.textContent = 'Start designing components, preview production-ready UI, and collaborate with AI agents— all inside a single workspace.';
 
 		const heroActions = append(heroContent, $('.hero-actions'));
 		this.createHeroButton(heroActions, 'codicon-new-file', 'New Canvas', 'roopik.openCanvas', true);
-		this.createHeroButton(heroActions, 'codicon-globe', 'Project Mode', 'roopik.openProjectPreview');
+		// Project button opens file explorer directly (folder icon)
+		this.createHeroButton(heroActions, 'codicon-folder', 'Open Project', 'roopik.openProjectPicker', true);
 
 		const heroShowcase = append(hero, $('.hero-showcase'));
 		const showcaseLabel = append(heroShowcase, $('.showcase-label'));
@@ -139,9 +145,10 @@ export class RoopikWelcomeEditor extends EditorPane {
 
 		const startActions = [
 			{ icon: 'codicon-new-file', label: 'New Canvas', commandId: 'roopik.openCanvas' },
-			{ icon: 'codicon-folder', label: 'Open Canvas', commandId: 'roopik.openCanvas' },
+			{ icon: 'codicon-folder-opened', label: 'Open Canvas', commandId: 'roopik.openCanvas' },
 			{ icon: 'codicon-file-symlink-directory', label: 'Import Canvas', commandId: 'roopik.openCanvas' },
-			{ icon: 'codicon-globe', label: 'Project Mode', commandId: 'roopik.openProjectPreview' },
+			{ icon: 'codicon-folder', label: 'Open Project', commandId: 'roopik.openProjectPicker' },
+			{ icon: 'codicon-globe', label: 'Browse Web', commandId: 'roopik.openProjectPreview' },
 			{ icon: 'codicon-keyboard', label: 'Run Command...', commandId: 'workbench.action.showCommands' }
 		];
 
@@ -502,9 +509,18 @@ export class RoopikWelcomeEditor extends EditorPane {
 			return;
 		}
 
-		clearNode(this.recentCanvasesContainer);
+		// Prevent concurrent loads
+		if (this.isLoadingCanvases) {
+			return;
+		}
+		this.isLoadingCanvases = true;
 
 		try {
+			// Clear existing content (use DOM API like activity panel)
+			while (this.recentCanvasesContainer.firstChild) {
+				this.recentCanvasesContainer.removeChild(this.recentCanvasesContainer.firstChild);
+			}
+
 			const canvases = await this.canvasService.listCanvasesAsync();
 
 			if (canvases.length === 0) {
@@ -513,8 +529,13 @@ export class RoopikWelcomeEditor extends EditorPane {
 				return;
 			}
 
+			// Deduplicate by canvas ID
+			const uniqueCanvases = Array.from(
+				new Map(canvases.map(canvas => [canvas.id, canvas])).values()
+			);
+
 			// Show up to 5 most recent canvases
-			const recentCanvases = canvases.slice(0, 5);
+			const recentCanvases = uniqueCanvases.slice(0, 5);
 			for (const canvas of recentCanvases) {
 				this.createRecentCanvasItem(this.recentCanvasesContainer, canvas);
 			}
@@ -522,6 +543,8 @@ export class RoopikWelcomeEditor extends EditorPane {
 			console.error('[RoopikWelcomeEditor] Failed to load canvases:', err);
 			const errorState = append(this.recentCanvasesContainer, $('.quick-start-empty'));
 			errorState.textContent = 'Failed to load canvases';
+		} finally {
+			this.isLoadingCanvases = false;
 		}
 	}
 
@@ -533,9 +556,18 @@ export class RoopikWelcomeEditor extends EditorPane {
 			return;
 		}
 
-		clearNode(this.recentProjectsContainer);
+		// Prevent concurrent loads
+		if (this.isLoadingProjects) {
+			return;
+		}
+		this.isLoadingProjects = true;
 
 		try {
+			// Clear existing content (use DOM API like activity panel)
+			while (this.recentProjectsContainer.firstChild) {
+				this.recentProjectsContainer.removeChild(this.recentProjectsContainer.firstChild);
+			}
+
 			const projects = await this.projectStorageService.getRecentProjects(5);
 
 			if (projects.length === 0) {
@@ -544,13 +576,20 @@ export class RoopikWelcomeEditor extends EditorPane {
 				return;
 			}
 
-			for (const project of projects) {
+			// Deduplicate by project path
+			const uniqueProjects = Array.from(
+				new Map(projects.map(project => [project.path, project])).values()
+			);
+
+			for (const project of uniqueProjects) {
 				this.createRecentProjectItem(this.recentProjectsContainer, project);
 			}
 		} catch (err) {
 			console.error('[RoopikWelcomeEditor] Failed to load projects:', err);
 			const errorState = append(this.recentProjectsContainer, $('.quick-start-empty'));
 			errorState.textContent = 'Failed to load projects';
+		} finally {
+			this.isLoadingProjects = false;
 		}
 	}
 

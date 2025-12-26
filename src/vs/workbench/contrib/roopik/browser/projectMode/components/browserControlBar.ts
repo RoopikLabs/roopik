@@ -107,7 +107,7 @@ export class BrowserControlBar extends Disposable {
 	) {
 		super();
 		this.container = this.createContainer(parent);
-		this.progressBar = this.createProgressBar(parent);
+		this.progressBar = this.createProgressBar(this.container); // Fix: attach to control bar container, not parent
 		this.urlInput = this.createUrlInput();
 		this.render();
 	}
@@ -120,7 +120,8 @@ export class BrowserControlBar extends Disposable {
 		container.style.gap = '8px';
 		container.style.borderBottom = '1px solid var(--vscode-panel-border)';
 		container.style.backgroundColor = 'var(--vscode-editor-background)';
-		container.style.position = 'relative';
+		container.style.position = 'relative'; // Required for absolute positioning of progress bar
+		container.style.overflow = 'hidden'; // Ensure progress bar doesn't overflow
 		parent.appendChild(container);
 		return container;
 	}
@@ -135,6 +136,7 @@ export class BrowserControlBar extends Disposable {
 		progressContainer.style.backgroundColor = 'transparent';
 		progressContainer.style.overflow = 'hidden';
 		progressContainer.style.zIndex = '1000';
+		progressContainer.style.pointerEvents = 'none'; // Prevent interaction with progress bar
 
 		const progressBar = document.createElement('div');
 		progressBar.style.height = '100%';
@@ -447,6 +449,7 @@ export class BrowserControlBar extends Disposable {
 		// Create wrapper for URL input + bookmark star
 		this.urlInputWrapper = document.createElement('div');
 		this.urlInputWrapper.style.flex = '1';
+		this.urlInputWrapper.style.minWidth = '200px'; // Minimum width to prevent disappearing
 		this.urlInputWrapper.style.position = 'relative';
 		this.urlInputWrapper.style.display = 'flex';
 		this.urlInputWrapper.style.alignItems = 'center';
@@ -1189,13 +1192,14 @@ export class BrowserControlBar extends Disposable {
 	}
 
 	showLoading(): void {
-		// Stop any existing animation
+		// Stop any existing animation FIRST to prevent duplicates
 		if (this.loadingAnimation) {
 			cancelAnimationFrame(this.loadingAnimation);
 			this.loadingAnimation = undefined;
 		}
 
-		// Use indeterminate animation (like Chrome's loading bar)
+		// Reset progress bar state
+		this.progressBar.style.marginLeft = '0';
 		this.progressBar.style.transition = 'none';
 		this.progressBar.style.width = '30%';
 

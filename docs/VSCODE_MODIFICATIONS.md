@@ -6,7 +6,7 @@ Track of all VS Code core files we've modified (for upstream conflict handling).
 
 | File | Change | Reason |
 |------|--------|--------|
-| `build/gulpfile.extensions.js` (after `extensions/git/tsconfig.json`) | Added `'extensions/roopik/tsconfig.json'` | Register roopik extension in build system |
+| `build/gulpfile.extensions.js` (after `extensions/git/tsconfig.json`) | Added `'extensions/roopik/tsconfig.json'` and `'extensions/roopik-dio/tsconfig.json'` | Register roopik canvas and roopik-dio agent extensions in build system |
 | `build/hygiene.ts:25-31` | Added `roopikCopyrightHeaderLines` constant array | Allow Roopik copyright alongside Microsoft |
 | `build/hygiene.ts:115-135` | Modified `copyrights` method to check both Microsoft and Roopik headers | Check for either Microsoft or Roopik copyright, fail only if neither found |
 | `eslint.config.js:2185-2205` | Added roopik extension header override | Allow Roopik copyright in extensions/roopik/ |
@@ -54,7 +54,9 @@ Track of all VS Code core files we've modified (for upstream conflict handling).
 - `.mention-bot` - Line 2: `maxReviewers`: 2 → 4, Line 3: `requiredOrgs`: ["Microsoft"] → ["RoopikLabs"]
 - `.npmrc` - **DO NOT DELETE OR CHANGE** - Only observe build version changes, keep as-is
 - `package.json` - Update: `name`, `author.name`, `repository.url`, `bugs.url` (see apply-branding.json for full list)
-- `build/gulpfile.extensions.ts` - Add roopik extension registration (after `extensions/git/tsconfig.json` line): `'extensions/roopik/tsconfig.json', // ROOPIK: Our canvas-first IDE extension`
+- `build/gulpfile.extensions.ts` - Add roopik and roopik-dio extension registration (after `extensions/git/tsconfig.json` line):
+  - `'extensions/roopik/tsconfig.json', // ROOPIK: Our canvas-first IDE extension`
+  - `'extensions/roopik-dio/tsconfig.json', // ROOPIK DIO: AI agent integration`
 - `build/lib/electron.ts` (line ~190-200) - Change `winIcon`: `path.join(root, 'resources/win32/code.ico')` → `'resources/win32/code.ico'`
 - `build/hygiene.ts` - Add Roopik copyright constants and update copyrights method (see code below)
 - `eslint.config.js` (end of file) - Add roopik extension header override block (see code below)

@@ -15,6 +15,7 @@ import { registerCanvasCommands } from './canvasCommands.js';
 import { registerImportCommands } from './importCommands.js';
 import { registerBrowserCommands } from './browserCommands.js';
 import { registerComponentCommands } from './componentCommands.js';
+import { registerRoopikToolsCommands } from './roopikToolsCommands.js';
 
 /**
  * Register all Roopik commands
@@ -27,6 +28,7 @@ export function registerAllCommands(): void {
 	registerImportCommands();
 	registerBrowserCommands();
 	registerComponentCommands();
+	registerRoopikToolsCommands(); // Bridge commands for agent roopik-dio
 }
 
 // Re-export individual register functions for granular control
@@ -35,3 +37,4 @@ export { registerCanvasCommands } from './canvasCommands.js';
 export { registerImportCommands } from './importCommands.js';
 export { registerBrowserCommands } from './browserCommands.js';
 export { registerComponentCommands } from './componentCommands.js';
+export { registerRoopikToolsCommands } from './roopikToolsCommands.js';

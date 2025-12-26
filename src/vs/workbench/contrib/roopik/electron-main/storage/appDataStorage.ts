@@ -162,12 +162,12 @@ export class AppDataStorage {
 	}
 
 	/**
-	 * Check if cache is valid for given source hash
+	 * Check if cache is valid for given content hash
 	 */
 	async isCacheValid(
 		canvasId: string,
 		componentId: string,
-		sourceHash: string
+		contentHash: string
 	): Promise<boolean> {
 		this.ensureInitialized();
 
@@ -179,7 +179,7 @@ export class AppDataStorage {
 			}
 
 			const buildMeta = await this.readJson<BuildMeta>(buildMetaPath);
-			return buildMeta.sourceHash === sourceHash;
+			return buildMeta.contentHash === contentHash;
 		} catch {
 			return false;
 		}

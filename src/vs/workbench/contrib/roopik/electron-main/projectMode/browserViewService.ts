@@ -6,7 +6,7 @@
 import { BrowserWindow, WebContentsView, session, app } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserBridgeMessage } from '../../common/projectMode/types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserBridgeMessage, McpBrowserOpenRequestEvent, McpBrowserCloseRequestEvent } from '../../common/projectMode/types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 import { DevToolsExtensionLoader } from './devtoolsExtensionLoader.js';
 import type { ILifecycleMainService } from '../../../../../platform/lifecycle/electron-main/lifecycleMainService.js';
@@ -15,6 +15,7 @@ import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { CDPCssService } from './cssResolvers/cdpCssService.js';
 import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.js';
 import contextMenu from 'electron-context-menu';
+import { cleanupCDPMonitoring } from '../mcp/tools/browserTools.js';
 
 /**
  * Browser View Service
@@ -47,6 +48,12 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 	private readonly _onBrowserKeyPress = new Emitter<import('../../common/projectMode/types.js').BrowserKeyEvent>();
 	readonly onBrowserKeyPress: Event<import('../../common/projectMode/types.js').BrowserKeyEvent> = this._onBrowserKeyPress.event;
+
+	private readonly _onMcpBrowserOpenRequest = new Emitter<McpBrowserOpenRequestEvent>();
+	readonly onMcpBrowserOpenRequest: Event<McpBrowserOpenRequestEvent> = this._onMcpBrowserOpenRequest.event;
+
+	private readonly _onMcpBrowserCloseRequest = new Emitter<McpBrowserCloseRequestEvent>();
+	readonly onMcpBrowserCloseRequest: Event<McpBrowserCloseRequestEvent> = this._onMcpBrowserCloseRequest.event;
 
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
@@ -254,6 +261,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	async destroyBrowserView(browserViewId: number): Promise<void> {
 		console.log('[ProjectMode][Main] destroyBrowserView() called for', browserViewId);
 
+		// Cleanup CDP monitoring if active (from MCP CDP tools)
+		cleanupCDPMonitoring(browserViewId);
+
 		// Close DevTools if open
 		await this.closeDevTools(browserViewId);
 
@@ -312,6 +322,18 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		}
 	}
 
+	/**
+	 * Get the active browser view ID
+	 * Since Roopik has single project constraint (one server at a time),
+	 * there's at most one browser view open.
+	 *
+	 * @returns browserViewId if a browser is open, undefined otherwise
+	 */
+	getActiveBrowserViewId(): number | undefined {
+		const ids = Array.from(this.browserViews.keys());
+		return ids.length > 0 ? ids[0] : undefined;
+	}
+
 	async setBrowserBounds(browserViewId: number, bounds: ViewBounds): Promise<void> {
 		const browserView = this.browserViews.get(browserViewId);
 		if (browserView) {
@@ -336,7 +358,10 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// ============================================
 
 	async navigate(browserViewId: number, url: string): Promise<void> {
-		console.log('[ProjectMode][Main] navigate() requested', { browserViewId, url });
+		// Normalize URL - add protocol if missing (centralized for all callers: MCP, native, UI)
+		const normalizedUrl = this.normalizeUrl(url);
+
+		console.log('[ProjectMode][Main] navigate() requested', { browserViewId, url, normalizedUrl });
 
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView) {
@@ -364,7 +389,38 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			webContentsId: browserView.webContents.id
 		});
 
-		await browserView.webContents.loadURL(url);
+		await browserView.webContents.loadURL(normalizedUrl);
+	}
+
+	/**
+	 * Normalize URL by adding protocol if missing
+	 * - Empty or about: URLs pass through unchanged
+	 * - localhost URLs get http://
+	 * - All other URLs get https://
+	 */
+	private normalizeUrl(url: string): string {
+		if (!url) {
+			return url;
+		}
+		const trimmed = url.trim();
+		// Empty string - pass through
+		if (!trimmed) {
+			return trimmed;
+		}
+		// about: URLs (about:blank, about:srcdoc, etc.) - pass through unchanged
+		if (/^about:/i.test(trimmed)) {
+			return trimmed;
+		}
+		// Already has protocol
+		if (/^https?:\/\//i.test(trimmed)) {
+			return trimmed;
+		}
+		// Localhost should use http
+		if (/^localhost(:\d+)?/i.test(trimmed)) {
+			return `http://${trimmed}`;
+		}
+		// Everything else gets https
+		return `https://${trimmed}`;
 	}
 
 	async goBack(browserViewId: number): Promise<void> {
@@ -745,6 +801,262 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		return image.toDataURL();
 	}
 
+	/**
+	 * Take screenshot with viewport metadata for pixel-perfect clicking
+	 * Returns image data URL plus CSS viewport dimensions (not scaled pixel dimensions)
+	 *
+	 * IMPORTANT: We return CSS viewport dimensions (window.innerWidth/innerHeight),
+	 * NOT the image pixel dimensions. On high-DPI displays, capturePage() returns
+	 * an image scaled by devicePixelRatio, but agents need CSS coordinates for clicking.
+	 *
+	 * Example on 2x display:
+	 * - CSS viewport: 900x600
+	 * - Image pixels: 1800x1200 (scaled by devicePixelRatio)
+	 * - We return: width=900, height=600 (CSS coordinates for clicking)
+	 */
+	async takeScreenshotWithMetadata(browserViewId: number): Promise<{
+		image: string;
+		width: number;
+		height: number;
+		devicePixelRatio: number;
+	}> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		// Get CSS viewport dimensions and devicePixelRatio from the page
+		// These are the dimensions agents need to calculate click coordinates
+		let viewportWidth = 0;
+		let viewportHeight = 0;
+		let devicePixelRatio = 1;
+
+		try {
+			const viewportInfo = await browserView.webContents.executeJavaScript(`
+				JSON.stringify({
+					width: window.innerWidth,
+					height: window.innerHeight,
+					devicePixelRatio: window.devicePixelRatio || 1
+				})
+			`);
+			const parsed = JSON.parse(viewportInfo);
+			viewportWidth = parsed.width;
+			viewportHeight = parsed.height;
+			devicePixelRatio = parsed.devicePixelRatio;
+		} catch (e) {
+			// Fallback: use image dimensions divided by a default DPR
+			console.warn('[ProjectMode] Failed to get viewport info from page, using fallback', e);
+		}
+
+		const image = await browserView.webContents.capturePage();
+
+		// If we couldn't get viewport info, fall back to image size / devicePixelRatio
+		if (viewportWidth === 0 || viewportHeight === 0) {
+			const imageSize = image.getSize();
+			viewportWidth = Math.round(imageSize.width / devicePixelRatio);
+			viewportHeight = Math.round(imageSize.height / devicePixelRatio);
+		}
+
+		return {
+			image: image.toDataURL(),
+			width: viewportWidth,
+			height: viewportHeight,
+			devicePixelRatio
+		};
+	}
+
+	// ============================================
+	// Input Automation (for AI agents)
+	// ============================================
+
+	/**
+	 * Send mouse input event to the browser
+	 * Coordinates are scaled based on reference dimensions
+	 */
+	async sendMouseEvent(
+		browserViewId: number,
+		action: 'click' | 'right_click' | 'double_click' | 'hover' | 'mouseDown' | 'mouseUp',
+		x: number,
+		y: number,
+		refWidth?: number,
+		refHeight?: number
+	): Promise<void> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		// Get actual viewport size for scaling
+		const bounds = browserView.getBounds();
+		const actualWidth = bounds.width;
+		const actualHeight = bounds.height;
+
+		// Scale coordinates if reference dimensions provided
+		let finalX = x;
+		let finalY = y;
+		if (refWidth && refHeight) {
+			finalX = Math.round(x * (actualWidth / refWidth));
+			finalY = Math.round(y * (actualHeight / refHeight));
+		}
+
+		const webContents = browserView.webContents;
+
+		switch (action) {
+			case 'click':
+				webContents.sendInputEvent({ type: 'mouseDown', x: finalX, y: finalY, button: 'left', clickCount: 1 });
+				webContents.sendInputEvent({ type: 'mouseUp', x: finalX, y: finalY, button: 'left', clickCount: 1 });
+				break;
+			case 'right_click':
+				webContents.sendInputEvent({ type: 'mouseDown', x: finalX, y: finalY, button: 'right', clickCount: 1 });
+				webContents.sendInputEvent({ type: 'mouseUp', x: finalX, y: finalY, button: 'right', clickCount: 1 });
+				break;
+			case 'double_click':
+				webContents.sendInputEvent({ type: 'mouseDown', x: finalX, y: finalY, button: 'left', clickCount: 2 });
+				webContents.sendInputEvent({ type: 'mouseUp', x: finalX, y: finalY, button: 'left', clickCount: 2 });
+				break;
+			case 'hover':
+				webContents.sendInputEvent({ type: 'mouseMove', x: finalX, y: finalY });
+				break;
+			case 'mouseDown':
+				webContents.sendInputEvent({ type: 'mouseDown', x: finalX, y: finalY, button: 'left', clickCount: 1 });
+				break;
+			case 'mouseUp':
+				webContents.sendInputEvent({ type: 'mouseUp', x: finalX, y: finalY, button: 'left', clickCount: 1 });
+				break;
+		}
+	}
+
+	/**
+	 * Send drag event (mouseDown at start, mouseMove, mouseUp at end)
+	 */
+	async sendDragEvent(
+		browserViewId: number,
+		startX: number,
+		startY: number,
+		endX: number,
+		endY: number,
+		refWidth?: number,
+		refHeight?: number
+	): Promise<void> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		const bounds = browserView.getBounds();
+		const actualWidth = bounds.width;
+		const actualHeight = bounds.height;
+
+		let finalStartX = startX;
+		let finalStartY = startY;
+		let finalEndX = endX;
+		let finalEndY = endY;
+
+		if (refWidth && refHeight) {
+			finalStartX = Math.round(startX * (actualWidth / refWidth));
+			finalStartY = Math.round(startY * (actualHeight / refHeight));
+			finalEndX = Math.round(endX * (actualWidth / refWidth));
+			finalEndY = Math.round(endY * (actualHeight / refHeight));
+		}
+
+		const webContents = browserView.webContents;
+
+		// Drag sequence: mouseDown -> mouseMove -> mouseUp
+		webContents.sendInputEvent({ type: 'mouseDown', x: finalStartX, y: finalStartY, button: 'left', clickCount: 1 });
+		webContents.sendInputEvent({ type: 'mouseMove', x: finalEndX, y: finalEndY });
+		webContents.sendInputEvent({ type: 'mouseUp', x: finalEndX, y: finalEndY, button: 'left', clickCount: 1 });
+	}
+
+	/**
+	 * Type text into the browser (sends char events)
+	 */
+	async sendTypeEvent(browserViewId: number, text: string): Promise<void> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		const webContents = browserView.webContents;
+
+		for (const char of text) {
+			webContents.sendInputEvent({ type: 'char', keyCode: char });
+		}
+	}
+
+	/**
+	 * Press a key (sends keyDown + keyUp)
+	 */
+	async sendKeyEvent(browserViewId: number, key: string, modifiers?: string[]): Promise<void> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		const webContents = browserView.webContents;
+
+		// Build modifiers array for Electron
+		const electronModifiers: ('shift' | 'control' | 'alt' | 'meta')[] = [];
+		if (modifiers) {
+			for (const mod of modifiers) {
+				const lower = mod.toLowerCase();
+				if (lower === 'shift' || lower === 'control' || lower === 'ctrl' || lower === 'alt' || lower === 'meta' || lower === 'cmd') {
+					if (lower === 'ctrl') {
+						electronModifiers.push('control');
+					} else if (lower === 'cmd') {
+						electronModifiers.push('meta');
+					} else {
+						electronModifiers.push(lower as 'shift' | 'control' | 'alt' | 'meta');
+					}
+				}
+			}
+		}
+
+		webContents.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers: electronModifiers });
+		webContents.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers: electronModifiers });
+	}
+
+	/**
+	 * Scroll the page
+	 */
+	async sendScrollEvent(
+		browserViewId: number,
+		deltaX: number,
+		deltaY: number,
+		x?: number,
+		y?: number
+	): Promise<void> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		const bounds = browserView.getBounds();
+		// Default to center of viewport if no position specified
+		const scrollX = x ?? Math.round(bounds.width / 2);
+		const scrollY = y ?? Math.round(bounds.height / 2);
+
+		browserView.webContents.sendInputEvent({
+			type: 'mouseWheel',
+			x: scrollX,
+			y: scrollY,
+			deltaX,
+			deltaY,
+			canScroll: true
+		});
+	}
+
+	/**
+	 * Get current viewport dimensions
+	 */
+	getViewportSize(browserViewId: number): { width: number; height: number } | null {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			return null;
+		}
+		const bounds = browserView.getBounds();
+		return { width: bounds.width, height: bounds.height };
+	}
+
 	async executeScript(browserViewId: number, script: string): Promise<any> {
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView || browserView.webContents.isDestroyed()) {
@@ -768,6 +1080,33 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		return browserView.webContents.debugger.isAttached()
 			? `ws://127.0.0.1:9222/devtools/page/${browserViewId}`
 			: '';
+	}
+
+	// ============================================
+	// MCP Browser Request Events
+	// ============================================
+
+	/**
+	 * Request browser to be opened from MCP
+	 * Fires event that renderer listens to and opens the browser editor with proper UI
+	 * This is used by MCP tools (browser_open) when no browser is currently open
+	 *
+	 * @param url - Optional URL to navigate to after browser opens
+	 */
+	requestBrowserOpen(url?: string): void {
+		console.log('[ProjectMode][Main] MCP browser open request', { url });
+		this._onMcpBrowserOpenRequest.fire({ url });
+	}
+
+	/**
+	 * Request browser to be closed from MCP
+	 * Fires event that renderer listens to and closes the editor tab properly
+	 * This triggers the full cleanup chain (stop dev server, destroy browser view, etc.)
+	 * This is the CORRECT way to close the browser - NOT calling destroyBrowserView directly!
+	 */
+	requestBrowserClose(): void {
+		console.log('[ProjectMode][Main] MCP browser close request');
+		this._onMcpBrowserCloseRequest.fire({});
 	}
 
 	// ============================================

@@ -6,7 +6,7 @@
 import { Event } from '../../../../../base/common/event.js';
 import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserKeyEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserKeyEvent, McpBrowserOpenRequestEvent, McpBrowserCloseRequestEvent } from '../../common/projectMode/types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 
 /**
@@ -50,6 +50,18 @@ export class ServiceBridge implements IProjectModeService {
 	 */
 	readonly onBrowserKeyPress: Event<BrowserKeyEvent>;
 
+	/**
+	 * Event fired when MCP requests browser to be opened
+	 * Used by MCP tools (browser_open) when no browser is currently open
+	 */
+	readonly onMcpBrowserOpenRequest: Event<McpBrowserOpenRequestEvent>;
+
+	/**
+	 * Event fired when MCP requests browser to be closed
+	 * Used by MCP tools (browser_close) to trigger proper cleanup via editor tab close
+	 */
+	readonly onMcpBrowserCloseRequest: Event<McpBrowserCloseRequestEvent>;
+
 	constructor(private channel: IChannel) {
 		// Subscribe to events from main process
 		this.onDevToolsClosed = this.channel.listen<DevToolsClosedEvent>('onDevToolsClosed');
@@ -57,6 +69,8 @@ export class ServiceBridge implements IProjectModeService {
 		this.onOpenSourceRequest = this.channel.listen<OpenSourceRequestEvent>('onOpenSourceRequest');
 		this.onBrowserBridgeMessage = this.channel.listen<BrowserBridgeEvent>('onBrowserBridgeMessage');
 		this.onBrowserKeyPress = this.channel.listen<BrowserKeyEvent>('onBrowserKeyPress');
+		this.onMcpBrowserOpenRequest = this.channel.listen<McpBrowserOpenRequestEvent>('onMcpBrowserOpenRequest');
+		this.onMcpBrowserCloseRequest = this.channel.listen<McpBrowserCloseRequestEvent>('onMcpBrowserCloseRequest');
 	}
 
 	// ============================================

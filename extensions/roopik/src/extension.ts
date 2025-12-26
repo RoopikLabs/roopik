@@ -127,16 +127,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	const importComponentCommand = vscode.commands.registerCommand(
 		'roopik.canvas.importComponent',
 		async (request: { path: string; canvasId: string; position?: { x: number; y: number } }) => {
-			const { path: filePath, canvasId, position } = request;
+			const { path: filePath, canvasId } = request;
 
 			logger.info('Extension', `Importing component from ${filePath} to canvas ${canvasId}`);
 
 			try {
-				// Read the file content
-				const fileUri = vscode.Uri.file(filePath);
-				const fileContent = await vscode.workspace.fs.readFile(fileUri);
-				const code = Buffer.from(fileContent).toString('utf-8');
-
 				// Extract filename for component name
 				const fileName = filePath.split(/[\\/]/).pop() || 'Component';
 				const componentName = fileName.replace(/\.[^/.]+$/, '');
@@ -155,15 +150,12 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 
 				// Create component via manager (which calls Core)
+				// With new API, just pass folderPath - Core handles everything else
 				await manager!.createComponent({
+					folderPath: filePath, // Core will smart-parse this (extract folder + entry file)
 					canvasId,
-					name: componentName,
-					sourceData: {
-						type: 'local-file',
-						filePath,
-						files: { [fileName]: code }
-					},
-					position
+					componentName,
+					origin: 'local'
 				});
 
 				logger.info('Extension', `Component ${componentName} import initiated for canvas ${canvasId}`);

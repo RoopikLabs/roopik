@@ -19,7 +19,6 @@ import { StatusPanel } from "../canvasView/components/StatusPanel";
 import { GlobalDeviceToggle } from "../canvasView/components/DeviceToggle";
 import { BottomActionBar } from "../canvasView/components/Toolbar/BottomActionBar";
 import { DeleteConfirmModal } from "../canvasView/components/Toolbar/DeleteConfirmModal";
-import { CodePopup, type CodeFile } from "../canvasView/components/CodePopup";
 import {
 	reorganizeSandboxes,
 	calculateFitAllTransform,
@@ -30,26 +29,6 @@ import {
 } from "../canvasView/services/gridManager";
 import { useFPS } from "../hooks/useFPS";
 import "./ComponentView.css";
-
-// Helper: Get Monaco language from filename
-function getLanguageFromFilename(filename: string): string {
-	const ext = filename.split('.').pop()?.toLowerCase() || '';
-	const languageMap: Record<string, string> = {
-		'tsx': 'typescript',
-		'ts': 'typescript',
-		'jsx': 'javascript',
-		'js': 'javascript',
-		'css': 'css',
-		'scss': 'scss',
-		'less': 'less',
-		'html': 'html',
-		'json': 'json',
-		'md': 'markdown',
-		'vue': 'vue',
-		'svelte': 'svelte',
-	};
-	return languageMap[ext] || 'plaintext';
-}
 
 // VS Code API
 declare const acquireVsCodeApi: () => {
@@ -94,7 +73,6 @@ function App() {
 	const [globalDeviceMode, setGlobalDeviceMode] =
 		useState<DevicePreset>("auto");
 
-
 	// Bottom Action Bar state
 	const [isSelectMode, setIsSelectMode] = useState(false);
 	const [isInspectMode, setIsInspectMode] = useState(false);
@@ -102,25 +80,6 @@ function App() {
 
 	// Grid positioning mode state
 	const [snapMode, setSnapMode] = useState<SnapMode>("free");
-
-	// Code popup state
-	const [codePopupSandboxId, setCodePopupSandboxId] = useState<string | null>(null);
-	const [codePopupName, setCodePopupName] = useState<string | null>(null);
-	const [codePopupFiles, setCodePopupFiles] = useState<CodeFile[]>([]);
-	const [codePopupInitialLine, setCodePopupInitialLine] = useState<number | undefined>(undefined);
-	const [codePopupInitialLineEnd, setCodePopupInitialLineEnd] = useState<number | undefined>(undefined);
-
-	// Pending element selection (stores source location while loading files)
-	const pendingElementSelectionRef = useRef<{
-		componentId: string;
-		sourceLocation: {
-			file: string;
-			startLine: number;
-			startColumn: number;
-			endLine: number;
-			endColumn: number;
-		};
-	} | null>(null);
 
 	// Drag-drop state
 	const [isDragOver, setIsDragOver] = useState(false);
@@ -258,7 +217,7 @@ function App() {
 				case "componentCreated": {
 					// Component created - create sandbox with 'building' status (loading spinner)
 					const { componentId, canvasId, name } = msg.payload;
-					console.log("[Canvas] 🆕 componentCreated received:", {
+					console.log("[Canvas] componentCreated received:", {
 						componentId,
 						canvasId,
 						name,
@@ -342,7 +301,7 @@ function App() {
 					const { componentId, result } = msg.payload;
 					pendingBuildsRef.current.delete(componentId);
 
-					console.log("[Canvas] ✅ componentBuilt received:", {
+					console.log("[Canvas] componentBuilt received:", {
 						componentId,
 						framework: result.framework,
 						bundledCodeLength: result.bundledCode?.length || 0,
@@ -371,7 +330,7 @@ function App() {
 					const { componentId, error, errorInfo } = msg.payload;
 					pendingBuildsRef.current.delete(componentId);
 
-					console.error("[Canvas] ❌ componentError received:", {
+					console.error("[Canvas] componentError received:", {
 						componentId,
 						error,
 						errorInfo,
@@ -487,71 +446,13 @@ function App() {
 
 						// Trigger auto-fit after state update
 						setTimeout(() => {
-							if (
-								!focusedSandboxIdRef.current &&
-								fitAllSandboxesRef.current
-							) {
+							if (!focusedSandboxIdRef.current && fitAllSandboxesRef.current) {
 								fitAllSandboxesRef.current(updated);
 							}
 						}, 350);
 
 						return updated;
 					});
-					break;
-				}
-
-				case "componentFilesLoaded": {
-					// Files loaded for code editor popup
-					const { componentId, componentName, files } = msg.payload;
-					console.log("[Canvas] Component files loaded:", componentId, componentName, files.length, "files");
-
-					// Transform to CodeFile format with language detection
-					const codeFiles: CodeFile[] = files.map((f: { filename: string; content: string; isEntry?: boolean }) => ({
-						filename: f.filename,
-						content: f.content,
-						language: getLanguageFromFilename(f.filename),
-						isEntry: f.isEntry,
-					}));
-
-					// Check for pending element selection (from click-to-source)
-					let initialLine: number | undefined = undefined;
-					let initialLineEnd: number | undefined = undefined;
-					if (pendingElementSelectionRef.current?.componentId === componentId) {
-						const { startLine, endLine } = pendingElementSelectionRef.current.sourceLocation;
-						initialLine = startLine;
-						// Only set end line if it's different from start (multi-line element)
-						if (endLine > startLine) {
-							initialLineEnd = endLine;
-						}
-						console.log("[Canvas] Opening at line", initialLine, "to", initialLineEnd ?? initialLine, "(from element selection)");
-						pendingElementSelectionRef.current = null; // Clear pending
-					}
-
-					setCodePopupFiles(codeFiles);
-					setCodePopupName(componentName || null);
-					setCodePopupInitialLine(initialLine);
-					setCodePopupInitialLineEnd(initialLineEnd);
-					setCodePopupSandboxId(componentId);
-					break;
-				}
-
-				case "componentFileSaved": {
-					// File saved confirmation - file watcher will trigger rebuild
-					const { componentId, filename, success } = msg.payload;
-					console.log("[Canvas] Component file saved:", componentId, filename, success ? "✓" : "✗");
-
-					// If save succeeded, set sandbox to "building" state
-					// The file watcher in Core will detect the change and trigger rebuild
-					// When rebuild completes, componentBuilt message will update to "ready"
-					if (success) {
-						setSandboxes((prev) =>
-							prev.map((s) =>
-								s.id === componentId
-									? { ...s, buildStatus: "building" as const, buildError: undefined }
-									: s
-							)
-						);
-					}
 					break;
 				}
 
@@ -592,7 +493,7 @@ function App() {
 	useEffect(() => {
 		const handleIframeMessage = (event: MessageEvent) => {
 			const data = event.data;
-			if (!data || typeof data !== 'object') return;
+			if (!data || typeof data !== "object") return;
 
 			// Handle element selection from inspect mode
 			if (data.type === 'roopik-element-selected') {
@@ -621,13 +522,20 @@ function App() {
 			}
 
 			// Handle inspect mode ready notification
-			if (data.type === 'roopik-inspect-ready') {
-				console.log('[Canvas] ✓ Inspect mode ready for sandbox:', data.componentId);
+			if (data.type === "roopik-inspect-ready") {
+				console.log(
+					"[Canvas] ✓ Inspect mode ready for sandbox:",
+					data.componentId
+				);
 			}
 
 			// Handle component runtime errors
-			if (data.type === 'roopik-component-error') {
-				console.log('[Canvas] ❌ Runtime error in sandbox:', data.componentId, data.error);
+			if (data.type === "roopik-component-error") {
+				console.log(
+					"[Canvas] Runtime error in sandbox:",
+					data.componentId,
+					data.error
+				);
 			}
 		};
 
@@ -690,9 +598,9 @@ function App() {
 				viewport,
 				DEFAULT_CONFIG,
 				{
-					padding: 40,        // Reduced padding to use more space (was 100)
+					padding: 40, // Reduced padding to use more space (was 100)
 					toolbarHeight: 100, // Space for bottom toolbar
-					maxScale: 1.8,      // Allow zooming in up to 180% for larger previews (was 1.0)
+					maxScale: 1.8, // Allow zooming in up to 180% for larger previews (was 1.0)
 				}
 			);
 			if (newTransform) {
@@ -758,12 +666,7 @@ function App() {
 		}, 300);
 
 		return () => clearTimeout(timer);
-	}, [
-		sandboxCount,
-		sandboxes,
-		focusedSandboxId,
-		fitAllSandboxes,
-	]);
+	}, [sandboxCount, sandboxes, focusedSandboxId, fitAllSandboxes]);
 
 	// Focus on a single sandbox (double-click)
 	// When focused, sandbox expands dynamically to fill most of the viewport
@@ -906,41 +809,8 @@ function App() {
 				return remaining;
 			});
 		},
-		[
-			selectedSandboxId,
-			focusedSandboxId,
-			reorganizeToGrid,
-			fitAllSandboxes,
-		]
+		[selectedSandboxId, focusedSandboxId, reorganizeToGrid, fitAllSandboxes]
 	);
-
-	// Sandbox code view handler - opens Monaco editor popup
-	const handleSandboxShowCode = useCallback((sandboxId: string) => {
-		console.log("[Canvas] Requesting files for code view:", sandboxId);
-		// Request files from extension - will receive componentFilesLoaded message
-		vscode.postMessage({
-			type: "loadComponentFiles",
-			payload: { componentId: sandboxId },
-		});
-	}, []);
-
-	// Close code popup
-	const handleCloseCodePopup = useCallback(() => {
-		setCodePopupSandboxId(null);
-		setCodePopupName(null);
-		setCodePopupFiles([]);
-		setCodePopupInitialLine(undefined);
-		setCodePopupInitialLineEnd(undefined);
-	}, []);
-
-	// Save file from code popup
-	const handleSaveCodeFile = useCallback((sandboxId: string, filename: string, content: string) => {
-		console.log("[Canvas] Saving file:", sandboxId, filename);
-		vscode.postMessage({
-			type: "saveComponentFile",
-			payload: { componentId: sandboxId, filename, content },
-		});
-	}, []);
 
 	// Sandbox rebuild handler (force rebuild bypassing cache)
 	const handleSandboxRebuild = useCallback((sandboxId: string) => {
@@ -960,6 +830,11 @@ function App() {
 			type: "rebuildComponent",
 			payload: { componentId: sandboxId },
 		});
+	}, []);
+
+	// Stub: Open component source files in VS Code editor (coming soon)
+	const handleSandboxShowCode = useCallback((sandboxId: string) => {
+		console.log("[Canvas] Show code for component:", sandboxId, "(coming soon)");
 	}, []);
 
 	// Sandbox update handler
@@ -1065,7 +940,12 @@ function App() {
 			setIsSelectMode(false);
 			setIsRectangleMode(false);
 		}
-		console.log("[ComponentView] Inspect mode toggled to:", newState, "- sandboxes count:", sandboxes.length);
+		console.log(
+			"[ComponentView] Inspect mode toggled to:",
+			newState,
+			"- sandboxes count:",
+			sandboxes.length
+		);
 	}, [isInspectMode, sandboxes.length]);
 
 	const handleRectangleSelection = useCallback(() => {
@@ -1087,7 +967,14 @@ function App() {
 	// ========================================================================
 
 	// Supported file extensions for component import
-	const SUPPORTED_EXTENSIONS = ['.tsx', '.jsx', '.ts', '.js', '.vue', '.svelte'];
+	const SUPPORTED_EXTENSIONS = [
+		".tsx",
+		".jsx",
+		".ts",
+		".js",
+		".vue",
+		".svelte",
+	];
 
 	// Timeout ref for auto-closing drag overlay (safety net)
 	const dragTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1112,17 +999,20 @@ function App() {
 		};
 	}, []);
 
-	const handleDragOver = useCallback((e: React.DragEvent) => {
-		e.preventDefault();
-		e.stopPropagation();
+	const handleDragOver = useCallback(
+		(e: React.DragEvent) => {
+			e.preventDefault();
+			e.stopPropagation();
 
-		// Check if it's a file drag (from OS file manager)
-		if (e.dataTransfer.types.includes('Files')) {
-			e.dataTransfer.dropEffect = 'copy';
-			setIsDragOver(true);
-			resetDragTimeout(); // Keep alive while dragging
-		}
-	}, [resetDragTimeout]);
+			// Check if it's a file drag (from OS file manager)
+			if (e.dataTransfer.types.includes("Files")) {
+				e.dataTransfer.dropEffect = "copy";
+				setIsDragOver(true);
+				resetDragTimeout(); // Keep alive while dragging
+			}
+		},
+		[resetDragTimeout]
+	);
 
 	const handleDragLeave = useCallback((e: React.DragEvent) => {
 		e.preventDefault();
@@ -1163,7 +1053,9 @@ function App() {
 
 		const files = e.dataTransfer.files;
 		if (files.length === 0) {
-			console.log('[DragDrop] No files in drop - might be from VSCode Explorer (not supported)');
+			console.log(
+				"[DragDrop] No files in drop - might be from VSCode Explorer (not supported)"
+			);
 			return;
 		}
 
@@ -1171,17 +1063,17 @@ function App() {
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
 			const fileName = file.name;
-			const ext = '.' + fileName.split('.').pop()?.toLowerCase();
+			const ext = "." + fileName.split(".").pop()?.toLowerCase();
 
 			// Check if file type is supported
 			if (!SUPPORTED_EXTENSIONS.includes(ext)) {
 				console.log(`[DragDrop] Skipping unsupported file: ${fileName}`);
 				vscode.postMessage({
-					type: 'showNotification',
+					type: "showNotification",
 					payload: {
-						level: 'warning',
-						message: `Skipping unsupported file: ${fileName}`
-					}
+						level: "warning",
+						message: `Skipping unsupported file: ${fileName}`,
+					},
 				});
 				continue;
 			}
@@ -1189,19 +1081,21 @@ function App() {
 			try {
 				// Read file content
 				const content = await file.text();
-				const componentName = fileName.replace(/\.[^/.]+$/, ''); // Remove extension
+				const componentName = fileName.replace(/\.[^/.]+$/, ""); // Remove extension
 
-				console.log(`[DragDrop] Importing component: ${componentName} (${fileName})`);
+				console.log(
+					`[DragDrop] Importing component: ${componentName} (${fileName})`
+				);
 
 				// Send to extension for import
 				// Extension will add canvasId and forward to Core
 				vscode.postMessage({
-					type: 'dropComponent',
+					type: "dropComponent",
 					payload: {
 						fileName,
 						content,
-						componentName
-					}
+						componentName,
+					},
 				});
 			} catch (err) {
 				console.error(`[DragDrop] Failed to read file: ${fileName}`, err);
@@ -1223,7 +1117,9 @@ function App() {
 					<div className="drop-zone-content">
 						<div className="drop-zone-icon">📦</div>
 						<div className="drop-zone-text">Drop component file here</div>
-						<div className="drop-zone-hint">.tsx, .jsx, .ts, .js, .vue, .svelte</div>
+						<div className="drop-zone-hint">
+							.tsx, .jsx, .ts, .js, .vue, .svelte
+						</div>
 					</div>
 				</div>
 			)}
@@ -1283,20 +1179,6 @@ function App() {
 				isInspectMode={isInspectMode}
 				isRectangleMode={isRectangleMode}
 			/>
-
-			{/* Code Popup - Monaco editor overlay for viewing/editing component files */}
-			{codePopupSandboxId && (
-				<CodePopup
-					sandboxId={codePopupSandboxId}
-					sandboxName={codePopupName || codePopupSandboxId}
-					files={codePopupFiles}
-					entryFile={codePopupFiles.find(f => f.isEntry)?.filename}
-					initialLine={codePopupInitialLine}
-					initialLineEnd={codePopupInitialLineEnd}
-					onClose={handleCloseCodePopup}
-					onSave={handleSaveCodeFile}
-				/>
-			)}
 
 			{/* Delete confirmation modal (triggered by Delete key) */}
 			{pendingDeleteId && (

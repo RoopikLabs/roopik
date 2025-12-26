@@ -73,4 +73,20 @@ export class ProjectStorageServiceClient implements IProjectStorageService {
 	async deleteProject(projectId: string): Promise<void> {
 		return this.channel.call('deleteProject', projectId);
 	}
+
+	// ========================================================================
+	// Active Project Metadata
+	// ========================================================================
+
+	async setActiveProject(projectId: string, pid: number, port: number, url: string): Promise<void> {
+		return this.channel.call('setActiveProject', { projectId, pid, port, url });
+	}
+
+	async clearActiveProject(): Promise<void> {
+		return this.channel.call('clearActiveProject');
+	}
+
+	async getActiveProject(): Promise<import('../common/storage/storageTypes.js').ActiveProjectMetadata | undefined> {
+		return this.channel.call('getActiveProject');
+	}
 }

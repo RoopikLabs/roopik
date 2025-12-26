@@ -4,14 +4,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as fs from 'fs';
-import * as path from 'path';
+import { dirname } from '../../../../../base/common/path.js';
 import {
-	SourceFiles,
-	ComponentMeta,
 	CanvasInfo,
-	CanvasIndex,
-	ComponentIndex,
-	ComponentIndexEntry,
+	CanvasRegistry,
+	CanvasFile,
+	ComponentReference,
 	WorkspaceConfig,
 	DEFAULT_WORKSPACE_CONFIG,
 	DEFAULT_CANVAS_PREFERENCES,
@@ -26,24 +24,20 @@ import {
 	getCanvasesFolderPath,
 	getCanvasRegistryPath,
 	getCanvasPath,
-	getComponentsFolderPath,
-	getComponentIndexPath,
-	getComponentPath,
-	getComponentMetaPath,
 	getProjectsFolderPath,
 	getProjectRegistryPath
 } from './paths.js';
 
 /**
- * Workspace Storage
+ * Workspace Storage (Metadata-Only Architecture)
  *
  * Handles all file operations in the .roopik/ folder:
  * - config.json: Workspace configuration
- * - canvases/canvases.json: Canvas registry
- * - canvases/{id}/components/: Component source files
- * - canvases/{id}/components/index.json: Component registry
- * - canvases/{id}/components/{id}/meta.json: Component metadata
- * - canvases/{id}/components/{id}/*.tsx, *.css: Source files
+ * - canvases/canvases.json: Canvas registry (lightweight)
+ * - canvases/{canvas-id}.json: Per-canvas file (metadata + component references)
+ *
+ * NO file copying. NO per-component source files. NO index.json or meta.json per component.
+ * Components are stored as REFERENCES (folderPath + entryFile) in canvas files.
  */
 export class WorkspaceStorage {
 	private workspacePath: string = '';
@@ -77,8 +71,8 @@ export class WorkspaceStorage {
 		// Create canvases/canvases.json if it doesn't exist
 		const canvasRegistryPath = getCanvasRegistryPath(workspacePath);
 		if (!await this.fileExists(canvasRegistryPath)) {
-			const emptyIndex: CanvasIndex = { canvases: [] };
-			await this.writeJson(canvasRegistryPath, emptyIndex);
+			const emptyRegistry: CanvasRegistry = { canvases: [] };
+			await this.writeJson(canvasRegistryPath, emptyRegistry);
 		}
 
 		this.initialized = true;
@@ -131,347 +125,306 @@ export class WorkspaceStorage {
 	}
 
 	// ========================================================================
-	// Canvas Operations
+	// Canvas Registry (Lightweight)
 	// ========================================================================
 
 	/**
+	 * Load canvas registry (.roopik/canvases.json)
+	 * Just lists all canvases, not their contents
+	 */
+	private async getCanvasRegistry(): Promise<CanvasRegistry> {
+		const registryPath = getCanvasRegistryPath(this.workspacePath);
+		try {
+			return await this.readJson<CanvasRegistry>(registryPath);
+		} catch {
+			return { canvases: [] };
+		}
+	}
+
+	/**
 	 * Create a new canvas
+	 * Creates the canvas file with empty components and default preferences
 	 */
 	async createCanvas(id: string, name: string): Promise<void> {
 		this.ensureInitialized();
 
-		// Create canvas folder
-		const canvasPath = getCanvasPath(this.workspacePath, id);
-		await this.ensureDir(canvasPath);
-
-		// Create components folder
-		const componentsPath = getComponentsFolderPath(this.workspacePath, id);
-		await this.ensureDir(componentsPath);
-
-		// Create components/index.json with default preferences
-		const componentIndexPath = getComponentIndexPath(this.workspacePath, id);
-		const emptyIndex: ComponentIndex = {
-			components: {},
-			preferences: { ...DEFAULT_CANVAS_PREFERENCES }
-		};
-		await this.writeJson(componentIndexPath, emptyIndex);
-
-		// Update canvas registry
-		const canvasIndex = await this.getCanvasIndex();
+		// Create canvas file (.roopik/canvases/{id}.json)
 		const now = Date.now();
+		const canvasFile: CanvasFile = {
+			id,
+			name,
+			createdAt: now,
+			updatedAt: now,
+			preferences: { ...DEFAULT_CANVAS_PREFERENCES },
+			components: {}
+		};
+
+		const canvasFilePath = getCanvasPath(this.workspacePath, id);
+		await this.writeJson(canvasFilePath, canvasFile);
+
+		// Update registry
+		const registry = await this.getCanvasRegistry();
 		const canvasInfo: CanvasInfo = {
 			id,
 			name,
 			createdAt: now,
 			updatedAt: now
 		};
-		canvasIndex.canvases.push(canvasInfo);
-		await this.writeJson(getCanvasRegistryPath(this.workspacePath), canvasIndex);
+		registry.canvases.push(canvasInfo);
+		await this.writeJson(getCanvasRegistryPath(this.workspacePath), registry);
 	}
 
 	/**
-	 * Get all canvases
+	 * Get all canvases from registry (lightweight list)
 	 */
 	async getCanvases(): Promise<CanvasInfo[]> {
 		this.ensureInitialized();
 
-		const canvasIndex = await this.getCanvasIndex();
-		return canvasIndex.canvases;
+		const registry = await this.getCanvasRegistry();
+		return registry.canvases;
 	}
 
 	/**
-	 * Delete a canvas and all its contents
+	 * Load full canvas file (.roopik/canvases/{canvas-id}.json)
+	 * Returns null if canvas doesn't exist
+	 */
+	async loadCanvasFile(canvasId: string): Promise<CanvasFile | null> {
+		this.ensureInitialized();
+
+		const canvasFilePath = getCanvasPath(this.workspacePath, canvasId);
+
+		try {
+			return await this.readJson<CanvasFile>(canvasFilePath);
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * Save full canvas file (.roopik/canvases/{canvas-id}.json)
+	 * Also updates the registry (updatedAt timestamp)
+	 */
+	async saveCanvasFile(canvasFile: CanvasFile): Promise<void> {
+		this.ensureInitialized();
+
+		// Save canvas file directly
+		const canvasFilePath = getCanvasPath(this.workspacePath, canvasFile.id);
+		await this.writeJson(canvasFilePath, canvasFile);
+
+		// Update registry timestamp
+		const registry = await this.getCanvasRegistry();
+		const entry = registry.canvases.find(c => c.id === canvasFile.id);
+		if (entry) {
+			entry.updatedAt = canvasFile.updatedAt;
+			await this.writeJson(getCanvasRegistryPath(this.workspacePath), registry);
+		}
+	}
+
+	/**
+	 * Delete a canvas and its file
 	 */
 	async deleteCanvas(canvasId: string): Promise<void> {
 		this.ensureInitialized();
 
-		// Delete canvas folder recursively
-		const canvasPath = getCanvasPath(this.workspacePath, canvasId);
-		await this.removeDir(canvasPath);
-
-		// Update canvas registry
-		const canvasIndex = await this.getCanvasIndex();
-		canvasIndex.canvases = canvasIndex.canvases.filter(c => c.id !== canvasId);
-		await this.writeJson(getCanvasRegistryPath(this.workspacePath), canvasIndex);
-	}
-
-	/**
-	 * Update a canvas entry in the registry (canvases.json)
-	 * Used when canvas name changes or any canvas update occurs
-	 * Always updates the updatedAt timestamp
-	 */
-	async updateCanvasInRegistry(canvasId: string, updates: Partial<CanvasInfo>): Promise<void> {
-		this.ensureInitialized();
-
-
-		const canvasIndex = await this.getCanvasIndex();
-		const canvasEntry = canvasIndex.canvases.find(c => c.id === canvasId);
-
-		if (canvasEntry) {
-			// Update the entry with new values
-			if (updates.name !== undefined) {
-				canvasEntry.name = updates.name;
-			}
-			// Always update the updatedAt timestamp when any update occurs
-			canvasEntry.updatedAt = Date.now();
-
-			await this.writeJson(getCanvasRegistryPath(this.workspacePath), canvasIndex);
+		// Delete canvas file
+		const canvasFilePath = getCanvasPath(this.workspacePath, canvasId);
+		try {
+			await fs.promises.unlink(canvasFilePath);
+		} catch {
+			// Ignore if already deleted
 		}
+
+		// Update registry
+		const registry = await this.getCanvasRegistry();
+		registry.canvases = registry.canvases.filter(c => c.id !== canvasId);
+		await this.writeJson(getCanvasRegistryPath(this.workspacePath), registry);
 	}
 
 	/**
-	 * List all canvas IDs from the canvas registry (canvases.json)
+	 * Get the active canvas ID from registry
+	 */
+	async getActiveCanvasId(): Promise<string | null> {
+		this.ensureInitialized();
+		const registry = await this.getCanvasRegistry();
+		return registry.activeCanvasId ?? null;
+	}
+
+	/**
+	 * Set the active canvas ID in registry
+	 */
+	async setActiveCanvasId(canvasId: string | null): Promise<void> {
+		this.ensureInitialized();
+		const registry = await this.getCanvasRegistry();
+		registry.activeCanvasId = canvasId;
+		const registryPath = getCanvasRegistryPath(this.workspacePath);
+		await this.writeJson(registryPath, registry);
+	}
+
+	/**
+	 * List all canvas IDs
 	 */
 	async listCanvases(): Promise<string[]> {
 		this.ensureInitialized();
 
-		const canvasIndex = await this.getCanvasIndex();
-		const canvasIds = canvasIndex.canvases.map(c => c.id);
-		return canvasIds;
+		const registry = await this.getCanvasRegistry();
+		return registry.canvases.map(c => c.id);
 	}
 
 	/**
-	 * Load canvas metadata from meta.json
+	 * Load canvas metadata
+	 * Returns the canvas metadata (name, preferences, etc.) from the canvas file
 	 */
 	async loadCanvasMeta(canvasId: string): Promise<CanvasMeta | null> {
 		this.ensureInitialized();
 
-		const canvasPath = getCanvasPath(this.workspacePath, canvasId);
-		const metaPath = path.join(canvasPath, 'meta.json');
-
-		try {
-			const meta = await this.readJson<CanvasMeta>(metaPath);
-			return meta;
-		} catch (err) {
-			// If meta.json doesn't exist, try to construct from canvas index
-			const canvasIndex = await this.getCanvasIndex();
-			const info = canvasIndex.canvases.find(c => c.id === canvasId);
-			if (info) {
-				// Create a minimal CanvasMeta from CanvasInfo
-				const meta: CanvasMeta = {
-					id: info.id,
-					name: info.name,
-					createdAt: info.createdAt,
-					updatedAt: info.updatedAt || info.createdAt,
-					componentCount: 0
-				};
-				// Save it for future use
-				await this.saveCanvasMeta(canvasId, meta);
-				return meta;
-			}
+		const canvasFile = await this.loadCanvasFile(canvasId);
+		if (!canvasFile) {
 			return null;
 		}
+
+		return {
+			id: canvasFile.id,
+			name: canvasFile.name,
+			createdAt: canvasFile.createdAt,
+			updatedAt: canvasFile.updatedAt,
+			componentCount: Object.keys(canvasFile.components).length
+		};
 	}
 
 	/**
-	 * Save canvas metadata to meta.json
-	 * Also updates the canvas registry (canvases.json) to keep name in sync
+	 * Save canvas metadata
+	 * Updates the canvas file with new metadata (name, preferences, etc.)
 	 */
 	async saveCanvasMeta(canvasId: string, meta: CanvasMeta): Promise<void> {
 		this.ensureInitialized();
 
-		const canvasPath = getCanvasPath(this.workspacePath, canvasId);
-		await this.ensureDir(canvasPath);
+		const canvasFile = await this.loadCanvasFile(canvasId);
+		if (!canvasFile) {
+			throw new Error(`Canvas ${canvasId} not found`);
+		}
 
-		const metaPath = path.join(canvasPath, 'meta.json');
-		await this.writeJson(metaPath, meta);
+		// Update metadata fields
+		canvasFile.name = meta.name;
+		canvasFile.updatedAt = Date.now();
 
-		// Also update the canvas registry to keep names in sync
-		await this.updateCanvasInRegistry(canvasId, { name: meta.name });
+		await this.saveCanvasFile(canvasFile);
 	}
+
+
 
 	// ========================================================================
-	// Component Source Operations
+	// Component Reference Operations (Metadata-Only)
 	// ========================================================================
 
 	/**
-	 * Save component source files
+	 * Add component reference to canvas
+	 *
+	 * Stores a REFERENCE to component's original location, not a copy!
+	 * folderPath + entryFile point to the original source.
 	 */
-	async saveComponentSource(
+	async addComponentReference(
 		canvasId: string,
 		componentId: string,
-		files: SourceFiles
-	): Promise<string> {
-		this.ensureInitialized();
-
-		// Ensure component folder exists
-		const componentPath = getComponentPath(this.workspacePath, canvasId, componentId);
-		await this.ensureDir(componentPath);
-
-		// Write each file
-		for (const [filename, content] of Object.entries(files)) {
-			const filePath = path.join(componentPath, filename);
-			await this.writeFile(filePath, content);
-		}
-
-		return componentPath;
-	}
-
-	/**
-	 * Load component source files
-	 */
-	async loadComponentSource(
-		canvasId: string,
-		componentId: string
-	): Promise<SourceFiles> {
-		this.ensureInitialized();
-
-		const componentPath = getComponentPath(this.workspacePath, canvasId, componentId);
-
-		// Check if folder exists
-		if (!await this.dirExists(componentPath)) {
-			return {};
-		}
-
-		// Read all files in the folder (except meta.json)
-		const files: SourceFiles = {};
-		const entries = await fs.promises.readdir(componentPath, { withFileTypes: true });
-
-		for (const entry of entries) {
-			if (entry.isFile() && entry.name !== 'meta.json') {
-				const filePath = path.join(componentPath, entry.name);
-				const content = await this.readFile(filePath);
-				files[entry.name] = content;
-			}
-		}
-
-		return files;
-	}
-
-	/**
-	 * Save component metadata
-	 */
-	async saveComponentMeta(
-		canvasId: string,
-		componentId: string,
-		meta: ComponentMeta
+		reference: ComponentReference
 	): Promise<void> {
 		this.ensureInitialized();
 
-		const metaPath = getComponentMetaPath(this.workspacePath, canvasId, componentId);
-		await this.writeJson(metaPath, meta);
+		const canvasFile = await this.loadCanvasFile(canvasId);
+		if (!canvasFile) {
+			throw new Error(`Canvas ${canvasId} not found`);
+		}
+
+		// Add reference to canvas
+		canvasFile.components[componentId] = reference;
+		canvasFile.updatedAt = Date.now();
+
+		// Save canvas file
+		await this.saveCanvasFile(canvasFile);
+		console.log(`[WorkspaceStorage] Added component ${componentId} to canvas ${canvasId}`);
 	}
 
 	/**
-	 * Load component metadata
+	 * Remove component reference from canvas
 	 */
-	async loadComponentMeta(
-		canvasId: string,
-		componentId: string
-	): Promise<ComponentMeta | null> {
+	async removeComponentReference(canvasId: string, componentId: string): Promise<void> {
 		this.ensureInitialized();
 
-		const metaPath = getComponentMetaPath(this.workspacePath, canvasId, componentId);
-		try {
-			return await this.readJson<ComponentMeta>(metaPath);
-		} catch {
-			return null;
+		const canvasFile = await this.loadCanvasFile(canvasId);
+		if (!canvasFile) {
+			throw new Error(`Canvas ${canvasId} not found`);
 		}
+
+		// Remove reference from canvas
+		delete canvasFile.components[componentId];
+		canvasFile.updatedAt = Date.now();
+
+		// Save canvas file
+		await this.saveCanvasFile(canvasFile);
+		console.log(`[WorkspaceStorage] Removed component ${componentId} from canvas ${canvasId}`);
 	}
 
 	/**
-	 * Delete a component
+	 * Get component reference from canvas
+	 */
+	async getComponentReference(canvasId: string, componentId: string): Promise<ComponentReference | null> {
+		const canvasFile = await this.loadCanvasFile(canvasId);
+		if (!canvasFile) {
+			return null;
+		}
+
+		return canvasFile.components[componentId] ?? null;
+	}
+
+	/**
+	 * List all components in a canvas
+	 */
+	async listCanvasComponents(canvasId: string): Promise<Array<{ id: string; reference: ComponentReference }>> {
+		const canvasFile = await this.loadCanvasFile(canvasId);
+		if (!canvasFile) {
+			return [];
+		}
+
+		return Object.entries(canvasFile.components).map(([id, reference]) => ({ id, reference }));
+	}
+
+	/**
+	 * Update component reference (e.g., after build, update buildState/contentHash)
+	 */
+	async updateComponentReference(
+		canvasId: string,
+		componentId: string,
+		updates: Partial<ComponentReference>
+	): Promise<void> {
+		this.ensureInitialized();
+
+		const canvasFile = await this.loadCanvasFile(canvasId);
+		if (!canvasFile) {
+			throw new Error(`Canvas ${canvasId} not found`);
+		}
+
+		const reference = canvasFile.components[componentId];
+		if (!reference) {
+			throw new Error(`Component ${componentId} not found in canvas ${canvasId}`);
+		}
+
+		// Update fields
+		Object.assign(reference, updates);
+		reference.updatedAt = Date.now();
+		canvasFile.updatedAt = Date.now();
+
+		// Save canvas file
+		await this.saveCanvasFile(canvasFile);
+	}
+
+	/**
+	 * Delete component from canvas
+	 * Removes the component reference from the canvas file
 	 */
 	async deleteComponent(canvasId: string, componentId: string): Promise<void> {
 		this.ensureInitialized();
 
-		// Delete component folder
-		const componentPath = getComponentPath(this.workspacePath, canvasId, componentId);
-		await this.removeDir(componentPath);
-	}
-
-	// ========================================================================
-	// Component Index Operations
-	// ========================================================================
-
-	/**
-	 * Get component index for a canvas
-	 * Ensures preferences field exists (backwards compatibility)
-	 */
-	async getComponentIndex(canvasId: string): Promise<ComponentIndex> {
-		this.ensureInitialized();
-
-		const indexPath = getComponentIndexPath(this.workspacePath, canvasId);
-		try {
-			const index = await this.readJson<ComponentIndex>(indexPath);
-			// Ensure preferences exists (backwards compatibility for existing canvases)
-			if (!index.preferences) {
-				index.preferences = { ...DEFAULT_CANVAS_PREFERENCES };
-			}
-			return index;
-		} catch {
-			return { components: {}, preferences: { ...DEFAULT_CANVAS_PREFERENCES } };
-		}
-	}
-
-	/**
-	 * Update a component in the index
-	 */
-	async updateComponentIndex(
-		canvasId: string,
-		componentId: string,
-		entry: ComponentIndexEntry
-	): Promise<void> {
-		this.ensureInitialized();
-
-		const index = await this.getComponentIndex(canvasId);
-		index.components[componentId] = entry;
-
-		const indexPath = getComponentIndexPath(this.workspacePath, canvasId);
-		await this.writeJson(indexPath, index);
-	}
-
-	/**
-	 * Remove a component from the index
-	 */
-	async removeFromComponentIndex(canvasId: string, componentId: string): Promise<void> {
-		this.ensureInitialized();
-
-		const index = await this.getComponentIndex(canvasId);
-		delete index.components[componentId];
-
-		const indexPath = getComponentIndexPath(this.workspacePath, canvasId);
-		await this.writeJson(indexPath, index);
-	}
-
-	/**
-	 * Update component positions in bulk
-	 * More efficient than updating each component individually
-	 */
-	async updateComponentPositions(
-		canvasId: string,
-		positions: Array<{ componentId: string; x: number; y: number; zIndex: number }>
-	): Promise<void> {
-		this.ensureInitialized();
-
-		const index = await this.getComponentIndex(canvasId);
-		let changed = false;
-
-		for (const pos of positions) {
-			const entry = index.components[pos.componentId];
-			if (entry) {
-				const currentPos = entry.sandboxPosition;
-				// Only update if position actually changed
-				if (!currentPos ||
-					currentPos.x !== pos.x ||
-					currentPos.y !== pos.y ||
-					currentPos.zIndex !== pos.zIndex) {
-					entry.sandboxPosition = {
-						x: pos.x,
-						y: pos.y,
-						zIndex: pos.zIndex
-					};
-					changed = true;
-				}
-			}
-		}
-
-		// Only write if something changed
-		if (changed) {
-			const indexPath = getComponentIndexPath(this.workspacePath, canvasId);
-			await this.writeJson(indexPath, index);
-			console.log('[WorkspaceStorage] Updated component positions for canvas:', canvasId);
-		}
+		// Simply remove the component reference from canvas
+		await this.removeComponentReference(canvasId, componentId);
 	}
 
 	// ========================================================================
@@ -526,10 +479,13 @@ export class WorkspaceStorage {
 
 		const index = await this.getProjectIndex();
 		const now = Date.now();
+		// Normalize to forward slashes for storage
 		const normalizedPath = projectPath.replace(/\\/g, '/');
+		// Lowercase for case-insensitive comparison on Windows
+		const pathForComparison = normalizedPath.toLowerCase();
 
-		// Check if project with same path already exists
-		const existing = index.projects.find(p => p.path.replace(/\\/g, '/') === normalizedPath);
+		// Check if project with same path already exists (case-insensitive on Windows)
+		const existing = index.projects.find(p => p.path.replace(/\\/g, '/').toLowerCase() === pathForComparison);
 
 		if (existing) {
 			// Update existing - touch updatedAt and update framework if provided
@@ -546,11 +502,11 @@ export class WorkspaceStorage {
 		}
 
 		// Create new project
-		const projectId = this.generateProjectId();
+		const projectId = this.generateProjectId(name);
 		index.projects.push({
 			id: projectId,
 			name,
-			path: normalizedPath,
+			path: normalizedPath, // Store with original case, just normalized slashes
 			updatedAt: now,
 			framework,
 			frameworkDisplayName
@@ -571,13 +527,66 @@ export class WorkspaceStorage {
 		await this.writeJson(getProjectRegistryPath(this.workspacePath), index);
 	}
 
+	// ========================================================================
+	// Active Project Metadata
+	// ========================================================================
+
 	/**
-	 * Generate a unique project ID
+	 * Set active dev server metadata (called when server starts)
 	 */
-	private generateProjectId(): string {
-		const timestamp = Date.now().toString(36);
-		const random = Math.random().toString(36).substring(2, 8);
-		return `proj_${timestamp}_${random}`;
+	async setActiveProject(projectId: string, pid: number, port: number, url: string): Promise<void> {
+		this.ensureInitialized();
+
+		const index = await this.getProjectIndex();
+		index.activeProject = {
+			projectId,
+			pid,
+			port,
+			url,
+			startedAt: Date.now()
+		};
+		await this.writeJson(getProjectRegistryPath(this.workspacePath), index);
+	}
+
+	/**
+	 * Clear active project metadata (called when server stops)
+	 */
+	async clearActiveProject(): Promise<void> {
+		this.ensureInitialized();
+
+		const index = await this.getProjectIndex();
+		delete index.activeProject;
+		await this.writeJson(getProjectRegistryPath(this.workspacePath), index);
+	}
+
+	/**
+	 * Get active project metadata (returns undefined if no server running)
+	 */
+	async getActiveProject(): Promise<import('../../common/storage/storageTypes.js').ActiveProjectMetadata | undefined> {
+		const index = await this.getProjectIndex();
+		return index.activeProject;
+	}
+
+	// ========================================================================
+	// Project ID Generator
+	// ========================================================================
+
+	/**
+	 * Generate a unique project ID based on project name
+	 * Format: proj_{sanitized-name}_{random}
+	 * Example: proj_vue-taskflow_k0
+	 */
+	private generateProjectId(projectName: string): string {
+		// Sanitize: lowercase, replace spaces/special chars with hyphens
+		const sanitized = projectName
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-')  // Replace non-alphanumeric with hyphens
+			.replace(/^-+|-+$/g, '')       // Remove leading/trailing hyphens
+			.substring(0, 50);              // Limit length to 50 chars
+
+		// Add 2-char random suffix for uniqueness
+		const random = Math.random().toString(36).substring(2, 4);  // 2 chars
+		return `proj_${sanitized}_${random}`;
 	}
 
 	// ========================================================================
@@ -590,28 +599,8 @@ export class WorkspaceStorage {
 		}
 	}
 
-	private async getCanvasIndex(): Promise<CanvasIndex> {
-		const registryPath = getCanvasRegistryPath(this.workspacePath);
-		try {
-			const content = await this.readFile(registryPath);
-			const index = JSON.parse(content) as CanvasIndex;
-			return index;
-		} catch (err) {
-			console.error('[WorkspaceStorage] Failed to read canvases.json:', err);
-			return { canvases: [] };
-		}
-	}
-
 	private async ensureDir(dirPath: string): Promise<void> {
 		await fs.promises.mkdir(dirPath, { recursive: true });
-	}
-
-	private async removeDir(dirPath: string): Promise<void> {
-		try {
-			await fs.promises.rm(dirPath, { recursive: true, force: true });
-		} catch {
-			// Ignore if already deleted
-		}
 	}
 
 	private async fileExists(filePath: string): Promise<boolean> {
@@ -623,22 +612,13 @@ export class WorkspaceStorage {
 		}
 	}
 
-	private async dirExists(dirPath: string): Promise<boolean> {
-		try {
-			const stat = await fs.promises.stat(dirPath);
-			return stat.isDirectory();
-		} catch {
-			return false;
-		}
-	}
-
 	private async readFile(filePath: string): Promise<string> {
 		return fs.promises.readFile(filePath, 'utf-8');
 	}
 
 	private async writeFile(filePath: string, content: string): Promise<void> {
 		// Ensure parent directory exists
-		await this.ensureDir(path.dirname(filePath));
+		await this.ensureDir(dirname(filePath));
 		await fs.promises.writeFile(filePath, content, 'utf-8');
 	}
 

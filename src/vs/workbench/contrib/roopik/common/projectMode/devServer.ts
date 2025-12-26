@@ -44,6 +44,7 @@ export interface DevServerStatusEvent {
 	url?: string;
 	port?: number;
 	framework?: Framework;
+	frameworkDisplayName?: string;
 	error?: string;
 }
 
@@ -74,6 +75,7 @@ export interface DevServerInfo {
 	state: DevServerState;
 	url?: string;
 	port?: number;
+	pid?: number; // Process ID for orphaned process cleanup
 	framework?: Framework;
 	frameworkDisplayName?: string;
 	supportsClickToSource?: boolean;

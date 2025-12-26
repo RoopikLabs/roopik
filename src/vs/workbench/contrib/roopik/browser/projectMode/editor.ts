@@ -9,7 +9,7 @@ import { IThemeService } from '../../../../../platform/theme/common/themeService
 import { IStorageService } from '../../../../../platform/storage/common/storage.js';
 import { EditorTabInput } from './editorTabInput.js';
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
-import { Dimension } from '../../../../../base/browser/dom.js';
+import * as DOM from '../../../../../base/browser/dom.js';
 import { IEditorOpenContext } from '../../../../common/editor.js';
 import { RoopikLogger } from '../../common/roopikLogger.js';
 import { ILoggerService, ILogger } from '../../../../../platform/log/common/log.js';
@@ -29,6 +29,7 @@ import { IQuickInputService } from '../../../../../platform/quickinput/common/qu
 import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
+import { Dimension } from '../../../../../base/browser/dom.js';
 // Features (extracted to features/ folder)
 import { InspectMode } from './features/inspectMode.js';
 import { Bookmarks } from './features/bookmarks.js';
@@ -198,8 +199,8 @@ export class Editor extends EditorPane {
 	 * Subscribe to events from the central event bus for UI updates
 	 * This demonstrates the event-driven architecture where:
 	 * 1. IPC event comes from main process
-	 * 2. We publish to EventService (📤 PUBLISH)
-	 * 3. Subscribers receive and update UI (📥 RECEIVED)
+	 * 2. We publish to EventService (PUBLISH)
+	 * 3. Subscribers receive and update UI (RECEIVED)
 	 */
 	private setupEventSubscriptions(): void {
 		// Subscribe to navigation events - update URL bar
@@ -691,28 +692,16 @@ export class Editor extends EditorPane {
 	 * Open project folder picker
 	 */
 	private async openProjectPicker(): Promise<void> {
-		// Use VSCode's quick pick to select from open workspaces
-		// or show folder picker dialog
-		const items = [
-			{ label: '$(folder) Select Folder...', description: 'Choose a project folder to preview' }
-		];
-
-		const selected = await this.quickInputService.pick(items, {
-			placeHolder: 'Select a project to preview',
-			canPickMany: false
+		// Show native folder picker directly
+		const result = await this.nativeHostService.showOpenDialog({
+			title: 'Select Project Folder',
+			properties: ['openDirectory'],
+			buttonLabel: 'Open Project'
 		});
 
-		if (selected && selected.label.includes('Select Folder')) {
-			// Show native folder picker
-			const result = await this.nativeHostService.showOpenDialog({
-				title: 'Select Project Folder',
-				properties: ['openDirectory']
-			});
-
-			if (result && !result.canceled && result.filePaths.length > 0) {
-				const projectPath = result.filePaths[0];
-				await this.startProjectPreview(projectPath);
-			}
+		if (result && !result.canceled && result.filePaths.length > 0) {
+			const projectPath = result.filePaths[0];
+			await this.startProjectPreview(projectPath);
 		}
 	}
 
@@ -749,8 +738,8 @@ export class Editor extends EditorPane {
 		// Immediate update (may get wrong bounds if layout not complete)
 		this.updateViewBounds();
 
-		// Use requestAnimationFrame to wait for next paint
-		requestAnimationFrame(() => {
+		// Use DOM.scheduleAtNextAnimationFrame to wait for next paint
+		DOM.scheduleAtNextAnimationFrame(DOM.getWindow(this.browserContainer), () => {
 			this.updateViewBounds();
 
 			// Additional delayed updates to catch late layout changes
@@ -1099,6 +1088,29 @@ export class Editor extends EditorPane {
 	// Navigation
 	// ============================================
 
+	/**
+	 * Public method to navigate to a URL with project context
+	 * Called by roopik.startProject command after dev server starts
+	 * @param url - The URL to navigate to (e.g., http://localhost:5173)
+	 * @param projectRoot - The project root path (for state tracking)
+	 */
+	public async navigateToUrl(url: string, projectRoot?: string): Promise<void> {
+		// Ensure browser view is initialized
+		if (!this.browserViewId) {
+			this.logger.info('[ProjectMode] Browser view not ready, initializing...');
+			await this.initializeBrowserView();
+		}
+
+		// Update project state if projectRoot provided
+		if (projectRoot) {
+			this.isProjectMode = true;
+			this.currentProjectRoot = projectRoot;
+		}
+
+		// Navigate to the URL
+		await this.navigate(url);
+	}
+
 	private async navigate(url: string): Promise<void> {
 		if (!url) {
 			this.logger.warn('[ProjectMode] Navigation aborted: No URL provided');
@@ -1292,16 +1304,30 @@ export class Editor extends EditorPane {
 	/**
 	 * Stop Dev Server
 	 * Stops the Vite dev server for the current project
+	 * Queries electron-main for running server (survives IDE reload)
 	 */
 	private async stopDevServer(): Promise<void> {
-		if (!this.currentProjectRoot) {
-			this.logger.warn('[ProjectMode] No project to stop');
-			return;
-		}
-
 		try {
-			await this.devServerService.stopServer(this.currentProjectRoot);
-			this.isProjectMode = false;
+			// Check electron-main for actually running server (not browser state)
+			const runningServer = await this.devServerService.getRunningServer();
+
+			if (!runningServer) {
+				this.logger.warn('[ProjectMode] No project to stop');
+				this.notificationService.notify({
+					severity: Severity.Warning,
+					message: 'No dev server is running',
+					sticky: false
+				});
+				return;
+			}
+
+			// Stop the server using the actual projectRoot from electron-main
+			await this.devServerService.stopServer(runningServer.projectRoot);
+
+			// Clear active project metadata (fire-and-forget - don't block stop operation!)
+			this.projectStorageService.clearActiveProject()
+				.then(() => this.logger.info('[ProjectMode] Active project metadata cleared'))
+				.catch((err) => this.logger.warn('[ProjectMode] Failed to clear active project metadata (non-fatal):', err));
 			this.currentProjectRoot = undefined;
 
 			// Show home screen after stopping server (don't navigate to about:blank)
@@ -1411,18 +1437,8 @@ export class Editor extends EditorPane {
 			this.isProjectMode = true;
 			this.currentProjectRoot = projectRoot;
 
-			// Save to recent projects storage (project started successfully = valid path)
-			// Extract project name from the path (folder name)
-			const projectName = projectRoot.split(/[/\\]/).pop() || 'Project';
-
-			// Get server info to capture framework (optional - don't block on this)
-			this.devServerService.getServerInfo(projectRoot).then((serverInfo) => {
-				const framework = serverInfo?.framework;
-				const frameworkDisplayName = serverInfo?.frameworkDisplayName;
-				return this.projectStorageService.upsertProject(projectName, projectRoot, framework, frameworkDisplayName);
-			}).catch((err) => {
-				this.logger.warn('[ProjectMode] Failed to save project to recent projects:', err);
-			});
+			// NOTE: Project saving is handled by RoopikProjectModeContribution
+			// when it receives the onStatusChanged event (unified flow for all entry points)
 
 			// Small delay to ensure Vite server is fully ready to accept connections
 			// The server reports READY when listening starts, but it may take a few ms
