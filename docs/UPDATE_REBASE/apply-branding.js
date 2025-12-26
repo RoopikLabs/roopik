@@ -451,6 +451,87 @@ function updateEslintConfig() {
 	let updatedContent = content;
 	let didUpdate = false;
 
+	// ROOPIK CUSTOM LIBRARIES - Ensure these 4 are always in hasNode allow list
+	const roopikLibraries = [
+		"'@modelcontextprotocol/sdk'",
+		"'@modelcontextprotocol/sdk/server/mcp.js'",
+		"'@modelcontextprotocol/sdk/server/sse.js'",
+		"'zod'"
+	];
+
+	// Find the hasNode section
+	const hasNodeMarker = "'when': 'hasNode'";
+	const hasNodeIndex = updatedContent.indexOf(hasNodeMarker);
+
+	if (hasNodeIndex !== -1) {
+		// Find the 'allow': [ after hasNode
+		const allowMarkerStart = updatedContent.indexOf("'allow': [", hasNodeIndex);
+		if (allowMarkerStart !== -1) {
+			const allowArrayStart = allowMarkerStart + "'allow': [".length;
+			const allowArrayEnd = updatedContent.indexOf(']', allowArrayStart);
+
+			if (allowArrayEnd !== -1) {
+				const allowArrayContent = updatedContent.substring(allowArrayStart, allowArrayEnd);
+				let updatedAllowArray = allowArrayContent;
+				let addedLibraries = [];
+
+				// Check and add each Roopik library
+				for (const lib of roopikLibraries) {
+					if (!updatedAllowArray.includes(lib)) {
+						// Find insertion point - after existing MCP entries or at start
+						const lastMcpIndex = updatedAllowArray.lastIndexOf("'@modelcontextprotocol");
+						let insertionPoint;
+
+						if (lastMcpIndex !== -1) {
+							// Find end of that line
+							insertionPoint = updatedAllowArray.indexOf('\n', lastMcpIndex);
+							if (insertionPoint === -1) {
+								insertionPoint = updatedAllowArray.indexOf(',', lastMcpIndex);
+								if (insertionPoint === -1) {
+									insertionPoint = updatedAllowArray.length;
+								}
+							}
+						} else {
+							// No MCP entries, insert near beginning after initial newline
+							insertionPoint = updatedAllowArray.indexOf('\n');
+							if (insertionPoint === -1) {
+								insertionPoint = 0;
+							}
+						}
+
+						// Build insertion string with proper indentation
+						const precedingText = updatedAllowArray.substring(0, insertionPoint);
+						const lastNewlineIndex = precedingText.lastIndexOf('\n');
+						const indentation = lastNewlineIndex !== -1
+							? precedingText.substring(lastNewlineIndex + 1).match(/^\s*/)[0]
+							: '';
+
+						const insertionString = `\n${indentation}${lib},`;
+						updatedAllowArray = updatedAllowArray.substring(0, insertionPoint) + insertionString + updatedAllowArray.substring(insertionPoint);
+						addedLibraries.push(lib);
+					}
+				}
+
+				if (addedLibraries.length > 0) {
+					// Replace the allow array in the content
+					updatedContent = updatedContent.substring(0, allowArrayStart) +
+						updatedAllowArray +
+						updatedContent.substring(allowArrayEnd);
+					didUpdate = true;
+					success(`eslint.config.js - Added ${addedLibraries.length} Roopik library exception(s) to hasNode allow list`);
+				} else {
+					success('eslint.config.js - All Roopik libraries already in hasNode allow list');
+				}
+			} else {
+				warning('eslint.config.js - Could not find closing bracket for allow array');
+			}
+		} else {
+			warning('eslint.config.js - Could not find allow array in hasNode section');
+		}
+	} else {
+		warning('eslint.config.js - Could not find hasNode section');
+	}
+
 	// 1) Ensure Roopik extension header override exists
 	if (updatedContent.includes('// ROOPIK: Override header rule for roopik extension')) {
 		success('eslint.config.js - Override block already exists');
@@ -460,7 +541,7 @@ function updateEslintConfig() {
 		const closingPattern = /\n\);\s*$/;
 		if (!closingPattern.test(updatedContent)) {
 			warning('eslint.config.js - Could not find closing ); anchor point');
-			return { updated: false, errors: 0 };
+			return { updated: didUpdate, errors: 0 };
 		}
 
 		// Insert the Roopik block before the final );
@@ -546,11 +627,11 @@ function updateGulpfileExtensions() {
 	}
 
 	const roopikLine = "\t'extensions/roopik/tsconfig.json', // ROOPIK: Our canvas-first IDE extension,";
-	const roopikDioLine = "\t'extensions/roopik-dio/tsconfig.json', // ROOPIK DIO: AI agent integration";
+	const roopikDioLine = "\t'extensions/roopik-roo/tsconfig.json', // ROOPIK DIO: AI agent integration";
 
 	// Check which extensions need to be added
 	const hasRoopik = content.includes("'extensions/roopik/tsconfig.json'");
-	const hasRoopikDio = content.includes("'extensions/roopik-dio/tsconfig.json'");
+	const hasRoopikDio = content.includes("'extensions/roopik-roo/tsconfig.json'");
 
 	if (hasRoopik && hasRoopikDio) {
 		success('build/gulpfile.extensions.ts - Both Roopik extensions already registered');
@@ -755,13 +836,13 @@ function updateFiltersTs() {
 	}
 
 	// Check 2: Add roopik-dio agent extension exclusion
-	if (!updatedContent.includes("'!extensions/roopik-dio/**',")) {
+	if (!updatedContent.includes("'!extensions/roopik-roo/**',")) {
 		// Insert after !extensions/**/out*/**
 		const outPattern = "'!extensions/**/out*/**',";
 		if (updatedContent.includes(outPattern)) {
 			updatedContent = updatedContent.replace(
 				outPattern,
-				outPattern + "\n\t'!extensions/roopik-dio/**',"
+				outPattern + "\n\t'!extensions/roopik-roo/**',"
 			);
 			success('build/filters.ts - Added roopik-dio extension exclusion');
 			needsUpdate = true;
@@ -800,7 +881,7 @@ function updateEslintIgnore() {
 	}
 
 	// Check if roopik-dio already excluded
-	if (content.includes('**/extensions/roopik-dio/**')) {
+	if (content.includes('**/extensions/roopik-roo/**')) {
 		success('.eslint-ignore - roopik-dio already excluded');
 		return { updated: false, errors: 0 };
 	}
@@ -815,7 +896,7 @@ function updateEslintIgnore() {
 	// Insert roopik-dio exclusion after notebook-renderers
 	const updatedContent = content.replace(
 		notebookRenderersLine,
-		notebookRenderersLine + '\n**/extensions/roopik-dio/**'
+		notebookRenderersLine + '\n**/extensions/roopik-roo/**'
 	);
 
 	if (writeFile(filePath, updatedContent)) {
