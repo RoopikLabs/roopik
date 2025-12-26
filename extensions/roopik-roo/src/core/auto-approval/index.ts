@@ -13,6 +13,7 @@ export type AutoApprovalState =
 	| "alwaysAllowWrite"
 	| "alwaysAllowBrowser"
 	| "alwaysAllowMcp"
+	| "alwaysAllowRoopik"
 	| "alwaysAllowModeSwitch"
 	| "alwaysAllowSubtasks"
 	| "alwaysAllowExecute"
@@ -161,6 +162,12 @@ export async function checkAutoApproval({
 
 		if (["newTask", "finishTask"].includes(tool?.tool)) {
 			return state.alwaysAllowSubtasks === true ? { decision: "approve" } : { decision: "ask" }
+		}
+
+		// Roopik IDE tools (browser_*, project_*, canvas_*, component_*)
+		const roopikToolPrefixes = ["browser_", "project_", "canvas_", "component_"]
+		if (roopikToolPrefixes.some((prefix) => tool?.tool?.startsWith(prefix))) {
+			return state.alwaysAllowRoopik === true ? { decision: "approve" } : { decision: "ask" }
 		}
 
 		const isOutsideWorkspace = !!tool.isOutsideWorkspace

@@ -28,6 +28,33 @@ import { getCodebaseSearchDescription } from "./codebase-search"
 import { getUpdateTodoListDescription } from "./update-todo-list"
 import { getRunSlashCommandDescription } from "./run-slash-command"
 import { getGenerateImageDescription } from "./generate-image"
+// Roopik IDE Tool Descriptions
+import {
+	getBrowserOpenDescription,
+	getBrowserCloseDescription,
+	getRoopikBrowserActionDescription,
+	getBrowserNavigateDescription,
+	getBrowserReloadDescription,
+	getBrowserScreenshotDescription,
+	getBrowserExecuteScriptDescription,
+	getBrowserInspectElementDescription,
+	getBrowserGetErrorsDescription,
+	getBrowserGetConsoleLogsDescription,
+	getBrowserGetPerformanceDescription,
+	getBrowserGetCdpInfoDescription,
+	getProjectGetActiveDescription,
+	getProjectStartDescription,
+	getProjectStopDescription,
+	getCanvasListDescription,
+	getCanvasGetActiveDescription,
+	getCanvasCreateDescription,
+	getComponentAddDescription,
+	getComponentAddBatchDescription,
+	getComponentRemoveDescription,
+	getComponentGetInfoDescription,
+	getComponentListDescription,
+	getComponentRebuildDescription,
+} from "./roopik"
 
 // Map of tool names to their description functions
 const toolDescriptionMap: Record<string, (args: ToolArgs) => string | undefined> = {
@@ -57,6 +84,34 @@ const toolDescriptionMap: Record<string, (args: ToolArgs) => string | undefined>
 	update_todo_list: (args) => getUpdateTodoListDescription(args),
 	run_slash_command: () => getRunSlashCommandDescription(),
 	generate_image: (args) => getGenerateImageDescription(args),
+	// Roopik IDE Tools - Browser (12)
+	browser_open: () => getBrowserOpenDescription(),
+	browser_close: () => getBrowserCloseDescription(),
+	browser_action_input: () => getRoopikBrowserActionDescription(),
+	browser_navigate: () => getBrowserNavigateDescription(),
+	browser_reload: () => getBrowserReloadDescription(),
+	browser_screenshot: () => getBrowserScreenshotDescription(),
+	browser_execute_script: () => getBrowserExecuteScriptDescription(),
+	browser_inspect_element: () => getBrowserInspectElementDescription(),
+	browser_get_errors: () => getBrowserGetErrorsDescription(),
+	browser_get_console_logs: () => getBrowserGetConsoleLogsDescription(),
+	browser_get_performance: () => getBrowserGetPerformanceDescription(),
+	browser_get_cdp_info: () => getBrowserGetCdpInfoDescription(),
+	// Roopik IDE Tools - Project (3)
+	project_get_active: () => getProjectGetActiveDescription(),
+	project_start: (args) => getProjectStartDescription(args),
+	project_stop: () => getProjectStopDescription(),
+	// Roopik IDE Tools - Canvas (3)
+	canvas_list: () => getCanvasListDescription(),
+	canvas_get_active: () => getCanvasGetActiveDescription(),
+	canvas_create: () => getCanvasCreateDescription(),
+	// Roopik IDE Tools - Component (6)
+	component_add: () => getComponentAddDescription(),
+	component_add_batch: () => getComponentAddBatchDescription(),
+	component_remove: () => getComponentRemoveDescription(),
+	component_get_info: () => getComponentGetInfoDescription(),
+	component_list: () => getComponentListDescription(),
+	component_rebuild: () => getComponentRebuildDescription(),
 }
 
 export function getToolDescriptionsForMode(

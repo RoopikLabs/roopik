@@ -25,25 +25,31 @@
 
 ---
 
-## Extension Side (agent-dio)
+## Extension Side (agent-dio / roopik-roo)
 
-Files in `extensions/roopik-dio/src/`:
+**Total: 17 files** (6 created new ✨, 11 modified 📝)
 
-| # | File | Purpose |
-|---|------|---------|
-| 1 | `services/roopik/RoopikToolClient.ts` | IPC client - calls VSCode commands to reach Core |
-| 2 | `services/roopik/index.ts` | Exports client instance |
-| 3 | `core/tools/roopik/RoopikToolHandler.ts` | Handles tool execution, approval, result formatting |
-| 4 | `core/tools/roopik/index.ts` | Exports handler |
-| 5 | `core/prompts/tools/roopik/index.ts` | XML tool definitions (legacy protocol) |
-| 6 | `core/prompts/tools/native-tools/roopik.ts` | Native tool definitions (JSON schema) |
-| 7 | `core/prompts/tools/native-tools/index.ts` | Imports and spreads roopikNativeTools |
-| 8 | `core/prompts/tools/index.ts` | Tool description map - maps tool names to description functions |
-| 9 | `core/assistant-message/presentAssistantMessage.ts` | Tool dispatcher - routes tools to handler, UI display |
-| 10 | `core/auto-approval/index.ts` | Auto-approval logic - checks tool prefixes for approval |
-| 11 | `packages/types/src/tool.ts` | ToolName type union |
-| 12 | `shared/tools.ts` | Tool group definitions, TOOL_GROUPS array |
-| 13 | `shared/ExtensionMessage.ts` | ClineSayTool interface (for UI display) |
+Files in `extensions/roopik-dio/src/` or `extensions/roopik-roo/src/`:
+
+| # | File | Purpose | Status |
+|---|------|---------|--------|
+| 1 | `services/roopik/RoopikToolClient.ts` | IPC client - calls VSCode commands to reach Core | ✨ Created |
+| 2 | `services/roopik/index.ts` | Exports client instance | ✨ Created |
+| 3 | `core/tools/roopik/RoopikToolHandler.ts` | Handles tool execution, approval, result formatting | ✨ Created |
+| 4 | `core/tools/roopik/index.ts` | Exports handler | ✨ Created |
+| 5 | `core/prompts/tools/roopik/index.ts` | XML tool definitions (legacy protocol) | ✨ Created |
+| 6 | `core/prompts/tools/native-tools/roopik.ts` | Native tool definitions (JSON schema) | ✨ Created |
+| 7 | `core/prompts/tools/native-tools/index.ts` | Imports and spreads roopikNativeTools | 📝 Modified |
+| 8 | `core/prompts/tools/index.ts` | Tool description map - maps tool names to description functions | 📝 Modified |
+| 9 | `core/assistant-message/presentAssistantMessage.ts` | Tool dispatcher - routes tools to handler, UI display | 📝 Modified |
+| 10 | `core/auto-approval/index.ts` | Auto-approval logic - checks tool prefixes for approval | 📝 Modified |
+| 11 | `packages/types/src/tool.ts` | ToolName type union, "roopik" in toolGroups | 📝 Modified |
+| 12 | `packages/types/src/global-settings.ts` | GlobalSettings schema with alwaysAllowRoopik | 📝 Modified |
+| 13 | `shared/tools.ts` | Tool group definitions, TOOL_GROUPS.roopik with all 24 tools | 📝 Modified |
+| 14 | `shared/ExtensionMessage.ts` | ClineSayTool interface + ExtensionState alwaysAllowRoopik | 📝 Modified |
+| 15 | `packages/types/src/mode.ts` | Mode config schema - allows "roopik" in groups array for modes like architect, code, etc. | 📝 Modified |
+| 16 | `src/core/webview/ClineProvider.ts` | Main provider - reads/writes alwaysAllowRoopik state from settings | 📝 Modified |
+| 17 | `src/core/webview/index.ts` | Exports ClineProvider | ℹ️ Reference
 
 ---
 
@@ -79,26 +85,35 @@ Files in `src/vs/workbench/contrib/roopik/electron-main/mcp/tools/`:
 
 ## Flow: Adding a New Tool
 
+**Core (2 files) → MCP (1 file) → Extension (14 files)**
+
 ```
 1. Core: Add handler in roopikToolsChannel.ts
 2. Core: Add command in roopikToolsCommands.ts
-3. MCP: Add tool in appropriate MCP tools file (browserTools.ts, projectTools.ts, etc.)
-4. Extension: Add client method in RoopikToolClient.ts
-5. Extension: Add case in RoopikToolHandler.ts
-6. Extension: Add XML definition in prompts/tools/roopik/index.ts
-7. Extension: Add native definition in native-tools/roopik.ts
-8. Extension: Add to tool description map in prompts/tools/index.ts
-9. Extension: Add to dispatcher in presentAssistantMessage.ts
-10. Extension: Add to ClineSayTool in ExtensionMessage.ts (for UI)
-11. Extension: Add to TOOL_GROUPS in shared/tools.ts
-12. Extension: Add to ToolName type in packages/types/src/tool.ts
+3. MCP: Add tool in appropriate MCP tools file (browserTools.ts, projectTools.ts, canvasTools.ts)
+4. Extension: Add client method in RoopikToolClient.ts (if new file, create it ✨)
+5. Extension: Add case in RoopikToolHandler.ts (if new file, create it ✨)
+6. Extension: Add XML definition in prompts/tools/roopik/index.ts (if new file, create it ✨)
+7. Extension: Add native definition in native-tools/roopik.ts (if new file, create it ✨)
+8. Extension: Add to native-tools/index.ts (import and spread tools)
+9. Extension: Add to tool description map in prompts/tools/index.ts
+10. Extension: Add to dispatcher in presentAssistantMessage.ts (add case statement)
+11. Extension: Add to ClineSayTool in ExtensionMessage.ts (add to type union)
+12. Extension: Add to TOOL_GROUPS in shared/tools.ts (add to roopik array)
+13. Extension: Add to ToolName type in packages/types/src/tool.ts (add to array)
+14. Extension: Update auto-approval in auto-approval/index.ts (if new prefix)
+15. Extension: Update global-settings.ts (if new auto-approval setting needed)
+16. Extension: Update mode.ts if enabling roopik tools in specific modes
+17. Extension: Update ClineProvider.ts if adding new state management for auto-approval
 ```
+
+**Note:** Files 4-7 only need creation (✨) during initial integration. For adding individual tools later, these files already exist and just need updates.
 
 ---
 
 ## Flow: Renaming Tools
 
-All files that need updating when renaming tools:
+**All files that need updating when renaming tools (Total: 19 files)**
 
 **Core (2 files):**
 1. `roopikToolsChannel.ts` - switch cases
@@ -109,17 +124,21 @@ All files that need updating when renaming tools:
 4. `projectTools.ts` - server.tool() names and error messages
 5. `canvasTools.ts` - server.tool() names and error messages (canvas + component tools)
 
-**Extension (10 files):**
-6. `RoopikToolClient.ts` - method names (optional, internal)
-7. `RoopikToolHandler.ts` - switch cases
-8. `roopik/index.ts` - XML tool definitions
-9. `native-tools/roopik.ts` - JSON schema definitions
-10. `prompts/tools/index.ts` - toolDescriptionMap keys
-11. `presentAssistantMessage.ts` - switch cases for display
-12. `auto-approval/index.ts` - prefix checks
-13. `ExtensionMessage.ts` - ClineSayTool type union
-14. `shared/tools.ts` - TOOL_GROUPS array
-15. `packages/types/src/tool.ts` - ToolName type union
+**Extension (14 files):**
+6. `RoopikToolClient.ts` - method names (optional, internal only)
+7. `RoopikToolHandler.ts` - switch cases in dispatcher
+8. `roopik/index.ts` - XML tool definitions and function names
+9. `native-tools/roopik.ts` - JSON schema tool names and properties
+10. `prompts/tools/index.ts` - toolDescriptionMap keys (must match tool names)
+11. `presentAssistantMessage.ts` - switch cases for routing (must match tool names)
+12. `auto-approval/index.ts` - prefix checks (if changing category prefix)
+13. `ExtensionMessage.ts` - ClineSayTool type union (for UI display)
+14. `shared/tools.ts` - TOOL_GROUPS.roopik array (must match tool names)
+15. `packages/types/src/tool.ts` - ToolName type union (must match tool names)
+16. `packages/types/src/global-settings.ts` - Only if adding new auto-approval setting
+17. `packages/types/src/mode.ts` - Only if tool group name changes
+18. `src/core/webview/ClineProvider.ts` - alwaysAllowRoopik state management
+19. `src/core/webview/index.ts` - No changes needed (just exports provider)
 
 ---
 

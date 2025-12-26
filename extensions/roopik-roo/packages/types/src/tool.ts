@@ -4,7 +4,7 @@ import { z } from "zod"
  * ToolGroup
  */
 
-export const toolGroups = ["read", "edit", "browser", "command", "mcp", "modes"] as const
+export const toolGroups = ["read", "edit", "browser", "command", "mcp", "modes", "roopik"] as const
 
 export const toolGroupsSchema = z.enum(toolGroups)
 
@@ -37,6 +37,34 @@ export const toolNames = [
 	"update_todo_list",
 	"run_slash_command",
 	"generate_image",
+	// Roopik IDE Tools - Browser (12)
+	"browser_open",
+	"browser_close",
+	"browser_action_input",
+	"browser_navigate",
+	"browser_reload",
+	"browser_screenshot",
+	"browser_execute_script",
+	"browser_inspect_element",
+	"browser_get_errors",
+	"browser_get_console_logs",
+	"browser_get_performance",
+	"browser_get_cdp_info",
+	// Roopik IDE Tools - Project (3)
+	"project_get_active",
+	"project_start",
+	"project_stop",
+	// Roopik IDE Tools - Canvas (3)
+	"canvas_list",
+	"canvas_get_active",
+	"canvas_create",
+	// Roopik IDE Tools - Component (6)
+	"component_add",
+	"component_add_batch",
+	"component_remove",
+	"component_get_info",
+	"component_list",
+	"component_rebuild",
 ] as const
 
 export const toolNamesSchema = z.enum(toolNames)

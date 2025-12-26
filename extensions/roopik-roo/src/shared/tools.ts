@@ -76,6 +76,30 @@ export const toolParamNames = [
 	"old_string", // search_replace and edit_file parameter
 	"new_string", // search_replace and edit_file parameter
 	"expected_replacements", // edit_file parameter for multiple occurrences
+	// Roopik tool parameters
+	"selector", // browser_inspect_element
+	"includeInherited", // browser_inspect_element
+	"script", // browser_execute_script
+	"ignoreCache", // browser_reload
+	"limit", // browser_get_errors, browser_get_console_logs
+	"type", // browser_get_console_logs
+	"projectPath", // project_start
+	"port", // project_start
+	"name", // canvas_create, component_add
+	"nameFilter", // canvas_list
+	"sortBy", // canvas_list
+	"sortDirection", // canvas_list
+	"canvasId", // component_add, component_list
+	"folderPath", // component_add
+	"entryFile", // component_add
+	"framework", // component_add
+	"componentId", // component_remove, component_get_info, component_rebuild
+	"components", // component_add_batch
+	// browser_action parameters
+	"key", // browser_action (press)
+	"modifiers", // browser_action (press)
+	"deltaX", // browser_action (drag, scroll)
+	"deltaY", // browser_action (drag, scroll)
 ] as const
 
 export type ToolParamName = (typeof toolParamNames)[number]
@@ -266,6 +290,34 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	update_todo_list: "update todo list",
 	run_slash_command: "run slash command",
 	generate_image: "generate images",
+	// Roopik IDE Tools - Browser
+	browser_open: "open browser",
+	browser_close: "close browser",
+	browser_action_input: "perform browser input action",
+	browser_navigate: "navigate browser",
+	browser_reload: "reload browser page",
+	browser_screenshot: "take browser screenshot",
+	browser_execute_script: "execute browser script",
+	browser_inspect_element: "inspect element styles",
+	browser_get_errors: "get browser errors",
+	browser_get_console_logs: "get console logs",
+	browser_get_performance: "get browser performance metrics",
+	browser_get_cdp_info: "get browser CDP info",
+	// Roopik IDE Tools - Project
+	project_get_active: "get active project",
+	project_start: "start project",
+	project_stop: "stop project",
+	// Roopik IDE Tools - Canvas
+	canvas_list: "list canvases",
+	canvas_get_active: "get active canvas",
+	canvas_create: "create canvas",
+	// Roopik IDE Tools - Component
+	component_add: "add component",
+	component_add_batch: "add multiple components",
+	component_remove: "remove component",
+	component_get_info: "get component info",
+	component_list: "list components",
+	component_rebuild: "rebuild component",
 } as const
 
 // Define available tool groups.
@@ -289,6 +341,38 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 	modes: {
 		tools: ["switch_mode", "new_task"],
 		alwaysAvailable: true,
+	},
+	roopik: {
+		tools: [
+			// Browser (12 tools)
+			"browser_open",
+			"browser_close",
+			"browser_action_input",
+			"browser_navigate",
+			"browser_reload",
+			"browser_screenshot",
+			"browser_execute_script",
+			"browser_inspect_element",
+			"browser_get_errors",
+			"browser_get_console_logs",
+			"browser_get_performance",
+			"browser_get_cdp_info",
+			// Project (3 tools)
+			"project_get_active",
+			"project_start",
+			"project_stop",
+			// Canvas (3 tools)
+			"canvas_list",
+			"canvas_get_active",
+			"canvas_create",
+			// Component (6 tools)
+			"component_add",
+			"component_add_batch",
+			"component_remove",
+			"component_get_info",
+			"component_list",
+			"component_rebuild",
+		],
 	},
 }
 
@@ -319,17 +403,17 @@ export const TOOL_ALIASES: Record<string, ToolName> = {
 export type DiffResult =
 	| { success: true; content: string; failParts?: DiffResult[] }
 	| ({
-			success: false
-			error?: string
-			details?: {
-				similarity?: number
-				threshold?: number
-				matchedRange?: { start: number; end: number }
-				searchContent?: string
-				bestMatch?: string
-			}
-			failParts?: DiffResult[]
-	  } & ({ error: string } | { failParts: DiffResult[] }))
+		success: false
+		error?: string
+		details?: {
+			similarity?: number
+			threshold?: number
+			matchedRange?: { start: number; end: number }
+			searchContent?: string
+			bestMatch?: string
+		}
+		failParts?: DiffResult[]
+	} & ({ error: string } | { failParts: DiffResult[] }))
 
 export interface DiffItem {
 	content: string

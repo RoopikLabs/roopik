@@ -42,6 +42,7 @@ import { generateImageTool } from "../tools/GenerateImageTool"
 import { applyDiffTool as applyDiffToolClass } from "../tools/ApplyDiffTool"
 import { validateToolUse } from "../tools/validateToolUse"
 import { codebaseSearchTool } from "../tools/CodebaseSearchTool"
+import { handleRoopikTool } from "../tools/roopik"
 
 import { formatResponse } from "../prompts/responses"
 
@@ -399,9 +400,8 @@ export async function presentAssistantMessage(cline: Task) {
 						}
 						return `[${block.name}]`
 					case "search_files":
-						return `[${block.name} for '${block.params.regex}'${
-							block.params.file_pattern ? ` in '${block.params.file_pattern}'` : ""
-						}]`
+						return `[${block.name} for '${block.params.regex}'${block.params.file_pattern ? ` in '${block.params.file_pattern}'` : ""
+							}]`
 					case "search_and_replace":
 						return `[${block.name} for '${block.params.path}']`
 					case "search_replace":
@@ -438,6 +438,59 @@ export async function presentAssistantMessage(cline: Task) {
 						return `[${block.name} for '${block.params.command}'${block.params.args ? ` with args: ${block.params.args}` : ""}]`
 					case "generate_image":
 						return `[${block.name} for '${block.params.path}']`
+
+					// Roopik IDE Tools - Browser (12) -------------------------------
+					case "browser_open":
+						return `[browser_open${block.params.url ? ` to '${block.params.url}'` : ""}]`
+					case "browser_close":
+						return `[browser_close]`
+					case "browser_action_input":
+						return `[browser_action_input: ${block.params.action}${block.params.coordinate ? ` at ${block.params.coordinate}` : ""}]`
+					case "browser_navigate":
+						return `[browser_navigate to '${block.params.url}']`
+					case "browser_reload":
+						return `[browser_reload${block.params.ignoreCache === "true" ? " (hard reload)" : ""}]`
+					case "browser_screenshot":
+						return `[browser_screenshot]`
+					case "browser_execute_script":
+						return `[browser_execute_script]`
+					case "browser_inspect_element":
+						return `[browser_inspect_element for '${block.params.selector}']`
+					case "browser_get_errors":
+						return `[browser_get_errors]`
+					case "browser_get_console_logs":
+						return `[browser_get_console_logs${block.params.type ? ` (${block.params.type})` : ""}]`
+					case "browser_get_performance":
+						return `[browser_get_performance]`
+					case "browser_get_cdp_info":
+						return `[browser_get_cdp_info]`
+					// Roopik IDE Tools - Project (3)
+					case "project_get_active":
+						return `[project_get_active]`
+					case "project_start":
+						return `[project_start for '${block.params.projectPath || block.params.path}']`
+					case "project_stop":
+						return `[project_stop]`
+					// Roopik IDE Tools - Canvas (3)
+					case "canvas_list":
+						return `[canvas_list]`
+					case "canvas_get_active":
+						return `[canvas_get_active]`
+					case "canvas_create":
+						return `[canvas_create '${block.params.name}']`
+					// Roopik IDE Tools - Component (6)
+					case "component_add":
+						return `[component_add '${block.params.folderPath || block.params.path}']`
+					case "component_add_batch":
+						return `[component_add_batch]`
+					case "component_remove":
+						return `[component_remove '${block.params.componentId}']`
+					case "component_get_info":
+						return `[component_get_info '${block.params.componentId}']`
+					case "component_list":
+						return `[component_list '${block.params.canvasId}']`
+					case "component_rebuild":
+						return `[component_rebuild '${block.params.componentId}']`
 					default:
 						return `[${block.name}]`
 				}
@@ -685,7 +738,7 @@ export async function presentAssistantMessage(cline: Task) {
 						try {
 							const act = JSON.parse(m.text || "{}")
 							isClosed = act.action === "close"
-						} catch {}
+						} catch { }
 						break
 					}
 				}
@@ -1068,6 +1121,42 @@ export async function presentAssistantMessage(cline: Task) {
 						pushToolResult,
 						removeClosingTag,
 						toolProtocol,
+					})
+					break
+				// Roopik IDE Tools (24 tools)
+				// Browser (12)
+				case "browser_open":
+				case "browser_close":
+				case "browser_action_input":
+				case "browser_navigate":
+				case "browser_reload":
+				case "browser_screenshot":
+				case "browser_execute_script":
+				case "browser_inspect_element":
+				case "browser_get_errors":
+				case "browser_get_console_logs":
+				case "browser_get_performance":
+				case "browser_get_cdp_info":
+				// Project (3)
+				case "project_get_active":
+				case "project_start":
+				case "project_stop":
+				// Canvas (3)
+				case "canvas_list":
+				case "canvas_get_active":
+				case "canvas_create":
+				// Component (6)
+				case "component_add":
+				case "component_add_batch":
+				case "component_remove":
+				case "component_get_info":
+				case "component_list":
+				case "component_rebuild":
+					await handleRoopikTool(cline, block, {
+						askApproval,
+						handleError,
+						pushToolResult,
+						removeClosingTag,
 					})
 					break
 				default: {
