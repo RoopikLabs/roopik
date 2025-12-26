@@ -1146,37 +1146,120 @@ function updateWorkbenchCommonMain() {
 		return { updated: false, errors: 0 };
 	}
 
+	let content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	let needsUpdate = false;
+	let updatedContent = content;
+
+	// Check 1: Add Roopik main contribution import
+	if (content.includes("import './contrib/roopik/browser/roopik.contribution.js';")) {
+		success('workbench.common.main.ts - Roopik contribution already imported');
+	} else {
+		// Find and replace just the Speech import line (not the comment)
+		const oldImport = `import './contrib/speech/browser/speech.contribution.js';`;
+
+		const newImport = `import './contrib/speech/browser/speech.contribution.js';
+
+// Roopik Design IDE
+import './contrib/roopik/browser/roopik.contribution.js';`;
+
+		if (!updatedContent.includes(oldImport)) {
+			warning('workbench.common.main.ts - Could not find Speech import to anchor Roopik import');
+			return { updated: false, errors: 0 };
+		}
+
+		updatedContent = updatedContent.replace(oldImport, newImport);
+		success('workbench.common.main.ts - Added Roopik contribution import');
+		needsUpdate = true;
+	}
+
+	// Check 2: Add Roopik agent chat actions import
+	if (updatedContent.includes("import './contrib/roopik/browser/roodioChatActions.js';")) {
+		success('workbench.common.main.ts - Roopik chat actions already imported');
+	} else {
+		// Find the roopik.contribution import and add chat actions after it
+		const roopikContribImport = `import './contrib/roopik/browser/roopik.contribution.js';`;
+
+		if (updatedContent.includes(roopikContribImport)) {
+			const chatActionsImport = `import './contrib/roopik/browser/roopik.contribution.js';
+import './contrib/roopik/browser/roodioChatActions.js';  // ROOPIK AGENT CHAT ICON`;
+
+			updatedContent = updatedContent.replace(roopikContribImport, chatActionsImport);
+			success('workbench.common.main.ts - Added Roopik chat actions import');
+			needsUpdate = true;
+		} else {
+			warning('workbench.common.main.ts - Could not find Roopik contribution import to anchor chat actions');
+		}
+	}
+
+	if (needsUpdate) {
+		if (writeFile(filePath, updatedContent)) {
+			success('workbench.common.main.ts - Updated successfully');
+			return { updated: true, errors: 0 };
+		} else {
+			error('workbench.common.main.ts - Failed to update');
+			return { updated: false, errors: 1 };
+		}
+	}
+
+	return { updated: false, errors: 0 };
+}
+
+// Update chat.contribution.ts - Add Roopik agent chat icon setting
+function updateChatContribution() {
+	const filePath = path.join(ROOT_DIR, 'src/vs/workbench/contrib/chat/browser/chat.contribution.ts');
+
+	if (!fileExists(filePath)) {
+		warning('src/vs/workbench/contrib/chat/browser/chat.contribution.ts not found (skipping)');
+		return { updated: false, errors: 0 };
+	}
+
 	const content = readFile(filePath);
 	if (!content) {
 		return { updated: false, errors: 1 };
 	}
 
-	// Check if Roopik import already exists
-	if (content.includes("import './contrib/roopik/browser/roopik.contribution.js';")) {
-		success('workbench.common.main.ts - Roopik contribution already imported');
+	// Check if roodio.titleBarIcon.enabled already exists
+	if (content.includes("'roodio.titleBarIcon.enabled':")) {
+		success('chat.contribution.ts - roodio.titleBarIcon.enabled setting already exists');
 		return { updated: false, errors: 0 };
 	}
 
-	// Find and replace just the Speech import line (not the comment)
-	const oldImport = `import './contrib/speech/browser/speech.contribution.js';`;
+	// Find a reliable anchor point - look for 'chat.commandCenter.enabled' setting
+	// Match the entire setting block including its closing brace and comma
+	const anchorPattern = /'chat\.commandCenter\.enabled':\s*\{[\s\S]*?\n\s*\},/;
+	const match = content.match(anchorPattern);
 
-	const newImport = `import './contrib/speech/browser/speech.contribution.js';
-
-// Roopik Design IDE
-import './contrib/roopik/browser/roopik.contribution.js';`;
-
-	if (!content.includes(oldImport)) {
-		warning('workbench.common.main.ts - Could not find Speech import to anchor Roopik import');
+	if (!match) {
+		warning('chat.contribution.ts - Could not find chat.commandCenter.enabled setting as anchor');
 		return { updated: false, errors: 0 };
 	}
 
-	const updatedContent = content.replace(oldImport, newImport);
+	// Extract indentation from the matched setting by looking at the line it's on
+	const settingStart = content.lastIndexOf('\n', match.index) + 1;
+	const settingLine = content.substring(settingStart, match.index);
+	const indent = settingLine.match(/^\s*/)[0];
+
+	// Build the new setting with proper indentation
+	const newSetting = `${indent}'roodio.titleBarIcon.enabled': {
+${indent}\ttype: 'boolean',
+${indent}\tdescription: nls.localize('roodio.titleBarIcon.enabled', "Controls whether the Roo Dio chat icon is shown in the title bar."),
+${indent}\tdefault: true
+${indent}},
+`;
+
+	// Insert the new setting right after the anchor
+	const insertIndex = match.index + match[0].length;
+	const updatedContent = content.substring(0, insertIndex) + '\n' + newSetting + content.substring(insertIndex);
 
 	if (writeFile(filePath, updatedContent)) {
-		success('workbench.common.main.ts - Added Roopik contribution import');
+		success('chat.contribution.ts - Added roodio.titleBarIcon.enabled setting');
 		return { updated: true, errors: 0 };
 	} else {
-		error('workbench.common.main.ts - Failed to update');
+		error('chat.contribution.ts - Failed to update');
 		return { updated: false, errors: 1 };
 	}
 }
@@ -1725,6 +1808,12 @@ function main() {
 		totalChanges++;
 	}
 	totalErrors += workbenchResult.errors;
+
+	const chatContribResult = updateChatContribution();
+	if (chatContribResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += chatContribResult.errors;
 
 	const windowsResult = updateWindowsTs();
 	if (windowsResult.updated) {
