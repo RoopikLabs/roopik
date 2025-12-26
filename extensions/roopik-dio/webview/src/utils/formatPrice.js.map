@@ -1,1 +1,0 @@
-{"version":3,"sources":["../webview/src/utils/formatPrice.ts"],"names":[],"mappings":"AAAA,MAAM,CAAC,MAAM,WAAW,GAAG,CAAC,KAAa,EAAE,EAAE;IAC5C,OAAO,IAAI,IAAI,CAAC,YAAY,CAAC,OAAO,EAAE;QACrC,KAAK,EAAE,UAAU;QACjB,QAAQ,EAAE,KAAK;QACf,qBAAqB,EAAE,CAAC;QACxB,qBAAqB,EAAE,CAAC;KACxB,CAAC,CAAC,MAAM,CAAC,KAAK,CAAC,CAAA;AACjB,CAAC,CAAA","file":"formatPrice.js","sourceRoot":"../../../src/"}

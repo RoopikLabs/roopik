@@ -1,1 +1,0 @@
-{"version":3,"sources":["../webview/src/components/chat/checkpoints/schema.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,CAAC,EAAE,MAAM,KAAK,CAAA;AAEvB,MAAM,CAAC,MAAM,gBAAgB,GAAG,CAAC,CAAC,MAAM,CAAC;IACxC,IAAI,EAAE,CAAC,CAAC,MAAM,EAAE;IAChB,EAAE,EAAE,CAAC,CAAC,MAAM,EAAE;CACd,CAAC,CAAA","file":"schema.js","sourceRoot":"../../../../../src/"}
