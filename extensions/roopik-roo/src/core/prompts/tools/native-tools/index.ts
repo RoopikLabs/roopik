@@ -38,7 +38,7 @@ export function getNativeTools(partialReadsEnabled: boolean = true): OpenAI.Chat
 		applyPatch,
 		askFollowupQuestion,
 		attemptCompletion,
-		browserAction,
+		// browserAction, // DISABLED: Using Roopik's browser tools instead
 		codebaseSearch,
 		executeCommand,
 		fetchInstructions,
