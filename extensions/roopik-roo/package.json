@@ -428,7 +428,7 @@
 		"test": "vitest run",
 		"format": "prettier --write .",
 		"bundle": "node esbuild.mjs",
-		"build": "npm run bundle && npm run build:webview",
+		"build": "npm run build:webview && npm run bundle",
 		"build:webview": "cd webview-ui && npm install && npm run build",
 		"vscode:prepublish": "pnpm bundle --production",
 		"vsix": "mkdirp ../bin && vsce package --no-dependencies --out ../bin",

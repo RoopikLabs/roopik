@@ -36,6 +36,7 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 		setAlwaysAllowExecute,
 		setAlwaysAllowBrowser,
 		setAlwaysAllowMcp,
+		setAlwaysAllowRoopik,
 		setAlwaysAllowModeSwitch,
 		setAlwaysAllowSubtasks,
 		setAlwaysAllowFollowupQuestions,
@@ -63,6 +64,9 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 				case "alwaysAllowMcp":
 					setAlwaysAllowMcp(value)
 					break
+				case "alwaysAllowRoopik":
+					setAlwaysAllowRoopik(value)
+					break
 				case "alwaysAllowModeSwitch":
 					setAlwaysAllowModeSwitch(value)
 					break
@@ -87,6 +91,7 @@ export const AutoApproveDropdown = ({ disabled = false, triggerClassName = "" }:
 			setAlwaysAllowExecute,
 			setAlwaysAllowBrowser,
 			setAlwaysAllowMcp,
+			setAlwaysAllowRoopik,
 			setAlwaysAllowModeSwitch,
 			setAlwaysAllowSubtasks,
 			setAlwaysAllowFollowupQuestions,
