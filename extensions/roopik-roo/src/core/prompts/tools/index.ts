@@ -54,7 +54,7 @@ import {
 	getComponentGetInfoDescription,
 	getComponentListDescription,
 	getComponentRebuildDescription,
-} from "./roopik"
+} from "./roopik/roopik-tools"
 
 // Map of tool names to their description functions
 const toolDescriptionMap: Record<string, (args: ToolArgs) => string | undefined> = {

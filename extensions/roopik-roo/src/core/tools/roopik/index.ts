@@ -6,4 +6,4 @@
  */
 
 export { handleRoopikTool, isRoopikTool } from "./RoopikToolHandler"
-export { ROOPIK_TOOL_NAMES, type RoopikToolName } from "../../prompts/tools/roopik"
+export { ROOPIK_TOOL_NAMES, type RoopikToolName } from "../../prompts/tools/roopik/roopik-tools"

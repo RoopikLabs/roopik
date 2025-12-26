@@ -12,7 +12,7 @@ import { Task } from "../../task/Task"
 import type { ToolUse, ToolResponse, HandleError, PushToolResult, RemoveClosingTag, AskApproval } from "../../../shared/tools"
 import { formatResponse } from "../../prompts/responses"
 import { roopikClient, RoopikToolResult } from "../../../services/roopik"
-import { isRoopikTool, type RoopikToolName } from "../../prompts/tools/roopik"
+import { isRoopikTool, type RoopikToolName } from "../../prompts/tools/roopik/roopik-tools"
 import { Anthropic } from "@anthropic-ai/sdk"
 
 /**
