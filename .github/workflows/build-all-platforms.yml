@@ -103,6 +103,18 @@ jobs:
         working-directory: extensions/roopik
         run: npm run build
 
+      - name: Clean non-Windows prebuilds from node_modules
+        shell: bash
+        run: |
+          # Remove macOS and Linux prebuilds to prevent rcedit.exe errors
+          find node_modules -type d -name "prebuilds" -exec sh -c '
+            for dir in "$1"/*; do
+              case "$(basename "$dir")" in
+                darwin-*|linux-*) rm -rf "$dir" ;;
+              esac
+            done
+          ' sh {} \;
+
       - name: Build Windows application
         run: npm run gulp vscode-win32-x64
 
@@ -383,16 +395,19 @@ jobs:
 
       - name: Copy Linux build to workspace
         run: |
-          mkdir -p .artifacts
-          cp -r ../VSCode-linux-x64 .artifacts/
+          mkdir -p .artifacts/portable
+          mkdir -p .artifacts/installer
+          cp -r ../VSCode-linux-x64 .artifacts/portable/
+          # Copy only the .deb file, not the entire build folder
+          if [ -f .build/linux/deb/amd64/deb/roopik_*.deb ]; then
+            cp .build/linux/deb/amd64/deb/roopik_*.deb .artifacts/installer/
+          fi
 
       - name: Upload Linux artifacts (x64)
         uses: actions/upload-artifact@v4
         with:
-          name: roopik-linux-x64
-          path: |
-            .artifacts/VSCode-linux-x64/
-            .build/linux/deb/amd64/
+          name: roopik-linux-x64-deb
+          path: .artifacts/
           retention-days: 30
 
   # ============================================
