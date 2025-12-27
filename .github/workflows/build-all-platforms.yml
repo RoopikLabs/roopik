@@ -42,6 +42,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: tsx build/npm/postinstall.ts
 
+      - name: Install roopik-roo extension dependencies
+        working-directory: extensions/roopik-roo
+        run: npm install --legacy-peer-deps
+
+      - name: Install roopik extension dependencies
+        working-directory: extensions/roopik
+        run: npm install
+
       - name: Build Windows application
         run: npm run gulp vscode-win32-x64
 
@@ -98,6 +106,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: tsx build/npm/postinstall.ts
 
+      - name: Install roopik-roo extension dependencies
+        working-directory: extensions/roopik-roo
+        run: npm install --legacy-peer-deps
+
+      - name: Install roopik extension dependencies
+        working-directory: extensions/roopik
+        run: npm install
+
       - name: Build macOS application (arm64)
         run: npm run gulp vscode-darwin-arm64
 
@@ -136,7 +152,9 @@ jobs:
           sudo apt-get install -y \
             dpkg-dev \
             fakeroot \
-            build-essential
+            build-essential \
+            pkg-config \
+            libkrb5-dev
 
           # Install snapcraft via snap (optional, for Snap packages)
           # Uncomment if you need Snap package builds
@@ -154,6 +172,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: tsx build/npm/postinstall.ts
+
+      - name: Install roopik-roo extension dependencies
+        working-directory: extensions/roopik-roo
+        run: npm install --legacy-peer-deps
+
+      - name: Install roopik extension dependencies
+        working-directory: extensions/roopik
+        run: npm install
 
       - name: Build Linux application (x64)
         run: npm run gulp vscode-linux-x64
