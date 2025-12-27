@@ -75,6 +75,7 @@ jobs:
 
       - name: Create .env file for roopik-roo
         working-directory: extensions/roopik-roo
+        shell: bash
         env:
           ROO_CODE_API_URL: ${{ secrets.ROO_CODE_API_URL || 'https://app.roocode.com' }}
           ROO_CODE_PROVIDER_URL: ${{ secrets.ROO_CODE_PROVIDER_URL || 'https://app.roocode.com/proxy/v1' }}
@@ -114,12 +115,18 @@ jobs:
       - name: Build Windows installer (System)
         run: npm run gulp vscode-win32-x64-system-setup
 
+      - name: Copy Windows build to workspace
+        shell: bash
+        run: |
+          mkdir -p .artifacts
+          cp -r ../VSCode-win32-x64 .artifacts/
+
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: roopik-windows-x64
           path: |
-            ../VSCode-win32-x64/
+            .artifacts/VSCode-win32-x64/
             .build/win32-x64/user-setup/
             .build/win32-x64/system-setup/
           retention-days: 30
@@ -220,12 +227,16 @@ jobs:
       - name: Build macOS application (arm64)
         run: npm run gulp vscode-darwin-arm64
 
+      - name: Copy macOS build to workspace
+        run: |
+          mkdir -p .artifacts
+          cp -r ../VSCode-darwin-arm64 .artifacts/
+
       - name: Upload macOS artifacts (arm64)
         uses: actions/upload-artifact@v4
         with:
           name: roopik-macos-arm64
-          path: |
-            ../VSCode-darwin-arm64/
+          path: .artifacts/VSCode-darwin-arm64/
           retention-days: 30
 
   # ============================================
@@ -370,12 +381,17 @@ jobs:
       #   run: npm run gulp vscode-linux-x64-build-snap
       #   continue-on-error: true
 
+      - name: Copy Linux build to workspace
+        run: |
+          mkdir -p .artifacts
+          cp -r ../VSCode-linux-x64 .artifacts/
+
       - name: Upload Linux artifacts (x64)
         uses: actions/upload-artifact@v4
         with:
           name: roopik-linux-x64
           path: |
-            ../VSCode-linux-x64/
+            .artifacts/VSCode-linux-x64/
             .build/linux/deb/amd64/
           retention-days: 30
 
