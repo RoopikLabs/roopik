@@ -23,10 +23,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Install dependencies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm install
 
       - name: Build Windows application
@@ -66,10 +68,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Install dependencies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm install
 
       - name: Build macOS application (arm64)
@@ -98,7 +102,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Install build dependencies
@@ -106,12 +110,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             dpkg-dev \
-            rpm \
-            rpm-build \
             fakeroot \
-            snapcraft
+            build-essential
+
+          # Install snapcraft via snap (optional, for Snap packages)
+          # Uncomment if you need Snap package builds
+          # sudo snap install snapcraft --classic
 
       - name: Install dependencies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm install
 
       - name: Build Linux application (x64)
@@ -123,17 +131,24 @@ jobs:
       - name: Build DEB package
         run: npm run gulp vscode-linux-x64-build-deb
 
-      - name: Prepare RPM package
-        run: npm run gulp vscode-linux-x64-prepare-rpm
-
-      - name: Build RPM package
-        run: npm run gulp vscode-linux-x64-build-rpm
-
-      - name: Prepare Snap package
-        run: npm run gulp vscode-linux-x64-prepare-snap
-
-      - name: Build Snap package
-        run: npm run gulp vscode-linux-x64-build-snap
+      # RPM and Snap builds are optional - uncomment if needed
+      # Note: RPM builds require rpm-build tools (typically on RHEL/CentOS)
+      # Snap builds require snapcraft (installed above)
+      # - name: Prepare RPM package
+      #   run: npm run gulp vscode-linux-x64-prepare-rpm
+      #   continue-on-error: true
+      #
+      # - name: Build RPM package
+      #   run: npm run gulp vscode-linux-x64-build-rpm
+      #   continue-on-error: true
+      #
+      # - name: Prepare Snap package
+      #   run: npm run gulp vscode-linux-x64-prepare-snap
+      #   continue-on-error: true
+      #
+      # - name: Build Snap package
+      #   run: npm run gulp vscode-linux-x64-build-snap
+      #   continue-on-error: true
 
       - name: Upload Linux artifacts (x64)
         uses: actions/upload-artifact@v4
@@ -142,8 +157,6 @@ jobs:
           path: |
             VSCode-linux-x64/
             .build/linux/deb/amd64/
-            .build/linux/rpm/x86_64/
-            .build/linux/snap/x64/
           retention-days: 30
 
   # ============================================
