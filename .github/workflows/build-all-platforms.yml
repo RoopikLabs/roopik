@@ -38,6 +38,8 @@ jobs:
         run: npm install --ignore-scripts
 
       - name: Run postinstall script manually
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: tsx build/npm/postinstall.ts
 
       - name: Build Windows application
@@ -92,6 +94,8 @@ jobs:
         run: npm install --ignore-scripts
 
       - name: Run postinstall script manually
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: tsx build/npm/postinstall.ts
 
       - name: Build macOS application (arm64)
@@ -123,6 +127,9 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
+      - name: Install tsx (TypeScript runner)
+        run: npm install -g tsx
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -135,10 +142,18 @@ jobs:
           # Uncomment if you need Snap package builds
           # sudo snap install snapcraft --classic
 
-      - name: Install dependencies
+      - name: Run preinstall script manually
+        run: tsx build/npm/preinstall.ts
+
+      - name: Install dependencies (skip scripts)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm install
+        run: npm install --ignore-scripts
+
+      - name: Run postinstall script manually
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: tsx build/npm/postinstall.ts
 
       - name: Build Linux application (x64)
         run: npm run gulp vscode-linux-x64
