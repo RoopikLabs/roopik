@@ -26,10 +26,19 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install tsx (TypeScript runner)
+        run: npm install -g tsx
+
+      - name: Run preinstall script manually
+        run: tsx build/npm/preinstall.ts
+
+      - name: Install dependencies (skip scripts)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm install
+        run: npm install --ignore-scripts
+
+      - name: Run postinstall script manually
+        run: tsx build/npm/postinstall.ts
 
       - name: Build Windows application
         run: npm run gulp vscode-win32-x64
@@ -71,10 +80,19 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install tsx (TypeScript runner)
+        run: npm install -g tsx
+
+      - name: Run preinstall script manually
+        run: tsx build/npm/preinstall.ts
+
+      - name: Install dependencies (skip scripts)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm install
+        run: npm install --ignore-scripts
+
+      - name: Run postinstall script manually
+        run: tsx build/npm/postinstall.ts
 
       - name: Build macOS application (arm64)
         run: npm run gulp vscode-darwin-arm64
