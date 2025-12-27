@@ -1,0 +1,158 @@
+name: Build Linux
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  build-linux-x64:
+    name: Build Linux (x64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Setup Python 3
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install tsx (TypeScript runner)
+        run: npm install -g tsx
+
+      - name: Setup GCC
+        uses: egor-tensin/setup-gcc@v1
+        with:
+          version: 10
+          platform: x64
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            dpkg-dev \
+            fakeroot \
+            build-essential \
+            pkg-config \
+            libkrb5-dev
+
+      - name: Run preinstall script manually
+        run: tsx build/npm/preinstall.ts
+
+      - name: Install dependencies (skip scripts)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm install --ignore-scripts
+
+      - name: Run postinstall script manually
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: tsx build/npm/postinstall.ts
+
+      - name: Install roopik-roo extension dependencies
+        working-directory: extensions/roopik-roo
+        run: |
+          if ! npm install; then
+            echo "Normal install failed, trying with --legacy-peer-deps..."
+            npm install --legacy-peer-deps
+            node ../../.github/scripts/install-all-peer-deps.js || true
+          fi
+
+      - name: Install @roo-code/types dependencies
+        working-directory: extensions/roopik-roo/packages/types
+        run: npm install
+
+      - name: Build @roo-code/types package
+        working-directory: extensions/roopik-roo/packages/types
+        run: npm run build
+
+      - name: Install @roo-code/build dependencies
+        working-directory: extensions/roopik-roo/packages/build
+        run: npm install
+
+      - name: Build @roo-code/build package
+        working-directory: extensions/roopik-roo/packages/build
+        run: npm run build
+
+      - name: Create .env file for roopik-roo
+        working-directory: extensions/roopik-roo
+        env:
+          ROO_CODE_API_URL: ${{ secrets.ROO_CODE_API_URL || 'https://app.roocode.com' }}
+          ROO_CODE_PROVIDER_URL: ${{ secrets.ROO_CODE_PROVIDER_URL || 'https://app.roocode.com/proxy/v1' }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY || '' }}
+        run: |
+          cat > .env << EOF
+          ROO_CODE_API_URL=${ROO_CODE_API_URL}
+          ROO_CODE_PROVIDER_URL=${ROO_CODE_PROVIDER_URL}
+          POSTHOG_API_KEY=${POSTHOG_API_KEY}
+          EOF
+
+      - name: Build roopik-roo extension
+        working-directory: extensions/roopik-roo
+        run: npm run build
+
+      - name: Install roopik extension dependencies (skip postinstall)
+        working-directory: extensions/roopik
+        run: npm install --ignore-scripts
+
+      - name: Install roopik webview dependencies
+        working-directory: extensions/roopik/webview
+        run: npm install
+
+      - name: Build roopik extension
+        working-directory: extensions/roopik
+        run: npm run build
+
+      - name: Compile VS Code
+        run: npm run compile-build
+
+      - name: Build Linux application (x64)
+        run: npm run gulp vscode-linux-x64
+
+      - name: Build DEB package (custom)
+        env:
+          APP_NAME: roopik
+          VSCODE_ARCH: x64
+        run: bash .github/build/linux/package_roopik_deb.sh
+        continue-on-error: true
+
+      - name: Copy Linux build to workspace
+        run: |
+          mkdir -p .artifacts/installer
+
+          # Copy and rename portable version
+          cp -r ../VSCode-linux-x64 ./Roopik-Portable-linux-x64
+
+          # Copy DEB file if it exists
+          DEB_FILE=$(find .build/linux/deb -name "roopik_*.deb" -type f | head -n 1)
+          if [ -n "$DEB_FILE" ]; then
+            echo "Found DEB file: $DEB_FILE"
+            cp "$DEB_FILE" .artifacts/installer/
+          else
+            echo "Warning: DEB file not found, skipping installer artifact"
+          fi
+
+          # List what we're uploading
+          echo "Artifact contents:"
+          ls -lah Roopik-Portable-linux-x64/
+          ls -lah .artifacts/
+
+      - name: Upload Linux artifacts (x64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: roopik-linux-x64
+          path: |
+            Roopik-Portable-linux-x64/
+            .artifacts/installer/
+          retention-days: 30

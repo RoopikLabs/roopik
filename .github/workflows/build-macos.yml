@@ -1,0 +1,117 @@
+name: Build macOS
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  build-macos-arm64:
+    name: Build macOS (ARM64)
+    runs-on: macos-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Setup Python 3
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install tsx (TypeScript runner)
+        run: npm install -g tsx
+
+      - name: Run preinstall script manually
+        run: tsx build/npm/preinstall.ts
+
+      - name: Install dependencies (skip scripts)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm install --ignore-scripts
+
+      - name: Run postinstall script manually
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: tsx build/npm/postinstall.ts
+
+      - name: Install roopik-roo extension dependencies
+        working-directory: extensions/roopik-roo
+        run: |
+          if ! npm install; then
+            echo "Normal install failed, trying with --legacy-peer-deps..."
+            npm install --legacy-peer-deps
+            node ../../.github/scripts/install-all-peer-deps.js || true
+          fi
+
+      - name: Install @roo-code/types dependencies
+        working-directory: extensions/roopik-roo/packages/types
+        run: npm install
+
+      - name: Build @roo-code/types package
+        working-directory: extensions/roopik-roo/packages/types
+        run: npm run build
+
+      - name: Install @roo-code/build dependencies
+        working-directory: extensions/roopik-roo/packages/build
+        run: npm install
+
+      - name: Build @roo-code/build package
+        working-directory: extensions/roopik-roo/packages/build
+        run: npm run build
+
+      - name: Create .env file for roopik-roo
+        working-directory: extensions/roopik-roo
+        env:
+          ROO_CODE_API_URL: ${{ secrets.ROO_CODE_API_URL || 'https://app.roocode.com' }}
+          ROO_CODE_PROVIDER_URL: ${{ secrets.ROO_CODE_PROVIDER_URL || 'https://app.roocode.com/proxy/v1' }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY || '' }}
+        run: |
+          cat > .env << EOF
+          ROO_CODE_API_URL=${ROO_CODE_API_URL}
+          ROO_CODE_PROVIDER_URL=${ROO_CODE_PROVIDER_URL}
+          POSTHOG_API_KEY=${POSTHOG_API_KEY}
+          EOF
+
+      - name: Build roopik-roo extension
+        working-directory: extensions/roopik-roo
+        run: npm run build
+
+      - name: Install roopik extension dependencies (skip postinstall)
+        working-directory: extensions/roopik
+        run: npm install --ignore-scripts
+
+      - name: Install roopik webview dependencies
+        working-directory: extensions/roopik/webview
+        run: npm install
+
+      - name: Build roopik extension
+        working-directory: extensions/roopik
+        run: npm run build
+
+      - name: Compile VS Code
+        run: npm run compile-build
+
+      - name: Build macOS application (arm64)
+        run: npm run gulp vscode-darwin-arm64
+
+      - name: Copy macOS build to workspace
+        run: |
+          mkdir -p .artifacts
+          cp -r ../VSCode-darwin-arm64 ./Roopik-Portable-darwin-arm64
+
+      - name: Upload macOS artifacts (arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: roopik-macos-arm64
+          path: Roopik-Portable-darwin-arm64/
+          retention-days: 30

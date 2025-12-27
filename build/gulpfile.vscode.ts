@@ -96,7 +96,7 @@ const vscodeResourceIncludes = [
 	'out-build/vs/workbench/services/extensionManagement/common/media/*.{svg,png}',
 
 	// Roopik
-	'out-build/vs/workbench/contrib/roopik/browser/media/*.svg',
+	'out-build/vs/workbench/contrib/roopik/browser/media/*.{svg,png}',
 
 	// Webview
 	'out-build/vs/workbench/contrib/webview/browser/pre/*.{js,html}',
