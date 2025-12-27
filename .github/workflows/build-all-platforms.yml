@@ -1,0 +1,170 @@
+# Platforms: Windows x64, macOS arm64 (Apple Silicon), Linux x64
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  # ============================================
+  # WINDOWS BUILDS
+  # ============================================
+  build-windows:
+    name: Build Windows (x64)
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Windows application
+        run: npm run gulp vscode-win32-x64
+
+      - name: Prepare Inno Setup tools
+        run: npm run gulp vscode-win32-x64-inno-updater
+
+      - name: Build Windows installer (User)
+        run: npm run gulp vscode-win32-x64-user-setup
+
+      - name: Build Windows installer (System)
+        run: npm run gulp vscode-win32-x64-system-setup
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: roopik-windows-x64
+          path: |
+            VSCode-win32-x64/
+            .build/win32-x64/user-setup/
+            .build/win32-x64/system-setup/
+          retention-days: 30
+
+  # ============================================
+  # macOS BUILDS (ARM64)
+  # ============================================
+  build-macos-arm64:
+    name: Build macOS (ARM64)
+    runs-on: macos-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build macOS application (arm64)
+        run: npm run gulp vscode-darwin-arm64
+
+      - name: Upload macOS artifacts (arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: roopik-macos-arm64
+          path: |
+            VSCode-darwin-arm64/
+          retention-days: 30
+
+  # ============================================
+  # LINUX BUILDS (x64)
+  # ============================================
+  build-linux-x64:
+    name: Build Linux (x64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            dpkg-dev \
+            rpm \
+            rpm-build \
+            fakeroot \
+            snapcraft
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Linux application (x64)
+        run: npm run gulp vscode-linux-x64
+
+      - name: Prepare DEB package
+        run: npm run gulp vscode-linux-x64-prepare-deb
+
+      - name: Build DEB package
+        run: npm run gulp vscode-linux-x64-build-deb
+
+      - name: Prepare RPM package
+        run: npm run gulp vscode-linux-x64-prepare-rpm
+
+      - name: Build RPM package
+        run: npm run gulp vscode-linux-x64-build-rpm
+
+      - name: Prepare Snap package
+        run: npm run gulp vscode-linux-x64-prepare-snap
+
+      - name: Build Snap package
+        run: npm run gulp vscode-linux-x64-build-snap
+
+      - name: Upload Linux artifacts (x64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: roopik-linux-x64
+          path: |
+            VSCode-linux-x64/
+            .build/linux/deb/amd64/
+            .build/linux/rpm/x86_64/
+            .build/linux/snap/x64/
+          retention-days: 30
+
+  # ============================================
+  # SUMMARY JOB (runs after all builds)
+  # ============================================
+  build-summary:
+    name: Build Summary
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-macos-arm64, build-linux-x64]
+    if: always()
+
+    steps:
+      - name: Check build status
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Platform | Architecture | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Windows | x64 | ${{ needs.build-windows.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| macOS | arm64 (Apple Silicon M1/M2/M3/M4/M5) | ${{ needs.build-macos-arm64.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Linux | x64 | ${{ needs.build-linux-x64.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All artifacts are available in the workflow run artifacts." >> $GITHUB_STEP_SUMMARY
+
