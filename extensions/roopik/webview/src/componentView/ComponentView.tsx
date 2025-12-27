@@ -110,6 +110,12 @@ function App() {
 		null
 	);
 
+	// Track pending element selection for inspect mode
+	const pendingElementSelectionRef = useRef<{
+		componentId: string;
+		sourceLocation: { file: string; startLine: number };
+	} | null>(null);
+
 	// Update ref when focused state changes
 	useEffect(() => {
 		focusedSandboxIdRef.current = focusedSandboxId;
@@ -459,7 +465,7 @@ function App() {
 				case "canvasPreferencesLoaded": {
 					// Preferences and sandbox positions loaded from file by extension
 					const { preferences, sandboxPositions } = msg.payload;
-					console.log("[Canvas] 🎨 Preferences loaded from file:", preferences);
+					console.log("[Canvas] Preferences loaded from file:", preferences);
 
 					if (preferences.backgroundColor) {
 						setBackgroundColor(preferences.backgroundColor);
@@ -496,19 +502,23 @@ function App() {
 			if (!data || typeof data !== "object") return;
 
 			// Handle element selection from inspect mode
-			if (data.type === 'roopik-element-selected') {
+			if (data.type === "roopik-element-selected") {
 				const { componentId, element } = data;
-				console.log('[Canvas] Element selected in sandbox:', componentId, element);
+				console.log(
+					"[Canvas] Element selected in sandbox:",
+					componentId,
+					element
+				);
 
 				// Check if we have source location info
 				if (element?.sourceLocation) {
 					const { file, startLine } = element.sourceLocation;
-					console.log('[Canvas] Source location:', file, 'line', startLine);
+					console.log("[Canvas] Source location:", file, "line", startLine);
 
 					// Store the pending selection
 					pendingElementSelectionRef.current = {
 						componentId,
-						sourceLocation: element.sourceLocation
+						sourceLocation: element.sourceLocation,
 					};
 
 					// Request files from extension - will receive componentFilesLoaded message
@@ -517,7 +527,7 @@ function App() {
 						payload: { componentId },
 					});
 				} else {
-					console.log('[Canvas] ⚠️ No source location for element');
+					console.log("[Canvas] No source location for element");
 				}
 			}
 
@@ -834,7 +844,11 @@ function App() {
 
 	// Stub: Open component source files in VS Code editor (coming soon)
 	const handleSandboxShowCode = useCallback((sandboxId: string) => {
-		console.log("[Canvas] Show code for component:", sandboxId, "(coming soon)");
+		console.log(
+			"[Canvas] Show code for component:",
+			sandboxId,
+			"(coming soon)"
+		);
 	}, []);
 
 	// Sandbox update handler
@@ -1115,6 +1129,7 @@ function App() {
 			{isDragOver && (
 				<div className="drop-zone-overlay">
 					<div className="drop-zone-content">
+						{/* allow-any-unicode-next-line */}
 						<div className="drop-zone-icon">📦</div>
 						<div className="drop-zone-text">Drop component file here</div>
 						<div className="drop-zone-hint">
