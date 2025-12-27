@@ -47,6 +47,20 @@ export const About = ({ telemetrySetting, setTelemetrySetting, className, ...pro
 				</div>
 			</SectionHeader>
 
+			{/* Integration Note */}
+			<Section>
+				<div className="p-3 rounded-sm bg-vscode-textBlockQuote-background border-l-2 border-vscode-textLink-foreground">
+					<p className="text-sm text-vscode-descriptionForeground m-0">
+						<Trans
+							i18nKey="settings:about.integrationNote"
+							components={{
+								strong: <strong className="font-semibold" />,
+							}}
+						/>
+					</p>
+				</div>
+			</Section>
+
 			<Section>
 				<div>
 					<VSCodeCheckbox

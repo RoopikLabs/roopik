@@ -295,6 +295,18 @@ const WelcomeViewProvider = () => {
 					<RooHero />
 					<h2 className="mt-0 mb-0 text-xl">{t("welcome:landing.greeting")}</h2>
 
+					{/* Integration Note */}
+					<div className="p-3 mb-2 rounded-sm bg-vscode-textBlockQuote-background border-l-2 border-vscode-textLink-foreground">
+						<p className="text-sm text-vscode-descriptionForeground m-0">
+							<Trans
+								i18nKey="welcome:landing.integrationNote"
+								components={{
+									strong: <strong className="font-semibold" />,
+								}}
+							/>
+						</p>
+					</div>
+
 					<div className="space-y-4 leading-normal">
 						<p className="text-base text-vscode-foreground">
 							<Trans i18nKey="welcome:landing.introduction" />

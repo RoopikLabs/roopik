@@ -38,6 +38,7 @@
 		"about": "About Roo Code"
 	},
 	"about": {
+		"integrationNote": "This is the Roo Code extension integrated into <strong>Roopik IDE</strong> (named <strong>Roo Dio</strong>). All Roo Code features and settings are fully compatible.",
 		"bugReport": {
 			"label": "Found a bug?",
 			"link": "Report on GitHub"

@@ -62,14 +62,14 @@
 				{
 					"id": "roodio-ActivityBar",
 					"title": "%views.activitybar.title%",
-					"icon": "src/assets/icons/icon.svg"
+					"icon": "src/assets/icons/DIO_icon.svg"
 				}
 			],
 			"secondarySidebar": [
 				{
 					"id": "roodio-AuxiliaryBar",
 					"title": "Roo Dio Agent",
-					"icon": "src/assets/icons/icon.svg"
+					"icon": "src/assets/icons/DIO_icon.svg"
 				}
 			]
 		},
@@ -95,8 +95,8 @@
 				"title": "Open Roo Dio Chat",
 				"category": "Roo Dio",
 				"icon": {
-					"light": "src/assets/icons/icon.svg",
-					"dark": "src/assets/icons/icon.svg"
+					"light": "src/assets/icons/DIO_icon.svg",
+					"dark": "src/assets/icons/DIO_icon.svg"
 				}
 			},
 			{

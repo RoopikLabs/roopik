@@ -14,6 +14,7 @@
 	},
 	"landing": {
 		"greeting": "Welcome to Roo Code!",
+		"integrationNote": "This is the Roo Code extension integrated into <strong>Roopik IDE</strong> (named <strong>Roo Dio</strong>). All Roo Code features and settings are fully compatible.",
 		"introduction": "With a range of built-in and extensible Modes, Roo Code lets you plan, architect, code, debug and boost your productivity like never before.",
 		"accountMention": "To get started, create your Roo Code Cloud account. Get powerful models, web control, analytics, support and more.",
 		"getStarted": "Get started",
