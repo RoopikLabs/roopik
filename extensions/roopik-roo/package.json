@@ -4,7 +4,7 @@
 	"description": "AI Coding Agent with Roopik IDE Integration",
 	"publisher": "roopik",
 	"version": "3.37.1",
-	"icon": "src/assets/icons/icon.png",
+	"icon": "dist/assets/icons/icon.png",
 	"galleryBanner": {
 		"color": "#617A91",
 		"theme": "dark"
@@ -62,14 +62,14 @@
 				{
 					"id": "roodio-ActivityBar",
 					"title": "%views.activitybar.title%",
-					"icon": "src/assets/icons/DIO_icon.svg"
+					"icon": "dist/assets/icons/DIO_icon.svg"
 				}
 			],
 			"secondarySidebar": [
 				{
 					"id": "roodio-AuxiliaryBar",
 					"title": "Roo Dio Agent",
-					"icon": "src/assets/icons/DIO_icon.svg"
+					"icon": "dist/assets/icons/DIO_icon.svg"
 				}
 			]
 		},
@@ -95,8 +95,8 @@
 				"title": "Open Roo Dio Chat",
 				"category": "Roo Dio",
 				"icon": {
-					"light": "src/assets/icons/DIO_icon.svg",
-					"dark": "src/assets/icons/DIO_icon.svg"
+					"light": "dist/assets/icons/DIO_icon.svg",
+					"dark": "dist/assets/icons/DIO_icon.svg"
 				}
 			},
 			{
