@@ -64,6 +64,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: tsx build/npm/postinstall.ts
 
+      - name: Install native module build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev \
+            libxkbfile-dev \
+            libkrb5-dev \
+            libsecret-1-dev
+
       - name: Rebuild native modules
         run: npm rebuild
 
@@ -120,15 +129,6 @@ jobs:
       - name: Build roopik extension
         working-directory: extensions/roopik
         run: npm run build
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libx11-dev \
-            libxkbfile-dev \
-            libkrb5-dev \
-            libsecret-1-dev
 
       - name: Build Linux application (x64)
         env:
