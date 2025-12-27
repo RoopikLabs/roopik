@@ -102,9 +102,6 @@ jobs:
         working-directory: extensions/roopik
         run: npm run build
 
-      - name: Compile VS Code
-        run: npm run compile-build
-
       - name: Build macOS application (arm64)
         run: npm run gulp vscode-darwin-arm64
 

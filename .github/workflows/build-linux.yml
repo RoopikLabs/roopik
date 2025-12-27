@@ -118,12 +118,9 @@ jobs:
         working-directory: extensions/roopik
         run: npm run build
 
-      - name: Compile VS Code
-        run: |
-          # Use 4GB instead of 8GB to prevent OOM on GitHub Actions runners
-          node --max-old-space-size=4096 ./node_modules/gulp/bin/gulp.js compile-build-with-mangling
-
       - name: Build Linux application (x64)
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npm run gulp vscode-linux-x64
 
       - name: Build DEB package (custom)

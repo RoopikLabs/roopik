@@ -116,9 +116,6 @@ jobs:
             done
           ' sh {} \;
 
-      - name: Compile VS Code
-        run: npm run compile-build
-
       - name: Build Windows application
         run: npm run gulp vscode-win32-x64
 
