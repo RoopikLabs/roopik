@@ -49,6 +49,7 @@ jobs:
 
       - name: Install roopik-roo extension dependencies
         working-directory: extensions/roopik-roo
+        shell: bash
         run: |
           if ! npm install; then
             echo "Normal install failed, trying with --legacy-peer-deps..."
@@ -118,7 +119,7 @@ jobs:
         with:
           name: roopik-windows-x64
           path: |
-            VSCode-win32-x64/
+            ../VSCode-win32-x64/
             .build/win32-x64/user-setup/
             .build/win32-x64/system-setup/
           retention-days: 30
@@ -224,7 +225,7 @@ jobs:
         with:
           name: roopik-macos-arm64
           path: |
-            VSCode-darwin-arm64/
+            ../VSCode-darwin-arm64/
           retention-days: 30
 
   # ============================================
@@ -343,11 +344,12 @@ jobs:
       - name: Build Linux application (x64)
         run: npm run gulp vscode-linux-x64
 
-      - name: Prepare DEB package
-        run: npm run gulp vscode-linux-x64-prepare-deb
-
-      - name: Build DEB package
-        run: npm run gulp vscode-linux-x64-build-deb
+      - name: Build DEB package (custom)
+        env:
+          APP_NAME: roopik
+          VSCODE_ARCH: x64
+        run: bash .github/build/linux/package_roopik_deb.sh
+        continue-on-error: true
 
       # RPM and Snap builds are optional - uncomment if needed
       # Note: RPM builds require rpm-build tools (typically on RHEL/CentOS)
@@ -373,7 +375,7 @@ jobs:
         with:
           name: roopik-linux-x64
           path: |
-            VSCode-linux-x64/
+            ../VSCode-linux-x64/
             .build/linux/deb/amd64/
           retention-days: 30
 
