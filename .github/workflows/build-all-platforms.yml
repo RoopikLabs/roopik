@@ -26,6 +26,11 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
+      - name: Setup Python 3
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
       - name: Install tsx (TypeScript runner)
         run: npm install -g tsx
 
@@ -90,6 +95,11 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
+      - name: Setup Python 3
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
       - name: Install tsx (TypeScript runner)
         run: npm install -g tsx
 
@@ -143,8 +153,19 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
+      - name: Setup Python 3
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
       - name: Install tsx (TypeScript runner)
         run: npm install -g tsx
+
+      - name: Setup GCC
+        uses: egor-tensin/setup-gcc@v1
+        with:
+          version: 10
+          platform: x64
 
       - name: Install build dependencies
         run: |
