@@ -49,11 +49,28 @@ jobs:
 
       - name: Install roopik-roo extension dependencies
         working-directory: extensions/roopik-roo
-        run: npm install --legacy-peer-deps
+        run: |
+          if ! npm install; then
+            echo "Normal install failed, trying with --legacy-peer-deps..."
+            npm install --legacy-peer-deps
+            node ../../.github/scripts/install-all-peer-deps.js || true
+          fi
 
-      - name: Install roopik extension dependencies
+      - name: Install roopik extension dependencies (skip postinstall)
         working-directory: extensions/roopik
+        run: npm install --ignore-scripts
+
+      - name: Install roopik webview dependencies
+        working-directory: extensions/roopik/webview
         run: npm install
+
+      - name: Build roopik extension
+        working-directory: extensions/roopik
+        run: npm run build
+
+      - name: Build roopik-roo extension
+        working-directory: extensions/roopik-roo
+        run: npm run build
 
       - name: Build Windows application
         run: npm run gulp vscode-win32-x64
@@ -118,11 +135,28 @@ jobs:
 
       - name: Install roopik-roo extension dependencies
         working-directory: extensions/roopik-roo
-        run: npm install --legacy-peer-deps
+        run: |
+          if ! npm install; then
+            echo "Normal install failed, trying with --legacy-peer-deps..."
+            npm install --legacy-peer-deps
+            node ../../.github/scripts/install-all-peer-deps.js || true
+          fi
 
-      - name: Install roopik extension dependencies
+      - name: Install roopik extension dependencies (skip postinstall)
         working-directory: extensions/roopik
+        run: npm install --ignore-scripts
+
+      - name: Install roopik webview dependencies
+        working-directory: extensions/roopik/webview
         run: npm install
+
+      - name: Build roopik extension
+        working-directory: extensions/roopik
+        run: npm run build
+
+      - name: Build roopik-roo extension
+        working-directory: extensions/roopik-roo
+        run: npm run build
 
       - name: Build macOS application (arm64)
         run: npm run gulp vscode-darwin-arm64
@@ -196,11 +230,28 @@ jobs:
 
       - name: Install roopik-roo extension dependencies
         working-directory: extensions/roopik-roo
-        run: npm install --legacy-peer-deps
+        run: |
+          if ! npm install; then
+            echo "Normal install failed, trying with --legacy-peer-deps..."
+            npm install --legacy-peer-deps
+            node ../../.github/scripts/install-all-peer-deps.js || true
+          fi
 
-      - name: Install roopik extension dependencies
+      - name: Install roopik extension dependencies (skip postinstall)
         working-directory: extensions/roopik
+        run: npm install --ignore-scripts
+
+      - name: Install roopik webview dependencies
+        working-directory: extensions/roopik/webview
         run: npm install
+
+      - name: Build roopik extension
+        working-directory: extensions/roopik
+        run: npm run build
+
+      - name: Build roopik-roo extension
+        working-directory: extensions/roopik-roo
+        run: npm run build
 
       - name: Build Linux application (x64)
         run: npm run gulp vscode-linux-x64
