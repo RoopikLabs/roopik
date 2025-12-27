@@ -48,6 +48,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: tsx build/npm/postinstall.ts
 
+      - name: Rebuild native modules
+        run: npm rebuild
+
       - name: Install roopik-roo extension dependencies
         working-directory: extensions/roopik-roo
         run: |
@@ -101,9 +104,6 @@ jobs:
       - name: Build roopik extension
         working-directory: extensions/roopik
         run: npm run build
-
-      - name: Rebuild native modules
-        run: npm rebuild --build-from-source
 
       - name: Build macOS application (arm64)
         run: npm run gulp vscode-darwin-arm64
