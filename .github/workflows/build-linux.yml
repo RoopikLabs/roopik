@@ -9,7 +9,7 @@ on:
 
 concurrency:
   group: build-linux-${{ github.ref }}
-  cancel-in-progress: false  # Don't cancel in-progress builds
+  cancel-in-progress: false
 
 jobs:
   build-linux-x64:
@@ -119,7 +119,9 @@ jobs:
         run: npm run build
 
       - name: Compile VS Code
-        run: npm run compile-build
+        run: |
+          # Use 4GB instead of 8GB to prevent OOM on GitHub Actions runners
+          node --max-old-space-size=4096 ./node_modules/gulp/bin/gulp.js compile-build-with-mangling
 
       - name: Build Linux application (x64)
         run: npm run gulp vscode-linux-x64
