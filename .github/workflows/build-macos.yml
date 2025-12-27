@@ -102,6 +102,9 @@ jobs:
         working-directory: extensions/roopik
         run: npm run build
 
+      - name: Rebuild native modules
+        run: npm rebuild --build-from-source
+
       - name: Build macOS application (arm64)
         run: npm run gulp vscode-darwin-arm64
 

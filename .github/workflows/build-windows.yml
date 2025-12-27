@@ -104,6 +104,9 @@ jobs:
         working-directory: extensions/roopik
         run: npm run build
 
+      - name: Rebuild native modules
+        run: npm rebuild --build-from-source
+
       - name: Clean non-Windows prebuilds from node_modules
         shell: bash
         run: |

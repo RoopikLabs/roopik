@@ -118,6 +118,9 @@ jobs:
         working-directory: extensions/roopik
         run: npm run build
 
+      - name: Rebuild native modules
+        run: npm rebuild --build-from-source
+
       - name: Build Linux application (x64)
         env:
           NODE_OPTIONS: --max-old-space-size=4096
