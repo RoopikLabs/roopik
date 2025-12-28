@@ -121,7 +121,6 @@ export function BottomActionBar({
 		const newMode = viewMode === 'preview' ? 'code' : 'preview';
 		setViewMode(newMode);
 		// TODO: Implement logic to show/hide code panel
-		console.log('View mode toggled to:', newMode);
 	};
 
 	// Global keyboard shortcuts - ESC key handler

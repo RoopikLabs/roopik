@@ -51,3 +51,4 @@ resources/devtools-extensions/*/
 .github/CODENOTIFY
 .github/commands/
 .github/commands.json
+/docs

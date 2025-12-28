@@ -460,15 +460,13 @@ export function SandboxCard({
 
 	// Send inspect mode toggle to iframe when isInspectMode changes
 	useEffect(() => {
-		console.log('[SandboxCard] useEffect triggered - isInspectMode:', isInspectMode, 'sandbox:', sandbox.id, 'iframeRef:', !!iframeRef.current, 'contentWindow:', !!iframeRef.current?.contentWindow);
 		if (iframeRef.current?.contentWindow) {
-			console.log('[SandboxCard] Sending roopik-toggle-inspect to iframe:', isInspectMode);
 			iframeRef.current.contentWindow.postMessage({
 				type: 'roopik-toggle-inspect',
 				enabled: isInspectMode
 			}, '*');
 		} else {
-			console.log('[SandboxCard] ⚠️ Cannot send - iframe not ready');
+			console.log('[SandboxCard] Cannot send - iframe not ready');
 		}
 	}, [isInspectMode, sandbox.id]);
 
@@ -480,35 +478,22 @@ export function SandboxCard({
 
 	// Generate srcDoc based on build status
 	const srcDoc = useMemo(() => {
-		console.log('[SandboxCard] Generating srcDoc for:', {
-			sandboxId: sandbox.id,
-			buildStatus: sandbox.buildStatus,
-			hasBundledCode: !!sandbox.bundledCode,
-			bundledCodeLength: sandbox.bundledCode?.length || 0
-		});
-
 		switch (sandbox.buildStatus) {
 			case 'pending':
-				console.log('[SandboxCard] ⏳ Status: pending');
 				return PENDING_HTML;
 			case 'building':
-				console.log('[SandboxCard] 🔨 Status: building');
 				return LOADING_HTML;
 			case 'error':
-				console.error('[SandboxCard] ❌ Status: error -', sandbox.buildError, sandbox.buildErrorInfo);
+				console.error('[SandboxCard] Status: error -', sandbox.buildError, sandbox.buildErrorInfo);
 				return generateErrorHTML(sandbox.buildError || 'Unknown error', sandbox.buildErrorInfo);
 			case 'ready':
 				if (sandbox.bundledCode) {
-					// console.log('[SandboxCard] ✅ Status: ready - Injecting bundledCode');
-					// console.log('[SandboxCard] 📦 BundledCode preview (first 500 chars):', sandbox.bundledCode.substring(0, 500));
-					const html = generateSandboxHTML(sandbox.bundledCode);
-					// console.log('[SandboxCard] 📄 Generated HTML length:', html.length);
-					return html;
+					return generateSandboxHTML(sandbox.bundledCode);
 				}
-				console.error('[SandboxCard] ❌ Status: ready but no bundledCode!');
+				console.error('[SandboxCard] Status: ready but no bundledCode!');
 				return generateErrorHTML('No bundled code available');
 			default:
-				console.warn('[SandboxCard] ⚠️ Unknown status:', sandbox.buildStatus);
+				console.warn('[SandboxCard] Unknown status:', sandbox.buildStatus);
 				return PENDING_HTML;
 		}
 	}, [sandbox.buildStatus, sandbox.buildError, sandbox.buildErrorInfo, sandbox.bundledCode, sandbox.id]);

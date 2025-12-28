@@ -1360,7 +1360,7 @@ export class CodeApplication extends Disposable {
 			roopikStorageService   // IRoopikStorageService
 		);
 		mainProcessElectronServer.registerChannel(ROOPIK_TOOLS_CHANNEL_NAME, roopikToolsChannel);
-		console.log('[Roopik] Tools Channel registered for agent roopik-roo IPC');
+		// console.log('[Roopik] Tools Channel registered for agent roopik-roo IPC');
 		// ROOPIK END
 	}
 
