@@ -118,7 +118,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	 */
 	start(workspacePath?: string): void {
 		if (this.watching) {
-			console.log('[Roopik FileWatcher] Already watching');
+			this.logger.info('Already watching');
 			return;
 		}
 
@@ -269,7 +269,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	 */
 	ignoreComponent(componentId: string): void {
 		this.ignoredComponents.add(componentId);
-		console.log(`[Roopik FileWatcher] Ignoring component: ${componentId}`);
+		this.logger.info('Ignoring component', { componentId });
 	}
 
 	/**
@@ -277,7 +277,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	 */
 	unignoreComponent(componentId: string): void {
 		this.ignoredComponents.delete(componentId);
-		console.log(`[Roopik FileWatcher] Unignoring component: ${componentId}`);
+		this.logger.info('Unignoring component', { componentId });
 	}
 
 	/**
@@ -313,7 +313,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	registerFolderWatch(componentId: string, folderPath: string, canvasId: string): void {
 		// Check if already registered
 		if (this.registeredWatches.has(componentId)) {
-			console.warn(`[Roopik FileWatcher] Component already has a registered watch: ${componentId}`);
+			this.logger.warn('Component already has a registered watch', { componentId });
 			return;
 		}
 
@@ -350,7 +350,7 @@ export class FileWatcher extends Disposable implements IFileWatcher {
 	unregisterFolderWatch(componentId: string): void {
 		const registered = this.registeredWatches.get(componentId);
 		if (!registered) {
-			console.warn(`[Roopik FileWatcher] No registered watch found for: ${componentId}`);
+			this.logger.warn('No registered watch found for component', { componentId });
 			return;
 		}
 

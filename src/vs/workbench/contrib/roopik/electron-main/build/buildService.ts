@@ -19,6 +19,7 @@ import { IBuildService, BuildInput, BuildOutput } from '../../common/build/build
 import { ESBuildTransformer } from './esbuildTransformer.js';
 import { ComponentParser } from '../../common/build/componentParser.js';
 import { InjectorPipeline, createDefaultPipeline, IScriptInjector } from './injectors/index.js';
+import { ILoggerService } from '../../../../../platform/log/common/log.js';
 
 export class BuildService implements IBuildService {
 	readonly _serviceBrand: undefined;
@@ -27,9 +28,9 @@ export class BuildService implements IBuildService {
 	private readonly parser: ComponentParser;
 	private readonly pipeline: InjectorPipeline;
 
-	constructor() {
+	constructor(@ILoggerService loggerService: ILoggerService) {
 		this.parser = new ComponentParser();
-		this.transformer = new ESBuildTransformer(this.parser);
+		this.transformer = new ESBuildTransformer(loggerService, this.parser);
 		this.pipeline = createDefaultPipeline();
 	}
 

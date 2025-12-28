@@ -162,7 +162,7 @@ export class CanvasService implements ICanvasService {
 		// This handles the "user already has this exact canvas" case
 		const existingByName = this.findCanvasByName(name.trim());
 		if (existingByName) {
-			console.log('[CanvasService] Canvas with same name already exists:', existingByName.id);
+			this.logger.info('Canvas with same name already exists', { canvasId: existingByName.id });
 			const meta = this.toCanvasMeta(existingByName);
 
 			// Fire event to open the existing canvas
@@ -312,7 +312,7 @@ export class CanvasService implements ICanvasService {
 				}
 			}
 
-			console.log('[CanvasService] listCanvasesAsync: loaded', canvases.length, 'canvases from storage');
+			this.logger.info('listCanvasesAsync: loaded canvases from storage', { count: canvases.length });
 
 			// Apply name filter
 			let result = canvases;

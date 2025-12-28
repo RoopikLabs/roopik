@@ -627,5 +627,5 @@ export function registerRoopikToolsCommands(): void {
 		}
 	});
 
-	console.log('[Roopik] Registered 24 tool bridge commands for agent roopik-dio');
+	// console.log('[Roopik] Registered 24 tool bridge commands for agent roopik-dio');
 }

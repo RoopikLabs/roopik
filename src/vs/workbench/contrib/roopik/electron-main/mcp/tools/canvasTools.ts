@@ -530,5 +530,5 @@ export function registerCanvasTools(
 		}
 	);
 
-	console.log('[MCP] Registered 9 canvas/component tools: canvas_list, canvas_get_active, canvas_create, component_add, component_add_batch, component_remove, component_get_info, component_list, component_rebuild');
+	// console.log('[MCP] Registered 9 canvas/component tools: canvas_list, canvas_get_active, canvas_create, component_add, component_add_batch, component_remove, component_get_info, component_list, component_rebuild');
 }

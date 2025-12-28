@@ -1300,8 +1300,8 @@ export class CodeApplication extends Disposable {
 		mainProcessElectronServer.registerChannel(ipcUtilityProcessWorkerChannelName, utilityProcessWorkerChannel);
 
 		// ROOPIK: -----------------------------------------------------------
-		// ROOPIK: ProjectMode - Browser Preview with embedded DevTools and CDP
-		const projectModeService = new BrowserViewService(accessor.get(ILifecycleMainService));
+		// ROOPIK: Project Mode Service - Browser View management with CDP
+		const projectModeService = new BrowserViewService(accessor.get(ILoggerService), accessor.get(ILifecycleMainService));
 		const projectModeChannel = new ProjectModeChannel(projectModeService);
 		mainProcessElectronServer.registerChannel(PROJECT_MODE_CHANNEL, projectModeChannel);
 
@@ -1324,7 +1324,7 @@ export class CodeApplication extends Disposable {
 		mainProcessElectronServer.registerChannel(CANVAS_CHANNEL_NAME, canvasChannel);
 
 		// ROOPIK: Component Service - Component lifecycle, build queue, file watching
-		const buildService = new BuildService();
+		const buildService = new BuildService(accessor.get(ILoggerService));
 		const fileWatcher = new FileWatcher(accessor.get(ILoggerService));
 		const componentService = new ComponentService(accessor.get(ILoggerService), roopikStorageService, buildService, canvasService, fileWatcher);
 		const componentChannel = new ComponentChannel(componentService);

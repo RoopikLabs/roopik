@@ -143,7 +143,7 @@ export class McpServerService implements IMcpServerService {
 				// LOG: All incoming requests at the single entry point
 				const timestamp = new Date().toISOString();
 				const sessionId = req.headers['mcp-session-id'] || 'new';
-				console.log(`[MCP] [${timestamp}] ${req.method} ${req.url} | Session: ${sessionId}`);
+				this.logger.info('Incoming request', { timestamp, method: req.method, url: req.url, sessionId });
 
 				// CORS headers (crucial for Streamable HTTP)
 				res.setHeader('Access-Control-Allow-Origin', '*');
@@ -153,7 +153,7 @@ export class McpServerService implements IMcpServerService {
 
 				// Handle preflight
 				if (req.method === 'OPTIONS') {
-					console.log(`[MCP] [${timestamp}] Preflight response sent`);
+					this.logger.info('Preflight response sent', { timestamp });
 					res.writeHead(204);
 					res.end();
 					return;
@@ -166,7 +166,7 @@ export class McpServerService implements IMcpServerService {
 				// The SDK manages session lifecycle via Mcp-Session-Id header
 				// ------------------------------------------------------------------
 				if (url.pathname === '/mcp') {
-					console.log(`[MCP] [${timestamp}] Processing /mcp endpoint | Method: ${req.method}`);
+					this.logger.info('Processing /mcp endpoint', { timestamp, method: req.method });
 
 					try {
 						// Create transport for this request
@@ -180,15 +180,15 @@ export class McpServerService implements IMcpServerService {
 
 						// Connect transport to MCP server
 						await this.mcpServer.connect(transport);
-						console.log(`[MCP] [${timestamp}] Transport connected to MCP server`);
+						this.logger.info('Transport connected to MCP server', { timestamp });
 
 						// Log when connection closes
 						res.on('close', () => {
-							console.log(`[MCP] [${timestamp}] Connection closed | Session: ${sessionId}`);
+							this.logger.info('Connection closed', { timestamp, sessionId });
 						});
 
 						res.on('error', (err) => {
-							console.error(`[MCP] [${timestamp}] Response error | Session: ${sessionId}`, err);
+							this.logger.error('Response error', { timestamp, sessionId, error: err });
 						});
 
 						await transport.handleRequest(req, res);
@@ -232,7 +232,7 @@ export class McpServerService implements IMcpServerService {
 
 			this.httpServer.on('error', (error: NodeJS.ErrnoException) => {
 				if (error.code === 'EADDRINUSE') {
-					console.warn(`[MCP] Port ${currentPort} is busy, trying ${currentPort + 1}...`);
+					this.logger.warn('Port is busy, trying next', { port: currentPort, nextPort: currentPort + 1 });
 					this.httpServer?.close();
 					this.httpServer = null;
 
