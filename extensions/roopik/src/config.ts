@@ -5,7 +5,6 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as vscode from 'vscode';
 import { Logger } from './logger';
 
 /**
@@ -205,10 +204,7 @@ export class ConfigManager {
 				return this.mergeWithDefaults(userConfig);
 			}
 		} catch (error) {
-			this.logger.error('Failed to load config', error);
-			vscode.window.showWarningMessage(
-				'Failed to load Roopik config. Using defaults.'
-			);
+			this.logger.error('Failed to load config, using defaults', error);
 		}
 
 		// Return default config if file doesn't exist or failed to load
@@ -274,7 +270,7 @@ export class ConfigManager {
 			this.logger.info('Configuration updated successfully');
 		} catch (error) {
 			this.logger.error('Failed to save config', error);
-			vscode.window.showErrorMessage('Failed to save Roopik configuration.');
+			throw error;
 		}
 	}
 

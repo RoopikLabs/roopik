@@ -139,9 +139,7 @@ export function registerImportCommands(): void {
 				case 'github':
 				case 'figma':
 				case 'third-party':
-					notificationService.info(
-						localize('roopik.import.comingSoon', '{0} import is coming soon!', selectedSource.label.replace(/\$\([^)]+\)\s*/, ''))
-					);
+					// Coming soon - no notification needed
 					break;
 			}
 		}

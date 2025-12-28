@@ -5,6 +5,7 @@
 
 import { localize, localize2 } from '../../../../nls.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
+import { mainWindow } from '../../../../base/browser/window.js';
 import { IWorkbenchContribution } from '../../../common/contributions.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { IViewsRegistry, IViewDescriptor, Extensions, ViewContainer, IViewContainersRegistry, ViewContainerLocation, IViewDescriptorService } from '../../../common/views.js';
@@ -429,7 +430,6 @@ export class RoopikDashboardView extends ViewPane {
 		if (confirmed === canvasName) {
 			try {
 				await this.canvasService.deleteCanvas(canvasId);
-				this.notificationService.info(localize('roopik.deleteCanvas.success', 'Canvas "{0}" deleted', canvasName));
 			} catch (err) {
 				const errorMsg = err instanceof Error ? err.message : String(err);
 				this.notificationService.error(localize('roopik.deleteCanvas.error', 'Failed to delete canvas: {0}', errorMsg));
@@ -456,7 +456,6 @@ export class RoopikDashboardView extends ViewPane {
 		if (newName && newName !== currentName) {
 			try {
 				await this.canvasService.updateCanvas(canvasId, { name: newName });
-				this.notificationService.info(localize('roopik.renameCanvas.success', 'Canvas renamed to "{0}"', newName));
 			} catch (err) {
 				const errorMsg = err instanceof Error ? err.message : String(err);
 				this.notificationService.error(localize('roopik.renameCanvas.error', 'Failed to rename canvas: {0}', errorMsg));
@@ -602,7 +601,6 @@ export class RoopikDashboardView extends ViewPane {
 	private async deleteProject(projectId: string, projectName: string): Promise<void> {
 		try {
 			await this.projectStorageService.deleteProject(projectId);
-			this.notificationService.info(localize('roopik.deleteProject.success', 'Removed "{0}" from recent projects', projectName));
 		} catch (err) {
 			const errorMsg = err instanceof Error ? err.message : String(err);
 			this.notificationService.error(localize('roopik.deleteProject.error', 'Failed to remove project: {0}', errorMsg));
@@ -835,7 +833,7 @@ export class RoopikDashboardView extends ViewPane {
 				50% { transform: scale(1.15); }
 			}
 		`;
-		document.head.appendChild(style);
+		mainWindow.document.head.appendChild(style);
 		RoopikDashboardView.animationsInjected = true;
 	}
 

@@ -212,10 +212,6 @@ export function registerBrowserCommands(): void {
 			}
 
 			const projectPath = args.projectPath;
-			const projectName = projectPath.split(/[\\/]/).pop() || 'Project';
-
-			// Show starting notification
-			notificationService.info(`Starting project: ${projectName}...`);
 
 			try {
 				// ============================================

@@ -518,12 +518,14 @@ export class CanvasPanel implements vscode.Disposable {
 		level: 'info' | 'warning' | 'error';
 		message: string;
 	}): void {
+		// Log to output channel instead of showing notification popup
 		switch (payload.level) {
 			case 'info':
-				vscode.window.showInformationMessage(payload.message);
+				this.logger.info(payload.message);
 				break;
 			case 'warning':
-				vscode.window.showWarningMessage(payload.message);
+				// vscode.window.showWarningMessage(payload.message);
+				this.logger.warn(payload.message);
 				break;
 			case 'error':
 				vscode.window.showErrorMessage(payload.message);
