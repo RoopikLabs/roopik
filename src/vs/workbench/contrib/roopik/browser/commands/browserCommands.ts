@@ -26,6 +26,8 @@ import { Editor as ProjectModeEditor } from '../projectMode/editor.js';
 import { DevServerBridge } from '../projectMode/devServerBridge.js';
 import { DEV_SERVER_CHANNEL } from '../../common/projectMode/devServer.js';
 import { IMcpServerService } from '../../common/mcp/index.js';
+import { getRoopikLogger } from '../../common/roopikLogger.js';
+import { ILoggerService } from '../../../../../platform/log/common/log.js';
 
 /**
  * Arguments for openProjectPreview command
@@ -210,10 +212,6 @@ export function registerBrowserCommands(): void {
 			}
 
 			const projectPath = args.projectPath;
-			const projectName = projectPath.split(/[\\/]/).pop() || 'Project';
-
-			// Show starting notification
-			notificationService.info(`Starting project: ${projectName}...`);
 
 			try {
 				// ============================================
@@ -222,12 +220,16 @@ export function registerBrowserCommands(): void {
 				// ============================================
 				const devServerService = new DevServerBridge(mainProcessService.getChannel(DEV_SERVER_CHANNEL));
 
+				const loggerService = accessor.get(ILoggerService);
+				const logger = getRoopikLogger(loggerService, 'BROWSER_COMMANDS');
+
 				// Check if another project is already running (project switching)
 				const runningServer = await devServerService.getRunningServer();
 				if (runningServer && runningServer.projectRoot !== projectPath) {
-					// Mark as project switching - contribution will keep browser open
-					// This is handled via a flag in projectModeContribution
-					console.log('[startProject] Project switching detected - browser will be reused');
+					logger.info('Project switching detected - browser will be reused', {
+						previous: runningServer.projectRoot,
+						next: projectPath
+					});
 				}
 
 				const url = await devServerService.startServer({

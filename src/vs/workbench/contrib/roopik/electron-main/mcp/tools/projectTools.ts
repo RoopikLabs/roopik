@@ -188,5 +188,5 @@ export function registerProjectTools(
 		}
 	);
 
-	console.log('[MCP] Registered 3 project tools: project_get_active, project_start, project_stop');
+	// console.log('[MCP] Registered 3 project tools: project_get_active, project_start, project_stop');
 }

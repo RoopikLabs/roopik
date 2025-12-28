@@ -28,7 +28,10 @@ import {
 	getFocusedSandboxDimensions,
 } from "../canvasView/services/gridManager";
 import { useFPS } from "../hooks/useFPS";
+import { createLogger } from "../utils/logger";
 import "./ComponentView.css";
+
+const logger = createLogger('Canvas');
 
 // VS Code API
 declare const acquireVsCodeApi: () => {
@@ -127,24 +130,13 @@ function App() {
 			const initialState = window.CANVAS_STATE;
 
 			if (initialState) {
-				console.log(
-					"[Canvas] Loading initial state from extension:",
-					initialState
-				);
-
 				if (initialState.sandboxes && initialState.sandboxes.length > 0) {
-					console.log(
-						"[Canvas] Restoring",
-						initialState.sandboxes.length,
-						"sandboxes"
-					);
 					setSandboxes(initialState.sandboxes);
 					// Sync ref to avoid auto-fit on initial load
 					prevSandboxCountRef.current = initialState.sandboxes.length;
 				}
 
 				if (initialState.viewport) {
-					console.log("[Canvas] Restoring viewport:", initialState.viewport);
 					setTransform(initialState.viewport);
 				}
 
@@ -153,27 +145,15 @@ function App() {
 					initialState.backgroundColor &&
 					/^#[0-9A-Fa-f]{6}$/.test(initialState.backgroundColor)
 				) {
-					console.log(
-						"[Canvas] Restoring background color:",
-						initialState.backgroundColor
-					);
 					setBackgroundColor(initialState.backgroundColor);
 				}
 
 				if (initialState.backgroundPattern) {
 					const validPatterns: BackgroundPattern[] = ["grid", "dots", "plain"];
 					if (validPatterns.includes(initialState.backgroundPattern)) {
-						console.log(
-							"[Canvas] Restoring background pattern:",
-							initialState.backgroundPattern
-						);
 						setPattern(initialState.backgroundPattern);
 					}
 				}
-			} else {
-				console.log(
-					"[Canvas] No initial state found, starting with empty canvas"
-				);
 			}
 		} catch (error) {
 			console.error("[Canvas] Failed to load initial state:", error);
@@ -184,36 +164,20 @@ function App() {
 	useEffect(() => {
 		const handleMessage = (event: MessageEvent<ExtensionMessage>) => {
 			const msg = event.data;
-			console.log("[Canvas] Received message from extension:", msg.type);
 
 			switch (msg.type) {
 				case "canvasLoadingStarted": {
 					// Turn off auto-fit flag during initial loading
-					const { componentCount } = msg.payload as { componentCount: number };
-					console.log(
-						"[Canvas] Initial loading started:",
-						componentCount,
-						"components"
-					);
 					isInitialLoadingRef.current = true;
 					break;
 				}
 
 				case "canvasLoadingComplete": {
 					// Turn on auto-fit flag and call fitAllSandboxes
-					const { componentCount } = msg.payload as { componentCount: number };
-					console.log(
-						"[Canvas] Initial loading complete:",
-						componentCount,
-						"components"
-					);
-
 					isInitialLoadingRef.current = false;
-
 					// Call fitAllSandboxes after a short delay to ensure DOM is ready
 					setTimeout(() => {
 						if (sandboxes.length > 0 && fitAllSandboxesRef.current) {
-							console.log("[Canvas] Fitting all sandboxes after initial load");
 							fitAllSandboxesRef.current(sandboxes);
 						}
 					}, 200);
@@ -222,20 +186,12 @@ function App() {
 
 				case "componentCreated": {
 					// Component created - create sandbox with 'building' status (loading spinner)
-					const { componentId, canvasId, name } = msg.payload;
-					console.log("[Canvas] componentCreated received:", {
-						componentId,
-						canvasId,
-						name,
-					});
-
+					// const { componentId, canvasId, name } = msg.payload;
+					const { componentId, name } = msg.payload;
 					// Check if sandbox already exists (e.g., from addImportedComponent)
 					setSandboxes((prev) => {
 						const existingSandbox = prev.find((s) => s.id === componentId);
 						if (existingSandbox) {
-							console.log(
-								"[Canvas] Sandbox already exists, updating to building status"
-							);
 							return prev.map((sandbox) =>
 								sandbox.id === componentId
 									? { ...sandbox, buildStatus: "building" as const }
@@ -248,19 +204,9 @@ function App() {
 							let zIndex: number;
 
 							if (savedPosition) {
-								// Use saved position from storage
-								console.log(
-									"[Canvas] Using saved position for component:",
-									componentId,
-									savedPosition
-								);
 								position = { x: savedPosition.x, y: savedPosition.y };
 								zIndex = savedPosition.zIndex;
 							} else {
-								// Calculate new position
-								console.log(
-									"[Canvas] Creating new sandbox with building status"
-								);
 								const gridPos = getNextAvailableGridPosition(
 									prev,
 									DEFAULT_CONFIG
@@ -303,16 +249,8 @@ function App() {
 				}
 
 				case "componentBuilt": {
-					// Component built successfully - update sandbox
 					const { componentId, result } = msg.payload;
 					pendingBuildsRef.current.delete(componentId);
-
-					console.log("[Canvas] componentBuilt received:", {
-						componentId,
-						framework: result.framework,
-						bundledCodeLength: result.bundledCode?.length || 0,
-						cdnUrls: result.cdnUrls,
-					});
 
 					setSandboxes((prev) =>
 						prev.map((sandbox) => {
@@ -362,13 +300,6 @@ function App() {
 				case "canvasLoaded": {
 					// Restore canvas state
 					const { state } = msg.payload;
-					console.log("[Canvas] Canvas loaded:", {
-						id: state.id,
-						name: state.name,
-						sandboxCount: state.sandboxes.length,
-						backgroundColor: state.backgroundColor,
-						backgroundPattern: state.backgroundPattern,
-					});
 
 					setSandboxes(state.sandboxes);
 					// Sync ref to avoid auto-fit on canvas load
@@ -393,11 +324,6 @@ function App() {
 				case "addImportedComponent": {
 					// Import component from file
 					const { componentInput, position } = msg.payload;
-					console.log("[Canvas] Importing component:", {
-						id: componentInput.id,
-						framework: componentInput.framework,
-						files: Object.keys(componentInput.files),
-					});
 
 					setSandboxes((prev) => {
 						// Priority: 1. Provided position, 2. Saved position, 3. Next available grid slot
@@ -411,11 +337,6 @@ function App() {
 							const savedPosition =
 								loadedPositionsRef.current[componentInput.id];
 							if (savedPosition) {
-								console.log(
-									"[Canvas] Using saved position for imported component:",
-									componentInput.id,
-									savedPosition
-								);
 								finalPosition = { x: savedPosition.x, y: savedPosition.y };
 								zIndex = savedPosition.zIndex;
 							} else {
@@ -463,9 +384,7 @@ function App() {
 				}
 
 				case "canvasPreferencesLoaded": {
-					// Preferences and sandbox positions loaded from file by extension
 					const { preferences, sandboxPositions } = msg.payload;
-					console.log("[Canvas] Preferences loaded from file:", preferences);
 
 					if (preferences.backgroundColor) {
 						setBackgroundColor(preferences.backgroundColor);
@@ -477,14 +396,8 @@ function App() {
 						setTransform(preferences.viewport);
 					}
 
-					// Store sandbox positions for use when sandboxes are created
 					if (sandboxPositions) {
 						loadedPositionsRef.current = sandboxPositions;
-						console.log(
-							"[Canvas] Loaded positions for",
-							Object.keys(sandboxPositions).length,
-							"sandboxes"
-						);
 					}
 					break;
 				}
@@ -504,16 +417,10 @@ function App() {
 			// Handle element selection from inspect mode
 			if (data.type === "roopik-element-selected") {
 				const { componentId, element } = data;
-				console.log(
-					"[Canvas] Element selected in sandbox:",
-					componentId,
-					element
-				);
-
 				// Check if we have source location info
 				if (element?.sourceLocation) {
 					const { file, startLine } = element.sourceLocation;
-					console.log("[Canvas] Source location:", file, "line", startLine);
+					logger.info('Element source location', { file, startLine });
 
 					// Store the pending selection
 					pendingElementSelectionRef.current = {
@@ -526,26 +433,7 @@ function App() {
 						type: "loadComponentFiles",
 						payload: { componentId },
 					});
-				} else {
-					console.log("[Canvas] No source location for element");
 				}
-			}
-
-			// Handle inspect mode ready notification
-			if (data.type === "roopik-inspect-ready") {
-				console.log(
-					"[Canvas] ✓ Inspect mode ready for sandbox:",
-					data.componentId
-				);
-			}
-
-			// Handle component runtime errors
-			if (data.type === "roopik-component-error") {
-				console.log(
-					"[Canvas] Runtime error in sandbox:",
-					data.componentId,
-					data.error
-				);
 			}
 		};
 
@@ -570,7 +458,6 @@ function App() {
 		}
 
 		const saveTimeout = setTimeout(() => {
-			console.log("[Canvas] Auto-saving canvas state");
 			vscode.postMessage({
 				type: "saveCanvas",
 				payload: {
@@ -614,10 +501,6 @@ function App() {
 				}
 			);
 			if (newTransform) {
-				console.log("[Canvas] Auto-fitting to viewport:", {
-					sandboxCount: sandboxList.length,
-					transform: newTransform,
-				});
 				setTransform(newTransform);
 			}
 		});
@@ -654,24 +537,12 @@ function App() {
 		// Future: || isEditingComponent || isUserDragging etc.
 
 		if (shouldSkipAutoFit) {
-			console.log(
-				"[Canvas] Skipping auto-fit",
-				isInitialLoadingRef.current
-					? "(initial loading)"
-					: "(user interaction mode)"
-			);
 			return;
 		}
 
 		// Use longer delay to ensure DOM is fully updated
 		// Also use requestAnimationFrame for smoother animation
 		const timer = setTimeout(() => {
-			console.log(
-				"[Canvas] Auto-fitting after count change:",
-				prevCount,
-				"->",
-				sandboxCount
-			);
 			fitAllSandboxes(sandboxes);
 		}, 300);
 
@@ -692,7 +563,7 @@ function App() {
 			const sandbox = sandboxes.find((s) => s.id === sandboxId);
 			if (!sandbox) return;
 
-			console.log("[Canvas] Focusing on sandbox:", sandboxId);
+			logger.info('Focusing on sandbox', { sandboxId });
 			setFocusedSandboxId(sandboxId);
 
 			const viewport = { width: window.innerWidth, height: window.innerHeight };
@@ -772,7 +643,7 @@ function App() {
 	// Sandbox click handler
 	const handleSandboxClick = useCallback((sandboxId: string) => {
 		setSelectedSandboxId(sandboxId);
-		console.log("[Canvas] Sandbox selected:", sandboxId);
+		logger.info('Sandbox selected', { sandboxId });
 
 		// Bring clicked sandbox to front
 		setSandboxes((prev) => {
@@ -786,7 +657,7 @@ function App() {
 	// Sandbox delete handler
 	const handleSandboxDelete = useCallback(
 		(sandboxId: string) => {
-			console.log("[Canvas] Deleting sandbox:", sandboxId);
+			logger.info('Deleting sandbox', { sandboxId });
 			pendingBuildsRef.current.delete(sandboxId);
 
 			if (selectedSandboxId === sandboxId) setSelectedSandboxId(null);
@@ -824,7 +695,7 @@ function App() {
 
 	// Sandbox rebuild handler (force rebuild bypassing cache)
 	const handleSandboxRebuild = useCallback((sandboxId: string) => {
-		console.log("[Canvas] Force rebuild sandbox:", sandboxId);
+		logger.info('Force rebuild sandbox', { sandboxId });
 
 		// Update sandbox to building state
 		setSandboxes((prev) =>
@@ -877,7 +748,7 @@ function App() {
 				}
 				if (focusedSandboxId) {
 					// Exit focused mode
-					console.log("[Canvas] ESC: Exiting focused mode");
+					logger.info('Exiting focused mode');
 					setFocusedSandboxId(null);
 					fitAllSandboxes(sandboxes);
 				} else {
@@ -944,7 +815,7 @@ function App() {
 			setIsInspectMode(false);
 			setIsRectangleMode(false);
 		}
-		console.log("[BottomActionBar] Select mode:", newState);
+		logger.info('Select mode toggled', { enabled: newState });
 	}, [isSelectMode]);
 
 	const handleInspectMode = useCallback(() => {
@@ -954,12 +825,6 @@ function App() {
 			setIsSelectMode(false);
 			setIsRectangleMode(false);
 		}
-		console.log(
-			"[ComponentView] Inspect mode toggled to:",
-			newState,
-			"- sandboxes count:",
-			sandboxes.length
-		);
 	}, [isInspectMode, sandboxes.length]);
 
 	const handleRectangleSelection = useCallback(() => {
@@ -969,11 +834,11 @@ function App() {
 			setIsSelectMode(false);
 			setIsInspectMode(false);
 		}
-		console.log("[BottomActionBar] Rectangle mode:", newState);
+		logger.info('Rectangle mode toggled', { enabled: newState });
 	}, [isRectangleMode]);
 
 	const handleAIChat = useCallback(() => {
-		console.log("[BottomActionBar] AI Chat toggled");
+		logger.info('AI Chat toggled');
 	}, []);
 
 	// ========================================================================
@@ -1081,7 +946,6 @@ function App() {
 
 			// Check if file type is supported
 			if (!SUPPORTED_EXTENSIONS.includes(ext)) {
-				console.log(`[DragDrop] Skipping unsupported file: ${fileName}`);
 				vscode.postMessage({
 					type: "showNotification",
 					payload: {

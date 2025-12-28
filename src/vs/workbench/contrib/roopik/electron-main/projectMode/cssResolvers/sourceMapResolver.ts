@@ -160,7 +160,7 @@ export class SourceMapResolver {
 				column: original.column || 0
 			};
 		} catch (error) {
-			console.error('[SourceMapResolver] Failed to resolve:', cssFilePath, error);
+			// Failed to resolve - return null
 			return null;
 		}
 	}
@@ -214,7 +214,7 @@ export class SourceMapResolver {
 				endColumn: originalEnd.column || originalStart.column || 0
 			};
 		} catch (error) {
-			console.error('[SourceMapResolver] Failed to resolve range:', cssFilePath, error);
+			// Failed to resolve range - return null
 			return null;
 		}
 	}

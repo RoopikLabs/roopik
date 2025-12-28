@@ -442,7 +442,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 			}
 			// Otherwise wait for onDidInitialize event
 		} catch (err) {
-			console.error('[RoopikWelcomeEditor] checkAndLoadCanvases error:', err);
+			// Service not ready - will retry via event
 		}
 	}
 
@@ -461,7 +461,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 				this.startProjectLoadingTimeout();
 			}
 		} catch (err) {
-			console.error('[RoopikWelcomeEditor] checkAndLoadProjects error:', err);
+			// Service not ready - will retry via event
 			this.startProjectLoadingTimeout();
 		}
 	}
@@ -483,7 +483,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 		this.clearProjectLoadingTimeout();
 		this.projectLoadingTimeoutHandle = setTimeout(() => {
 			if (!this.projectServiceInitialized) {
-				console.warn('[RoopikWelcomeEditor] Project loading timeout');
+				// Timeout - service initialization took too long
 				this.showProjectTimeoutState();
 			}
 		}, RoopikWelcomeEditor.LOADING_TIMEOUT_MS);
@@ -540,7 +540,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 				this.createRecentCanvasItem(this.recentCanvasesContainer, canvas);
 			}
 		} catch (err) {
-			console.error('[RoopikWelcomeEditor] Failed to load canvases:', err);
+			// Failed to load - show error state
 			const errorState = append(this.recentCanvasesContainer, $('.quick-start-empty'));
 			errorState.textContent = 'Failed to load canvases';
 		} finally {
@@ -585,7 +585,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 				this.createRecentProjectItem(this.recentProjectsContainer, project);
 			}
 		} catch (err) {
-			console.error('[RoopikWelcomeEditor] Failed to load projects:', err);
+			// Failed to load - show error state
 			const errorState = append(this.recentProjectsContainer, $('.quick-start-empty'));
 			errorState.textContent = 'Failed to load projects';
 		} finally {

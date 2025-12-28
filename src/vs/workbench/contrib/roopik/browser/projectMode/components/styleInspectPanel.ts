@@ -207,7 +207,6 @@ export class StyleInspectPanel {
 	 * Highlight a node in the Components tree (called when user selects element in browser)
 	 */
 	highlightTreeNode(nodeId: number): void {
-		console.log('[StyleInspectPanel] highlightTreeNode called, nodeId:', nodeId, 'domTree:', !!this.domTree);
 		this.selectedNodeId = nodeId;
 		// Expand parent nodes to make selected node visible
 		this.expandParentsOfNode(nodeId);

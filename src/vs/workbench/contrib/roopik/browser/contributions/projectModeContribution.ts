@@ -30,20 +30,25 @@ import { ServiceBridge } from '../projectMode/serviceBridge.js';
 import { DEV_SERVER_CHANNEL } from '../../common/projectMode/devServer.js';
 import { PROJECT_MODE_CHANNEL } from '../../common/projectMode/ipc.js';
 import { openBrowserEditor } from '../commands/browserCommands.js';
+import { ILoggerService } from '../../../../../platform/log/common/log.js';
+import { getRoopikLogger } from '../../common/roopikLogger.js';
 
 export class RoopikProjectModeContribution extends Disposable implements IWorkbenchContribution {
 	static readonly ID = 'roopik.projectModeContribution';
 
 	private devServerService: DevServerBridge;
 	private projectModeService: ServiceBridge;
+	private readonly logger;
 
 	constructor(
 		@IEditorService private readonly editorService: IEditorService,
 		@IEditorGroupsService private readonly editorGroupsService: IEditorGroupsService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
-		@IMainProcessService mainProcessService: IMainProcessService
+		@IMainProcessService mainProcessService: IMainProcessService,
+		@ILoggerService loggerService: ILoggerService
 	) {
 		super();
+		this.logger = getRoopikLogger(loggerService, 'PROJECT_MODE_CONTRIBUTION');
 
 		// Get DevServerService via IPC
 		this.devServerService = new DevServerBridge(mainProcessService.getChannel(DEV_SERVER_CHANNEL));
@@ -70,7 +75,7 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 		this._register(this.devServerService.onStatusChanged(async (event) => {
 			// Handle server entering 'running' state → open browser
 			if (event.state === 'running' && event.url) {
-				console.log('[ProjectModeContribution] Dev server started, opening browser:', {
+				this.logger.info('Dev server started, opening browser', {
 					projectRoot: event.projectRoot,
 					url: event.url,
 					framework: event.framework
@@ -82,16 +87,14 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 				try {
 					await this.openBrowserAndNavigate(event.url, event.projectRoot);
 				} catch (error) {
-					console.error('[ProjectModeContribution] Failed to open browser:', error);
+					this.logger.error('Failed to open browser', { error });
 				}
 				return;
 			}
 
 			// Handle server entering 'stopped' state
 			if (event.state === 'stopped') {
-				console.log('[ProjectModeContribution] Dev server stopped:', {
-					projectRoot: event.projectRoot
-				});
+				this.logger.info('Dev server stopped', { projectRoot: event.projectRoot });
 
 				// Check if browser is already open
 				const browserPane = this.editorService.visibleEditorPanes.find(
@@ -101,7 +104,7 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 				// If browser is open, it's likely a project switch - keep browser open for reuse
 				// The next 'running' event will navigate to the new project URL
 				if (browserPane) {
-					console.log('[ProjectModeContribution] Browser is open - keeping it open (project switch detected)');
+					this.logger.info('Browser is open - keeping it open (project switch detected)');
 					return;
 				}
 
@@ -109,7 +112,7 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 				try {
 					await this.closeBrowser();
 				} catch (error) {
-					console.error('[ProjectModeContribution] Failed to close browser:', error);
+					this.logger.error('Failed to close browser', { error });
 				}
 			}
 		}));
@@ -134,7 +137,7 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 	 */
 	private setupMcpBrowserCloseListener(): void {
 		this._register(this.projectModeService.onMcpBrowserCloseRequest(async () => {
-			console.log('[ProjectModeContribution] MCP browser close request received');
+			this.logger.info('MCP browser close request received');
 			await this.closeBrowser();
 		}));
 	}
@@ -154,7 +157,7 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 		// Navigate to the dev server URL
 		if (browserPane) {
 			await browserPane.navigateToUrl(url, projectRoot);
-			console.log('[ProjectModeContribution] Browser navigated to:', url);
+			this.logger.info('Browser navigated to URL', { url });
 		}
 	}
 
@@ -171,9 +174,9 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 		if (browserPane && browserPane.group) {
 			// Close the editor in its group
 			await browserPane.group.closeEditor(browserPane.input);
-			console.log('[ProjectModeContribution] Browser editor closed');
+			this.logger.info('Browser editor closed');
 		} else {
-			console.log('[ProjectModeContribution] No browser editor to close');
+			this.logger.debug('No browser editor to close');
 		}
 	}
 }

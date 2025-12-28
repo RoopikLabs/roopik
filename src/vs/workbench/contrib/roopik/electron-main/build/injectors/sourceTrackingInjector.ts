@@ -103,9 +103,9 @@ export class SourceTrackingInjector extends BaseInjector {
 
 			const result = transformCode(code, options);
 
-			if (result.count > 0) {
-				console.log(`[SourceTracking] Added tracking to ${result.count} elements in: ${filename}`);
-			}
+			// if (result.count > 0) {
+			// 	console.log(`[SourceTracking] Added tracking to ${result.count} elements in: ${filename}`);
+			// }
 
 			return result.code;
 		} catch (error) {

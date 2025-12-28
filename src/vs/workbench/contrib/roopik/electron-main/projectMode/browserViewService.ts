@@ -16,6 +16,8 @@ import { CDPCssService } from './cssResolvers/cdpCssService.js';
 import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.js';
 import contextMenu from 'electron-context-menu';
 import { cleanupCDPMonitoring } from '../mcp/tools/browserTools.js';
+import { ILoggerService } from '../../../../../platform/log/common/log.js';
+import { getRoopikLogger } from '../../common/roopikLogger.js';
 
 /**
  * Browser View Service
@@ -97,12 +99,19 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// Track which browser views have the bridge binding set up
 	private bridgeBindingSetup = new Map<number, boolean>();
 
+	// Logger
+	private readonly logger;
+
 	// ============================================
 	// Constructor & Lifecycle Setup
 	// ============================================
 
-	constructor(private readonly lifecycleMainService?: ILifecycleMainService) {
+	constructor(
+		@ILoggerService loggerService: ILoggerService,
+		private readonly lifecycleMainService?: ILifecycleMainService
+	) {
 		super();
+		this.logger = getRoopikLogger(loggerService, 'BROWSER_VIEW');
 		// Initialize CDP CSS Service with this as the browser service
 		this.cdpCssService = new CDPCssService(this);
 		this.setupLifecycleHooks();
@@ -114,7 +123,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	 */
 	private setupLifecycleHooks(): void {
 		if (!this.lifecycleMainService) {
-			console.warn('[ProjectMode][Main] ILifecycleMainService not provided, skipping lifecycle hooks');
+			this.logger.warn('ILifecycleMainService not provided, skipping lifecycle hooks');
 			return;
 		}
 
@@ -125,10 +134,10 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				// Get Electron BrowserWindow ID (not VS Code window ID)
 				const electronWindowId = e.window.win?.id;
 				if (electronWindowId !== undefined) {
-					console.log('[ProjectMode][Main] Window reload detected, destroying all browser views for window', electronWindowId);
+					this.logger.info('Window reload detected, destroying browser views', { electronWindowId });
 					this.destroyAllBrowserViewsForWindow(electronWindowId);
 				} else {
-					console.warn('[ProjectMode][Main] Window reload detected but Electron BrowserWindow not available');
+					this.logger.warn('Window reload detected but Electron BrowserWindow not available');
 				}
 			}
 		}));
@@ -148,10 +157,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			}
 		}
 
-		console.log('[ProjectMode][Main] Destroying browser views for window reload', {
-			windowId,
-			browserViewIds: browserViewIdsToDestroy
-		});
+		this.logger.info('Destroying browser views for window reload', { windowId, browserViewIds: browserViewIdsToDestroy });
 
 		// Destroy each browser view synchronously (window is reloading, no time for async)
 		for (const browserViewId of browserViewIdsToDestroy) {
@@ -164,7 +170,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// ============================================
 
 	async createBrowserView(windowId: number): Promise<BrowserViewResult> {
-		console.log('[ProjectMode][Main] createBrowserView() requested for window', windowId);
+		this.logger.info('createBrowserView requested', { windowId });
 
 		const window = BrowserWindow.fromId(windowId);
 		if (!window) {
@@ -228,12 +234,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		const browserViewId = browserView.webContents.id;
 		const debuggingPort = this.debuggingPortCounter++;
 
-		console.log('[ProjectMode][Main] Browser view CREATED', {
-			browserViewId,
-			windowId,
-			debuggingPort,
-			webContentsId: browserView.webContents.id
-		});
+		this.logger.info('Browser view created', { browserViewId, windowId, debuggingPort, webContentsId: browserView.webContents.id });
 
 		// Store references
 		this.browserViews.set(browserViewId, browserView);
@@ -259,7 +260,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	}
 
 	async destroyBrowserView(browserViewId: number): Promise<void> {
-		console.log('[ProjectMode][Main] destroyBrowserView() called for', browserViewId);
+		this.logger.info('destroyBrowserView called', { browserViewId });
 
 		// Cleanup CDP monitoring if active (from MCP CDP tools)
 		cleanupCDPMonitoring(browserViewId);
@@ -276,11 +277,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		const window = this.browserWindows.get(browserViewId);
 
 		if (browserView) {
-			console.log('[ProjectMode][Main] Destroying browser view', {
-				browserViewId,
-				windowId: window?.id,
-				webContentsDestroyed: browserView.webContents.isDestroyed()
-			});
+			this.logger.info('Destroying browser view', { browserViewId, windowId: window?.id, webContentsDestroyed: browserView.webContents.isDestroyed() });
 
 			const webContents = browserView.webContents;
 
@@ -289,7 +286,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				try {
 					window.contentView.removeChildView(browserView);
 				} catch (e) {
-					console.error('[ProjectMode] Error removing browser view from window:', e);
+					this.logger.error('Error removing browser view from window', { error: e });
 				}
 			}
 
@@ -305,7 +302,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 					// Close the webContents (this is the correct method per Electron docs)
 					webContents.close();
 				} catch (e) {
-					console.error('[ProjectMode] Error closing browser webContents:', e);
+					this.logger.error('Error closing browser webContents', { error: e });
 				}
 			}
 
@@ -361,33 +358,24 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		// Normalize URL - add protocol if missing (centralized for all callers: MCP, native, UI)
 		const normalizedUrl = this.normalizeUrl(url);
 
-		console.log('[ProjectMode][Main] navigate() requested', { browserViewId, url, normalizedUrl });
+		this.logger.debug('navigate requested', { browserViewId, url, normalizedUrl });
 
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView) {
 			const activeIds = Array.from(this.browserViews.keys());
 			const message = `[ProjectMode] navigate() FAILED: browserView not found for ID ${browserViewId}. Active IDs: [${activeIds.join(', ')}]`;
-			console.error(message, {
-				requestedId: browserViewId,
-				activeIds
-			});
-			// Propagate a hard error back to renderer so UI can show a proper message
+			this.logger.error(message, { requestedId: browserViewId, activeIds });
+			// Propagate error
 			throw new Error(message);
 		}
 
 		if (browserView.webContents.isDestroyed()) {
 			const message = `[ProjectMode] navigate() FAILED: webContents is destroyed for ID ${browserViewId}`;
-			console.error(message, {
-				requestedId: browserViewId,
-				webContentsDestroyed: true
-			});
+			this.logger.error(message, { requestedId: browserViewId, webContentsDestroyed: true });
 			throw new Error(message);
 		}
 
-		console.log('[ProjectMode][Main] navigate() forwarding to webContents.loadURL()', {
-			browserViewId,
-			webContentsId: browserView.webContents.id
-		});
+		this.logger.debug('navigate forwarding to webContents.loadURL', { browserViewId, webContentsId: browserView.webContents.id });
 
 		await browserView.webContents.loadURL(normalizedUrl);
 	}
@@ -446,9 +434,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				const browserSession = browserView.webContents.session;
 				try {
 					await browserSession.clearCache();
-					console.log('[ProjectMode] Cache cleared for hard reload');
+					this.logger.info('Cache cleared for hard reload');
 				} catch (e) {
-					console.error('[ProjectMode] Failed to clear cache:', e);
+					this.logger.error('Failed to clear cache', { error: e });
 				}
 				browserView.webContents.reloadIgnoringCache();
 			} else {
@@ -552,12 +540,12 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// ============================================
 
 	async openDevTools(browserViewId: number, _options: DevToolsOptions): Promise<DevToolsViewResult> {
-		console.log('[ProjectMode][Main] openDevTools() requested for', browserViewId);
+		this.logger.debug('openDevTools requested', { browserViewId });
 
 		const browserView = this.browserViews.get(browserViewId);
 
 		if (!browserView) {
-			console.error('[ProjectMode][Main] openDevTools() FAILED: browser view not found', browserViewId);
+			this.logger.error('openDevTools FAILED: browser view not found', { browserViewId });
 			throw new Error(`Browser view ${browserViewId} not found`);
 		}
 
@@ -567,7 +555,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		// Open DevTools docked at bottom of the browser window
 		// This gives us the Device Toolbar toggle and close button
 		// Users can detach from DevTools settings menu if they want a separate window
-		console.log('[ProjectMode][Main] openDevTools() opening devtools on webContents', browserView.webContents.id);
+		this.logger.debug('Opening devtools on webContents', { webContentsId: browserView.webContents.id });
 		browserView.webContents.openDevTools({ mode: 'bottom' });
 
 		// Return -1 as devtoolsViewId since Electron manages the DevTools view
@@ -583,7 +571,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			try {
 				browserView.webContents.closeDevTools();
 			} catch (e) {
-				console.error('[ProjectMode] Error closing devtools on browser:', e);
+				this.logger.error('Error closing devtools on browser', { error: e });
 			}
 		}
 	}
@@ -611,7 +599,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				browserView.webContents.debugger.attach(protocolVersion);
 				this.debuggerAttached.set(browserViewId, true);
 			} catch (e) {
-				console.error('[ProjectMode] Failed to attach debugger:', e);
+				this.logger.error('Failed to attach debugger', { error: e });
 				throw e;
 			}
 		}
@@ -624,7 +612,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				browserView.webContents.debugger.detach();
 				this.debuggerAttached.set(browserViewId, false);
 			} catch (e) {
-				console.error('[ProjectMode] Failed to detach debugger:', e);
+				this.logger.error('Failed to detach debugger', { error: e });
 			}
 		}
 	}
@@ -739,7 +727,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 						message
 					});
 				} catch (e) {
-					console.error('[BrowserBridge] Failed to parse message:', e);
+					this.logger.error('BrowserBridge: Failed to parse message', { error: e });
 				}
 			}
 		};
@@ -845,7 +833,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			devicePixelRatio = parsed.devicePixelRatio;
 		} catch (e) {
 			// Fallback: use image dimensions divided by a default DPR
-			console.warn('[ProjectMode] Failed to get viewport info from page, using fallback', e);
+			this.logger.warn('Failed to get viewport info from page, using fallback', { error: e });
 		}
 
 		const image = await browserView.webContents.capturePage();
@@ -1094,7 +1082,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	 * @param url - Optional URL to navigate to after browser opens
 	 */
 	requestBrowserOpen(url?: string): void {
-		console.log('[ProjectMode][Main] MCP browser open request', { url });
+		this.logger.info('MCP browser open request', { url });
 		this._onMcpBrowserOpenRequest.fire({ url });
 	}
 
@@ -1105,7 +1093,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	 * This is the CORRECT way to close the browser - NOT calling destroyBrowserView directly!
 	 */
 	requestBrowserClose(): void {
-		console.log('[ProjectMode][Main] MCP browser close request');
+		this.logger.info('MCP browser close request');
 		this._onMcpBrowserCloseRequest.fire({});
 	}
 
@@ -1124,7 +1112,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			this.cdpCssService.resetForPageLoad(browserViewId);
 			await this.cdpCssService.ensureCSSEnabled(browserViewId);
 		} catch (error) {
-			console.error('[ProjectMode][Main] Failed to enable CSS domain:', error);
+			this.logger.error('Failed to enable CSS domain', { error });
 		}
 	}
 
@@ -1148,14 +1136,14 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				const failed = results.filter(r => !r.success);
 
 				if (loaded.length > 0) {
-					console.log(`[ProjectMode] Loaded ${loaded.length} DevTools extension(s): ${loaded.map(r => r.name).join(', ')}`);
+					this.logger.info('DevTools extensions loaded', { count: loaded.length, names: loaded.map(r => r.name) });
 				}
 				if (failed.length > 0) {
-					console.warn(`[ProjectMode] Failed to load ${failed.length} extension(s): ${failed.map(r => `${r.name} (${r.error})`).join(', ')}`);
+					this.logger.warn('DevTools extensions failed to load', { count: failed.length, failures: failed.map(r => ({ name: r.name, error: r.error })) });
 				}
 			})
 			.catch(e => {
-				console.error('[ProjectMode] Error loading DevTools extensions:', e);
+				this.logger.error('Error loading DevTools extensions', { error: e });
 			});
 	}
 
@@ -1182,11 +1170,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	private attachSafetyLeash(window: BrowserWindow, browserViewId: number): void {
 		// Define a cleanup function that triggers automatically
 		const autoDestruct = (reason: string) => {
-			console.log('[ProjectMode][Main] Safety leash auto-destroy triggered', {
-				reason,
-				windowId: window.id,
-				browserViewId
-			});
+			this.logger.info('Safety leash auto-destroy triggered', { browserViewId, windowId: window.id, reason });
 			// Fire and forget - we don't await because the window is dying
 			this.destroyBrowserViewSync(browserViewId, `safety-leash:${reason}`);
 		};
@@ -1200,7 +1184,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// 3. If the renderer process crashes or is killed
 		window.webContents.once('render-process-gone', (_event, details) => {
-			console.warn('[ProjectMode][Main] render-process-gone detected for window', window.id, details);
+			this.logger.warn('render-process-gone detected', { windowId: window.id, details });
 			autoDestruct(`render-process-gone:${details?.reason ?? 'unknown'}`);
 		});
 
@@ -1216,7 +1200,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		const hadBrowserView = this.browserViews.has(browserViewId);
 		const activeIdsSnapshot = Array.from(this.browserViews.keys());
 
-		console.warn('[ProjectMode][Main] destroyBrowserViewSync invoked', {
+		this.logger.warn('destroyBrowserViewSync invoked', {
 			browserViewId,
 			source: source ?? 'unknown',
 			hadBrowserView,
@@ -1272,7 +1256,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		this.faviconReceivedForCurrentLoad.delete(browserViewId);
 		BrowserViewService.managedWebContentsIds.delete(browserViewId);
 
-		console.warn('[ProjectMode][Main] destroyBrowserViewSync cleanup complete', {
+		this.logger.warn('destroyBrowserViewSync cleanup complete', {
 			browserViewId,
 			source: source ?? 'unknown',
 			activeIdsAfter: Array.from(this.browserViews.keys())
@@ -1293,7 +1277,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// Detect when this specific webContents dies (regardless of window events)
 		webContents.on('destroyed', () => {
-			console.warn('[ProjectMode][Main] webContents destroyed for browser view', {
+			this.logger.warn('webContents destroyed for browser view', {
 				browserViewId,
 				webContentsId: webContents.id
 			});
@@ -1311,7 +1295,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			if (IGNORED_ERROR_CODES.has(errorCode)) {
 				return;
 			}
-			console.error(`[ProjectMode] Load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
+			this.logger.error('Load failed', { url: validatedURL, errorDescription, errorCode });
 			// Track error so renderer can display it
 			this.setNavigationError(browserViewId, errorCode, errorDescription, validatedURL);
 			// Fire event to notify renderer
@@ -1325,7 +1309,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			if (IGNORED_ERROR_CODES.has(errorCode)) {
 				return;
 			}
-			console.error(`[ProjectMode] Provisional load failed: ${validatedURL} - ${errorDescription} (${errorCode})`);
+			this.logger.error('Provisional load failed', { url: validatedURL, errorDescription, errorCode });
 			// Track error so renderer can display it
 			this.setNavigationError(browserViewId, errorCode, errorDescription, validatedURL);
 			// Fire event to notify renderer
@@ -1378,7 +1362,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 					} else {
 						// Favicon URL returned 404 or error - don't use it
 						// The default globe icon will be shown instead
-						console.log(`[ProjectMode] Favicon not found: ${faviconUrl}`);
+						// Favicon not found - silently ignore
+						return;
 					}
 				});
 			}
@@ -1395,7 +1380,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			// Enable CSS domain EARLY to capture CSS.styleSheetAdded events
 			// Must be enabled before stylesheets load to receive the events
 			this.enableCSSForStyleInspection(browserViewId).catch(err => {
-				console.warn('[ProjectMode][Main] Failed to enable CSS for style inspection:', err);
+				this.logger.warn('Failed to enable CSS for style inspection', { error: err });
 			});
 		});
 
@@ -1548,7 +1533,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 								});
 							}
 						} catch (error) {
-							console.error('[ProjectMode] Failed to get source location:', error);
+							this.logger.error('Failed to get source location', { error });
 							this._onOpenSourceRequest.fire({
 								browserViewId,
 								sourceLocation: null,
@@ -1743,7 +1728,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			// Delegate to orchestrator
 			return await orchestrator.getElementStyles(request);
 		} catch (error) {
-			console.error('[BrowserViewService] getElementStyles error:', error);
+			this.logger.error('getElementStyles error', { error });
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : 'Unknown error'

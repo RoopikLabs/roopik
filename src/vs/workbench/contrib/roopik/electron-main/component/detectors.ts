@@ -53,14 +53,12 @@ export async function detectEntryFile(folderPath: string): Promise<string> {
 			return SUPPORTED_EXTENSIONS.includes(ext);
 		});
 
-		console.log(`[Detector] Found ${supportedFiles.length} supported files in ${folderPath}`);
 
 		// ================================================================
 		// PRIORITY 1: Single supported file → use it directly!
 		// ================================================================
 		// This is the simplest and most common case
 		if (supportedFiles.length === 1) {
-			console.log(`[Detector] ✅ Single file detected: ${supportedFiles[0]}`);
 			return supportedFiles[0];
 		}
 
@@ -70,7 +68,6 @@ export async function detectEntryFile(folderPath: string): Promise<string> {
 		const indexCandidates = ['index.tsx', 'index.ts', 'index.jsx', 'index.js'];
 		for (const candidate of indexCandidates) {
 			if (supportedFiles.includes(candidate)) {
-				console.log(`[Detector] ✅ Found index file: ${candidate}`);
 				return candidate;
 			}
 		}
@@ -87,7 +84,6 @@ export async function detectEntryFile(folderPath: string): Promise<string> {
 		];
 		for (const candidate of folderNameCandidates) {
 			if (supportedFiles.includes(candidate)) {
-				console.log(`[Detector] ✅ Found folder-named file: ${candidate}`);
 				return candidate;
 			}
 		}
@@ -97,13 +93,11 @@ export async function detectEntryFile(folderPath: string): Promise<string> {
 		// ================================================================
 		const vueFiles = supportedFiles.filter(f => f.endsWith('.vue'));
 		if (vueFiles.length === 1) {
-			console.log(`[Detector] ✅ Found single Vue file: ${vueFiles[0]}`);
 			return vueFiles[0];
 		}
 
 		const svelteFiles = supportedFiles.filter(f => f.endsWith('.svelte'));
 		if (svelteFiles.length === 1) {
-			console.log(`[Detector] ✅ Found single Svelte file: ${svelteFiles[0]}`);
 			return svelteFiles[0];
 		}
 
@@ -154,36 +148,29 @@ export async function detectFramework(entryFilePath: string): Promise<Framework>
 			imports.push(match[1]);
 		}
 
-		console.log(`[Detector] Detected imports:`, imports);
 
 		// Check for framework-specific imports
 		if (imports.some(imp => imp === 'react' || imp === 'react-dom')) {
-			console.log(`[Detector] Framework detected: react`);
 			return 'react';
 		}
 
 		if (imports.some(imp => imp === 'vue')) {
-			console.log(`[Detector] Framework detected: vue`);
 			return 'vue';
 		}
 
 		if (imports.some(imp => imp === 'svelte')) {
-			console.log(`[Detector] Framework detected: svelte`);
 			return 'svelte';
 		}
 
 		if (imports.some(imp => imp === 'solid-js' || imp === 'solid-js/web')) {
-			console.log(`[Detector] Framework detected: solid`);
 			return 'solid';
 		}
 
 		if (imports.some(imp => imp === 'preact')) {
-			console.log(`[Detector] Framework detected: preact`);
 			return 'preact';
 		}
 
 		// Default to unknown
-		console.log(`[Detector] Framework not detected, defaulting to 'unknown'`);
 		return 'unknown';
 	} catch (error) {
 		console.error(`[Detector] Framework detection failed:`, error);

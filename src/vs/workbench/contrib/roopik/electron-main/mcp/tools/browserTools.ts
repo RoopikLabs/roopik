@@ -1333,5 +1333,5 @@ Actions:
 		}
 	);
 
-	console.log('[MCP] Registered 12 browser tools: browser_open, browser_screenshot, browser_close, browser_action_input, browser_navigate, browser_reload, browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs, browser_get_performance, browser_get_cdp_info');
+	// console.log('[MCP] Registered 12 browser tools: browser_open, browser_screenshot, browser_close, browser_action_input, browser_navigate, browser_reload, browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs, browser_get_performance, browser_get_cdp_info');
 }

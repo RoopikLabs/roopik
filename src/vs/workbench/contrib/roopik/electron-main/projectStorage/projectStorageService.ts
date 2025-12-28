@@ -13,6 +13,8 @@
  */
 
 import { Emitter, Event } from '../../../../../base/common/event.js';
+import { ILoggerService } from '../../../../../platform/log/common/log.js';
+import { getRoopikLogger } from '../../common/roopikLogger.js';
 import { IProjectStorageService } from '../../common/projectStorage/projectStorageService.js';
 import { ProjectInfo } from '../../common/storage/storageTypes.js';
 import { WorkspaceStorage } from '../storage/workspaceStorage.js';
@@ -20,10 +22,7 @@ import { WorkspaceStorage } from '../storage/workspaceStorage.js';
 export class ProjectStorageService implements IProjectStorageService {
 	readonly _serviceBrand: undefined;
 
-	// ========================================================================
-	// State
-	// ========================================================================
-
+	private readonly logger;
 	private initialized: boolean = false;
 	private storage: WorkspaceStorage | null = null;
 
@@ -41,8 +40,8 @@ export class ProjectStorageService implements IProjectStorageService {
 	// Constructor
 	// ========================================================================
 
-	constructor() {
-		console.log('[ProjectStorageService] Created');
+	constructor(@ILoggerService loggerService: ILoggerService) {
+		this.logger = getRoopikLogger(loggerService, 'PROJECT_STORAGE');
 	}
 
 	// ========================================================================
@@ -55,11 +54,9 @@ export class ProjectStorageService implements IProjectStorageService {
 	 */
 	async initialize(workspacePath: string): Promise<void> {
 		if (this.initialized) {
-			console.log('[ProjectStorageService] Already initialized');
+			this.logger.warn('Already initialized');
 			return;
 		}
-
-		console.log('[ProjectStorageService] Initializing with workspace:', workspacePath);
 
 		this.storage = new WorkspaceStorage();
 		await this.storage.initialize(workspacePath);
@@ -67,7 +64,7 @@ export class ProjectStorageService implements IProjectStorageService {
 		this.initialized = true;
 		this._onDidInitialize.fire();
 
-		console.log('[ProjectStorageService] Initialized');
+		this.logger.info('Initialized', { workspacePath });
 	}
 
 	/**
@@ -90,7 +87,7 @@ export class ProjectStorageService implements IProjectStorageService {
 	 */
 	async getRecentProjects(limit: number = 5): Promise<ProjectInfo[]> {
 		if (!this.storage || !this.initialized) {
-			console.warn('[ProjectStorageService] Not initialized, returning empty list');
+			this.logger.warn('Not initialized, returning empty list');
 			return [];
 		}
 
@@ -108,7 +105,7 @@ export class ProjectStorageService implements IProjectStorageService {
 		const projectId = await this.storage.upsertProject(name, projectPath, framework, frameworkDisplayName);
 		this._onProjectsChanged.fire();
 
-		console.log(`[ProjectStorageService] Upserted project: ${name} at ${projectPath}` + (framework ? ` (${frameworkDisplayName || framework})` : ''));
+		this.logger.debug('Project upserted', { projectId, name, projectPath, framework });
 		return projectId;
 	}
 
@@ -123,7 +120,7 @@ export class ProjectStorageService implements IProjectStorageService {
 		await this.storage.deleteProject(projectId);
 		this._onProjectsChanged.fire();
 
-		console.log(`[ProjectStorageService] Deleted project: ${projectId}`);
+		this.logger.debug('Project deleted', { projectId });
 	}
 
 	// ========================================================================
@@ -139,7 +136,7 @@ export class ProjectStorageService implements IProjectStorageService {
 		}
 
 		await this.storage.setActiveProject(projectId, pid, port, url);
-		console.log(`[ProjectStorageService] Set active project: ${projectId} (pid: ${pid}, port: ${port})`);
+		this.logger.debug('Active project set', { projectId, pid, port });
 	}
 
 	/**
@@ -151,7 +148,7 @@ export class ProjectStorageService implements IProjectStorageService {
 		}
 
 		await this.storage.clearActiveProject();
-		console.log('[ProjectStorageService] Cleared active project');
+		this.logger.debug('Active project cleared');
 	}
 
 	/**
@@ -159,7 +156,7 @@ export class ProjectStorageService implements IProjectStorageService {
 	 */
 	async getActiveProject(): Promise<import('../../common/storage/storageTypes.js').ActiveProjectMetadata | undefined> {
 		if (!this.storage || !this.initialized) {
-			console.warn('[ProjectStorageService] Not initialized, returning undefined');
+			this.logger.warn('Not initialized, returning undefined');
 			return undefined;
 		}
 

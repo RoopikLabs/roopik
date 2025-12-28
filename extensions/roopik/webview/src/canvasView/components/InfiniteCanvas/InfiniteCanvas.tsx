@@ -87,7 +87,7 @@ function SandboxLayer({
 	onSandboxUpdate,
 }: SandboxLayerProps) {
 	// Debug log for inspect mode
-	console.log('[SandboxLayer] Rendering with isInspectMode:', isInspectMode, '- sandboxes:', sandboxes.length);
+
 
 	// Find the focused sandbox position for push-away effect
 	const focusedSandbox = focusedSandboxId

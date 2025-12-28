@@ -12,6 +12,8 @@ import * as os from 'os';
 import { Framework, ComponentInput, TransformedComponent } from '../../common/build/types.js';
 import { ComponentParser } from '../../common/build/componentParser.js';
 import { createSourceTrackingTransform } from './injectors/sourceTrackingInjector.js';
+import { ILoggerService } from '../../../../../platform/log/common/log.js';
+import { getRoopikLogger } from '../../common/roopikLogger.js';
 
 // ============================================
 // CDN Configuration
@@ -227,9 +229,14 @@ const FRAMEWORK_BUILD_CONFIGS: Record<Framework, FrameworkBuildConfig> = {
  */
 export class ESBuildTransformer {
 
+	private readonly logger;
+
 	constructor(
+		@ILoggerService loggerService: ILoggerService,
 		private readonly parser: ComponentParser
-	) { }
+	) {
+		this.logger = getRoopikLogger(loggerService, 'ESBUILD_TRANSFORMER');
+	}
 
 	async transform(input: ComponentInput): Promise<TransformedComponent> {
 		const startTime = Date.now();
@@ -394,8 +401,7 @@ export class ESBuildTransformer {
 				fs.writeFileSync(filePath, content, 'utf-8');
 			}
 
-			console.log(`[ESBuildTransformer] Disk build in: ${tempDir}`);
-			console.log(`[ESBuildTransformer] Local files:`, Array.from(localFiles));
+			this.logger.debug('Disk build started', { tempDir, localFilesCount: localFiles.size });
 
 			// Run ESBuild with disk-based entry point
 			const result = await esbuild.build({
@@ -419,9 +425,8 @@ export class ESBuildTransformer {
 			// Clean up temp directory
 			try {
 				fs.rmSync(tempDir, { recursive: true, force: true });
-				console.log(`[ESBuildTransformer] Cleaned up: ${tempDir}`);
 			} catch (cleanupError) {
-				console.warn(`[ESBuildTransformer] Failed to clean up temp dir: ${cleanupError}`);
+				this.logger.warn('Failed to clean up temp dir', { tempDir, error: cleanupError });
 			}
 		}
 	}
@@ -464,7 +469,7 @@ export class ESBuildTransformer {
 		let cssCode = '';
 
 		for (const file of result.outputFiles || []) {
-			console.log('[ESBuildTransformer] Output file:', file.path, 'Size:', file.text.length);
+			this.logger.debug('Output file processed', { path: file.path, size: file.text.length });
 			if (file.path.endsWith('.css')) {
 				cssCode += file.text;
 			} else if (file.path.endsWith('.js')) {
@@ -581,6 +586,9 @@ render(Component(), document.getElementById('root'));
 		resolvedDeps: Record<string, string>,
 		localFiles?: Set<string>
 	): esbuild.Plugin {
+		// Capture logger for use in plugin callbacks
+		const logger = this.logger;
+
 		// Helper to check if path is absolute (works on both Windows and Unix)
 		const isAbsolutePath = (p: string): boolean => {
 			// Windows: C:\, D:\, etc. or \\network\path
@@ -643,13 +651,13 @@ render(Component(), document.getElementById('root'));
 					// Track the resolved version (only track main package, not subpaths)
 					if (!resolvedDeps[mainPkg]) {
 						resolvedDeps[mainPkg] = version || 'latest';
-						console.log(`[CDN] Resolved ${mainPkg} -> ${resolvedDeps[mainPkg]} (${versionSource})`);
+						logger.debug('CDN package resolved', { package: mainPkg, version: resolvedDeps[mainPkg], source: versionSource });
 					}
 
 					// Generate CDN URL using configurable provider
 					const url = getCDNUrl(mainPkg, version, subpath || undefined);
 
-					console.log(`[CDN] ${packagePath} -> ${url}`);
+					logger.debug('CDN URL mapped', { packagePath, url });
 
 					return { path: url, external: true };
 				});
@@ -674,10 +682,12 @@ render(Component(), document.getElementById('root'));
 				for (const dependent of dependents) {
 					if (normalized[dependent] && normalized[dependent] !== primaryVersion) {
 						// Version mismatch - force to match primary
-						console.warn(
-							`[CDN] Version mismatch: ${dependent}@${normalized[dependent]} ` +
-							`should match ${primary}@${primaryVersion}. Auto-fixing.`
-						);
+						this.logger.warn('Version mismatch auto-fixed', {
+							dependent,
+							oldVersion: normalized[dependent],
+							primary,
+							newVersion: primaryVersion
+						});
 						normalized[dependent] = primaryVersion;
 					} else if (!normalized[dependent]) {
 						// Dependent not specified - inherit from primary
@@ -799,11 +809,11 @@ render(Component(), document.getElementById('root'));
 
 				// Log if transformation happened
 				if (transformedContent !== content) {
-					console.log(`[SourceTracking] Transformed: ${filename}`);
+					this.logger.debug('Source tracking applied', { filename });
 				}
 			} catch (error) {
 				// Gracefully handle errors - use original content
-				console.warn(`[SourceTracking] Failed to transform ${filename}:`, error);
+				this.logger.warn('Source tracking transformation failed', { filename, error });
 				trackedFiles[filename] = content;
 			}
 		}

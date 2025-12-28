@@ -76,13 +76,11 @@ export function registerComponentCommands(): void {
 				return undefined;
 			}
 
-			console.log('[ComponentCommands] Creating component:', request.componentName || '(auto)', 'for canvas:', request.canvasId || '(auto)');
 
 			const componentService = accessor.get(IComponentService);
 
 			try {
 				const component = await componentService.addComponent(request);
-				console.log('[ComponentCommands] Component created:', component.id);
 				return component;
 			} catch (err) {
 				console.error('[ComponentCommands] Failed to create component:', err);
@@ -108,7 +106,6 @@ export function registerComponentCommands(): void {
 				return;
 			}
 
-			console.log('[ComponentCommands] Rebuilding component:', componentId);
 
 			const componentService = accessor.get(IComponentService);
 			await componentService.rebuildComponent(componentId);
@@ -132,7 +129,6 @@ export function registerComponentCommands(): void {
 				return;
 			}
 
-			console.log('[ComponentCommands] Deleting component:', componentId);
 
 			const componentService = accessor.get(IComponentService);
 			await componentService.deleteComponent(componentId);

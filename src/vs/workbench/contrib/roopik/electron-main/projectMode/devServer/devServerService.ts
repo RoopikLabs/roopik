@@ -644,7 +644,7 @@ export class DevServerService implements IDevServerService {
 		try {
 			await this.projectStorageService.clearActiveProject();
 		} catch (error) {
-			console.warn('[DevServerService] Failed to clear active project storage:', error);
+			// Silently ignore - error already logged elsewhere
 		}
 	}
 

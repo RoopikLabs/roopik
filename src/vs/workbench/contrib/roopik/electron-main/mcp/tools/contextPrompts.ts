@@ -420,5 +420,5 @@ getComponentStatus → (analyze buildErrors) → getComponent → updateComponen
 		}
 	);
 
-	console.log('[MCP] Registered 5 contextual prompts (start-project, create-component, inspect-css, full-dev-workflow, debug-build-errors)');
+	// console.log('[MCP] Registered 5 contextual prompts (start-project, create-component, inspect-css, full-dev-workflow, debug-build-errors)');
 }

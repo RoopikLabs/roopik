@@ -280,7 +280,6 @@ export class StyleInspect {
 	 * because each DOM.getDocument call can return different nodeIds (DOM invalidation).
 	 */
 	private syncTreeWithSelectedElement(selector: string): void {
-		console.log('[StyleInspect] syncTreeWithSelectedElement called, selector:', selector);
 
 		if (!this.domTreeCache) {
 			console.warn('[StyleInspect] No DOM tree cache, cannot sync');
@@ -289,7 +288,6 @@ export class StyleInspect {
 
 		// Find node in our cached tree by matching selector
 		const nodeId = this.findNodeIdBySelector(this.domTreeCache, selector);
-		console.log('[StyleInspect] Found nodeId in cache:', nodeId);
 
 		if (nodeId) {
 			this.highlightTreeNode(nodeId);
@@ -349,7 +347,6 @@ export class StyleInspect {
 
 			if (nextNodes.length === 0) {
 				// Path broken, try fallback DFS search for last part
-				console.log('[StyleInspect] Path broken at part', i, ', falling back to DFS');
 				const lastPart = parsedParts[parsedParts.length - 1];
 				return this.findMatchingNodeWithNth(tree, lastPart);
 			}
@@ -620,7 +617,6 @@ export class StyleInspect {
 		// This would require:
 		// 1. CDP CSS.setStyleTexts to update live
 		// 2. File editing to persist changes
-		console.log('[StyleInspect] Edit style:', prop.name, '=', newValue);
 		this.notificationService.notify({
 			severity: Severity.Info,
 			message: 'Live CSS editing coming soon!',
@@ -658,7 +654,6 @@ export class StyleInspect {
 	 */
 	async fetchDOMTree(browserViewId: number): Promise<void> {
 		this.currentBrowserViewId = browserViewId;
-		console.log('[StyleInspect] fetchDOMTree called, browserViewId:', browserViewId);
 
 		try {
 			// Enable DOM domain if not already enabled
@@ -670,22 +665,18 @@ export class StyleInspect {
 				pierce: true // Pierce shadow DOM
 			});
 
-			console.log('[StyleInspect] DOM.getDocument result:', result ? 'got result' : 'no result', 'root:', result?.root ? 'yes' : 'no');
 
 			if (result && result.root) {
 				// Convert CDP DOM structure to our DOMTreeNode format
 				const tree = this.convertCDPNodeToTree(result.root);
-				console.log('[StyleInspect] Converted tree:', tree ? `tagName=${tree.tagName}, children=${tree.children?.length}` : 'NULL');
 
 				// Always cache the tree (even if panel not open)
 				this.domTreeCache = tree;
 
 				// Update panel if it exists
 				if (this.panel && tree) {
-					console.log('[StyleInspect] Setting tree on panel');
 					this.panel.setDOMTree(tree);
 				} else {
-					console.log('[StyleInspect] Panel:', !!this.panel, 'tree:', !!tree);
 				}
 			}
 		} catch (error) {
@@ -713,7 +704,6 @@ export class StyleInspect {
 	 * Highlight a node in the tree (called when user selects element in browser)
 	 */
 	highlightTreeNode(nodeId: number): void {
-		console.log('[StyleInspect] highlightTreeNode called, nodeId:', nodeId, 'panel:', !!this.panel);
 		if (this.panel) {
 			this.panel.highlightTreeNode(nodeId);
 		}
@@ -734,7 +724,6 @@ export class StyleInspect {
 		if (cdpNode.nodeType !== 1) {
 			// For document node (nodeType 9), process children to find html/body
 			if (cdpNode.nodeType === 9 && cdpNode.children) {
-				console.log('[StyleInspect] Processing document node, children:', cdpNode.children.length);
 				for (const child of cdpNode.children) {
 					const result = this.convertCDPNodeToTree(child);
 					if (result) {
@@ -754,10 +743,8 @@ export class StyleInspect {
 
 		// For html element, skip directly to body
 		if (tagName === 'html' && cdpNode.children) {
-			console.log('[StyleInspect] Found html element, looking for body in', cdpNode.children.length, 'children');
 			for (const child of cdpNode.children) {
 				const childTagName = child.localName || child.nodeName.toLowerCase();
-				console.log('[StyleInspect] html child:', childTagName);
 				if (childTagName === 'body') {
 					return this.convertCDPNodeToTree(child);
 				}
@@ -842,7 +829,6 @@ export class StyleInspect {
 				return;
 			}
 
-			// console.log('[StyleInspect] Built selector from tree node:', selector);
 
 			// Get fresh document root
 			const docResult = await this.browserService.sendCDPCommand(
