@@ -11,7 +11,7 @@ import { EditorTabInput } from './editorTabInput.js';
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import * as DOM from '../../../../../base/browser/dom.js';
 import { IEditorOpenContext } from '../../../../common/editor.js';
-import { RoopikLogger } from '../../common/roopikLogger.js';
+import { getRoopikLogger } from '../../common/roopikLogger.js';
 import { ILoggerService, ILogger } from '../../../../../platform/log/common/log.js';
 import { IEditorGroup } from '../../../../services/editor/common/editorGroupsService.js';
 import { EditorInput } from '../../../../common/editor/editorInput.js';
@@ -113,7 +113,7 @@ export class Editor extends EditorPane {
 		@IProjectStorageService private readonly projectStorageService: IProjectStorageService
 	) {
 		super(Editor.ID, group, telemetryService, themeService, storageService);
-		this.logger = RoopikLogger.create(loggerService);
+		this.logger = getRoopikLogger(loggerService, '[EDITOR]');
 		this.browserService = new ServiceBridge(mainProcessService.getChannel(PROJECT_MODE_CHANNEL));
 		this.devServerService = new DevServerBridge(mainProcessService.getChannel(DEV_SERVER_CHANNEL));
 

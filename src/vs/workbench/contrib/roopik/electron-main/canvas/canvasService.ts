@@ -22,6 +22,8 @@
  */
 
 import { Emitter, Event } from '../../../../../base/common/event.js';
+import { ILoggerService } from '../../../../../platform/log/common/log.js';
+import { getRoopikLogger } from '../../common/roopikLogger.js';
 import {
 	ICanvasService,
 	CanvasCreatedEvent,
@@ -48,6 +50,8 @@ export class CanvasService implements ICanvasService {
 	// ========================================================================
 	// State
 	// ========================================================================
+
+	private readonly logger;
 
 	/** In-memory canvas registry: id -> Canvas */
 	private readonly canvases = new Map<string, Canvas>();
@@ -88,9 +92,10 @@ export class CanvasService implements ICanvasService {
 	// ========================================================================
 
 	constructor(
+		@ILoggerService loggerService: ILoggerService,
 		private readonly storageService: IRoopikStorageService
 	) {
-		console.log('[CanvasService] Created');
+		this.logger = getRoopikLogger(loggerService, 'CANVAS_SERVICE');
 	}
 
 	// ========================================================================
@@ -115,7 +120,7 @@ export class CanvasService implements ICanvasService {
 		await this.loadAllCanvases();
 
 		this.initialized = true;
-		console.log('[CanvasService] Initialized with', this.canvases.size, 'canvases');
+		this.logger.info('Initialized', { canvasCount: this.canvases.size });
 
 		// Fire initialization event so listeners can load canvases
 		this._onDidInitialize.fire();
@@ -144,7 +149,6 @@ export class CanvasService implements ICanvasService {
 		this._onCanvasFocusChanged.dispose();
 		this.canvases.clear();
 		this.panelStates.clear();
-		console.log('[CanvasService] Disposed');
 	}
 
 	// ========================================================================
@@ -197,7 +201,7 @@ export class CanvasService implements ICanvasService {
 		const meta = this.toCanvasMeta(canvas);
 		this._onCanvasCreated.fire({ canvasId, canvas: meta });
 
-		console.log('[CanvasService] Created canvas:', canvasId);
+		this.logger.info('Canvas created', { canvasId, isNew: true });
 
 		return {
 			canvasId,
@@ -234,9 +238,7 @@ export class CanvasService implements ICanvasService {
 			suffix++;
 		}
 
-		const uniqueId = `${baseId}-${suffix}`;
-		console.log('[CanvasService] ID conflict resolved:', baseId, '->', uniqueId);
-		return uniqueId;
+		return `${baseId}-${suffix}`;
 	}
 
 	getCanvas(canvasId: string): Canvas | undefined {
@@ -248,9 +250,7 @@ export class CanvasService implements ICanvasService {
 	}
 
 	listCanvases(options?: ListCanvasOptions): CanvasMeta[] {
-		console.log('[CanvasService] listCanvases called, initialized:', this.initialized, 'canvases count:', this.canvases.size);
 		let canvases = Array.from(this.canvases.values()).map(c => this.toCanvasMeta(c));
-		console.log('[CanvasService] listCanvases returning:', canvases.length, 'canvases');
 
 		// Apply name filter
 		if (options?.nameFilter) {
@@ -290,17 +290,11 @@ export class CanvasService implements ICanvasService {
 		// - loadAllCanvases() populates Map during initialize()
 		// - createCanvas(), deleteCanvas(), updateCanvas() keep Map in sync
 		if (this.initialized) {
-			console.log('[CanvasService] listCanvasesAsync: returning from cache (initialized)');
 			return this.listCanvases(options);
 		}
 
-		// Not initialized yet - try reading from storage directly
-		// This is a fallback for edge cases (shouldn't happen in normal flow)
-		console.log('[CanvasService] listCanvasesAsync called, fetching from storage (not initialized)...');
-
 		try {
 			const canvasIds = await this.storageService.listCanvases();
-			console.log('[CanvasService] listCanvasesAsync: storage returned canvas IDs:', canvasIds);
 
 			const canvases: CanvasMeta[] = [];
 			for (const canvasId of canvasIds) {
@@ -352,8 +346,7 @@ export class CanvasService implements ICanvasService {
 
 			return result;
 		} catch (err) {
-			console.error('[CanvasService] listCanvasesAsync: failed to read from storage:', err);
-			// Fallback to in-memory cache if storage fails
+			this.logger.error('Failed to read canvases from storage', err);
 			return this.listCanvases(options);
 		}
 	}
@@ -393,14 +386,11 @@ export class CanvasService implements ICanvasService {
 			// Save to storage
 			await this.saveCanvasMeta(canvas);
 
-			// Fire event
 			this._onCanvasUpdated.fire({
 				canvasId,
 				changes,
 				canvas: this.toCanvasMeta(canvas)
 			});
-
-			console.log('[CanvasService] Updated canvas:', canvasId, changes);
 		}
 	}
 
@@ -428,10 +418,7 @@ export class CanvasService implements ICanvasService {
 			});
 		}
 
-		// Fire event
 		this._onCanvasDeleted.fire({ canvasId });
-
-		console.log('[CanvasService] Deleted canvas:', canvasId);
 	}
 
 	// ========================================================================
@@ -450,8 +437,6 @@ export class CanvasService implements ICanvasService {
 			hasFocus: false,
 			lastFocusedAt: 0
 		});
-
-		console.log('[CanvasService] Panel opened:', canvasId);
 	}
 
 	registerPanelClosed(canvasId: string): void {
@@ -472,13 +457,10 @@ export class CanvasService implements ICanvasService {
 				currentCanvasId: null
 			});
 
-			// Persist to canvases.json
 			this.storageService.setActiveCanvasId(null).catch((err: Error) => {
-				console.error('[CanvasService] Failed to persist activeCanvasId=null on close:', err);
+				this.logger.error('Failed to persist activeCanvasId on close', err);
 			});
 		}
-
-		console.log('[CanvasService] Panel closed:', canvasId);
 	}
 
 	registerPanelFocused(canvasId: string): void {
@@ -516,11 +498,10 @@ export class CanvasService implements ICanvasService {
 				previousCanvasId: previousId,
 				currentCanvasId: canvasId
 			});
-			console.log('[CanvasService] Focus changed:', previousId, '->', canvasId);
 
 			// Persist to canvases.json (async, don't block)
 			this.storageService.setActiveCanvasId(canvasId).catch((err: Error) => {
-				console.error('[CanvasService] Failed to persist activeCanvasId:', err);
+				this.logger.error('Failed to persist activeCanvasId', err);
 			});
 		}
 	}
@@ -594,11 +575,11 @@ export class CanvasService implements ICanvasService {
 						this.canvases.set(canvasId, canvas);
 					}
 				} catch (err) {
-					console.error('[CanvasService] Failed to load canvas:', canvasId, err);
+					this.logger.error('Failed to load canvas', { canvasId, error: err });
 				}
 			}
 		} catch (err) {
-			console.error('[CanvasService] Failed to list canvases:', err);
+			this.logger.error('Failed to list canvases', err);
 		}
 	}
 

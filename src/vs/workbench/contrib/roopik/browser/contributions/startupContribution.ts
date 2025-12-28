@@ -23,7 +23,6 @@ import { IWorkspaceContextService } from '../../../../../platform/workspace/comm
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { RoopikWelcomeEditor } from '../welcomeEditor.js';
 import { RoopikWelcomeInput } from '../welcomeInput.js';
-import { RoopikLogger } from '../../common/roopikLogger.js';
 import { ICanvasService } from '../../common/canvas/index.js';
 import { IComponentService } from '../../common/component/componentService.js';
 import { IProjectStorageService } from '../../common/projectStorage/index.js';
@@ -88,7 +87,7 @@ export class RoopikStartupContribution extends Disposable implements IWorkbenchC
 
 		this.lifecycleService.when(LifecyclePhase.Restored).then(() => {
 			setTimeout(() => {
-				const roopikChannel = this.outputService.getChannel(RoopikLogger.LOGGER_ID);
+				const roopikChannel = this.outputService.getChannel('roopik');
 				if (roopikChannel) {
 					roopikChannel.clear();
 				}

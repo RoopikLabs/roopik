@@ -1307,7 +1307,7 @@ export class CodeApplication extends Disposable {
 
 		// ROOPIK: Project Storage Service - Recent projects for Project Mode
 		// NOTE: Created before DevServerService so it can be injected
-		const projectStorageService = new ProjectStorageService();
+		const projectStorageService = new ProjectStorageService(accessor.get(ILoggerService));
 		const projectStorageChannel = new ProjectStorageChannel(projectStorageService);
 		mainProcessElectronServer.registerChannel(PROJECT_STORAGE_CHANNEL, projectStorageChannel);
 
@@ -1319,20 +1319,21 @@ export class CodeApplication extends Disposable {
 
 		// ROOPIK: Canvas Service - Canvas lifecycle, metadata, panel state tracking
 		const roopikStorageService = new RoopikStorageService();
-		const canvasService = new CanvasService(roopikStorageService);
+		const canvasService = new CanvasService(accessor.get(ILoggerService), roopikStorageService);
 		const canvasChannel = new CanvasChannel(canvasService);
 		mainProcessElectronServer.registerChannel(CANVAS_CHANNEL_NAME, canvasChannel);
 
 		// ROOPIK: Component Service - Component lifecycle, build queue, file watching
 		const buildService = new BuildService();
-		const fileWatcher = new FileWatcher();
-		const componentService = new ComponentService(roopikStorageService, buildService, canvasService, fileWatcher);
+		const fileWatcher = new FileWatcher(accessor.get(ILoggerService));
+		const componentService = new ComponentService(accessor.get(ILoggerService), roopikStorageService, buildService, canvasService, fileWatcher);
 		const componentChannel = new ComponentChannel(componentService);
 		mainProcessElectronServer.registerChannel(COMPONENT_CHANNEL_NAME, componentChannel);
 
 		// ROOPIK: MCP Server - AI Agent integration via Model Context Protocol
 		// Allows Claude Code, Copilot, and other AI agents to control Roopik IDE
 		const mcpServerService = new McpServerService(
+			accessor.get(ILoggerService),
 			devServerService,
 			projectModeService,
 			componentService,

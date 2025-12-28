@@ -17,6 +17,8 @@ import * as crypto from 'crypto';
 import * as path from 'path';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
+import { ILoggerService } from '../../../../../platform/log/common/log.js';
+import { getRoopikLogger } from '../../common/roopikLogger.js';
 import {
 	IComponentService,
 	ComponentCreatedEvent,
@@ -108,6 +110,7 @@ export class ComponentService extends Disposable implements IComponentService {
 	// Dependencies
 	// ========================================================================
 
+	private readonly logger;
 	private readonly storageService: IRoopikStorageService;
 	private readonly buildService: IBuildService;
 	private readonly canvasService: ICanvasService;
@@ -150,6 +153,7 @@ export class ComponentService extends Disposable implements IComponentService {
 	// ========================================================================
 
 	constructor(
+		@ILoggerService loggerService: ILoggerService,
 		storageService: IRoopikStorageService,
 		buildService: IBuildService,
 		canvasService: ICanvasService,
@@ -157,6 +161,7 @@ export class ComponentService extends Disposable implements IComponentService {
 	) {
 		super();
 
+		this.logger = getRoopikLogger(loggerService, 'COMPONENT');
 		this.storageService = storageService;
 		this.buildService = buildService;
 		this.canvasService = canvasService;
@@ -185,29 +190,23 @@ export class ComponentService extends Disposable implements IComponentService {
 
 	async initialize(workspacePath: string): Promise<void> {
 		if (this.initialized) {
-			console.warn('[ComponentService] Already initialized');
+			this.logger.warn('Already initialized');
 			return;
 		}
 
 		this._workspacePath = workspacePath;
-		// console.log('[ComponentService] Workspace path:', this._workspacePath);
 
-		// Initialize storage if not already initialized
 		if (!this.storageService.isInitialized()) {
-			// console.log('[ComponentService] Initializing storage service...');
 			await this.storageService.initialize(workspacePath);
-			console.log('[ComponentService] Storage service initialized');
 		}
 
-		// Load all components from storage
 		await this.loadAllComponents();
 
-		// Start file watcher
 		this.fileWatcher.setWorkspacePath(workspacePath);
 		this.fileWatcher.start();
 
 		this.initialized = true;
-		console.log('[ComponentService] Initialized');
+		this.logger.info('Initialized', { componentCount: this.components.size });
 	}
 
 	isInitialized(): boolean {
@@ -251,7 +250,6 @@ export class ComponentService extends Disposable implements IComponentService {
 			const fileName = pathParts.pop()!;
 			folderPath = pathParts.join(path.sep);
 			entryFile = fileName;
-			console.log(`[ComponentService] Path parsing: extracted folder=${folderPath}, entry=${entryFile}`);
 		}
 
 		// ====================================================================
@@ -295,10 +293,8 @@ export class ComponentService extends Disposable implements IComponentService {
 		// PIPELINE STEP 4: Entry File Resolution
 		// ====================================================================
 		if (!entryFile) {
-			console.log(`[ComponentService] 🔍 Auto-detecting entry file...`);
 			try {
 				entryFile = await detectEntryFile(folderPath);
-				console.log(`[ComponentService] ✅ Entry file detected: ${entryFile}`);
 			} catch (error) {
 				throw new Error(`ComponentService: Could not auto-detect entry file: ${error}`);
 			}
@@ -310,10 +306,8 @@ export class ComponentService extends Disposable implements IComponentService {
 		// Priority: request.componentName > derived from entryFile (capitalized)
 		let componentName = request.componentName;
 		if (!componentName) {
-			// Derive from entry file: "button.tsx" → "Button", "MyComponent.tsx" → "MyComponent"
-			const baseName = entryFile.replace(/\.[^/.]+$/, ''); // Remove extension
-			componentName = baseName.charAt(0).toUpperCase() + baseName.slice(1); // Capitalize first letter
-			console.log(`[ComponentService] 📝 Component name derived from entry file: ${componentName}`);
+			const baseName = entryFile.replace(/\.[^/.]+$/, '');
+			componentName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
 		}
 
 		// ====================================================================
@@ -327,16 +321,13 @@ export class ComponentService extends Disposable implements IComponentService {
 			const activeCanvasId = await this.canvasService.getFocusedCanvasIdAsync();
 			if (activeCanvasId) {
 				canvasId = activeCanvasId;
-				console.log(`[ComponentService] 🎨 Using active canvas: ${canvasId}`);
 			}
 		}
 
 		if (!canvasId) {
 			// No canvas provided and no active canvas - create new canvas with componentName
-			console.log(`[ComponentService] 🆕 No canvas available, creating new canvas: ${componentName}`);
 			const newCanvas = await this.canvasService.createCanvas(componentName);
-			canvasId = newCanvas.canvasId; // CreateCanvasResult has canvasId, not id
-			console.log(`[ComponentService] ✅ Created new canvas: ${canvasId}`);
+			canvasId = newCanvas.canvasId;
 		}
 
 		// At this point canvasId is guaranteed to be defined
@@ -347,13 +338,11 @@ export class ComponentService extends Disposable implements IComponentService {
 		// ====================================================================
 		let framework = request.framework;
 		if (!framework) {
-			console.log(`[ComponentService] 🔧 Auto-detecting framework...`);
 			try {
 				const entryFilePath = path.join(folderPath, entryFile);
 				framework = await detectFramework(entryFilePath);
-				console.log(`[ComponentService] ✅ Framework detected: ${framework}`);
 			} catch (error) {
-				console.warn(`[ComponentService] ⚠️ Framework detection failed, defaulting to 'unknown':`, error);
+				this.logger.warn('Framework detection failed, using unknown', { error });
 				framework = 'unknown';
 			}
 		}
@@ -361,16 +350,14 @@ export class ComponentService extends Disposable implements IComponentService {
 		// ====================================================================
 		// PIPELINE STEP 8: Content Hash Computation
 		// ====================================================================
-		// Critical for cache validation and detecting file changes
-		console.log(`[ComponentService] 🔢 Computing content hash...`);
 		const hashResult = await computeContentHashFromFolder(folderPath);
-		const { hash: contentHash, filesHashed, filesSkipped, bytesHashed, warnings } = hashResult;
-		console.log(`[ComponentService] ✅ Hash: ${contentHash} (${filesHashed} files, ${bytesHashed} bytes)`);
+		const { hash: contentHash, filesSkipped, warnings } = hashResult;
+
 		if (filesSkipped > 0) {
-			console.warn(`[ComponentService] ⚠️ Skipped ${filesSkipped} files due to read errors`);
+			this.logger.warn('Hash computation skipped files', { filesSkipped });
 		}
 		if (warnings.length > 0) {
-			console.warn(`[ComponentService] Hash warnings:`, warnings);
+			this.logger.warn('Hash computation warnings', { warnings });
 		}
 
 		// ====================================================================
@@ -378,19 +365,6 @@ export class ComponentService extends Disposable implements IComponentService {
 		// ====================================================================
 		const componentId = request.componentId || generateComponentId(componentName);
 		const now = Date.now();
-
-		// ====================================================================
-		// PIPELINE COMPLETE - All fields resolved, ready to save
-		// ====================================================================
-		console.log(`[ComponentService] 📊 Pipeline complete:`, JSON.stringify({
-			componentId,
-			componentName,
-			folderPath,
-			entryFile,
-			canvasId: resolvedCanvasId,
-			framework,
-			origin: request.origin
-		}, null, 2));
 
 		// ====================================================================
 		// SAVE: Create ComponentReference and persist to canvas file
@@ -409,7 +383,6 @@ export class ComponentService extends Disposable implements IComponentService {
 		};
 
 		await this.storageService.addComponentReference(resolvedCanvasId, componentId, reference);
-		console.log(`[ComponentService] 💾 Saved to canvas file`);
 
 		// ====================================================================
 		// REGISTRY: Create in-memory Component object
@@ -440,9 +413,8 @@ export class ComponentService extends Disposable implements IComponentService {
 		// ====================================================================
 		try {
 			this.fileWatcher.registerFolderWatch(componentId, folderPath, resolvedCanvasId);
-			console.log(`[ComponentService] 👁️ Registered folder watch`);
 		} catch (error) {
-			console.warn(`[ComponentService] ⚠️ Could not register folder watch:`, error);
+			this.logger.warn('Could not register folder watch', { componentId, error });
 		}
 
 		// Queue build (async, result via event)
@@ -453,9 +425,8 @@ export class ComponentService extends Disposable implements IComponentService {
 			priority: 'high',
 			createdAt: now
 		});
-		console.log(`[ComponentService] 🔨 Queued build`);
 
-		console.log(`[ComponentService] ✅ Component added successfully: ${componentId}`);
+		this.logger.info('Component added', { componentId, componentName });
 		return component;
 	}
 
@@ -470,8 +441,6 @@ export class ComponentService extends Disposable implements IComponentService {
 			return [];
 		}
 
-		console.log(`[ComponentService] 📦 Batch adding ${requests.length} components`);
-
 		// Pause file watcher during batch operation
 		this.fileWatcher.pause();
 
@@ -482,11 +451,10 @@ export class ComponentService extends Disposable implements IComponentService {
 				components.push(component);
 			}
 		} finally {
-			// Resume file watcher
 			this.fileWatcher.resume();
 		}
 
-		console.log(`[ComponentService] ✅ Batch add complete: ${components.length} components`);
+		this.logger.info('Batch add complete', { count: components.length });
 		return components;
 	}
 
@@ -567,9 +535,8 @@ export class ComponentService extends Disposable implements IComponentService {
 		// Unregister folder watch
 		try {
 			this.fileWatcher.unregisterFolderWatch(id);
-			console.log(`[ComponentService] Unregistered folder watch for ${id}`);
 		} catch (error) {
-			console.warn(`[ComponentService] Could not unregister folder watch:`, error);
+			this.logger.warn('Could not unregister folder watch', { componentId: id, error });
 		}
 
 		// Delete from storage
@@ -615,10 +582,8 @@ export class ComponentService extends Disposable implements IComponentService {
 	private async executeBuild(request: BuildRequest): Promise<QueueBuildResult> {
 		const { componentId, canvasId, trigger } = request;
 		const startTime = Date.now();
-		console.log(`[ComponentService] 🔨 Build started: ${componentId} (trigger: ${trigger})`);
 
 		try {
-			// Get component
 			const component = this.components.get(componentId);
 			if (!component) {
 				return {
@@ -634,8 +599,6 @@ export class ComponentService extends Disposable implements IComponentService {
 				};
 			}
 
-			// Step 1: Load source files from original folderPath
-			console.log(`[ComponentService] Loading source files from: ${component.folderPath}`);
 			const sourceResult = await loadSourceFiles(component.folderPath);
 
 			if (sourceResult.filesLoaded === 0) {
@@ -652,23 +615,14 @@ export class ComponentService extends Disposable implements IComponentService {
 				};
 			}
 
-			console.log(`[ComponentService] Loaded ${sourceResult.filesLoaded} files (${(sourceResult.bytesLoaded / 1024).toFixed(2)}KB)`);
-			if (sourceResult.warnings.length > 0) {
-				console.warn(`[ComponentService] Source load warnings:`, sourceResult.warnings);
-			}
-
-			// Step 2: Build component using buildService
 			const buildOutput = await this.buildService.build({
 				id: componentId,
 				files: sourceResult.files,
 				entryFile: component.entryFile,
 				framework: component.framework,
-				dependencies: {} // NOTE: Could read from package.json in future if needed
+				dependencies: {}
 			});
 
-			console.log(`[ComponentService] Build completed: ${buildOutput.bundleSize} bytes in ${buildOutput.buildTime}ms`);
-
-			// Step 3: Save bundle to cache
 			await this.storageService.saveBundleCache(canvasId, componentId, {
 				bundledCode: buildOutput.bundledCode,
 				buildMeta: {
@@ -682,12 +636,8 @@ export class ComponentService extends Disposable implements IComponentService {
 				}
 			});
 
-			// Step 4: Compute content hash AFTER successful build
-			console.log(`[ComponentService] Computing content hash for validation...`);
 			const hashResult = await computeContentHashFromFolder(component.folderPath);
-			console.log(`[ComponentService] Hash computed: ${hashResult.hash} (${hashResult.filesHashed} files, ${(hashResult.bytesHashed / 1024).toFixed(2)}KB)`);
 
-			// Step 5: Update component metadata
 			component.buildState = { status: 'ready' };
 			component.contentHash = hashResult.hash;
 			component.framework = buildOutput.framework; // In case it was detected during build
@@ -833,9 +783,16 @@ export class ComponentService extends Disposable implements IComponentService {
 		this._onComponentBuilt.fire(event);
 
 		if (result.success) {
-			console.log(`[ComponentService] Build succeeded: ${result.componentId} (${result.buildTime}ms, ${result.bundleSize} bytes)`);
+			this.logger.info('Build succeeded', {
+				componentId: result.componentId,
+				buildTime: result.buildTime,
+				bundleSize: result.bundleSize
+			});
 		} else {
-			console.error(`[ComponentService] Build failed: ${result.componentId} - ${result.errorInfo?.message}`);
+			this.logger.error('Build failed', {
+				componentId: result.componentId,
+				error: result.errorInfo?.message
+			});
 		}
 	}
 
@@ -849,12 +806,12 @@ export class ComponentService extends Disposable implements IComponentService {
 	private handleFileChange(event: FileChangeEvent): void {
 		const { canvasId, componentId, file, changeType } = event;
 
-		console.log(`[ComponentService] File changed: ${changeType} ${file} in ${componentId}`);
+		this.logger.debug('File changed', { componentId, file, changeType });
 
 		// Find component
 		const component = this.components.get(componentId);
 		if (!component) {
-			console.warn(`[ComponentService] Component not found for file change: ${componentId}`);
+			this.logger.warn('Component not found for file change', { componentId });
 			return;
 		}
 
@@ -892,7 +849,6 @@ export class ComponentService extends Disposable implements IComponentService {
 			// Load each component reference
 			for (const [componentId, reference] of Object.entries(canvasFile.components)) {
 				const ref = reference as ComponentReference;
-				// ComponentReference has all required fields, map to Component
 				const component: Component = {
 					id: componentId,
 					canvasId: canvas.id,
@@ -913,12 +869,10 @@ export class ComponentService extends Disposable implements IComponentService {
 				try {
 					this.fileWatcher.registerFolderWatch(componentId, ref.folderPath, canvas.id);
 				} catch (error) {
-					console.warn(`[ComponentService] Could not register watch for ${componentId}:`, error);
+					this.logger.warn('Could not register watch for component', { componentId, error });
 				}
 			}
 		}
-
-		console.log(`[ComponentService] Loaded ${this.components.size} components`);
 	}
 
 	/**

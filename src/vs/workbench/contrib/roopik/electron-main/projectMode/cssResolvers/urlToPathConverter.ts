@@ -142,7 +142,7 @@ export class URLToPathConverter {
 			const localPath = path.join(this.projectRoot, pathname);
 			return this.normalizeSlashes(localPath);
 		} catch (error) {
-			console.error('[URLToPathConverter] Failed to parse URL:', url, error);
+			// Invalid URL - return null
 			return null;
 		}
 	}

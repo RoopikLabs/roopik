@@ -90,7 +90,7 @@ export class SourceNavigationService implements ISourceNavigationService {
 
 			await this.editorService.openEditor(editorInput);
 		} catch (error) {
-			console.error('[SourceNavigationService] Failed to open file:', error);
+			// Show notification - error already visible to user
 			this.notificationService.notify({
 				severity: Severity.Error,
 				message: `Could not open file: ${location.file}`,
@@ -116,7 +116,7 @@ export class SourceNavigationService implements ISourceNavigationService {
 
 			await this.editorService.openEditor(editorInput);
 		} catch (error) {
-			console.error('[SourceNavigationService] Failed to open file:', error);
+			// Show notification - error already visible to user
 			this.notificationService.notify({
 				severity: Severity.Error,
 				message: `Could not open file: ${filePath}`,

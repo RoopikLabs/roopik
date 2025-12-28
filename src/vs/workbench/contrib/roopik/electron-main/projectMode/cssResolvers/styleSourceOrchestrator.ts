@@ -194,7 +194,7 @@ export class StyleSourceOrchestrator {
 			};
 
 		} catch (error) {
-			console.error('[StyleSourceOrchestrator] Error:', error);
+			// Error resolving source - return error response
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : 'Unknown error',
@@ -336,11 +336,6 @@ export class StyleSourceOrchestrator {
 					};
 					// Update filePath to the resolved source file
 					filePath = location.file;
-					console.log('[StyleSourceOrchestrator] Resolved via inline source map:', {
-						selector: rule.selectorList.text,
-						file: filePath?.slice(-30),
-						line: location.line
-					});
 				}
 			} else if (location && sheetHeader && sheetHeader.startLine > 0) {
 				// Fallback: Apply stylesheet offset for embedded styles

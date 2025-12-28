@@ -91,7 +91,7 @@ export class RoopikDashboardView extends ViewPane {
 		// Subscribe to onDidInitialize - this fires when CanvasService is fully ready
 		// This is the ONLY trigger for loading canvases - no premature attempts!
 		this._register(this.canvasService.onDidInitialize(() => {
-			// console.log('[RoopikDashboardView] EVENT: onDidInitialize received - CanvasService is ready');
+			// Service ready - load canvases
 			this.serviceInitialized = true;
 			this.clearLoadingTimeout();
 			this.loadCanvasesNow();
@@ -99,15 +99,15 @@ export class RoopikDashboardView extends ViewPane {
 
 		// Subscribe to canvas events to auto-refresh the list
 		this._register(this.canvasService.onCanvasCreated((event) => {
-			// console.log('[RoopikDashboardView] EVENT: onCanvasCreated received', event);
+			// Canvas created - reload list
 			this.loadCanvasesNow();
 		}));
 		this._register(this.canvasService.onCanvasDeleted((event) => {
-			// console.log('[RoopikDashboardView] EVENT: onCanvasDeleted received', event);
+			// Canvas deleted - reload list
 			this.loadCanvasesNow();
 		}));
 		this._register(this.canvasService.onCanvasUpdated((event) => {
-			// console.log('[RoopikDashboardView] EVENT: onCanvasUpdated received', event);
+			// Canvas updated - reload list
 			this.loadCanvasesNow();
 		}));
 
@@ -149,7 +149,7 @@ export class RoopikDashboardView extends ViewPane {
 		this.clearLoadingTimeout();
 		this.loadingTimeoutHandle = setTimeout(() => {
 			if (!this.serviceInitialized) {
-				console.warn('[RoopikDashboardView] Canvas loading timeout - service initialization took too long');
+				// Timeout - show error state
 				this.showTimeoutState();
 			}
 		}, RoopikDashboardView.LOADING_TIMEOUT_MS);
@@ -162,7 +162,7 @@ export class RoopikDashboardView extends ViewPane {
 		this.clearProjectLoadingTimeout();
 		this.projectLoadingTimeoutHandle = setTimeout(() => {
 			if (!this.projectServiceInitialized) {
-				console.warn('[RoopikDashboardView] Project loading timeout - service initialization took too long');
+				// Timeout - show error state
 				this.showProjectTimeoutState();
 			}
 		}, RoopikDashboardView.LOADING_TIMEOUT_MS);
@@ -236,8 +236,7 @@ export class RoopikDashboardView extends ViewPane {
 				this.startLoadingTimeout();
 			}
 		} catch (err) {
-			console.error('[RoopikDashboardView] checkAndLoadCanvases: error checking initialization:', err);
-			// Start timeout as fallback
+			// Service not ready - start timeout as fallback
 			this.startLoadingTimeout();
 		}
 	}
@@ -385,7 +384,7 @@ export class RoopikDashboardView extends ViewPane {
 			// console.log(`[RoopikDashboardView] Rendering ${items.length} canvas items`);
 			this.createSection(this.canvasesContainer, 'Canvases', items);
 		} catch (err) {
-			console.error('[RoopikDashboardView] Failed to load canvases:', err);
+			// Failed to load - show error state
 			this.createSection(this.canvasesContainer, 'Canvases', [
 				{ label: 'Failed to load canvases', description: 'Check console for details', onClick: () => { } }
 			]);
@@ -533,8 +532,7 @@ export class RoopikDashboardView extends ViewPane {
 				this.startProjectLoadingTimeout();
 			}
 		} catch (err) {
-			console.error('[RoopikDashboardView] checkAndLoadProjects: error checking initialization:', err);
-			// Start timeout as fallback
+			// Service not ready - start timeout as fallback
 			this.startProjectLoadingTimeout();
 		}
 	}
@@ -581,7 +579,7 @@ export class RoopikDashboardView extends ViewPane {
 
 			this.createSection(this.projectsContainer, 'Recent Projects', items);
 		} catch (err) {
-			console.error('[RoopikDashboardView] Failed to load projects:', err);
+			// Failed to load - show error state
 			this.createSection(this.projectsContainer, 'Recent Projects', [
 				{ label: 'Failed to load projects', description: 'Check console for details', onClick: () => { } }
 			]);

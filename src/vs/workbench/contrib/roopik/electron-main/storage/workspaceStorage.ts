@@ -338,9 +338,7 @@ export class WorkspaceStorage {
 		canvasFile.components[componentId] = reference;
 		canvasFile.updatedAt = Date.now();
 
-		// Save canvas file
 		await this.saveCanvasFile(canvasFile);
-		console.log(`[WorkspaceStorage] Added component ${componentId} to canvas ${canvasId}`);
 	}
 
 	/**
@@ -358,9 +356,7 @@ export class WorkspaceStorage {
 		delete canvasFile.components[componentId];
 		canvasFile.updatedAt = Date.now();
 
-		// Save canvas file
 		await this.saveCanvasFile(canvasFile);
-		console.log(`[WorkspaceStorage] Removed component ${componentId} from canvas ${canvasId}`);
 	}
 
 	/**
