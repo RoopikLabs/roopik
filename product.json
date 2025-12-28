@@ -40,6 +40,9 @@
 		"recommendationsUrl": "https://az764295.vo.msecnd.net/extensions/workspaceRecommendations.json.gz",
 		"nlsBaseUrl": "https://az764295.vo.msecnd.net/extensions/nlsBaseUrl"
 	},
+	"updateUrl": "https://roopik-updates.humblebee.workers.dev",
+	"releaseNotesUrl": "https://github.com/RoopikLabs/roopik/releases/tag/{{VERSION}}",
+	"quality": "stable",
 	"webviewContentExternalBaseUrlTemplate": "https://{{uuid}}.vscode-cdn.net/insider/ef65ac1ba57f57f2a3961bfe94aa20481caca4c6/out/vs/workbench/contrib/webview/browser/pre/",
 	"builtInExtensions": [
 		{
