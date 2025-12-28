@@ -38,7 +38,7 @@
 		"about": "About Dio Code"
 	},
 	"about": {
-		"integrationNote": "This is the Roo Code extension integrated into <strong>Roopik IDE</strong> (named <strong>Dio Dio</strong>). All Roo Code features and settings are fully compatible. FOr any bugs/issues, please report to us (support@roopik.com), as Roo code team is not responsible for any issues here.",
+		"integrationNote": "This is the Roo Code extension integrated into <strong>Roopik IDE</strong> (named <strong>Dio</strong>). All Roo Code features and settings are fully compatible. FOr any bugs/issues, please report to us (support@roopik.com), as Roo code team is not responsible for any issues here.",
 		"bugReport": {
 			"label": "Found a bug?",
 			"link": "Report on GitHub"
@@ -216,9 +216,9 @@
 			"label": "MCP",
 			"description": "Enable auto-approval of individual MCP tools in the MCP Servers view (requires both this setting and the tool's individual \"Always allow\" checkbox)"
 		},
-		"Diopik": {
-			"label": "Diopik",
-			"description": "Automatically approve Diopik IDE tools for browser preview, CSS inspection, canvas, and component management"
+		"roopik": {
+			"label": "Roopik",
+			"description": "Automatically approve Roopik IDE tools for browser preview, CSS inspection, canvas, and component and project management"
 		},
 		"modeSwitch": {
 			"label": "Mode",
@@ -779,6 +779,10 @@
 		}
 	},
 	"experimental": {
+		"AGENT_SKILLS": {
+			"name": "Agent Skills Support",
+			"description": "We supports the Agent Skills standard. Put the skills under .dio/skills for all modes or .dio/skills-[mode] if you want to limit to a specific mode."
+		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Use experimental unified diff strategy",
 			"description": "Enable the experimental unified diff strategy. This strategy might reduce the number of retries caused by model errors but may cause unexpected behavior or incorrect edits. Only enable if you understand the risks and are willing to carefully review all changes."
@@ -894,7 +898,7 @@
 	"footer": {
 		"telemetry": {
 			"label": "Allow anonymous error and usage reporting",
-			"description": "Help improve Dio Code by sending anonymous usage data and error reports. This telemetry does not collect code, prompts or personal information. See our <privacyLink>privacy policy</privacyLink> for more details."
+			"description": "To help improve the service, anonymous usage data and error reports are sent. This telemetry does not collect code, prompts or personal information. See Roo Code's <privacyLink>privacy policy</privacyLink> for more details. NOTE: Dio Code team isn't collecting any personal information or data either."
 		},
 		"settings": {
 			"import": "Import",

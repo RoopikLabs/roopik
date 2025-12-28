@@ -82,6 +82,7 @@ export const About = ({ telemetrySetting, setTelemetrySetting, className, ...pro
 				</div>
 			</Section>
 
+			{/* Disabled Contact & Community Section
 			<Section className="space-y-0">
 				<h3>{t("settings:about.contactAndCommunity")}</h3>
 				<div className="flex flex-col gap-3">
@@ -133,6 +134,7 @@ export const About = ({ telemetrySetting, setTelemetrySetting, className, ...pro
 					</div>
 				</div>
 			</Section>
+			*/}
 
 			<Section className="space-y-0">
 				<h3>{t("settings:about.manageSettings")}</h3>
