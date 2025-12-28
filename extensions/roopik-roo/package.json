@@ -1,5 +1,5 @@
 {
-	"name": "dio",
+	"name": "roodio",
 	"displayName": "Dio",
 	"description": "AI Coding Agent with Roopik IDE Integration",
 	"publisher": "roopik",
@@ -60,14 +60,14 @@
 				{
 					"id": "roodio-ActivityBar",
 					"title": "%views.activitybar.title%",
-					"icon": "dist/assets/icons/DIO_icon.svg"
+					"icon": "dist/assets/icons/icon.svg"
 				}
 			],
 			"secondarySidebar": [
 				{
 					"id": "roodio-AuxiliaryBar",
 					"title": "Roopik Dio Agent",
-					"icon": "dist/assets/icons/DIO_icon.svg"
+					"icon": "dist/assets/icons/icon.svg"
 				}
 			]
 		},
@@ -90,11 +90,11 @@
 		"commands": [
 			{
 				"command": "roodio.openChatPanel",
-				"title": "Open Dio Chat",
-				"category": "Dio",
+				"title": "Open Roopik Dio Chat",
+				"category": "Roopik Dio",
 				"icon": {
-					"light": "dist/assets/icons/DIO_icon.svg",
-					"dark": "dist/assets/icons/DIO_icon.svg"
+					"light": "dist/assets/icons/dio-icon-light.svg",
+					"dark": "dist/assets/icons/dio-icon-dark.svg"
 				}
 			},
 			{

@@ -30,9 +30,9 @@ async function main() {
 		platform: "node",
 	}
 
-	const srcDir = __dirname
-	const buildDir = __dirname
-	const distDir = path.join(buildDir, "dist")
+	const rootDir = __dirname  // extensions/roopik-roo/
+	const srcDir = path.join(rootDir, "src")
+	const distDir = path.join(rootDir, "dist")
 
 	if (fs.existsSync(distDir)) {
 		console.log(`[${name}] Cleaning dist directory: ${distDir}`)
@@ -49,15 +49,17 @@ async function main() {
 				build.onEnd(() => {
 					copyPaths(
 						[
-							["../README.md", "README.md"],
-							["../CHANGELOG.md", "CHANGELOG.md"],
-							["../LICENSE", "LICENSE"],
-							["../.env", ".env", { optional: true }],
+							["README.md", "README.md"],
+							["CHANGELOG.md", "CHANGELOG.md", { optional: true }],
+							["LICENSE", "LICENSE", { optional: true }],
+							[".env", ".env", { optional: true }],
+							["src/assets", "assets"],
 							["node_modules/vscode-material-icons/generated", "assets/vscode-material-icons"],
-							["../webview-ui/audio", "webview-ui/audio"],
+							["webview-ui/build", "webview-ui/build"],
+							["webview-ui/audio", "webview-ui/audio"],
 						],
-						srcDir,
-						buildDir,
+						rootDir,
+						distDir,
 					)
 				})
 			},
@@ -65,7 +67,7 @@ async function main() {
 		{
 			name: "copyWasms",
 			setup(build) {
-				build.onEnd(() => copyWasms(srcDir, distDir))
+				build.onEnd(() => copyWasms(rootDir, distDir))
 			},
 		},
 		{
@@ -98,7 +100,7 @@ async function main() {
 	const extensionConfig = {
 		...buildOptions,
 		plugins,
-		entryPoints: ["extension.ts"],
+		entryPoints: [path.join(srcDir, "extension.ts")],
 		outfile: "dist/extension.js",
 		external: ["vscode", "esbuild"],
 	}
@@ -108,7 +110,7 @@ async function main() {
 	 */
 	const workerConfig = {
 		...buildOptions,
-		entryPoints: ["workers/countTokens.ts"],
+		entryPoints: [path.join(srcDir, "workers/countTokens.ts")],
 		outdir: "dist/workers",
 	}
 
@@ -119,8 +121,8 @@ async function main() {
 
 	if (watch) {
 		await Promise.all([extensionCtx.watch(), workerCtx.watch()])
-		copyLocales(srcDir, distDir)
-		setupLocaleWatcher(srcDir, distDir)
+		copyLocales(rootDir, distDir)
+		setupLocaleWatcher(rootDir, distDir)
 	} else {
 		await Promise.all([extensionCtx.rebuild(), workerCtx.rebuild()])
 		await Promise.all([extensionCtx.dispose(), workerCtx.dispose()])
