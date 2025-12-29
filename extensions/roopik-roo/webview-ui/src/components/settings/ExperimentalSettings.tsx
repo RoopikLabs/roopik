@@ -1,5 +1,6 @@
 import { HTMLAttributes } from "react"
 import { FlaskConical } from "lucide-react"
+import { VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
 
 import type { Experiments, ImageGenerationProvider } from "@roo-code/types"
 
@@ -116,6 +117,18 @@ export const ExperimentalSettings = ({
 							/>
 						)
 					})}
+
+				{/* Agent Skills Dummy Section */}
+				<div>
+					<div className="flex items-center gap-2">
+						<VSCodeCheckbox checked={true} readOnly className="pointer-events-none opacity-50">
+							<span className="font-medium">{t("settings:experimental.AGENT_SKILLS.name")}</span>
+						</VSCodeCheckbox>
+					</div>
+					<p className="text-vscode-descriptionForeground text-sm mt-0">
+						{t("settings:experimental.AGENT_SKILLS.description")}
+					</p>
+				</div>
 			</Section>
 		</div>
 	)

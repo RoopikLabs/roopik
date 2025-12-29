@@ -188,7 +188,7 @@ configurationRegistry.registerConfiguration({
 		},
 		'roodio.titleBarIcon.enabled': {
 			type: 'boolean',
-			description: nls.localize('roodio.titleBarIcon.enabled', "Controls whether the Roo Dio chat icon is shown in the title bar."),
+			description: nls.localize('roodio.titleBarIcon.enabled', "Controls whether the Roopik Dio chat icon is shown in the title bar."),
 			default: true
 		},
 

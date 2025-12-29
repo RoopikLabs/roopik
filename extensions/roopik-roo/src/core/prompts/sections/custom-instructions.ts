@@ -187,7 +187,7 @@ export async function loadRuleFiles(cwd: string): Promise<string> {
 	const rules: string[] = []
 	const rooDirectories = getRooDirectoriesForCwd(cwd)
 
-	// Check for .roo/rules/ directories in order (global first, then project-local)
+	// Check for .dio/rules/ directories in order (global first, then project-local)
 	for (const rooDir of rooDirectories) {
 		const rulesDir = path.join(rooDir, "rules")
 		if (await directoryExists(rulesDir)) {
@@ -199,7 +199,7 @@ export async function loadRuleFiles(cwd: string): Promise<string> {
 		}
 	}
 
-	// If we found rules in .roo/rules/ directories, return them
+	// If we found rules in .dio/rules/ directories, return them
 	if (rules.length > 0) {
 		return "\n" + rules.join("\n\n")
 	}
@@ -283,7 +283,7 @@ export async function addCustomInstructions(
 		const modeRules: string[] = []
 		const rooDirectories = getRooDirectoriesForCwd(cwd)
 
-		// Check for .roo/rules-${mode}/ directories in order (global first, then project-local)
+		// Check for .dio/rules-${mode}/ directories in order (global first, then project-local)
 		for (const rooDir of rooDirectories) {
 			const modeRulesDir = path.join(rooDir, `rules-${mode}`)
 			if (await directoryExists(modeRulesDir)) {
@@ -295,7 +295,7 @@ export async function addCustomInstructions(
 			}
 		}
 
-		// If we found mode-specific rules in .roo/rules-${mode}/ directories, use them
+		// If we found mode-specific rules in .dio/rules-${mode}/ directories, use them
 		if (modeRules.length > 0) {
 			modeRuleContent = "\n" + modeRules.join("\n\n")
 			usedRuleFile = `rules-${mode} directories`
@@ -338,7 +338,7 @@ export async function addCustomInstructions(
 
 	// Add mode-specific rules first if they exist
 	if (modeRuleContent && modeRuleContent.trim()) {
-		if (usedRuleFile.includes(path.join(".roo", `rules-${mode}`))) {
+		if (usedRuleFile.includes(path.join(".dio", `rules-${mode}`))) {
 			rules.push(modeRuleContent.trim())
 		} else {
 			rules.push(`# Rules from ${usedRuleFile}:\n${modeRuleContent}`)
@@ -377,9 +377,8 @@ export async function addCustomInstructions(
 
 USER'S CUSTOM INSTRUCTIONS
 
-The following additional instructions are provided by the user, and should be followed to the best of your ability${
-				isNativeProtocol(effectiveProtocol) ? "." : " without interfering with the TOOL USE guidelines."
-			}
+The following additional instructions are provided by the user, and should be followed to the best of your ability${isNativeProtocol(effectiveProtocol) ? "." : " without interfering with the TOOL USE guidelines."
+		}
 
 ${joinedSections}
 `

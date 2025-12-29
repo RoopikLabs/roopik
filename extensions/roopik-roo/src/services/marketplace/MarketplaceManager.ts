@@ -269,8 +269,8 @@ export class MarketplaceManager {
 				// File doesn't exist or can't be read, skip
 			}
 
-			// Check MCPs in .roo/mcp.json
-			const projectMcpPath = path.join(workspaceFolder.uri.fsPath, ".roo", "mcp.json")
+			// Check MCPs in .dio/mcp.json
+			const projectMcpPath = path.join(workspaceFolder.uri.fsPath, ".dio", "mcp.json")
 			try {
 				const content = await fs.readFile(projectMcpPath, "utf-8")
 				const data = JSON.parse(content)

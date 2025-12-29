@@ -568,14 +568,14 @@ export class CustomModesManager {
 			if (scope === "project") {
 				const workspacePath = getWorkspacePath()
 				if (workspacePath) {
-					rulesFolderPath = path.join(workspacePath, ".roo", `rules-${slug}`)
+					rulesFolderPath = path.join(workspacePath, ".dio", `rules-${slug}`)
 				} else {
 					return // No workspace, can't delete project rules
 				}
 			} else {
 				// Global scope - use OS home directory
 				const homeDir = os.homedir()
-				rulesFolderPath = path.join(homeDir, ".roo", `rules-${slug}`)
+				rulesFolderPath = path.join(homeDir, ".dio", `rules-${slug}`)
 			}
 
 			// Check if the rules folder exists and delete it
@@ -615,7 +615,7 @@ export class CustomModesManager {
 	}
 
 	/**
-	 * Checks if a mode has associated rules files in the .roo/rules-{slug}/ directory
+	 * Checks if a mode has associated rules files in the .dio/rules-{slug}/ directory
 	 * @param slug - The mode identifier to check
 	 * @returns True if the mode has rules files with content, false otherwise
 	 */
@@ -658,16 +658,16 @@ export class CustomModesManager {
 			const isGlobalMode = mode?.source === "global"
 
 			if (isGlobalMode) {
-				// For global modes, check in global .roo directory
+				// For global modes, check in global .dio directory
 				const globalRooDir = getGlobalRooDirectory()
 				modeRulesDir = path.join(globalRooDir, `rules-${slug}`)
 			} else {
-				// For project modes, check in workspace .roo directory
+				// For project modes, check in workspace .dio directory
 				const workspacePath = getWorkspacePath()
 				if (!workspacePath) {
 					return false
 				}
-				modeRulesDir = path.join(workspacePath, ".roo", `rules-${slug}`)
+				modeRulesDir = path.join(workspacePath, ".dio", `rules-${slug}`)
 			}
 
 			try {
@@ -759,7 +759,7 @@ export class CustomModesManager {
 			const isGlobalMode = mode.source === "global"
 			let baseDir: string
 			if (isGlobalMode) {
-				// For global modes, use the global .roo directory
+				// For global modes, use the global .dio directory
 				baseDir = getGlobalRooDirectory()
 			} else {
 				// For project modes, use the workspace directory
@@ -770,10 +770,10 @@ export class CustomModesManager {
 				baseDir = workspacePath
 			}
 
-			// Check for .roo/rules-{slug}/ directory (or rules-{slug}/ for global)
+			// Check for .dio/rules-{slug}/ directory (or rules-{slug}/ for global)
 			const modeRulesDir = isGlobalMode
 				? path.join(baseDir, `rules-${slug}`)
-				: path.join(baseDir, ".roo", `rules-${slug}`)
+				: path.join(baseDir, ".dio", `rules-${slug}`)
 
 			let rulesFiles: RuleFile[] = []
 			try {
@@ -857,7 +857,7 @@ export class CustomModesManager {
 			rulesFolderPath = path.join(baseDir, `rules-${importMode.slug}`)
 		} else {
 			const workspacePath = getWorkspacePath()
-			baseDir = path.join(workspacePath, ".roo")
+			baseDir = path.join(workspacePath, ".dio")
 			rulesFolderPath = path.join(baseDir, `rules-${importMode.slug}`)
 		}
 

@@ -307,7 +307,7 @@ export const project_start: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "project_start",
 		description:
-			"[Roopik IDE] Start a project's dev server and open it in the browser preview. Automatically detects the project's framework (React, Vue, Next.js, etc.) and starts the appropriate dev server.",
+			"[Roopik IDE - Projects Only] Start a FULL APPLICATION's dev server and preview in the integrated Browser (NOT used for Canvas components). Use for complete runnable vite based projects with routing/navigation (e.g., todo app with multiple pages). The browser shows the running app at localhost. For ISOLATED UI components/screens, use component_add instead.",
 		strict: true,
 		parameters: {
 			type: "object",
@@ -332,7 +332,7 @@ export const project_stop: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "project_stop",
 		description:
-			"[Roopik IDE] Stop the currently running dev server. Use when switching projects or cleaning up.",
+			"[Roopik IDE] Stop the currently running dev server. Use when switching projects or cleaning up. This works only if project was started with project_start.",
 		strict: true,
 		parameters: {
 			type: "object",
@@ -352,7 +352,7 @@ export const canvas_list: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "canvas_list",
 		description:
-			"[Roopik IDE] List all canvases in the workspace. Canvases are containers for organizing components in Mode 1 (component builder).",
+			"[Roopik IDE] List all canvases in the current workspace. Canvases are containers for organizing and previewing isolated components in sandbox environment (component builder).",
 		strict: true,
 		parameters: {
 			type: "object",
@@ -399,7 +399,7 @@ export const canvas_create: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "canvas_create",
 		description:
-			"[Roopik IDE] Create a new canvas for organizing components. If a canvas with the same name exists, returns the existing one.",
+			"[Roopik IDE] Create a new canvas for organizing components. If a canvas with the same name exists, returns the existing one.  Canvases are containers for organizing and previewing multiple isolated components in sandbox environment (component builder)",
 		strict: true,
 		parameters: {
 			type: "object",
@@ -424,7 +424,7 @@ export const component_add: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "component_add",
 		description:
-			"[Roopik IDE] Add a component to a canvas. The component will be built and made available for preview. Automatically detects the framework (React, Vue, etc.) from the code.",
+			"[Roopik IDE - Canvas Only] Add an ISOLATED UI component to the Canvas for preview in the IDE's Canvas UI. Use for individual screens/sections (login, onboarding, card, hero, etc.). The Canvas automatically shows the preview - this is a sandbox environment for previewing isolated components.",
 		strict: true,
 		parameters: {
 			type: "object",
@@ -443,13 +443,13 @@ export const component_add: OpenAI.Chat.ChatCompletionTool = {
 				},
 				entryFile: {
 					type: "string",
-					description: "Entry file name (e.g., index.tsx). Auto-detected if not specified.",
+					description: "Entry file name (e.g., index.tsx). Auto-detected in IDE if not specified.",
 				},
 				framework: {
 					type: "string",
 					description:
-						"Force framework: react, vue, svelte, angular, vanilla. Auto-detected if not specified.",
-					enum: ["react", "vue", "svelte", "angular", "vanilla"],
+						"Force framework: react, vue, svelte, vanilla. Auto-detected in IDE if not specified.",
+					enum: ["react", "vue", "svelte", "vanilla"],
 				},
 			},
 			required: ["folderPath"],
@@ -463,7 +463,7 @@ export const component_add_batch: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "component_add_batch",
 		description:
-			"[Roopik IDE] Add multiple components at once. More efficient than calling component_add multiple times.",
+			"[Roopik IDE - Canvas Only] Batch add multiple ISOLATED UI components to Canvas (NOT for projects). Use when creating variations (e.g., 3 login screens). Each component appears in the Canvas UI automatically.",
 		strict: false,
 		parameters: {
 			type: "object",
@@ -471,7 +471,7 @@ export const component_add_batch: OpenAI.Chat.ChatCompletionTool = {
 				components: {
 					type: "array",
 					description:
-						"Array of component objects, each with: folderPath (required), canvasId, name, entryFile, framework (all optional)",
+						"Array of component objects, each with: absolute folderPath (required), canvasId, name, entryFile, framework (all optional)",
 					items: {
 						type: "object",
 						properties: {

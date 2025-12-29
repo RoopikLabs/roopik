@@ -126,23 +126,23 @@ describe("getEnvironmentDetails", () => {
 			} as any,
 		}
 
-		// Mock other dependencies.
-		;(getApiMetrics as Mock).mockReturnValue({ contextTokens: 50000, totalCost: 0.25 })
-		;(getFullModeDetails as Mock).mockResolvedValue({
-			name: "💻 Code",
-			roleDefinition: "You are a code assistant",
-			customInstructions: "Custom instructions",
-		})
-		;(isToolAllowedForMode as Mock).mockReturnValue(true)
-		;(listFiles as Mock).mockResolvedValue([["file1.ts", "file2.ts"], false])
-		;(formatResponse.formatFilesList as Mock).mockReturnValue("file1.ts\nfile2.ts")
-		;(arePathsEqual as Mock).mockReturnValue(false)
-		;(Terminal.compressTerminalOutput as Mock).mockImplementation((output: string) => output)
-		;(TerminalRegistry.getTerminals as Mock).mockReturnValue([])
-		;(TerminalRegistry.getBackgroundTerminals as Mock).mockReturnValue([])
-		;(TerminalRegistry.isProcessHot as Mock).mockReturnValue(false)
-		;(TerminalRegistry.getUnretrievedOutput as Mock).mockReturnValue("")
-		;(getGitStatus as Mock).mockResolvedValue("## main")
+			// Mock other dependencies.
+			; (getApiMetrics as Mock).mockReturnValue({ contextTokens: 50000, totalCost: 0.25 })
+			; (getFullModeDetails as Mock).mockResolvedValue({
+				name: "Code",
+				roleDefinition: "You are a code assistant",
+				customInstructions: "Custom instructions",
+			})
+			; (isToolAllowedForMode as Mock).mockReturnValue(true)
+			; (listFiles as Mock).mockResolvedValue([["file1.ts", "file2.ts"], false])
+			; (formatResponse.formatFilesList as Mock).mockReturnValue("file1.ts\nfile2.ts")
+			; (arePathsEqual as Mock).mockReturnValue(false)
+			; (Terminal.compressTerminalOutput as Mock).mockImplementation((output: string) => output)
+			; (TerminalRegistry.getTerminals as Mock).mockReturnValue([])
+			; (TerminalRegistry.getBackgroundTerminals as Mock).mockReturnValue([])
+			; (TerminalRegistry.isProcessHot as Mock).mockReturnValue(false)
+			; (TerminalRegistry.getUnretrievedOutput as Mock).mockReturnValue("")
+			; (getGitStatus as Mock).mockResolvedValue("## main")
 		vi.mocked(pWaitFor).mockResolvedValue(undefined)
 		vi.mocked(delay).mockResolvedValue(undefined)
 	})
@@ -193,7 +193,7 @@ describe("getEnvironmentDetails", () => {
 	})
 
 	it("should handle desktop directory specially", async () => {
-		;(arePathsEqual as Mock).mockReturnValue(true)
+		; (arePathsEqual as Mock).mockReturnValue(true)
 		const result = await getEnvironmentDetails(mockCline as Task, true)
 		expect(result).toContain("Desktop files not shown automatically")
 		expect(listFiles).not.toHaveBeenCalled()
@@ -213,7 +213,7 @@ describe("getEnvironmentDetails", () => {
 	})
 
 	it("should include recently modified files if any", async () => {
-		;(mockCline.fileContextTracker!.getAndClearRecentlyModifiedFiles as Mock).mockReturnValue([
+		; (mockCline.fileContextTracker!.getAndClearRecentlyModifiedFiles as Mock).mockReturnValue([
 			"modified1.ts",
 			"modified2.ts",
 		])
@@ -233,8 +233,8 @@ describe("getEnvironmentDetails", () => {
 			getCurrentWorkingDirectory: vi.fn().mockReturnValue("/test/path/src"),
 		} as MockTerminal
 
-		;(TerminalRegistry.getTerminals as Mock).mockReturnValue([mockActiveTerminal])
-		;(TerminalRegistry.getUnretrievedOutput as Mock).mockReturnValue("Test output")
+			; (TerminalRegistry.getTerminals as Mock).mockReturnValue([mockActiveTerminal])
+			; (TerminalRegistry.getUnretrievedOutput as Mock).mockReturnValue("Test output")
 
 		const result = await getEnvironmentDetails(mockCline as Task)
 
@@ -265,9 +265,9 @@ describe("getEnvironmentDetails", () => {
 			getCurrentWorkingDirectory: vi.fn().mockReturnValue("/test/path/build"),
 		} as MockTerminal
 
-		;(TerminalRegistry.getTerminals as Mock).mockImplementation((active: boolean) =>
-			active ? [] : [mockInactiveTerminal],
-		)
+			; (TerminalRegistry.getTerminals as Mock).mockImplementation((active: boolean) =>
+				active ? [] : [mockInactiveTerminal],
+			)
 
 		const result = await getEnvironmentDetails(mockCline as Task)
 
@@ -301,10 +301,10 @@ describe("getEnvironmentDetails", () => {
 			getCurrentWorkingDirectory: vi.fn().mockReturnValue("/another/path"),
 		} as MockTerminal
 
-		;(TerminalRegistry.getTerminals as Mock).mockImplementation((active: boolean) =>
-			active ? [mockActiveTerminal] : [mockInactiveTerminal],
-		)
-		;(TerminalRegistry.getUnretrievedOutput as Mock).mockReturnValue("Server started")
+			; (TerminalRegistry.getTerminals as Mock).mockImplementation((active: boolean) =>
+				active ? [mockActiveTerminal] : [mockInactiveTerminal],
+			)
+			; (TerminalRegistry.getUnretrievedOutput as Mock).mockReturnValue("Server started")
 
 		const result = await getEnvironmentDetails(mockCline as Task)
 
@@ -324,7 +324,7 @@ describe("getEnvironmentDetails", () => {
 
 	it("should include experiment-specific details when Power Steering is enabled", async () => {
 		mockState.experiments = { [EXPERIMENT_IDS.POWER_STEERING]: true }
-		;(experiments.isEnabled as Mock).mockReturnValue(true)
+			; (experiments.isEnabled as Mock).mockReturnValue(true)
 
 		const result = await getEnvironmentDetails(mockCline as Task)
 
@@ -364,9 +364,9 @@ describe("getEnvironmentDetails", () => {
 			getCurrentWorkingDirectory: vi.fn().mockReturnValue("/test/path"),
 		} as MockTerminal
 
-		;(TerminalRegistry.getTerminals as Mock).mockReturnValue([mockErrorTerminal])
-		;(TerminalRegistry.getBackgroundTerminals as Mock).mockReturnValue([])
-		;(mockCline.fileContextTracker!.getAndClearRecentlyModifiedFiles as Mock).mockReturnValue([])
+			; (TerminalRegistry.getTerminals as Mock).mockReturnValue([mockErrorTerminal])
+			; (TerminalRegistry.getBackgroundTerminals as Mock).mockReturnValue([])
+			; (mockCline.fileContextTracker!.getAndClearRecentlyModifiedFiles as Mock).mockReturnValue([])
 
 		await expect(getEnvironmentDetails(mockCline as Task)).resolves.not.toThrow()
 	})
@@ -400,7 +400,7 @@ describe("getEnvironmentDetails", () => {
 		expect(result).toContain("REMINDERS")
 	})
 	it("should include git status when maxGitStatusFiles > 0", async () => {
-		;(getGitStatus as Mock).mockResolvedValue("## main\nM  file1.ts")
+		; (getGitStatus as Mock).mockResolvedValue("## main\nM  file1.ts")
 		mockProvider.getState.mockResolvedValue({
 			...mockState,
 			maxGitStatusFiles: 10,
@@ -438,7 +438,7 @@ describe("getEnvironmentDetails", () => {
 	})
 
 	it("should handle git status returning null gracefully when enabled", async () => {
-		;(getGitStatus as Mock).mockResolvedValue(null)
+		; (getGitStatus as Mock).mockResolvedValue(null)
 		mockProvider.getState.mockResolvedValue({
 			...mockState,
 			maxGitStatusFiles: 10,
@@ -451,7 +451,7 @@ describe("getEnvironmentDetails", () => {
 	})
 
 	it("should pass maxFiles parameter to getGitStatus", async () => {
-		;(getGitStatus as Mock).mockResolvedValue("## main")
+		; (getGitStatus as Mock).mockResolvedValue("## main")
 		mockProvider.getState.mockResolvedValue({
 			...mockState,
 			maxGitStatusFiles: 5,
@@ -468,8 +468,8 @@ describe("getEnvironmentDetails", () => {
 	})
 
 	it("should include Browser Session Status with current viewport when active", async () => {
-		;(mockCline.browserSession as any).isSessionActive = vi.fn().mockReturnValue(true)
-		;(mockCline.browserSession as any).getViewportSize = vi.fn().mockReturnValue({ width: 1280, height: 720 })
+		; (mockCline.browserSession as any).isSessionActive = vi.fn().mockReturnValue(true)
+			; (mockCline.browserSession as any).getViewportSize = vi.fn().mockReturnValue({ width: 1280, height: 720 })
 
 		const result = await getEnvironmentDetails(mockCline as Task)
 		expect(result).toContain("Active - A browser session is currently open and ready for browser_action commands")

@@ -1392,8 +1392,8 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		<div
 			data-testid="chat-view"
 			className={isHidden ? "hidden" : "fixed top-0 left-0 right-0 bottom-0 flex flex-col overflow-hidden"}>
-			{telemetrySetting === "unset" && <TelemetryBanner />}
-			{(showAnnouncement || showAnnouncementModal) && (
+			{/* Disabled: telemetrySetting === "unset" && <TelemetryBanner /> */}
+			{false && (showAnnouncement || showAnnouncementModal) && (
 				<Announcement
 					hideAnnouncement={() => {
 						if (showAnnouncementModal) {
@@ -1629,3 +1629,4 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 const ChatView = forwardRef(ChatViewComponent)
 
 export default ChatView
+

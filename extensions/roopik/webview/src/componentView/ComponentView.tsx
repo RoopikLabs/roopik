@@ -643,7 +643,7 @@ function App() {
 	// Sandbox click handler
 	const handleSandboxClick = useCallback((sandboxId: string) => {
 		setSelectedSandboxId(sandboxId);
-		logger.info('Sandbox selected', { sandboxId });
+		// logger.info('Sandbox selected', { sandboxId });
 
 		// Bring clicked sandbox to front
 		setSandboxes((prev) => {

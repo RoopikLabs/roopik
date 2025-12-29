@@ -27,7 +27,7 @@ describe("Command Mentions", () => {
 
 	// Helper function to call parseMentions with required parameters
 	const callParseMentions = async (text: string) => {
-		return await parseMentions(
+		const result = await parseMentions(
 			text,
 			"/test/cwd", // cwd
 			mockUrlContentFetcher, // urlContentFetcher
@@ -38,6 +38,8 @@ describe("Command Mentions", () => {
 			50, // maxDiagnosticMessages
 			undefined, // maxReadFileLine
 		)
+		// Return just the text for backward compatibility with existing tests
+		return result.text
 	}
 
 	describe("parseMentions with command support", () => {
@@ -47,7 +49,7 @@ describe("Command Mentions", () => {
 				name: "setup",
 				content: commandContent,
 				source: "project",
-				filePath: "/project/.roo/commands/setup.md",
+				filePath: "/project/.dio/commands/setup.md",
 			})
 
 			const input = "/setup Please help me set up the project"
@@ -69,25 +71,25 @@ describe("Command Mentions", () => {
 					name: "setup",
 					content: setupContent,
 					source: "project",
-					filePath: "/project/.roo/commands/setup.md",
+					filePath: "/project/.dio/commands/setup.md",
 				})
 				.mockResolvedValueOnce({
 					name: "deploy",
 					content: deployContent,
 					source: "project",
-					filePath: "/project/.roo/commands/deploy.md",
+					filePath: "/project/.dio/commands/deploy.md",
 				})
 				.mockResolvedValueOnce({
 					name: "setup",
 					content: setupContent,
 					source: "project",
-					filePath: "/project/.roo/commands/setup.md",
+					filePath: "/project/.dio/commands/setup.md",
 				})
 				.mockResolvedValueOnce({
 					name: "deploy",
 					content: deployContent,
 					source: "project",
-					filePath: "/project/.roo/commands/deploy.md",
+					filePath: "/project/.dio/commands/deploy.md",
 				})
 
 			// Both commands should be recognized
@@ -137,7 +139,7 @@ describe("Command Mentions", () => {
 				name: "error-command",
 				content: "# Error command",
 				source: "project",
-				filePath: "/project/.roo/commands/error-command.md",
+				filePath: "/project/.dio/commands/error-command.md",
 			})
 
 			const input = "/error-command test"
@@ -153,7 +155,7 @@ describe("Command Mentions", () => {
 				name: "setup-dev",
 				content: "# Dev setup",
 				source: "project",
-				filePath: "/project/.roo/commands/setup-dev.md",
+				filePath: "/project/.dio/commands/setup-dev.md",
 			})
 
 			const input = "/setup-dev for the project"
@@ -184,7 +186,7 @@ npm install
 				name: "complex",
 				content: commandContent,
 				source: "project",
-				filePath: "/project/.roo/commands/complex.md",
+				filePath: "/project/.dio/commands/complex.md",
 			})
 
 			const input = "/complex command"
@@ -204,7 +206,7 @@ npm install
 				name: "empty",
 				content: "",
 				source: "project",
-				filePath: "/project/.roo/commands/empty.md",
+				filePath: "/project/.dio/commands/empty.md",
 			})
 
 			const input = "/empty command"
@@ -287,7 +289,7 @@ npm install
 				name: "setup",
 				content: "# Setup instructions",
 				source: "project",
-				filePath: "/project/.roo/commands/setup.md",
+				filePath: "/project/.dio/commands/setup.md",
 			})
 
 			const input = "/setup the project"
@@ -311,13 +313,13 @@ npm install
 					name: "setup",
 					content: "# Setup instructions",
 					source: "project",
-					filePath: "/project/.roo/commands/setup.md",
+					filePath: "/project/.dio/commands/setup.md",
 				})
 				.mockResolvedValueOnce({
 					name: "deploy",
 					content: "# Deploy instructions",
 					source: "project",
-					filePath: "/project/.roo/commands/deploy.md",
+					filePath: "/project/.dio/commands/deploy.md",
 				})
 
 			const input = "/setup the project\nThen /deploy later"
@@ -332,7 +334,7 @@ npm install
 				name: "build",
 				content: "# Build instructions",
 				source: "project",
-				filePath: "/project/.roo/commands/build.md",
+				filePath: "/project/.dio/commands/build.md",
 			})
 
 			// At the beginning - should match

@@ -6,3 +6,7 @@
 .docker/*
 !.docker/scripts
 !.docker/entrypoints
+
+# Prevent compiled JS in source folder
+src/**/*.js
+src/**/*.js.map

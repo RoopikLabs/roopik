@@ -228,7 +228,7 @@ Usage:
 
 export function getProjectStartDescription(args: ToolArgs): string {
 	return `## project_start
-Description: [Roopik IDE] Start a project's dev server and open it in the browser preview. Automatically detects the project's framework (React, Vue, Next.js, etc.) and starts the appropriate dev server.
+Description: [Roopik IDE - Projects Only] Start a FULL APPLICATION's dev server and preview in the integrated Browser (NOT used for Canvas components). Use for complete runnable vite based projects with routing/navigation (e.g., todo app with multiple pages). The browser shows the running app at localhost. For ISOLATED UI components/screens, use component_add instead.
 Parameters:
 - projectPath: (required) Path to the project directory (absolute or relative to ${args.cwd})
 - port: (optional) Port to run the dev server on. Default is auto-detected or 5173.
@@ -241,7 +241,7 @@ Usage:
 
 export function getProjectStopDescription(): string {
 	return `## project_stop
-Description: [Roopik IDE] Stop the currently running dev server. Use when switching projects or cleaning up.
+Description: [Roopik IDE] Stop the currently running dev server. Use when switching projects or cleaning up. This works only if project was started with project_start.
 Parameters: None
 Usage:
 <project_stop>
@@ -254,7 +254,7 @@ Usage:
 
 export function getCanvasListDescription(): string {
 	return `## canvas_list
-Description: [Roopik IDE] List all canvases in the workspace. Canvases are containers for organizing components in Mode 1 (component builder).
+Description: [Roopik IDE] List all canvases in the current workspace. Canvases are containers for organizing and previewing isolated components in sandbox environment (component builder).
 Parameters:
 - nameFilter: (optional) Filter canvases by name (partial match)
 - sortBy: (optional) Sort by: name, createdAt, updatedAt. Default is updatedAt.
@@ -278,7 +278,7 @@ Usage:
 
 export function getCanvasCreateDescription(): string {
 	return `## canvas_create
-Description: [Roopik IDE] Create a new canvas for organizing components. If a canvas with the same name exists, returns the existing one.
+Description: [Roopik IDE] Create a new canvas for organizing components. If a canvas with the same name exists, returns the existing one.  Canvases are containers for organizing and previewing multiple isolated components in sandbox environment (component builder).
 Parameters:
 - name: (required) Name for the canvas
 Usage:
@@ -293,13 +293,13 @@ Usage:
 
 export function getComponentAddDescription(): string {
 	return `## component_add
-Description: [Roopik IDE] Add a component to a canvas. The component will be built and made available for preview. Automatically detects the framework (React, Vue, etc.) from the code.
+Description: [Roopik IDE - Canvas Only] Add an ISOLATED UI component to the Canvas for preview in the IDE's Canvas UI. Use for individual screens/sections (login, onboarding, card, hero, etc.). The Canvas automatically shows the preview - this is a sandbox environment for previewing isolated components.
 Parameters:
 - folderPath: (required) Path to the component folder (contains the component files)
 - canvasId: (optional) Canvas to add the component to. Uses active canvas if not specified.
 - name: (optional) Display name for the component. Inferred from folder if not specified.
-- entryFile: (optional) Entry file name (e.g., index.tsx). Auto-detected if not specified.
-- framework: (optional) Force framework: react, vue, svelte, angular, vanilla. Auto-detected if not specified.
+- entryFile: (optional) Entry file name (e.g., index.tsx). Auto-detected in IDE if not specified.
+- framework: (optional) Force framework: react, vue, svelte, vanilla. Auto-detected in IDE if not specified.
 Usage:
 <component_add>
 <folderPath>path/to/component</folderPath>
@@ -312,9 +312,9 @@ Usage:
 
 export function getComponentAddBatchDescription(): string {
 	return `## component_add_batch
-Description: [Roopik IDE] Add multiple components at once. More efficient than calling component_add multiple times.
+Description: [Roopik IDE - Canvas Only] Batch add multiple ISOLATED UI components to Canvas (NOT for projects). Use when creating variations (e.g., 3 login screens). Each component appears in the Canvas UI automatically.
 Parameters:
-- components: (required) Array of component objects, each with: folderPath (required), canvasId, name, entryFile, framework (all optional)
+- components: (required) Array of component objects, each with: absolute folderPath (required), canvasId, name, entryFile, framework (all optional)
 Usage:
 <component_add_batch>
 <components>[{"folderPath": "path/to/comp1"}, {"folderPath": "path/to/comp2", "name": "MyComponent"}]</components>
@@ -405,7 +405,46 @@ export function getRoopikToolDescriptions(args: ToolArgs): string {
 		getComponentRebuildDescription(),
 	]
 
-	return `# Roopik IDE Tools\n\nThese tools integrate with Roopik IDE's browser preview, canvas, and component features. They provide visual verification, CSS inspection with source mapping, and component management.\n\n${descriptions.join("\n\n")}`
+	return `# Roopik IDE Tools
+
+These tools integrate with Roopik IDE's browser preview, canvas, and component features. They provide visual verification, CSS inspection with source mapping, and component management.
+
+## Workflow Patterns
+
+**Browser Workflow (for testing/verifying changes):**
+1. \`browser_open\` - Open browser (optionally with URL)
+2. \`browser_screenshot\` - Capture current state for visual verification
+3. \`browser_action_input\` - Interact with elements (click, type, etc.)
+4. \`browser_get_errors\` - Check for JavaScript/network errors
+5. \`browser_close\` - Close when done (optional, browser persists between messages)
+- Optional advanced: \`browser_execute_script\` for running arbitrary JS in the browser, \`browser_get_console_logs\`, \`browser_get_performance\`, \`browser_get_cdp_info\` for detailed debugging and performance analysis
+
+**Project Workflow (for running full projects):**
+1. \`project_start\` - Start dev server and open browser preview
+2. \`browser_navigate\` - Navigate to specific routes (/login, /dashboard)
+3. \`browser_screenshot\` - Verify UI renders correctly
+4. \`browser_inspect_element\` - Get CSS details with source file locations
+5. Edit files based on inspection results
+6. \`browser_reload\` - Refresh to see changes (HMR usually auto-refreshes, not needed)
+7. \`project_stop\` - Stop server when switching projects or when done or if user asks to stop/close
+- Note: All browser_* tools are available when a project is running for debugging, testing, and inspection
+
+**CSS Debugging Flow (fast, precise edits):**
+1. \`browser_inspect_element\` with selector - Get exact CSS rules + source files
+2. Review the matched rules (which file:line defines each style)
+3. Edit the correct CSS file at the correct line
+4. \`browser_reload\` with ignoreCache=true if needed
+
+**Component Canvas Workflow:**
+1. \`canvas_create\` or \`canvas_get_active\` - Get/create canvas (first try to get active canvas, if not found create a new one, use your judgment to determine better canvas short generic name)
+2. \`component_add\` - Add component folder to canvas (Once you write a component code, you have to pass the absolute path of the component file to the canvas add tool which shows the live preview of the component in the canvas UI)
+3. \`component_list\` - See all components on canvas (this will show the list of all components added to the canvas to you if you need to see the list of components added to the canvas or get info about a specific component use \`component_get_info\`)
+4. \`component_rebuild\` - Force rebuild after changes (use this tool if you make changes to the component code and want to rebuild the component)
+5. \`component_remove\` - Remove component from canvas (IMPORTANT: This only removes the component from the canvas UI visually, it does NOT delete the code files. To fully remove a component: first call \`component_remove\` to remove from canvas, then delete the component folder for a clean removal)
+6. User views live preview in canvas UI
+- **IMPORTANT**: DO NOT use browser_open or browser_screenshot for canvas components. The canvas UI shows live preview automatically after component_add. Browser tools are only for projects with dev servers.
+
+${descriptions.join("\n\n")}`
 }
 
 /**

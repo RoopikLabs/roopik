@@ -159,7 +159,7 @@ describe("SimpleInstaller", () => {
 
 			const result = await installer.installItem(mockMcpItem, { target: "project" })
 
-			expect(result.filePath).toBe(path.join("/test/workspace", ".roo", "mcp.json"))
+			expect(result.filePath).toBe(path.join("/test/workspace", ".dio", "mcp.json"))
 			expect(mockFs.writeFile).toHaveBeenCalled()
 
 			// Verify the written content contains the new server
@@ -174,7 +174,7 @@ describe("SimpleInstaller", () => {
 			mockFs.readFile.mockResolvedValueOnce(invalidJson)
 
 			await expect(installer.installItem(mockMcpItem, { target: "project" })).rejects.toThrow(
-				"Cannot install MCP server: The .roo/mcp.json file contains invalid JSON",
+				"Cannot install MCP server: The .dio/mcp.json file contains invalid JSON",
 			)
 
 			// Should NOT write to file

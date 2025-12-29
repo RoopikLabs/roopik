@@ -1276,7 +1276,7 @@ const ModesView = () => {
 											// Open or create an empty file
 											vscode.postMessage({
 												type: "openFile",
-												text: `./.roo/rules-${currentMode.slug}/rules.md`,
+												text: `./.dio/rules-${currentMode.slug}/rules.md`,
 												values: {
 													create: true,
 													content: "",
@@ -1369,7 +1369,7 @@ const ModesView = () => {
 
 															vscode.postMessage({
 																type: "openFile",
-																text: `./.roo/system-prompt-${currentMode.slug}`,
+																text: `./.dio/system-prompt-${currentMode.slug}`,
 																values: {
 																	create: true,
 																	content: "",
@@ -1438,7 +1438,7 @@ const ModesView = () => {
 										onClick={() =>
 											vscode.postMessage({
 												type: "openFile",
-												text: "./.roo/rules/rules.md",
+												text: "./.dio/rules/rules.md",
 												values: {
 													create: true,
 													content: "",

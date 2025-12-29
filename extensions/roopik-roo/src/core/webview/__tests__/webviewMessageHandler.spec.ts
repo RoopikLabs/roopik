@@ -544,12 +544,12 @@ describe("webviewMessageHandler - deleteCustomMode", () => {
 		vi.clearAllMocks()
 		vi.mocked(getWorkspacePath).mockReturnValue("/mock/workspace")
 		vi.mocked(vscode.window.showErrorMessage).mockResolvedValue(undefined)
-		vi.mocked(ensureSettingsDirectoryExists).mockResolvedValue("/mock/global/storage/.roo")
+		vi.mocked(ensureSettingsDirectoryExists).mockResolvedValue("/mock/global/storage/.dio")
 	})
 
 	it("should delete a project mode and its rules folder", async () => {
 		const slug = "test-project-mode"
-		const rulesFolderPath = path.join("/mock/workspace", ".roo", `rules-${slug}`)
+		const rulesFolderPath = path.join("/mock/workspace", ".dio", `rules-${slug}`)
 
 		vi.mocked(mockClineProvider.customModesManager.getCustomModes).mockResolvedValue([
 			{
@@ -574,7 +574,7 @@ describe("webviewMessageHandler - deleteCustomMode", () => {
 	it("should delete a global mode and its rules folder", async () => {
 		const slug = "test-global-mode"
 		const homeDir = os.homedir()
-		const rulesFolderPath = path.join(homeDir, ".roo", `rules-${slug}`)
+		const rulesFolderPath = path.join(homeDir, ".dio", `rules-${slug}`)
 
 		vi.mocked(mockClineProvider.customModesManager.getCustomModes).mockResolvedValue([
 			{
@@ -620,7 +620,7 @@ describe("webviewMessageHandler - deleteCustomMode", () => {
 
 	it("should handle errors when deleting rules folder", async () => {
 		const slug = "test-mode-error"
-		const rulesFolderPath = path.join("/mock/workspace", ".roo", `rules-${slug}`)
+		const rulesFolderPath = path.join("/mock/workspace", ".dio", `rules-${slug}`)
 		const error = new Error("Permission denied")
 
 		vi.mocked(mockClineProvider.customModesManager.getCustomModes).mockResolvedValue([
@@ -720,8 +720,8 @@ describe("webviewMessageHandler - mcpEnabled", () => {
 			handleMcpEnabledChange: vi.fn().mockResolvedValue(undefined),
 		}
 
-		// Ensure provider exposes getMcpHub and returns our mock
-		;(mockClineProvider as any).getMcpHub = vi.fn().mockReturnValue(mockMcpHub)
+			// Ensure provider exposes getMcpHub and returns our mock
+			; (mockClineProvider as any).getMcpHub = vi.fn().mockReturnValue(mockMcpHub)
 	})
 
 	it("delegates enable=true to McpHub and posts updated state", async () => {
@@ -749,7 +749,7 @@ describe("webviewMessageHandler - mcpEnabled", () => {
 	})
 
 	it("handles missing McpHub instance gracefully and still posts state", async () => {
-		;(mockClineProvider as any).getMcpHub = vi.fn().mockReturnValue(undefined)
+		; (mockClineProvider as any).getMcpHub = vi.fn().mockReturnValue(undefined)
 
 		await webviewMessageHandler(mockClineProvider, {
 			type: "updateSettings",
@@ -765,8 +765,8 @@ describe("webviewMessageHandler - downloadErrorDiagnostics", () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 
-		// Ensure contextProxy has a globalStorageUri for the handler
-		;(mockClineProvider as any).contextProxy.globalStorageUri = { fsPath: "/mock/global/storage" }
+			// Ensure contextProxy has a globalStorageUri for the handler
+			; (mockClineProvider as any).contextProxy.globalStorageUri = { fsPath: "/mock/global/storage" }
 
 		// Provide a current task with a stable ID
 		vi.mocked(mockClineProvider.getCurrentTask).mockReturnValue({

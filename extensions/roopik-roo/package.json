@@ -1,6 +1,6 @@
 {
 	"name": "roodio",
-	"displayName": "RooDio",
+	"displayName": "Dio",
 	"description": "AI Coding Agent with Roopik IDE Integration",
 	"publisher": "roopik",
 	"version": "3.37.1",
@@ -14,7 +14,7 @@
 		"node": "20.19.2"
 	},
 	"author": {
-		"name": "Roo Dio"
+		"name": "Dio"
 	},
 	"repository": {
 		"type": "git",
@@ -42,13 +42,11 @@
 		"sonnet",
 		"ai",
 		"llama",
-		"roo code",
-		"roocode",
-		"roopik",
+		"dio code",
+		"dio-code",
 		"roopik-labs",
-		"roopik-ide",
-		"roopik-dio",
-		"roo-dio",
+		"dio-ide",
+		"dio-dio",
 		"dio"
 	],
 	"activationEvents": [
@@ -62,14 +60,14 @@
 				{
 					"id": "roodio-ActivityBar",
 					"title": "%views.activitybar.title%",
-					"icon": "dist/assets/icons/DIO_icon.svg"
+					"icon": "dist/assets/icons/icon.svg"
 				}
 			],
 			"secondarySidebar": [
 				{
 					"id": "roodio-AuxiliaryBar",
-					"title": "Roo Dio Agent",
-					"icon": "dist/assets/icons/DIO_icon.svg"
+					"title": "Roopik Dio Agent",
+					"icon": "dist/assets/icons/icon.svg"
 				}
 			]
 		},
@@ -92,11 +90,11 @@
 		"commands": [
 			{
 				"command": "roodio.openChatPanel",
-				"title": "Open Roo Dio Chat",
-				"category": "Roo Dio",
+				"title": "Open Roopik Dio Chat",
+				"category": "Roopik Dio",
 				"icon": {
-					"light": "dist/assets/icons/DIO_icon.svg",
-					"dark": "dist/assets/icons/DIO_icon.svg"
+					"light": "dist/assets/icons/dio-icon-light.svg",
+					"dark": "dist/assets/icons/dio-icon-dark.svg"
 				}
 			},
 			{

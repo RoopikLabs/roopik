@@ -519,7 +519,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 			{ id: "prompts", icon: MessageSquare },
 			{ id: "ui", icon: Glasses },
 			{ id: "experimental", icon: FlaskConical },
-			{ id: "language", icon: Globe },
+			// { id: "language", icon: Globe }, // Disabled - English only
 			{ id: "about", icon: Info },
 		],
 		[], // No dependencies needed now
