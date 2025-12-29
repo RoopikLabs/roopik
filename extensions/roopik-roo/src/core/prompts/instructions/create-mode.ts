@@ -5,12 +5,12 @@ import { GlobalFileNames } from "../../../shared/globalFileNames"
 import { getSettingsDirectoryPath } from "../../../utils/storage"
 
 export async function createModeInstructions(context: vscode.ExtensionContext | undefined): Promise<string> {
-	if (!context) throw new Error("Missing VSCode Extension Context")
+  if (!context) throw new Error("Missing VSCode Extension Context")
 
-	const settingsDir = await getSettingsDirectoryPath(context.globalStorageUri.fsPath)
-	const customModesPath = path.join(settingsDir, GlobalFileNames.customModes)
+  const settingsDir = await getSettingsDirectoryPath(context.globalStorageUri.fsPath)
+  const customModesPath = path.join(settingsDir, GlobalFileNames.customModes)
 
-	return `
+  return `
 Custom modes can be configured in two ways:
   1. Globally via '${customModesPath}' (created automatically on startup)
   2. Per-workspace via '.roomodes' in the workspace root directory
@@ -40,7 +40,7 @@ customModes:
     name: Designer  # Required: mode display name
     description: UI/UX design systems expert  # Optional but recommended: short description (5 words)
     roleDefinition: >-
-      You are Roo, a UI/UX expert specializing in design systems and frontend development. Your expertise includes:
+      You are Dio, a UI/UX expert specializing in design systems and with frontend development tools. Your expertise includes:
       - Creating and maintaining design systems
       - Implementing responsive and accessible web interfaces
       - Working with CSS, HTML, and modern frontend frameworks
@@ -56,8 +56,9 @@ customModes:
       # - - edit
       #   - fileRegex: \\.md$
       #     description: Markdown files only  # Edit group that only allows editing markdown files
-      - browser  # Browser group (browser_action)
+      - browser  # Browser group (browser_action, browser_* tools)
       - command  # Command group (execute_command)
       - mcp      # MCP group (use_mcp_tool, access_mcp_resource)
+      - roopik   # Roopik IDE group (browser_*, project_*, canvas_*, component_* - tools for visual development)
     customInstructions: Additional instructions for the Designer mode  # Optional`
 }

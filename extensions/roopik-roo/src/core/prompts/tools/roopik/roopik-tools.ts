@@ -405,7 +405,45 @@ export function getRoopikToolDescriptions(args: ToolArgs): string {
 		getComponentRebuildDescription(),
 	]
 
-	return `# Roopik IDE Tools\n\nThese tools integrate with Roopik IDE's browser preview, canvas, and component features. They provide visual verification, CSS inspection with source mapping, and component management.\n\n${descriptions.join("\n\n")}`
+	return `# Roopik IDE Tools
+
+These tools integrate with Roopik IDE's browser preview, canvas, and component features. They provide visual verification, CSS inspection with source mapping, and component management.
+
+## Workflow Patterns
+
+**Browser Workflow (for testing/verifying changes):**
+1. \`browser_open\` - Open browser (optionally with URL)
+2. \`browser_screenshot\` - Capture current state for visual verification
+3. \`browser_action_input\` - Interact with elements (click, type, etc.)
+4. \`browser_get_errors\` - Check for JavaScript/network errors
+5. \`browser_close\` - Close when done (optional, browser persists between messages)
+- Optional advanced: \`browser_execute_script\` for running arbitrary JS in the browser, \`browser_get_console_logs\`, \`browser_get_performance\`, \`browser_get_cdp_info\` for detailed debugging and performance analysis
+
+**Project Workflow (for running full projects):**
+1. \`project_start\` - Start dev server and open browser preview
+2. \`browser_navigate\` - Navigate to specific routes (/login, /dashboard)
+3. \`browser_screenshot\` - Verify UI renders correctly
+4. \`browser_inspect_element\` - Get CSS details with source file locations
+5. Edit files based on inspection results
+6. \`browser_reload\` - Refresh to see changes (HMR usually auto-refreshes, not needed)
+7. \`project_stop\` - Stop server when switching projects or when done or if user asks to stop/close
+- Note: All browser_* tools are available when a project is running for debugging, testing, and inspection
+
+**CSS Debugging Flow (fast, precise edits):**
+1. \`browser_inspect_element\` with selector - Get exact CSS rules + source files
+2. Review the matched rules (which file:line defines each style)
+3. Edit the correct CSS file at the correct line
+4. \`browser_reload\` with ignoreCache=true if needed
+
+**Component Canvas Workflow:**
+1. \`canvas_create\` or \`canvas_get_active\` - Get/create canvas (first try to get active canvas, if not found create a new one, use your judgment to determine better canvas short generic name)
+2. \`component_add\` - Add component folder to canvas (Once you write a component code, you have to pass the absolute path of the component file to the canvas add tool which shows the live preview of the component in the canvas UI)
+3. \`component_list\` - See all components on canvas (this will show the list of all components added to the canvas to you if you need to see the list of components added to the canvas or get info about a specific component use \`component_get_info\`)
+4. \`component_rebuild\` - Force rebuild after changes (use this tool if you make changes to the component code and want to rebuild the component)
+5. \`component_remove\` - Remove component from canvas (IMPORTANT: This only removes the component from the canvas UI visually, it does NOT delete the code files. To fully remove a component: first call \`component_remove\` to remove from canvas, then delete the component folder for a clean removal)
+6. User views live preview in canvas UI
+
+${descriptions.join("\n\n")}`
 }
 
 /**
