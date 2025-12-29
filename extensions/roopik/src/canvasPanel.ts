@@ -280,12 +280,16 @@ export class CanvasPanel implements vscode.Disposable {
 	 */
 	public onComponentCreated(event: ComponentCreatedEvent): void {
 		this.logger.debug(`Component created: ${event.componentId}, name: ${event.component?.componentName}`);
-		// Extract fields webview expects: { componentId, canvasId, name }
+		// Extract fields webview expects: { componentId, canvasId, name, folderPath, entryFile }
 		this.postToWebview('componentCreated', {
 			componentId: event.componentId,
 			canvasId: event.canvasId,
-			name: event.component?.componentName
+			name: event.component?.componentName,
+			folderPath: event.component?.folderPath,
+			entryFile: event.component?.entryFile
 		});
+
+		// console.log('Component created:', event.component);
 	}
 
 	/**
@@ -418,6 +422,13 @@ export class CanvasPanel implements vscode.Disposable {
 					});
 					break;
 
+				case 'openFile':
+					await this.handleOpenFile(message.payload as {
+						filePath: string;
+						line?: number;
+						column?: number;
+					});
+					break;
 
 				case 'showNotification':
 					this.handleShowNotification(message.payload as {
@@ -530,6 +541,60 @@ export class CanvasPanel implements vscode.Disposable {
 			case 'error':
 				vscode.window.showErrorMessage(payload.message);
 				break;
+		}
+	}
+
+	/**
+	 * Handle open file request from webview (View Code button)
+	 */
+	private async handleOpenFile(payload: {
+		filePath: string;
+		line?: number;
+		column?: number;
+	}): Promise<void> {
+		this.logger.info(`Opening file: ${payload.filePath}`);
+
+		try {
+			// Resolve the file path relative to workspace
+			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+			if (!workspaceFolder) {
+				throw new Error('No workspace folder open');
+			}
+
+			// Construct absolute path
+			const absolutePath = path.isAbsolute(payload.filePath)
+				? payload.filePath
+				: path.join(workspaceFolder.uri.fsPath, payload.filePath);
+
+			// Check if file exists
+			if (!fs.existsSync(absolutePath)) {
+				throw new Error(`File not found: ${absolutePath}`);
+			}
+
+			// Open the file in VS Code
+			const document = await vscode.workspace.openTextDocument(absolutePath);
+			const editor = await vscode.window.showTextDocument(document, {
+				preview: false,
+				viewColumn: vscode.ViewColumn.One
+			});
+
+			// Move cursor to specified line/column if provided
+			if (payload.line !== undefined) {
+				const line = Math.max(0, payload.line - 1); // Convert to 0-based
+				const column = Math.max(0, (payload.column || 1) - 1); // Convert to 0-based
+				const position = new vscode.Position(line, column);
+				editor.selection = new vscode.Selection(position, position);
+				editor.revealRange(
+					new vscode.Range(position, position),
+					vscode.TextEditorRevealType.InCenter
+				);
+			}
+
+			// this.logger.info(`File opened successfully: ${absolutePath}`);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			this.logger.error(`Failed to open file: ${errorMessage}`);
+			vscode.window.showErrorMessage(`Failed to open file: ${errorMessage}`);
 		}
 	}
 

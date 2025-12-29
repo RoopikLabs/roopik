@@ -21,6 +21,7 @@ export interface ComponentInput {
 	framework?: Framework;
 	files: { [filename: string]: string };
 	entryFile?: string;
+	folderPath?: string;  // Workspace-relative path to component folder
 	priority?: JobPriority;
 	dependencies?: Record<string, string>;
 }
@@ -142,6 +143,9 @@ export interface Sandbox {
 
 	/** CDN URLs used in the bundle */
 	cdnUrls?: string[];
+
+	/** Monotonic nonce updated on each build/rebuild to force iframe remounts */
+	bundleNonce?: number;
 
 	/** Original ComponentInput (for rebuild/persistence) */
 	componentInput: ComponentInput;
@@ -272,7 +276,7 @@ export type SandboxPositions = Record<string, SandboxPosition>;
  */
 export type ExtensionMessage =
 	// Core pipeline responses
-	| { type: 'componentCreated'; payload: { componentId: string; canvasId: string; name?: string } }
+	| { type: 'componentCreated'; payload: { componentId: string; canvasId: string; name?: string; folderPath?: string; entryFile?: string } }
 	| { type: 'componentBuilt'; payload: { componentId: string; result: TransformedComponent } }
 	| { type: 'componentError'; payload: { componentId: string; error: string; errorInfo?: BuildErrorInfo } }
 	// Canvas state

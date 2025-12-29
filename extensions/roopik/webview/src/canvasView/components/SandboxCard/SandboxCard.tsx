@@ -725,16 +725,16 @@ export function SandboxCard({
 						>
 							<DeviceIcon preset={effectiveDeviceMode} size={16} />
 						</button>
-						{/* Code view button - TODO coming soon! */}
-						<button onClick={handleShowCodeClick} title="View code (coming soon)">
+						{/* Code view button */}
+						<button onClick={handleShowCodeClick} title="View component source code">
 							<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="rgba(255, 255, 255, 0.9)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
 								<path d="M5 4 L1 8 L5 12" />
 								<path d="M11 4 L15 8 L11 12" />
 								<path d="M10 2 L6 14" />
 							</svg>
 						</button>
-						{/* Rebuild button - TODO coming soon! */}
-						<button onClick={handleRebuildClick} title="Force rebuild (coming soon)">
+						{/* Rebuild button */}
+						<button onClick={handleRebuildClick} title="Force rebuild component">
 							<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="rgba(255, 255, 255, 0.9)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
 								<path d="M2 8 A6 6 0 1 1 8 14" />
 								<path d="M2 4 L2 8 L6 8" />
@@ -763,7 +763,8 @@ export function SandboxCard({
 							ref={iframeRef}
 							// KEY FIX: Force iframe recreation when content changes
 							// Without this, srcDoc updates sometimes don't refresh the iframe content
-							key={`${sandbox.id}-${sandbox.buildStatus}-${sandbox.bundledCode?.length || 0}`}
+							// key={`${sandbox.id}-${sandbox.buildStatus}-${sandbox.bundledCode?.length || 0}`}
+							key={`${sandbox.id}-${sandbox.buildStatus}-${sandbox.bundleNonce ?? 0}`}
 							srcDoc={srcDoc}
 							sandbox="allow-scripts allow-same-origin"
 							title={displayName}

@@ -519,10 +519,13 @@ root.render(React.createElement(ToRender));
 		}
 
 		if (framework === 'vue') {
+			// Vue's mount() should replace content, but clear as safety
 			return `
 import { createApp } from 'vue';
 import UserComponent from '${importPath}';
 
+// Clear loading placeholder before mounting
+document.getElementById('root').innerHTML = '';
 const app = createApp(UserComponent.default || UserComponent);
 app.mount('#root');
 `;
@@ -531,10 +534,13 @@ app.mount('#root');
 		if (framework === 'svelte') {
 			// Svelte 5 with legacy componentApi mode - use traditional new Component() style
 			// This is compatible with Svelte 4 components using onMount, etc.
+			// IMPORTANT: Clear the target first since Svelte appends rather than replaces
 			return `
 import UserComponent from '${importPath}';
 
 const target = document.getElementById('root');
+// Clear loading placeholder - Svelte appends to target rather than replacing
+target.innerHTML = '';
 const Component = UserComponent.default || UserComponent;
 
 // Svelte 5 legacy mode: use new Component() constructor
@@ -547,8 +553,11 @@ new Component({ target });
 import { render } from 'solid-js/web';
 import UserComponent from '${importPath}';
 
+// Clear loading placeholder before mounting
+const root = document.getElementById('root');
+root.innerHTML = '';
 const Component = UserComponent.default || UserComponent;
-render(() => Component(), document.getElementById('root'));
+render(() => Component(), root);
 `;
 		}
 
@@ -557,8 +566,11 @@ render(() => Component(), document.getElementById('root'));
 import { render } from 'preact';
 import UserComponent from '${importPath}';
 
+// Clear loading placeholder before mounting
+const root = document.getElementById('root');
+root.innerHTML = '';
 const Component = UserComponent.default || UserComponent;
-render(Component(), document.getElementById('root'));
+render(Component(), root);
 `;
 		}
 

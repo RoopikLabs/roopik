@@ -226,6 +226,8 @@ function App() {
 									name,
 									source: "import",
 									files: {},
+									folderPath: msg.payload.folderPath,
+									entryFile: msg.payload.entryFile
 								},
 							};
 							const updated = [...prev, newSandbox];
@@ -261,11 +263,24 @@ function App() {
 									bundledCode: result.bundledCode,
 									cdnUrls: result.cdnUrls,
 									buildError: undefined,
+									// Ensure iframe remounts by updating a monotonic nonce
+									bundleNonce: Date.now(),
 								};
 							}
 							return sandbox;
 						})
 					);
+
+					// FIX: Force a repaint after state update to ensure iframes render
+					// Chromium sometimes defers iframe rendering until a repaint is triggered
+					requestAnimationFrame(() => {
+						// Force layout recalculation by reading a layout property
+						document.body.offsetHeight;
+						// Double RAF ensures we run after the React render cycle
+						requestAnimationFrame(() => {
+							document.body.offsetHeight;
+						});
+					});
 					break;
 				}
 
@@ -701,7 +716,7 @@ function App() {
 		setSandboxes((prev) =>
 			prev.map((s) =>
 				s.id === sandboxId
-					? { ...s, buildStatus: "building" as const, buildError: undefined }
+					? { ...s, buildStatus: "building" as const, buildError: undefined, bundleNonce: Date.now() }
 					: s
 			)
 		);
@@ -713,14 +728,46 @@ function App() {
 		});
 	}, []);
 
-	// Stub: Open component source files in VS Code editor (coming soon)
 	const handleSandboxShowCode = useCallback((sandboxId: string) => {
-		console.log(
-			"[Canvas] Show code for component:",
-			sandboxId,
-			"(coming soon)"
-		);
-	}, []);
+		const sandbox = sandboxes.find(s => s.id === sandboxId);
+		if (!sandbox?.componentInput) {
+			console.warn('[Canvas] Cannot show code: component input not found for', sandboxId);
+			return;
+		}
+
+		const input = sandbox.componentInput;
+
+		// Debug: log the componentInput structure
+		// console.log('[Canvas] Component input:', {
+		// 	id: input.id,
+		// 	folderPath: input.folderPath,
+		// 	entryFile: input.entryFile,
+		// 	hasFiles: !!input.files,
+		// 	filesCount: Object.keys(input.files || {}).length
+		// });
+
+		// Check if we have the required data
+		if (!input.folderPath || !input.entryFile) {
+			console.warn('[Canvas] Cannot show code: missing folderPath or entryFile for', sandboxId);
+			console.warn('[Canvas] Component input data:', input);
+			return;
+		}
+
+		// Construct the full file path from folderPath and entryFile
+		const filePath = `${input.folderPath}/${input.entryFile}`;
+
+		// console.log('[Canvas] Opening file:', filePath);
+
+		// Send message to extension to open the file
+		vscode.postMessage({
+			type: 'openFile',
+			payload: {
+				filePath,
+				line: 1,
+				column: 1
+			}
+		});
+	}, [sandboxes]);
 
 	// Sandbox update handler
 	const handleSandboxUpdate = useCallback(
