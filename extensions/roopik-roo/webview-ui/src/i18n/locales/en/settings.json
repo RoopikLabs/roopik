@@ -205,7 +205,7 @@
 			},
 			"protected": {
 				"label": "Include protected files",
-				"description": "Allow Dio to create and edit protected files (like .Dioignore and .Dio/ configuration files) without requiring approval."
+				"description": "Allow Dio to create and edit protected files (like .rooignore and .dio/ configuration files) without requiring approval."
 			}
 		},
 		"browser": {
@@ -620,9 +620,9 @@
 			"label": "Workspace files context limit",
 			"description": "Maximum number of files to include in current working directory details. Higher values provide more context but increase token usage."
 		},
-		"Dioignore": {
-			"label": "Show .Dioignore'd files in lists and searches",
-			"description": "When enabled, files matching patterns in .Dioignore will be shown in lists with a lock symbol. When disabled, these files will be completely hidden from file lists and searches."
+		"rooignore": {
+			"label": "Show .rooignore'd files in lists and searches",
+			"description": "When enabled, files matching patterns in .rooignore will be shown in lists with a lock symbol. When disabled, these files will be completely hidden from file lists and searches."
 		},
 		"maxConcurrentFileReads": {
 			"label": "Concurrent file reads limit",
@@ -898,7 +898,7 @@
 	"footer": {
 		"telemetry": {
 			"label": "Allow anonymous error and usage reporting",
-			"description": "To help improve the service, anonymous usage data and error reports are sent. This telemetry does not collect code, prompts or personal information. See Roo Code's <privacyLink>privacy policy</privacyLink> for more details. NOTE: Dio Code team isn't collecting any personal information or data either."
+			"description": "To help improve the service, anonymous usage data and error reports are sent. This telemetry does not collect code, prompts or personal information. See Roo Code's <privacyLink>privacy policy</privacyLink> for more details."
 		},
 		"settings": {
 			"import": "Import",

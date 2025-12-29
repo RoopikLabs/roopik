@@ -80,9 +80,9 @@ export const useSelectedModel = (apiConfiguration?: ProviderSettings) => {
 
 	const hasValidRouterData = needRouterModels
 		? routerModels.data &&
-			routerModels.data[provider] !== undefined &&
-			typeof routerModels.data[provider] === "object" &&
-			!routerModels.isLoading
+		routerModels.data[provider] !== undefined &&
+		typeof routerModels.data[provider] === "object" &&
+		!routerModels.isLoading
 		: true
 
 	const isReady =
@@ -94,13 +94,13 @@ export const useSelectedModel = (apiConfiguration?: ProviderSettings) => {
 	const { id, info } =
 		apiConfiguration && isReady
 			? getSelectedModel({
-					provider,
-					apiConfiguration,
-					routerModels: (routerModels.data || {}) as RouterModels,
-					openRouterModelProviders: (openRouterModelProviders.data || {}) as Record<string, ModelInfo>,
-					lmStudioModels: (lmStudioModels.data || undefined) as ModelRecord | undefined,
-					ollamaModels: (ollamaModels.data || undefined) as ModelRecord | undefined,
-				})
+				provider,
+				apiConfiguration,
+				routerModels: (routerModels.data || {}) as RouterModels,
+				openRouterModelProviders: (openRouterModelProviders.data || {}) as Record<string, ModelInfo>,
+				lmStudioModels: (lmStudioModels.data || undefined) as ModelRecord | undefined,
+				ollamaModels: (ollamaModels.data || undefined) as ModelRecord | undefined,
+			})
 			: { id: getProviderDefaultModelId(provider), info: undefined }
 
 	return {
@@ -296,8 +296,8 @@ function getSelectedModel({
 
 			const adjustedInfo =
 				info?.contextWindow &&
-				apiConfiguration?.ollamaNumCtx &&
-				apiConfiguration.ollamaNumCtx < info.contextWindow
+					apiConfiguration?.ollamaNumCtx &&
+					apiConfiguration.ollamaNumCtx < info.contextWindow
 					? { ...info, contextWindow: apiConfiguration.ollamaNumCtx }
 					: info
 
@@ -372,8 +372,8 @@ function getSelectedModel({
 			return { id, info }
 		}
 		case "roo": {
-			const id = getValidatedModelId(apiConfiguration.apiModelId, routerModels.roo, defaultModelId)
-			const info = routerModels.roo?.[id]
+			const id = getValidatedModelId(apiConfiguration.apiModelId, routerModels.dio, defaultModelId)
+			const info = routerModels.dio?.[id]
 			return { id, info }
 		}
 		case "qwen-code": {

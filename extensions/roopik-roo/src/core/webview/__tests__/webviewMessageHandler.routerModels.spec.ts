@@ -114,7 +114,7 @@ describe("webviewMessageHandler - requestRouterModels provider filter", () => {
 		// Only "roo" key should be present
 		const keys = Object.keys(routerModels)
 		expect(keys).toEqual(["roo"])
-		expect(Object.keys(routerModels.roo || {})).toContain("roo/sonnet")
+		expect(Object.keys(routerModels.dio || {})).toContain("roo/sonnet")
 
 		// getModels should have been called exactly once for roo
 		const providersCalled = getModelsMock.mock.calls.map((c: any[]) => c[0]?.provider)

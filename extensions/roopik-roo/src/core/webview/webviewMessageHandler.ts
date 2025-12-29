@@ -796,19 +796,19 @@ export const webviewMessageHandler = async (
 			const routerModels: Record<RouterName, ModelRecord> = providerFilter
 				? ({} as Record<RouterName, ModelRecord>)
 				: {
-						openrouter: {},
-						"vercel-ai-gateway": {},
-						huggingface: {},
-						litellm: {},
-						deepinfra: {},
-						"io-intelligence": {},
-						requesty: {},
-						unbound: {},
-						ollama: {},
-						lmstudio: {},
-						roo: {},
-						chutes: {},
-					}
+					openrouter: {},
+					"vercel-ai-gateway": {},
+					huggingface: {},
+					litellm: {},
+					deepinfra: {},
+					"io-intelligence": {},
+					requesty: {},
+					unbound: {},
+					ollama: {},
+					lmstudio: {},
+					roo: {},
+					chutes: {},
+				}
 
 			const safeGetModels = async (options: GetModelsOptions): Promise<ModelRecord> => {
 				try {
@@ -1259,7 +1259,7 @@ export const webviewMessageHandler = async (
 			}
 
 			const workspaceFolder = getCurrentCwd()
-			const rooDir = path.join(workspaceFolder, ".roo")
+			const rooDir = path.join(workspaceFolder, ".dio")
 			const mcpPath = path.join(rooDir, "mcp.json")
 
 			try {
@@ -1943,10 +1943,10 @@ export const webviewMessageHandler = async (
 							const existingMode = existingModes.find((mode) => mode.slug === message.modeConfig?.slug)
 							const changedSettings = existingMode
 								? Object.keys(message.modeConfig).filter(
-										(key) =>
-											JSON.stringify((existingMode as Record<string, unknown>)[key]) !==
-											JSON.stringify((message.modeConfig as Record<string, unknown>)[key]),
-									)
+									(key) =>
+										JSON.stringify((existingMode as Record<string, unknown>)[key]) !==
+										JSON.stringify((message.modeConfig as Record<string, unknown>)[key]),
+								)
 								: []
 
 							if (changedSettings.length > 0) {
@@ -1978,14 +1978,14 @@ export const webviewMessageHandler = async (
 				if (scope === "project") {
 					const workspacePath = getWorkspacePath()
 					if (workspacePath) {
-						rulesFolderPath = path.join(workspacePath, ".roo", `rules-${message.slug}`)
+						rulesFolderPath = path.join(workspacePath, ".dio", `rules-${message.slug}`)
 					} else {
-						rulesFolderPath = path.join(".roo", `rules-${message.slug}`)
+						rulesFolderPath = path.join(".dio", `rules-${message.slug}`)
 					}
 				} else {
 					// Global scope - use OS home directory
 					const homeDir = os.homedir()
-					rulesFolderPath = path.join(homeDir, ".roo", `rules-${message.slug}`)
+					rulesFolderPath = path.join(homeDir, ".dio", `rules-${message.slug}`)
 				}
 
 				// Check if the rules folder exists
@@ -2604,13 +2604,13 @@ export const webviewMessageHandler = async (
 			const status = manager
 				? manager.getCurrentStatus()
 				: {
-						systemStatus: "Standby",
-						message: "No workspace folder open",
-						processedItems: 0,
-						totalItems: 0,
-						currentItemUnit: "items",
-						workspacePath: undefined,
-					}
+					systemStatus: "Standby",
+					message: "No workspace folder open",
+					processedItems: 0,
+					totalItems: 0,
+					currentItemUnit: "items",
+					workspacePath: undefined,
+				}
 
 			provider.postMessageToWebview({
 				type: "indexingStatusUpdate",
@@ -2942,7 +2942,7 @@ export const webviewMessageHandler = async (
 				// Determine the commands directory based on source
 				let commandsDir: string
 				if (source === "global") {
-					const globalConfigDir = path.join(os.homedir(), ".roo")
+					const globalConfigDir = path.join(os.homedir(), ".dio")
 					commandsDir = path.join(globalConfigDir, "commands")
 				} else {
 					if (!vscode.workspace.workspaceFolders?.length) {
@@ -2955,7 +2955,7 @@ export const webviewMessageHandler = async (
 						vscode.window.showErrorMessage(t("common:errors.no_workspace_for_project_command"))
 						break
 					}
-					commandsDir = path.join(workspaceRoot, ".roo", "commands")
+					commandsDir = path.join(workspaceRoot, ".dio", "commands")
 				}
 
 				// Ensure the commands directory exists

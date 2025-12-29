@@ -16,7 +16,7 @@ export class SimpleInstaller {
 	constructor(
 		private readonly context: vscode.ExtensionContext,
 		private readonly customModesManager?: CustomModesManager,
-	) {}
+	) { }
 
 	async installItem(item: MarketplaceItem, options: InstallOptions): Promise<{ filePath: string; line?: number }> {
 		const { target } = options
@@ -105,7 +105,7 @@ export class SimpleInstaller {
 				const fileName = target === "project" ? ".roomodes" : "custom-modes.yaml"
 				throw new Error(
 					`Cannot install mode: The ${fileName} file contains invalid YAML. ` +
-						`Please fix the syntax errors in the file before installing new modes.`,
+					`Please fix the syntax errors in the file before installing new modes.`,
 				)
 			} else {
 				// Other unexpected errors - re-throw
@@ -237,10 +237,10 @@ export class SimpleInstaller {
 				existingData = { mcpServers: {} }
 			} else if (error instanceof SyntaxError) {
 				// JSON parsing error - don't overwrite the file!
-				const fileName = target === "project" ? ".roo/mcp.json" : "mcp-settings.json"
+				const fileName = target === "project" ? ".dio/mcp.json" : "mcp-settings.json"
 				throw new Error(
 					`Cannot install MCP server: The ${fileName} file contains invalid JSON. ` +
-						`Please fix the syntax errors in the file before installing new servers.`,
+					`Please fix the syntax errors in the file before installing new servers.`,
 				)
 			} else {
 				// Other unexpected errors - re-throw
@@ -375,7 +375,7 @@ export class SimpleInstaller {
 			if (!workspaceFolder) {
 				throw new Error("No workspace folder found")
 			}
-			return path.join(workspaceFolder.uri.fsPath, ".roo", "mcp.json")
+			return path.join(workspaceFolder.uri.fsPath, ".dio", "mcp.json")
 		} else {
 			const globalSettingsPath = await ensureSettingsDirectoryExists(this.context)
 			return path.join(globalSettingsPath, GlobalFileNames.mcpSettings)

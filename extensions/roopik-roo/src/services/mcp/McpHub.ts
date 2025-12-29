@@ -360,7 +360,7 @@ export class McpHub {
 		}
 
 		const workspaceFolder = this.providerRef.deref()?.cwd ?? getWorkspacePath()
-		const projectMcpPattern = new vscode.RelativePattern(workspaceFolder, ".roo/mcp.json")
+		const projectMcpPattern = new vscode.RelativePattern(workspaceFolder, ".dio/mcp.json")
 
 		// Create a file system watcher for the project MCP file pattern
 		this.projectMcpWatcher = vscode.workspace.createFileSystemWatcher(projectMcpPattern)
@@ -577,7 +577,7 @@ export class McpHub {
 	// Get project-level MCP configuration path
 	private async getProjectMcpPath(): Promise<string | null> {
 		const workspacePath = this.providerRef.deref()?.cwd ?? getWorkspacePath()
-		const projectMcpDir = path.join(workspacePath, ".roo")
+		const projectMcpDir = path.join(workspacePath, ".dio")
 		const projectMcpPath = path.join(projectMcpDir, "mcp.json")
 
 		try {
@@ -838,7 +838,7 @@ export class McpHub {
 
 			// Only override transport.start for stdio transports that have already been started
 			if (configInjected.type === "stdio") {
-				transport.start = async () => {}
+				transport.start = async () => { }
 			}
 
 			// Create a connected connection

@@ -6,8 +6,8 @@ import { getCommand, getCommands } from "../commands"
 // Mock fs and path modules
 vi.mock("fs/promises")
 vi.mock("../roo-config", () => ({
-	getGlobalRooDirectory: vi.fn(() => "/mock/global/.roo"),
-	getProjectRooDirectoryForCwd: vi.fn(() => "/mock/project/.roo"),
+	getGlobalRooDirectory: vi.fn(() => "/mock/global/.dio"),
+	getProjectRooDirectoryForCwd: vi.fn(() => "/mock/project/.dio"),
 }))
 vi.mock("../built-in-commands", () => ({
 	getBuiltInCommands: vi.fn(() => Promise.resolve([])),
@@ -93,13 +93,13 @@ description: Symlinked command
 					name: "regular.md",
 					isFile: () => true,
 					isSymbolicLink: () => false,
-					parentPath: "/mock/project/.roo/commands",
+					parentPath: "/mock/project/.dio/commands",
 				},
 				{
 					name: "symlink.md",
 					isFile: () => false,
 					isSymbolicLink: () => true,
-					parentPath: "/mock/project/.roo/commands",
+					parentPath: "/mock/project/.dio/commands",
 				},
 			])
 
@@ -202,7 +202,7 @@ description: Symlinked command
 							name: "linked-dir",
 							isFile: () => false,
 							isSymbolicLink: () => true,
-							parentPath: "/mock/project/.roo/commands",
+							parentPath: "/mock/project/.dio/commands",
 						},
 					])
 				}
@@ -282,7 +282,7 @@ description: Symlinked command
 					name: "cyclic.md",
 					isFile: () => false,
 					isSymbolicLink: () => true,
-					parentPath: "/mock/project/.roo/commands",
+					parentPath: "/mock/project/.dio/commands",
 				},
 			])
 
@@ -345,13 +345,13 @@ description: Symlinked command
 					name: "regular.md",
 					isFile: () => true,
 					isSymbolicLink: () => false,
-					parentPath: "/mock/project/.roo/commands",
+					parentPath: "/mock/project/.dio/commands",
 				},
 				{
 					name: "broken.md",
 					isFile: () => false,
 					isSymbolicLink: () => true,
-					parentPath: "/mock/project/.roo/commands",
+					parentPath: "/mock/project/.dio/commands",
 				},
 			])
 
@@ -415,7 +415,7 @@ description: Symlinked command
 					name: "my-alias.md", // Symlink name
 					isFile: () => false,
 					isSymbolicLink: () => true,
-					parentPath: "/mock/project/.roo/commands",
+					parentPath: "/mock/project/.dio/commands",
 				},
 			])
 
