@@ -48,6 +48,10 @@ declare global {
 			backgroundColor?: string;
 			backgroundPattern?: BackgroundPattern;
 		};
+		CANVAS_CONFIG?: {
+			canvasId: string;
+			canvasName?: string;
+		};
 	}
 }
 
@@ -461,6 +465,60 @@ function App() {
 		vscode.postMessage({ type: "ready" });
 	}, []);
 
+	const buildCanvasContext = useCallback(() => {
+		const canvasConfig = window.CANVAS_CONFIG;
+		const pendingElement = pendingElementSelectionRef.current;
+		const selectedSandbox =
+			sandboxes.find((sandbox) => sandbox.id === selectedSandboxId) ||
+			(pendingElement
+				? sandboxes.find((sandbox) => sandbox.id === pendingElement.componentId)
+				: null);
+		const selectedComponent = selectedSandbox
+			? {
+					id: selectedSandbox.id,
+					name: selectedSandbox.componentInput?.name,
+					folderPath: selectedSandbox.componentInput?.folderPath,
+					entryFile: selectedSandbox.componentInput?.entryFile,
+				}
+			: undefined;
+		const selectedElement =
+			pendingElement &&
+			(!selectedSandboxId || pendingElement.componentId === selectedSandboxId)
+				? {
+						componentId: pendingElement.componentId,
+						sourceLocation: pendingElement.sourceLocation,
+					}
+				: undefined;
+
+		if (selectedElement) {
+			pendingElementSelectionRef.current = null;
+		}
+
+		return {
+			canvasId: canvasConfig?.canvasId || "unknown",
+			canvasName: canvasConfig?.canvasName,
+			componentCount: sandboxes.length,
+			components: [],
+			selectedComponent,
+			selectedElement,
+		};
+	}, [sandboxes, selectedSandboxId]);
+
+	const handleAISubmit = useCallback(
+		(userInput: string, autoSend = true) => {
+			const context = buildCanvasContext();
+			vscode.postMessage({
+				type: "canvasAiChat",
+				payload: {
+					userInput,
+					context,
+					autoSend,
+				},
+			});
+		},
+		[buildCanvasContext],
+	);
+
 	// Auto-save canvas state when sandboxes or viewport changes
 	useEffect(() => {
 		if (
@@ -782,7 +840,7 @@ function App() {
 	// Keyboard shortcuts
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if ((e.key === "Delete" || e.key === "Backspace") && selectedSandboxId) {
+			if (e.key === "Delete" && selectedSandboxId) {
 				// Show delete confirmation modal instead of deleting directly
 				e.preventDefault();
 				setPendingDeleteId(selectedSandboxId);
@@ -1101,6 +1159,7 @@ function App() {
 				onInspectMode={handleInspectMode}
 				onRectangleSelection={handleRectangleSelection}
 				onAIChat={handleAIChat}
+				onAISubmit={handleAISubmit}
 				isSelectMode={isSelectMode}
 				isInspectMode={isInspectMode}
 				isRectangleMode={isRectangleMode}

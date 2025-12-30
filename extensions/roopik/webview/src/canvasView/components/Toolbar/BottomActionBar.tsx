@@ -11,6 +11,7 @@ interface BottomActionBarProps {
 	onInspectMode?: () => void;
 	onRectangleSelection?: () => void;
 	onAIChat?: () => void;
+	onAISubmit?: (input: string, autoSend?: boolean) => void;
 	// Contextual actions (auto-show based on selection)
 	onTextEdit?: () => void;
 	onImageReplace?: () => void;
@@ -37,6 +38,7 @@ export function BottomActionBar({
 	onInspectMode,
 	onRectangleSelection,
 	onAIChat,
+	onAISubmit,
 	onTextEdit,
 	onImageReplace,
 	onColorPicker,
@@ -79,6 +81,17 @@ export function BottomActionBar({
 		setSelectedCommandIndex(0);
 	};
 
+	const submitAIInput = (autoSend = true) => {
+		const trimmed = aiInputValue.trim();
+		if (!trimmed) {
+			return;
+		}
+		onAISubmit?.(trimmed, autoSend);
+		setAIInputValue('');
+		setShowCommands(false);
+		setIsAIChatOpen(false);
+	};
+
 	// Handle command selection
 	const handleCommandSelect = (commandName: string) => {
 		setAIInputValue(commandName + ' ');
@@ -89,6 +102,11 @@ export function BottomActionBar({
 	// Handle keyboard navigation in commands
 	const handleKeyDown = (e: React.KeyboardEvent) => {
 		if (!showCommands || filteredCommands.length === 0) {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				submitAIInput(true);
+				return;
+			}
 			if (e.key === 'Escape') {
 				setIsAIChatOpen(false);
 			}
@@ -395,7 +413,26 @@ export function BottomActionBar({
 							onKeyDown={handleKeyDown}
 							autoFocus
 						/>
-						<button className="ai-chat-send-overlay" aria-label="Send">
+						<button
+							className="ai-chat-add-overlay"
+							aria-label="Add to context"
+							title="Add to context"
+							onClick={() => submitAIInput(false)}
+						>
+							<svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+								<path
+									d="M10 4v12M4 10h12"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+								/>
+							</svg>
+						</button>
+						<button
+							className="ai-chat-send-overlay"
+							aria-label="Send"
+							onClick={() => submitAIInput(true)}
+						>
 							<svg width="18" height="18" viewBox="0 0 20 20" fill="none">
 								<path
 									d="M3 10h14m-6-6l6 6-6 6"

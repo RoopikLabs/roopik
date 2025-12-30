@@ -293,11 +293,19 @@ export async function activate(context: vscode.ExtensionContext) {
 
 			// Pass context to webview if provided
 			if (options?.message || options?.code) {
+				const parts: string[] = []
+				if (options.message) {
+					parts.push(options.message)
+				}
+				if (options.code) {
+					parts.push(options.code)
+				}
 				chatPanelProvider.postMessageToWebview({
-					type: "openWithContext",
-					text: options.message,
-					selectedText: options.code,
+					type: "invoke",
+					invoke: "setChatBoxMessage",
+					text: `${parts.join("\n\n")}\n\n`,
 				})
+				chatPanelProvider.postMessageToWebview({ type: "action", action: "focusInput" })
 			}
 		}),
 	)

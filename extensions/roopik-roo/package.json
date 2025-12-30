@@ -158,6 +158,11 @@
 				"category": "%configuration.title%"
 			},
 			{
+				"command": "roodio.externalContext",
+				"title": "Add External Context to Dio",
+				"category": "%configuration.title%"
+			},
+			{
 				"command": "roodio.terminalAddToContext",
 				"title": "%command.terminal.addToContext.title%",
 				"category": "Terminal"

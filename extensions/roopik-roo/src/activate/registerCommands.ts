@@ -151,6 +151,34 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 	unregisterHumanRelayCallback: unregisterHumanRelayCallback,
 	handleHumanRelayResponse: handleHumanRelayResponse,
 	newTask: handleNewTask,
+	externalContext: async (payload?: { promptText?: string; images?: string[]; autoSend?: boolean }) => {
+		const promptText = payload?.promptText?.trim();
+		if (!promptText) {
+			return;
+		}
+
+		const provider = await ClineProvider.getInstance();
+		if (!provider) {
+			return;
+		}
+
+		if (payload?.autoSend) {
+			await provider.postMessageToWebview({
+				type: "invoke",
+				invoke: "sendMessage",
+				text: `${promptText}\n\n`,
+				images: payload?.images,
+			});
+		} else {
+			await provider.postMessageToWebview({
+				type: "invoke",
+				invoke: "setChatBoxMessage",
+				text: `${promptText}\n\n`,
+				images: payload?.images,
+			});
+			await provider.postMessageToWebview({ type: "action", action: "focusInput" });
+		}
+	},
 	setCustomStoragePath: async () => {
 		const { promptForCustomStoragePath } = await import("../utils/storage")
 		await promptForCustomStoragePath()
