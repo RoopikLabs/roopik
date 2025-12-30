@@ -29,6 +29,8 @@ export interface InfiniteCanvasProps {
 	viewport?: { width: number; height: number };
 	/** Whether inspect mode is enabled globally */
 	isInspectMode?: boolean;
+	/** Whether inspect mode should auto-capture screenshots */
+	captureOnInspectSelect?: boolean;
 	onTransformChange: (transform: Transform) => void;
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
@@ -57,6 +59,8 @@ interface SandboxLayerProps {
 	viewport?: { width: number; height: number };
 	/** Whether inspect mode is enabled globally */
 	isInspectMode?: boolean;
+	/** Whether inspect mode should auto-capture screenshots */
+	captureOnInspectSelect?: boolean;
 	onSandboxDragStart: (e: React.MouseEvent, sandboxId: string) => void;
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
@@ -78,6 +82,7 @@ function SandboxLayer({
 	globalDeviceMode,
 	viewport,
 	isInspectMode,
+	captureOnInspectSelect,
 	onSandboxDragStart,
 	onSandboxClick,
 	onSandboxDoubleClick,
@@ -113,6 +118,7 @@ function SandboxLayer({
 						viewport={viewport}
 						focusedSandboxPosition={focusedSandboxPosition}
 						isInspectMode={isInspectMode}
+						captureOnInspectSelect={captureOnInspectSelect}
 						onMouseDown={(e) => onSandboxDragStart(e, sandbox.id)}
 						onClick={() => onSandboxClick(sandbox.id)}
 						onDoubleClick={() => onSandboxDoubleClick(sandbox.id)}
@@ -152,6 +158,7 @@ export function InfiniteCanvas({
 	snapMode = 'free',
 	viewport,
 	isInspectMode,
+	captureOnInspectSelect,
 	onTransformChange,
 	onSandboxClick,
 	onSandboxDoubleClick,
@@ -222,6 +229,7 @@ export function InfiniteCanvas({
 					globalDeviceMode={globalDeviceMode}
 					viewport={viewport}
 					isInspectMode={isInspectMode}
+					captureOnInspectSelect={captureOnInspectSelect}
 					onSandboxDragStart={handleSandboxDragStart}
 					onSandboxClick={onSandboxClick}
 					onSandboxDoubleClick={onSandboxDoubleClick}

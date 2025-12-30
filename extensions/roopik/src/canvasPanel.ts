@@ -444,6 +444,8 @@ export class CanvasPanel implements vscode.Disposable {
 				case 'canvasAiChat':
 					await this.handleCanvasAiChat(message.payload as {
 						userInput: string;
+						images?: string[];
+						imageMetadata?: { deviceMode: string; deviceViewport: { width: number; height: number } };
 						context: {
 							canvasId: string;
 							canvasName?: string;
@@ -487,6 +489,8 @@ export class CanvasPanel implements vscode.Disposable {
 
 	private async handleCanvasAiChat(payload: {
 		userInput: string;
+		images?: string[];
+		imageMetadata?: { deviceMode: string; deviceViewport: { width: number; height: number } };
 		context: {
 			canvasId: string;
 			canvasName?: string;
@@ -515,8 +519,10 @@ export class CanvasPanel implements vscode.Disposable {
 		};
 		autoSend?: boolean;
 	}): Promise<void> {
-		const userInput = payload?.userInput?.trim();
-		if (!userInput) {
+		const userInput = payload?.userInput?.trim() ?? '';
+		const images = payload?.images;
+		const imageMetadata = payload?.imageMetadata;
+		if (!userInput && (!images || images.length === 0)) {
 			return;
 		}
 
@@ -556,12 +562,20 @@ export class CanvasPanel implements vscode.Disposable {
 		}
 
 		lines.push('');
-		lines.push('User request:');
-		lines.push(userInput);
+		if (images && images.length > 0 && imageMetadata) {
+			lines.push(`Device mode: ${imageMetadata.deviceMode}`);
+			lines.push(`Device viewport: ${imageMetadata.deviceViewport.width}x${imageMetadata.deviceViewport.height}`);
+		}
+
+		if (userInput) {
+			lines.push('User request:');
+			lines.push(userInput);
+		}
 
 		try {
 			await vscode.commands.executeCommand('roodio.externalContext', {
 				promptText: lines.join('\n'),
+				images,
 				autoSend: payload.autoSend === true,
 			});
 		} catch (error) {

@@ -27,6 +27,8 @@ interface SandboxCardProps {
 	focusedSandboxPosition?: { x: number; y: number } | null;
 	/** Whether inspect mode is enabled globally */
 	isInspectMode?: boolean;
+	/** Whether inspect mode should auto-capture screenshots */
+	captureOnInspectSelect?: boolean;
 	onMouseDown: (e: React.MouseEvent) => void;
 	onClick: () => void;
 	onDoubleClick: () => void;
@@ -48,7 +50,7 @@ interface SandboxCardProps {
  * We embed the ESM code directly in <script type="module"> tag.
  * No blob URLs needed - the code runs inline as a module.
  */
-function generateSandboxHTML(bundledCode: string): string {
+function generateSandboxHTML(bundledCode: string, componentId: string): string {
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -142,6 +144,44 @@ ${bundledCode}
 
 		// Notify parent that component is ready
 		window.parent.postMessage({ type: 'sandbox-ready' }, '*');
+	</script>
+
+	<!-- Screenshot capture helper (delegates to parent) -->
+	<script>
+		(function() {
+			const componentId = ${JSON.stringify(componentId)};
+			window.__roopikCaptureElement = (element, options) => {
+				if (window.parent && window.parent.__roopikRequestScreenshot) {
+					window.parent.__roopikRequestScreenshot({
+						componentId,
+						element,
+						target: options?.target || "component",
+						requestId: options?.requestId,
+						intent: options?.intent
+					});
+					return;
+				}
+
+				window.parent.postMessage({
+					type: "roopik-screenshot-error",
+					componentId,
+					requestId: options?.requestId,
+					message: "Screenshot capture is unavailable in parent window"
+				}, "*");
+			};
+
+			window.addEventListener("message", (event) => {
+				if (event.data?.type === "roopik-capture-screenshot") {
+					const requestId = event.data.requestId;
+					const intent = event.data.intent;
+					window.__roopikCaptureElement(document.body, {
+						target: "component",
+						requestId,
+						intent
+					});
+				}
+			});
+		})();
 	</script>
 
 	<!-- Error handler for uncaught errors -->
@@ -446,6 +486,7 @@ export function SandboxCard({
 	viewport,
 	focusedSandboxPosition,
 	isInspectMode = false,
+	captureOnInspectSelect = false,
 	onMouseDown,
 	onClick,
 	onDoubleClick,
@@ -463,12 +504,13 @@ export function SandboxCard({
 		if (iframeRef.current?.contentWindow) {
 			iframeRef.current.contentWindow.postMessage({
 				type: 'roopik-toggle-inspect',
-				enabled: isInspectMode
+				enabled: isInspectMode,
+				captureOnSelect: captureOnInspectSelect
 			}, '*');
 		} else {
 			console.log('[SandboxCard] Cannot send - iframe not ready');
 		}
-	}, [isInspectMode, sandbox.id]);
+	}, [isInspectMode, captureOnInspectSelect, sandbox.id]);
 
 	// Effective device mode: sandbox override or global
 	const effectiveDeviceMode = sandbox.deviceMode ?? globalDeviceMode;
@@ -488,7 +530,7 @@ export function SandboxCard({
 				return generateErrorHTML(sandbox.buildError || 'Unknown error', sandbox.buildErrorInfo);
 			case 'ready':
 				if (sandbox.bundledCode) {
-					return generateSandboxHTML(sandbox.bundledCode);
+					return generateSandboxHTML(sandbox.bundledCode, sandbox.id);
 				}
 				console.error('[SandboxCard] Status: ready but no bundledCode!');
 				return generateErrorHTML('No bundled code available');
@@ -524,6 +566,20 @@ export function SandboxCard({
 	const handleRebuildClick = (e: React.MouseEvent) => {
 		e.stopPropagation();
 		onRebuild();
+	};
+
+	const handleCaptureClick = (e: React.MouseEvent) => {
+		e.stopPropagation();
+		if (!iframeRef.current?.contentWindow) {
+			console.warn('[SandboxCard] Cannot capture - iframe not ready');
+			return;
+		}
+		const requestId = `manual-${sandbox.id}-${Date.now()}`;
+		iframeRef.current.contentWindow.postMessage({
+			type: 'roopik-capture-screenshot',
+			requestId,
+			intent: 'attach'
+		}, '*');
 	};
 
 	const handleDeleteClick = (e: React.MouseEvent) => {
@@ -738,6 +794,14 @@ export function SandboxCard({
 							<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="rgba(255, 255, 255, 0.9)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
 								<path d="M2 8 A6 6 0 1 1 8 14" />
 								<path d="M2 4 L2 8 L6 8" />
+							</svg>
+						</button>
+						{/* Screenshot button */}
+						<button onClick={handleCaptureClick} title="Capture screenshot to chat">
+							<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="rgba(255, 255, 255, 0.9)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+								<rect x="2.5" y="4" width="11" height="8" rx="1.5" />
+								<path d="M6 4 L7 2.5 H9 L10 4" />
+								<circle cx="8" cy="8" r="2.2" />
 							</svg>
 						</button>
 						<button className="delete" onClick={handleDeleteClick} title="Delete sandbox">

@@ -346,7 +346,16 @@ export type WebviewMessage =
 	// Force rebuild component (bypasses cache)
 	| { type: 'rebuildComponent'; payload: { componentId: string } }
 	// Canvas AI chat input
-	| { type: 'canvasAiChat'; payload: { userInput: string; context: CanvasAIContext; autoSend?: boolean } };
+	| {
+			type: 'canvasAiChat';
+			payload: {
+				userInput: string;
+				context: CanvasAIContext;
+				images?: string[];
+				imageMetadata?: { deviceMode: string; deviceViewport: { width: number; height: number } };
+				autoSend?: boolean;
+			};
+	  };
 
 /**
  * VSCode API interface

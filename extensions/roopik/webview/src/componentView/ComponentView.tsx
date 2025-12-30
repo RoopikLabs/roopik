@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import html2canvas from "html2canvas";
 import type {
 	Sandbox,
 	Transform,
@@ -27,6 +28,7 @@ import {
 	DEFAULT_CONFIG,
 	getFocusedSandboxDimensions,
 } from "../canvasView/services/gridManager";
+import { DEVICE_PRESETS } from "../canvasView/types";
 import { useFPS } from "../hooks/useFPS";
 
 // ============================================================================
@@ -48,6 +50,12 @@ const AUTO_FIT_ON_DELETE = false;
  * - false: Keep components in their current positions
  */
 const AUTO_REORGANIZE_ON_DELETE = true;
+
+/**
+ * Auto-attach screenshots when selecting elements in inspect mode.
+ * Keep false until we expose a user setting.
+ */
+const AUTO_ATTACH_SCREENSHOT_ON_INSPECT = false;
 
 // ============================================================================
 
@@ -75,6 +83,13 @@ declare global {
 			canvasId: string;
 			canvasName?: string;
 		};
+		__roopikRequestScreenshot?: (payload: {
+			componentId: string;
+			element: HTMLElement | null;
+			target?: string;
+			requestId?: string;
+			intent?: string;
+		}) => void;
 	}
 }
 
@@ -145,6 +160,15 @@ function App() {
 		componentId: string;
 		sourceLocation: { file: string; startLine: number };
 	} | null>(null);
+	const pendingScreenshotRef = useRef<{
+		componentId: string;
+		imageData: string;
+		metadata?: {
+			deviceMode: string;
+			deviceViewport: { width: number; height: number };
+		};
+	} | null>(null);
+	const pendingScreenshotRequestIdRef = useRef<string | null>(null);
 
 	// Update ref when focused state changes
 	useEffect(() => {
@@ -450,6 +474,122 @@ function App() {
 		return () => window.removeEventListener("message", handleMessage);
 	}, [sandboxes]);
 
+	const buildCanvasContext = useCallback((options?: {
+		selectedComponentId?: string;
+		includePendingElement?: boolean;
+	}) => {
+		const includePendingElement = options?.includePendingElement !== false;
+		const canvasConfig = window.CANVAS_CONFIG;
+		const pendingElement = includePendingElement
+			? pendingElementSelectionRef.current
+			: null;
+		const targetComponentId =
+			options?.selectedComponentId || selectedSandboxId || pendingElement?.componentId;
+		const selectedSandbox =
+			(targetComponentId
+				? sandboxes.find((sandbox) => sandbox.id === targetComponentId)
+				: null) ||
+			(pendingElement
+				? sandboxes.find((sandbox) => sandbox.id === pendingElement.componentId)
+				: null);
+		const selectedComponent = selectedSandbox
+			? {
+				id: selectedSandbox.id,
+				name: selectedSandbox.componentInput?.name,
+				folderPath: selectedSandbox.componentInput?.folderPath,
+				entryFile: selectedSandbox.componentInput?.entryFile,
+			}
+			: undefined;
+		const selectedElement =
+			pendingElement &&
+				(!targetComponentId || pendingElement.componentId === targetComponentId)
+				? {
+					componentId: pendingElement.componentId,
+					sourceLocation: pendingElement.sourceLocation,
+				}
+				: undefined;
+
+		if (selectedElement && includePendingElement) {
+			pendingElementSelectionRef.current = null;
+		}
+
+		return {
+			canvasId: canvasConfig?.canvasId || "unknown",
+			canvasName: canvasConfig?.canvasName,
+			componentCount: sandboxes.length,
+			components: [],
+			selectedComponent,
+			selectedElement,
+		};
+	}, [sandboxes, selectedSandboxId]);
+
+	const sendCanvasContextToChat = useCallback(
+		(
+			userInput: string,
+			autoSend: boolean,
+			context: ReturnType<typeof buildCanvasContext>,
+			images?: string[],
+			imageMetadata?: {
+				deviceMode: string;
+				deviceViewport: { width: number; height: number };
+			},
+		) => {
+			vscode.postMessage({
+				type: "canvasAiChat",
+				payload: {
+					userInput,
+					context,
+					images,
+					imageMetadata,
+					autoSend,
+				},
+			});
+		},
+		[],
+	);
+
+	const getDeviceMetadataForComponent = useCallback(
+		(componentId: string) => {
+			const sandbox = sandboxes.find((item) => item.id === componentId);
+			if (!sandbox) {
+				return undefined;
+			}
+
+			const effectiveMode = sandbox.deviceMode ?? globalDeviceMode;
+			const preset = DEVICE_PRESETS[effectiveMode];
+			let viewportWidth: number;
+			let viewportHeight: number;
+
+			if (preset.width !== "auto" && preset.height !== "auto") {
+				viewportWidth = preset.width;
+				viewportHeight = preset.height;
+			} else {
+				const isFocused = focusedSandboxId === sandbox.id;
+				if (isFocused) {
+					const focused = getFocusedSandboxDimensions(
+						viewport.width,
+						viewport.height,
+						DEFAULT_CONFIG,
+					);
+					viewportWidth = focused.width;
+					viewportHeight = focused.height;
+				} else {
+					viewportWidth = DEFAULT_CONFIG.sandboxWidth;
+					viewportHeight = DEFAULT_CONFIG.sandboxHeight;
+				}
+			}
+
+			return {
+				deviceMode: preset.label,
+				deviceViewport: {
+					width: Math.round(viewportWidth),
+					height: Math.round(viewportHeight),
+				},
+			};
+		},
+		[focusedSandboxId, globalDeviceMode, sandboxes, viewport.height, viewport.width],
+	);
+
 	// Handle messages from sandbox iframes (element inspection, errors, etc.)
 	useEffect(() => {
 		const handleIframeMessage = (event: MessageEvent) => {
@@ -458,7 +598,11 @@ function App() {
 
 			// Handle element selection from inspect mode
 			if (data.type === "roopik-element-selected") {
-				const { componentId, element } = data;
+				const { componentId, element, screenshotRequestId } = data;
+				pendingScreenshotRequestIdRef.current = screenshotRequestId ?? null;
+				if (!screenshotRequestId) {
+					pendingScreenshotRef.current = null;
+				}
 				// Check if we have source location info
 				if (element?.sourceLocation) {
 					const { file, startLine } = element.sourceLocation;
@@ -496,10 +640,118 @@ function App() {
 					}
 				}
 			}
+
+			if (data.type === "roopik-screenshot-captured") {
+				const { componentId, imageData, requestId, intent } = data;
+				if (!componentId || !imageData) {
+					return;
+				}
+
+				if (intent === "attach") {
+					const context = buildCanvasContext({
+						selectedComponentId: componentId,
+						includePendingElement: false,
+					});
+					const imageMetadata = getDeviceMetadataForComponent(componentId);
+					sendCanvasContextToChat(
+						"Screenshot attached.",
+						false,
+						context,
+						[imageData],
+						imageMetadata,
+					);
+					return;
+				}
+
+				if (requestId && requestId === pendingScreenshotRequestIdRef.current) {
+					pendingScreenshotRef.current = {
+						componentId,
+						imageData,
+						metadata: getDeviceMetadataForComponent(componentId),
+					};
+				}
+			}
+
+			if (data.type === "roopik-screenshot-error") {
+				logger.warn("[Canvas] Screenshot capture failed", data);
+			}
 		};
 
 		window.addEventListener("message", handleIframeMessage);
 		return () => window.removeEventListener("message", handleIframeMessage);
+	}, [buildCanvasContext, getDeviceMetadataForComponent, sendCanvasContextToChat]);
+
+	useEffect(() => {
+		window.__roopikRequestScreenshot = async (payload) => {
+			if (!payload?.element) {
+				window.postMessage(
+					{
+						type: "roopik-screenshot-error",
+						componentId: payload?.componentId,
+						requestId: payload?.requestId,
+						message: "No element provided for capture",
+					},
+					"*",
+				);
+				return;
+			}
+
+			try {
+				const element = payload.element;
+				const doc = element.ownerDocument;
+				const docEl = doc.documentElement;
+				const isDocument = element === doc.body || element === docEl;
+				const rect = element.getBoundingClientRect();
+				const captureWidth = isDocument ? docEl.scrollWidth : element.scrollWidth || rect.width;
+				const captureHeight = isDocument ? docEl.scrollHeight : element.scrollHeight || rect.height;
+				const scale = window.devicePixelRatio || 1;
+				const canvas = await html2canvas(element, {
+					backgroundColor: null,
+					// Silence html2canvas debug logs in the console.
+					logging: false,
+					scale,
+					useCORS: true,
+					width: captureWidth,
+					height: captureHeight,
+					windowWidth: Math.max(docEl.scrollWidth, docEl.clientWidth),
+					windowHeight: Math.max(docEl.scrollHeight, docEl.clientHeight),
+					scrollX: 0,
+					scrollY: 0,
+					...(isDocument
+						? {}
+						: {
+							x: rect.left + window.scrollX,
+							y: rect.top + window.scrollY,
+						}),
+				});
+				const imageData = canvas.toDataURL("image/png");
+				window.postMessage(
+					{
+						type: "roopik-screenshot-captured",
+						componentId: payload.componentId,
+						imageData,
+						target: payload.target,
+						requestId: payload.requestId,
+						intent: payload.intent,
+					},
+					"*",
+				);
+			} catch (error) {
+				window.postMessage(
+					{
+						type: "roopik-screenshot-error",
+						componentId: payload.componentId,
+						requestId: payload.requestId,
+						message: error instanceof Error ? error.message : String(error),
+					},
+					"*",
+				);
+			}
+		};
+
+		return () => {
+			delete window.__roopikRequestScreenshot;
+		};
 	}, []);
 
 	// Notify extension that webview is ready
@@ -507,58 +759,33 @@ function App() {
 		vscode.postMessage({ type: "ready" });
 	}, []);
 
-	const buildCanvasContext = useCallback(() => {
-		const canvasConfig = window.CANVAS_CONFIG;
-		const pendingElement = pendingElementSelectionRef.current;
-		const selectedSandbox =
-			sandboxes.find((sandbox) => sandbox.id === selectedSandboxId) ||
-			(pendingElement
-				? sandboxes.find((sandbox) => sandbox.id === pendingElement.componentId)
-				: null);
-		const selectedComponent = selectedSandbox
-			? {
-				id: selectedSandbox.id,
-				name: selectedSandbox.componentInput?.name,
-				folderPath: selectedSandbox.componentInput?.folderPath,
-				entryFile: selectedSandbox.componentInput?.entryFile,
-			}
-			: undefined;
-		const selectedElement =
-			pendingElement &&
-				(!selectedSandboxId || pendingElement.componentId === selectedSandboxId)
-				? {
-					componentId: pendingElement.componentId,
-					sourceLocation: pendingElement.sourceLocation,
-				}
-				: undefined;
-
-		if (selectedElement) {
-			pendingElementSelectionRef.current = null;
-		}
-
-		return {
-			canvasId: canvasConfig?.canvasId || "unknown",
-			canvasName: canvasConfig?.canvasName,
-			componentCount: sandboxes.length,
-			components: [],
-			selectedComponent,
-			selectedElement,
-		};
-	}, [sandboxes, selectedSandboxId]);
-
 	const handleAISubmit = useCallback(
 		(userInput: string, autoSend = true) => {
 			const context = buildCanvasContext();
-			vscode.postMessage({
-				type: "canvasAiChat",
-				payload: {
+			const images: string[] = [];
+			const pendingScreenshot = pendingScreenshotRef.current;
+			if (
+				pendingScreenshot &&
+				(context.selectedComponent?.id === pendingScreenshot.componentId ||
+					context.selectedElement?.componentId === pendingScreenshot.componentId)
+			) {
+				images.push(pendingScreenshot.imageData);
+				const imageMetadata =
+					pendingScreenshot.metadata || getDeviceMetadataForComponent(pendingScreenshot.componentId);
+				pendingScreenshotRef.current = null;
+				pendingScreenshotRequestIdRef.current = null;
+				sendCanvasContextToChat(
 					userInput,
-					context,
 					autoSend,
-				},
-			});
+					context,
+					images.length ? images : undefined,
+					imageMetadata,
+				);
+				return;
+			}
+			sendCanvasContextToChat(userInput, autoSend, context, images.length ? images : undefined);
 		},
-		[buildCanvasContext],
+		[buildCanvasContext, getDeviceMetadataForComponent, sendCanvasContextToChat],
 	);
 
 	// Auto-save canvas state when sandboxes or viewport changes
@@ -1164,6 +1391,7 @@ function App() {
 					snapMode={snapMode}
 					viewport={viewport}
 					isInspectMode={isInspectMode}
+					captureOnInspectSelect={AUTO_ATTACH_SCREENSHOT_ON_INSPECT}
 					onTransformChange={setTransform}
 					onSandboxClick={handleSandboxClick}
 					onSandboxDoubleClick={focusSandbox}

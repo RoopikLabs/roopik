@@ -22,6 +22,7 @@ export class InspectModeInjector extends BaseInjector {
 (function() {
 	const componentId = ${JSON.stringify(context.componentId)};
 	let inspectEnabled = false;
+	let captureOnSelect = false;
 	let hoveredElement = null;
 	let highlightOverlay = null;
 
@@ -187,12 +188,22 @@ export class InspectModeInjector extends BaseInjector {
 		if (target === highlightOverlay) return;
 
 		const info = getElementInfo(target);
+		let screenshotRequestId = null;
+		if (captureOnSelect && typeof window.__roopikCaptureElement === 'function') {
+			screenshotRequestId = 'inspect-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+			window.__roopikCaptureElement(target, {
+				target: 'element',
+				requestId: screenshotRequestId,
+				intent: 'inspect'
+			});
+		}
 
 		// Notify parent about selected element
 		window.parent.postMessage({
 			type: 'roopik-element-selected',
 			componentId: componentId,
-			element: info
+			element: info,
+			screenshotRequestId
 		}, '*');
 	}
 
@@ -200,6 +211,7 @@ export class InspectModeInjector extends BaseInjector {
 	window.addEventListener('message', function(event) {
 		if (event.data?.type === 'roopik-toggle-inspect') {
 			inspectEnabled = event.data.enabled;
+			captureOnSelect = Boolean(event.data.captureOnSelect);
 
 			if (inspectEnabled) {
 				createOverlay();
