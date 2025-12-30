@@ -1453,6 +1453,11 @@ export default tseslint.config(
 						'@modelcontextprotocol/sdk',
 						'@modelcontextprotocol/sdk/server/mcp.js',
 						'@modelcontextprotocol/sdk/server/sse.js',
+						// Build tools for Roopik component transformation
+						'esbuild',
+						'esbuild-svelte',
+						'esbuild-plugin-vue3',
+						'esbuild-plugin-solid',
 						'@parcel/watcher',
 						'@vscode/sqlite3',
 						'@vscode/vscode-languagedetection',

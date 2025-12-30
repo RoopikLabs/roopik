@@ -63,6 +63,8 @@ export interface ComponentLoadInfo {
 	componentId: string;
 	contentHash: string;
 	name?: string;
+	folderPath?: string;
+	entryFile?: string;
 }
 
 // ============================================================================

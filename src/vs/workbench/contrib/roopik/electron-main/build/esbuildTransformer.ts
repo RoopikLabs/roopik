@@ -6,8 +6,9 @@
 import * as esbuild from 'esbuild';
 import sveltePlugin from 'esbuild-svelte';
 import vuePlugin from 'esbuild-plugin-vue3';
+import { solidPlugin } from 'esbuild-plugin-solid';
 import * as fs from 'fs';
-import * as path from 'path';
+import * as path from '../../../../../base/common/path.js';
 import * as os from 'os';
 import { Framework, ComponentInput, TransformedComponent } from '../../common/build/types.js';
 import { ComponentParser } from '../../common/build/componentParser.js';
@@ -84,19 +85,19 @@ const STABLE_VERSIONS: Record<string, string> = {
 	'react-router-dom': '6.20.0',
 
 	// Vue ecosystem
-	'vue': '3.4.0',
-	'@vue/compiler-sfc': '3.4.0',
-	'vue-router': '4.2.5',
-	'pinia': '2.1.7',
+	'vue': '3.5.26',
+	'@vue/compiler-sfc': '3.5.26',
+	'vue-router': '4.5.0',
+	'pinia': '3.0.2',
 
 	// Svelte ecosystem (Svelte 5 for esbuild-svelte@0.9.x compatibility)
-	'svelte': '5.45.2',
+	'svelte': '5.46.1',
 
 	// Solid ecosystem
-	'solid-js': '1.8.7',
+	'solid-js': '1.9.10',
 
 	// Preact ecosystem
-	'preact': '10.19.3',
+	'preact': '10.28.1',
 
 	// UI Libraries
 	'@mui/material': '5.15.0',
@@ -124,20 +125,83 @@ const VERSION_PAIRS: Record<string, string[]> = {
 };
 
 /**
- * Get CDN URL for a package
+ * Framework Core Dependencies
+ *
+ * These are the core runtime packages for each framework.
+ * When building for a framework, we need to ensure ALL packages
+ * that internally import these dependencies use the SAME version.
+ *
+ * This prevents the "multiple React instances" problem where:
+ * - Your app imports react@18.2.0
+ * - framer-motion internally imports its own react (different instance)
+ * - useContext fails because contexts are tied to the React instance
+ *
+ * Solution: Add `deps=react@18.2.0,react-dom@18.2.0` to esm.sh URLs
+ * for all non-core packages, forcing them to use our React version.
  */
-function getCDNUrl(packageName: string, version?: string, subpath?: string): string {
-	const cdn = CDN_TEMPLATES[CDN_PROVIDER];
+const FRAMEWORK_CORE_DEPS: Record<Framework, string[]> = {
+	'react': ['react', 'react-dom'],
+	'preact': ['preact'],  // Note: preact/hooks is a subpath, not separate package
+	'vue': ['vue'],
+	'solid': ['solid-js'],
+	'svelte': [],  // Svelte compiles away - no runtime singleton issues
+	'html': [],
+	'unknown': []
+};
 
-	if (subpath) {
-		return version
-			? cdn.withSubpath(packageName, version, subpath)
-			: cdn.withSubpathNoVersion(packageName, subpath);
+/**
+ * Build the deps parameter string for esm.sh
+ * Returns empty string if no deps needed, or "&deps=react@18.2.0,react-dom@18.2.0" format
+ */
+function buildDepsParam(frameworkDeps: Record<string, string> | undefined): string {
+	if (!frameworkDeps || Object.keys(frameworkDeps).length === 0) {
+		return '';
 	}
 
-	return version
-		? cdn.withVersion(packageName, version)
-		: cdn.withoutVersion(packageName);
+	const depsArray = Object.entries(frameworkDeps)
+		.map(([pkg, version]) => `${pkg}@${version}`)
+		.join(',');
+
+	return `&deps=${depsArray}`;
+}
+
+/**
+ * Get CDN URL for a package
+ *
+ * @param packageName - The npm package name
+ * @param version - Optional specific version
+ * @param subpath - Optional subpath (e.g., '/client' for react-dom/client)
+ * @param frameworkDeps - Optional map of framework core deps (e.g., { react: '18.2.0' })
+ * @param isCoreDep - Whether this package IS a core dependency (shouldn't get deps param)
+ */
+function getCDNUrl(
+	packageName: string,
+	version?: string,
+	subpath?: string,
+	frameworkDeps?: Record<string, string>,
+	isCoreDep: boolean = false
+): string {
+	const cdn = CDN_TEMPLATES[CDN_PROVIDER];
+
+	// Build base URL
+	let url: string;
+	if (subpath) {
+		url = version
+			? cdn.withSubpath(packageName, version, subpath)
+			: cdn.withSubpathNoVersion(packageName, subpath);
+	} else {
+		url = version
+			? cdn.withVersion(packageName, version)
+			: cdn.withoutVersion(packageName);
+	}
+
+	// Add deps parameter for non-core packages (only on esm.sh)
+	// This forces libraries like framer-motion to use OUR React instead of their own
+	if (!isCoreDep && CDN_PROVIDER === 'esm.sh') {
+		url += buildDepsParam(frameworkDeps);
+	}
+
+	return url;
 }
 
 /**
@@ -175,8 +239,8 @@ const FRAMEWORK_BUILD_CONFIGS: Record<Framework, FrameworkBuildConfig> = {
 		getPlugins: () => []
 	},
 	solid: {
-		mode: 'virtual',
-		getPlugins: () => []
+		mode: 'disk', // Solid plugin (Babel-based) requires disk access
+		getPlugins: () => [solidPlugin({ solid: { generate: 'dom' } })]
 	},
 	preact: {
 		mode: 'virtual',
@@ -190,6 +254,7 @@ const FRAMEWORK_BUILD_CONFIGS: Record<Framework, FrameworkBuildConfig> = {
 		mode: 'disk', // Svelte plugin requires disk access for .svelte files
 		getPlugins: () => {
 			// esbuild-svelte with Svelte 5 compiler options
+			// eslint-disable-next-line local/code-no-any-casts, @typescript-eslint/no-explicit-any
 			const pluginFn = (sveltePlugin as any).default || sveltePlugin;
 			const plugin = pluginFn({
 				compilerOptions: {
@@ -218,6 +283,20 @@ const FRAMEWORK_BUILD_CONFIGS: Record<Framework, FrameworkBuildConfig> = {
 };
 
 /**
+ * JSX Import Source per framework
+ *
+ * Used for React 17+ automatic JSX transform.
+ * Tells esbuild where to import jsx-runtime from.
+ */
+const JSX_IMPORT_SOURCES: Partial<Record<Framework, string>> = {
+	'react': 'react',
+	'preact': 'preact'
+	// Solid.js uses a different JSX transform (needs babel-preset-solid)
+	// Vue and Svelte use their own syntax, not JSX
+	// html/unknown don't use JSX
+};
+
+/**
  * ESBuild Code Transformer (Refactored)
  *
  * Key improvements:
@@ -242,7 +321,10 @@ export class ESBuildTransformer {
 		const startTime = Date.now();
 
 		// 1. Detect framework
-		const framework = input.framework || this.parser.detectFramework(input.files);
+		// Always re-detect if framework is 'unknown' to allow fixing incorrect detections
+		const framework = (input.framework && input.framework !== 'unknown')
+			? input.framework
+			: this.parser.detectFramework(input.files);
 
 		// 2. Detect entry file
 		const userEntryFile = input.entryFile || this.parser.detectEntryFile(input.files, framework);
@@ -283,7 +365,19 @@ export class ESBuildTransformer {
 		const resolvedDeps: Record<string, string> = {};
 		const normalizedDeps = this.normalizeAndValidateDependencies(input.dependencies || {});
 
-		// 8. Transform with ESBuild (disk-based or virtual)
+		// 8. Build framework core deps for dependency aliasing
+		// This prevents "multiple React instances" issues with libraries like framer-motion
+		const frameworkCorePkgs = FRAMEWORK_CORE_DEPS[framework] || [];
+		const frameworkDeps: Record<string, string> = {};
+		for (const pkg of frameworkCorePkgs) {
+			// Get the version - prefer normalized deps, then stable fallback
+			const version = normalizedDeps[pkg] || getStableVersion(pkg);
+			if (version) {
+				frameworkDeps[pkg] = version;
+			}
+		}
+
+		// 9. Transform with ESBuild (disk-based or virtual)
 		let result: { code: string; metafile: esbuild.Metafile };
 
 		if (buildConfig.mode === 'disk') {
@@ -292,7 +386,9 @@ export class ESBuildTransformer {
 				allFiles,
 				normalizedDeps,
 				buildConfig,
-				resolvedDeps
+				resolvedDeps,
+				frameworkDeps,
+				framework
 			);
 		} else {
 			result = await this.transformWithVirtualBuild(
@@ -300,7 +396,9 @@ export class ESBuildTransformer {
 				allFiles,
 				normalizedDeps,
 				buildConfig,
-				resolvedDeps
+				resolvedDeps,
+				frameworkDeps,
+				framework
 			);
 		}
 
@@ -379,7 +477,9 @@ export class ESBuildTransformer {
 		files: { [filename: string]: string },
 		dependencies: Record<string, string>,
 		buildConfig: FrameworkBuildConfig,
-		resolvedDeps: Record<string, string>
+		resolvedDeps: Record<string, string>,
+		frameworkDeps: Record<string, string>,
+		framework: Framework
 	): Promise<{ code: string; metafile: esbuild.Metafile }> {
 		// Create temp directory
 		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'roopik-sandbox-'));
@@ -403,6 +503,9 @@ export class ESBuildTransformer {
 
 			this.logger.debug('Disk build started', { tempDir, localFilesCount: localFiles.size });
 
+			// Get JSX import source for this framework (React, Preact, Solid use JSX)
+			const jsxImportSource = JSX_IMPORT_SOURCES[framework];
+
 			// Run ESBuild with disk-based entry point
 			const result = await esbuild.build({
 				entryPoints: [path.join(tempDir, entryPath)],
@@ -413,9 +516,14 @@ export class ESBuildTransformer {
 				target: 'es2022',
 				outfile: 'bundle.js',
 				absWorkingDir: tempDir,
+				// Use automatic JSX transform (React 17+) if framework supports JSX
+				...(jsxImportSource ? {
+					jsx: 'automatic',
+					jsxImportSource
+				} : {}),
 				plugins: [
 					...buildConfig.getPlugins(),
-					this.createCDNResolverPlugin(dependencies, resolvedDeps, localFiles)
+					this.createCDNResolverPlugin(dependencies, resolvedDeps, frameworkDeps, localFiles)
 				]
 			});
 
@@ -441,8 +549,13 @@ export class ESBuildTransformer {
 		files: { [filename: string]: string },
 		dependencies: Record<string, string>,
 		buildConfig: FrameworkBuildConfig,
-		resolvedDeps: Record<string, string>
+		resolvedDeps: Record<string, string>,
+		frameworkDeps: Record<string, string>,
+		framework: Framework
 	): Promise<{ code: string; metafile: esbuild.Metafile }> {
+		// Get JSX import source for this framework (React, Preact, Solid use JSX)
+		const jsxImportSource = JSX_IMPORT_SOURCES[framework];
+
 		const result = await esbuild.build({
 			entryPoints: [entryPath],
 			bundle: true,
@@ -451,10 +564,15 @@ export class ESBuildTransformer {
 			metafile: true,
 			target: 'es2022',
 			outfile: 'bundle.js',
+			// Use automatic JSX transform (React 17+) if framework supports JSX
+			...(jsxImportSource ? {
+				jsx: 'automatic',
+				jsxImportSource
+			} : {}),
 			plugins: [
 				...buildConfig.getPlugins(),
 				this.createVirtualFSPlugin(files),
-				this.createCDNResolverPlugin(dependencies, resolvedDeps)
+				this.createCDNResolverPlugin(dependencies, resolvedDeps, frameworkDeps)
 			]
 		});
 
@@ -563,14 +681,14 @@ render(() => Component(), root);
 
 		if (framework === 'preact') {
 			return `
-import { render } from 'preact';
+import { h, render } from 'preact';
 import UserComponent from '${importPath}';
 
 // Clear loading placeholder before mounting
 const root = document.getElementById('root');
 root.innerHTML = '';
 const Component = UserComponent.default || UserComponent;
-render(Component(), root);
+render(h(Component), root);
 `;
 		}
 
@@ -591,11 +709,13 @@ render(Component(), root);
 	 *
 	 * @param dependencies Input dependencies (may be empty or partial)
 	 * @param resolvedDeps Output object - will be populated with actual versions used
+	 * @param frameworkDeps Framework core deps for aliasing (e.g., { react: '18.2.0' })
 	 * @param localFiles Optional set of local files to skip (for disk builds)
 	 */
 	private createCDNResolverPlugin(
 		dependencies: Record<string, string>,
 		resolvedDeps: Record<string, string>,
+		frameworkDeps: Record<string, string>,
 		localFiles?: Set<string>
 	): esbuild.Plugin {
 		// Capture logger for use in plugin callbacks
@@ -666,8 +786,12 @@ render(Component(), root);
 						logger.debug('CDN package resolved', { package: mainPkg, version: resolvedDeps[mainPkg], source: versionSource });
 					}
 
+					// Check if this package IS a core framework dependency
+					const isCoreDep = frameworkDeps.hasOwnProperty(mainPkg);
+
 					// Generate CDN URL using configurable provider
-					const url = getCDNUrl(mainPkg, version, subpath || undefined);
+					// Non-core packages get `&deps=react@18.2.0,...` to prevent multiple instances
+					const url = getCDNUrl(mainPkg, version, subpath || undefined, frameworkDeps, isCoreDep);
 
 					logger.debug('CDN URL mapped', { packagePath, url });
 
@@ -760,11 +884,17 @@ render(Component(), root);
 
 					// Determine loader based on extension
 					let loader: esbuild.Loader = 'js';
-					if (key.endsWith('.tsx')) loader = 'tsx';
-					else if (key.endsWith('.ts')) loader = 'ts';
-					else if (key.endsWith('.jsx')) loader = 'jsx';
-					else if (key.endsWith('.css')) loader = 'css';
-					else if (key.endsWith('.json')) loader = 'json';
+					if (key.endsWith('.tsx')) {
+						loader = 'tsx';
+					} else if (key.endsWith('.ts')) {
+						loader = 'ts';
+					} else if (key.endsWith('.jsx')) {
+						loader = 'jsx';
+					} else if (key.endsWith('.css')) {
+						loader = 'css';
+					} else if (key.endsWith('.json')) {
+						loader = 'json';
+					}
 
 					return { contents: content, loader };
 				});

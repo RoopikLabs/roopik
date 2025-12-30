@@ -441,6 +441,41 @@ export class CanvasPanel implements vscode.Disposable {
 					this.handleWebviewError(message.payload);
 					break;
 
+				case 'canvasAiChat':
+					await this.handleCanvasAiChat(message.payload as {
+						userInput: string;
+						images?: string[];
+						imageMetadata?: { deviceMode: string; deviceViewport: { width: number; height: number } };
+						context: {
+							canvasId: string;
+							canvasName?: string;
+							componentCount?: number;
+							components: Array<{
+								id: string;
+								name?: string;
+								folderPath?: string;
+								entryFile?: string;
+							}>;
+							selectedComponent?: {
+								id: string;
+								name?: string;
+								folderPath?: string;
+								entryFile?: string;
+							};
+							selectedElement?: {
+								componentId: string;
+								sourceLocation?: {
+									file: string;
+									startLine: number;
+									endLine?: number;
+									column?: number;
+								};
+							};
+						};
+						autoSend?: boolean;
+					});
+					break;
+
 				default:
 					this.logger.warn(`Unknown webview message type: ${message.type}`);
 			}
@@ -449,6 +484,102 @@ export class CanvasPanel implements vscode.Disposable {
 			this.postToWebview('error', {
 				message: error instanceof Error ? error.message : String(error)
 			});
+		}
+	}
+
+	private async handleCanvasAiChat(payload: {
+		userInput: string;
+		images?: string[];
+		imageMetadata?: { deviceMode: string; deviceViewport: { width: number; height: number } };
+		context: {
+			canvasId: string;
+			canvasName?: string;
+			componentCount?: number;
+			components: Array<{
+				id: string;
+				name?: string;
+				folderPath?: string;
+				entryFile?: string;
+			}>;
+			selectedComponent?: {
+				id: string;
+				name?: string;
+				folderPath?: string;
+				entryFile?: string;
+			};
+			selectedElement?: {
+				componentId: string;
+				sourceLocation?: {
+					file: string;
+					startLine: number;
+					endLine?: number;
+					column?: number;
+				};
+			};
+		};
+		autoSend?: boolean;
+	}): Promise<void> {
+		const userInput = payload?.userInput?.trim() ?? '';
+		const images = payload?.images;
+		const imageMetadata = payload?.imageMetadata;
+		if (!userInput && (!images || images.length === 0)) {
+			return;
+		}
+
+		const context = payload.context;
+		const lines: string[] = [];
+		lines.push('[Roopik Canvas Context]');
+		lines.push(`canvasId: ${context.canvasId}`);
+		if (context.canvasName) {
+			lines.push(`canvasName: ${context.canvasName}`);
+		}
+
+		if (context.selectedComponent) {
+			lines.push('Selected component:');
+			lines.push(`- id: ${context.selectedComponent.id}`);
+			if (context.selectedComponent.name) {
+				lines.push(`- name: ${context.selectedComponent.name}`);
+			}
+			if (context.selectedComponent.folderPath) {
+				lines.push(`- folderPath: ${context.selectedComponent.folderPath}`);
+			}
+			if (context.selectedComponent.entryFile) {
+				const entryPath = context.selectedComponent.folderPath
+					? path.join(context.selectedComponent.folderPath, context.selectedComponent.entryFile)
+					: context.selectedComponent.entryFile;
+				lines.push(`- entryFile: ${entryPath}`);
+			}
+		}
+
+		if (context.selectedElement?.sourceLocation) {
+			const source = context.selectedElement.sourceLocation;
+			const lineRange = source.endLine && source.endLine !== source.startLine
+				? `${source.startLine}-${source.endLine}`
+				: `${source.startLine}`;
+			lines.push('Selected element:');
+			lines.push(`- componentId: ${context.selectedElement.componentId}`);
+			lines.push(`- source: ${source.file}:${lineRange}`);
+		}
+
+		lines.push('');
+		if (images && images.length > 0 && imageMetadata) {
+			lines.push(`Device mode: ${imageMetadata.deviceMode}`);
+			lines.push(`Device viewport: ${imageMetadata.deviceViewport.width}x${imageMetadata.deviceViewport.height}`);
+		}
+
+		if (userInput) {
+			lines.push('User request:');
+			lines.push(userInput);
+		}
+
+		try {
+			await vscode.commands.executeCommand('roodio.externalContext', {
+				promptText: lines.join('\n'),
+				images,
+				autoSend: payload.autoSend === true,
+			});
+		} catch (error) {
+			this.logger.error(`Failed to forward canvas AI context: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
 
@@ -669,7 +800,9 @@ export class CanvasPanel implements vscode.Disposable {
 							this.loadedComponents.push({
 								componentId,
 								contentHash: ref.contentHash,
-								name: ref.componentName
+								name: ref.componentName,
+								folderPath: ref.folderPath,
+								entryFile: ref.entryFile
 							});
 						}
 					}
@@ -720,13 +853,15 @@ export class CanvasPanel implements vscode.Disposable {
 		this.logger.info(`Loading ${this.loadedComponents.length} existing components`);
 
 		for (const component of this.loadedComponents) {
-			const { componentId, contentHash, name } = component;
+			const { componentId, contentHash, name, folderPath, entryFile } = component;
 
 			// 1. Notify webview that component exists (shows loading spinner)
 			this.postToWebview('componentCreated', {
 				componentId,
 				canvasId: this.canvasId,
-				name
+				name,
+				folderPath,
+				entryFile
 			});
 
 			// 2. Load component (checks cache, rebuilds if needed)

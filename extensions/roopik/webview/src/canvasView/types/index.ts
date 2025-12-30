@@ -266,6 +266,32 @@ export interface SandboxPosition {
 	zIndex: number;
 }
 
+export interface CanvasContextComponent {
+	id: string;
+	name?: string;
+	folderPath?: string;
+	entryFile?: string;
+}
+
+export interface CanvasElementSelection {
+	componentId: string;
+	sourceLocation?: {
+		file: string;
+		startLine: number;
+		endLine?: number;
+		column?: number;
+	};
+}
+
+export interface CanvasAIContext {
+	canvasId: string;
+	canvasName?: string;
+	componentCount?: number;
+	components: CanvasContextComponent[];
+	selectedComponent?: CanvasContextComponent;
+	selectedElement?: CanvasElementSelection;
+}
+
 /**
  * Map of component IDs to their sandbox positions
  */
@@ -318,7 +344,18 @@ export type WebviewMessage =
 	// Delete component from storage
 	| { type: 'deleteComponent'; payload: { componentId: string } }
 	// Force rebuild component (bypasses cache)
-	| { type: 'rebuildComponent'; payload: { componentId: string } };
+	| { type: 'rebuildComponent'; payload: { componentId: string } }
+	// Canvas AI chat input
+	| {
+			type: 'canvasAiChat';
+			payload: {
+				userInput: string;
+				context: CanvasAIContext;
+				images?: string[];
+				imageMetadata?: { deviceMode: string; deviceViewport: { width: number; height: number } };
+				autoSend?: boolean;
+			};
+	  };
 
 /**
  * VSCode API interface

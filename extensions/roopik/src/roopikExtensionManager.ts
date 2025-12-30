@@ -52,6 +52,9 @@ export class RoopikExtensionManager implements vscode.Disposable {
 	// Workspace path
 	private workspacePath: string = '';
 
+	// Extension context (for state persistence)
+	private context: vscode.ExtensionContext | null = null;
+
 	// Initialization state
 	private initialized = false;
 
@@ -81,11 +84,14 @@ export class RoopikExtensionManager implements vscode.Disposable {
 	 * Initialize the manager with workspace context
 	 * Sets up IPC clients and event subscriptions
 	 */
-	public async initialize(_context: vscode.ExtensionContext): Promise<void> {
+	public async initialize(context: vscode.ExtensionContext): Promise<void> {
 		if (this.initialized) {
 			this.logger.warn('Already initialized');
 			return;
 		}
+
+		// Store context for state persistence
+		this.context = context;
 
 		const workspaceFolders = vscode.workspace.workspaceFolders;
 		if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -182,6 +188,7 @@ export class RoopikExtensionManager implements vscode.Disposable {
 		if (existingPanel) {
 			existingPanel.reveal();
 			this.notifyCoreFocused(canvasId);
+			this.saveLastActiveCanvas(canvasId);
 			return;
 		}
 
@@ -192,6 +199,7 @@ export class RoopikExtensionManager implements vscode.Disposable {
 		// Notify Core that panel is open
 		this.notifyCorePanelOpen(canvasId);
 		this.notifyCoreFocused(canvasId);
+		this.saveLastActiveCanvas(canvasId);
 
 		this.logger.info(`Canvas opened. Total panels: ${this.canvasPanels.size}`);
 	}
@@ -223,6 +231,8 @@ export class RoopikExtensionManager implements vscode.Disposable {
 	 */
 	public onPanelFocused(canvasId: string): void {
 		this.notifyCoreFocused(canvasId);
+		// Save as last active canvas for restoration
+		this.saveLastActiveCanvas(canvasId);
 	}
 
 	/**
@@ -244,6 +254,73 @@ export class RoopikExtensionManager implements vscode.Disposable {
 	 */
 	public getOpenCount(): number {
 		return this.canvasPanels.size;
+	}
+
+	// ============================================================================
+	// State Persistence (Last Active Canvas)
+	// ============================================================================
+
+	/**
+	 * Save the last active canvas ID to VS Code's global state
+	 */
+	private saveLastActiveCanvas(canvasId: string): void {
+		if (!this.context) {
+			this.logger.warn('Cannot save last active canvas - context not initialized');
+			return;
+		}
+
+		this.context.globalState.update('roopik.lastActiveCanvas', canvasId);
+		this.logger.debug(`Saved last active canvas: ${canvasId}`);
+	}
+
+	/**
+	 * Get the last active canvas ID from VS Code's global state
+	 */
+	public getLastActiveCanvas(): string | undefined {
+		if (!this.context) {
+			this.logger.warn('Cannot get last active canvas - context not initialized');
+			return undefined;
+		}
+
+		return this.context.globalState.get<string>('roopik.lastActiveCanvas');
+	}
+
+	/**
+	 * Restore the last active canvas (called on extension activation)
+	 */
+	public async restoreLastActiveCanvas(extensionUri: vscode.Uri): Promise<boolean> {
+		const lastCanvasId = this.getLastActiveCanvas();
+
+		if (!lastCanvasId) {
+			// this.logger.info('No last active canvas to restore');
+			return false;
+		}
+
+		// this.logger.info(`Restoring last active canvas: ${lastCanvasId}`);
+
+		try {
+			// Get canvas info from Core
+			const canvasInfo = await vscode.commands.executeCommand<{ id: string; name: string }>(
+				'roopik.core.getCanvas',
+				lastCanvasId
+			);
+
+			if (!canvasInfo) {
+				this.logger.warn(`Canvas ${lastCanvasId} not found in Core - may have been deleted`);
+				// Clear the saved state since canvas doesn't exist
+				this.context?.globalState.update('roopik.lastActiveCanvas', undefined);
+				return false;
+			}
+
+			// Open the canvas
+			this.openCanvas(lastCanvasId, canvasInfo.name || lastCanvasId, extensionUri);
+			// this.logger.info(`Successfully restored canvas: ${lastCanvasId}`);
+			return true;
+
+		} catch (error) {
+			this.logger.error(`Failed to restore last active canvas: ${error}`);
+			return false;
+		}
 	}
 
 	// ============================================================================

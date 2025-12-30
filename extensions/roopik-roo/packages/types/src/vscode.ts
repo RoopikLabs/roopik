@@ -44,6 +44,7 @@ export const commandIds = [
 	"handleHumanRelayResponse",
 
 	"newTask",
+	"externalContext",
 
 	"setCustomStoragePath",
 	"importSettings",

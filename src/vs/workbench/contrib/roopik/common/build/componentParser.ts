@@ -4,6 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Framework, ComponentInput, ValidationResult, FrameworkConfigMap, FrameworkConfig } from './types.js';
+import { promises as fs } from 'fs';
+import * as path from '../../../../../base/common/path.js';
 
 /**
  * Component Parser (Hardened)
@@ -81,19 +83,20 @@ export class ComponentParser {
 			if (filename.endsWith('.jsx') || filename.endsWith('.tsx')) hasJsxTsx = true;
 
 			// 2. Import Regex Match (Medium Confidence)
-			// We strip comments to be safe, or just rely on the 'from' syntax which usually implies code
-			if (/from\s+['"]solid-js['"]/.test(code)) return 'solid';
-			if (/from\s+['"]preact['"]/.test(code)) return 'preact';
+			// Match package name AND subpaths (e.g., 'preact/hooks', 'solid-js/web')
+			// Using word boundary after package name or slash for subpaths
+			if (/from\s+['\"]solid-js(\/[^'"]*)?['"]/.test(code)) return 'solid';
+			if (/from\s+['"]preact(\/[^'"]*)?['"]/.test(code)) return 'preact';
 
-			if (/from\s+['"]react['"]/.test(code)) {
+			if (/from\s+['"]react(-dom)?(\/[^'"]*)?['"]/.test(code)) {
 				scores.react += 2;
 				hasFrameworkImport = true;
 			}
-			if (/from\s+['"]vue['"]/.test(code)) {
+			if (/from\s+['"]vue(\/[^'"]*)?['"]/.test(code)) {
 				scores.vue += 2;
 				hasFrameworkImport = true;
 			}
-			if (/from\s+['"]svelte['"]/.test(code)) {
+			if (/from\s+['"]svelte(\/[^'"]*)?['"]/.test(code)) {
 				scores.svelte += 2;
 				hasFrameworkImport = true;
 			}
@@ -128,6 +131,21 @@ export class ComponentParser {
 			}
 		}
 
+		// 5. JSX/TSX without explicit framework imports
+		// With React 17+ automatic JSX transform, components don't need "import React"
+		// If we have .jsx/.tsx files but no framework imports, default to React
+		// console.log('[ComponentParser] Detection state:', {
+		// 	hasJsxTsx,
+		// 	hasFrameworkImport,
+		// 	scores,
+		// 	files: Object.keys(files)
+		// });
+
+		if (hasJsxTsx && !hasFrameworkImport) {
+			console.log('[ComponentParser] JSX/TSX without framework import detected - defaulting to React');
+			return 'react';
+		}
+
 		// Return highest score (for JSX/TSX files without clear framework imports)
 		let bestMatch: Framework = 'react'; // Default for JSX/TSX
 		let maxScore = 0;
@@ -138,6 +156,11 @@ export class ComponentParser {
 				bestMatch = fw;
 			}
 		});
+
+		// If no scores at all, return 'unknown' instead of defaulting to React
+		if (maxScore === 0 && !hasJsxTsx) {
+			return 'unknown';
+		}
 
 		return bestMatch;
 	}
@@ -237,5 +260,37 @@ export class ComponentParser {
 
 	getFrameworkConfig(framework: Framework): FrameworkConfig {
 		return this.frameworkConfigs[framework];
+	}
+}
+
+/**
+ * Helper: Detect framework from a file path
+ *
+ * This is a convenience wrapper around ComponentParser.detectFramework()
+ * for cases where you only have a file path (like in componentService).
+ *
+ * Uses the SAME detection algorithm as the build pipeline.
+ */
+export async function detectFrameworkFromFile(filePath: string): Promise<Framework> {
+	// Quick check: .vue and .svelte files are definitive (no need to read content)
+	const ext = filePath.toLowerCase();
+	if (ext.endsWith('.vue')) return 'vue';
+	if (ext.endsWith('.svelte')) return 'svelte';
+
+	try {
+		// Read file content and use ComponentParser for complex detection
+		const content = await fs.readFile(filePath, 'utf-8');
+		const filename = path.basename(filePath);
+
+		// Use ComponentParser - the single source of truth
+		const parser = new ComponentParser();
+		return parser.detectFramework({ [filename]: content });
+	} catch (error) {
+		// Fallback: if file read fails, use simple extension-based detection
+		// (.jsx/.tsx without content → assume React as most common)
+		if (ext.endsWith('.jsx') || ext.endsWith('.tsx')) {
+			return 'react';
+		}
+		return 'unknown';
 	}
 }

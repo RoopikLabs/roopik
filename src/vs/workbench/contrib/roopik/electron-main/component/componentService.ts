@@ -14,7 +14,7 @@
  */
 
 import * as crypto from 'crypto';
-import * as path from 'path';
+import * as path from '../../../../../base/common/path.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
@@ -341,6 +341,7 @@ export class ComponentService extends Disposable implements IComponentService {
 			try {
 				const entryFilePath = path.join(folderPath, entryFile);
 				framework = await detectFramework(entryFilePath);
+				// this.logger.debug('Framework detected', { entryFile, framework });
 			} catch (error) {
 				this.logger.warn('Framework detection failed, using unknown', { error });
 				framework = 'unknown';

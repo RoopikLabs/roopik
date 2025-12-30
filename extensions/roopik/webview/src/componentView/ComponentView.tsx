@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import html2canvas from "html2canvas";
 import type {
 	Sandbox,
 	Transform,
@@ -27,7 +28,37 @@ import {
 	DEFAULT_CONFIG,
 	getFocusedSandboxDimensions,
 } from "../canvasView/services/gridManager";
+import { DEVICE_PRESETS } from "../canvasView/types";
 import { useFPS } from "../hooks/useFPS";
+
+// ============================================================================
+// Canvas Behavior Configuration
+// ============================================================================
+// These constants control auto-fit and reorganize behaviors.
+// TODO: Move to user settings when settings UI is implemented
+
+/**
+ * Auto-fit canvas after deleting a component
+ * - true: Automatically zoom to fit all remaining components after deletion
+ * - false: Maintain current zoom level after deletion
+ */
+const AUTO_FIT_ON_DELETE = false;
+
+/**
+ * Auto-reorganize to grid after deleting a component
+ * - true: Automatically reorganize remaining components to grid layout
+ * - false: Keep components in their current positions
+ */
+const AUTO_REORGANIZE_ON_DELETE = true;
+
+/**
+ * Auto-attach screenshots when selecting elements in inspect mode.
+ * Keep false until we expose a user setting.
+ */
+const AUTO_ATTACH_SCREENSHOT_ON_INSPECT = false;
+
+// ============================================================================
+
 import { createLogger } from "../utils/logger";
 import "./ComponentView.css";
 
@@ -48,6 +79,17 @@ declare global {
 			backgroundColor?: string;
 			backgroundPattern?: BackgroundPattern;
 		};
+		CANVAS_CONFIG?: {
+			canvasId: string;
+			canvasName?: string;
+		};
+		__roopikRequestScreenshot?: (payload: {
+			componentId: string;
+			element: HTMLElement | null;
+			target?: string;
+			requestId?: string;
+			intent?: string;
+		}) => void;
 	}
 }
 
@@ -79,7 +121,7 @@ function App() {
 	// Bottom Action Bar state
 	const [isSelectMode, setIsSelectMode] = useState(false);
 	const [isInspectMode, setIsInspectMode] = useState(false);
-	const [isRectangleMode, setIsRectangleMode] = useState(false);
+	const [aiChatAnchor, setAiChatAnchor] = useState<{ x: number; y: number; top: number; bottom: number; nonce: number } | null>(null);
 
 	// Grid positioning mode state
 	const [snapMode, setSnapMode] = useState<SnapMode>("free");
@@ -118,6 +160,15 @@ function App() {
 		componentId: string;
 		sourceLocation: { file: string; startLine: number };
 	} | null>(null);
+	const pendingScreenshotRef = useRef<{
+		componentId: string;
+		imageData: string;
+		metadata?: {
+			deviceMode: string;
+			deviceViewport: { width: number; height: number };
+		};
+	} | null>(null);
+	const pendingScreenshotRequestIdRef = useRef<string | null>(null);
 
 	// Update ref when focused state changes
 	useEffect(() => {
@@ -423,6 +474,122 @@ function App() {
 		return () => window.removeEventListener("message", handleMessage);
 	}, [sandboxes]);
 
+	const buildCanvasContext = useCallback((options?: {
+		selectedComponentId?: string;
+		includePendingElement?: boolean;
+	}) => {
+		const includePendingElement = options?.includePendingElement !== false;
+		const canvasConfig = window.CANVAS_CONFIG;
+		const pendingElement = includePendingElement
+			? pendingElementSelectionRef.current
+			: null;
+		const targetComponentId =
+			options?.selectedComponentId || selectedSandboxId || pendingElement?.componentId;
+		const selectedSandbox =
+			(targetComponentId
+				? sandboxes.find((sandbox) => sandbox.id === targetComponentId)
+				: null) ||
+			(pendingElement
+				? sandboxes.find((sandbox) => sandbox.id === pendingElement.componentId)
+				: null);
+		const selectedComponent = selectedSandbox
+			? {
+				id: selectedSandbox.id,
+				name: selectedSandbox.componentInput?.name,
+				folderPath: selectedSandbox.componentInput?.folderPath,
+				entryFile: selectedSandbox.componentInput?.entryFile,
+			}
+			: undefined;
+		const selectedElement =
+			pendingElement &&
+				(!targetComponentId || pendingElement.componentId === targetComponentId)
+				? {
+					componentId: pendingElement.componentId,
+					sourceLocation: pendingElement.sourceLocation,
+				}
+				: undefined;
+
+		if (selectedElement && includePendingElement) {
+			pendingElementSelectionRef.current = null;
+		}
+
+		return {
+			canvasId: canvasConfig?.canvasId || "unknown",
+			canvasName: canvasConfig?.canvasName,
+			componentCount: sandboxes.length,
+			components: [],
+			selectedComponent,
+			selectedElement,
+		};
+	}, [sandboxes, selectedSandboxId]);
+
+	const sendCanvasContextToChat = useCallback(
+		(
+			userInput: string,
+			autoSend: boolean,
+			context: ReturnType<typeof buildCanvasContext>,
+			images?: string[],
+			imageMetadata?: {
+				deviceMode: string;
+				deviceViewport: { width: number; height: number };
+			},
+		) => {
+			vscode.postMessage({
+				type: "canvasAiChat",
+				payload: {
+					userInput,
+					context,
+					images,
+					imageMetadata,
+					autoSend,
+				},
+			});
+		},
+		[],
+	);
+
+	const getDeviceMetadataForComponent = useCallback(
+		(componentId: string) => {
+			const sandbox = sandboxes.find((item) => item.id === componentId);
+			if (!sandbox) {
+				return undefined;
+			}
+
+			const effectiveMode = sandbox.deviceMode ?? globalDeviceMode;
+			const preset = DEVICE_PRESETS[effectiveMode];
+			let viewportWidth: number;
+			let viewportHeight: number;
+
+			if (preset.width !== "auto" && preset.height !== "auto") {
+				viewportWidth = preset.width;
+				viewportHeight = preset.height;
+			} else {
+				const isFocused = focusedSandboxId === sandbox.id;
+				if (isFocused) {
+					const focused = getFocusedSandboxDimensions(
+						viewport.width,
+						viewport.height,
+						DEFAULT_CONFIG,
+					);
+					viewportWidth = focused.width;
+					viewportHeight = focused.height;
+				} else {
+					viewportWidth = DEFAULT_CONFIG.sandboxWidth;
+					viewportHeight = DEFAULT_CONFIG.sandboxHeight;
+				}
+			}
+
+			return {
+				deviceMode: preset.label,
+				deviceViewport: {
+					width: Math.round(viewportWidth),
+					height: Math.round(viewportHeight),
+				},
+			};
+		},
+		[focusedSandboxId, globalDeviceMode, sandboxes, viewport.height, viewport.width],
+	);
+
 	// Handle messages from sandbox iframes (element inspection, errors, etc.)
 	useEffect(() => {
 		const handleIframeMessage = (event: MessageEvent) => {
@@ -431,7 +598,11 @@ function App() {
 
 			// Handle element selection from inspect mode
 			if (data.type === "roopik-element-selected") {
-				const { componentId, element } = data;
+				const { componentId, element, screenshotRequestId } = data;
+				pendingScreenshotRequestIdRef.current = screenshotRequestId ?? null;
+				if (!screenshotRequestId) {
+					pendingScreenshotRef.current = null;
+				}
 				// Check if we have source location info
 				if (element?.sourceLocation) {
 					const { file, startLine } = element.sourceLocation;
@@ -449,17 +620,173 @@ function App() {
 						payload: { componentId },
 					});
 				}
+
+				if (element?.boundingRect) {
+					const iframe = document.querySelector(
+						`iframe[data-sandbox-id="${componentId}"]`
+					) as HTMLIFrameElement | null;
+					if (iframe) {
+						const iframeRect = iframe.getBoundingClientRect();
+						const anchorX = iframeRect.left + element.boundingRect.x + element.boundingRect.width / 2;
+						const anchorTop = iframeRect.top + element.boundingRect.y;
+						const anchorBottom = anchorTop + element.boundingRect.height;
+						setAiChatAnchor({
+							x: anchorX,
+							y: anchorBottom,
+							top: anchorTop,
+							bottom: anchorBottom,
+							nonce: Date.now(),
+						});
+					}
+				}
+			}
+
+			if (data.type === "roopik-screenshot-captured") {
+				const { componentId, imageData, requestId, intent } = data;
+				if (!componentId || !imageData) {
+					return;
+				}
+
+				if (intent === "attach") {
+					const context = buildCanvasContext({
+						selectedComponentId: componentId,
+						includePendingElement: false,
+					});
+					const imageMetadata = getDeviceMetadataForComponent(componentId);
+					sendCanvasContextToChat(
+						"Screenshot attached.",
+						false,
+						context,
+						[imageData],
+						imageMetadata,
+					);
+					return;
+				}
+
+				if (requestId && requestId === pendingScreenshotRequestIdRef.current) {
+					pendingScreenshotRef.current = {
+						componentId,
+						imageData,
+						metadata: getDeviceMetadataForComponent(componentId),
+					};
+				}
+			}
+
+			if (data.type === "roopik-screenshot-error") {
+				logger.warn("[Canvas] Screenshot capture failed", data);
 			}
 		};
 
 		window.addEventListener("message", handleIframeMessage);
 		return () => window.removeEventListener("message", handleIframeMessage);
+	}, [buildCanvasContext, getDeviceMetadataForComponent, sendCanvasContextToChat]);
+
+	useEffect(() => {
+		window.__roopikRequestScreenshot = async (payload) => {
+			if (!payload?.element) {
+				window.postMessage(
+					{
+						type: "roopik-screenshot-error",
+						componentId: payload?.componentId,
+						requestId: payload?.requestId,
+						message: "No element provided for capture",
+					},
+					"*",
+				);
+				return;
+			}
+
+			try {
+				const element = payload.element;
+				const doc = element.ownerDocument;
+				const docEl = doc.documentElement;
+				const isDocument = element === doc.body || element === docEl;
+				const rect = element.getBoundingClientRect();
+				const captureWidth = isDocument ? docEl.scrollWidth : element.scrollWidth || rect.width;
+				const captureHeight = isDocument ? docEl.scrollHeight : element.scrollHeight || rect.height;
+				const scale = window.devicePixelRatio || 1;
+				const canvas = await html2canvas(element, {
+					backgroundColor: null,
+					// Silence html2canvas debug logs in the console.
+					logging: false,
+					scale,
+					useCORS: true,
+					width: captureWidth,
+					height: captureHeight,
+					windowWidth: Math.max(docEl.scrollWidth, docEl.clientWidth),
+					windowHeight: Math.max(docEl.scrollHeight, docEl.clientHeight),
+					scrollX: 0,
+					scrollY: 0,
+					...(isDocument
+						? {}
+						: {
+							x: rect.left + window.scrollX,
+							y: rect.top + window.scrollY,
+						}),
+				});
+				const imageData = canvas.toDataURL("image/png");
+				window.postMessage(
+					{
+						type: "roopik-screenshot-captured",
+						componentId: payload.componentId,
+						imageData,
+						target: payload.target,
+						requestId: payload.requestId,
+						intent: payload.intent,
+					},
+					"*",
+				);
+			} catch (error) {
+				window.postMessage(
+					{
+						type: "roopik-screenshot-error",
+						componentId: payload.componentId,
+						requestId: payload.requestId,
+						message: error instanceof Error ? error.message : String(error),
+					},
+					"*",
+				);
+			}
+		};
+
+		return () => {
+			delete window.__roopikRequestScreenshot;
+		};
 	}, []);
 
 	// Notify extension that webview is ready
 	useEffect(() => {
 		vscode.postMessage({ type: "ready" });
 	}, []);
+
+	const handleAISubmit = useCallback(
+		(userInput: string, autoSend = true) => {
+			const context = buildCanvasContext();
+			const images: string[] = [];
+			const pendingScreenshot = pendingScreenshotRef.current;
+			if (
+				pendingScreenshot &&
+				(context.selectedComponent?.id === pendingScreenshot.componentId ||
+					context.selectedElement?.componentId === pendingScreenshot.componentId)
+			) {
+				images.push(pendingScreenshot.imageData);
+				const imageMetadata =
+					pendingScreenshot.metadata || getDeviceMetadataForComponent(pendingScreenshot.componentId);
+				pendingScreenshotRef.current = null;
+				pendingScreenshotRequestIdRef.current = null;
+				sendCanvasContextToChat(
+					userInput,
+					autoSend,
+					context,
+					images.length ? images : undefined,
+					imageMetadata,
+				);
+				return;
+			}
+			sendCanvasContextToChat(userInput, autoSend, context, images.length ? images : undefined);
+		},
+		[buildCanvasContext, getDeviceMetadataForComponent, sendCanvasContextToChat],
+	);
 
 	// Auto-save canvas state when sandboxes or viewport changes
 	useEffect(() => {
@@ -605,14 +932,16 @@ function App() {
 
 	// Reorganize all sandboxes to grid
 	const reorganizeToGrid = useCallback(
-		(sandboxList?: Sandbox[]) => {
+		(sandboxList?: Sandbox[], autoFit: boolean = true) => {
 			const current = sandboxList || sandboxes;
 			const reorganized = reorganizeSandboxes(current, DEFAULT_CONFIG);
 			setSandboxes(reorganized);
 
-			setTimeout(() => {
-				fitAllSandboxes(reorganized);
-			}, 100);
+			if (autoFit) {
+				setTimeout(() => {
+					fitAllSandboxes(reorganized);
+				}, 100);
+			}
 		},
 		[sandboxes, fitAllSandboxes]
 	);
@@ -687,14 +1016,20 @@ function App() {
 			setSandboxes((prev) => {
 				const remaining = prev.filter((s) => s.id !== sandboxId);
 				if (remaining.length > 0) {
-					// Reorganize and auto-fit after deletion
+					// Use configuration constants to control post-delete behavior
 					setTimeout(() => {
+						// Only auto-reorganize/fit if not in focused mode
 						if (!focusedSandboxIdRef.current) {
-							reorganizeToGrid(remaining);
-						} else {
-							// Just fit without reorganizing if user is focused
-							fitAllSandboxes(remaining);
+							if (AUTO_REORGANIZE_ON_DELETE) {
+								// Reorganize to grid, optionally auto-fit based on config
+								reorganizeToGrid(remaining, AUTO_FIT_ON_DELETE);
+							} else if (AUTO_FIT_ON_DELETE) {
+								// Just fit without reorganizing
+								fitAllSandboxes(remaining);
+							}
+							// If both false, do nothing - maintain current layout and zoom
 						}
+						// If focused, don't auto-fit/reorganize - maintain current zoom
 					}, 100);
 				} else {
 					// All deleted - reset view
@@ -782,7 +1117,7 @@ function App() {
 	// Keyboard shortcuts
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
-			if ((e.key === "Delete" || e.key === "Backspace") && selectedSandboxId) {
+			if (e.key === "Delete" && selectedSandboxId) {
 				// Show delete confirmation modal instead of deleting directly
 				e.preventDefault();
 				setPendingDeleteId(selectedSandboxId);
@@ -791,6 +1126,10 @@ function App() {
 				// First priority: close delete confirmation modal
 				if (pendingDeleteId) {
 					setPendingDeleteId(null);
+					return;
+				}
+				if (isInspectMode) {
+					setIsInspectMode(false);
 					return;
 				}
 				if (focusedSandboxId) {
@@ -820,7 +1159,7 @@ function App() {
 		fitAllSandboxes,
 	]);
 
-	// Window resize handler - update viewport and refocus if needed
+	// Window resize handler - update viewport dimensions
 	useEffect(() => {
 		const handleResize = () => {
 			// Update viewport dimensions for dynamic focused sizing
@@ -829,11 +1168,13 @@ function App() {
 				height: window.innerHeight,
 			});
 
-			if (focusedSandboxId) {
-				setTimeout(() => {
-					focusSandbox(focusedSandboxId);
-				}, 100);
-			}
+			// DISABLED: Auto-refocus on resize was causing unwanted zoom changes
+			// when resizing VS Code panels or opening split views
+			// if (focusedSandboxId) {
+			// 	setTimeout(() => {
+			// 		focusSandbox(focusedSandboxId);
+			// 	}, 100);
+			// }
 		};
 
 		window.addEventListener("resize", handleResize);
@@ -860,7 +1201,6 @@ function App() {
 		setIsSelectMode(newState);
 		if (newState) {
 			setIsInspectMode(false);
-			setIsRectangleMode(false);
 		}
 		logger.info('Select mode toggled', { enabled: newState });
 	}, [isSelectMode]);
@@ -870,19 +1210,8 @@ function App() {
 		setIsInspectMode(newState);
 		if (newState) {
 			setIsSelectMode(false);
-			setIsRectangleMode(false);
 		}
 	}, [isInspectMode, sandboxes.length]);
-
-	const handleRectangleSelection = useCallback(() => {
-		const newState = !isRectangleMode;
-		setIsRectangleMode(newState);
-		if (newState) {
-			setIsSelectMode(false);
-			setIsInspectMode(false);
-		}
-		logger.info('Rectangle mode toggled', { enabled: newState });
-	}, [isRectangleMode]);
 
 	const handleAIChat = useCallback(() => {
 		logger.info('AI Chat toggled');
@@ -1062,6 +1391,7 @@ function App() {
 					snapMode={snapMode}
 					viewport={viewport}
 					isInspectMode={isInspectMode}
+					captureOnInspectSelect={AUTO_ATTACH_SCREENSHOT_ON_INSPECT}
 					onTransformChange={setTransform}
 					onSandboxClick={handleSandboxClick}
 					onSandboxDoubleClick={focusSandbox}
@@ -1099,11 +1429,13 @@ function App() {
 			<BottomActionBar
 				onSelectMode={handleSelectMode}
 				onInspectMode={handleInspectMode}
-				onRectangleSelection={handleRectangleSelection}
 				onAIChat={handleAIChat}
+				onAISubmit={handleAISubmit}
 				isSelectMode={isSelectMode}
 				isInspectMode={isInspectMode}
-				isRectangleMode={isRectangleMode}
+				openChatAt={aiChatAnchor}
+				onChatAnchorConsumed={() => setAiChatAnchor(null)}
+				onEscape={() => setIsInspectMode(false)}
 			/>
 
 			{/* Delete confirmation modal (triggered by Delete key) */}

@@ -9,6 +9,7 @@
  * Commands for component operations, called by Extension to interact with Core.
  * - roopik.core.createComponent: Create a new component
  * - roopik.core.createCanvas: Create a new canvas
+ * - roopik.core.getCanvas: Get canvas information (for restoration)
  * - roopik.core.rebuildComponent: Rebuild a component
  * - roopik.core.deleteComponent: Delete a component
  * - roopik.core.getBundledCode: Get bundled code for a component
@@ -52,6 +53,37 @@ export function registerComponentCommands(): void {
 			}
 			const canvasService = accessor.get(ICanvasService);
 			return canvasService.createCanvas(name);
+		}
+	});
+
+	// Get Canvas (called by Extension for restoration)
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.core.getCanvas',
+				title: localize2('roopik.core.getCanvas', 'Get Canvas (Internal)'),
+				category: localize2('roopik.category', 'Roopik'),
+				f1: false // Internal command
+			});
+		}
+
+		async run(accessor: ServicesAccessor, canvasId: string): Promise<{ id: string; name: string } | undefined> {
+			if (!canvasId) {
+				console.error('[ComponentCommands] roopik.core.getCanvas: canvasId is required');
+				return undefined;
+			}
+
+			const canvasService = accessor.get(ICanvasService);
+			const canvas = await canvasService.getCanvasAsync(canvasId);
+
+			if (!canvas) {
+				return undefined;
+			}
+
+			return {
+				id: canvas.id,
+				name: canvas.name
+			};
 		}
 	});
 

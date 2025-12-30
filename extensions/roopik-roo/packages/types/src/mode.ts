@@ -184,6 +184,7 @@ When building components for canvas preview, follow these rules:
 - Include ALL code in one file: component logic, styles (CSS-in-JS or inline), types
 - For React: Use functional components with hooks, export as default
 - For Vue/Svelte: Single-file components work directly
+- Dependency Resolution Instruction: The Roopik IDE Canvas (component) build system automatically resolves bare specifier imports (e.g., 'framer-motion', '@headlessui/react') via an internal ESM resolver. You MUST NOT use full CDN URLs (like esm.sh). Always use standard bare imports. The system handles version syncing and cross-dependency conflicts automatically.
 
 Example React component structure:
 \`\`\`tsx
