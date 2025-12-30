@@ -83,19 +83,20 @@ export class ComponentParser {
 			if (filename.endsWith('.jsx') || filename.endsWith('.tsx')) hasJsxTsx = true;
 
 			// 2. Import Regex Match (Medium Confidence)
-			// We strip comments to be safe, or just rely on the 'from' syntax which usually implies code
-			if (/from\s+['"]solid-js['"]/.test(code)) return 'solid';
-			if (/from\s+['"]preact['"]/.test(code)) return 'preact';
+			// Match package name AND subpaths (e.g., 'preact/hooks', 'solid-js/web')
+			// Using word boundary after package name or slash for subpaths
+			if (/from\s+['\"]solid-js(\/[^'"]*)?['"]/.test(code)) return 'solid';
+			if (/from\s+['"]preact(\/[^'"]*)?['"]/.test(code)) return 'preact';
 
-			if (/from\s+['"]react['"]/.test(code)) {
+			if (/from\s+['"]react(-dom)?(\/[^'"]*)?['"]/.test(code)) {
 				scores.react += 2;
 				hasFrameworkImport = true;
 			}
-			if (/from\s+['"]vue['"]/.test(code)) {
+			if (/from\s+['"]vue(\/[^'"]*)?['"]/.test(code)) {
 				scores.vue += 2;
 				hasFrameworkImport = true;
 			}
-			if (/from\s+['"]svelte['"]/.test(code)) {
+			if (/from\s+['"]svelte(\/[^'"]*)?['"]/.test(code)) {
 				scores.svelte += 2;
 				hasFrameworkImport = true;
 			}

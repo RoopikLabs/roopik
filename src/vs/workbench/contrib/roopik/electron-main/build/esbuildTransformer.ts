@@ -140,7 +140,7 @@ const VERSION_PAIRS: Record<string, string[]> = {
  */
 const FRAMEWORK_CORE_DEPS: Record<Framework, string[]> = {
 	'react': ['react', 'react-dom'],
-	'preact': ['preact', 'preact/hooks'],
+	'preact': ['preact'],  // Note: preact/hooks is a subpath, not separate package
 	'vue': ['vue'],
 	'solid': ['solid-js'],
 	'svelte': [],  // Svelte compiles away - no runtime singleton issues
@@ -289,8 +289,8 @@ const FRAMEWORK_BUILD_CONFIGS: Record<Framework, FrameworkBuildConfig> = {
  */
 const JSX_IMPORT_SOURCES: Partial<Record<Framework, string>> = {
 	'react': 'react',
-	'preact': 'preact',
-	'solid': 'solid-js'
+	'preact': 'preact'
+	// Solid.js uses a different JSX transform (needs babel-preset-solid)
 	// Vue and Svelte use their own syntax, not JSX
 	// html/unknown don't use JSX
 };
@@ -680,14 +680,14 @@ render(() => Component(), root);
 
 		if (framework === 'preact') {
 			return `
-import { render } from 'preact';
+import { h, render } from 'preact';
 import UserComponent from '${importPath}';
 
 // Clear loading placeholder before mounting
 const root = document.getElementById('root');
 root.innerHTML = '';
 const Component = UserComponent.default || UserComponent;
-render(Component(), root);
+render(h(Component), root);
 `;
 		}
 
