@@ -6,6 +6,7 @@
 import * as esbuild from 'esbuild';
 import sveltePlugin from 'esbuild-svelte';
 import vuePlugin from 'esbuild-plugin-vue3';
+import { solidPlugin } from 'esbuild-plugin-solid';
 import * as fs from 'fs';
 import * as path from '../../../../../base/common/path.js';
 import * as os from 'os';
@@ -84,19 +85,19 @@ const STABLE_VERSIONS: Record<string, string> = {
 	'react-router-dom': '6.20.0',
 
 	// Vue ecosystem
-	'vue': '3.4.0',
-	'@vue/compiler-sfc': '3.4.0',
-	'vue-router': '4.2.5',
-	'pinia': '2.1.7',
+	'vue': '3.5.26',
+	'@vue/compiler-sfc': '3.5.26',
+	'vue-router': '4.5.0',
+	'pinia': '3.0.2',
 
 	// Svelte ecosystem (Svelte 5 for esbuild-svelte@0.9.x compatibility)
-	'svelte': '5.45.2',
+	'svelte': '5.46.1',
 
 	// Solid ecosystem
-	'solid-js': '1.8.7',
+	'solid-js': '1.9.10',
 
 	// Preact ecosystem
-	'preact': '10.19.3',
+	'preact': '10.28.1',
 
 	// UI Libraries
 	'@mui/material': '5.15.0',
@@ -238,8 +239,8 @@ const FRAMEWORK_BUILD_CONFIGS: Record<Framework, FrameworkBuildConfig> = {
 		getPlugins: () => []
 	},
 	solid: {
-		mode: 'virtual',
-		getPlugins: () => []
+		mode: 'disk', // Solid plugin (Babel-based) requires disk access
+		getPlugins: () => [solidPlugin({ solid: { generate: 'dom' } })]
 	},
 	preact: {
 		mode: 'virtual',

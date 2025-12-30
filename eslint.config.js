@@ -1457,6 +1457,7 @@ export default tseslint.config(
 						'esbuild',
 						'esbuild-svelte',
 						'esbuild-plugin-vue3',
+						'esbuild-plugin-solid',
 						'@parcel/watcher',
 						'@vscode/sqlite3',
 						'@vscode/vscode-languagedetection',
