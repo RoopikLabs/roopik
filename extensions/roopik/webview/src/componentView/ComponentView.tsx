@@ -28,6 +28,29 @@ import {
 	getFocusedSandboxDimensions,
 } from "../canvasView/services/gridManager";
 import { useFPS } from "../hooks/useFPS";
+
+// ============================================================================
+// Canvas Behavior Configuration
+// ============================================================================
+// These constants control auto-fit and reorganize behaviors.
+// TODO: Move to user settings when settings UI is implemented
+
+/**
+ * Auto-fit canvas after deleting a component
+ * - true: Automatically zoom to fit all remaining components after deletion
+ * - false: Maintain current zoom level after deletion
+ */
+const AUTO_FIT_ON_DELETE = false;
+
+/**
+ * Auto-reorganize to grid after deleting a component
+ * - true: Automatically reorganize remaining components to grid layout
+ * - false: Keep components in their current positions
+ */
+const AUTO_REORGANIZE_ON_DELETE = true;
+
+// ============================================================================
+
 import { createLogger } from "../utils/logger";
 import "./ComponentView.css";
 
@@ -83,7 +106,7 @@ function App() {
 	// Bottom Action Bar state
 	const [isSelectMode, setIsSelectMode] = useState(false);
 	const [isInspectMode, setIsInspectMode] = useState(false);
-	const [isRectangleMode, setIsRectangleMode] = useState(false);
+	const [aiChatAnchor, setAiChatAnchor] = useState<{ x: number; y: number; top: number; bottom: number; nonce: number } | null>(null);
 
 	// Grid positioning mode state
 	const [snapMode, setSnapMode] = useState<SnapMode>("free");
@@ -453,6 +476,25 @@ function App() {
 						payload: { componentId },
 					});
 				}
+
+				if (element?.boundingRect) {
+					const iframe = document.querySelector(
+						`iframe[data-sandbox-id="${componentId}"]`
+					) as HTMLIFrameElement | null;
+					if (iframe) {
+						const iframeRect = iframe.getBoundingClientRect();
+						const anchorX = iframeRect.left + element.boundingRect.x + element.boundingRect.width / 2;
+						const anchorTop = iframeRect.top + element.boundingRect.y;
+						const anchorBottom = anchorTop + element.boundingRect.height;
+						setAiChatAnchor({
+							x: anchorX,
+							y: anchorBottom,
+							top: anchorTop,
+							bottom: anchorBottom,
+							nonce: Date.now(),
+						});
+					}
+				}
 			}
 		};
 
@@ -475,19 +517,19 @@ function App() {
 				: null);
 		const selectedComponent = selectedSandbox
 			? {
-					id: selectedSandbox.id,
-					name: selectedSandbox.componentInput?.name,
-					folderPath: selectedSandbox.componentInput?.folderPath,
-					entryFile: selectedSandbox.componentInput?.entryFile,
-				}
+				id: selectedSandbox.id,
+				name: selectedSandbox.componentInput?.name,
+				folderPath: selectedSandbox.componentInput?.folderPath,
+				entryFile: selectedSandbox.componentInput?.entryFile,
+			}
 			: undefined;
 		const selectedElement =
 			pendingElement &&
-			(!selectedSandboxId || pendingElement.componentId === selectedSandboxId)
+				(!selectedSandboxId || pendingElement.componentId === selectedSandboxId)
 				? {
-						componentId: pendingElement.componentId,
-						sourceLocation: pendingElement.sourceLocation,
-					}
+					componentId: pendingElement.componentId,
+					sourceLocation: pendingElement.sourceLocation,
+				}
 				: undefined;
 
 		if (selectedElement) {
@@ -663,14 +705,16 @@ function App() {
 
 	// Reorganize all sandboxes to grid
 	const reorganizeToGrid = useCallback(
-		(sandboxList?: Sandbox[]) => {
+		(sandboxList?: Sandbox[], autoFit: boolean = true) => {
 			const current = sandboxList || sandboxes;
 			const reorganized = reorganizeSandboxes(current, DEFAULT_CONFIG);
 			setSandboxes(reorganized);
 
-			setTimeout(() => {
-				fitAllSandboxes(reorganized);
-			}, 100);
+			if (autoFit) {
+				setTimeout(() => {
+					fitAllSandboxes(reorganized);
+				}, 100);
+			}
 		},
 		[sandboxes, fitAllSandboxes]
 	);
@@ -745,14 +789,20 @@ function App() {
 			setSandboxes((prev) => {
 				const remaining = prev.filter((s) => s.id !== sandboxId);
 				if (remaining.length > 0) {
-					// Reorganize and auto-fit after deletion
+					// Use configuration constants to control post-delete behavior
 					setTimeout(() => {
+						// Only auto-reorganize/fit if not in focused mode
 						if (!focusedSandboxIdRef.current) {
-							reorganizeToGrid(remaining);
-						} else {
-							// Just fit without reorganizing if user is focused
-							fitAllSandboxes(remaining);
+							if (AUTO_REORGANIZE_ON_DELETE) {
+								// Reorganize to grid, optionally auto-fit based on config
+								reorganizeToGrid(remaining, AUTO_FIT_ON_DELETE);
+							} else if (AUTO_FIT_ON_DELETE) {
+								// Just fit without reorganizing
+								fitAllSandboxes(remaining);
+							}
+							// If both false, do nothing - maintain current layout and zoom
 						}
+						// If focused, don't auto-fit/reorganize - maintain current zoom
 					}, 100);
 				} else {
 					// All deleted - reset view
@@ -851,6 +901,10 @@ function App() {
 					setPendingDeleteId(null);
 					return;
 				}
+				if (isInspectMode) {
+					setIsInspectMode(false);
+					return;
+				}
 				if (focusedSandboxId) {
 					// Exit focused mode
 					logger.info('Exiting focused mode');
@@ -878,7 +932,7 @@ function App() {
 		fitAllSandboxes,
 	]);
 
-	// Window resize handler - update viewport and refocus if needed
+	// Window resize handler - update viewport dimensions
 	useEffect(() => {
 		const handleResize = () => {
 			// Update viewport dimensions for dynamic focused sizing
@@ -887,11 +941,13 @@ function App() {
 				height: window.innerHeight,
 			});
 
-			if (focusedSandboxId) {
-				setTimeout(() => {
-					focusSandbox(focusedSandboxId);
-				}, 100);
-			}
+			// DISABLED: Auto-refocus on resize was causing unwanted zoom changes
+			// when resizing VS Code panels or opening split views
+			// if (focusedSandboxId) {
+			// 	setTimeout(() => {
+			// 		focusSandbox(focusedSandboxId);
+			// 	}, 100);
+			// }
 		};
 
 		window.addEventListener("resize", handleResize);
@@ -918,7 +974,6 @@ function App() {
 		setIsSelectMode(newState);
 		if (newState) {
 			setIsInspectMode(false);
-			setIsRectangleMode(false);
 		}
 		logger.info('Select mode toggled', { enabled: newState });
 	}, [isSelectMode]);
@@ -928,19 +983,8 @@ function App() {
 		setIsInspectMode(newState);
 		if (newState) {
 			setIsSelectMode(false);
-			setIsRectangleMode(false);
 		}
 	}, [isInspectMode, sandboxes.length]);
-
-	const handleRectangleSelection = useCallback(() => {
-		const newState = !isRectangleMode;
-		setIsRectangleMode(newState);
-		if (newState) {
-			setIsSelectMode(false);
-			setIsInspectMode(false);
-		}
-		logger.info('Rectangle mode toggled', { enabled: newState });
-	}, [isRectangleMode]);
 
 	const handleAIChat = useCallback(() => {
 		logger.info('AI Chat toggled');
@@ -1157,12 +1201,13 @@ function App() {
 			<BottomActionBar
 				onSelectMode={handleSelectMode}
 				onInspectMode={handleInspectMode}
-				onRectangleSelection={handleRectangleSelection}
 				onAIChat={handleAIChat}
 				onAISubmit={handleAISubmit}
 				isSelectMode={isSelectMode}
 				isInspectMode={isInspectMode}
-				isRectangleMode={isRectangleMode}
+				openChatAt={aiChatAnchor}
+				onChatAnchorConsumed={() => setAiChatAnchor(null)}
+				onEscape={() => setIsInspectMode(false)}
 			/>
 
 			{/* Delete confirmation modal (triggered by Delete key) */}

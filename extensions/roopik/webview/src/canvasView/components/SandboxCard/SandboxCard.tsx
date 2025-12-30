@@ -765,6 +765,7 @@ export function SandboxCard({
 							// Without this, srcDoc updates sometimes don't refresh the iframe content
 							// key={`${sandbox.id}-${sandbox.buildStatus}-${sandbox.bundledCode?.length || 0}`}
 							key={`${sandbox.id}-${sandbox.buildStatus}-${sandbox.bundleNonce ?? 0}`}
+							data-sandbox-id={sandbox.id}
 							srcDoc={srcDoc}
 							sandbox="allow-scripts allow-same-origin"
 							title={displayName}
