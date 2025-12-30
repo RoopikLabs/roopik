@@ -27,7 +27,8 @@ import {
 import {
 	Component,
 	AddComponentRequest,
-	ComponentInfo
+	ComponentInfo,
+	RuntimeError
 } from '../common/component/types.js';
 
 import { COMPONENT_CHANNEL_NAME } from '../common/component/index.js';
@@ -225,5 +226,26 @@ export class ComponentServiceClient implements IComponentService {
 
 	unignoreComponentFileChanges(id: string): void {
 		this.channel.call('unignoreComponentFileChanges', id);
+	}
+
+	// ========================================================================
+	// Runtime Error Reporting
+	// ========================================================================
+
+	/**
+	 * Report a runtime error from canvas rendering.
+	 * Called when the error boundary in the sandbox catches an error.
+	 * This is fire-and-forget - no response expected.
+	 */
+	reportRuntimeError(componentId: string, error: RuntimeError): void {
+		this.channel.call('reportRuntimeError', { componentId, error });
+	}
+
+	/**
+	 * Clear runtime error for a component.
+	 * Called after successful rebuild to clear previous runtime errors.
+	 */
+	clearRuntimeError(componentId: string): void {
+		this.channel.call('clearRuntimeError', componentId);
 	}
 }

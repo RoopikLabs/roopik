@@ -476,6 +476,22 @@ export class CanvasPanel implements vscode.Disposable {
 					});
 					break;
 
+				case 'componentRuntimeError':
+					// Forward runtime error to componentService
+					await this.handleComponentRuntimeError(message.payload as {
+						componentId: string;
+						error: {
+							message: string;
+							type: 'runtime' | 'promise' | 'unknown';
+							stack?: string;
+							source?: string;
+							line?: number;
+							column?: number;
+							timestamp: number;
+						};
+					});
+					break;
+
 				default:
 					this.logger.warn(`Unknown webview message type: ${message.type}`);
 			}
@@ -651,6 +667,31 @@ export class CanvasPanel implements vscode.Disposable {
 		this.logger.info(`Deleting component: ${payload.componentId}`);
 		await this.manager.deleteComponent(payload.componentId);
 		// onComponentDeleted event will be routed back
+	}
+
+	/**
+	 * Handle runtime error from component sandbox
+	 *
+	 * When a component crashes at runtime (not during build), the error boundary
+	 * catches it and sends it via postMessage to the webview, which forwards it here.
+	 * We then call the core's reportRuntimeError to store it in component state.
+	 */
+	private async handleComponentRuntimeError(payload: {
+		componentId: string;
+		error: {
+			message: string;
+			type: 'runtime' | 'promise' | 'unknown';
+			stack?: string;
+			source?: string;
+			line?: number;
+			column?: number;
+			timestamp: number;
+		};
+	}): Promise<void> {
+		this.logger.warn(`Component runtime error: ${payload.componentId} - ${payload.error.message}`);
+
+		// Forward to manager which calls componentService.reportRuntimeError
+		await this.manager.reportComponentRuntimeError(payload.componentId, payload.error);
 	}
 
 	/**

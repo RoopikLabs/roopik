@@ -347,15 +347,31 @@ export type WebviewMessage =
 	| { type: 'rebuildComponent'; payload: { componentId: string } }
 	// Canvas AI chat input
 	| {
-			type: 'canvasAiChat';
-			payload: {
-				userInput: string;
-				context: CanvasAIContext;
-				images?: string[];
-				imageMetadata?: { deviceMode: string; deviceViewport: { width: number; height: number } };
-				autoSend?: boolean;
+		type: 'canvasAiChat';
+		payload: {
+			userInput: string;
+			context: CanvasAIContext;
+			images?: string[];
+			imageMetadata?: { deviceMode: string; deviceViewport: { width: number; height: number } };
+			autoSend?: boolean;
+		};
+	}
+	// Report runtime error from component sandbox
+	| {
+		type: 'componentRuntimeError';
+		payload: {
+			componentId: string;
+			error: {
+				message: string;
+				type: string;
+				stack?: string;
+				source?: string;
+				line?: number;
+				column?: number;
+				timestamp: number;
 			};
-	  };
+		};
+	};
 
 /**
  * VSCode API interface

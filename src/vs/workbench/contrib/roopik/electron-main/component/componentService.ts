@@ -30,7 +30,8 @@ import {
 	Component,
 	AddComponentRequest,
 	ComponentInfo,
-	BuildErrorInfo
+	BuildErrorInfo,
+	RuntimeError
 } from '../../common/component/types.js';
 import { ComponentReference, Framework } from '../../common/storage/storageTypes.js';
 import { IRoopikStorageService } from '../../common/storage/storageService.js';
@@ -1000,7 +1001,10 @@ export class ComponentService extends Disposable implements IComponentService {
 			cdnUrls: bundle?.buildMeta.cdnUrls || [],
 			lastBuildTime: bundle?.buildMeta.buildTime || 0,
 			bundleSize: bundle?.buildMeta.bundleSize || 0,
-			lastBuiltAt: bundle?.buildMeta.builtAt || 0
+			lastBuiltAt: bundle?.buildMeta.builtAt || 0,
+
+			// Runtime status (from canvas rendering)
+			runtimeError: component.runtimeError || null
 		};
 	}
 
@@ -1027,5 +1031,64 @@ export class ComponentService extends Disposable implements IComponentService {
 		});
 
 		this._onComponentUpdated.fire({ component, changes: ['componentName'] });
+	}
+
+	// ========================================================================
+	// Runtime Error Reporting (from canvas)
+	// ========================================================================
+
+	/**
+	 * Report a runtime error from canvas rendering.
+	 *
+	 * Called by the extension when a component crashes at runtime in the sandbox.
+	 * The error boundary in the sandbox catches the error and sends it via postMessage,
+	 * which the extension catches and forwards here via IPC.
+	 *
+	 * The error is stored in the component's in-memory state and exposed via getComponentInfo().
+	 * This allows AI agents to detect runtime issues that weren't caught during build.
+	 *
+	 * @param componentId - The component that crashed
+	 * @param error - The runtime error details
+	 */
+	reportRuntimeError(componentId: string, error: RuntimeError): void {
+		const component = this.components.get(componentId);
+		if (!component) {
+			this.logger.warn('reportRuntimeError: Component not found', { componentId });
+			return;
+		}
+
+		// Store the runtime error in the component state
+		component.runtimeError = error;
+		component.updatedAt = Date.now();
+
+		this.logger.info('Runtime error reported for component', {
+			componentId,
+			errorMessage: error.message,
+			errorType: error.type
+		});
+
+		// Fire update event so UI can react
+		this._onComponentUpdated.fire({ component, changes: ['source'] });
+	}
+
+	/**
+	 * Clear runtime error for a component.
+	 *
+	 * Called when a component is rebuilt successfully, to clear any previous runtime errors.
+	 * This is typically called automatically after a successful build.
+	 *
+	 * @param componentId - The component to clear error for
+	 */
+	clearRuntimeError(componentId: string): void {
+		const component = this.components.get(componentId);
+		if (!component) {
+			return;
+		}
+
+		if (component.runtimeError) {
+			component.runtimeError = undefined;
+			component.updatedAt = Date.now();
+			this.logger.debug('Runtime error cleared for component', { componentId });
+		}
 	}
 }

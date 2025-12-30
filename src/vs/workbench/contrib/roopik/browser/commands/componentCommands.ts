@@ -210,4 +210,27 @@ export function registerComponentCommands(): void {
 			return componentService.getComponentSource(componentId);
 		}
 	});
+
+	// Report Runtime Error
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.core.reportRuntimeError',
+				title: localize2('roopik.core.reportRuntimeError', 'Report Runtime Error (Internal)'),
+				category: localize2('roopik.category', 'Roopik'),
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args: { componentId: string; error: any }): Promise<void> {
+			if (!args || !args.componentId || !args.error) {
+				console.warn('[ComponentCommands] roopik.core.reportRuntimeError: Invalid arguments', args);
+				return;
+			}
+
+			const componentService = accessor.get(IComponentService);
+			componentService.reportRuntimeError(args.componentId, args.error);
+		}
+	});
 }
+

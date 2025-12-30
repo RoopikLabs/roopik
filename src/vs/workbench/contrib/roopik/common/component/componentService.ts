@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import { Component, AddComponentRequest, BuildResult, BuildErrorInfo, ComponentInfo } from './types.js';
+import { Component, AddComponentRequest, BuildResult, BuildErrorInfo, ComponentInfo, RuntimeError } from './types.js';
 
 // ============================================================================
 // Event Types
@@ -289,6 +289,28 @@ export interface IComponentService {
 	 * Stop ignoring file changes for a component
 	 */
 	unignoreComponentFileChanges(id: string): void;
+
+	// ========================================================================
+	// Runtime Error Reporting
+	// ========================================================================
+
+	/**
+	 * Report a runtime error from canvas rendering.
+	 * Called by the extension when a component crashes at runtime in the sandbox.
+	 * The error is stored in component state and exposed via getComponentInfo().
+	 *
+	 * @param componentId - The component that crashed
+	 * @param error - The runtime error details
+	 */
+	reportRuntimeError(componentId: string, error: RuntimeError): void;
+
+	/**
+	 * Clear runtime error for a component.
+	 * Called automatically after a successful rebuild.
+	 *
+	 * @param componentId - The component to clear error for
+	 */
+	clearRuntimeError(componentId: string): void;
 
 	// ========================================================================
 	// Events

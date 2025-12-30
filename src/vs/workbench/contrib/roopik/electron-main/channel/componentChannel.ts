@@ -17,7 +17,7 @@
 import { Event } from '../../../../../base/common/event.js';
 import { IServerChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import { IComponentService } from '../../common/component/componentService.js';
-import { AddComponentRequest } from '../../common/component/types.js';
+import { AddComponentRequest, RuntimeError } from '../../common/component/types.js';
 
 export class ComponentChannel implements IServerChannel {
 	constructor(private readonly service: IComponentService) { }
@@ -125,6 +125,18 @@ export class ComponentChannel implements IServerChannel {
 				return Promise.resolve();
 			case 'unignoreComponentFileChanges':
 				this.service.unignoreComponentFileChanges(arg as string);
+				return Promise.resolve();
+
+			// ================================================================
+			// Runtime Error Reporting (from canvas)
+			// ================================================================
+			case 'reportRuntimeError': {
+				const { componentId, error } = arg as { componentId: string; error: RuntimeError };
+				this.service.reportRuntimeError(componentId, error);
+				return Promise.resolve();
+			}
+			case 'clearRuntimeError':
+				this.service.clearRuntimeError(arg as string);
 				return Promise.resolve();
 
 			default:

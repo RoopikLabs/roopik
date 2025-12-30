@@ -15,6 +15,42 @@
 import { Framework, BuildState } from '../storage/storageTypes.js';
 
 // ============================================================================
+// Runtime Error (from canvas rendering)
+// ============================================================================
+
+/**
+ * Runtime error captured from canvas sandbox.
+ *
+ * When a component crashes at runtime (not during build), the error boundary
+ * in the sandbox catches it and sends it back to the extension, which forwards
+ * it to core. This allows AI agents to see runtime errors via getComponentInfo().
+ *
+ * Note: This is separate from BuildErrorInfo which captures build-time errors.
+ */
+export interface RuntimeError {
+	/** Error message */
+	message: string;
+
+	/** Error type: 'runtime' (window.onerror) or 'promise' (unhandled rejection) */
+	type: 'runtime' | 'promise' | 'unknown';
+
+	/** Stack trace if available */
+	stack?: string;
+
+	/** Source file where error occurred (if available) */
+	source?: string;
+
+	/** Line number where error occurred (if available) */
+	line?: number;
+
+	/** Column number where error occurred (if available) */
+	column?: number;
+
+	/** Timestamp when error was captured */
+	timestamp: number;
+}
+
+// ============================================================================
 // Component (Runtime State)
 // ============================================================================
 
@@ -54,6 +90,13 @@ export interface Component {
 
 	/** Origin hint: 'local' | 'ai' | 'figma' | 'github' (informational) */
 	origin?: string;
+
+	/**
+	 * Runtime error from canvas rendering (if any).
+	 * Set when the component crashes at runtime in the sandbox.
+	 * Cleared on successful rebuild.
+	 */
+	runtimeError?: RuntimeError;
 
 	/** Timestamps */
 	createdAt: number;
@@ -291,4 +334,14 @@ export interface ComponentInfo {
 
 	/** When the component was last built (0 if never) */
 	lastBuiltAt: number;
+
+	// === Runtime Status (from canvas rendering) ===
+
+	/**
+	 * Runtime error from canvas rendering (if any).
+	 * This is set when the component crashes at runtime in the sandbox.
+	 * AI agents can use this to detect runtime issues not caught during build.
+	 * Null means no runtime error (either not rendered yet or rendered successfully).
+	 */
+	runtimeError: RuntimeError | null;
 }

@@ -466,6 +466,27 @@ export class RoopikExtensionManager implements vscode.Disposable {
 		return result || {};
 	}
 
+	/**
+	 * Report a runtime error to Core
+	 */
+	public async reportComponentRuntimeError(
+		componentId: string,
+		error: {
+			message: string;
+			type: 'runtime' | 'promise' | 'unknown';
+			stack?: string;
+			source?: string;
+			line?: number;
+			column?: number;
+			timestamp: number;
+		}
+	): Promise<void> {
+		await vscode.commands.executeCommand(
+			'roopik.core.reportRuntimeError',
+			{ componentId, error }
+		);
+	}
+
 
 	// ============================================================================
 	// Core Notifications (panel state tracking)
