@@ -609,6 +609,12 @@ export class ComponentService extends Disposable implements IComponentService {
 				};
 			}
 
+			// Clear previous runtime error when starting a new build
+			// This ensures stale errors don't persist after a fix
+			if (component.runtimeError) {
+				this.clearRuntimeError(componentId);
+			}
+
 			const sourceResult = await loadSourceFiles(component.folderPath);
 
 			if (sourceResult.filesLoaded === 0) {
