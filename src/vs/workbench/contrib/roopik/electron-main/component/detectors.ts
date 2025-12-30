@@ -14,8 +14,9 @@
  */
 
 import { promises as fs } from 'fs';
-import * as path from 'path';
+import * as path from '../../../../../base/common/path.js';
 import { Framework } from '../../common/storage/storageTypes.js';
+import { detectFrameworkFromFile } from '../../common/build/componentParser.js';
 
 // ============================================================================
 // Entry File Detector
@@ -120,72 +121,13 @@ export async function detectEntryFile(folderPath: string): Promise<string> {
 // ============================================================================
 
 /**
- * Auto-detect framework from entry file imports
+ * Detect framework from entry file
  *
- * Reads the file and looks for framework-specific imports:
- * - 'react' or 'react-dom' → 'react'
- * - 'vue' → 'vue'
- * - 'svelte' → 'svelte'
- * - 'solid-js' → 'solid'
- * - 'preact' → 'preact'
- * - else → 'unknown'
- *
+ * NOTE: Thin wrapper around ComponentParser.detectFrameworkFromFile()
  * @param entryFilePath Absolute path to entry file (e.g., /src/Button/Button.tsx)
  * @returns Detected framework
  */
 export async function detectFramework(entryFilePath: string): Promise<Framework> {
-	try {
-		// Read file content
-		const content = await readFile(entryFilePath);
-
-		// Extract all imports using regex
-		// Matches: import ... from 'package' or import ... from "package"
-		const importRegex = /import\s+.*?\s+from\s+['"]([^'"]+)['"]/g;
-		const imports: string[] = [];
-
-		let match;
-		while ((match = importRegex.exec(content)) !== null) {
-			imports.push(match[1]);
-		}
-
-
-		// Check for framework-specific imports
-		if (imports.some(imp => imp === 'react' || imp === 'react-dom')) {
-			return 'react';
-		}
-
-		if (imports.some(imp => imp === 'vue')) {
-			return 'vue';
-		}
-
-		if (imports.some(imp => imp === 'svelte')) {
-			return 'svelte';
-		}
-
-		if (imports.some(imp => imp === 'solid-js' || imp === 'solid-js/web')) {
-			return 'solid';
-		}
-
-		if (imports.some(imp => imp === 'preact')) {
-			return 'preact';
-		}
-
-		// Default to unknown
-		return 'unknown';
-	} catch (error) {
-		console.error(`[Detector] Framework detection failed:`, error);
-		// Return unknown on error instead of throwing
-		return 'unknown';
-	}
+	return detectFrameworkFromFile(entryFilePath);
 }
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/**
- * Read file content
- */
-async function readFile(filePath: string): Promise<string> {
-	return fs.readFile(filePath, 'utf-8');
-}

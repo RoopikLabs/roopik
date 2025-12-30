@@ -320,7 +320,10 @@ export class ESBuildTransformer {
 		const startTime = Date.now();
 
 		// 1. Detect framework
-		const framework = input.framework || this.parser.detectFramework(input.files);
+		// Always re-detect if framework is 'unknown' to allow fixing incorrect detections
+		const framework = (input.framework && input.framework !== 'unknown')
+			? input.framework
+			: this.parser.detectFramework(input.files);
 
 		// 2. Detect entry file
 		const userEntryFile = input.entryFile || this.parser.detectEntryFile(input.files, framework);
