@@ -214,7 +214,7 @@
 
 .ai-chat-add-overlay {
 	flex-shrink: 0;
-	margin-left: auto;
+	margin-left: 0;
 	margin-right: 6px;
 	display: inline-flex;
 	align-items: center;
@@ -237,6 +237,39 @@
 
 .ai-chat-add-overlay:active {
 	transform: scale(0.95);
+}
+
+.ai-chat-screenshot-toggle {
+	flex-shrink: 0;
+	margin-left: auto;
+	margin-right: 6px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	padding: 0;
+	background: var(--vscode-toolbar-hoverBackground);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 18px;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.ai-chat-screenshot-toggle:hover {
+	background: var(--vscode-list-hoverBackground);
+	color: var(--vscode-foreground);
+}
+
+.ai-chat-screenshot-toggle:active {
+	transform: scale(0.95);
+}
+
+.ai-chat-screenshot-toggle.active {
+	background: rgba(255, 255, 255, 0.08);
+	color: var(--vscode-foreground);
+	border-color: var(--vscode-focusBorder);
 }
 
 .ai-chat-send-overlay {

@@ -56,6 +56,7 @@ const AUTO_REORGANIZE_ON_DELETE = true;
  * Keep false until we expose a user setting.
  */
 const AUTO_ATTACH_SCREENSHOT_ON_INSPECT = false;
+const CHAT_SCREENSHOT_TOGGLE_KEY = "roopik.canvas.chatScreenshotEnabled";
 
 // ============================================================================
 
@@ -122,6 +123,7 @@ function App() {
 	const [isSelectMode, setIsSelectMode] = useState(false);
 	const [isInspectMode, setIsInspectMode] = useState(false);
 	const [aiChatAnchor, setAiChatAnchor] = useState<{ x: number; y: number; top: number; bottom: number; nonce: number } | null>(null);
+	const [isChatScreenshotEnabled, setIsChatScreenshotEnabled] = useState(false);
 
 	// Grid positioning mode state
 	const [snapMode, setSnapMode] = useState<SnapMode>("free");
@@ -174,6 +176,28 @@ function App() {
 	useEffect(() => {
 		focusedSandboxIdRef.current = focusedSandboxId;
 	}, [focusedSandboxId]);
+
+	useEffect(() => {
+		try {
+			const stored = window.localStorage.getItem(CHAT_SCREENSHOT_TOGGLE_KEY);
+			if (stored === "true") {
+				setIsChatScreenshotEnabled(true);
+			}
+		} catch {
+			// Ignore storage errors and fall back to default.
+		}
+	}, []);
+
+	useEffect(() => {
+		try {
+			window.localStorage.setItem(
+				CHAT_SCREENSHOT_TOGGLE_KEY,
+				isChatScreenshotEnabled ? "true" : "false",
+			);
+		} catch {
+			// Ignore storage errors and keep in-memory state only.
+		}
+	}, [isChatScreenshotEnabled]);
 
 	// Load initial state from extension on mount
 	useEffect(() => {
@@ -590,6 +614,40 @@ function App() {
 		[focusedSandboxId, globalDeviceMode, sandboxes, viewport.height, viewport.width],
 	);
 
+	const captureComponentScreenshot = useCallback(async (componentId: string) => {
+		const iframe = document.querySelector(
+			`iframe[data-sandbox-id="${componentId}"]`,
+		) as HTMLIFrameElement | null;
+		const doc = iframe?.contentDocument;
+		const target = doc?.documentElement;
+
+		if (!iframe || !doc || !target) {
+			return null;
+		}
+
+		try {
+			const scrollWidth = Math.max(target.scrollWidth, target.clientWidth);
+			const scrollHeight = Math.max(target.scrollHeight, target.clientHeight);
+			const iframeWindow = iframe.contentWindow;
+			const canvas = await html2canvas(target, {
+				backgroundColor: null,
+				logging: false,
+				useCORS: true,
+				width: scrollWidth,
+				height: scrollHeight,
+				windowWidth: scrollWidth,
+				windowHeight: scrollHeight,
+				scrollX: iframeWindow ? -iframeWindow.scrollX : 0,
+				scrollY: iframeWindow ? -iframeWindow.scrollY : 0,
+			});
+
+			return canvas.toDataURL("image/png");
+		} catch (error) {
+			logger.warn("[Canvas] Screenshot capture failed", { componentId, error });
+			return null;
+		}
+	}, []);
+
 	// Handle messages from sandbox iframes (element inspection, errors, etc.)
 	useEffect(() => {
 		const handleIframeMessage = (event: MessageEvent) => {
@@ -674,6 +732,29 @@ function App() {
 
 			if (data.type === "roopik-screenshot-error") {
 				logger.warn("[Canvas] Screenshot capture failed", data);
+			}
+
+			// Handle runtime errors from sandbox (from error boundary or window.onerror)
+			if (data.type === "roopik-component-error" || data.type === "sandbox-error") {
+				const { componentId, error, message } = data;
+				logger.error("[Canvas] Component runtime error", { componentId, error, message });
+
+				// Forward to extension host, which will call core's reportRuntimeError
+				vscode.postMessage({
+					type: "componentRuntimeError",
+					payload: {
+						componentId: componentId || "unknown",
+						error: {
+							message: error?.message || message || "Unknown runtime error",
+							type: error?.type || "runtime",
+							stack: error?.stack,
+							source: error?.source,
+							line: error?.line,
+							column: error?.column,
+							timestamp: Date.now()
+						}
+					}
+				});
 			}
 		};
 
@@ -760,8 +841,19 @@ function App() {
 	}, []);
 
 	const handleAISubmit = useCallback(
-		(userInput: string, autoSend = true) => {
+		async (userInput: string, autoSend = true, includeScreenshot = false) => {
+			const pendingElement = pendingElementSelectionRef.current;
+			const targetComponentId = pendingElement?.componentId || selectedSandboxId || undefined;
 			const context = buildCanvasContext();
+
+			if (includeScreenshot && targetComponentId) {
+				const imageData = await captureComponentScreenshot(targetComponentId);
+				if (imageData) {
+					sendCanvasContextToChat(userInput, autoSend, context, [imageData]);
+					return;
+				}
+			}
+
 			const images: string[] = [];
 			const pendingScreenshot = pendingScreenshotRef.current;
 			if (
@@ -783,9 +875,16 @@ function App() {
 				);
 				return;
 			}
+
 			sendCanvasContextToChat(userInput, autoSend, context, images.length ? images : undefined);
 		},
-		[buildCanvasContext, getDeviceMetadataForComponent, sendCanvasContextToChat],
+		[
+			buildCanvasContext,
+			captureComponentScreenshot,
+			getDeviceMetadataForComponent,
+			selectedSandboxId,
+			sendCanvasContextToChat,
+		],
 	);
 
 	// Auto-save canvas state when sandboxes or viewport changes
@@ -1431,6 +1530,8 @@ function App() {
 				onInspectMode={handleInspectMode}
 				onAIChat={handleAIChat}
 				onAISubmit={handleAISubmit}
+				onScreenshotToggle={setIsChatScreenshotEnabled}
+				screenshotEnabled={isChatScreenshotEnabled}
 				isSelectMode={isSelectMode}
 				isInspectMode={isInspectMode}
 				openChatAt={aiChatAnchor}

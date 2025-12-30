@@ -10,7 +10,9 @@ interface BottomActionBarProps {
 	onSelectMode?: () => void;
 	onInspectMode?: () => void;
 	onAIChat?: () => void;
-	onAISubmit?: (input: string, autoSend?: boolean) => void;
+	onAISubmit?: (input: string, autoSend?: boolean, includeScreenshot?: boolean) => void;
+	onScreenshotToggle?: (enabled: boolean) => void;
+	screenshotEnabled?: boolean;
 	openChatAt?: { x: number; y: number; top: number; bottom: number; nonce: number } | null;
 	onChatAnchorConsumed?: () => void;
 	onEscape?: () => void;
@@ -34,6 +36,8 @@ export function BottomActionBar({
 	onInspectMode,
 	onAIChat,
 	onAISubmit,
+	onScreenshotToggle,
+	screenshotEnabled = false,
 	openChatAt,
 	onChatAnchorConsumed,
 	onEscape,
@@ -46,6 +50,7 @@ export function BottomActionBar({
 	const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
 	const [chatAnchor, setChatAnchor] = useState<{ x: number; y: number; top: number; bottom: number } | null>(null);
 	const [overlayHeight, setOverlayHeight] = useState(0);
+	const [captureScreenshot, setCaptureScreenshot] = useState(screenshotEnabled);
 	const aiInputRef = useRef<HTMLInputElement>(null);
 	const aiChatOverlayRef = useRef<HTMLDivElement>(null);
 
@@ -83,7 +88,7 @@ export function BottomActionBar({
 		if (!trimmed) {
 			return;
 		}
-		onAISubmit?.(trimmed, autoSend);
+		onAISubmit?.(trimmed, autoSend, captureScreenshot);
 		setAIInputValue('');
 		setShowCommands(false);
 		setIsAIChatOpen(false);
@@ -130,6 +135,10 @@ export function BottomActionBar({
 				break;
 		}
 	};
+
+	useEffect(() => {
+		setCaptureScreenshot(screenshotEnabled);
+	}, [screenshotEnabled]);
 
 	useEffect(() => {
 		if (!openChatAt) {
@@ -293,6 +302,22 @@ export function BottomActionBar({
 							onKeyDown={handleKeyDown}
 							autoFocus
 						/>
+						<button
+							className={`ai-chat-screenshot-toggle ${captureScreenshot ? 'active' : ''}`}
+							aria-label="Attach screenshot"
+							title="Attach screenshot"
+							onClick={() => {
+								const next = !captureScreenshot;
+								setCaptureScreenshot(next);
+								onScreenshotToggle?.(next);
+							}}
+						>
+							<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+								<rect x="2.5" y="4" width="11" height="8" rx="1.5" />
+								<path d="M6 4 L7 2.5 H9 L10 4" />
+								<circle cx="8" cy="8" r="2.2" />
+							</svg>
+						</button>
 						<button
 							className="ai-chat-add-overlay"
 							aria-label="Add to context"
