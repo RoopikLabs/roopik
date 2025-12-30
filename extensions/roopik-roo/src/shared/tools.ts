@@ -290,6 +290,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	update_todo_list: "update todo list",
 	run_slash_command: "run slash command",
 	generate_image: "generate images",
+	custom_tool: "use custom tools",
 	// Roopik IDE Tools - Browser
 	browser_open: "open browser",
 	browser_close: "close browser",
@@ -403,17 +404,17 @@ export const TOOL_ALIASES: Record<string, ToolName> = {
 export type DiffResult =
 	| { success: true; content: string; failParts?: DiffResult[] }
 	| ({
-			success: false
-			error?: string
-			details?: {
-				similarity?: number
-				threshold?: number
-				matchedRange?: { start: number; end: number }
-				searchContent?: string
-				bestMatch?: string
-			}
-			failParts?: DiffResult[]
-	  } & ({ error: string } | { failParts: DiffResult[] }))
+		success: false
+		error?: string
+		details?: {
+			similarity?: number
+			threshold?: number
+			matchedRange?: { start: number; end: number }
+			searchContent?: string
+			bestMatch?: string
+		}
+		failParts?: DiffResult[]
+	} & ({ error: string } | { failParts: DiffResult[] }))
 
 export interface DiffItem {
 	content: string

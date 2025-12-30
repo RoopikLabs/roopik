@@ -406,10 +406,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		) {
 			throw new Error(
 				"checkpointTimeout must be between " +
-					MIN_CHECKPOINT_TIMEOUT_SECONDS +
-					" and " +
-					MAX_CHECKPOINT_TIMEOUT_SECONDS +
-					" seconds",
+				MIN_CHECKPOINT_TIMEOUT_SECONDS +
+				" and " +
+				MAX_CHECKPOINT_TIMEOUT_SECONDS +
+				" seconds",
 			)
 		}
 
@@ -459,7 +459,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					if (providerRef) {
 						BrowserSessionPanelManager.getInstance(providerRef)
 							.show()
-							.catch(() => {})
+							.catch(() => { })
 					}
 				} catch (err) {
 					console.error("[Task] Failed to auto-open Browser Session panel:", err)
@@ -1424,6 +1424,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	}
 
 	public async condenseContext(): Promise<void> {
+		// CRITICAL: Flush any pending tool results before condensing
+		// to ensure tool_use/tool_result pairs are complete in history
+		await this.flushPendingToolResultsToHistory()
+
 		const systemPrompt = await this.getSystemPrompt()
 
 		// Get condensing configuration
@@ -1631,8 +1635,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 	async sayAndCreateMissingParamError(toolName: ToolName, paramName: string, relPath?: string) {
 		await this.say(
 			"error",
-			`Dio tried to use ${toolName}${
-				relPath ? ` for '${relPath.toPosix()}'` : ""
+			`Dio tried to use ${toolName}${relPath ? ` for '${relPath.toPosix()}'` : ""
 			} without value for required parameter '${paramName}'. Retrying...`,
 		)
 		// Use the task's locked protocol, NOT the current settings (fallback to xml if not set)
@@ -2458,19 +2461,19 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					const costResult =
 						apiProtocol === "anthropic"
 							? calculateApiCostAnthropic(
-									streamModelInfo,
-									inputTokens,
-									outputTokens,
-									cacheWriteTokens,
-									cacheReadTokens,
-								)
+								streamModelInfo,
+								inputTokens,
+								outputTokens,
+								cacheWriteTokens,
+								cacheReadTokens,
+							)
 							: calculateApiCostOpenAI(
-									streamModelInfo,
-									inputTokens,
-									outputTokens,
-									cacheWriteTokens,
-									cacheReadTokens,
-								)
+								streamModelInfo,
+								inputTokens,
+								outputTokens,
+								cacheWriteTokens,
+								cacheReadTokens,
+							)
 
 					this.clineMessages[lastApiReqIndex].text = JSON.stringify({
 						...existingData,
@@ -2658,8 +2661,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 											partial: true,
 										}
 
-										// Store the ID for native protocol
-										;(partialToolUse as any).id = event.id
+											// Store the ID for native protocol
+											; (partialToolUse as any).id = event.id
 
 										// Add to content and present
 										this.assistantMessageContent.push(partialToolUse)
@@ -2677,7 +2680,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 											const toolUseIndex = this.streamingToolCallIndices.get(event.id)
 											if (toolUseIndex !== undefined) {
 												// Store the ID for native protocol
-												;(partialToolUse as any).id = event.id
+												; (partialToolUse as any).id = event.id
 
 												// Update the existing tool use with new partial data
 												this.assistantMessageContent[toolUseIndex] = partialToolUse
@@ -2695,7 +2698,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 										if (finalToolUse) {
 											// Store the tool call ID
-											;(finalToolUse as any).id = event.id
+											; (finalToolUse as any).id = event.id
 
 											// Get the index and replace partial with final
 											if (toolUseIndex !== undefined) {
@@ -2717,8 +2720,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 											const existingToolUse = this.assistantMessageContent[toolUseIndex]
 											if (existingToolUse && existingToolUse.type === "tool_use") {
 												existingToolUse.partial = false
-												// Ensure it has the ID for native protocol
-												;(existingToolUse as any).id = event.id
+													// Ensure it has the ID for native protocol
+													; (existingToolUse as any).id = event.id
 											}
 
 											// Clean up tracking
@@ -2854,7 +2857,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 							if (finalToolUse) {
 								// Store the tool call ID
-								;(finalToolUse as any).id = event.id
+								; (finalToolUse as any).id = event.id
 
 								// Get the index and replace partial with final
 								if (toolUseIndex !== undefined) {
@@ -2876,8 +2879,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 								const existingToolUse = this.assistantMessageContent[toolUseIndex]
 								if (existingToolUse && existingToolUse.type === "tool_use") {
 									existingToolUse.partial = false
-									// Ensure it has the ID for native protocol
-									;(existingToolUse as any).id = event.id
+										// Ensure it has the ID for native protocol
+										; (existingToolUse as any).id = event.id
 								}
 
 								// Clean up tracking
@@ -2955,19 +2958,19 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 								const costResult =
 									apiProtocol === "anthropic"
 										? calculateApiCostAnthropic(
-												streamModelInfo,
-												tokens.input,
-												tokens.output,
-												tokens.cacheWrite,
-												tokens.cacheRead,
-											)
+											streamModelInfo,
+											tokens.input,
+											tokens.output,
+											tokens.cacheWrite,
+											tokens.cacheRead,
+										)
 										: calculateApiCostOpenAI(
-												streamModelInfo,
-												tokens.input,
-												tokens.output,
-												tokens.cacheWrite,
-												tokens.cacheRead,
-											)
+											streamModelInfo,
+											tokens.input,
+											tokens.output,
+											tokens.cacheWrite,
+											tokens.cacheRead,
+										)
 
 								TelemetryService.instance.captureLlmCompletion(this.taskId, {
 									inputTokens: costResult.totalInputTokens,
@@ -3583,8 +3586,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// Log the context window error for debugging
 		console.warn(
 			`[Task#${this.taskId}] Context window exceeded for model ${this.api.getModel().id}. ` +
-				`Current tokens: ${contextTokens}, Context window: ${contextWindow}. ` +
-				`Forcing truncation to ${FORCED_CONTEXT_REDUCTION_PERCENT}% of current context.`,
+			`Current tokens: ${contextTokens}, Context window: ${contextWindow}. ` +
+			`Forcing truncation to ${FORCED_CONTEXT_REDUCTION_PERCENT}% of current context.`,
 		)
 
 		// Determine if we're using native tool protocol for proper message handling
@@ -3899,11 +3902,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			// Include tools and tool protocol when using native protocol and model supports it
 			...(shouldIncludeTools
 				? {
-						tools: allTools,
-						tool_choice: "auto",
-						toolProtocol: taskProtocol,
-						parallelToolCalls: parallelToolCallsEnabled,
-					}
+					tools: allTools,
+					tool_choice: "auto",
+					toolProtocol: taskProtocol,
+					parallelToolCalls: parallelToolCallsEnabled,
+				}
 				: {}),
 		}
 
@@ -3955,8 +3958,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			if (isContextWindowExceededError && retryAttempt < MAX_CONTEXT_WINDOW_RETRIES) {
 				console.warn(
 					`[Task#${this.taskId}] Context window exceeded for model ${this.api.getModel().id}. ` +
-						`Retry attempt ${retryAttempt + 1}/${MAX_CONTEXT_WINDOW_RETRIES}. ` +
-						`Attempting automatic truncation...`,
+					`Retry attempt ${retryAttempt + 1}/${MAX_CONTEXT_WINDOW_RETRIES}. ` +
+					`Attempting automatic truncation...`,
 				)
 				await this.handleContextWindowExceededError()
 				// Retry the request after handling the context window error
@@ -4124,8 +4127,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					? (rawContent as Anthropic.Messages.ContentBlockParam[])
 					: rawContent !== undefined
 						? ([
-								{ type: "text", text: rawContent } satisfies Anthropic.Messages.TextBlockParam,
-							] as Anthropic.Messages.ContentBlockParam[])
+							{ type: "text", text: rawContent } satisfies Anthropic.Messages.TextBlockParam,
+						] as Anthropic.Messages.ContentBlockParam[])
 						: []
 
 				const [first, ...rest] = contentArray
