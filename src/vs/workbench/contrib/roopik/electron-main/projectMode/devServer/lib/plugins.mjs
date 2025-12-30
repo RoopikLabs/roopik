@@ -119,6 +119,7 @@ export function getPluginsForFramework(frameworkId, options = {}) {
 	// Add framework-specific source tracking
 	switch (frameworkId) {
 		case 'react-vite':
+		case 'preact-vite': // Preact also uses JSX, so we share the plugin
 			plugins.push(createReactSourcePlugin({
 				babelPath: options.babelPath,
 				forceRegexMode: options.forceRegexMode,
@@ -165,7 +166,7 @@ export function getPluginsForFramework(frameworkId, options = {}) {
  * Check if framework supports source tracking
  */
 export function supportsSourceTracking(frameworkId) {
-	const supported = ['react-vite', 'vue-vite', 'solid-vite', 'svelte-vite', 'plain-html-vite'];
+	const supported = ['react-vite', 'vue-vite', 'solid-vite', 'svelte-vite', 'plain-html-vite', 'preact-vite'];
 	return supported.includes(frameworkId);
 }
 

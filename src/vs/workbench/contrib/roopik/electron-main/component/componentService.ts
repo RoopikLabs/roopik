@@ -32,7 +32,7 @@ import {
 	ComponentInfo,
 	BuildErrorInfo
 } from '../../common/component/types.js';
-import { ComponentReference } from '../../common/storage/storageTypes.js';
+import { ComponentReference, Framework } from '../../common/storage/storageTypes.js';
 import { IRoopikStorageService } from '../../common/storage/storageService.js';
 import { IBuildService } from '../../common/build/buildService.js';
 import { ICanvasService } from '../../common/canvas/canvasService.js';
@@ -334,19 +334,28 @@ export class ComponentService extends Disposable implements IComponentService {
 		const resolvedCanvasId = canvasId as string;
 
 		// ====================================================================
-		// PIPELINE STEP 7: Framework Detection
+		// PIPELINE STEP 7: Framework Detection (ALWAYS detect, ignore AI hints)
 		// ====================================================================
-		let framework = request.framework;
-		if (!framework) {
-			try {
-				const entryFilePath = path.join(folderPath, entryFile);
-				framework = await detectFramework(entryFilePath);
-				// this.logger.debug('Framework detected', { entryFile, framework });
-			} catch (error) {
-				this.logger.warn('Framework detection failed, using unknown', { error });
-				framework = 'unknown';
-			}
+		// We ALWAYS run our own detector - AI agent hints are just logged for debugging
+		let detectedFramework: Framework = 'unknown';
+		try {
+			const entryFilePath = path.join(folderPath, entryFile);
+			detectedFramework = await detectFramework(entryFilePath);
+		} catch (error) {
+			this.logger.warn('Framework detection failed, using unknown', { error });
 		}
+
+		// Log mismatch if AI passed a different framework (for debugging)
+		if (request.framework && request.framework !== detectedFramework) {
+			this.logger.warn('Framework mismatch: AI suggested different framework, using detected', {
+				aiSuggested: request.framework,
+				detected: detectedFramework,
+				entryFile
+			});
+		}
+
+		// Always use our detected framework
+		const validatedFramework = detectedFramework;
 
 		// ====================================================================
 		// PIPELINE STEP 8: Content Hash Computation
@@ -374,7 +383,7 @@ export class ComponentService extends Disposable implements IComponentService {
 			componentName,
 			folderPath,
 			entryFile,
-			framework: framework || 'unknown',
+			framework: validatedFramework,
 			position: { x: 0, y: 0, zIndex: 0 },
 			buildState: { status: 'building' },
 			contentHash,
@@ -388,13 +397,12 @@ export class ComponentService extends Disposable implements IComponentService {
 		// ====================================================================
 		// REGISTRY: Create in-memory Component object
 		// ====================================================================
-		const resolvedFramework = framework || 'unknown';
 		const component: Component = {
 			id: componentId,
 			canvasId: resolvedCanvasId,
 			folderPath,
 			entryFile,
-			framework: resolvedFramework,
+			framework: validatedFramework,
 			buildState: { status: 'building' }, // Initial state
 			contentHash,                        // Always computed
 			componentName,

@@ -204,12 +204,7 @@ function getCDNUrl(
 	return url;
 }
 
-/**
- * Get stable fallback version for a package
- */
-function getStableVersion(packageName: string): string | undefined {
-	return STABLE_VERSIONS[packageName];
-}
+
 
 
 /**
@@ -309,12 +304,59 @@ const JSX_IMPORT_SOURCES: Partial<Record<Framework, string>> = {
 export class ESBuildTransformer {
 
 	private readonly logger;
+	private stableVersionsCache: Record<string, string> | null = null;
 
 	constructor(
 		@ILoggerService loggerService: ILoggerService,
 		private readonly parser: ComponentParser
 	) {
-		this.logger = getRoopikLogger(loggerService, 'ESBUILD_TRANSFORMER');
+		this.logger = getRoopikLogger(loggerService, 'BUILD_TRANSFORMER');
+	}
+
+	/**
+	 * Get stable versions with lazy loading and caching
+	 *
+	 * Priority:
+	 * 1. In-memory cache (if already loaded)
+	 * 2. External JSON file (user-editable)
+	 * 3. Hardcoded fallback (STABLE_VERSIONS constant)
+	 */
+	private async getStableVersions(): Promise<Record<string, string>> {
+		// Return cached if available
+		if (this.stableVersionsCache) {
+			this.logger.info('Using cached stable versions');
+			return this.stableVersionsCache;
+		}
+
+		try {
+			// Try loading from external JSON
+			// Path differs between dev (out-build) and production builds
+			// From: electron-main/build/ -> resources/
+			// In compiled output: __dirname = out-build/vs/workbench/contrib/roopik/electron-main/build
+			// In production: same relative structure
+
+			// Try production path first (relative to compiled output)
+			let jsonPath = path.join(__dirname, '../../resources/stable-versions.json');
+
+			// Check if file exists, if not try source path (for dev mode with source maps)
+			if (!fs.existsSync(jsonPath)) {
+				// Dev fallback: look relative to workspace root
+				// __dirname in dev: [workspace]/out-build/vs/workbench/contrib/roopik/electron-main/build
+				// We need:          [workspace]/src/vs/workbench/contrib/roopik/resources/stable-versions.json
+				const workspaceRoot = path.join(__dirname, '../../../../../../../..');
+				jsonPath = path.join(workspaceRoot, 'src/vs/workbench/contrib/roopik/resources/stable-versions.json');
+			}
+
+			const content = await fs.promises.readFile(jsonPath, 'utf-8');
+			this.stableVersionsCache = JSON.parse(content);
+			this.logger.info('Loaded stable versions from file', { path: jsonPath });
+			return this.stableVersionsCache!;
+		} catch (error) {
+			// Fallback to hardcoded
+			this.logger.warn('Failed to load stable versions file, using hardcoded fallback', { error });
+			this.stableVersionsCache = STABLE_VERSIONS;
+			return this.stableVersionsCache!;
+		}
 	}
 
 	async transform(input: ComponentInput): Promise<TransformedComponent> {
@@ -367,11 +409,12 @@ export class ESBuildTransformer {
 
 		// 8. Build framework core deps for dependency aliasing
 		// This prevents "multiple React instances" issues with libraries like framer-motion
+		const stableVersions = await this.getStableVersions();
 		const frameworkCorePkgs = FRAMEWORK_CORE_DEPS[framework] || [];
 		const frameworkDeps: Record<string, string> = {};
 		for (const pkg of frameworkCorePkgs) {
 			// Get the version - prefer normalized deps, then stable fallback
-			const version = normalizedDeps[pkg] || getStableVersion(pkg);
+			const version = normalizedDeps[pkg] || stableVersions[pkg];
 			if (version) {
 				frameworkDeps[pkg] = version;
 			}
@@ -388,7 +431,8 @@ export class ESBuildTransformer {
 				buildConfig,
 				resolvedDeps,
 				frameworkDeps,
-				framework
+				framework,
+				stableVersions
 			);
 		} else {
 			result = await this.transformWithVirtualBuild(
@@ -398,7 +442,8 @@ export class ESBuildTransformer {
 				buildConfig,
 				resolvedDeps,
 				frameworkDeps,
-				framework
+				framework,
+				stableVersions
 			);
 		}
 
@@ -479,7 +524,8 @@ export class ESBuildTransformer {
 		buildConfig: FrameworkBuildConfig,
 		resolvedDeps: Record<string, string>,
 		frameworkDeps: Record<string, string>,
-		framework: Framework
+		framework: Framework,
+		stableVersions: Record<string, string>
 	): Promise<{ code: string; metafile: esbuild.Metafile }> {
 		// Create temp directory
 		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'roopik-sandbox-'));
@@ -523,7 +569,7 @@ export class ESBuildTransformer {
 				} : {}),
 				plugins: [
 					...buildConfig.getPlugins(),
-					this.createCDNResolverPlugin(dependencies, resolvedDeps, frameworkDeps, localFiles)
+					this.createCDNResolverPlugin(dependencies, resolvedDeps, frameworkDeps, stableVersions, localFiles)
 				]
 			});
 
@@ -551,7 +597,8 @@ export class ESBuildTransformer {
 		buildConfig: FrameworkBuildConfig,
 		resolvedDeps: Record<string, string>,
 		frameworkDeps: Record<string, string>,
-		framework: Framework
+		framework: Framework,
+		stableVersions: Record<string, string>
 	): Promise<{ code: string; metafile: esbuild.Metafile }> {
 		// Get JSX import source for this framework (React, Preact, Solid use JSX)
 		const jsxImportSource = JSX_IMPORT_SOURCES[framework];
@@ -572,7 +619,7 @@ export class ESBuildTransformer {
 			plugins: [
 				...buildConfig.getPlugins(),
 				this.createVirtualFSPlugin(files),
-				this.createCDNResolverPlugin(dependencies, resolvedDeps, frameworkDeps)
+				this.createCDNResolverPlugin(dependencies, resolvedDeps, frameworkDeps, stableVersions)
 			]
 		});
 
@@ -716,6 +763,7 @@ render(h(Component), root);
 		dependencies: Record<string, string>,
 		resolvedDeps: Record<string, string>,
 		frameworkDeps: Record<string, string>,
+		stableVersions: Record<string, string>,
 		localFiles?: Set<string>
 	): esbuild.Plugin {
 		// Capture logger for use in plugin callbacks
@@ -776,7 +824,7 @@ render(h(Component), root);
 					let versionSource = 'input';
 
 					if (!version) {
-						version = getStableVersion(mainPkg);
+						version = stableVersions[mainPkg];
 						versionSource = version ? 'stable-fallback' : 'latest';
 					}
 

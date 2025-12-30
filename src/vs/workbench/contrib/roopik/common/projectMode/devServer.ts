@@ -21,6 +21,7 @@ export type Framework =
 	| 'vue-vite'
 	| 'svelte-vite'
 	| 'solid-vite'
+	| 'preact-vite'
 	| 'plain-html-vite'
 	| 'nextjs'
 	| 'nuxt'

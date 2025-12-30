@@ -31,6 +31,7 @@ import { IServerChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import type { BrowserViewService } from '../projectMode/browserViewService.js';
 import type { DevServerService } from '../projectMode/devServer/devServerService.js';
 import type { ComponentService } from '../component/componentService.js';
+import type { AddComponentRequest } from '../../common/component/types.js';
 import type { ICanvasService } from '../../common/canvas/canvasService.js';
 import type { IRoopikStorageService } from '../../common/storage/storageService.js';
 import { ROOPIK_TOOLS_CHANNEL_NAME, RoopikToolResult } from '../../common/tools/types.js';
@@ -945,14 +946,15 @@ export class RoopikToolsChannel implements IServerChannel {
 		entryFile?: string;
 		framework?: string;
 	}): Promise<RoopikToolResult> {
-		const component = await this.componentService.addComponent({
+		const request: AddComponentRequest = {
 			folderPath: args.folderPath,
 			canvasId: args.canvasId,
 			componentName: args.name,
 			entryFile: args.entryFile,
-			framework: args.framework as any,
+			framework: args.framework,
 			origin: 'ai'
-		});
+		};
+		const component = await this.componentService.addComponent(request);
 
 		return {
 			success: true,
@@ -983,13 +985,13 @@ export class RoopikToolsChannel implements IServerChannel {
 			framework?: string;
 		}>;
 	}): Promise<RoopikToolResult> {
-		const requests = args.components.map(c => ({
+		const requests: AddComponentRequest[] = args.components.map(c => ({
 			folderPath: c.folderPath,
 			canvasId: c.canvasId,
 			componentName: c.name,
 			entryFile: c.entryFile,
-			framework: c.framework as any,
-			origin: 'ai' as const
+			framework: c.framework,
+			origin: 'ai'
 		}));
 
 		const created = await this.componentService.addComponents(requests);

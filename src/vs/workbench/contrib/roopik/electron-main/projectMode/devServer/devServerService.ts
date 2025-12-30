@@ -451,6 +451,8 @@ export class DevServerService implements IDevServerService {
 					framework = 'svelte-vite';
 				} else if (deps['solid-js'] || deps['vite-plugin-solid']) {
 					framework = 'solid-vite';
+				} else if (deps['preact'] || deps['@preact/preset-vite']) {
+					framework = 'preact-vite';
 				} else {
 					framework = 'plain-html-vite';
 				}
@@ -485,6 +487,7 @@ export class DevServerService implements IDevServerService {
 			'vue-vite': 'Vue 3 (Vite)',
 			'svelte-vite': 'Svelte (Vite)',
 			'solid-vite': 'SolidJS (Vite)',
+			'preact-vite': 'Preact (Vite)',
 			'plain-html-vite': 'Plain HTML (Vite)',
 			'nextjs': 'Next.js',
 			'nuxt': 'Nuxt',
@@ -500,6 +503,7 @@ export class DevServerService implements IDevServerService {
 			'vue-vite',
 			'svelte-vite',
 			'solid-vite',
+			'preact-vite',
 			'plain-html-vite'
 		].includes(framework);
 
@@ -507,6 +511,7 @@ export class DevServerService implements IDevServerService {
 			'react-vite',
 			'vue-vite',
 			'solid-vite',
+			'preact-vite',
 			'plain-html-vite'
 		].includes(framework);
 

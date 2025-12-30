@@ -112,9 +112,10 @@ export interface AddComponentRequest {
 
 	/**
 	 * Framework hint (react, vue, svelte, etc.)
-	 * Auto-detected from imports if not provided
+	 * Auto-detected from imports if not provided.
+	 * Invalid values will be ignored and trigger auto-detection.
 	 */
-	framework?: Framework;
+	framework?: string; // Accepts any string, validated at runtime
 
 	/**
 	 * Origin hint: 'local' | 'ai' | 'figma' | 'github'

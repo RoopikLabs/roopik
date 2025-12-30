@@ -217,6 +217,14 @@ const FRAMEWORKS = {
 		supportsSourceTracking: true,
 		detect: (deps) => deps['vite'] && (deps['vue'] || deps['@vitejs/plugin-vue'])
 	},
+	'preact-vite': {
+		id: 'preact-vite',
+		name: 'Preact (Vite)',
+		bundler: 'vite',
+		supported: true,
+		supportsSourceTracking: true,
+		detect: (deps) => deps['vite'] && (deps['preact'] || deps['@preact/preset-vite'])
+	},
 	'svelte-vite': {
 		id: 'svelte-vite',
 		name: 'Svelte (Vite)',
