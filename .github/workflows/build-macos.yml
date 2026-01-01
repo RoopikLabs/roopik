@@ -108,6 +108,47 @@ jobs:
       - name: Build macOS application (arm64)
         run: npm run gulp vscode-darwin-arm64
 
+      - name: Import Apple signing certificate
+        env:
+          MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        run: |
+          echo "$MAC_CERT_P12" | base64 --decode > /tmp/mac_cert.p12
+          security create-keychain -p "" build.keychain
+          security import /tmp/mac_cert.p12 -k build.keychain -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security list-keychains -s build.keychain
+          security unlock-keychain -p "" build.keychain
+
+      - name: Codesign app
+        run: |
+          APP_PATH="$(find ../VSCode-darwin-arm64 -maxdepth 2 -name "*.app" -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found under ../VSCode-darwin-arm64"
+            exit 1
+          fi
+          SIGN_IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*\"\\(Developer ID Application:.*\\)\".*/\\1/p' | head -n 1)"
+          if [ -z "$SIGN_IDENTITY" ]; then
+            echo "No Developer ID Application identity found"
+            exit 1
+          fi
+          codesign --force --options runtime --timestamp \
+            --entitlements build/azure-pipelines/darwin/app-entitlements.plist \
+            --sign "$SIGN_IDENTITY" "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+      - name: Notarize and staple
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          APP_PATH="$(find ../VSCode-darwin-arm64 -maxdepth 2 -name "*.app" -print -quit)"
+          APP_DIR="$(dirname "$APP_PATH")"
+          APP_ZIP="$APP_DIR/Roopik-macos.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$APP_ZIP"
+          xcrun notarytool submit "$APP_ZIP" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple "$APP_PATH"
+
       - name: Copy macOS build to workspace
         run: |
           mkdir -p .artifacts
