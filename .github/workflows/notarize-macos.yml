@@ -7,6 +7,10 @@ on:
         description: "Build workflow run ID to pull artifacts from (optional)"
         required: false
         type: string
+      request_id:
+        description: "Existing notarization request ID to poll (optional)"
+        required: false
+        type: string
       artifact_name:
         description: "Artifact name from build workflow"
         required: false
@@ -76,15 +80,19 @@ jobs:
           hdiutil detach "/Volumes/Roopik" -force || true
           hdiutil create -volname "Roopik" -srcfolder "$DMG_ROOT" -ov -format UDZO "$DMG_NAME"
 
-          SUBMIT_JSON="$(xcrun notarytool submit "$DMG_NAME" \
-            --apple-id "$APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password "$APPLE_APP_PASSWORD" \
-            --output-format json)"
+          REQUEST_ID="${{ inputs.request_id }}"
+          if [ -z "$REQUEST_ID" ]; then
+            SUBMIT_JSON="$(xcrun notarytool submit "$DMG_NAME" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_PASSWORD" \
+              --output-format json)"
 
-          echo "$SUBMIT_JSON"
+            echo "$SUBMIT_JSON"
 
-          REQUEST_ID="$(echo "$SUBMIT_JSON" | /usr/bin/python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")"
+            REQUEST_ID="$(echo "$SUBMIT_JSON" | /usr/bin/python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")"
+          fi
+
           echo "Notarization request id: $REQUEST_ID"
 
           MAX_ATTEMPTS=60
