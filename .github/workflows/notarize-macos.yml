@@ -98,19 +98,8 @@ jobs:
               --password "$APPLE_APP_PASSWORD" \
               --output-format json 2>/dev/null || true)"
 
-            STATUS="$(echo "$LOG_JSON" | /usr/bin/python3 - <<'PY'
-import json,sys
-data=sys.stdin.read().strip()
-if not data:
-    print("Pending")
-    sys.exit(0)
-try:
-    payload=json.loads(data)
-    print(payload.get("status","Pending"))
-except json.JSONDecodeError:
-    print("Pending")
-PY
-)"
+            STATUS="$(printf '%s' "$LOG_JSON" | /usr/bin/python3 -c "import json,sys; data=sys.stdin.read().strip(); \
+print('Pending') if not data else print(json.loads(data).get('status','Pending')) if data[:1] in '{[' else print('Pending')")"
             echo "Notarization status ($ATTEMPT/$MAX_ATTEMPTS): $STATUS"
 
             if [ "$STATUS" = "Accepted" ]; then
