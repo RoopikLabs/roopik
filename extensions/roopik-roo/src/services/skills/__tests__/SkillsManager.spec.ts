@@ -54,7 +54,7 @@ vi.mock("vscode", () => ({
 }))
 
 // Global roo directory - computed once
-const GLOBAL_ROO_DIR = p(HOME_DIR, ".dio")
+const GLOBAL_ROO_DIR = p(HOME_DIR, ".roo")
 
 // Mock roo-config
 vi.mock("../../roo-config", () => ({
@@ -74,7 +74,7 @@ describe("SkillsManager", () => {
 	const globalSkillsDir = p(GLOBAL_ROO_DIR, "skills")
 	const globalSkillsCodeDir = p(GLOBAL_ROO_DIR, "skills-code")
 	const globalSkillsArchitectDir = p(GLOBAL_ROO_DIR, "skills-architect")
-	const projectRooDir = p(PROJECT_DIR, ".dio")
+	const projectRooDir = p(PROJECT_DIR, ".roo")
 	const projectSkillsDir = p(projectRooDir, "skills")
 
 	beforeEach(() => {
@@ -340,11 +340,126 @@ description: Name doesn't match directory
 			expect(skills).toHaveLength(0)
 		})
 
+		it("should skip skills with invalid name formats (spec compliance)", async () => {
+			const invalidNames = [
+				"PDF-processing", // uppercase
+				"-pdf", // leading hyphen
+				"pdf-", // trailing hyphen
+				"pdf--processing", // consecutive hyphens
+			]
+
+			mockDirectoryExists.mockImplementation(async (dir: string) => dir === globalSkillsDir)
+			mockRealpath.mockImplementation(async (pathArg: string) => pathArg)
+			mockReaddir.mockImplementation(async (dir: string) => (dir === globalSkillsDir ? invalidNames : []))
+
+			mockStat.mockImplementation(async (pathArg: string) => {
+				if (invalidNames.some((name) => pathArg === p(globalSkillsDir, name))) {
+					return { isDirectory: () => true }
+				}
+				throw new Error("Not found")
+			})
+
+			mockFileExists.mockImplementation(async (file: string) => {
+				return invalidNames.some((name) => file === p(globalSkillsDir, name, "SKILL.md"))
+			})
+
+			mockReadFile.mockImplementation(async (file: string) => {
+				const match = invalidNames.find((name) => file === p(globalSkillsDir, name, "SKILL.md"))
+				if (!match) throw new Error("File not found")
+				return `---
+name: ${match}
+description: Invalid name format
+---
+
+# Invalid Skill`
+			})
+
+			await skillsManager.discoverSkills()
+			const skills = skillsManager.getAllSkills()
+			expect(skills).toHaveLength(0)
+		})
+
+		it("should skip skills with name longer than 64 characters (spec compliance)", async () => {
+			const longName = "a".repeat(65)
+			const longDir = p(globalSkillsDir, longName)
+			const longMd = p(longDir, "SKILL.md")
+
+			mockDirectoryExists.mockImplementation(async (dir: string) => dir === globalSkillsDir)
+			mockRealpath.mockImplementation(async (pathArg: string) => pathArg)
+			mockReaddir.mockImplementation(async (dir: string) => (dir === globalSkillsDir ? [longName] : []))
+
+			mockStat.mockImplementation(async (pathArg: string) => {
+				if (pathArg === longDir) return { isDirectory: () => true }
+				throw new Error("Not found")
+			})
+
+			mockFileExists.mockImplementation(async (file: string) => file === longMd)
+			mockReadFile.mockResolvedValue(`---
+name: ${longName}
+description: Too long name
+---
+
+# Long Name Skill`)
+
+			await skillsManager.discoverSkills()
+			const skills = skillsManager.getAllSkills()
+			expect(skills).toHaveLength(0)
+		})
+
+		it("should skip skills with empty/whitespace-only description (spec compliance)", async () => {
+			const skillDir = p(globalSkillsDir, "valid-name")
+			const skillMd = p(skillDir, "SKILL.md")
+
+			mockDirectoryExists.mockImplementation(async (dir: string) => dir === globalSkillsDir)
+			mockRealpath.mockImplementation(async (pathArg: string) => pathArg)
+			mockReaddir.mockImplementation(async (dir: string) => (dir === globalSkillsDir ? ["valid-name"] : []))
+			mockStat.mockImplementation(async (pathArg: string) => {
+				if (pathArg === skillDir) return { isDirectory: () => true }
+				throw new Error("Not found")
+			})
+			mockFileExists.mockImplementation(async (file: string) => file === skillMd)
+			mockReadFile.mockResolvedValue(`---
+name: valid-name
+description: "   "
+---
+
+# Empty Description`)
+
+			await skillsManager.discoverSkills()
+			const skills = skillsManager.getAllSkills()
+			expect(skills).toHaveLength(0)
+		})
+
+		it("should skip skills with too-long descriptions (spec compliance)", async () => {
+			const skillDir = p(globalSkillsDir, "valid-name")
+			const skillMd = p(skillDir, "SKILL.md")
+			const longDescription = "d".repeat(1025)
+
+			mockDirectoryExists.mockImplementation(async (dir: string) => dir === globalSkillsDir)
+			mockRealpath.mockImplementation(async (pathArg: string) => pathArg)
+			mockReaddir.mockImplementation(async (dir: string) => (dir === globalSkillsDir ? ["valid-name"] : []))
+			mockStat.mockImplementation(async (pathArg: string) => {
+				if (pathArg === skillDir) return { isDirectory: () => true }
+				throw new Error("Not found")
+			})
+			mockFileExists.mockImplementation(async (file: string) => file === skillMd)
+			mockReadFile.mockResolvedValue(`---
+name: valid-name
+description: ${longDescription}
+---
+
+# Too Long Description`)
+
+			await skillsManager.discoverSkills()
+			const skills = skillsManager.getAllSkills()
+			expect(skills).toHaveLength(0)
+		})
+
 		it("should handle symlinked skills directory", async () => {
 			const sharedSkillDir = p(SHARED_DIR, "shared-skill")
 			const sharedSkillMd = p(sharedSkillDir, "SKILL.md")
 
-			// Simulate .dio/skills being a symlink to /shared/skills
+			// Simulate .roo/skills being a symlink to /shared/skills
 			mockDirectoryExists.mockImplementation(async (dir: string) => {
 				return dir === globalSkillsDir
 			})
@@ -401,7 +516,7 @@ Instructions here...`
 			const myAliasDir = p(globalSkillsDir, "my-alias")
 			const myAliasMd = p(myAliasDir, "SKILL.md")
 
-			// Simulate .dio/skills/my-alias being a symlink to /external/actual-skill
+			// Simulate .roo/skills/my-alias being a symlink to /external/actual-skill
 			mockDirectoryExists.mockImplementation(async (dir: string) => {
 				return dir === globalSkillsDir
 			})
