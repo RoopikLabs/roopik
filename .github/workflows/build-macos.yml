@@ -125,26 +125,61 @@ jobs:
 
 
       - name: Codesign app
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           APP_PATH="$(find ../VSCode-darwin-arm64 -maxdepth 2 -name "*.app" -print -quit)"
           if [ -z "$APP_PATH" ]; then
             echo "No .app found under ../VSCode-darwin-arm64"
             exit 1
           fi
+
+          # pick the SHA (most reliable) for the correct identity from build.keychain
           SIGN_IDENTITY="$(security find-identity -v -p codesigning build.keychain \
-            | grep 'Developer ID Application' \
-            | grep '${{ secrets.APPLE_TEAM_ID }}' \
-            | sed -n 's/.*\"\(Developer ID Application:.*\)\".*/\1/p' \
-            | head -n 1)"
+            | awk '/Developer ID Application/ {print $2; exit}')"
 
           if [ -z "$SIGN_IDENTITY" ]; then
-            echo "No Developer ID Application identity found"
+            echo "No Developer ID Application identity found in build.keychain"
             exit 1
           fi
+
+          echo "Using signing identity SHA: $SIGN_IDENTITY"
+
+          # 1) Remove any existing signatures inside the bundle (fixes ReactiveObjC.framework error)
+          find "$APP_PATH" -name "_CodeSignature" -type d -prune -exec rm -rf "{}" +
+          find "$APP_PATH" -name "CodeResources" -type f -delete
+
+          # 2) Sign embedded frameworks, dylibs, helper apps FIRST (no entitlements here)
+          if [ -d "$APP_PATH/Contents/Frameworks" ]; then
+            # Framework bundles
+            find "$APP_PATH/Contents/Frameworks" -name "*.framework" -maxdepth 2 -print0 | while IFS= read -r -d '' fw; do
+              codesign --force --timestamp --options runtime \
+                --keychain build.keychain \
+                --sign "$SIGN_IDENTITY" "$fw"
+            done
+
+            # Helper apps inside Frameworks (Electron Helper.app etc.)
+            find "$APP_PATH/Contents/Frameworks" -name "*.app" -maxdepth 2 -print0 | while IFS= read -r -d '' helper; do
+              codesign --force --timestamp --options runtime \
+                --keychain build.keychain \
+                --sign "$SIGN_IDENTITY" "$helper"
+            done
+
+            # Loose dylibs/so files if any
+            find "$APP_PATH/Contents/Frameworks" \( -name "*.dylib" -o -name "*.so" \) -print0 | while IFS= read -r -d '' lib; do
+              codesign --force --timestamp --options runtime \
+                --keychain build.keychain \
+                --sign "$SIGN_IDENTITY" "$lib"
+            done
+          fi
+
+          # 3) Sign the top-level app LAST (entitlements only here)
           codesign --force --options runtime --timestamp \
             --keychain build.keychain \
             --entitlements build/azure-pipelines/darwin/app-entitlements.plist \
             --sign "$SIGN_IDENTITY" "$APP_PATH"
+
+          # Verify
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
 
