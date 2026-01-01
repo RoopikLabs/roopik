@@ -43,9 +43,16 @@ jobs:
         run: |
           SIGNED_ZIP="$(find . -name 'Roopik-macos-signed.zip' -print -quit)"
           if [ -z "$SIGNED_ZIP" ]; then
-            echo "Signed zip not found in downloaded artifacts."
-            find . -maxdepth 3 -type f -name "*.zip" -print
-            exit 1
+            APP_PATH="$(find . -maxdepth 3 -name "*.app" -print -quit)"
+            if [ -z "$APP_PATH" ]; then
+              echo "Signed zip not found and no .app found in downloaded artifacts."
+              find . -maxdepth 4 -type f -name "*.zip" -print
+              exit 1
+            fi
+
+            mkdir -p .artifacts
+            SIGNED_ZIP=".artifacts/Roopik-macos-signed.zip"
+            ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$SIGNED_ZIP"
           fi
 
           rm -rf .notarize

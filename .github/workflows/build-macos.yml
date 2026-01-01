@@ -170,17 +170,11 @@ jobs:
           SIGNED_ZIP=".artifacts/Roopik-macos-signed.zip"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$SIGNED_ZIP"
 
-      - name: Copy macOS build to workspace
-        run: |
-          mkdir -p .artifacts
-          cp -r ../VSCode-darwin-arm64 ./Roopik-Portable-darwin-arm64
-
       - name: Upload macOS artifacts (arm64)
         uses: actions/upload-artifact@v4
         with:
           name: roopik-macos-arm64
           path: |
-            Roopik-Portable-darwin-arm64/
             .artifacts/Roopik-macos-signed.zip
           retention-days: 30
 
