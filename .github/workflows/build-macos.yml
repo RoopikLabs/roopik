@@ -233,20 +233,42 @@ jobs:
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_PASSWORD" \
-            --wait \
             --output-format json)"
 
           echo "$SUBMIT_JSON"
 
           REQUEST_ID="$(echo "$SUBMIT_JSON" | /usr/bin/python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")"
-          STATUS="$(echo "$SUBMIT_JSON" | /usr/bin/python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")"
+          echo "Notarization request id: $REQUEST_ID"
 
-          if [ "$STATUS" != "Accepted" ]; then
-            echo "Notarization failed, fetching log..."
-            xcrun notarytool log "$REQUEST_ID" \
+          MAX_ATTEMPTS=60
+          SLEEP_SECONDS=60
+          ATTEMPT=1
+
+          while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+            LOG_JSON="$(xcrun notarytool log "$REQUEST_ID" \
               --apple-id "$APPLE_ID" \
               --team-id "$APPLE_TEAM_ID" \
-              --password "$APPLE_APP_PASSWORD"
+              --password "$APPLE_APP_PASSWORD" \
+              --output-format json || true)"
+
+            STATUS="$(echo "$LOG_JSON" | /usr/bin/python3 -c "import sys,json; print(json.load(sys.stdin).get('status', 'Unknown'))")"
+            echo "Notarization status ($ATTEMPT/$MAX_ATTEMPTS): $STATUS"
+
+            if [ "$STATUS" = "Accepted" ]; then
+              break
+            fi
+
+            if [ "$STATUS" = "Invalid" ]; then
+              echo "$LOG_JSON"
+              exit 1
+            fi
+
+            sleep "$SLEEP_SECONDS"
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "Notarization did not finish in time. Request id: $REQUEST_ID"
             exit 1
           fi
 
