@@ -1,0 +1,130 @@
+name: Notarize macOS (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Build workflow run ID to pull artifacts from (optional)"
+        required: false
+        type: string
+      artifact_name:
+        description: "Artifact name from build workflow"
+        required: false
+        default: "roopik-macos-arm64"
+        type: string
+      branch:
+        description: "Branch to pull artifacts from when run_id is empty"
+        required: false
+        default: "main"
+        type: string
+
+jobs:
+  notarize-macos-arm64:
+    name: Notarize macOS (ARM64)
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Download signed artifact
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: build-macos.yml
+          run_id: ${{ inputs.run_id }}
+          branch: ${{ inputs.branch }}
+          name: ${{ inputs.artifact_name }}
+          workflow_conclusion: success
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notarize and staple
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          SIGNED_ZIP="./.artifacts/Roopik-macos-signed.zip"
+          if [ ! -f "$SIGNED_ZIP" ]; then
+            echo "Signed zip not found at $SIGNED_ZIP"
+            exit 1
+          fi
+
+          rm -rf .notarize
+          mkdir -p .notarize
+          ditto -x -k "$SIGNED_ZIP" .notarize
+
+          APP_PATH="$(find .notarize -maxdepth 3 -name "*.app" -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found in notarize payload"
+            exit 1
+          fi
+
+          DMG_ROOT=".dmgroot"
+          DMG_NAME="Roopik-macos.dmg"
+          rm -rf "$DMG_ROOT"
+          mkdir -p "$DMG_ROOT"
+          cp -R "$APP_PATH" "$DMG_ROOT/"
+          ln -s /Applications "$DMG_ROOT/Applications"
+
+          rm -f "$DMG_NAME"
+          hdiutil detach "/Volumes/Roopik" -force || true
+          hdiutil create -volname "Roopik" -srcfolder "$DMG_ROOT" -ov -format UDZO "$DMG_NAME"
+
+          SUBMIT_JSON="$(xcrun notarytool submit "$DMG_NAME" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --output-format json)"
+
+          echo "$SUBMIT_JSON"
+
+          REQUEST_ID="$(echo "$SUBMIT_JSON" | /usr/bin/python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")"
+          echo "Notarization request id: $REQUEST_ID"
+
+          MAX_ATTEMPTS=60
+          SLEEP_SECONDS=60
+          ATTEMPT=1
+
+          while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+            LOG_JSON="$(xcrun notarytool log "$REQUEST_ID" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_PASSWORD" \
+              --output-format json || true)"
+
+            STATUS="$(echo "$LOG_JSON" | /usr/bin/python3 -c "import sys,json; print(json.load(sys.stdin).get('status', 'Unknown'))")"
+            echo "Notarization status ($ATTEMPT/$MAX_ATTEMPTS): $STATUS"
+
+            if [ "$STATUS" = "Accepted" ]; then
+              break
+            fi
+
+            if [ "$STATUS" = "Invalid" ]; then
+              echo "$LOG_JSON"
+              exit 1
+            fi
+
+            sleep "$SLEEP_SECONDS"
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "Notarization did not finish in time. Request id: $REQUEST_ID"
+            exit 1
+          fi
+
+          xcrun stapler staple "$APP_PATH"
+          xcrun stapler staple "$DMG_NAME"
+
+          NOTARIZED_ZIP="./Roopik-macos-notarized.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$NOTARIZED_ZIP"
+
+          NOTARIZED_DMG="./Roopik-macos-notarized.dmg"
+          mv "$DMG_NAME" "$NOTARIZED_DMG"
+
+      - name: Upload notarized artifact (arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: roopik-macos-arm64-notarized
+          path: |
+            Roopik-macos-notarized.zip
+            Roopik-macos-notarized.dmg
+          retention-days: 30
