@@ -164,7 +164,28 @@ jobs:
           APP_DIR="$(dirname "$APP_PATH")"
           APP_ZIP="$APP_DIR/Roopik-macos.zip"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$APP_ZIP"
-          xcrun notarytool submit "$APP_ZIP" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+
+          SUBMIT_JSON="$(xcrun notarytool submit "$APP_ZIP" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait \
+            --output-format json)"
+
+          echo "$SUBMIT_JSON"
+
+          REQUEST_ID="$(echo "$SUBMIT_JSON" | /usr/bin/python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")"
+          STATUS="$(echo "$SUBMIT_JSON" | /usr/bin/python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")"
+
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "Notarization failed, fetching log..."
+            xcrun notarytool log "$REQUEST_ID" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_PASSWORD"
+            exit 1
+          fi
+
           xcrun stapler staple "$APP_PATH"
 
       - name: Copy macOS build to workspace
