@@ -202,9 +202,10 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
-          SIGNED_ZIP="./.artifacts/Roopik-macos-signed.zip"
-          if [ ! -f "$SIGNED_ZIP" ]; then
-            echo "Signed zip not found at $SIGNED_ZIP"
+          SIGNED_ZIP="$(find . -name 'Roopik-macos-signed.zip' -print -quit)"
+          if [ -z "$SIGNED_ZIP" ]; then
+            echo "Signed zip not found in downloaded artifacts."
+            find . -maxdepth 3 -type f -name "*.zip" -print
             exit 1
           fi
 
