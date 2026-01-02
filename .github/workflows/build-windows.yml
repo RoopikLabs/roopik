@@ -133,17 +133,67 @@ jobs:
       # - name: Build Windows installer (System)
       #   run: npm run gulp vscode-win32-x64-system-setup
 
-      - name: Copy portable build to workspace
+      - name: Prepare Windows release artifact
         shell: bash
         run: |
-          # Copy and rename to Roopik branding
+          # Copy and rename portable build to workspace
           cp -r ../VSCode-win32-x64 ./Roopik-Portable-win32-x64
+
+          # Create a stable-named installer for manual upload
+          powershell -NoProfile -Command ^
+            "New-Item -ItemType Directory -Force -Path .artifacts\\public | Out-Null; " ^
+            "$installer = Get-ChildItem -Path .build\\win32-x64\\user-setup -Filter RoopikSetup.exe | Select-Object -First 1; " ^
+            "if (-not $installer) { throw 'RoopikSetup.exe not found in .build\\win32-x64\\user-setup' }; " ^
+            "Copy-Item $installer.FullName '.artifacts\\public\\roopik-windows-latest.exe' -Force"
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: roopik-windows-x64
+          name: roopik-windows-release
           path: |
+            .artifacts/public/
             Roopik-Portable-win32-x64/
-            .build/win32-x64/user-setup/
           retention-days: 30
+
+      - name: Install AWS CLI
+        continue-on-error: true
+        run: choco install awscli -y
+
+      - name: Upload Windows installer to R2
+        continue-on-error: true
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          $endpoint = "https://$env:R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+          $prefix = "windows/"
+          $installer = Get-ChildItem -Path .build\win32-x64\user-setup -Filter RoopikSetup.exe | Select-Object -First 1
+          if (-not $installer) { throw "RoopikSetup.exe not found in .build\\win32-x64\\user-setup" }
+          $env:AWS_ACCESS_KEY_ID = $env:R2_ACCESS_KEY_ID
+          $env:AWS_SECRET_ACCESS_KEY = $env:R2_SECRET_ACCESS_KEY
+          $env:AWS_EC2_METADATA_DISABLED = "true"
+          aws s3 cp $installer.FullName "s3://$env:R2_BUCKET/${prefix}roopik-windows-latest.exe" --endpoint-url $endpoint --no-progress
+
+          if (-not $env:R2_PUBLIC_BASE_URL) {
+            Write-Host "R2_PUBLIC_BASE_URL not set, skipping update manifest upload."
+            exit 0
+          }
+
+          $version = node -p "require('./package.json').version"
+          $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash.ToLower()
+          $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          $base = $env:R2_PUBLIC_BASE_URL.TrimEnd('/')
+          $url = "$base/windows/roopik-windows-latest.exe"
+          $json = @{
+            version = $version
+            productVersion = $version
+            url = $url
+            sha256hash = $hash
+            pub_date = $pubDate
+          } | ConvertTo-Json -Compress
+          $tmp = Join-Path $env:TEMP "latest.json"
+          $json | Out-File -Encoding utf8 $tmp
+          aws s3 cp $tmp "s3://$env:R2_BUCKET/windows/stable/latest.json" --endpoint-url $endpoint --no-progress
