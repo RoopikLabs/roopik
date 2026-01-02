@@ -3,6 +3,10 @@ name: Build All Platforms
 on:
   workflow_dispatch: # Manual trigger only
 
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   trigger-builds:
     name: Trigger All Platform Builds
