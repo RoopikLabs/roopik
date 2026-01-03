@@ -29,7 +29,7 @@
 		"useAnotherProvider": "3rd-party Provider",
 		"useAnotherProviderDescription": "Enter an API key, or use a local model (offline).",
 		"noApiKeys": "Don't want to deal with API keys and separate accounts?",
-		"backToDio": "Go with the Code Cloud Provider.",
+		"backToRoo": "Go with the Code Cloud Provider.",
 		"goBack": "Back",
 		"finish": "Finish"
 	},
