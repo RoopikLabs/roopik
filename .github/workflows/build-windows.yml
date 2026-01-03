@@ -134,17 +134,13 @@ jobs:
       #   run: npm run gulp vscode-win32-x64-system-setup
 
       - name: Prepare Windows release artifact
-        shell: bash
+        shell: powershell
         run: |
-          # Copy and rename portable build to workspace
-          cp -r ../VSCode-win32-x64 ./Roopik-Portable-win32-x64
-
-          # Create a stable-named installer for manual upload
-          powershell -NoProfile -Command ^
-            "New-Item -ItemType Directory -Force -Path .artifacts\\public | Out-Null; " ^
-            "$installer = Get-ChildItem -Path .build\\win32-x64\\user-setup -Filter RoopikSetup.exe | Select-Object -First 1; " ^
-            "if (-not $installer) { throw 'RoopikSetup.exe not found in .build\\win32-x64\\user-setup' }; " ^
-            "Copy-Item $installer.FullName '.artifacts\\public\\roopik-windows-latest.exe' -Force"
+          Copy-Item -Recurse -Force ..\VSCode-win32-x64 .\Roopik-Portable-win32-x64
+          New-Item -ItemType Directory -Force -Path .artifacts\public | Out-Null
+          $installer = Get-ChildItem -Path .build\win32-x64\user-setup -Filter RoopikSetup.exe | Select-Object -First 1
+          if (-not $installer) { throw "RoopikSetup.exe not found in .build\win32-x64\user-setup" }
+          Copy-Item $installer.FullName .artifacts\public\roopik-windows-latest.exe -Force
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
