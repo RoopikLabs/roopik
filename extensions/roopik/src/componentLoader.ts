@@ -183,7 +183,7 @@ export class ComponentLoader {
 				// 2. Validate cache freshness by comparing hashes
 				if (cached.buildMeta.contentHash === contentHash) {
 					// Cache is valid!
-					this.logger.info(`Cache hit for ${componentId} - using cached bundle`);
+					// this.logger.info(`Cache hit for ${componentId} - using cached bundle`);
 					return {
 						success: true,
 						fromCache: true,

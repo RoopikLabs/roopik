@@ -492,6 +492,20 @@ export class CanvasPanel implements vscode.Disposable {
 					});
 					break;
 
+				case 'debugLog':
+					// Handle debug logs from webview for tracing
+					const debugPayload = message.payload as { level?: string; message: string };
+					const logLevel = debugPayload?.level || 'info';
+					const logMsg = debugPayload?.message || 'Unknown debug message';
+					if (logLevel === 'error') {
+						this.logger.error(`[WebviewTrace] ${logMsg}`);
+					} else if (logLevel === 'warn') {
+						this.logger.warn(`[WebviewTrace] ${logMsg}`);
+					} else {
+						this.logger.info(`[WebviewTrace] ${logMsg}`);
+					}
+					break;
+
 				default:
 					this.logger.warn(`Unknown webview message type: ${message.type}`);
 			}

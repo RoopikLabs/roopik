@@ -518,27 +518,54 @@ export function SandboxCard({
 	const preset = DEVICE_PRESETS[effectiveDeviceMode];
 	const isDeviceMode = preset.width !== 'auto';
 
-	// Generate srcDoc based on build status
-	const srcDoc = useMemo(() => {
+	// FIX: Use blob URL instead of srcDoc to work around VS Code webview rendering issues.
+	const [blobUrl, setBlobUrl] = useState<string | null>(null);
+	const prevBlobUrlRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		let html: string;
+
 		switch (sandbox.buildStatus) {
 			case 'pending':
-				return PENDING_HTML;
+				html = PENDING_HTML;
+				break;
 			case 'building':
-				return LOADING_HTML;
+				html = LOADING_HTML;
+				break;
 			case 'error':
-				console.error('[SandboxCard] Status: error -', sandbox.buildError, sandbox.buildErrorInfo);
-				return generateErrorHTML(sandbox.buildError || 'Unknown error', sandbox.buildErrorInfo);
+				html = generateErrorHTML(sandbox.buildError || 'Unknown error', sandbox.buildErrorInfo);
+				break;
 			case 'ready':
 				if (sandbox.bundledCode) {
-					return generateSandboxHTML(sandbox.bundledCode, sandbox.id);
+					html = generateSandboxHTML(sandbox.bundledCode, sandbox.id);
+				} else {
+					html = generateErrorHTML('No bundled code available');
 				}
-				console.error('[SandboxCard] Status: ready but no bundledCode!');
-				return generateErrorHTML('No bundled code available');
+				break;
 			default:
-				console.warn('[SandboxCard] Unknown status:', sandbox.buildStatus);
-				return PENDING_HTML;
+				html = PENDING_HTML;
 		}
-	}, [sandbox.buildStatus, sandbox.buildError, sandbox.buildErrorInfo, sandbox.bundledCode, sandbox.id]);
+
+		// Revoke previous blob URL to prevent memory leaks
+		if (prevBlobUrlRef.current) {
+			URL.revokeObjectURL(prevBlobUrlRef.current);
+		}
+
+		// Create new blob URL
+		const blob = new Blob([html], { type: 'text/html' });
+		const url = URL.createObjectURL(blob);
+
+		prevBlobUrlRef.current = url;
+		setBlobUrl(url);
+
+		// Cleanup on unmount
+		return () => {
+			if (prevBlobUrlRef.current) {
+				URL.revokeObjectURL(prevBlobUrlRef.current);
+				prevBlobUrlRef.current = null;
+			}
+		};
+	}, [sandbox.buildStatus, sandbox.bundledCode, sandbox.bundleNonce, sandbox.id, sandbox.buildError, sandbox.buildErrorInfo]);
 
 	// Get display name from componentInput (prefer name, fallback to filename)
 	const displayName = useMemo(() => {
@@ -825,12 +852,11 @@ export function SandboxCard({
 					>
 						<iframe
 							ref={iframeRef}
-							// KEY FIX: Force iframe recreation when content changes
-							// Without this, srcDoc updates sometimes don't refresh the iframe content
-							// key={`${sandbox.id}-${sandbox.buildStatus}-${sandbox.bundledCode?.length || 0}`}
-							key={`${sandbox.id}-${sandbox.buildStatus}-${sandbox.bundleNonce ?? 0}`}
+							// FIX: Use blob URL instead of srcDoc
+							// VS Code webviews defer srcDoc updates, blob URLs force navigation
+							key={`${sandbox.id}-${sandbox.bundleNonce ?? 0}`}
 							data-sandbox-id={sandbox.id}
-							srcDoc={srcDoc}
+							src={blobUrl || 'about:blank'}
 							sandbox="allow-scripts allow-same-origin"
 							title={displayName}
 							style={{ pointerEvents: isDragging ? 'none' : 'auto' }}

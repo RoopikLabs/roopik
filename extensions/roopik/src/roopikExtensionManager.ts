@@ -126,7 +126,7 @@ export class RoopikExtensionManager implements vscode.Disposable {
 	private setupEventSubscriptions(): void {
 		// Events are now received via VSCode commands registered in extension.ts
 		// Commands like 'roopik.component.created' call our public handler methods
-		this.logger.info('Event subscriptions set up via command handlers');
+		// this.logger.info('Event subscriptions set up via command handlers');
 	}
 
 	// ============================================================================

@@ -292,7 +292,7 @@ jobs:
 
       - name: Install AWS CLI
         continue-on-error: true
-        run: python3 -m pip install --user awscli
+        run: brew install awscli
 
       - name: Upload macOS installers to R2
         continue-on-error: true
@@ -317,7 +317,7 @@ jobs:
             exit 0
           fi
 
-          version="$(node -p "require('./package.json').version")"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")"
           hash="$(shasum -a 256 "Roopik-macos-notarized.zip" | awk '{print tolower($1)}')"
           pub_date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           base="${R2_PUBLIC_BASE_URL%/}"

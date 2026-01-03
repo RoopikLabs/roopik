@@ -249,9 +249,9 @@ export async function activate(context: vscode.ExtensionContext) {
 		componentUpdatedCommand
 	);
 
-	logger.info('Extension', 'Roopik Canvas extension activated');
-	logger.info('Extension', 'Canvas commands: roopik.canvas.open, roopik.canvas.close, roopik.canvas.update, roopik.canvas.importComponent');
-	logger.info('Extension', 'Component event commands: roopik.component.created, roopik.component.built, roopik.component.deleted, roopik.component.updated');
+	// logger.info('Extension', 'Roopik Canvas extension activated');
+	// logger.info('Extension', 'Canvas commands: roopik.canvas.open, roopik.canvas.close, roopik.canvas.update, roopik.canvas.importComponent');
+	// logger.info('Extension', 'Component event commands: roopik.component.created, roopik.component.built, roopik.component.deleted, roopik.component.updated');
 }
 
 export function deactivate() {

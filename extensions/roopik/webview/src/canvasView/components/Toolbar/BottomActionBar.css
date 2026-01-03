@@ -267,9 +267,9 @@
 }
 
 .ai-chat-screenshot-toggle.active {
-	background: rgba(255, 255, 255, 0.08);
-	color: var(--vscode-foreground);
-	border-color: var(--vscode-focusBorder);
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border-color: var(--vscode-button-background);
 }
 
 .ai-chat-send-overlay {

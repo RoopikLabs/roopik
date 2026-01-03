@@ -371,6 +371,14 @@ export type WebviewMessage =
 				timestamp: number;
 			};
 		};
+	}
+	// Debug logging to extension output channel (DevTools-free debugging)
+	| {
+		type: 'debugLog';
+		payload: {
+			level?: 'debug' | 'info' | 'warn' | 'error';
+			message: string;
+		};
 	};
 
 /**

@@ -23,14 +23,14 @@ export interface GridConfig {
 }
 
 const DEFAULT_CONFIG: GridConfig = {
-	sandboxWidth: 500,
-	sandboxHeight: 500,
-	gridColumns: 4,
+	sandboxWidth: 600,
+	sandboxHeight: 600,
+	gridColumns: 3,
 	containerMargin: 20,
 	containerPaddingLR: 120,
 	containerPaddingTB: 40,
-	gapX: 60,
-	gapY: 60,
+	gapX: 150,
+	gapY: 100,
 	startX: 100,
 	startY: 100,
 };
