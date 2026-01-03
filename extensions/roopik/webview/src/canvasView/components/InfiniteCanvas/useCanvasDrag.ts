@@ -59,6 +59,7 @@ export function useCanvasDrag({
 	const [draggingSandboxId, setDraggingSandboxId] = useState<string | null>(null);
 	const [sandboxDragStart, setSandboxDragStart] = useState<Point>({ x: 0, y: 0 });
 	const [dragOffset, setDragOffset] = useState<Point>({ x: 0, y: 0 });
+	const [mouseDownTarget, setMouseDownTarget] = useState<EventTarget | null>(null);
 
 	// Start panning canvas
 	const handleCanvasMouseDown = (e: React.MouseEvent) => {
@@ -68,8 +69,9 @@ export function useCanvasDrag({
 				x: e.clientX - transform.x,
 				y: e.clientY - transform.y,
 			});
-			// Track mouse down position to detect clicks vs drags
+			// Track mouse down position and target to detect clicks vs drags
 			setMouseDownPos({ x: e.clientX, y: e.clientY });
+			setMouseDownTarget(e.target);
 			e.preventDefault();
 		}
 	};
@@ -128,8 +130,13 @@ export function useCanvasDrag({
 		const deltaY = Math.abs(e.clientY - mouseDownPos.y);
 		const wasClick = deltaX < clickThreshold && deltaY < clickThreshold;
 
-		// If it was a click (not a drag) and not on a sandbox, deselect
-		if (wasClick && !wasDraggingSandbox && onCanvasBackgroundClick) {
+		// Check if mousedown started OUTSIDE all sandbox cards (truly on canvas background)
+		// We need to check if the target is inside any .sandbox-card element
+		const targetElement = mouseDownTarget as HTMLElement;
+		const clickedInsideSandbox = targetElement?.closest?.('.sandbox-card') !== null;
+
+		// If it was a click (not a drag) and clicked outside ALL sandboxes, unfocus
+		if (wasClick && !wasDraggingSandbox && !clickedInsideSandbox && onCanvasBackgroundClick) {
 			onCanvasBackgroundClick();
 		}
 
@@ -137,6 +144,7 @@ export function useCanvasDrag({
 		setIsPanning(false);
 		setDraggingSandboxId(null);
 		setDragOffset({ x: 0, y: 0 });
+		setMouseDownTarget(null);
 	};
 
 	// Start dragging a sandbox

@@ -177,7 +177,13 @@ jobs:
             exit 0
           fi
 
-          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")"
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+          if [ -z "$version" ]; then
+            version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+          fi
+          if [ -z "$version" ]; then
+            version="0.0.0"
+          fi
           hash="$(shasum -a 256 "Roopik-macos-notarized.zip" | awk '{print tolower($1)}')"
           pub_date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           base="${R2_PUBLIC_BASE_URL%/}"

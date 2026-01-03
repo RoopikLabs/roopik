@@ -20,6 +20,7 @@ import { StatusPanel } from "../canvasView/components/StatusPanel";
 import { GlobalDeviceToggle } from "../canvasView/components/DeviceToggle";
 import { BottomActionBar } from "../canvasView/components/Toolbar/BottomActionBar";
 import { DeleteConfirmModal } from "../canvasView/components/Toolbar/DeleteConfirmModal";
+import { Toast } from "../canvasView/components/Toast";
 import {
 	reorganizeSandboxes,
 	calculateFitAllTransform,
@@ -118,6 +119,9 @@ function App() {
 	// Device mode state
 	const [globalDeviceMode, setGlobalDeviceMode] =
 		useState<DevicePreset>("auto");
+
+	// Toast notification state
+	const [toastMessage, setToastMessage] = useState<string | null>(null);
 
 	// Bottom Action Bar state
 	const [isSelectMode, setIsSelectMode] = useState(false);
@@ -992,11 +996,13 @@ function App() {
 
 	// Focus on a single sandbox (double-click)
 	// When focused, sandbox expands dynamically to fill most of the viewport
+	// Double-click toggles: focus if not focused, unfocus if already focused
 	const focusSandbox = useCallback(
 		(sandboxId: string) => {
 			if (focusedSandboxId === sandboxId) {
-				// Unfocus - zoom out to see all
+				// Already focused - unfocus and zoom out to see all
 				setFocusedSandboxId(null);
+				setSelectedSandboxId(null); // Also clear selection
 				fitAllSandboxes(sandboxes);
 				return;
 			}
@@ -1004,8 +1010,9 @@ function App() {
 			const sandbox = sandboxes.find((s) => s.id === sandboxId);
 			if (!sandbox) return;
 
-			// logger.info('Focusing on sandbox', { sandboxId });
+			// Focus this sandbox and select it
 			setFocusedSandboxId(sandboxId);
+			setSelectedSandboxId(sandboxId);
 
 			const viewport = { width: window.innerWidth, height: window.innerHeight };
 			// Calculate dynamic focused dimensions based on viewport
@@ -1232,11 +1239,11 @@ function App() {
 					return;
 				}
 				if (focusedSandboxId) {
-					// Exit focused mode
-					// logger.info('Exiting focused mode');
+					// Exit focused mode - unfocus, unselect, and unzoom
 					setFocusedSandboxId(null);
+					setSelectedSandboxId(null);
 					fitAllSandboxes(sandboxes);
-				} else {
+				} else if (selectedSandboxId) {
 					// Deselect when not focused
 					setSelectedSandboxId(null);
 				}
@@ -1254,6 +1261,7 @@ function App() {
 		focusedSandboxId,
 		sandboxes,
 		pendingDeleteId,
+		isInspectMode,
 		handleResetView,
 		fitAllSandboxes,
 	]);
@@ -1279,6 +1287,17 @@ function App() {
 		window.addEventListener("resize", handleResize);
 		return () => window.removeEventListener("resize", handleResize);
 	}, [focusedSandboxId, focusSandbox]);
+
+	// Show toast when device mode changes
+	useEffect(() => {
+		const preset = DEVICE_PRESETS[globalDeviceMode];
+		if (preset.width === 'auto') {
+			setToastMessage('Device: Auto (Responsive)');
+		} else {
+			setToastMessage(`Device: ${preset.label} (${preset.width}×${preset.height})`);
+		}
+	}, [globalDeviceMode]);
+
 
 	// Snap mode change handler - auto-reorganize when switching to grid mode
 	const handleSnapModeChange = useCallback(
@@ -1498,10 +1517,17 @@ function App() {
 					onSandboxDelete={handleSandboxDelete}
 					onSandboxShowCode={handleSandboxShowCode}
 					onSandboxRebuild={handleSandboxRebuild}
-					onCanvasBackgroundClick={() => setSelectedSandboxId(null)}
-				/>
+				onCanvasBackgroundClick={() => {
+					// Clicking outside: unfocus and unselect
+					if (focusedSandboxId) {
+						setFocusedSandboxId(null);
+						fitAllSandboxes(sandboxes);
+					}
+					setSelectedSandboxId(null);
+				}}
+			/>
 
-				<GlobalDeviceToggle
+			<GlobalDeviceToggle
 					deviceMode={globalDeviceMode}
 					onDeviceModeChange={setGlobalDeviceMode}
 				/>
@@ -1548,6 +1574,15 @@ function App() {
 						setPendingDeleteId(null);
 					}}
 					onCancel={() => setPendingDeleteId(null)}
+				/>
+			)}
+
+			{/* Toast notification */}
+			{toastMessage && (
+				<Toast
+					message={toastMessage}
+					duration={1000}
+					onClose={() => setToastMessage(null)}
 				/>
 			)}
 		</div>

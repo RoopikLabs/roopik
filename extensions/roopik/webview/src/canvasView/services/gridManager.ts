@@ -25,7 +25,7 @@ export interface GridConfig {
 const DEFAULT_CONFIG: GridConfig = {
 	sandboxWidth: 600,
 	sandboxHeight: 600,
-	gridColumns: 3,
+	gridColumns: 4,
 	containerMargin: 20,
 	containerPaddingLR: 120,
 	containerPaddingTB: 40,
@@ -45,6 +45,7 @@ export const FOCUSED_TOP_MARGIN = 40;               // Small margin at top
  * Calculate focused sandbox dimensions based on viewport size.
  * Returns dimensions that fill most of the available viewport while
  * reserving space for the bottom toolbar.
+ * Ensures dimensions are large enough to fit device emulations without scrollbars.
  */
 export function getFocusedSandboxDimensions(
 	viewportWidth: number,
@@ -63,9 +64,10 @@ export function getFocusedSandboxDimensions(
 	const maxWidth = viewportWidth * FOCUSED_VIEWPORT_WIDTH_RATIO - paddingX;
 	const maxHeight = availableHeight - paddingY;
 
-	// Ensure minimum dimensions
-	const width = Math.max(maxWidth, config.sandboxWidth);
-	const height = Math.max(maxHeight, config.sandboxHeight);
+	// In focused mode, use generous dimensions to fit devices completely
+	// Minimum 700px height to fit tall mobile devices (e.g., 667px) with some breathing room
+	const width = Math.max(maxWidth, 800);  // Ensure wide enough
+	const height = Math.max(maxHeight, 700); // Ensure tall enough for mobile portrait
 
 	return { width, height };
 }

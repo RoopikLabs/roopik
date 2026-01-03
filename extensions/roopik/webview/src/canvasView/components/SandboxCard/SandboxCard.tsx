@@ -63,6 +63,7 @@ function generateSandboxHTML(bundledCode: string, componentId: string): string {
 			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 			background: #ffffff;
 			overflow: auto;
+			overflow-x: hidden; /* Prevent horizontal scrollbar in device emulation */
 		}
 		#root {
 			min-height: 100vh;
@@ -862,10 +863,26 @@ export function SandboxCard({
 							style={{ pointerEvents: isDragging ? 'none' : 'auto' }}
 						/>
 					</div>
-				</div>
 			</div>
+		</div>
 
-			{/* Delete confirmation modal */}
+		{/* Unfocus button - only show when focused */}
+		{isFocused && (
+			<button
+				className="unfocus-button"
+				onClick={(e) => {
+					e.stopPropagation();
+					onDoubleClick(); // Reuse double-click handler to unfocus
+				}}
+				title="Exit focus mode (ESC, double-click, or click outside)"
+			>
+				<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+					<path d="M4 14h6m0 0v6m0-6l-7 7M20 10h-6m0 0V4m0 6l7-7" />
+				</svg>
+			</button>
+		)}
+
+		{/* Delete confirmation modal */}
 			{showDeleteConfirm && (
 				<DeleteConfirmModal
 					sandboxId={displayName}
