@@ -796,19 +796,19 @@ export const webviewMessageHandler = async (
 			const routerModels: Record<RouterName, ModelRecord> = providerFilter
 				? ({} as Record<RouterName, ModelRecord>)
 				: {
-					openrouter: {},
-					"vercel-ai-gateway": {},
-					huggingface: {},
-					litellm: {},
-					deepinfra: {},
-					"io-intelligence": {},
-					requesty: {},
-					unbound: {},
-					ollama: {},
-					lmstudio: {},
-					roo: {},
-					chutes: {},
-				}
+						openrouter: {},
+						"vercel-ai-gateway": {},
+						huggingface: {},
+						litellm: {},
+						deepinfra: {},
+						"io-intelligence": {},
+						requesty: {},
+						unbound: {},
+						ollama: {},
+						lmstudio: {},
+						roo: {},
+						chutes: {},
+					}
 
 			const safeGetModels = async (options: GetModelsOptions): Promise<ModelRecord> => {
 				try {
@@ -1943,10 +1943,10 @@ export const webviewMessageHandler = async (
 							const existingMode = existingModes.find((mode) => mode.slug === message.modeConfig?.slug)
 							const changedSettings = existingMode
 								? Object.keys(message.modeConfig).filter(
-									(key) =>
-										JSON.stringify((existingMode as Record<string, unknown>)[key]) !==
-										JSON.stringify((message.modeConfig as Record<string, unknown>)[key]),
-								)
+										(key) =>
+											JSON.stringify((existingMode as Record<string, unknown>)[key]) !==
+											JSON.stringify((message.modeConfig as Record<string, unknown>)[key]),
+									)
 								: []
 
 							if (changedSettings.length > 0) {
@@ -2218,25 +2218,6 @@ export const webviewMessageHandler = async (
 				})
 			}
 			break
-		case "humanRelayResponse":
-			if (message.requestId && message.text) {
-				vscode.commands.executeCommand(getCommand("handleHumanRelayResponse"), {
-					requestId: message.requestId,
-					text: message.text,
-					cancelled: false,
-				})
-			}
-			break
-
-		case "humanRelayCancel":
-			if (message.requestId) {
-				vscode.commands.executeCommand(getCommand("handleHumanRelayResponse"), {
-					requestId: message.requestId,
-					cancelled: true,
-				})
-			}
-			break
-
 		case "telemetrySetting": {
 			const telemetrySetting = message.text as TelemetrySetting
 			const previousSetting = getGlobalState("telemetrySetting") || "unset"
@@ -2604,13 +2585,13 @@ export const webviewMessageHandler = async (
 			const status = manager
 				? manager.getCurrentStatus()
 				: {
-					systemStatus: "Standby",
-					message: "No workspace folder open",
-					processedItems: 0,
-					totalItems: 0,
-					currentItemUnit: "items",
-					workspacePath: undefined,
-				}
+						systemStatus: "Standby",
+						message: "No workspace folder open",
+						processedItems: 0,
+						totalItems: 0,
+						currentItemUnit: "items",
+						workspacePath: undefined,
+					}
 
 			provider.postMessageToWebview({
 				type: "indexingStatusUpdate",

@@ -377,8 +377,9 @@ export async function addCustomInstructions(
 
 USER'S CUSTOM INSTRUCTIONS
 
-The following additional instructions are provided by the user, and should be followed to the best of your ability${isNativeProtocol(effectiveProtocol) ? "." : " without interfering with the TOOL USE guidelines."
-		}
+The following additional instructions are provided by the user, and should be followed to the best of your ability${
+				isNativeProtocol(effectiveProtocol) ? "." : " without interfering with the TOOL USE guidelines."
+			}
 
 ${joinedSections}
 `
