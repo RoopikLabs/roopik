@@ -275,7 +275,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	)
 
 	// Register ChatPanel provider for auxiliary bar (right sidebar)
-	const chatPanelProvider = new ClineProvider(context, outputChannel, "chat", contextProxy, mdmService)
+	const chatPanelProvider = new ClineProvider(context, outputChannel, "sidebar", contextProxy, mdmService)
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider("roodio.ChatPanel", chatPanelProvider, {
 			webviewOptions: { retainContextWhenHidden: true },

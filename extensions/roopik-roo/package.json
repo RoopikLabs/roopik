@@ -267,13 +267,8 @@
 					"when": "view == roodio.SidebarProvider"
 				},
 				{
-					"command": "roodio.cloudButtonClicked",
-					"group": "navigation@3",
-					"when": "view == roodio.SidebarProvider"
-				},
-				{
 					"command": "roodio.marketplaceButtonClicked",
-					"group": "navigation@4",
+					"group": "navigation@3",
 					"when": "view == roodio.SidebarProvider"
 				},
 				{
@@ -297,13 +292,8 @@
 					"when": "view == roodio.ChatPanel"
 				},
 				{
-					"command": "roodio.cloudButtonClicked",
-					"group": "navigation@3",
-					"when": "view == roodio.ChatPanel"
-				},
-				{
 					"command": "roodio.marketplaceButtonClicked",
-					"group": "navigation@4",
+					"group": "navigation@3",
 					"when": "view == roodio.ChatPanel"
 				},
 				{
@@ -329,13 +319,8 @@
 					"when": "activeWebviewPanelId == roodio.TabPanelProvider"
 				},
 				{
-					"command": "roodio.cloudButtonClicked",
-					"group": "navigation@3",
-					"when": "activeWebviewPanelId == roodio.TabPanelProvider"
-				},
-				{
 					"command": "roodio.marketplaceButtonClicked",
-					"group": "navigation@4",
+					"group": "navigation@3",
 					"when": "activeWebviewPanelId == roodio.TabPanelProvider"
 				},
 				{

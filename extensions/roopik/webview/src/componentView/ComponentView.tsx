@@ -663,7 +663,7 @@ function App() {
 				}
 				// Check if we have source location info
 				if (element?.sourceLocation) {
-					const { file, startLine } = element.sourceLocation;
+					// const { file, startLine } = element.sourceLocation;
 					// logger.info('Element source location', { file, startLine });
 
 					// Store the pending selection
