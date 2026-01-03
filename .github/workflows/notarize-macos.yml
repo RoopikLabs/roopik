@@ -1,0 +1,187 @@
+name: Notarize macOS (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Build workflow run ID to pull artifacts from (optional)"
+        required: false
+        type: string
+      request_id:
+        description: "Existing notarization request ID to poll (optional)"
+        required: false
+        type: string
+      artifact_name:
+        description: "Artifact name from build workflow"
+        required: false
+        default: "roopik-macos-arm64"
+        type: string
+      branch:
+        description: "Branch to pull artifacts from when run_id is empty"
+        required: false
+        default: "develop"
+        type: string
+
+jobs:
+  notarize-macos-arm64:
+    name: Notarize macOS (ARM64)
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Download signed artifact
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: build-macos.yml
+          run_id: ${{ inputs.run_id }}
+          branch: ${{ inputs.branch }}
+          name: ${{ inputs.artifact_name }}
+          workflow_conclusion: success
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notarize and staple
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          SIGNED_ZIP="$(find . -name 'Roopik-macos-signed.zip' -print -quit)"
+          if [ -z "$SIGNED_ZIP" ]; then
+            APP_PATH="$(find . -maxdepth 3 -name "*.app" -print -quit)"
+            if [ -z "$APP_PATH" ]; then
+              echo "Signed zip not found and no .app found in downloaded artifacts."
+              find . -maxdepth 4 -type f -name "*.zip" -print
+              exit 1
+            fi
+
+            mkdir -p .artifacts
+            SIGNED_ZIP=".artifacts/Roopik-macos-signed.zip"
+            ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$SIGNED_ZIP"
+          fi
+
+          rm -rf .notarize
+          mkdir -p .notarize
+          ditto -x -k "$SIGNED_ZIP" .notarize
+
+          APP_PATH="$(find .notarize -maxdepth 3 -name "*.app" -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found in notarize payload"
+            exit 1
+          fi
+
+          DMG_ROOT=".dmgroot"
+          DMG_NAME="Roopik-macos.dmg"
+          rm -rf "$DMG_ROOT"
+          mkdir -p "$DMG_ROOT"
+          cp -R "$APP_PATH" "$DMG_ROOT/"
+          ln -s /Applications "$DMG_ROOT/Applications"
+
+          rm -f "$DMG_NAME"
+          hdiutil detach "/Volumes/Roopik" -force || true
+          hdiutil create -volname "Roopik" -srcfolder "$DMG_ROOT" -ov -format UDZO "$DMG_NAME"
+
+          REQUEST_ID="${{ inputs.request_id }}"
+          if [ -z "$REQUEST_ID" ]; then
+            SUBMIT_JSON="$(xcrun notarytool submit "$DMG_NAME" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_PASSWORD" \
+              --output-format json)"
+
+            echo "$SUBMIT_JSON"
+
+            REQUEST_ID="$(echo "$SUBMIT_JSON" | /usr/bin/python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")"
+          fi
+
+          echo "Notarization request id: $REQUEST_ID"
+
+          MAX_ATTEMPTS=60
+          SLEEP_SECONDS=60
+          ATTEMPT=1
+
+          while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+            LOG_JSON="$(xcrun notarytool log "$REQUEST_ID" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_PASSWORD" \
+              --output-format json 2>/dev/null || true)"
+
+            STATUS="Pending"
+            if [ -n "$LOG_JSON" ] && [[ "$LOG_JSON" == \{* || "$LOG_JSON" == \[* ]]; then
+              STATUS="$(/usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin).get("status","Pending"))' <<<"$LOG_JSON")"
+            fi
+            echo "Notarization status ($ATTEMPT/$MAX_ATTEMPTS): $STATUS"
+
+            if [ "$STATUS" = "Accepted" ]; then
+              break
+            fi
+
+            if [ "$STATUS" = "Invalid" ]; then
+              echo "$LOG_JSON"
+              exit 1
+            fi
+
+            sleep "$SLEEP_SECONDS"
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "Notarization did not finish in time. Request id: $REQUEST_ID"
+            exit 1
+          fi
+
+          xcrun stapler staple "$APP_PATH"
+          xcrun stapler staple "$DMG_NAME"
+
+          NOTARIZED_ZIP="./Roopik-macos-notarized.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$NOTARIZED_ZIP"
+
+          NOTARIZED_DMG="./Roopik-macos-notarized.dmg"
+          mv "$DMG_NAME" "$NOTARIZED_DMG"
+
+          mkdir -p .artifacts/public
+          cp "$NOTARIZED_ZIP" .artifacts/public/roopik-macos-latest.zip
+          cp "$NOTARIZED_DMG" .artifacts/public/roopik-macos-latest.dmg
+
+      - name: Upload macOS release artifact (arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: roopik-macos-release
+          path: .artifacts/public/
+          retention-days: 30
+
+      - name: Install AWS CLI
+        continue-on-error: true
+        run: python3 -m pip install --user awscli
+
+      - name: Upload macOS installers to R2
+        continue-on-error: true
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          export PATH="$HOME/Library/Python/3.11/bin:$PATH"
+          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          prefix="macos/"
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          export AWS_EC2_METADATA_DISABLED=true
+          aws s3 cp "Roopik-macos-notarized.dmg" "s3://${R2_BUCKET}/${prefix}roopik-macos-latest.dmg" --endpoint-url "$endpoint" --no-progress
+          aws s3 cp "Roopik-macos-notarized.zip" "s3://${R2_BUCKET}/${prefix}roopik-macos-latest.zip" --endpoint-url "$endpoint" --no-progress
+
+          if [ -z "${R2_PUBLIC_BASE_URL:-}" ]; then
+            echo "R2_PUBLIC_BASE_URL not set, skipping update manifest upload."
+            exit 0
+          fi
+
+          version="$(node -p "require('./package.json').version")"
+          hash="$(shasum -a 256 "Roopik-macos-notarized.zip" | awk '{print tolower($1)}')"
+          pub_date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          base="${R2_PUBLIC_BASE_URL%/}"
+          url="${base}/macos/roopik-macos-latest.zip"
+          json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$version" "$version" "$url" "$hash" "$pub_date")"
+          printf '%s' "$json" > latest.json
+          aws s3 cp latest.json "s3://${R2_BUCKET}/macos/stable/latest.json" --endpoint-url "$endpoint" --no-progress

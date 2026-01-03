@@ -311,18 +311,18 @@ const WelcomeViewProvider = () => {
 						<p className="text-base text-vscode-foreground">
 							<Trans i18nKey="welcome:landing.introduction" />
 						</p>
-						<p className="mb-0 font-semibold">
+						{/* <p className="mb-0 font-semibold">
 							<Trans i18nKey="welcome:landing.accountMention" />
-						</p>
+						</p> */}
 					</div>
 
 					<div className="mt-2 flex gap-2 items-center">
-						<Button onClick={handleGetStarted} variant="primary">
+						<Button onClick={handleNoAccount} variant="primary">
 							{t("welcome:landing.getStarted")}
 						</Button>
-						<VSCodeLink onClick={handleNoAccount} className="cursor-pointer">
+						{/* <VSCodeLink onClick={handleNoAccount} className="cursor-pointer">
 							{t("welcome:landing.noAccount")}
-						</VSCodeLink>
+						</VSCodeLink> */}
 					</div>
 				</TabContent>
 			</Tab>
@@ -349,7 +349,7 @@ const WelcomeViewProvider = () => {
 							setSelectedProvider(target.value as ProviderOption)
 						}}>
 						{/* Roo Code Cloud Provider Option */}
-						<VSCodeRadio value="roo" className="flex items-start gap-2">
+						{/* <VSCodeRadio value="roo" className="flex items-start gap-2">
 							<div className="flex-1 space-y-1 cursor-pointer">
 								<p className="text-lg font-semibold block -mt-1">
 									{t("welcome:providerSignup.rooCloudProvider")}
@@ -363,7 +363,7 @@ const WelcomeViewProvider = () => {
 									</VSCodeLink>
 								</p>
 							</div>
-						</VSCodeRadio>
+						</VSCodeRadio> */}
 
 						{/* Use Another Provider Option */}
 						<VSCodeRadio value="custom" className="flex items-start gap-2">

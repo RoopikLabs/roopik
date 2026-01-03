@@ -663,8 +663,8 @@ function App() {
 				}
 				// Check if we have source location info
 				if (element?.sourceLocation) {
-					const { file, startLine } = element.sourceLocation;
-					logger.info('Element source location', { file, startLine });
+					// const { file, startLine } = element.sourceLocation;
+					// logger.info('Element source location', { file, startLine });
 
 					// Store the pending selection
 					pendingElementSelectionRef.current = {
@@ -1004,7 +1004,7 @@ function App() {
 			const sandbox = sandboxes.find((s) => s.id === sandboxId);
 			if (!sandbox) return;
 
-			logger.info('Focusing on sandbox', { sandboxId });
+			// logger.info('Focusing on sandbox', { sandboxId });
 			setFocusedSandboxId(sandboxId);
 
 			const viewport = { width: window.innerWidth, height: window.innerHeight };
@@ -1100,7 +1100,7 @@ function App() {
 	// Sandbox delete handler
 	const handleSandboxDelete = useCallback(
 		(sandboxId: string) => {
-			logger.info('Deleting sandbox', { sandboxId });
+			// logger.info('Deleting sandbox', { sandboxId });
 			pendingBuildsRef.current.delete(sandboxId);
 
 			if (selectedSandboxId === sandboxId) setSelectedSandboxId(null);
@@ -1144,7 +1144,7 @@ function App() {
 
 	// Sandbox rebuild handler (force rebuild bypassing cache)
 	const handleSandboxRebuild = useCallback((sandboxId: string) => {
-		logger.info('Force rebuild sandbox', { sandboxId });
+		// logger.info('Force rebuild sandbox', { sandboxId });
 
 		// Update sandbox to building state
 		setSandboxes((prev) =>
@@ -1182,8 +1182,8 @@ function App() {
 
 		// Check if we have the required data
 		if (!input.folderPath || !input.entryFile) {
-			console.warn('[Canvas] Cannot show code: missing folderPath or entryFile for', sandboxId);
-			console.warn('[Canvas] Component input data:', input);
+			// console.warn('[Canvas] Cannot show code: missing folderPath or entryFile for', sandboxId);
+			// console.warn('[Canvas] Component input data:', input);
 			return;
 		}
 
@@ -1233,7 +1233,7 @@ function App() {
 				}
 				if (focusedSandboxId) {
 					// Exit focused mode
-					logger.info('Exiting focused mode');
+					// logger.info('Exiting focused mode');
 					setFocusedSandboxId(null);
 					fitAllSandboxes(sandboxes);
 				} else {
@@ -1285,9 +1285,9 @@ function App() {
 		(mode: SnapMode) => {
 			setSnapMode(mode);
 			if (mode === "grid" && sandboxes.length > 0) {
-				console.log(
-					"[StatusPanel] Switching to Grid mode - reorganizing sandboxes"
-				);
+				// console.log(
+				// 	"[StatusPanel] Switching to Grid mode - reorganizing sandboxes"
+				// );
 				reorganizeToGrid();
 			}
 		},
@@ -1301,7 +1301,7 @@ function App() {
 		if (newState) {
 			setIsInspectMode(false);
 		}
-		logger.info('Select mode toggled', { enabled: newState });
+		// logger.info('Select mode toggled', { enabled: newState });
 	}, [isSelectMode]);
 
 	const handleInspectMode = useCallback(() => {
@@ -1313,7 +1313,7 @@ function App() {
 	}, [isInspectMode, sandboxes.length]);
 
 	const handleAIChat = useCallback(() => {
-		logger.info('AI Chat toggled');
+		// logger.info('AI Chat toggled');
 	}, []);
 
 	// ========================================================================
@@ -1436,9 +1436,9 @@ function App() {
 				const content = await file.text();
 				const componentName = fileName.replace(/\.[^/.]+$/, ""); // Remove extension
 
-				console.log(
-					`[DragDrop] Importing component: ${componentName} (${fileName})`
-				);
+				// console.log(
+				// 	`[DragDrop] Importing component: ${componentName} (${fileName})`
+				// );
 
 				// Send to extension for import
 				// Extension will add canvasId and forward to Core
