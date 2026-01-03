@@ -273,6 +273,7 @@ export class RoopikDashboardView extends ViewPane {
 		modeButtonsRow.style.alignItems = 'center';
 		modeButtonsRow.style.gap = '4px';
 		modeButtonsRow.style.flexWrap = 'wrap'; // Allow wrapping when space is limited
+		modeButtonsRow.style.minWidth = '0'; // Ensure flex children respect min-width
 
 		const newCanvasBtn = this.createPrimaryActionButton('Canvas', 'codicon-new-file', 'roopik.openCanvas', true, true);
 		// Project button opens file explorer directly (folder icon)
@@ -288,11 +289,13 @@ export class RoopikDashboardView extends ViewPane {
 		separator.style.background = 'var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
 		separator.style.margin = '4px 0';
 
-		// Second row: Import and Browse buttons (always on separate row)
+		// Second row: Import and Browse buttons - responsive wrapping
 		const importButtonsRow = document.createElement('div');
 		importButtonsRow.style.display = 'flex';
 		importButtonsRow.style.alignItems = 'center';
 		importButtonsRow.style.gap = '4px';
+		importButtonsRow.style.flexWrap = 'wrap'; // Allow Browse button to wrap down on narrow screens
+		importButtonsRow.style.minWidth = '0'; // Ensure flex children respect min-width
 
 		const importBtn = this.createSecondaryActionButton('Import', 'codicon-cloud-download', 'roopik.import.showPicker', true, false);
 		// Browse button opens browser preview with default welcome screen (globe icon)

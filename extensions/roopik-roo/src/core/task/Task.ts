@@ -406,10 +406,10 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		) {
 			throw new Error(
 				"checkpointTimeout must be between " +
-				MIN_CHECKPOINT_TIMEOUT_SECONDS +
-				" and " +
-				MAX_CHECKPOINT_TIMEOUT_SECONDS +
-				" seconds",
+					MIN_CHECKPOINT_TIMEOUT_SECONDS +
+					" and " +
+					MAX_CHECKPOINT_TIMEOUT_SECONDS +
+					" seconds",
 			)
 		}
 
@@ -459,7 +459,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					if (providerRef) {
 						BrowserSessionPanelManager.getInstance(providerRef)
 							.show()
-							.catch(() => { })
+							.catch(() => {})
 					}
 				} catch (err) {
 					console.error("[Task] Failed to auto-open Browser Session panel:", err)
@@ -2346,6 +2346,17 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			const modelId = getModelId(this.apiConfiguration)
 			const apiProtocol = getApiProtocol(this.apiConfiguration.apiProvider, modelId)
 
+			// Respect user-configured provider rate limiting BEFORE we emit api_req_started.
+			// This prevents the UI from showing an "API Request..." spinner while we are
+			// intentionally waiting due to the rate limit slider.
+			//
+			// NOTE: We also set Task.lastGlobalApiRequestTime here to reserve this slot
+			// before we build environment details (which can take time).
+			// This ensures subsequent requests (including subtasks) still honour the
+			// provider rate-limit window.
+			await this.maybeWaitForProviderRateLimit(currentItem.retryAttempt ?? 0)
+			Task.lastGlobalApiRequestTime = performance.now()
+
 			await this.say(
 				"api_req_started",
 				JSON.stringify({
@@ -2461,19 +2472,19 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					const costResult =
 						apiProtocol === "anthropic"
 							? calculateApiCostAnthropic(
-								streamModelInfo,
-								inputTokens,
-								outputTokens,
-								cacheWriteTokens,
-								cacheReadTokens,
-							)
+									streamModelInfo,
+									inputTokens,
+									outputTokens,
+									cacheWriteTokens,
+									cacheReadTokens,
+								)
 							: calculateApiCostOpenAI(
-								streamModelInfo,
-								inputTokens,
-								outputTokens,
-								cacheWriteTokens,
-								cacheReadTokens,
-							)
+									streamModelInfo,
+									inputTokens,
+									outputTokens,
+									cacheWriteTokens,
+									cacheReadTokens,
+								)
 
 					this.clineMessages[lastApiReqIndex].text = JSON.stringify({
 						...existingData,
@@ -2553,7 +2564,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				// Yields only if the first chunk is successful, otherwise will
 				// allow the user to retry the request (most likely due to rate
 				// limit error, which gets thrown on the first chunk).
-				const stream = this.attemptApiRequest()
+				const stream = this.attemptApiRequest(currentItem.retryAttempt ?? 0, { skipProviderRateLimit: true })
 				let assistantMessage = ""
 				let reasoningMessage = ""
 				let pendingGroundingSources: GroundingSource[] = []
@@ -2661,8 +2672,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 											partial: true,
 										}
 
-											// Store the ID for native protocol
-											; (partialToolUse as any).id = event.id
+										// Store the ID for native protocol
+										;(partialToolUse as any).id = event.id
 
 										// Add to content and present
 										this.assistantMessageContent.push(partialToolUse)
@@ -2680,7 +2691,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 											const toolUseIndex = this.streamingToolCallIndices.get(event.id)
 											if (toolUseIndex !== undefined) {
 												// Store the ID for native protocol
-												; (partialToolUse as any).id = event.id
+												;(partialToolUse as any).id = event.id
 
 												// Update the existing tool use with new partial data
 												this.assistantMessageContent[toolUseIndex] = partialToolUse
@@ -2698,7 +2709,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 										if (finalToolUse) {
 											// Store the tool call ID
-											; (finalToolUse as any).id = event.id
+											;(finalToolUse as any).id = event.id
 
 											// Get the index and replace partial with final
 											if (toolUseIndex !== undefined) {
@@ -2720,8 +2731,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 											const existingToolUse = this.assistantMessageContent[toolUseIndex]
 											if (existingToolUse && existingToolUse.type === "tool_use") {
 												existingToolUse.partial = false
-													// Ensure it has the ID for native protocol
-													; (existingToolUse as any).id = event.id
+												// Ensure it has the ID for native protocol
+												;(existingToolUse as any).id = event.id
 											}
 
 											// Clean up tracking
@@ -2857,7 +2868,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 							if (finalToolUse) {
 								// Store the tool call ID
-								; (finalToolUse as any).id = event.id
+								;(finalToolUse as any).id = event.id
 
 								// Get the index and replace partial with final
 								if (toolUseIndex !== undefined) {
@@ -2879,8 +2890,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 								const existingToolUse = this.assistantMessageContent[toolUseIndex]
 								if (existingToolUse && existingToolUse.type === "tool_use") {
 									existingToolUse.partial = false
-										// Ensure it has the ID for native protocol
-										; (existingToolUse as any).id = event.id
+									// Ensure it has the ID for native protocol
+									;(existingToolUse as any).id = event.id
 								}
 
 								// Clean up tracking
@@ -2958,19 +2969,19 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 								const costResult =
 									apiProtocol === "anthropic"
 										? calculateApiCostAnthropic(
-											streamModelInfo,
-											tokens.input,
-											tokens.output,
-											tokens.cacheWrite,
-											tokens.cacheRead,
-										)
+												streamModelInfo,
+												tokens.input,
+												tokens.output,
+												tokens.cacheWrite,
+												tokens.cacheRead,
+											)
 										: calculateApiCostOpenAI(
-											streamModelInfo,
-											tokens.input,
-											tokens.output,
-											tokens.cacheWrite,
-											tokens.cacheRead,
-										)
+												streamModelInfo,
+												tokens.input,
+												tokens.output,
+												tokens.cacheWrite,
+												tokens.cacheRead,
+											)
 
 								TelemetryService.instance.captureLlmCompletion(this.taskId, {
 									inputTokens: costResult.totalInputTokens,
@@ -3586,8 +3597,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		// Log the context window error for debugging
 		console.warn(
 			`[Task#${this.taskId}] Context window exceeded for model ${this.api.getModel().id}. ` +
-			`Current tokens: ${contextTokens}, Context window: ${contextWindow}. ` +
-			`Forcing truncation to ${FORCED_CONTEXT_REDUCTION_PERCENT}% of current context.`,
+				`Current tokens: ${contextTokens}, Context window: ${contextWindow}. ` +
+				`Forcing truncation to ${FORCED_CONTEXT_REDUCTION_PERCENT}% of current context.`,
 		)
 
 		// Determine if we're using native tool protocol for proper message handling
@@ -3655,7 +3666,44 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		await this.providerRef.deref()?.postMessageToWebview({ type: "condenseTaskContextResponse", text: this.taskId })
 	}
 
-	public async *attemptApiRequest(retryAttempt: number = 0): ApiStream {
+	/**
+	 * Enforce the user-configured provider rate limit.
+	 *
+	 * NOTE: This is intentionally treated as expected behavior and is surfaced via
+	 * the `api_req_rate_limit_wait` say type (not an error).
+	 */
+	private async maybeWaitForProviderRateLimit(retryAttempt: number): Promise<void> {
+		const state = await this.providerRef.deref()?.getState()
+		const rateLimitSeconds =
+			state?.apiConfiguration?.rateLimitSeconds ?? this.apiConfiguration?.rateLimitSeconds ?? 0
+
+		if (rateLimitSeconds <= 0 || !Task.lastGlobalApiRequestTime) {
+			return
+		}
+
+		const now = performance.now()
+		const timeSinceLastRequest = now - Task.lastGlobalApiRequestTime
+		const rateLimitDelay = Math.ceil(
+			Math.min(rateLimitSeconds, Math.max(0, rateLimitSeconds * 1000 - timeSinceLastRequest) / 1000),
+		)
+
+		// Only show the countdown UX on the first attempt. Retry flows have their own delay messaging.
+		if (rateLimitDelay > 0 && retryAttempt === 0) {
+			for (let i = rateLimitDelay; i > 0; i--) {
+				// Send structured JSON data for i18n-safe transport
+				const delayMessage = JSON.stringify({ seconds: i })
+				await this.say("api_req_rate_limit_wait", delayMessage, undefined, true)
+				await delay(1000)
+			}
+			// Finalize the partial message so the UI doesn't keep rendering an in-progress spinner.
+			await this.say("api_req_rate_limit_wait", undefined, undefined, false)
+		}
+	}
+
+	public async *attemptApiRequest(
+		retryAttempt: number = 0,
+		options: { skipProviderRateLimit?: boolean } = {},
+	): ApiStream {
 		const state = await this.providerRef.deref()?.getState()
 
 		const {
@@ -3692,29 +3740,17 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			}
 		}
 
-		let rateLimitDelay = 0
-
-		// Use the shared timestamp so that subtasks respect the same rate-limit
-		// window as their parent tasks.
-		if (Task.lastGlobalApiRequestTime) {
-			const now = performance.now()
-			const timeSinceLastRequest = now - Task.lastGlobalApiRequestTime
-			const rateLimit = apiConfiguration?.rateLimitSeconds || 0
-			rateLimitDelay = Math.ceil(Math.min(rateLimit, Math.max(0, rateLimit * 1000 - timeSinceLastRequest) / 1000))
+		if (!options.skipProviderRateLimit) {
+			await this.maybeWaitForProviderRateLimit(retryAttempt)
 		}
 
-		// Only show rate limiting message if we're not retrying. If retrying, we'll include the delay there.
-		if (rateLimitDelay > 0 && retryAttempt === 0) {
-			// Show countdown timer
-			for (let i = rateLimitDelay; i > 0; i--) {
-				const delayMessage = `Rate limiting for ${i} seconds...`
-				await this.say("api_req_retry_delayed", delayMessage, undefined, true)
-				await delay(1000)
-			}
-		}
-
-		// Update last request time before making the request so that subsequent
+		// Update last request time right before making the request so that subsequent
 		// requests — even from new subtasks — will honour the provider's rate-limit.
+		//
+		// NOTE: When recursivelyMakeClineRequests handles rate limiting, it sets the
+		// timestamp earlier to include the environment details build. We still set it
+		// here for direct callers (tests) and for the case where we didn't rate-limit
+		// in the caller.
 		Task.lastGlobalApiRequestTime = performance.now()
 
 		const systemPrompt = await this.getSystemPrompt()
@@ -3902,11 +3938,11 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			// Include tools and tool protocol when using native protocol and model supports it
 			...(shouldIncludeTools
 				? {
-					tools: allTools,
-					tool_choice: "auto",
-					toolProtocol: taskProtocol,
-					parallelToolCalls: parallelToolCallsEnabled,
-				}
+						tools: allTools,
+						tool_choice: "auto",
+						toolProtocol: taskProtocol,
+						parallelToolCalls: parallelToolCallsEnabled,
+					}
 				: {}),
 		}
 
@@ -3958,8 +3994,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 			if (isContextWindowExceededError && retryAttempt < MAX_CONTEXT_WINDOW_RETRIES) {
 				console.warn(
 					`[Task#${this.taskId}] Context window exceeded for model ${this.api.getModel().id}. ` +
-					`Retry attempt ${retryAttempt + 1}/${MAX_CONTEXT_WINDOW_RETRIES}. ` +
-					`Attempting automatic truncation...`,
+						`Retry attempt ${retryAttempt + 1}/${MAX_CONTEXT_WINDOW_RETRIES}. ` +
+						`Attempting automatic truncation...`,
 				)
 				await this.handleContextWindowExceededError()
 				// Retry the request after handling the context window error
@@ -4127,8 +4163,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					? (rawContent as Anthropic.Messages.ContentBlockParam[])
 					: rawContent !== undefined
 						? ([
-							{ type: "text", text: rawContent } satisfies Anthropic.Messages.TextBlockParam,
-						] as Anthropic.Messages.ContentBlockParam[])
+								{ type: "text", text: rawContent } satisfies Anthropic.Messages.TextBlockParam,
+							] as Anthropic.Messages.ContentBlockParam[])
 						: []
 
 				const [first, ...rest] = contentArray

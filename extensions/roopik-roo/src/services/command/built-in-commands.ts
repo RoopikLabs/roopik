@@ -1,17 +1,17 @@
 import { Command } from "./commands"
 
 interface BuiltInCommandDefinition {
-  name: string
-  description: string
-  argumentHint?: string
-  content: string
+	name: string
+	description: string
+	argumentHint?: string
+	content: string
 }
 
 const BUILT_IN_COMMANDS: Record<string, BuiltInCommandDefinition> = {
-  init: {
-    name: "init",
-    description: "Analyze codebase and create concise AGENTS.md files for AI assistants",
-    content: `<task>
+	init: {
+		name: "init",
+		description: "Analyze codebase and create concise AGENTS.md files for AI assistants",
+		content: `<task>
 Please analyze this codebase and create an AGENTS.md file containing:
 1. Build/lint/test commands - especially for running a single test
 2. Code style guidelines including imports, formatting, types, naming conventions, error handling, etc.
@@ -21,13 +21,13 @@ Please analyze this codebase and create an AGENTS.md file containing:
   <purpose>
     Create (or update) a concise AGENTS.md file that enables immediate productivity for AI assistants.
     Focus ONLY on project-specific, non-obvious information that you had to discover by reading files.
-
+    
     CRITICAL: Only include information that is:
     - Non-obvious (couldn't be guessed from standard practices)
     - Project-specific (not generic to the framework/language)
     - Discovered by reading files (config files, code patterns, custom utilities)
     - Essential for avoiding mistakes or following project conventions
-
+    
     Usage notes:
     - The file you create will be given to agentic coding agents (such as yourself) that operate in this repository
     - Keep the main AGENTS.md concise - aim for about 20 lines, but use more if the project complexity requires it
@@ -35,10 +35,10 @@ Please analyze this codebase and create an AGENTS.md file containing:
     - If there are Claude Code rules (in CLAUDE.md), Cursor rules (in .cursor/rules/ or .cursorrules), or Copilot rules (in .github/copilot-instructions.md), make sure to include them
     - Be sure to prefix the file with: "# AGENTS.md\\n\\nThis file provides guidance to agents when working with code in this repository."
   </purpose>
-
+  
   <todo_list_creation>
     If the update_todo_list tool is available, create a todo list with these focused analysis steps:
-
+    
     1. Check for existing AGENTS.md files
        CRITICAL - Check these EXACT paths IN THE PROJECT ROOT:
        - AGENTS.md (in project root directory)
@@ -48,7 +48,7 @@ Please analyze this codebase and create an AGENTS.md file containing:
        - .dio/rules-architect/AGENTS.md (relative to project root)
 
        IMPORTANT: All paths are relative to the project/workspace root, NOT system root!
-
+       
        If ANY of these exist:
        - Read them thoroughly
        - CRITICALLY EVALUATE: Remove ALL obvious information
@@ -56,36 +56,36 @@ Please analyze this codebase and create an AGENTS.md file containing:
        - REMOVE anything that could be guessed without reading files
        - Only KEEP truly non-obvious, project-specific discoveries
        - Then add any new non-obvious patterns you discover
-
+       
        Also check for other AI assistant rules:
        - .cursorrules, CLAUDE.md, .roorules
        - .cursor/rules/, .github/copilot-instructions.md
-
+    
     2. Identify stack
        - Language, framework, build tools
        - Package manager and dependencies
-
+    
     3. Extract commands
        - Build, test, lint, run
        - Critical directory-specific commands
-
+    
     4. Map core architecture
        - Main components and flow
        - Key entry points
-
+    
     5. Document critical patterns
        - Project-specific utilities (that you discovered by reading code)
        - Non-standard approaches (that differ from typical patterns)
        - Custom conventions (that aren't obvious from file structure)
-
+    
     6. Extract code style
        - From config files only
        - Key conventions
-
+    
     7. Testing specifics
        - Framework and run commands
        - Directory requirements
-
+    
     8. Compile/Update AGENTS.md files
        - If files exist: AGGRESSIVELY clean them up
          * DELETE all obvious information (even if it was there before)
@@ -103,7 +103,7 @@ Please analyze this codebase and create an AGENTS.md file containing:
 
 <analysis_workflow>
   Follow the comprehensive analysis workflow to:
-
+  
   1. **Discovery Phase**:
      CRITICAL - First check for existing AGENTS.md files at these EXACT locations IN PROJECT ROOT:
      - AGENTS.md (in project/workspace root)
@@ -120,9 +120,9 @@ Please analyze this codebase and create an AGENTS.md file containing:
      - What would an experienced developer already know?
      - DELETE first, then consider what to add
      - The file should get SHORTER, not longer
-
+     
      Also find other AI assistant rules and documentation
-
+     
   2. **Project Identification**: Identify language, stack, and build system
   3. **Command Extraction**: Extract and verify essential commands
   4. **Architecture Mapping**: Create visual flow diagrams of core processes
@@ -137,7 +137,7 @@ Please analyze this codebase and create an AGENTS.md file containing:
 <output_structure>
   <main_file>
     Create or deeply improve AGENTS.md with ONLY non-obvious information:
-
+    
     If AGENTS.md exists:
     - FIRST: Delete ALL obvious information
     - REMOVE: Standard commands, framework defaults, common patterns
@@ -146,7 +146,7 @@ Please analyze this codebase and create an AGENTS.md file containing:
     - If not surprised, DELETE IT
     - THEN: Add only truly non-obvious new discoveries
     - Goal: File should be SHORTER and MORE VALUABLE
-
+    
     Content should include:
     - Header: "# AGENTS.md\\n\\nThis file provides guidance to agents when working with code in this repository."
     - Build/lint/test commands - ONLY if they differ from standard package.json scripts
@@ -155,20 +155,20 @@ Please analyze this codebase and create an AGENTS.md file containing:
     - Non-standard directory structures or file organizations
     - Project-specific conventions that violate typical practices
     - Critical gotchas that would cause errors if not followed
-
+    
     EXCLUDE obvious information like:
     - Standard npm/yarn commands visible in package.json
     - Framework defaults (e.g., "React uses JSX")
     - Common patterns (e.g., "tests go in __tests__ folders")
     - Information derivable from file extensions or directory names
-
+    
     Keep it concise (aim for ~20 lines, but expand as needed for complex projects).
     Include existing AI assistant rules from CLAUDE.md, Cursor rules (.cursor/rules/ or .cursorrules), or Copilot rules (.github/copilot-instructions.md).
   </main_file>
-
+  
   <mode_specific_files>
     Create or deeply improve mode-specific AGENTS.md files IN THE PROJECT ROOT.
-
+    
     CRITICAL: For each of these paths (RELATIVE TO PROJECT ROOT), check if the file exists FIRST:
     - .dio/rules-code/AGENTS.md (create .dio in project root, not system root!)
     - .dio/rules-debug/AGENTS.md (relative to project root)
@@ -177,7 +177,7 @@ Please analyze this codebase and create an AGENTS.md file containing:
 
     IMPORTANT: The .dio directory must be created in the current project/workspace root directory,
     NOT at the system root (/) or home directory. All paths are relative to where the project is located.
-
+    
     If files exist:
     - AGGRESSIVELY DELETE obvious information
     - Remove EVERYTHING that's standard practice
@@ -185,7 +185,7 @@ Please analyze this codebase and create an AGENTS.md file containing:
     - Each remaining line must be surprising/non-obvious
     - Only then add new non-obvious discoveries
     - Files should become SHORTER, not longer
-
+    
     Example structure (ALL IN PROJECT ROOT):
     \`\`\`
     project-root/
@@ -209,7 +209,7 @@ Please analyze this codebase and create an AGENTS.md file containing:
     - Non-standard patterns unique to this project
     - Hidden dependencies or coupling between components
     - Required import orders or naming conventions not enforced by linters
-
+    
     Example of non-obvious rules worth documenting:
     \`\`\`
     # Project Coding Rules (Non-Obvious Only)
@@ -225,7 +225,7 @@ Please analyze this codebase and create an AGENTS.md file containing:
     - Non-standard debugging tools or flags
     - Gotchas that cause silent failures
     - Required environment variables for debugging
-
+    
     Example of non-obvious debug rules worth documenting:
     \`\`\`
     # Project Debug Rules (Non-Obvious Only)
@@ -241,7 +241,7 @@ Please analyze this codebase and create an AGENTS.md file containing:
     - Counterintuitive code organization
     - Misleading folder names or structures
     - Important context not evident from file structure
-
+    
     Example of non-obvious documentation rules worth documenting:
     \`\`\`
     # Project Documentation Rules (Non-Obvious Only)
@@ -257,7 +257,7 @@ Please analyze this codebase and create an AGENTS.md file containing:
     - Undocumented architectural decisions
     - Non-standard patterns that must be followed
     - Performance bottlenecks discovered through investigation
-
+    
     Example of non-obvious architecture rules worth documenting:
     \`\`\`
     # Project Architecture Rules (Non-Obvious Only)
@@ -283,43 +283,43 @@ Please analyze this codebase and create an AGENTS.md file containing:
 </quality_criteria>
 
 Remember: The goal is to create documentation that enables AI assistants to be immediately productive in this codebase, focusing on project-specific knowledge that isn't obvious from the code structure alone.`,
-  },
+	},
 }
 
 /**
  * Get all built-in commands as Command objects
  */
 export async function getBuiltInCommands(): Promise<Command[]> {
-  return Object.values(BUILT_IN_COMMANDS).map((cmd) => ({
-    name: cmd.name,
-    content: cmd.content,
-    source: "built-in" as const,
-    filePath: `<built-in:${cmd.name}>`,
-    description: cmd.description,
-    argumentHint: cmd.argumentHint,
-  }))
+	return Object.values(BUILT_IN_COMMANDS).map((cmd) => ({
+		name: cmd.name,
+		content: cmd.content,
+		source: "built-in" as const,
+		filePath: `<built-in:${cmd.name}>`,
+		description: cmd.description,
+		argumentHint: cmd.argumentHint,
+	}))
 }
 
 /**
  * Get a specific built-in command by name
  */
 export async function getBuiltInCommand(name: string): Promise<Command | undefined> {
-  const cmd = BUILT_IN_COMMANDS[name]
-  if (!cmd) return undefined
+	const cmd = BUILT_IN_COMMANDS[name]
+	if (!cmd) return undefined
 
-  return {
-    name: cmd.name,
-    content: cmd.content,
-    source: "built-in" as const,
-    filePath: `<built-in:${name}>`,
-    description: cmd.description,
-    argumentHint: cmd.argumentHint,
-  }
+	return {
+		name: cmd.name,
+		content: cmd.content,
+		source: "built-in" as const,
+		filePath: `<built-in:${name}>`,
+		description: cmd.description,
+		argumentHint: cmd.argumentHint,
+	}
 }
 
 /**
  * Get names of all built-in commands
  */
 export async function getBuiltInCommandNames(): Promise<string[]> {
-  return Object.keys(BUILT_IN_COMMANDS)
+	return Object.keys(BUILT_IN_COMMANDS)
 }

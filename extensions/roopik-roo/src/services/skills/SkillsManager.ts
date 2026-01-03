@@ -116,12 +116,43 @@ export class SkillsManager {
 				return
 			}
 
+			// Strict spec validation (https://agentskills.io/specification)
+			// Name constraints:
+			// - 1-64 chars
+			// - lowercase letters/numbers/hyphens only
+			// - must not start/end with hyphen
+			// - must not contain consecutive hyphens
+			if (effectiveSkillName.length < 1 || effectiveSkillName.length > 64) {
+				console.error(
+					`Skill name "${effectiveSkillName}" is invalid: name must be 1-64 characters (got ${effectiveSkillName.length})`,
+				)
+				return
+			}
+			const nameFormat = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+			if (!nameFormat.test(effectiveSkillName)) {
+				console.error(
+					`Skill name "${effectiveSkillName}" is invalid: must be lowercase letters/numbers/hyphens only (no leading/trailing hyphen, no consecutive hyphens)`,
+				)
+				return
+			}
+
+			// Description constraints:
+			// - 1-1024 chars
+			// - non-empty (after trimming)
+			const description = frontmatter.description.trim()
+			if (description.length < 1 || description.length > 1024) {
+				console.error(
+					`Skill "${effectiveSkillName}" has an invalid description length: must be 1-1024 characters (got ${description.length})`,
+				)
+				return
+			}
+
 			// Create unique key combining name, source, and mode for override resolution
 			const skillKey = this.getSkillKey(effectiveSkillName, source, mode)
 
 			this.skills.set(skillKey, {
 				name: effectiveSkillName,
-				description: frontmatter.description,
+				description,
 				path: skillMdPath,
 				source,
 				mode, // undefined for generic skills, string for mode-specific
@@ -221,7 +252,7 @@ export class SkillsManager {
 		const dirs: Array<{ dir: string; source: "global" | "project"; mode?: string }> = []
 		const globalRooDir = getGlobalRooDirectory()
 		const provider = this.providerRef.deref()
-		const projectRooDir = provider?.cwd ? path.join(provider.cwd, ".dio") : null
+		const projectRooDir = provider?.cwd ? path.join(provider.cwd, ".roo") : null
 
 		// Get list of modes to check for mode-specific skills
 		const modesList = await this.getAvailableModes()
@@ -278,7 +309,7 @@ export class SkillsManager {
 
 		// Watch for changes in skills directories
 		const globalSkillsDir = path.join(getGlobalRooDirectory(), "skills")
-		const projectSkillsDir = path.join(provider.cwd, ".dio", "skills")
+		const projectSkillsDir = path.join(provider.cwd, ".roo", "skills")
 
 		// Watch global skills directory
 		this.watchDirectory(globalSkillsDir)
@@ -290,7 +321,7 @@ export class SkillsManager {
 		const modesList = await this.getAvailableModes()
 		for (const mode of modesList) {
 			this.watchDirectory(path.join(getGlobalRooDirectory(), `skills-${mode}`))
-			this.watchDirectory(path.join(provider.cwd, ".dio", `skills-${mode}`))
+			this.watchDirectory(path.join(provider.cwd, ".roo", `skills-${mode}`))
 		}
 	}
 

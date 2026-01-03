@@ -62,7 +62,7 @@ const mockContext = {
 	globalState: {
 		get: () => undefined,
 		update: () => Promise.resolve(),
-		setKeysForSync: () => { },
+		setKeysForSync: () => {},
 	},
 	extensionUri: { fsPath: "mock/extension/path" },
 	globalStorageUri: { fsPath: "mock/settings/path" },

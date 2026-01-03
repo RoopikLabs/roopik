@@ -13,8 +13,8 @@
 		}
 	},
 	"landing": {
-		"greeting": "Welcome to Dio Code!",
-		"integrationNote": "NOTE: This is the (Dio Code) extension integrated into <strong>Roopik IDE</strong> (named <strong>Dio Dio</strong>). All features and settings are fully compatible.",
+		"greeting": "Welcome to Your Coding Copilot - Dio!",
+		"integrationNote": "Meet Dio: Your AI coding agent built into Roopik IDE. Let Dio handle the coding while you focus on the big picture. Ask it to build, debug, and improve your code.",
 		"introduction": "With a range of built-in and extensible Modes, Dio Code lets you plan, architect, code, debug and boost your productivity like never before.",
 		"accountMention": "To get started, create your Code Cloud account. Get powerful models, web control, analytics, support and more.",
 		"getStarted": "Get started",
@@ -29,7 +29,7 @@
 		"useAnotherProvider": "3rd-party Provider",
 		"useAnotherProviderDescription": "Enter an API key, or use a local model (offline).",
 		"noApiKeys": "Don't want to deal with API keys and separate accounts?",
-		"backToDio": "Go with the Code Cloud Provider.",
+		"backToRoo": "Go with the Code Cloud Provider.",
 		"goBack": "Back",
 		"finish": "Finish"
 	},
