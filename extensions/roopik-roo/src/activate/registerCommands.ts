@@ -71,7 +71,7 @@ export const registerCommands = (options: RegisterCommandOptions) => {
 }
 
 const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOptions): Record<CommandId, any> => ({
-	activationCompleted: () => {},
+	activationCompleted: () => { },
 	cloudButtonClicked: () => {
 		const visibleProvider = getVisibleProviderOrLog(outputChannel)
 
@@ -136,8 +136,10 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 	},
 	newTask: handleNewTask,
 	externalContext: async (payload?: { promptText?: string; images?: string[]; autoSend?: boolean }) => {
-		const promptText = payload?.promptText?.trim();
-		if (!promptText) {
+		const promptText = payload?.promptText?.trim() || '';
+
+		// Allow empty prompt if images are provided
+		if (!promptText && (!payload?.images || payload.images.length === 0)) {
 			return;
 		}
 

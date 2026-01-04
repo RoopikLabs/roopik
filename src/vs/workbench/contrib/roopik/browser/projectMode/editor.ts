@@ -540,19 +540,9 @@ export class Editor extends EditorPane {
 			// Small delay to ensure view is mounted
 			await new Promise(resolve => setTimeout(resolve, 300));
 
-			// Get current URL for context
-			const currentUrl = this.getCurrentUrl();
-
-			// Build minimal context (just URL) and send clipped screenshot to AI agent
-			const contextInfo = `Browser Screenshot\nURL: ${currentUrl}`;
-
-			this.logger.info('[ClipMode] Sending to agent with command:', {
-				imagesCount: 1,
-				imageLength: dataUrl.length
-			});
-
+			// Send clipped screenshot to AI agent with empty context
 			await this.commandService.executeCommand('roodio.externalContext', {
-				promptText: contextInfo,
+				promptText: '',
 				autoSend: false,
 				images: [dataUrl]
 			});
@@ -801,7 +791,6 @@ export class Editor extends EditorPane {
 			showHardReload: true,
 			showCopyUrl: true,
 			showBookmarks: true,
-			showEditMode: true,
 			showPendingChanges: true
 		};
 
@@ -826,8 +815,6 @@ export class Editor extends EditorPane {
 			onBookmarkClick: (url) => this.navigate(url),
 			getBookmarks: () => this.bookmarks.getAll(),
 			isBookmarked: (url) => this.bookmarks.isBookmarked(url),
-			// Edit Mode callback
-			onEditModeToggle: (enabled: boolean) => this.toggleEditModeToolbar(enabled),
 			// Pending Changes callback
 			onPendingChangesClick: () => this.togglePendingChangesPanel()
 		};
@@ -1722,18 +1709,6 @@ export class Editor extends EditorPane {
 		this.controlBar?.setDevToolsActive(this.devtoolsVisible);
 	}
 
-	// ============================================
-	// Edit Mode (placeholder for future implementation)
-	// ============================================
-
-	/**
-	 * Toggle Edit Mode
-	 * TODO: Implement edit mode features (drag-drop, direct style editing)
-	 */
-	private toggleEditModeToolbar(enabled: boolean): void {
-		this.logger.info(`[ProjectMode] Edit Mode ${enabled ? 'ENABLED' : 'DISABLED'} (not yet implemented)`);
-		// TODO: Implement edit mode - will enable drag-drop, style editing, etc.
-	}
 
 	// ============================================
 	// Pending Changes Panel (drag-drop operations)

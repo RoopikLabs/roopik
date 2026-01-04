@@ -31,7 +31,6 @@ export function getClipModeScript(): string {
 	let overlay = null;
 	let selectionBox = null;
 	let dimensionsLabel = null;
-	let hintLabel = null;
 	let isDrawing = false;
 	let startX = 0;
 	let startY = 0;
@@ -52,7 +51,7 @@ export function getClipModeScript(): string {
 			left: 0;
 			width: 100vw;
 			height: 100vh;
-			background: rgba(0, 0, 0, 0.5);
+			background: rgba(0, 0, 0, 0.2);
 			z-index: 2147483646;
 			cursor: crosshair;
 			user-select: none;
@@ -62,11 +61,12 @@ export function getClipModeScript(): string {
 		selectionBox = document.createElement('div');
 		selectionBox.style.cssText = \`
 			position: fixed;
-			border: 2px solid #4facfe;
-			background: rgba(79, 172, 254, 0.1);
-			box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.3);
+			border: 3px dashed #4facfe;
+			background: transparent;
+			box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.2), inset 0 0 0 2000px rgba(79, 172, 254, 0.08);
 			display: none;
 			pointer-events: none;
+			z-index: 2147483647;
 		\`;
 
 		// Dimensions label (shows width x height)
@@ -84,28 +84,9 @@ export function getClipModeScript(): string {
 			z-index: 2147483647;
 		\`;
 
-		// Hint label (instructions at top)
-		hintLabel = document.createElement('div');
-		hintLabel.style.cssText = \`
-			position: fixed;
-			top: 20px;
-			left: 50%;
-			transform: translateX(-50%);
-			background: rgba(0, 0, 0, 0.9);
-			color: white;
-			padding: 12px 24px;
-			border-radius: 8px;
-			font-size: 14px;
-			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-			z-index: 2147483647;
-			pointer-events: none;
-		\`;
-		hintLabel.textContent = 'Drag to select area • ESC to cancel';
-
 		document.body.appendChild(overlay);
 		document.body.appendChild(selectionBox);
 		document.body.appendChild(dimensionsLabel);
-		document.body.appendChild(hintLabel);
 	}
 
 	// ============================================================================
@@ -154,25 +135,29 @@ export function getClipModeScript(): string {
 			return;
 		}
 
-		// Show confirmation hint
-		hintLabel.textContent = 'Click to capture • ESC to cancel';
+		// Hide selection UI before capture (so it doesn't appear in screenshot)
+		overlay.style.display = 'none';
+		selectionBox.style.display = 'none';
+		dimensionsLabel.style.display = 'none';
 
-		// Wait for user confirmation (click anywhere or Enter)
-		// Don't auto-capture yet - wait for user intent
+		// Send capture request
+		sendCaptureRequest(rect);
+
+		// Small delay before cleanup to ensure CDP message is sent
+		setTimeout(() => {
+			cleanup();
+		}, 50);
 	}
 
 	function handleClick(e) {
-		// If clicking outside selection box, it's a cancel
-		if (selectionBox.style.display === 'none') {
+		// Only handle clicks when NOT drawing (for canceling empty state)
+		if (isDrawing) {
 			return;
 		}
 
-		// User confirmed - send coordinates for capture
-		const rect = getSelectionRect();
-
-		if (rect.width >= 10 && rect.height >= 10) {
-			sendCaptureRequest(rect);
-			cleanup();
+		// If selection box is not visible, ignore click
+		if (selectionBox.style.display === 'none') {
+			return;
 		}
 	}
 
@@ -230,21 +215,23 @@ export function getClipModeScript(): string {
 	// ============================================================================
 
 	function handleKeyDown(e) {
-		if (e.key === 'Escape') {
-			e.preventDefault();
-			e.stopPropagation();
-			cleanup();
-			// Notify main process that clip mode was cancelled
-			if (typeof window.__roopikBridge === 'function') {
-				window.__roopikBridge(JSON.stringify({ type: 'roopik-clip-cancelled' }));
-			}
-		} else if (e.key === 'Enter' && selectionBox.style.display !== 'none') {
+		// ESC handler removed - not crucial since click-to-exit works
+		// Enter key can capture if selection exists
+		if (e.key === 'Enter' && selectionBox.style.display !== 'none') {
 			e.preventDefault();
 			e.stopPropagation();
 			const rect = getSelectionRect();
 			if (rect.width >= 10 && rect.height >= 10) {
+				// Hide UI before capture
+				overlay.style.display = 'none';
+				selectionBox.style.display = 'none';
+				dimensionsLabel.style.display = 'none';
+
 				sendCaptureRequest(rect);
-				cleanup();
+
+				setTimeout(() => {
+					cleanup();
+				}, 50);
 			}
 		}
 	}
@@ -266,9 +253,6 @@ export function getClipModeScript(): string {
 		}
 		if (dimensionsLabel) {
 			dimensionsLabel.remove();
-		}
-		if (hintLabel) {
-			hintLabel.remove();
 		}
 		document.removeEventListener('keydown', handleKeyDown, true);
 		delete window.__roopikClipMode;

@@ -28,7 +28,6 @@ export interface IBrowserControlBarConfig {
 	showHardReload?: boolean;
 	showCopyUrl?: boolean;
 	showBookmarks?: boolean;
-	showEditMode?: boolean;
 	showPendingChanges?: boolean;
 }
 
@@ -60,9 +59,6 @@ export interface IBrowserControlBarCallbacks {
 	getBookmarks?: () => BrowserBookmark[];
 	isBookmarked?: (url: string) => boolean;
 
-	// Edit Mode (canvas-like bottom action bar)
-	onEditModeToggle?: (enabled: boolean) => void;
-
 	// Pending Changes
 	onPendingChangesClick?: () => void;
 }
@@ -88,10 +84,6 @@ export class BrowserControlBar extends Disposable {
 	private bookmarkOverlay: HTMLElement | undefined;
 	private isBookmarkOverlayVisible: boolean = false;
 	private bookmarkHideTimeout: number | undefined;
-
-	// Edit Mode state
-	private editModeButton: HTMLButtonElement | undefined;
-	private isEditModeActive: boolean = false;
 
 	// Feature buttons for active state styling
 	private inspectModeButton: HTMLButtonElement | undefined;
@@ -173,12 +165,6 @@ export class BrowserControlBar extends Disposable {
 
 		// Stop Dev Server button (placeholder - feature coming later)
 		this.createIconButton(Codicon.debugStop, 'Stop Dev Server', () => this.callbacks.onStopDevServer());
-
-		// Edit Mode button (shows/hides the bottom action bar for canvas-like editing)
-		if (this.config.showEditMode && this.callbacks.onEditModeToggle) {
-			this.editModeButton = this.createIconButton(Codicon.edit, 'Toggle Edit Mode', () => this.toggleEditMode());
-			this.updateEditModeButtonState();
-		}
 
 		// Separator before action buttons
 		this.createSeparator();
@@ -970,54 +956,6 @@ export class BrowserControlBar extends Disposable {
 		};
 
 		return item;
-	}
-
-	// ============================================
-	// Edit Mode
-	// ============================================
-
-	/**
-	 * Toggle edit mode (shows/hides the bottom action bar)
-	 */
-	private toggleEditMode(): void {
-		this.isEditModeActive = !this.isEditModeActive;
-		this.updateEditModeButtonState();
-		this.callbacks.onEditModeToggle?.(this.isEditModeActive);
-	}
-
-	/**
-	 * Update the edit mode button appearance based on state
-	 */
-	private updateEditModeButtonState(): void {
-		if (!this.editModeButton) {
-			return;
-		}
-
-		if (this.isEditModeActive) {
-			// Active state - highlighted (override hover handlers)
-			this.editModeButton.style.backgroundColor = 'var(--vscode-toolbar-activeBackground, rgba(99, 102, 241, 0.2))';
-			this.editModeButton.style.color = 'var(--vscode-focusBorder, #007acc)';
-
-			// Keep highlighted even on hover
-			this.editModeButton.onmouseenter = () => {
-				this.editModeButton!.style.backgroundColor = 'var(--vscode-toolbar-activeBackground, rgba(99, 102, 241, 0.3))';
-			};
-			this.editModeButton.onmouseleave = () => {
-				this.editModeButton!.style.backgroundColor = 'var(--vscode-toolbar-activeBackground, rgba(99, 102, 241, 0.2))';
-			};
-		} else {
-			// Inactive state - normal hover behavior
-			this.editModeButton.style.backgroundColor = 'transparent';
-			this.editModeButton.style.color = 'var(--vscode-foreground)';
-
-			// Restore normal hover handlers
-			this.editModeButton.onmouseenter = () => {
-				this.editModeButton!.style.backgroundColor = 'var(--vscode-toolbar-hoverBackground)';
-			};
-			this.editModeButton.onmouseleave = () => {
-				this.editModeButton!.style.backgroundColor = 'transparent';
-			};
-		}
 	}
 
 	// ============================================
