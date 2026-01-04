@@ -1870,13 +1870,31 @@ export class Editor extends EditorPane {
 		try {
 			const dataUrl = await this.browserService.takeScreenshot(this.browserViewId);
 
-			// Copy to clipboard or download
-			const link = document.createElement('a');
-			link.download = `screenshot-${Date.now()}.png`;
-			link.href = dataUrl;
-			link.click();
+			// Send to AI agent
+			await this.viewsService.openView('roodio.ChatPanel', true);
+
+			// Small delay to ensure view is mounted
+			await new Promise(resolve => setTimeout(resolve, 300));
+
+			// Get current URL for context
+			const currentUrl = this.getCurrentUrl();
+
+			// Build prompt with context and send screenshot to AI agent
+			const contextInfo = `Browser Screenshot\nURL: ${currentUrl}`;
+
+			await this.commandService.executeCommand('roodio.externalContext', {
+				promptText: contextInfo,
+				autoSend: false,
+				images: [dataUrl]
+			});
+
+			this.logger.info('[ProjectMode] Screenshot sent to AI agent');
 		} catch (error) {
-			this.logger.error('[ProjectMode] Screenshot failed:', error);
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: 'Failed to capture screenshot',
+				sticky: false
+			});
 		}
 	}
 
