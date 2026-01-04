@@ -787,7 +787,6 @@ export class Editor extends EditorPane {
 			showInspectMode: true,
 			showStyleInspect: true,
 			showScreenshot: true,
-			showScreenshotClip: true,
 			showHardReload: true,
 			showCopyUrl: true,
 			showBookmarks: true,

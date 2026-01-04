@@ -24,7 +24,6 @@ export interface IBrowserControlBarConfig {
 	showInspectMode?: boolean;
 	showStyleInspect?: boolean;
 	showScreenshot?: boolean;
-	showScreenshotClip?: boolean;
 	showHardReload?: boolean;
 	showCopyUrl?: boolean;
 	showBookmarks?: boolean;
@@ -110,10 +109,11 @@ export class BrowserControlBar extends Disposable {
 		const container = document.createElement('div');
 		container.style.display = 'flex';
 		container.style.alignItems = 'center';
-		container.style.padding = '8px';
-		container.style.gap = '8px';
-		container.style.borderBottom = '1px solid var(--vscode-panel-border)';
-		container.style.backgroundColor = 'var(--vscode-editor-background)';
+		container.style.padding = '4px 8px';
+		container.style.gap = '4px';
+		container.style.border = '1px solid var(--vscode-panel-border)';
+		container.style.borderTop = 'none';
+		container.style.backgroundColor = 'var(--vscode-sideBar-background)';
 		container.style.position = 'relative'; // Required for absolute positioning of progress bar
 		container.style.overflow = 'hidden'; // Ensure progress bar doesn't overflow
 		parent.appendChild(container);
@@ -184,14 +184,9 @@ export class BrowserControlBar extends Disposable {
 			this.devToolsButton = this.createIconButton(Codicon.terminal, 'Toggle DevTools', () => this.callbacks.onDevTools!());
 		}
 
-		// Screenshot button
-		if (this.config.showScreenshot && this.callbacks.onScreenshot) {
-			this.createIconButton(Codicon.deviceCamera, 'Take Screenshot', () => this.callbacks.onScreenshot!());
-		}
-
-		// Screenshot Clip button (drag-to-select region)
-		if (this.config.showScreenshotClip && this.callbacks.onScreenshotClip) {
-			this.createIconButton(Codicon.screenFull, 'Screenshot Clip (Select Region)', () => this.callbacks.onScreenshotClip!());
+		// Screenshot button (left click = clip, right click = full)
+		if (this.config.showScreenshot && this.callbacks.onScreenshot && this.callbacks.onScreenshotClip) {
+			this.createDualActionScreenshotButton();
 		}
 
 		// Pending Changes button with badge
@@ -397,7 +392,7 @@ export class BrowserControlBar extends Disposable {
 	private createIconButton(icon: ThemeIcon, tooltip: string, onClick: () => void): HTMLButtonElement {
 		const button = document.createElement('button');
 		button.title = tooltip;
-		button.style.padding = '4px';
+		button.style.padding = '2px';
 		button.style.cursor = 'pointer';
 		button.style.border = 'none';
 		button.style.backgroundColor = 'transparent';
@@ -405,13 +400,13 @@ export class BrowserControlBar extends Disposable {
 		button.style.display = 'flex';
 		button.style.alignItems = 'center';
 		button.style.justifyContent = 'center';
-		button.style.width = '28px';
-		button.style.height = '28px';
+		button.style.width = '24px';
+		button.style.height = '24px';
 		button.style.color = 'var(--vscode-foreground)';
 
 		const iconElement = document.createElement('span');
 		iconElement.className = ThemeIcon.asClassName(icon);
-		iconElement.style.fontSize = '16px';
+		iconElement.style.fontSize = '14px';
 		button.appendChild(iconElement);
 
 		button.onmouseenter = () => {
@@ -429,12 +424,60 @@ export class BrowserControlBar extends Disposable {
 		return button;
 	}
 
+	/**
+	 * Create dual-action screenshot button
+	 * Left click = clip mode, Right click = full screenshot
+	 */
+	private createDualActionScreenshotButton(): void {
+		const button = document.createElement('button');
+		button.title = 'Click to clip, right click to capture whole screen';
+		button.style.padding = '2px';
+		button.style.cursor = 'pointer';
+		button.style.border = 'none';
+		button.style.backgroundColor = 'transparent';
+		button.style.borderRadius = '2px';
+		button.style.display = 'flex';
+		button.style.alignItems = 'center';
+		button.style.justifyContent = 'center';
+		button.style.width = '24px';
+		button.style.height = '24px';
+		button.style.color = 'var(--vscode-foreground)';
+
+		const iconElement = document.createElement('span');
+		iconElement.className = ThemeIcon.asClassName(Codicon.deviceCamera);
+		iconElement.style.fontSize = '14px';
+		button.appendChild(iconElement);
+
+		button.onmouseenter = () => {
+			button.style.backgroundColor = 'var(--vscode-toolbar-hoverBackground)';
+		};
+		button.onmouseleave = () => {
+			button.style.backgroundColor = 'transparent';
+		};
+
+		// Left click = clip mode
+		button.onclick = (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+			this.callbacks.onScreenshotClip?.();
+		};
+
+		// Right click = full screenshot
+		button.oncontextmenu = (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			this.callbacks.onScreenshot?.();
+		};
+
+		this.container.appendChild(button);
+	}
+
 	private createSeparator(): void {
 		const separator = document.createElement('div');
 		separator.style.width = '1px';
-		separator.style.height = '20px';
+		separator.style.height = '16px';
 		separator.style.backgroundColor = 'var(--vscode-panel-border)';
-		separator.style.margin = '0 4px';
+		separator.style.margin = '0 2px';
 		this.container.appendChild(separator);
 	}
 
@@ -451,14 +494,25 @@ export class BrowserControlBar extends Disposable {
 		input.type = 'text';
 		input.placeholder = 'Enter URL (e.g., http://localhost:3000)';
 		input.style.width = '100%';
-		input.style.padding = '6px 12px';
-		input.style.paddingRight = this.config.showBookmarks ? '32px' : '12px'; // Space for star
+		input.style.padding = '4px 8px';
+		input.style.paddingRight = this.config.showBookmarks ? '28px' : '8px'; // Space for star
 		input.style.border = '1px solid var(--vscode-input-border)';
 		input.style.backgroundColor = 'var(--vscode-input-background)';
 		input.style.color = 'var(--vscode-input-foreground)';
-		input.style.borderRadius = '2px';
-		input.style.fontSize = '13px';
+		input.style.borderRadius = '3px';
+		input.style.fontSize = '12px';
 		input.style.boxSizing = 'border-box';
+		input.style.outline = 'none';
+
+		// Focus/blur handlers for visual feedback
+		input.onfocus = () => {
+			input.style.border = '1px solid var(--vscode-focusBorder)';
+			input.style.outline = '1px solid var(--vscode-focusBorder)';
+		};
+		input.onblur = () => {
+			input.style.border = '1px solid var(--vscode-input-border)';
+			input.style.outline = 'none';
+		};
 
 		input.onkeydown = (e) => {
 			if (e.key === 'Enter') {
@@ -979,20 +1033,21 @@ export class BrowserControlBar extends Disposable {
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			width: 26px;
-			height: 26px;
+			width: 24px;
+			height: 24px;
 			padding: 0;
 			border: none;
 			background: transparent;
 			color: var(--vscode-foreground);
 			cursor: pointer;
-			border-radius: 4px;
+			border-radius: 3px;
 		`;
 		this.pendingChangesButton.title = 'Pending Changes';
 
 		// Icon
 		const icon = document.createElement('span');
 		icon.className = ThemeIcon.asClassName(Codicon.diff);
+		icon.style.fontSize = '14px';
 		this.pendingChangesButton.appendChild(icon);
 
 		// Hover effects
@@ -1014,14 +1069,14 @@ export class BrowserControlBar extends Disposable {
 			position: absolute;
 			top: -2px;
 			right: -2px;
-			min-width: 14px;
-			height: 14px;
-			padding: 0 4px;
-			font-size: 10px;
+			min-width: 12px;
+			height: 12px;
+			padding: 0 3px;
+			font-size: 9px;
 			font-weight: 600;
-			line-height: 14px;
+			line-height: 12px;
 			text-align: center;
-			border-radius: 7px;
+			border-radius: 6px;
 			background: var(--vscode-badge-background, #007acc);
 			color: var(--vscode-badge-foreground, #fff);
 			display: none;
