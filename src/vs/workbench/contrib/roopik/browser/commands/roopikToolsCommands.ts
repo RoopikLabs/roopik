@@ -557,7 +557,7 @@ export function registerRoopikToolsCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor, args?: { componentId: string }): Promise<RoopikToolResult> {
+		async run(accessor: ServicesAccessor, args?: { componentId: string; deleteSourceCode?: boolean }): Promise<RoopikToolResult> {
 			if (!args?.componentId) {
 				return { success: false, error: 'Component ID is required' };
 			}

@@ -203,8 +203,8 @@ export class ComponentServiceClient implements IComponentService {
 	// Delete
 	// ========================================================================
 
-	async deleteComponent(id: string): Promise<void> {
-		return this.channel.call('deleteComponent', id);
+	async deleteComponent(id: string, deleteSourceCode?: boolean): Promise<void> {
+		return this.channel.call('deleteComponent', { id, deleteSourceCode });
 	}
 
 	// ========================================================================

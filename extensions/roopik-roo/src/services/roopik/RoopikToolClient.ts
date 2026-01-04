@@ -268,6 +268,7 @@ export interface AddComponentsData {
  */
 export interface RemoveComponentData {
 	componentId: string
+	deletedSourceCode: boolean
 }
 
 /**
@@ -558,10 +559,13 @@ export class RoopikToolClient {
 
 	/**
 	 * Remove a component from its canvas
+	 * @param componentId The component's unique ID
+	 * @param deleteSourceCode If true, also delete the source code files from disk (default: false)
 	 */
-	async removeComponent(componentId: string): Promise<RoopikToolResult<RemoveComponentData>> {
+	async removeComponent(componentId: string, deleteSourceCode?: boolean): Promise<RoopikToolResult<RemoveComponentData>> {
 		return this.executeCommand<RemoveComponentData>("roopik.tools.removeComponent", {
 			componentId,
+			deleteSourceCode,
 		})
 	}
 

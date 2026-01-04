@@ -14,6 +14,7 @@
  */
 
 import * as crypto from 'crypto';
+import * as fs from 'fs';
 import * as path from '../../../../../base/common/path.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
@@ -531,7 +532,7 @@ export class ComponentService extends Disposable implements IComponentService {
 	// Delete
 	// ========================================================================
 
-	async deleteComponent(id: string): Promise<void> {
+	async deleteComponent(id: string, deleteSourceCode: boolean = false): Promise<void> {
 		this.ensureInitialized();
 
 		const component = this.components.get(id);
@@ -547,6 +548,41 @@ export class ComponentService extends Disposable implements IComponentService {
 			this.fileWatcher.unregisterFolderWatch(id);
 		} catch (error) {
 			this.logger.warn('Could not unregister folder watch', { componentId: id, error });
+		}
+
+		// Delete source code files if requested
+		if (deleteSourceCode) {
+
+			if (component.folderPath) {
+				try {
+					// Check if folderPath is already absolute
+					const isAbsolute = path.isAbsolute(component.folderPath);
+					const absoluteFolderPath = isAbsolute
+						? component.folderPath
+						: path.join(this._workspacePath, component.folderPath);
+
+					// Check if folder exists before deleting
+					try {
+						await fs.promises.access(absoluteFolderPath);
+					} catch {
+						this.logger.warn(`[deleteComponent] Folder does not exist: ${absoluteFolderPath}`);
+					}
+
+					// Delete the folder recursively
+					await fs.promises.rm(absoluteFolderPath, { recursive: true, force: true });
+				} catch (error) {
+					this.logger.error('[deleteComponent] ✗ Failed to delete source code folder', {
+						componentId: id,
+						folderPath: component.folderPath,
+						absolutePath: path.join(this._workspacePath, component.folderPath),
+						error: error instanceof Error ? error.message : String(error),
+						stack: error instanceof Error ? error.stack : undefined
+					});
+					// Continue with component deletion even if file deletion fails
+				}
+			} else {
+				this.logger.warn(`[deleteComponent] deleteSourceCode is true but component.folderPath is empty or undefined`);
+			}
 		}
 
 		// Delete from storage
@@ -799,11 +835,11 @@ export class ComponentService extends Disposable implements IComponentService {
 		this._onComponentBuilt.fire(event);
 
 		if (result.success) {
-			this.logger.info('Build succeeded', {
-				componentId: result.componentId,
-				buildTime: result.buildTime,
-				bundleSize: result.bundleSize
-			});
+			// this.logger.info('Build succeeded', {
+			// 	componentId: result.componentId,
+			// 	buildTime: result.buildTime,
+			// 	bundleSize: result.bundleSize
+			// });
 		} else {
 			this.logger.error('Build failed', {
 				componentId: result.componentId,

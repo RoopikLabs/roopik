@@ -108,8 +108,10 @@ export class ComponentChannel implements IServerChannel {
 			// ================================================================
 			// Delete
 			// ================================================================
-			case 'deleteComponent':
-				return this.service.deleteComponent(arg as string);
+			case 'deleteComponent': {
+				const { id, deleteSourceCode } = arg as { id: string; deleteSourceCode?: boolean };
+				return this.service.deleteComponent(id, deleteSourceCode);
+			}
 
 			// ================================================================
 			// File Watcher Control

@@ -427,13 +427,13 @@ export class RoopikExtensionManager implements vscode.Disposable {
 	/**
 	 * Delete a component via Core's ComponentService
 	 */
-	public async deleteComponent(componentId: string): Promise<void> {
-		this.logger.info(`Deleting component: ${componentId}`);
+	public async deleteComponent(componentId: string, deleteSourceCode?: boolean): Promise<void> {
+		const deleteSourceCodeValue = deleteSourceCode ?? false;
 
 		// TODO: Call Core via IPC
-		// return this.componentClient.deleteComponent(componentId);
+		// return this.componentClient.deleteComponent(componentId, deleteSourceCode);
 
-		await vscode.commands.executeCommand('roopik.core.deleteComponent', componentId);
+		await vscode.commands.executeCommand('roopik.core.deleteComponent', componentId, deleteSourceCodeValue);
 	}
 
 	/**

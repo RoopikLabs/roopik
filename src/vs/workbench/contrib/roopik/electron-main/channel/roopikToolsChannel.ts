@@ -1012,12 +1012,12 @@ export class RoopikToolsChannel implements IServerChannel {
 		};
 	}
 
-	private async handleRemoveComponent(args: { componentId: string }): Promise<RoopikToolResult> {
-		await this.componentService.deleteComponent(args.componentId);
+	private async handleRemoveComponent(args: { componentId: string; deleteSourceCode?: boolean }): Promise<RoopikToolResult> {
+		await this.componentService.deleteComponent(args.componentId, args.deleteSourceCode);
 
 		return {
 			success: true,
-			data: { componentId: args.componentId }
+			data: { componentId: args.componentId, deletedSourceCode: args.deleteSourceCode ?? false }
 		};
 	}
 

@@ -94,6 +94,7 @@ export const toolParamNames = [
 	"entryFile", // component_add
 	"framework", // component_add
 	"componentId", // component_remove, component_get_info, component_rebuild
+	"deleteSourceCode", // component_remove
 	"components", // component_add_batch
 	// browser_action parameters
 	"key", // browser_action (press)
@@ -404,17 +405,17 @@ export const TOOL_ALIASES: Record<string, ToolName> = {
 export type DiffResult =
 	| { success: true; content: string; failParts?: DiffResult[] }
 	| ({
-			success: false
-			error?: string
-			details?: {
-				similarity?: number
-				threshold?: number
-				matchedRange?: { start: number; end: number }
-				searchContent?: string
-				bestMatch?: string
-			}
-			failParts?: DiffResult[]
-	  } & ({ error: string } | { failParts: DiffResult[] }))
+		success: false
+		error?: string
+		details?: {
+			similarity?: number
+			threshold?: number
+			matchedRange?: { start: number; end: number }
+			searchContent?: string
+			bestMatch?: string
+		}
+		failParts?: DiffResult[]
+	} & ({ error: string } | { failParts: DiffResult[] }))
 
 export interface DiffItem {
 	content: string

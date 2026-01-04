@@ -366,20 +366,22 @@ export function registerCanvasTools(
 	// --------------------------------------------------------------
 	server.tool(
 		'component_remove',
-		'[Roopik IDE] Remove a component from the visual Canvas. The component will no longer be displayed in the IDE canvas. This cleans up cached builds but does not delete source files.',
+		'[Roopik IDE] Remove component from canvas. Set deleteSourceCode=true to automatically delete source files - do NOT manually delete files with terminal commands.',
 		{
-			componentId: z.string().describe('Component ID to delete')
+			componentId: z.string().describe('Component ID to delete'),
+			deleteSourceCode: z.boolean().optional().describe('Set to true to delete source code from disk (default: false). When true, both UI removal and file deletion are handled automatically.')
 		},
-		async ({ componentId }: { componentId: string }) => {
+		async ({ componentId, deleteSourceCode }: { componentId: string; deleteSourceCode?: boolean }) => {
 			try {
-				await componentService.deleteComponent(componentId);
+				await componentService.deleteComponent(componentId, deleteSourceCode);
 
 				return {
 					content: [{
 						type: 'text' as const,
 						text: JSON.stringify({
 							success: true,
-							componentId
+							componentId,
+							deletedSourceCode: deleteSourceCode ?? false
 						})
 					}]
 				};

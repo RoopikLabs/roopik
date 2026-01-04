@@ -324,7 +324,7 @@ export class ESBuildTransformer {
 	private async getStableVersions(): Promise<Record<string, string>> {
 		// Return cached if available
 		if (this.stableVersionsCache) {
-			this.logger.info('Using cached stable versions');
+			// this.logger.info('Using cached stable versions');
 			return this.stableVersionsCache;
 		}
 
