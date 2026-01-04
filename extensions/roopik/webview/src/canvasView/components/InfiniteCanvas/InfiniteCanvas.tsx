@@ -35,13 +35,17 @@ export interface InfiniteCanvasProps {
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
 	onSandboxUpdate: (id: string, updates: Partial<Sandbox>) => void;
-	onSandboxDelete: (id: string) => void;
+	onSandboxDelete: (id: string, deleteSourceCode?: boolean) => void;
 	/** Called when user clicks code icon to view sandbox code */
 	onSandboxShowCode: (id: string) => void;
 	/** Called when user clicks reload icon to force rebuild */
 	onSandboxRebuild: (id: string) => void;
 	/** Called when clicking on canvas background (not on a sandbox) */
 	onCanvasBackgroundClick?: () => void;
+	/** Delete source code preference from parent */
+	deleteSourceCodePref?: boolean;
+	/** Callback when delete source code preference changes */
+	onDeleteSourceCodePrefChange?: (value: boolean) => void;
 }
 
 // ============================================================
@@ -64,10 +68,12 @@ interface SandboxLayerProps {
 	onSandboxDragStart: (e: React.MouseEvent, sandboxId: string) => void;
 	onSandboxClick: (id: string) => void;
 	onSandboxDoubleClick: (id: string) => void;
-	onSandboxDelete: (id: string) => void;
+	onSandboxDelete: (id: string, deleteSourceCode?: boolean) => void;
 	onSandboxShowCode: (id: string) => void;
 	onSandboxRebuild: (id: string) => void;
 	onSandboxUpdate: (id: string, updates: Partial<Sandbox>) => void;
+	deleteSourceCodePref?: boolean;
+	onDeleteSourceCodePrefChange?: (value: boolean) => void;
 }
 
 /**
@@ -90,6 +96,8 @@ function SandboxLayer({
 	onSandboxShowCode,
 	onSandboxRebuild,
 	onSandboxUpdate,
+	deleteSourceCodePref,
+	onDeleteSourceCodePrefChange
 }: SandboxLayerProps) {
 	// Debug log for inspect mode
 
@@ -122,10 +130,12 @@ function SandboxLayer({
 						onMouseDown={(e) => onSandboxDragStart(e, sandbox.id)}
 						onClick={() => onSandboxClick(sandbox.id)}
 						onDoubleClick={() => onSandboxDoubleClick(sandbox.id)}
-						onDelete={() => onSandboxDelete(sandbox.id)}
+						onDelete={(deleteSourceCode) => onSandboxDelete(sandbox.id, deleteSourceCode)}
 						onShowCode={() => onSandboxShowCode(sandbox.id)}
 						onRebuild={() => onSandboxRebuild(sandbox.id)}
 						onDeviceModeChange={(mode) => onSandboxUpdate(sandbox.id, { deviceMode: mode })}
+						deleteSourceCodePref={deleteSourceCodePref}
+						onDeleteSourceCodePrefChange={onDeleteSourceCodePrefChange}
 					/>
 				);
 			})}
@@ -167,6 +177,8 @@ export function InfiniteCanvas({
 	onSandboxShowCode,
 	onSandboxRebuild,
 	onCanvasBackgroundClick,
+	deleteSourceCodePref,
+	onDeleteSourceCodePrefChange,
 }: InfiniteCanvasProps) {
 	const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -237,6 +249,8 @@ export function InfiniteCanvas({
 					onSandboxShowCode={onSandboxShowCode}
 					onSandboxRebuild={onSandboxRebuild}
 					onSandboxUpdate={onSandboxUpdate}
+					deleteSourceCodePref={deleteSourceCodePref}
+					onDeleteSourceCodePrefChange={onDeleteSourceCodePrefChange}
 				/>
 			</div>
 		</div>

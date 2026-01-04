@@ -138,6 +138,9 @@ function App() {
 	// Delete confirmation state (for keyboard Delete key)
 	const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
+	// Delete source code preference (in-memory, persists during session)
+	const [deleteSourceCodePref, setDeleteSourceCodePref] = useState(false);
+
 	// FPS counter
 	const fps = useFPS();
 
@@ -1106,8 +1109,7 @@ function App() {
 
 	// Sandbox delete handler
 	const handleSandboxDelete = useCallback(
-		(sandboxId: string) => {
-			// logger.info('Deleting sandbox', { sandboxId });
+		(sandboxId: string, deleteSourceCode = false) => {
 			pendingBuildsRef.current.delete(sandboxId);
 
 			if (selectedSandboxId === sandboxId) setSelectedSandboxId(null);
@@ -1115,8 +1117,11 @@ function App() {
 
 			// Notify extension to delete component from storage (Core)
 			vscode.postMessage({
-				type: "deleteComponent",
-				payload: { componentId: sandboxId },
+				type: "deleteComponent" as const,
+				payload: {
+					componentId: sandboxId,
+					deleteSourceCode
+				},
 			});
 
 			setSandboxes((prev) => {
@@ -1517,6 +1522,8 @@ function App() {
 					onSandboxDelete={handleSandboxDelete}
 					onSandboxShowCode={handleSandboxShowCode}
 					onSandboxRebuild={handleSandboxRebuild}
+					deleteSourceCodePref={deleteSourceCodePref}
+					onDeleteSourceCodePrefChange={setDeleteSourceCodePref}
 				onCanvasBackgroundClick={() => {
 					// Clicking outside: unfocus and unselect
 					if (focusedSandboxId) {
@@ -1569,8 +1576,12 @@ function App() {
 			{pendingDeleteId && (
 				<DeleteConfirmModal
 					sandboxId={pendingDeleteId}
-					onConfirm={() => {
-						handleSandboxDelete(pendingDeleteId);
+					initialDeleteSourceCode={deleteSourceCodePref}
+					onDeleteSourceCodeChange={(value) => {
+						setDeleteSourceCodePref(value);
+					}}
+					onConfirm={(deleteSourceCode) => {
+						handleSandboxDelete(pendingDeleteId, deleteSourceCode);
 						setPendingDeleteId(null);
 					}}
 					onCancel={() => setPendingDeleteId(null)}

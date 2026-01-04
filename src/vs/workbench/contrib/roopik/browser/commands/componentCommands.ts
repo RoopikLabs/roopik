@@ -155,7 +155,8 @@ export function registerComponentCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor, componentId: string): Promise<void> {
+		async run(accessor: ServicesAccessor, componentId: string, deleteSourceCode: boolean = false): Promise<void> {
+
 			if (!componentId) {
 				console.error('[ComponentCommands] roopik.core.deleteComponent: componentId is required');
 				return;
@@ -163,7 +164,7 @@ export function registerComponentCommands(): void {
 
 
 			const componentService = accessor.get(IComponentService);
-			await componentService.deleteComponent(componentId);
+			await componentService.deleteComponent(componentId, deleteSourceCode);
 		}
 	});
 

@@ -496,7 +496,7 @@ export const component_remove: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "component_remove",
 		description:
-			"[Roopik IDE] Remove a component from its canvas. This stops the build watcher but does not delete the source files.",
+			"[Roopik IDE] Remove component from canvas. Set deleteSourceCode=true to automatically delete source files - do NOT use terminal commands to delete files manually.",
 		strict: true,
 		parameters: {
 			type: "object",
@@ -504,6 +504,10 @@ export const component_remove: OpenAI.Chat.ChatCompletionTool = {
 				componentId: {
 					type: "string",
 					description: "The component's unique ID (from component_list)",
+				},
+				deleteSourceCode: {
+					type: "boolean",
+					description: "If true, also delete the source code files from disk (default: false)",
 				},
 			},
 			required: ["componentId"],

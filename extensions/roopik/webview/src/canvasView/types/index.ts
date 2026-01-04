@@ -342,7 +342,7 @@ export type WebviewMessage =
 	// Show notification in VSCode
 	| { type: 'showNotification'; payload: { level: 'info' | 'warning' | 'error'; message: string } }
 	// Delete component from storage
-	| { type: 'deleteComponent'; payload: { componentId: string } }
+	| { type: 'deleteComponent'; payload: { componentId: string; deleteSourceCode?: boolean } }
 	// Force rebuild component (bypasses cache)
 	| { type: 'rebuildComponent'; payload: { componentId: string } }
 	// Canvas AI chat input

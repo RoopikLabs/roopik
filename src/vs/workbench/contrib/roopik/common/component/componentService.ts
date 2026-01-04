@@ -260,8 +260,10 @@ export interface IComponentService {
 	/**
 	 * Delete a component (workspace + cache)
 	 * Cancels any pending builds for this component
+	 * @param id Component ID to delete
+	 * @param deleteSourceCode If true, also delete the source code files from disk (default: false)
 	 */
-	deleteComponent(id: string): Promise<void>;
+	deleteComponent(id: string, deleteSourceCode?: boolean): Promise<void>;
 
 	// ========================================================================
 	// File Watcher Control

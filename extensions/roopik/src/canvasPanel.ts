@@ -407,7 +407,7 @@ export class CanvasPanel implements vscode.Disposable {
 					break;
 
 				case 'deleteComponent':
-					await this.handleDeleteComponent(message.payload as { componentId: string });
+					await this.handleDeleteComponent(message.payload as { componentId: string; deleteSourceCode?: boolean });
 					break;
 
 				case 'saveCanvas':
@@ -677,9 +677,8 @@ export class CanvasPanel implements vscode.Disposable {
 	/**
 	 * Handle delete component request from webview
 	 */
-	private async handleDeleteComponent(payload: { componentId: string }): Promise<void> {
-		this.logger.info(`Deleting component: ${payload.componentId}`);
-		await this.manager.deleteComponent(payload.componentId);
+	private async handleDeleteComponent(payload: { componentId: string; deleteSourceCode?: boolean }): Promise<void> {
+		await this.manager.deleteComponent(payload.componentId, payload.deleteSourceCode);
 		// onComponentDeleted event will be routed back
 	}
 

@@ -408,7 +408,8 @@ async function handleRemoveComponent(task: Task, block: ToolUse, callbacks: Tool
 	if (!componentId) {
 		return { success: false, error: "Missing required parameter: componentId" }
 	}
-	return roopikClient.removeComponent(componentId)
+	const deleteSourceCode = block.params.deleteSourceCode === true || block.params.deleteSourceCode === "true"
+	return roopikClient.removeComponent(componentId, deleteSourceCode)
 }
 
 async function handleGetComponentInfo(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {

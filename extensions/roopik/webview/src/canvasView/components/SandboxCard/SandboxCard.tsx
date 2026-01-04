@@ -32,13 +32,17 @@ interface SandboxCardProps {
 	onMouseDown: (e: React.MouseEvent) => void;
 	onClick: () => void;
 	onDoubleClick: () => void;
-	onDelete: () => void;
+	onDelete: (deleteSourceCode?: boolean) => void;
 	/** Callback to show code view for this sandbox */
 	onShowCode: () => void;
 	/** Callback to force rebuild this sandbox */
 	onRebuild: () => void;
 	/** Callback to update sandbox device mode */
 	onDeviceModeChange: (mode: DevicePreset | undefined) => void;
+	/** Delete source code preference from parent */
+	deleteSourceCodePref?: boolean;
+	/** Callback when delete source code preference changes */
+	onDeleteSourceCodePrefChange?: (value: boolean) => void;
 }
 
 /**
@@ -494,7 +498,9 @@ export function SandboxCard({
 	onDelete,
 	onShowCode,
 	onRebuild,
-	onDeviceModeChange
+	onDeviceModeChange,
+	deleteSourceCodePref = false,
+	onDeleteSourceCodePrefChange
 }: SandboxCardProps) {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [isHovered, setIsHovered] = useState(false);
@@ -624,9 +630,9 @@ export function SandboxCard({
 		setShowDeleteConfirm(true);
 	};
 
-	const handleConfirmDelete = () => {
+	const handleConfirmDelete = (deleteSourceCode: boolean) => {
 		setShowDeleteConfirm(false);
-		onDelete();
+		onDelete(deleteSourceCode);
 	};
 
 	const handleCancelDelete = () => {
@@ -871,7 +877,7 @@ export function SandboxCard({
 					>
 						{/* Interaction overlay - click to activate component, allows canvas zoom to work */}
 						{!isActivated && !isFocused && (
-							<div 
+							<div
 								className="interaction-overlay"
 								onClick={handleOverlayClick}
 								title="Click to interact with component"
@@ -912,6 +918,8 @@ export function SandboxCard({
 			{showDeleteConfirm && (
 				<DeleteConfirmModal
 					sandboxId={displayName}
+					initialDeleteSourceCode={deleteSourceCodePref}
+					onDeleteSourceCodeChange={onDeleteSourceCodePrefChange}
 					onConfirm={handleConfirmDelete}
 					onCancel={handleCancelDelete}
 				/>

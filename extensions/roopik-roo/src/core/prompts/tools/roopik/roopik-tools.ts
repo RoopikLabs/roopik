@@ -323,12 +323,14 @@ Usage:
 
 export function getComponentRemoveDescription(): string {
 	return `## component_remove
-Description: [Roopik IDE] Remove a component from its canvas. This stops the build watcher but does not delete the source files.
+Description: [Roopik IDE] Remove a component from its canvas. Set deleteSourceCode=true to automatically delete source files from disk - DO NOT manually delete files with terminal commands.
 Parameters:
 - componentId: (required) The component's unique ID (from component_list)
+- deleteSourceCode: (optional) Set to true to delete source code from disk (default: false). When true, both UI removal and file deletion are handled automatically internally.
 Usage:
 <component_remove>
 <componentId>component-id</componentId>
+<deleteSourceCode>true</deleteSourceCode>
 </component_remove>`
 }
 
@@ -440,7 +442,7 @@ These tools integrate with Roopik IDE's browser preview, canvas, and component f
 2. \`component_add\` - Add component folder to canvas (Once you write a component code, you have to pass the absolute path of the component file to the canvas add tool which shows the live preview of the component in the canvas UI)
 3. \`component_list\` - See all components on canvas (this will show the list of all components added to the canvas to you if you need to see the list of components added to the canvas or get info about a specific component use \`component_get_info\`)
 4. \`component_rebuild\` - Force rebuild after changes (use this tool if you make changes to the component code and want to rebuild the component)
-5. \`component_remove\` - Remove component from canvas (IMPORTANT: This only removes the component from the canvas UI visually, it does NOT delete the code files. To fully remove a component: first call \`component_remove\` to remove from canvas, then delete the component folder for a clean removal)
+5. \`component_remove\` - Remove component (set deleteSourceCode=true to delete files automatically - never use terminal commands to delete files)
 6. User views live preview in canvas UI
 - **IMPORTANT**: DO NOT use browser_open or browser_screenshot for canvas components. The canvas UI shows live preview automatically after component_add. Browser tools are only for projects with dev servers.
 
