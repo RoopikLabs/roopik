@@ -110,12 +110,6 @@ export class CheckForUpdateAction extends Action2 {
 			category: { value: product.nameShort, original: product.nameShort },
 			f1: true,
 			precondition: CONTEXT_UPDATE_STATE.isEqualTo(StateType.Idle),
-			menu: [{
-				id: MenuId.MenubarHelpMenu,
-				group: '9_update',
-				order: 1,
-				when: CONTEXT_UPDATE_STATE.isEqualTo(StateType.Idle),
-			}]
 		});
 	}
 
