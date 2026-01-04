@@ -24,6 +24,7 @@ export interface IBrowserControlBarConfig {
 	showInspectMode?: boolean;
 	showStyleInspect?: boolean;
 	showScreenshot?: boolean;
+	showScreenshotClip?: boolean;
 	showHardReload?: boolean;
 	showCopyUrl?: boolean;
 	showBookmarks?: boolean;
@@ -49,6 +50,7 @@ export interface IBrowserControlBarCallbacks {
 	onStylePanelToggle?: () => void;  // Toggle style panel visibility
 	onHardReload?: () => void;
 	onScreenshot?: () => void;
+	onScreenshotClip?: () => void;  // Clip mode (drag-to-select region)
 	onCopyUrl?: () => void;
 
 	// Bookmarks
@@ -199,6 +201,11 @@ export class BrowserControlBar extends Disposable {
 		// Screenshot button
 		if (this.config.showScreenshot && this.callbacks.onScreenshot) {
 			this.createIconButton(Codicon.deviceCamera, 'Take Screenshot', () => this.callbacks.onScreenshot!());
+		}
+
+		// Screenshot Clip button (drag-to-select region)
+		if (this.config.showScreenshotClip && this.callbacks.onScreenshotClip) {
+			this.createIconButton(Codicon.screenFull, 'Screenshot Clip (Select Region)', () => this.callbacks.onScreenshotClip!());
 		}
 
 		// Pending Changes button with badge

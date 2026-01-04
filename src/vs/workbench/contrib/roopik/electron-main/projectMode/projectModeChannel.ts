@@ -85,6 +85,8 @@ export class ProjectModeChannel implements IServerChannel {
 			// Utilities
 			case 'takeScreenshot':
 				return this.service.takeScreenshot(arg);
+			case 'takeScreenshotClip':
+				return this.service.takeScreenshotClip(arg.browserViewId, arg.x, arg.y, arg.width, arg.height);
 			case 'focusBrowserView':
 				return this.service.focusBrowserView(arg);
 			case 'executeScript':

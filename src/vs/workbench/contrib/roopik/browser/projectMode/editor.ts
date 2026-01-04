@@ -97,6 +97,9 @@ export class Editor extends EditorPane {
 	private styleInspect!: StyleInspect;
 	private dragDrop!: DragDrop;
 
+	// Clip mode state
+	private isClipModeActive: boolean = false;
+
 	constructor(
 		group: IEditorGroup,
 		@ITelemetryService telemetryService: ITelemetryService,
@@ -122,7 +125,7 @@ export class Editor extends EditorPane {
 		this.devServerService = new DevServerBridge(mainProcessService.getChannel(DEV_SERVER_CHANNEL));
 
 		// Initialize features (extracted to features/ folder)
-		this.inspectMode = new InspectMode(this.browserService, this.notificationService, this.clipboardService);
+		this.inspectMode = new InspectMode(this.browserService, this.clipboardService);
 		this.bookmarks = new Bookmarks(this.storageService, this.notificationService, this.logger);
 		this.browserPause = new BrowserPause(this.browserService);
 		this.styleInspect = new StyleInspect(this.browserService, this.notificationService, this.sourceNavigationService);
@@ -351,6 +354,15 @@ export class Editor extends EditorPane {
 				case 'chat-message':
 					this.handleChatMessage(message as import('../../common/projectMode/types.js').ChatMessage);
 					break;
+				case 'roopik-clip-ready':
+					this.logger.info('[ClipMode] Clip mode overlay ready');
+					break;
+				case 'roopik-clip-capture':
+					this.handleClipCapture(message as any);
+					break;
+				case 'roopik-clip-cancelled':
+					this.handleClipCancelled();
+					break;
 				case 'drag-started':
 					this.dragDrop.handleDragStarted(message as import('../../common/projectMode/types.js').DragStartedMessage);
 					break;
@@ -413,6 +425,155 @@ export class Editor extends EditorPane {
 		if (this.styleInspect.isPanelVisible()) {
 			this.styleInspect.hidePanel();
 		}
+	}
+
+	// ============================================================================
+	// Clip Mode (Screenshot Region Selection)
+	// ============================================================================
+
+	/**
+	 * Enter clip mode - inject overlay for drag-to-select rectangle
+	 */
+	async toggleClipMode(): Promise<void> {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		if (this.isClipModeActive) {
+			// Already active - disable it
+			await this.disableClipMode();
+			return;
+		}
+
+		this.logger.info('[ClipMode] Enabling clip mode');
+
+		try {
+			// Ensure browser bridge is set up (for window.__roopikBridge)
+			await this.browserService.setupBrowserBridge(this.browserViewId);
+
+			// Inject clip mode script
+			const { getClipModeScript } = await import('./scripts/clipModeScript.js');
+			const script = getClipModeScript();
+
+			await this.browserService.executeScript(this.browserViewId, script);
+			this.isClipModeActive = true;
+
+			// Focus browser to ensure ESC key works
+			await this.browserService.focusBrowserView(this.browserViewId);
+
+			this.logger.info('[ClipMode] Clip mode overlay injected and ready');
+		} catch (error) {
+			this.logger.error('[ClipMode] Failed to enable clip mode:', error);
+			this.isClipModeActive = false;
+		}
+	}
+
+	/**
+	 * Disable clip mode (called on ESC or after capture)
+	 */
+	private async disableClipMode(): Promise<void> {
+		if (!this.browserViewId || !this.isClipModeActive) {
+			return;
+		}
+
+		this.logger.info('[ClipMode] Disabling clip mode');
+
+		try {
+			// Remove clip mode UI by executing cleanup
+			await this.browserService.executeScript(
+				this.browserViewId,
+				`(function() {
+					const overlay = document.getElementById('roopik-clip-overlay');
+					if (overlay) overlay.remove();
+					delete window.__roopikClipMode;
+				})()`
+			);
+		} catch (error) {
+			this.logger.warn('[ClipMode] Cleanup failed:', error);
+		}
+
+		this.isClipModeActive = false;
+	}
+
+	/**
+	 * Handle clip capture request from injected script
+	 */
+	private async handleClipCapture(message: { rect: { x: number; y: number; width: number; height: number } }): Promise<void> {
+		if (!this.browserViewId) {
+			this.logger.warn('[ClipMode] No browser view ID');
+			return;
+		}
+
+		const { rect } = message;
+		this.logger.info('[ClipMode] Capturing clip', { rect });
+
+		try {
+			// Capture clipped screenshot (viewport coordinates)
+			this.logger.info('[ClipMode] Calling takeScreenshotClip...', {
+				browserViewId: this.browserViewId,
+				x: rect.x,
+				y: rect.y,
+				width: rect.width,
+				height: rect.height
+			});
+
+			const dataUrl = await this.browserService.takeScreenshotClip(
+				this.browserViewId,
+				rect.x,
+				rect.y,
+				rect.width,
+				rect.height
+			);
+
+			this.logger.info('[ClipMode] Screenshot captured, data URL length:', dataUrl?.length || 0);
+
+			// Disable clip mode
+			await this.disableClipMode();
+
+			if (!dataUrl || !dataUrl.startsWith('data:image')) {
+				throw new Error('Invalid screenshot data URL');
+			}
+
+			// Send to AI agent
+			await this.viewsService.openView('roodio.ChatPanel', true);
+
+			// Small delay to ensure view is mounted
+			await new Promise(resolve => setTimeout(resolve, 300));
+
+			// Get current URL for context
+			const currentUrl = this.getCurrentUrl();
+
+			// Build minimal context (just URL) and send clipped screenshot to AI agent
+			const contextInfo = `Browser Screenshot\nURL: ${currentUrl}`;
+
+			this.logger.info('[ClipMode] Sending to agent with command:', {
+				imagesCount: 1,
+				imageLength: dataUrl.length
+			});
+
+			await this.commandService.executeCommand('roodio.externalContext', {
+				promptText: contextInfo,
+				autoSend: false,
+				images: [dataUrl]
+			});
+
+			this.logger.info('[ClipMode] Clipped screenshot sent to AI agent successfully');
+		} catch (error) {
+			this.logger.error('[ClipMode] Failed to capture clip:', { error, message: error instanceof Error ? error.message : String(error) });
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: `Failed to capture screenshot clip: ${error instanceof Error ? error.message : String(error)}`,
+				sticky: false
+			});
+		}
+	}
+
+	/**
+	 * Handle clip mode cancellation (ESC pressed)
+	 */
+	private async handleClipCancelled(): Promise<void> {
+		this.logger.info('[ClipMode] Clip mode cancelled by user');
+		await this.disableClipMode();
 	}
 
 	/**
@@ -636,6 +797,7 @@ export class Editor extends EditorPane {
 			showInspectMode: true,
 			showStyleInspect: true,
 			showScreenshot: true,
+			showScreenshotClip: true,
 			showHardReload: true,
 			showCopyUrl: true,
 			showBookmarks: true,
@@ -656,6 +818,7 @@ export class Editor extends EditorPane {
 			onDevTools: () => this.toggleDevTools(),
 			onHardReload: () => this.hardReload(),
 			onScreenshot: () => this.takeScreenshot(),
+			onScreenshotClip: () => this.toggleClipMode(),
 			onCopyUrl: () => this.copyCurrentUrl(),
 			// Bookmark callbacks (delegate to Bookmarks feature)
 			onBookmarkAdd: (bookmark) => this.bookmarks.add(bookmark),

@@ -201,6 +201,12 @@ export interface IProjectModeService {
 	takeScreenshot(browserViewId: number): Promise<string>;
 
 	/**
+	 * Take screenshot of a specific region (clip mode)
+	 * Coordinates are viewport-relative (clientX/Y from browser)
+	 */
+	takeScreenshotClip(browserViewId: number, x: number, y: number, width: number, height: number): Promise<string>;
+
+	/**
 	 * Focus the browser view to receive keyboard events
 	 */
 	focusBrowserView(browserViewId: number): Promise<void>;

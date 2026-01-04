@@ -253,6 +253,33 @@ export interface DragEndedMessage extends BrowserBridgeMessageBase {
 }
 
 /**
+ * Clip mode ready message - overlay injected and ready
+ */
+export interface ClipModeReady extends BrowserBridgeMessageBase {
+	type: 'roopik-clip-ready';
+}
+
+/**
+ * Clip capture message - user selected a region to capture
+ */
+export interface ClipCaptureMessage extends BrowserBridgeMessageBase {
+	type: 'roopik-clip-capture';
+	rect: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	};
+}
+
+/**
+ * Clip cancelled message - user pressed ESC
+ */
+export interface ClipCancelledMessage extends BrowserBridgeMessageBase {
+	type: 'roopik-clip-cancelled';
+}
+
+/**
  * Union of all browser bridge message types
  * Add new message types here as we add features
  */
@@ -260,6 +287,9 @@ export type BrowserBridgeMessage =
 	| ElementSelectedMessage
 	| InspectModeExitedMessage
 	| ChatMessage
+	| ClipModeReady
+	| ClipCaptureMessage
+	| ClipCancelledMessage
 	| DragStartedMessage
 	| DragEndedMessage;
 

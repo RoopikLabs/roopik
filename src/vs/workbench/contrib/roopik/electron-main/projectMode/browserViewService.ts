@@ -790,6 +790,27 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	}
 
 	/**
+	 * Take screenshot of a specific region (clip mode)
+	 * Coordinates are viewport-relative (clientX/Y from browser)
+	 */
+	async takeScreenshotClip(browserViewId: number, x: number, y: number, width: number, height: number): Promise<string> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		// Capture specific region - Electron's capturePage accepts rect
+		const image = await browserView.webContents.capturePage({
+			x: Math.floor(x),
+			y: Math.floor(y),
+			width: Math.floor(width),
+			height: Math.floor(height)
+		});
+
+		return image.toDataURL();
+	}
+
+	/**
 	 * Focus the browser view to receive keyboard events
 	 * This is important for ESC key handling in inspect mode
 	 */
