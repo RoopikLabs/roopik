@@ -326,6 +326,22 @@ export class Editor extends EditorPane {
 				});
 			}
 		}));
+
+		// Listen for attach element requests from context menu (works WITHOUT inspect mode!)
+		this._register(this.browserService.onAttachElementRequest((event) => {
+			// Filter by browserViewId - only handle events for this browser instance
+			if (event.browserViewId !== this.browserViewId) {
+				return;
+			}
+
+			// Handle attach element request (reuse same handler as inspect mode)
+			this.handleAttachElement({
+				type: 'attach-element',
+				html: event.html,
+				selector: event.selector,
+				tagName: event.tagName
+			});
+		}));
 	}
 
 	/**
@@ -353,6 +369,9 @@ export class Editor extends EditorPane {
 					break;
 				case 'chat-message':
 					this.handleChatMessage(message as import('../../common/projectMode/types.js').ChatMessage);
+					break;
+				case 'attach-element':
+					this.handleAttachElement(message as import('../../common/projectMode/types.js').AttachElementMessage);
 					break;
 				case 'roopik-clip-ready':
 					this.logger.info('[ClipMode] Clip mode overlay ready');
@@ -568,7 +587,7 @@ export class Editor extends EditorPane {
 
 	/**
 	 * Handle chat message from inspect mode
-	 * Forward to AI agent with screenshot and element context
+	 * Forward to AI agent with element HTML and user message
 	 */
 	private async handleChatMessage(message: import('../../common/projectMode/types.js').ChatMessage): Promise<void> {
 		if (!message.text?.trim() || !this.browserViewId) {
@@ -576,22 +595,15 @@ export class Editor extends EditorPane {
 		}
 
 		try {
-			// Capture screenshot
-			let screenshot: string | undefined;
-			try {
-				screenshot = await this.browserService.takeScreenshot(this.browserViewId);
-			} catch (error) {
-				this.logger.warn('[InspectMode] Screenshot capture failed:', error);
-			}
-
 			// Open chat panel (ensures extension is activated)
 			await this.viewsService.openView('roodio.ChatPanel', true);
 
 			// Small delay to ensure view is mounted
 			await new Promise(resolve => setTimeout(resolve, 300));
 
-			// Build context message with element info
-			let contextText = `Element: ${message.tagName}`;
+			// Build context with element HTML + metadata
+			let contextText = `${message.text}\n\n`;
+			contextText += `Element: <${message.tagName}>`;
 			if (message.selector) {
 				contextText += `\nSelector: ${message.selector}`;
 			}
@@ -601,18 +613,52 @@ export class Editor extends EditorPane {
 					contextText += `:${message.source.column}`;
 				}
 			}
+			contextText += `\n\nHTML:\n\`\`\`html\n${message.html}\n\`\`\``;
 
-			// Send to AI agent with screenshot
+			// Send to AI agent
 			await this.commandService.executeCommand('roodio.externalContext', {
-				promptText: message.text,
-				autoSend: true,
-				context: contextText,
-				screenshot: screenshot
+				promptText: contextText,
+				autoSend: false
 			});
 
-			this.logger.info('[InspectMode] Chat message forwarded to AI agent');
+			this.logger.info('[InspectMode] Chat message with HTML forwarded to AI agent');
 		} catch (error) {
 			this.logger.error('[InspectMode] Failed to send chat message:', error);
+		}
+	}
+
+	/**
+	 * Handle attach element request (silent attachment)
+	 * Sends element HTML to AI agent without message
+	 */
+	private async handleAttachElement(message: import('../../common/projectMode/types.js').AttachElementMessage): Promise<void> {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		try {
+			// Open chat panel (ensures extension is activated)
+			await this.viewsService.openView('roodio.ChatPanel', true);
+
+			// Small delay to ensure view is mounted
+			await new Promise(resolve => setTimeout(resolve, 300));
+
+			// Build context with element HTML only
+			let contextText = `Element: <${message.tagName}>`;
+			if (message.selector) {
+				contextText += `\nSelector: ${message.selector}`;
+			}
+			contextText += `\n\nHTML:\n\`\`\`html\n${message.html}\n\`\`\``;
+
+			// Send to AI agent as context (no auto-send, user types message in panel)
+			await this.commandService.executeCommand('roodio.externalContext', {
+				promptText: contextText,
+				autoSend: false
+			});
+
+			this.logger.info('[InspectMode] Element HTML attached to AI agent');
+		} catch (error) {
+			this.logger.error('[InspectMode] Failed to attach element:', error);
 		}
 	}
 

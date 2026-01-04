@@ -23,6 +23,8 @@ export class ProjectModeChannel implements IServerChannel {
 				return this.service.onNavigationStateChanged;
 			case 'onOpenSourceRequest':
 				return this.service.onOpenSourceRequest;
+			case 'onAttachElementRequest':
+				return this.service.onAttachElementRequest;
 			case 'onBrowserBridgeMessage':
 				return this.service.onBrowserBridgeMessage;
 			case 'onBrowserKeyPress':

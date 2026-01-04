@@ -14,7 +14,7 @@
  * Attributes injected:
  * - data-roopik-source: "file:startLine:startCol:endLine:endCol"
  * - data-roopik-component: tag name (div, Button, etc.)
- * - data-roopik-parent: "ComponentName|tag>parent>grandparent"
+ * - data-roopik-parent: DISABLED (using CSS selectors instead)
  */
 
 import { BaseInjector, InjectorContext } from './types.js';

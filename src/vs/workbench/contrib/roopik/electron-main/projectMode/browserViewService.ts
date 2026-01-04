@@ -45,6 +45,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	private readonly _onOpenSourceRequest = new Emitter<OpenSourceRequestEvent>();
 	readonly onOpenSourceRequest: Event<OpenSourceRequestEvent> = this._onOpenSourceRequest.event;
 
+	private readonly _onAttachElementRequest = new Emitter<import('../../common/projectMode/types.js').AttachElementRequestEvent>();
+	readonly onAttachElementRequest: Event<import('../../common/projectMode/types.js').AttachElementRequestEvent> = this._onAttachElementRequest.event;
+
 	private readonly _onBrowserBridgeMessage = new Emitter<BrowserBridgeEvent>();
 	readonly onBrowserBridgeMessage: Event<BrowserBridgeEvent> = this._onBrowserBridgeMessage.event;
 
@@ -1517,9 +1520,106 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				const menuItems: Electron.MenuItemConstructorOptions[] = [];
 				const wc = browserView.webContents;
 
+				// "Attach Element to Context" - sends element HTML to AI agent
+				menuItems.push({ type: 'separator' });
+				menuItems.push({
+					label: 'Attach Element to Context',
+					click: async () => {
+						// Check if clicking on inspect overlay (skip if yes)
+						const isInspectOverlay = await wc.executeJavaScript(`
+							(function() {
+								const x = ${params.x};
+								const y = ${params.y};
+								const el = document.elementFromPoint(x, y);
+								return el && (el.id === '__roopik_inspect_selected' || el.id === '__roopik_inspect_overlay');
+							})();
+						`).catch(() => false);
+
+						if (isInspectOverlay) {
+							return; // Silently ignore clicks on inspect overlay
+						}
+						try {
+							// Execute script to get element HTML and strip metadata
+							const result = await wc.executeJavaScript(`
+									(function() {
+										const x = ${params.x};
+										const y = ${params.y};
+										const el = document.elementFromPoint(x, y);
+
+										if (!el || el === document.body || el === document.documentElement) {
+											return null;
+										}
+
+									// SHARED UTILITY FUNCTIONS (from htmlUtils.ts)
+									// These are copied here to maintain single source of truth
+									// See: src/vs/workbench/contrib/roopik/browser/projectMode/utils/htmlUtils.ts
+
+									function stripRoopikMetadata(html) {
+										return html
+											.replace(/\\s+data-roopik-[a-z-]+\\s*=\\s*"[^"]*"/gi, '')
+											.replace(/\\s+/g, ' ')
+											.trim();
+									}
+
+									function getElementSelector(el) {
+										if (!el || el === document.body || el === document.documentElement) return null;
+										var parts = [];
+										var current = el;
+										while (current && current !== document.body && current !== document.documentElement) {
+											var selector = current.tagName.toLowerCase();
+											if (current.id) {
+												parts.unshift('#' + CSS.escape(current.id));
+												break;
+											}
+											if (current.className && typeof current.className === 'string') {
+												var classes = current.className.trim().split(/\\s+/).filter(function(c) { return c; });
+												if (classes.length > 0) {
+													selector += '.' + classes.map(function(c) { return CSS.escape(c); }).join('.');
+												}
+											}
+											var parent = current.parentElement;
+											if (parent) {
+												var siblings = Array.from(parent.children).filter(function(s) { return s.tagName === current.tagName; });
+												if (siblings.length > 1) {
+													var index = siblings.indexOf(current) + 1;
+													selector += ':nth-of-type(' + index + ')';
+												}
+											}
+											parts.unshift(selector);
+											current = parent;
+										}
+										return parts.join(' > ');
+									}
+
+									const rawHTML = el.outerHTML;
+									const cleanHTML = stripRoopikMetadata(rawHTML);
+
+									return {
+										html: cleanHTML,
+										selector: getElementSelector(el),
+										tagName: el.tagName.toLowerCase()
+									};
+								})();
+							`);
+
+							if (result && result.html) {
+								// Fire event directly (works WITHOUT inspect mode!)
+								this._onAttachElementRequest.fire({
+									browserViewId,
+									html: result.html,
+									selector: result.selector,
+									tagName: result.tagName
+								});
+								this.logger.info('[ContextMenu] Element attach request sent');
+							}
+						} catch (error) {
+							this.logger.error('[ContextMenu] Failed to attach element', { error });
+						}
+					}
+				});
+
 				// "Open Source" - opens the source file for the clicked element
 				// Uses data-roopik-source attribute injected at build time
-				menuItems.push({ type: 'separator' });
 				menuItems.push({
 					label: 'Open Source',
 					click: async () => {

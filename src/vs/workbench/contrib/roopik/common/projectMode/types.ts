@@ -154,6 +154,18 @@ export interface OpenSourceRequestEvent {
 	error?: string;
 }
 
+/**
+ * Event payload when user requests to attach element from context menu
+ * Fired when user clicks "Attach Element to Context" in browser context menu
+ * Works WITHOUT inspect mode - direct from right-click
+ */
+export interface AttachElementRequestEvent {
+	browserViewId: number;
+	html: string;
+	selector: string;
+	tagName: string;
+}
+
 // ============================================
 // Browser Bridge Messages (CDP Runtime.bindingCalled)
 // ============================================
@@ -203,6 +215,7 @@ export interface InspectModeExitedMessage extends BrowserBridgeMessageBase {
 export interface ChatMessage extends BrowserBridgeMessageBase {
 	type: 'chat-message';
 	text: string;
+	html: string; // Element HTML (stripped of Roopik metadata)
 	selector: string;
 	tagName: string;
 	source: {
@@ -223,6 +236,16 @@ export interface ChatMessage extends BrowserBridgeMessageBase {
 		left: number;
 	};
 	screenshot?: string; // Base64 data URL
+}
+
+/**
+ * Attach element message (silent attachment without chat)
+ */
+export interface AttachElementMessage extends BrowserBridgeMessageBase {
+	type: 'attach-element';
+	html: string; // Element HTML (stripped of Roopik metadata)
+	selector: string;
+	tagName: string;
 }
 
 /**
@@ -287,6 +310,7 @@ export type BrowserBridgeMessage =
 	| ElementSelectedMessage
 	| InspectModeExitedMessage
 	| ChatMessage
+	| AttachElementMessage
 	| ClipModeReady
 	| ClipCaptureMessage
 	| ClipCancelledMessage
