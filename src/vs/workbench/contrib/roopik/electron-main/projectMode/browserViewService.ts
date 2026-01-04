@@ -790,6 +790,19 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	}
 
 	/**
+	 * Focus the browser view to receive keyboard events
+	 * This is important for ESC key handling in inspect mode
+	 */
+	async focusBrowserView(browserViewId: number): Promise<void> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		browserView.webContents.focus();
+	}
+
+	/**
 	 * Take screenshot with viewport metadata for pixel-perfect clicking
 	 * Returns image data URL plus CSS viewport dimensions (not scaled pixel dimensions)
 	 *
@@ -1579,6 +1592,13 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 					},
 					type: input.type
 				});
+			}
+
+			// Prevent default for ESC key - we handle it centrally in renderer
+			// This prevents the browser from handling it first
+			if (input.key === 'Escape' && input.type === 'keyDown') {
+				event.preventDefault();
+				return;
 			}
 
 			// Handle keyboard zoom shortcuts (Ctrl++, Ctrl+-, Ctrl+0) locally

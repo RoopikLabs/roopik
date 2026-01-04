@@ -201,6 +201,11 @@ export interface IProjectModeService {
 	takeScreenshot(browserViewId: number): Promise<string>;
 
 	/**
+	 * Focus the browser view to receive keyboard events
+	 */
+	focusBrowserView(browserViewId: number): Promise<void>;
+
+	/**
 	 * Execute JavaScript in browser
 	 */
 	executeScript(browserViewId: number, script: string): Promise<any>;

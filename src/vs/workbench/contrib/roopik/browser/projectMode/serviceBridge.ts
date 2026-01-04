@@ -169,6 +169,10 @@ export class ServiceBridge implements IProjectModeService {
 		return this.channel.call('takeScreenshot', browserViewId);
 	}
 
+	async focusBrowserView(browserViewId: number): Promise<void> {
+		return this.channel.call('focusBrowserView', browserViewId);
+	}
+
 	async executeScript(browserViewId: number, script: string): Promise<any> {
 		return this.channel.call('executeScript', { browserViewId, script });
 	}

@@ -52,11 +52,14 @@ export class InspectMode {
 		try {
 			await this.browserService.executeScript(browserViewId, INSPECT_MODE_SCRIPT);
 
-			this.notificationService.notify({
-				severity: Severity.Info,
-				message: 'Inspect Mode: Click element to select. ESC to exit.',
-				sticky: false
-			});
+			// Focus the browser view so ESC key events are received
+			await this.browserService.focusBrowserView(browserViewId);
+
+			// this.notificationService.notify({
+			// 	severity: Severity.Info,
+			// 	message: 'Inspect Mode: Click element to select. ESC to exit.',
+			// 	sticky: false
+			// });
 		} catch {
 			this.isActive = false;
 		}

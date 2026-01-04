@@ -27,6 +27,25 @@ export const INSPECT_MODE_SCRIPT = `
 		window.__roopikInspectCleanup();
 	}
 
+	// Wait for body to be ready before initializing
+	function initInspectMode() {
+		if (!document.body) {
+			// YouTube and other sites might not have body ready yet
+			if (document.readyState === 'loading') {
+				document.addEventListener('DOMContentLoaded', initInspectMode);
+			} else {
+				// DOM is already loaded, but body is missing (shouldn't happen, but be safe)
+				setTimeout(initInspectMode, 50);
+			}
+			return;
+		}
+
+		// Body is ready, proceed with initialization
+		initializeInspectModeUI();
+	}
+
+	function initializeInspectModeUI() {
+
 	// ========== Configuration ==========
 
 	/**
@@ -330,9 +349,32 @@ export const INSPECT_MODE_SCRIPT = `
 		'box-shadow: 0 2px 8px rgba(124, 58, 237, 0.4)',
 		'transition: background-color 0.15s, transform 0.1s'
 	].join(';');
-	// Chat bubble icon (SVG) - centered with flexbox applied via JS
-	chatIcon.innerHTML = '<svg style="display:block;margin:auto;margin-top:6px;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
-	chatIcon.title = 'Ask AI';
+	// Plus icon (SVG) - for attaching element to AI context
+	// Use DOM methods instead of innerHTML to avoid CSP TrustedHTML errors
+	var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+	svg.setAttribute('width', '16');
+	svg.setAttribute('height', '16');
+	svg.setAttribute('viewBox', '0 0 24 24');
+	svg.setAttribute('fill', 'none');
+	svg.setAttribute('stroke', 'white');
+	svg.setAttribute('stroke-width', '2');
+	svg.setAttribute('stroke-linecap', 'round');
+	svg.setAttribute('stroke-linejoin', 'round');
+	svg.style.cssText = 'display:block;margin:auto;margin-top:6px;';
+	var line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+	line1.setAttribute('x1', '12');
+	line1.setAttribute('y1', '5');
+	line1.setAttribute('x2', '12');
+	line1.setAttribute('y2', '19');
+	var line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+	line2.setAttribute('x1', '5');
+	line2.setAttribute('y1', '12');
+	line2.setAttribute('x2', '19');
+	line2.setAttribute('y2', '12');
+	svg.appendChild(line1);
+	svg.appendChild(line2);
+	chatIcon.appendChild(svg);
+	chatIcon.title = 'Attach element to AI context';
 	document.body.appendChild(chatIcon);
 
 	// Chat icon hover effects
@@ -380,7 +422,18 @@ export const INSPECT_MODE_SCRIPT = `
 	].join(';');
 
 	const chatSendBtn = document.createElement('button');
-	chatSendBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>';
+	// Create send icon SVG using DOM methods to avoid CSP errors
+	var sendSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+	sendSvg.setAttribute('width', '16');
+	sendSvg.setAttribute('height', '16');
+	sendSvg.setAttribute('viewBox', '0 0 24 24');
+	sendSvg.setAttribute('fill', 'none');
+	sendSvg.setAttribute('stroke', 'currentColor');
+	sendSvg.setAttribute('stroke-width', '2');
+	var sendPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+	sendPath.setAttribute('d', 'M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z');
+	sendSvg.appendChild(sendPath);
+	chatSendBtn.appendChild(sendSvg);
 	chatSendBtn.style.cssText = [
 		'background: #7c3aed',
 		'border: none',
@@ -1208,12 +1261,15 @@ export const INSPECT_MODE_SCRIPT = `
 	// Keys are intercepted by Electron's before-input-event and forwarded via IPC
 	// This allows unified key handling without scattered listeners
 	function onKeyDown(e) {
-		// Close chat bar on ESC
+		// Close chat bar on ESC (if chat is open)
+		// Otherwise, let the event propagate to centralized handler for inspect mode exit
 		if (e.key === 'Escape' && isChatOpen) {
 			closeChatBar();
 			e.preventDefault();
 			e.stopPropagation();
+			return;
 		}
+		// For all other cases, let event propagate to centralized handler
 	}
 
 	function onScroll() {
@@ -1278,7 +1334,7 @@ export const INSPECT_MODE_SCRIPT = `
 	function cleanup() {
 		document.removeEventListener('mousemove', onMouseMove, true);
 		document.removeEventListener('click', onClick, true);
-		document.removeEventListener('keydown', onKeyDown, true);
+		// NOTE: keydown listener removed - handled centrally in editor.ts
 		document.removeEventListener('scroll', onScroll, true);
 		document.removeEventListener('mousemove', onDragMove, true);
 		document.removeEventListener('mouseup', onDragEnd, true);
@@ -1322,10 +1378,15 @@ export const INSPECT_MODE_SCRIPT = `
 
 	document.addEventListener('mousemove', onMouseMove, true);
 	document.addEventListener('click', onClick, true);
-	document.addEventListener('keydown', onKeyDown, true);
+	// NOTE: keydown listener removed - all key handling is centralized in editor.ts
+	// Keys are intercepted by Electron's before-input-event and forwarded via IPC
 	document.addEventListener('scroll', onScroll, true);
 	window.addEventListener('resize', onScroll);
 
 	return 'Inspect mode enabled';
+	} // End of initializeInspectModeUI()
+
+	// Start initialization (waits for body if needed)
+	initInspectMode();
 })();
 `;
