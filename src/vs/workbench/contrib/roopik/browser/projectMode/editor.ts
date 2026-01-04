@@ -30,6 +30,8 @@ import { IContextMenuService } from '../../../../../platform/contextview/browser
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
 import { Dimension } from '../../../../../base/browser/dom.js';
+import { IViewsService } from '../../../../services/views/common/viewsService.js';
+import { ICommandService } from '../../../../../platform/commands/common/commands.js';
 // Features (extracted to features/ folder)
 import { InspectMode } from './features/inspectMode.js';
 import { Bookmarks } from './features/bookmarks.js';
@@ -110,7 +112,9 @@ export class Editor extends EditorPane {
 		@IClipboardService private readonly clipboardService: IClipboardService,
 		@ISourceNavigationService private readonly sourceNavigationService: ISourceNavigationService,
 		@IMenubarStateService private readonly menubarStateService: IMenubarStateService,
-		@IProjectStorageService private readonly projectStorageService: IProjectStorageService
+		@IProjectStorageService private readonly projectStorageService: IProjectStorageService,
+		@IViewsService private readonly viewsService: IViewsService,
+		@ICommandService private readonly commandService: ICommandService
 	) {
 		super(Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = getRoopikLogger(loggerService, '[EDITOR]');
@@ -344,6 +348,9 @@ export class Editor extends EditorPane {
 				case 'inspect-mode-exited':
 					this.handleInspectModeExited();
 					break;
+				case 'chat-message':
+					this.handleChatMessage(message as import('../../common/projectMode/types.js').ChatMessage);
+					break;
 				case 'drag-started':
 					this.dragDrop.handleDragStarted(message as import('../../common/projectMode/types.js').DragStartedMessage);
 					break;
@@ -405,6 +412,56 @@ export class Editor extends EditorPane {
 		// Also hide style panel (ESC should close everything)
 		if (this.styleInspect.isPanelVisible()) {
 			this.styleInspect.hidePanel();
+		}
+	}
+
+	/**
+	 * Handle chat message from inspect mode
+	 * Forward to AI agent with screenshot and element context
+	 */
+	private async handleChatMessage(message: import('../../common/projectMode/types.js').ChatMessage): Promise<void> {
+		if (!message.text?.trim() || !this.browserViewId) {
+			return;
+		}
+
+		try {
+			// Capture screenshot
+			let screenshot: string | undefined;
+			try {
+				screenshot = await this.browserService.takeScreenshot(this.browserViewId);
+			} catch (error) {
+				this.logger.warn('[InspectMode] Screenshot capture failed:', error);
+			}
+
+			// Open chat panel (ensures extension is activated)
+			await this.viewsService.openView('roodio.ChatPanel', true);
+
+			// Small delay to ensure view is mounted
+			await new Promise(resolve => setTimeout(resolve, 300));
+
+			// Build context message with element info
+			let contextText = `Element: ${message.tagName}`;
+			if (message.selector) {
+				contextText += `\nSelector: ${message.selector}`;
+			}
+			if (message.source) {
+				contextText += `\nSource: ${message.source.file}:${message.source.line}`;
+				if (message.source.column) {
+					contextText += `:${message.source.column}`;
+				}
+			}
+
+			// Send to AI agent with screenshot
+			await this.commandService.executeCommand('roodio.externalContext', {
+				promptText: message.text,
+				autoSend: true,
+				context: contextText,
+				screenshot: screenshot
+			});
+
+			this.logger.info('[InspectMode] Chat message forwarded to AI agent');
+		} catch (error) {
+			this.logger.error('[InspectMode] Failed to send chat message:', error);
 		}
 	}
 

@@ -310,7 +310,7 @@ export const INSPECT_MODE_SCRIPT = `
 		// Show immediate feedback for invalid drops
 		// Valid drops get feedback from VSCode after CDP operation completes
 		if (!dropZone) {
-			showToast('❌ Invalid drop location');
+			showToast('Invalid drop location');
 		}
 	}
 
@@ -366,7 +366,7 @@ export const INSPECT_MODE_SCRIPT = `
 
 	const chatInput = document.createElement('input');
 	chatInput.type = 'text';
-	chatInput.placeholder = 'Describe changes... (Coming soon)';
+	chatInput.placeholder = 'Describe changes...';
 	chatInput.style.cssText = [
 		'flex: 1',
 		'background: #2d2d2d',
@@ -381,19 +381,77 @@ export const INSPECT_MODE_SCRIPT = `
 
 	const chatSendBtn = document.createElement('button');
 	chatSendBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>';
-	chatSendBtn.disabled = true;
 	chatSendBtn.style.cssText = [
 		'background: #7c3aed',
 		'border: none',
 		'border-radius: 4px',
 		'padding: 8px',
-		'cursor: not-allowed',
-		'opacity: 0.5',
+		'cursor: pointer',
 		'color: white',
 		'display: flex',
 		'align-items: center',
-		'justify-content: center'
+		'justify-content: center',
+		'transition: opacity 0.2s ease'
 	].join(';');
+
+	// Enable/disable send button based on input
+	function updateSendButtonState() {
+		var hasText = chatInput.value.trim().length > 0;
+		chatSendBtn.disabled = !hasText;
+		chatSendBtn.style.opacity = hasText ? '1' : '0.5';
+		chatSendBtn.style.cursor = hasText ? 'pointer' : 'not-allowed';
+	}
+
+	chatInput.addEventListener('input', updateSendButtonState);
+	chatInput.addEventListener('keypress', function(e) {
+		if (e.key === 'Enter' && chatInput.value.trim()) {
+			sendChatMessage(chatInput.value.trim());
+		}
+	});
+
+	chatSendBtn.addEventListener('click', function(e) {
+		e.preventDefault();
+		e.stopPropagation();
+		if (chatInput.value.trim()) {
+			sendChatMessage(chatInput.value.trim());
+		}
+	});
+
+	function sendChatMessage(text) {
+		if (!selectedElement || typeof window.__roopikBridge !== 'function') {
+			return;
+		}
+
+		// Disable send button while processing
+		chatSendBtn.disabled = true;
+		chatSendBtn.style.opacity = '0.5';
+
+		var sourceAttr = selectedElement.getAttribute('data-roopik-source');
+		var rect = selectedElement.getBoundingClientRect();
+
+		var message = {
+			type: 'chat-message',
+			text: text,
+			selector: getElementSelector(selectedElement),
+			tagName: selectedElement.tagName.toLowerCase(),
+			source: sourceAttr ? parseSourceAttr(sourceAttr) : null,
+			boundingBox: {
+				x: rect.x,
+				y: rect.y,
+				width: rect.width,
+				height: rect.height,
+				top: rect.top,
+				right: rect.right,
+				bottom: rect.bottom,
+				left: rect.left
+			}
+		};
+
+		window.__roopikBridge(JSON.stringify(message));
+		closeChatBar();
+		chatInput.value = '';
+		updateSendButtonState();
+	}
 
 	chatInputContainer.appendChild(chatInput);
 	chatInputContainer.appendChild(chatSendBtn);

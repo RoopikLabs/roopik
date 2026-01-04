@@ -198,6 +198,34 @@ export interface InspectModeExitedMessage extends BrowserBridgeMessageBase {
 }
 
 /**
+ * Chat message from inspect mode
+ */
+export interface ChatMessage extends BrowserBridgeMessageBase {
+	type: 'chat-message';
+	text: string;
+	selector: string;
+	tagName: string;
+	source: {
+		file: string;
+		line: number;
+		column?: number;
+		endLine?: number;
+		endColumn?: number;
+	} | null;
+	boundingBox: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+		top: number;
+		right: number;
+		bottom: number;
+		left: number;
+	};
+	screenshot?: string; // Base64 data URL
+}
+
+/**
  * Drag started (element being dragged)
  */
 export interface DragStartedMessage extends BrowserBridgeMessageBase {
@@ -231,6 +259,7 @@ export interface DragEndedMessage extends BrowserBridgeMessageBase {
 export type BrowserBridgeMessage =
 	| ElementSelectedMessage
 	| InspectModeExitedMessage
+	| ChatMessage
 	| DragStartedMessage
 	| DragEndedMessage;
 
