@@ -314,7 +314,7 @@ export const project_start: OpenAI.Chat.ChatCompletionTool = {
 			properties: {
 				projectPath: {
 					type: "string",
-					description: "Path to the project directory (absolute or relative to workspace)",
+					description: "Path to the project directory (Use absolute path to workspace)",
 				},
 				port: {
 					type: "number",
@@ -439,7 +439,7 @@ export const component_add: OpenAI.Chat.ChatCompletionTool = {
 				},
 				name: {
 					type: "string",
-					description: "Display name for the component. Inferred from folder if not specified.",
+					description: "Display name for the component. Always try to pass logical short name (one word or max 2-3 words) for the component.",
 				},
 				entryFile: {
 					type: "string",

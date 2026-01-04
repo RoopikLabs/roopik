@@ -187,6 +187,174 @@
 	border-color: var(--vscode-button-hoverBackground);
 }
 
+.hero-button.primary:hover {
+	background-color: var(--vscode-button-hoverBackground);
+	border-color: var(--vscode-button-hoverBackground);
+}
+
+/* ============================================================================
+	AI Input Section - Clean Modern Design
+	============================================================================ */
+
+.ai-input-section {
+	display: flex;
+	justify-content: center;
+	width: 100%;
+	margin: 20px 0 36px 0;
+	padding: 0 32px;
+	box-sizing: border-box;
+}
+
+/* Wrapper creates the gradient border effect - always glowing */
+.ai-input-wrapper {
+	position: relative;
+	width: 100%;
+	max-width: 600px;
+	border-radius: 999px;
+	padding: 2px;
+	background: linear-gradient(135deg,
+			#667eea 0%,
+			#764ba2 25%,
+			#f093fb 50%,
+			#4facfe 75%,
+			#667eea 100%);
+	background-size: 300% 300%;
+	animation: gradient-shift 4s ease infinite;
+	box-shadow: 0 0 20px rgba(102, 126, 234, 0.3),
+		0 0 40px rgba(118, 75, 162, 0.15);
+	transition: all 0.3s ease;
+}
+
+.ai-input-wrapper:focus-within {
+	box-shadow: 0 0 25px rgba(102, 126, 234, 0.5),
+		0 0 50px rgba(118, 75, 162, 0.25);
+}
+
+@keyframes gradient-shift {
+
+	0%,
+	100% {
+		background-position: 0% 50%;
+	}
+
+	50% {
+		background-position: 100% 50%;
+	}
+}
+
+/* Main input container - pill shape */
+.ai-input-box {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	width: 100%;
+	padding: 14px 20px;
+	border-radius: 999px;
+	background: var(--vscode-input-background);
+	box-sizing: border-box;
+}
+
+/* Input field - fills all available space */
+.ai-input-field {
+	flex: 1;
+	background: transparent;
+	border: none;
+	outline: none !important;
+	box-shadow: none !important;
+	color: var(--vscode-input-foreground);
+	font-size: 15px;
+	font-weight: 400;
+	padding: 0;
+	line-height: 1.5;
+	min-width: 0;
+}
+
+.ai-input-field::placeholder {
+	color: var(--vscode-input-placeholderForeground);
+	opacity: 0.7;
+}
+
+.ai-input-field:focus {
+	outline: none !important;
+	box-shadow: none !important;
+	border: none !important;
+}
+
+/* Submit button - circular */
+.ai-submit-button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border: none;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	flex-shrink: 0;
+}
+
+.ai-submit-button:hover {
+	background: var(--vscode-button-hoverBackground);
+	transform: scale(1.05);
+}
+
+.ai-submit-button:active {
+	transform: scale(0.95);
+}
+
+.ai-submit-button .codicon {
+	font-size: 16px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+	.ai-input-section {
+		padding: 0 16px;
+	}
+
+	.ai-input-wrapper {
+		max-width: 100%;
+	}
+
+	.ai-input-box {
+		padding: 12px 16px;
+	}
+
+	.ai-input-field {
+		font-size: 14px;
+	}
+}
+
+.hero-showcase {
+	position: relative;
+	padding: 28px;
+	border-radius: 10px;
+	background: radial-gradient(circle at top, rgba(110, 142, 251, 0.35), transparent 70%), var(--vscode-editor-background);
+	border: 1px dashed var(--vscode-widget-border);
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-height: 220px;
+	min-width: 240px;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+.hero-showcase::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	background-image: linear-gradient(120deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, 0.03) 50%, rgba(255, 255, 255, 0.03) 75%, transparent 75%, transparent);
+	background-size: 28px 28px;
+	pointer-events: none;
+}
+
+.showcase-label {}
+
+
 .hero-showcase {
 	position: relative;
 	padding: 28px;
@@ -667,8 +835,8 @@ Inline Settings View (replaces modal)
 }
 
 /* ============================================
-   Settings Sections
-   ============================================ */
+	Settings Sections
+	============================================ */
 
 .settings-section {
 	margin-bottom: 28px;
@@ -766,8 +934,8 @@ Toggle Switch
 }
 
 /* ============================================
-   Text Input
-   ============================================ */
+	Text Input
+	============================================ */
 
 .settings-text-input {
 	width: 200px;

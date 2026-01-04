@@ -230,7 +230,7 @@ export function getProjectStartDescription(args: ToolArgs): string {
 	return `## project_start
 Description: [Roopik IDE - Projects Only] Start a FULL APPLICATION's dev server and preview in the integrated Browser (NOT used for Canvas components). Use for complete runnable vite based projects with routing/navigation (e.g., todo app with multiple pages). The browser shows the running app at localhost. For ISOLATED UI components/screens, use component_add instead.
 Parameters:
-- projectPath: (required) Path to the project directory (absolute or relative to ${args.cwd})
+- projectPath: (required) Path to the project directory (Use absolute path to workspace)
 - port: (optional) Port to run the dev server on. Default is auto-detected or 5173.
 Usage:
 <project_start>
@@ -297,7 +297,7 @@ Description: [Roopik IDE - Canvas Only] Add an ISOLATED UI component to the Canv
 Parameters:
 - folderPath: (required) The absolute system path to the component folder. Do not use relative paths.(contains the component files)
 - canvasId: (optional) Canvas to add the component to. Uses active canvas if not specified.
-- name: (optional) Display name for the component. Inferred from folder if not specified.
+- name: (optional) Display name for the component.  Always try to pass logical short name (one word or max 2-3 words) for the component.
 - entryFile: (optional) Entry file name (e.g., index.tsx). Auto-detected in IDE if not specified.
 - framework: (optional) Force framework: react, vue, svelte, vanilla. Auto-detected in IDE if not specified.
 Usage:
@@ -439,7 +439,7 @@ These tools integrate with Roopik IDE's browser preview, canvas, and component f
 
 **Component Canvas Workflow:**
 1. \`canvas_create\` or \`canvas_get_active\` - Get/create canvas (first try to get active canvas, if not found create a new one, use your judgment to determine better canvas short generic name)
-2. \`component_add\` - Add component folder to canvas (Once you write a component code, you have to pass the absolute path of the component file to the canvas add tool which shows the live preview of the component in the canvas UI)
+2. \`component_add\` - Add component folder to canvas (Once you write a component code, you have to pass the absolute path of the component file to the canvas add tool which shows the live preview of the component in the canvas UI).
 3. \`component_list\` - See all components on canvas (this will show the list of all components added to the canvas to you if you need to see the list of components added to the canvas or get info about a specific component use \`component_get_info\`)
 4. \`component_rebuild\` - Force rebuild after changes (use this tool if you make changes to the component code and want to rebuild the component)
 5. \`component_remove\` - Remove component (set deleteSourceCode=true to delete files automatically - never use terminal commands to delete files)

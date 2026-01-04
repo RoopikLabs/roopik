@@ -20,6 +20,7 @@ import { ICanvasService } from '../common/canvas/index.js';
 import { IProjectStorageService } from '../common/projectStorage/index.js';
 import type { CanvasMeta } from '../common/canvas/types.js';
 import type { ProjectInfo } from '../common/storage/storageTypes.js';
+import { IViewsService } from '../../../services/views/common/viewsService.js';
 import './media/welcomeEditor.css';
 
 export class RoopikWelcomeEditor extends EditorPane {
@@ -54,7 +55,8 @@ export class RoopikWelcomeEditor extends EditorPane {
 		@ICommandService private readonly commandService: ICommandService,
 		@IRoopikSettingsService private readonly settingsService: IRoopikSettingsService,
 		@ICanvasService private readonly canvasService: ICanvasService,
-		@IProjectStorageService private readonly projectStorageService: IProjectStorageService
+		@IProjectStorageService private readonly projectStorageService: IProjectStorageService,
+		@IViewsService private readonly viewsService: IViewsService
 	) {
 		super(RoopikWelcomeEditor.ID, group, telemetryService, themeService, storageService);
 
@@ -76,6 +78,15 @@ export class RoopikWelcomeEditor extends EditorPane {
 		this.rootElement = parent;
 		this.rootElement.classList.add('roopik-welcome');
 		this.renderCurrentView();
+
+		// Auto-open the Dio agent sidebar after a short delay
+		// This ensures the extension is activated and webview is mounted
+		// before the user tries to send their first message
+		setTimeout(() => {
+			this.viewsService.openView('roodio.ChatPanel', false).catch(() => {
+				// Agent not available - ignore silently
+			});
+		}, 1500);
 	}
 
 	private renderCurrentView(): void {
@@ -130,6 +141,41 @@ export class RoopikWelcomeEditor extends EditorPane {
 		showcaseLabel.textContent = 'Live preview + DevTools';
 		const showcaseHighlight = append(heroShowcase, $('.showcase-highlight'));
 		showcaseHighlight.textContent = 'Preview, inspect, and edit with zero context switching.';
+
+		// AI Input Section (between hero and quick start)
+		const aiInputSection = append(container, $('.ai-input-section'));
+		const aiInputWrapper = append(aiInputSection, $('.ai-input-wrapper'));
+		const aiInputBox = append(aiInputWrapper, $('.ai-input-box'));
+
+		// Input field - fills the whole container
+		const aiInput = $('input', {
+			type: 'text',
+			class: 'ai-input-field',
+			placeholder: 'What do you want to build today?',
+			'aria-label': 'AI creation prompt'
+		}) as HTMLInputElement;
+		append(aiInputBox, aiInput);
+
+		// Submit button
+		const aiSubmitButton = append(aiInputBox, $('.ai-submit-button'));
+		const arrowIcon = append(aiSubmitButton, $('span.codicon.codicon-arrow-right'));
+		arrowIcon.setAttribute('aria-hidden', 'true');
+		aiSubmitButton.title = 'Send to AI';
+
+		// Event handlers for AI input
+		this._register(addDisposableListener(aiInput, 'keydown', (e: KeyboardEvent) => {
+			if (e.key === 'Enter' && aiInput.value.trim()) {
+				this.submitAiPrompt(aiInput.value.trim());
+				aiInput.value = '';
+			}
+		}));
+
+		this._register(addDisposableListener(aiSubmitButton, 'click', () => {
+			if (aiInput.value.trim()) {
+				this.submitAiPrompt(aiInput.value.trim());
+				aiInput.value = '';
+			}
+		}));
 
 		// Quick start section with two columns
 		const quickStartSection = append(container, $('.welcome-section'));
@@ -215,6 +261,45 @@ export class RoopikWelcomeEditor extends EditorPane {
 				StorageTarget.USER
 			);
 		}));
+	}
+
+	/**
+	 * Submit AI prompt to roopik-roo extension
+	 *
+	 * Strategy: Use IViewsService.openView() to open the secondary sidebar (right side)
+	 *
+	 * IViewsService.openView() is the correct VS Code API that:
+	 * 1. Activates the extension that contributes the view
+	 * 2. Waits for the view to be created and visible
+	 * 3. Returns the view instance (or null if failed)
+	 *
+	 * We open roodio.ChatPanel (right side auxiliary bar) instead of
+	 * roodio.SidebarProvider (left activity bar) as the preferred default.
+	 */
+	private async submitAiPrompt(promptText: string): Promise<void> {
+		try {
+			// Use IViewsService to open the ChatPanel in the secondary sidebar (right side)
+			// This activates the extension and waits for the view to be ready
+			const view = await this.viewsService.openView('roodio.ChatPanel', true);
+
+			if (!view) {
+				console.debug('AI agent view not available');
+				return;
+			}
+
+			// Wait for webview to fully mount and initialize
+			// (the webview sends 'webviewDidLaunch' message when ready,
+			// but we can't listen for it from here, so we use a delay)
+			await new Promise(resolve => setTimeout(resolve, 500));
+
+			// Now send the message - webview should be ready
+			await this.commandService.executeCommand('roodio.externalContext', {
+				promptText: promptText,
+				autoSend: true,
+			});
+		} catch (error) {
+			console.debug('AI agent not available:', error);
+		}
 	}
 
 	// ============================================================================

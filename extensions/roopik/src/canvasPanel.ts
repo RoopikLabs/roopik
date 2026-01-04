@@ -189,6 +189,10 @@ export class CanvasPanel implements vscode.Disposable {
 			}
 		);
 
+		// Set custom icon for the tab using VS Code Codicon
+		// Options: palette, paintbrush, layout, window, pencil, beaker
+		panel.iconPath = new vscode.ThemeIcon('pencil');
+
 		return new CanvasPanel(panel, extensionUri, canvasId, canvasName, workspaceRoot, manager);
 	}
 
@@ -492,7 +496,7 @@ export class CanvasPanel implements vscode.Disposable {
 					});
 					break;
 
-				case 'debugLog':
+				case 'debugLog': {
 					// Handle debug logs from webview for tracing
 					const debugPayload = message.payload as { level?: string; message: string };
 					const logLevel = debugPayload?.level || 'info';
@@ -505,8 +509,7 @@ export class CanvasPanel implements vscode.Disposable {
 						this.logger.info(`[WebviewTrace] ${logMsg}`);
 					}
 					break;
-
-				default:
+				}
 					this.logger.warn(`Unknown webview message type: ${message.type}`);
 			}
 		} catch (error) {

@@ -898,6 +898,22 @@ export function SandboxCard({
 			</div>
 		</div>
 
+		{/* Focus button - only show when NOT focused and on hover */}
+		{!isFocused && isHovered && (
+			<button
+				className="focus-button"
+				onClick={(e) => {
+					e.stopPropagation();
+					onDoubleClick();
+				}}
+				title="Enter focus mode"
+			>
+				<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+					<path d="M8 3h8M3 8v8M21 8v8M8 21h8M3 8l3 3M21 8l-3 3M3 16l3-3M21 16l-3-3" />
+				</svg>
+			</button>
+		)}
+
 		{/* Unfocus button - only show when focused */}
 		{isFocused && (
 			<button

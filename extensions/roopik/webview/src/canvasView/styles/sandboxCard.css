@@ -304,6 +304,7 @@
 /* ============================================================
    Unfocus Button (only visible when focused)
    ============================================================ */
+.sandbox-card .focus-button,
 .sandbox-card .unfocus-button {
 	position: absolute;
 	bottom: 20px;
@@ -324,6 +325,13 @@
 	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+.sandbox-card .focus-button:hover {
+	background: rgba(40, 40, 45, 0.95);
+	color: rgba(102, 204, 204, 0.9);
+	transform: scale(1.1);
+	box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
 .sandbox-card .unfocus-button:hover {
 	background: rgba(40, 40, 45, 0.95);
 	color: rgba(255, 165, 0, 0.9);
@@ -331,6 +339,7 @@
 	box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
 }
 
+.sandbox-card .focus-button svg,
 .sandbox-card .unfocus-button svg {
 	flex-shrink: 0;
 }
