@@ -1876,6 +1876,7 @@ export class ClineProvider
 			browserToolEnabled,
 			telemetrySetting,
 			showRooIgnoredFiles,
+			enableSubfolderRules,
 			language,
 			maxReadFileLine,
 			maxImageFileSize,
@@ -2023,6 +2024,7 @@ export class ClineProvider
 			telemetryKey,
 			machineId,
 			showRooIgnoredFiles: showRooIgnoredFiles ?? false,
+			enableSubfolderRules: enableSubfolderRules ?? false,
 			language: language ?? formatLanguage(vscode.env.language),
 			renderContext: this.renderContext,
 			maxReadFileLine: maxReadFileLine ?? -1,
@@ -2274,6 +2276,7 @@ export class ClineProvider
 			browserToolEnabled: stateValues.browserToolEnabled ?? true,
 			telemetrySetting: stateValues.telemetrySetting || "unset",
 			showRooIgnoredFiles: stateValues.showRooIgnoredFiles ?? false,
+			enableSubfolderRules: stateValues.enableSubfolderRules ?? false,
 			maxReadFileLine: stateValues.maxReadFileLine ?? -1,
 			maxImageFileSize: stateValues.maxImageFileSize ?? 5,
 			maxTotalImageSize: stateValues.maxTotalImageSize ?? 20,
@@ -3308,4 +3311,3 @@ export class ClineProvider
 		}
 	}
 }
-

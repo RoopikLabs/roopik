@@ -112,6 +112,89 @@ export async function readFileIfExists(filePath: string): Promise<string | null>
 }
 
 /**
+ * Discovers all .dio directories in subdirectories of the workspace
+ *
+ * @param cwd - Current working directory (workspace root)
+ * @returns Array of absolute paths to .dio directories found in subdirectories,
+ *          sorted alphabetically. Does not include the root .dio directory.
+ *
+ * @example
+ * ```typescript
+ * const subfolderRoos = await discoverSubfolderRooDirectories('/Users/john/monorepo')
+ * // Returns:
+ * // [
+ * //   '/Users/john/monorepo/package-a/.dio',
+ * //   '/Users/john/monorepo/package-b/.dio',
+ * //   '/Users/john/monorepo/packages/shared/.dio'
+ * // ]
+ * ```
+ *
+ * @example Directory structure:
+ * ```
+ * /Users/john/monorepo/
+ * ├── .dio/                    # Root .dio (NOT included - use getProjectRooDirectoryForCwd)
+ * ├── package-a/
+ * │   └── .dio/                # Included
+ * │       └── rules/
+ * ├── package-b/
+ * │   └── .dio/                # Included
+ * │       └── rules-code/
+ * └── packages/
+ *     └── shared/
+ *         └── .dio/            # Included (nested)
+ *             └── rules/
+ * ```
+ */
+export async function discoverSubfolderRooDirectories(cwd: string): Promise<string[]> {
+	try {
+		// Dynamic import to avoid vscode dependency at module load time
+		// This is necessary because file-search.ts imports vscode, which is not
+		// available in the webview context
+		const { executeRipgrep } = await import("../search/file-search")
+
+		// Use ripgrep to find any file inside any .dio directory
+		// This efficiently discovers all .dio folders regardless of their content
+		const args = [
+			"--files",
+			"--hidden",
+			"--follow",
+			"-g",
+			"**/.dio/**",
+			"-g",
+			"!node_modules/**",
+			"-g",
+			"!.git/**",
+			cwd,
+		]
+
+		const results = await executeRipgrep({ args, workspacePath: cwd })
+
+		// Extract unique .dio directory paths
+		const rooDirs = new Set<string>()
+		const rootRooDir = path.join(cwd, ".dio")
+
+		for (const result of results) {
+			// Match paths like "subfolder/.dio/anything" or "subfolder/nested/.dio/anything"
+			// Handle both forward slashes (Unix) and backslashes (Windows)
+			const match = result.path.match(/^(.+?)[/\\]\.dio[/\\]/)
+			if (match) {
+				const rooDir = path.join(cwd, match[1], ".dio")
+				// Exclude the root .dio directory (already handled by getProjectRooDirectoryForCwd)
+				if (rooDir !== rootRooDir) {
+					rooDirs.add(rooDir)
+				}
+			}
+		}
+
+		// Return sorted alphabetically
+		return Array.from(rooDirs).sort()
+	} catch (error) {
+		// If discovery fails (e.g., ripgrep not available), return empty array
+		return []
+	}
+}
+
+/**
  * Gets the ordered list of .dio directories to check (global first, then project-local)
  *
  * @param cwd - Current working directory (project path)
@@ -152,6 +235,71 @@ export function getRooDirectoriesForCwd(cwd: string): string[] {
 
 	// Add project-local directory second
 	directories.push(getProjectRooDirectoryForCwd(cwd))
+
+	return directories
+}
+
+/**
+ * Gets the ordered list of all .dio directories including subdirectories
+ *
+ * @param cwd - Current working directory (project path)
+ * @returns Array of directory paths in order: [global, project-local, ...subfolders (alphabetically)]
+ *
+ * @example
+ * ```typescript
+ * // For a monorepo at /Users/john/monorepo with .dio in subfolders
+ * const directories = await getAllRooDirectoriesForCwd('/Users/john/monorepo')
+ * // Returns:
+ * // [
+ * //   '/Users/john/.dio',                    // Global directory
+ * //   '/Users/john/monorepo/.dio',           // Project-local directory
+ * //   '/Users/john/monorepo/package-a/.dio', // Subfolder (alphabetical)
+ * //   '/Users/john/monorepo/package-b/.dio'  // Subfolder (alphabetical)
+ * // ]
+ * ```
+ */
+export async function getAllRooDirectoriesForCwd(cwd: string): Promise<string[]> {
+	const directories: string[] = []
+
+	// Add global directory first
+	directories.push(getGlobalRooDirectory())
+
+	// Add project-local directory second
+	directories.push(getProjectRooDirectoryForCwd(cwd))
+
+	// Discover and add subfolder .dio directories
+	const subfolderDirs = await discoverSubfolderRooDirectories(cwd)
+	directories.push(...subfolderDirs)
+
+	return directories
+}
+
+/**
+ * Gets parent directories containing .dio folders, in order from root to subfolders
+ *
+ * @param cwd - Current working directory (project path)
+ * @returns Array of parent directory paths (not .dio paths) containing AGENTS.md or .dio
+ *
+ * @example
+ * ```typescript
+ * const dirs = await getAgentsDirectoriesForCwd('/Users/john/monorepo')
+ * // Returns: ['/Users/john/monorepo', '/Users/john/monorepo/package-a', ...]
+ * ```
+ */
+export async function getAgentsDirectoriesForCwd(cwd: string): Promise<string[]> {
+	const directories: string[] = []
+
+	// Always include the root directory
+	directories.push(cwd)
+
+	// Get all subfolder .dio directories
+	const subfolderRooDirs = await discoverSubfolderRooDirectories(cwd)
+
+	// Extract parent directories (remove .dio from path)
+	for (const rooDir of subfolderRooDirs) {
+		const parentDir = path.dirname(rooDir)
+		directories.push(parentDir)
+	}
 
 	return directories
 }
