@@ -10,6 +10,7 @@ import { solidPlugin } from 'esbuild-plugin-solid';
 import * as fs from 'fs';
 import * as path from '../../../../../base/common/path.js';
 import * as os from 'os';
+import { fileURLToPath } from 'url';
 import { Framework, ComponentInput, TransformedComponent } from '../../common/build/types.js';
 import { ComponentParser } from '../../common/build/componentParser.js';
 import { createSourceTrackingTransform } from './injectors/sourceTrackingInjector.js';
@@ -335,21 +336,27 @@ export class ESBuildTransformer {
 			// In compiled output: __dirname = out-build/vs/workbench/contrib/roopik/electron-main/build
 			// In production: same relative structure
 
+			// Use import.meta.url to get current file path (ESM-compatible)
+			// fileURLToPath handles Windows paths correctly (file:///C:/... -> C:\...)
+			const currentFilePath = fileURLToPath(import.meta.url);
+			const currentDir = path.dirname(currentFilePath);
+
 			// Try production path first (relative to compiled output)
-			let jsonPath = path.join(__dirname, '../../resources/stable-versions.json');
+			let jsonPath = path.join(currentDir, '../../resources/stable-versions.json');
 
 			// Check if file exists, if not try source path (for dev mode with source maps)
 			if (!fs.existsSync(jsonPath)) {
 				// Dev fallback: look relative to workspace root
-				// __dirname in dev: [workspace]/out-build/vs/workbench/contrib/roopik/electron-main/build
+				// currentDir in dev: [workspace]/out-build/vs/workbench/contrib/roopik/electron-main/build
 				// We need:          [workspace]/src/vs/workbench/contrib/roopik/resources/stable-versions.json
-				const workspaceRoot = path.join(__dirname, '../../../../../../../..');
+				const workspaceRoot = path.join(currentDir, '../../../../../../../..');
 				jsonPath = path.join(workspaceRoot, 'src/vs/workbench/contrib/roopik/resources/stable-versions.json');
 			}
 
 			const content = await fs.promises.readFile(jsonPath, 'utf-8');
 			this.stableVersionsCache = JSON.parse(content);
-			this.logger.info('Loaded stable versions from file', { path: jsonPath });
+			// this.logger.info('Loaded stable versions from file', { path: jsonPath });
+			this.logger.info('Loaded stable versions');
 			return this.stableVersionsCache!;
 		} catch (error) {
 			// Fallback to hardcoded

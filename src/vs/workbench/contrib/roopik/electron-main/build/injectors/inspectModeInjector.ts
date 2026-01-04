@@ -24,6 +24,7 @@ export class InspectModeInjector extends BaseInjector {
 	let inspectEnabled = false;
 	let captureOnSelect = false;
 	let hoveredElement = null;
+	let selectedElement = null; // Track locked element after click
 	let highlightOverlay = null;
 
 	// Create highlight overlay element
@@ -169,6 +170,9 @@ export class InspectModeInjector extends BaseInjector {
 	function handleMouseMove(event) {
 		if (!inspectEnabled) return;
 
+		// If element is locked/selected, don't update hover
+		if (selectedElement) return;
+
 		const target = event.target;
 		if (target === highlightOverlay) return;
 		if (target === hoveredElement) return;
@@ -186,6 +190,12 @@ export class InspectModeInjector extends BaseInjector {
 
 		const target = event.target;
 		if (target === highlightOverlay) return;
+
+		// Lock this element as selected
+		selectedElement = target;
+
+		// Keep the highlight locked on the selected element
+		updateOverlay(target);
 
 		const info = getElementInfo(target);
 		let screenshotRequestId = null;
@@ -217,11 +227,23 @@ export class InspectModeInjector extends BaseInjector {
 				createOverlay();
 				document.body.style.cursor = 'crosshair';
 			} else {
+				// When inspect mode is disabled, unlock the selected element
+				selectedElement = null;
 				if (highlightOverlay) {
 					highlightOverlay.style.display = 'none';
 				}
 				document.body.style.cursor = '';
 				hoveredElement = null;
+			}
+		}
+
+		// Unlock selected element when chat closes (but keep inspect mode active)
+		if (event.data?.type === 'roopik-unlock-selection') {
+			selectedElement = null;
+			hoveredElement = null;
+			// Hide the overlay completely - it will reappear on next hover
+			if (highlightOverlay) {
+				highlightOverlay.style.display = 'none';
 			}
 		}
 	});

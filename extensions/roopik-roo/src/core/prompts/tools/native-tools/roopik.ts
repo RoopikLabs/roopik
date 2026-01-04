@@ -431,7 +431,7 @@ export const component_add: OpenAI.Chat.ChatCompletionTool = {
 			properties: {
 				folderPath: {
 					type: "string",
-					description: "Path to the component folder (contains the component files)",
+					description: "The absolute system path to the component folder. Do not use relative paths. (contains the component files)",
 				},
 				canvasId: {
 					type: "string",

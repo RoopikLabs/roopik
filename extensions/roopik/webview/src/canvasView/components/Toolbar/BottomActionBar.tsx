@@ -15,6 +15,7 @@ interface BottomActionBarProps {
 	screenshotEnabled?: boolean;
 	openChatAt?: { x: number; y: number; top: number; bottom: number; nonce: number } | null;
 	onChatAnchorConsumed?: () => void;
+	onChatClosed?: () => void;
 	onEscape?: () => void;
 	// State
 	isSelectMode?: boolean;
@@ -23,11 +24,17 @@ interface BottomActionBarProps {
 
 // Available slash commands
 const COMMANDS = [
+	// allow-any-unicode-next-line
 	{ name: '/animate', icon: '✨', description: 'Add animation to element' },
+	// allow-any-unicode-next-line
 	{ name: '/resize', icon: '↔️', description: 'Change element size' },
+	// allow-any-unicode-next-line
 	{ name: '/color', icon: '🎨', description: 'Change colors' },
+	// allow-any-unicode-next-line
 	{ name: '/spacing', icon: '📏', description: 'Adjust padding/margin' },
+	// allow-any-unicode-next-line
 	{ name: '/layout', icon: '📐', description: 'Change layout properties' },
+	// allow-any-unicode-next-line
 	{ name: '/text', icon: '📝', description: 'Edit text content' }
 ];
 
@@ -40,6 +47,7 @@ export function BottomActionBar({
 	screenshotEnabled = false,
 	openChatAt,
 	onChatAnchorConsumed,
+	onChatClosed,
 	onEscape,
 	isSelectMode = false,
 	isInspectMode = false
@@ -139,6 +147,16 @@ export function BottomActionBar({
 	useEffect(() => {
 		setCaptureScreenshot(screenshotEnabled);
 	}, [screenshotEnabled]);
+
+	// When AI chat closes, notify parent (for unlocking inspect selection)
+	const prevIsAIChatOpenRef = useRef(isAIChatOpen);
+	useEffect(() => {
+		// Only trigger when transitioning from open to closed
+		if (prevIsAIChatOpenRef.current && !isAIChatOpen) {
+			onChatClosed?.();
+		}
+		prevIsAIChatOpenRef.current = isAIChatOpen;
+	}, [isAIChatOpen, onChatClosed]);
 
 	useEffect(() => {
 		if (!openChatAt) {
