@@ -193,9 +193,32 @@
 
 /* Container that holds the iframe - gets device dimensions + scale */
 .sandbox-card .webview-container {
+	position: relative;
 	border-radius: 8px;
 	overflow: hidden;
 	background: #ffffff;
+}
+
+/* Interaction overlay - click to activate component interaction */
+.sandbox-card .interaction-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 10;
+	cursor: pointer;
+	background: rgba(100, 100, 255, 0.03); /* Subtle hint */
+	transition: background 0.2s ease;
+}
+
+.sandbox-card:hover .interaction-overlay {
+	background: rgba(100, 100, 255, 0.06); /* Slightly more visible on hover */
+}
+
+/* When activated, overlay is removed (handled in JSX) */
+.sandbox-card.activated .interaction-overlay {
+	display: none;
 }
 
 /* Device mode: subtle shadow to lift the device screen off the glassmorphism background */

@@ -3,7 +3,7 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { useRef, useState, useMemo, useEffect } from 'react';
+import { useRef, useState, useMemo, useEffect, useCallback } from 'react';
 import type { Sandbox, Point, DevicePreset, BuildErrorInfo } from '../../types';
 import { DEVICE_PRESETS, getNextDevicePreset } from '../../types';
 import { DeviceIcon } from '../DeviceToggle';
@@ -499,6 +499,8 @@ export function SandboxCard({
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [isHovered, setIsHovered] = useState(false);
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+	// Track if component is "activated" for interaction (click-to-activate for better zoom UX)
+	const [isActivated, setIsActivated] = useState(false);
 
 	// Send inspect mode toggle to iframe when isInspectMode changes
 	useEffect(() => {
@@ -512,6 +514,13 @@ export function SandboxCard({
 			console.log('[SandboxCard] Cannot send - iframe not ready');
 		}
 	}, [isInspectMode, captureOnInspectSelect, sandbox.id]);
+
+	// Reset activation when not focused or not selected
+	useEffect(() => {
+		if (!isFocused && !isSelected) {
+			setIsActivated(false);
+		}
+	}, [isFocused, isSelected]);
 
 	// Effective device mode: sandbox override or global
 	const effectiveDeviceMode = sandbox.deviceMode ?? globalDeviceMode;
@@ -729,6 +738,14 @@ export function SandboxCard({
 	// Check if this sandbox is being pushed away (another sandbox is focused)
 	const isPushedAway = !isFocused && focusedSandboxPosition !== null;
 
+	// Handle overlay click - activate component for interaction
+	const handleOverlayClick = useCallback((e: React.MouseEvent) => {
+		e.stopPropagation();
+		setIsActivated(true);
+		// Also select the component
+		onClick();
+	}, [onClick]);
+
 	// Build className
 	const classNames = ['sandbox-card'];
 	if (isSelected) classNames.push('selected');
@@ -739,6 +756,7 @@ export function SandboxCard({
 	if (isExiting) classNames.push('exiting');
 	if (isDeviceMode) classNames.push('device-mode');
 	if (hasOverride) classNames.push('device-override');
+	if (isActivated) classNames.push('activated');
 
 	// Add build status class for visual feedback
 	if (sandbox.buildStatus === 'building') classNames.push('building');
@@ -851,6 +869,14 @@ export function SandboxCard({
 						className="webview-container"
 						style={iframeContainerStyle}
 					>
+						{/* Interaction overlay - click to activate component, allows canvas zoom to work */}
+						{!isActivated && !isFocused && (
+							<div 
+								className="interaction-overlay"
+								onClick={handleOverlayClick}
+								title="Click to interact with component"
+							/>
+						)}
 						<iframe
 							ref={iframeRef}
 							// FIX: Use blob URL instead of srcDoc
