@@ -1569,6 +1569,19 @@ function App() {
 				isInspectMode={isInspectMode}
 				openChatAt={aiChatAnchor}
 				onChatAnchorConsumed={() => setAiChatAnchor(null)}
+				onChatClosed={() => {
+					// Unlock selected element in all sandboxes (but keep inspect mode active)
+					sandboxes.forEach((sandbox) => {
+						const iframe = document.querySelector(
+							`iframe[data-sandbox-id="${sandbox.id}"]`
+						) as HTMLIFrameElement | null;
+						if (iframe?.contentWindow) {
+							iframe.contentWindow.postMessage({
+								type: 'roopik-unlock-selection'
+							}, '*');
+						}
+					});
+				}}
 				onEscape={() => setIsInspectMode(false)}
 			/>
 

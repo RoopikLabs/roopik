@@ -295,7 +295,7 @@ export function getComponentAddDescription(): string {
 	return `## component_add
 Description: [Roopik IDE - Canvas Only] Add an ISOLATED UI component to the Canvas for preview in the IDE's Canvas UI. Use for individual screens/sections (login, onboarding, card, hero, etc.). The Canvas automatically shows the preview - this is a sandbox environment for previewing isolated components.
 Parameters:
-- folderPath: (required) Path to the component folder (contains the component files)
+- folderPath: (required) The absolute system path to the component folder. Do not use relative paths.(contains the component files)
 - canvasId: (optional) Canvas to add the component to. Uses active canvas if not specified.
 - name: (optional) Display name for the component. Inferred from folder if not specified.
 - entryFile: (optional) Entry file name (e.g., index.tsx). Auto-detected in IDE if not specified.
