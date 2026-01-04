@@ -6,7 +6,7 @@
 import { Event } from '../../../../../base/common/event.js';
 import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
-import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserKeyEvent, McpBrowserOpenRequestEvent, McpBrowserCloseRequestEvent } from '../../common/projectMode/types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, AttachElementRequestEvent, BrowserBridgeEvent, BrowserKeyEvent, McpBrowserOpenRequestEvent, McpBrowserCloseRequestEvent } from '../../common/projectMode/types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 
 /**
@@ -39,6 +39,12 @@ export class ServiceBridge implements IProjectModeService {
 	readonly onOpenSourceRequest: Event<OpenSourceRequestEvent>;
 
 	/**
+	 * Event fired when user clicks "Attach Element to Context" in browser context menu
+	 * Works WITHOUT inspect mode - directly from right-click
+	 */
+	readonly onAttachElementRequest: Event<AttachElementRequestEvent>;
+
+	/**
 	 * Event fired when injected script sends a message via window.__roopikBridge()
 	 * Used for element selection, inspect mode events, etc.
 	 */
@@ -67,6 +73,7 @@ export class ServiceBridge implements IProjectModeService {
 		this.onDevToolsClosed = this.channel.listen<DevToolsClosedEvent>('onDevToolsClosed');
 		this.onNavigationStateChanged = this.channel.listen<NavigationStateChangedEvent>('onNavigationStateChanged');
 		this.onOpenSourceRequest = this.channel.listen<OpenSourceRequestEvent>('onOpenSourceRequest');
+		this.onAttachElementRequest = this.channel.listen<AttachElementRequestEvent>('onAttachElementRequest');
 		this.onBrowserBridgeMessage = this.channel.listen<BrowserBridgeEvent>('onBrowserBridgeMessage');
 		this.onBrowserKeyPress = this.channel.listen<BrowserKeyEvent>('onBrowserKeyPress');
 		this.onMcpBrowserOpenRequest = this.channel.listen<McpBrowserOpenRequestEvent>('onMcpBrowserOpenRequest');
@@ -167,6 +174,14 @@ export class ServiceBridge implements IProjectModeService {
 
 	async takeScreenshot(browserViewId: number): Promise<string> {
 		return this.channel.call('takeScreenshot', browserViewId);
+	}
+
+	async takeScreenshotClip(browserViewId: number, x: number, y: number, width: number, height: number): Promise<string> {
+		return this.channel.call('takeScreenshotClip', { browserViewId, x, y, width, height });
+	}
+
+	async focusBrowserView(browserViewId: number): Promise<void> {
+		return this.channel.call('focusBrowserView', browserViewId);
 	}
 
 	async executeScript(browserViewId: number, script: string): Promise<any> {

@@ -3,7 +3,6 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { INotificationService, Severity } from '../../../../../../platform/notification/common/notification.js';
 import { IClipboardService } from '../../../../../../platform/clipboard/common/clipboardService.js';
 import type { IProjectModeService } from '../../../common/projectMode/ipc.js';
 import { INSPECT_MODE_SCRIPT } from '../scripts/inspectModeScript.js';
@@ -34,7 +33,6 @@ export class InspectMode {
 
 	constructor(
 		private readonly browserService: IProjectModeService,
-		private readonly notificationService: INotificationService,
 		private readonly clipboardService: IClipboardService
 	) { }
 
@@ -52,11 +50,8 @@ export class InspectMode {
 		try {
 			await this.browserService.executeScript(browserViewId, INSPECT_MODE_SCRIPT);
 
-			this.notificationService.notify({
-				severity: Severity.Info,
-				message: 'Inspect Mode: Click element to select. ESC to exit.',
-				sticky: false
-			});
+			// Focus the browser view so ESC key events are received
+			await this.browserService.focusBrowserView(browserViewId);
 		} catch {
 			this.isActive = false;
 		}

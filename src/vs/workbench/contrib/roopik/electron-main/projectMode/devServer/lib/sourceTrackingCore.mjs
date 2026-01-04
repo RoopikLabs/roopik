@@ -15,7 +15,7 @@
  *
  * Features:
  * - Multi-line element detection (startLine:startCol:endLine:endCol)
- * - Parent context metadata (ComponentName|tag>parent>grandparent)
+ * - Parent context metadata (DISABLED - using CSS selectors instead)
  * - Component name tracking (data-roopik-component)
  * - String literal safety (skip tags inside strings/template literals)
  * - Configurable skip tags for HTML
@@ -30,8 +30,8 @@ import { basename, extname } from 'path';
 /** Maximum number of parent elements to track in hierarchy */
 export const MAX_PARENT_DEPTH = 3;
 
-/** Enable/disable parent metadata collection */
-export const ENABLE_PARENT_METADATA = true;
+/** Enable/disable parent metadata collection (DISABLED - using CSS selectors instead) */
+export const ENABLE_PARENT_METADATA = false;
 
 // ============================================
 // Regex Patterns (Shared by all frameworks)

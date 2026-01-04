@@ -30,6 +30,8 @@ import { IContextMenuService } from '../../../../../platform/contextview/browser
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
 import { Dimension } from '../../../../../base/browser/dom.js';
+import { IViewsService } from '../../../../services/views/common/viewsService.js';
+import { ICommandService } from '../../../../../platform/commands/common/commands.js';
 // Features (extracted to features/ folder)
 import { InspectMode } from './features/inspectMode.js';
 import { Bookmarks } from './features/bookmarks.js';
@@ -95,6 +97,9 @@ export class Editor extends EditorPane {
 	private styleInspect!: StyleInspect;
 	private dragDrop!: DragDrop;
 
+	// Clip mode state
+	private isClipModeActive: boolean = false;
+
 	constructor(
 		group: IEditorGroup,
 		@ITelemetryService telemetryService: ITelemetryService,
@@ -110,7 +115,9 @@ export class Editor extends EditorPane {
 		@IClipboardService private readonly clipboardService: IClipboardService,
 		@ISourceNavigationService private readonly sourceNavigationService: ISourceNavigationService,
 		@IMenubarStateService private readonly menubarStateService: IMenubarStateService,
-		@IProjectStorageService private readonly projectStorageService: IProjectStorageService
+		@IProjectStorageService private readonly projectStorageService: IProjectStorageService,
+		@IViewsService private readonly viewsService: IViewsService,
+		@ICommandService private readonly commandService: ICommandService
 	) {
 		super(Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = getRoopikLogger(loggerService, '[EDITOR]');
@@ -118,7 +125,7 @@ export class Editor extends EditorPane {
 		this.devServerService = new DevServerBridge(mainProcessService.getChannel(DEV_SERVER_CHANNEL));
 
 		// Initialize features (extracted to features/ folder)
-		this.inspectMode = new InspectMode(this.browserService, this.notificationService, this.clipboardService);
+		this.inspectMode = new InspectMode(this.browserService, this.clipboardService);
 		this.bookmarks = new Bookmarks(this.storageService, this.notificationService, this.logger);
 		this.browserPause = new BrowserPause(this.browserService);
 		this.styleInspect = new StyleInspect(this.browserService, this.notificationService, this.sourceNavigationService);
@@ -319,6 +326,22 @@ export class Editor extends EditorPane {
 				});
 			}
 		}));
+
+		// Listen for attach element requests from context menu (works WITHOUT inspect mode!)
+		this._register(this.browserService.onAttachElementRequest((event) => {
+			// Filter by browserViewId - only handle events for this browser instance
+			if (event.browserViewId !== this.browserViewId) {
+				return;
+			}
+
+			// Handle attach element request (reuse same handler as inspect mode)
+			this.handleAttachElement({
+				type: 'attach-element',
+				html: event.html,
+				selector: event.selector,
+				tagName: event.tagName
+			});
+		}));
 	}
 
 	/**
@@ -343,6 +366,21 @@ export class Editor extends EditorPane {
 					break;
 				case 'inspect-mode-exited':
 					this.handleInspectModeExited();
+					break;
+				case 'chat-message':
+					this.handleChatMessage(message as import('../../common/projectMode/types.js').ChatMessage);
+					break;
+				case 'attach-element':
+					this.handleAttachElement(message as import('../../common/projectMode/types.js').AttachElementMessage);
+					break;
+				case 'roopik-clip-ready':
+					this.logger.info('[ClipMode] Clip mode overlay ready');
+					break;
+				case 'roopik-clip-capture':
+					this.handleClipCapture(message as any);
+					break;
+				case 'roopik-clip-cancelled':
+					this.handleClipCancelled();
 					break;
 				case 'drag-started':
 					this.dragDrop.handleDragStarted(message as import('../../common/projectMode/types.js').DragStartedMessage);
@@ -405,6 +443,222 @@ export class Editor extends EditorPane {
 		// Also hide style panel (ESC should close everything)
 		if (this.styleInspect.isPanelVisible()) {
 			this.styleInspect.hidePanel();
+		}
+	}
+
+	// ============================================================================
+	// Clip Mode (Screenshot Region Selection)
+	// ============================================================================
+
+	/**
+	 * Enter clip mode - inject overlay for drag-to-select rectangle
+	 */
+	async toggleClipMode(): Promise<void> {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		if (this.isClipModeActive) {
+			// Already active - disable it
+			await this.disableClipMode();
+			return;
+		}
+
+		this.logger.info('[ClipMode] Enabling clip mode');
+
+		try {
+			// Ensure browser bridge is set up (for window.__roopikBridge)
+			await this.browserService.setupBrowserBridge(this.browserViewId);
+
+			// Inject clip mode script
+			const { getClipModeScript } = await import('./scripts/clipModeScript.js');
+			const script = getClipModeScript();
+
+			await this.browserService.executeScript(this.browserViewId, script);
+			this.isClipModeActive = true;
+
+			// Focus browser to ensure ESC key works
+			await this.browserService.focusBrowserView(this.browserViewId);
+
+			this.logger.info('[ClipMode] Clip mode overlay injected and ready');
+		} catch (error) {
+			this.logger.error('[ClipMode] Failed to enable clip mode:', error);
+			this.isClipModeActive = false;
+		}
+	}
+
+	/**
+	 * Disable clip mode (called on ESC or after capture)
+	 */
+	private async disableClipMode(): Promise<void> {
+		if (!this.browserViewId || !this.isClipModeActive) {
+			return;
+		}
+
+		this.logger.info('[ClipMode] Disabling clip mode');
+
+		try {
+			// Remove clip mode UI by executing cleanup
+			await this.browserService.executeScript(
+				this.browserViewId,
+				`(function() {
+					const overlay = document.getElementById('roopik-clip-overlay');
+					if (overlay) overlay.remove();
+					delete window.__roopikClipMode;
+				})()`
+			);
+		} catch (error) {
+			this.logger.warn('[ClipMode] Cleanup failed:', error);
+		}
+
+		this.isClipModeActive = false;
+	}
+
+	/**
+	 * Handle clip capture request from injected script
+	 */
+	private async handleClipCapture(message: { rect: { x: number; y: number; width: number; height: number } }): Promise<void> {
+		if (!this.browserViewId) {
+			this.logger.warn('[ClipMode] No browser view ID');
+			return;
+		}
+
+		const { rect } = message;
+		this.logger.info('[ClipMode] Capturing clip', { rect });
+
+		try {
+			// Capture clipped screenshot (viewport coordinates)
+			this.logger.info('[ClipMode] Calling takeScreenshotClip...', {
+				browserViewId: this.browserViewId,
+				x: rect.x,
+				y: rect.y,
+				width: rect.width,
+				height: rect.height
+			});
+
+			const dataUrl = await this.browserService.takeScreenshotClip(
+				this.browserViewId,
+				rect.x,
+				rect.y,
+				rect.width,
+				rect.height
+			);
+
+			this.logger.info('[ClipMode] Screenshot captured, data URL length:', dataUrl?.length || 0);
+
+			// Disable clip mode
+			await this.disableClipMode();
+
+			if (!dataUrl || !dataUrl.startsWith('data:image')) {
+				throw new Error('Invalid screenshot data URL');
+			}
+
+			// Send to AI agent
+			await this.viewsService.openView('roodio.ChatPanel', true);
+
+			// Small delay to ensure view is mounted
+			await new Promise(resolve => setTimeout(resolve, 300));
+
+			// Send clipped screenshot to AI agent with empty context
+			await this.commandService.executeCommand('roodio.externalContext', {
+				promptText: '',
+				autoSend: false,
+				images: [dataUrl]
+			});
+
+			this.logger.info('[ClipMode] Clipped screenshot sent to AI agent successfully');
+		} catch (error) {
+			this.logger.error('[ClipMode] Failed to capture clip:', { error, message: error instanceof Error ? error.message : String(error) });
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: `Failed to capture screenshot clip: ${error instanceof Error ? error.message : String(error)}`,
+				sticky: false
+			});
+		}
+	}
+
+	/**
+	 * Handle clip mode cancellation (ESC pressed)
+	 */
+	private async handleClipCancelled(): Promise<void> {
+		this.logger.info('[ClipMode] Clip mode cancelled by user');
+		await this.disableClipMode();
+	}
+
+	/**
+	 * Handle chat message from inspect mode
+	 * Forward to AI agent with element HTML and user message
+	 */
+	private async handleChatMessage(message: import('../../common/projectMode/types.js').ChatMessage): Promise<void> {
+		if (!message.text?.trim() || !this.browserViewId) {
+			return;
+		}
+
+		try {
+			// Open chat panel (ensures extension is activated)
+			await this.viewsService.openView('roodio.ChatPanel', true);
+
+			// Small delay to ensure view is mounted
+			await new Promise(resolve => setTimeout(resolve, 300));
+
+			// Build context with element HTML + metadata
+			let contextText = `${message.text}\n\n`;
+			contextText += `Element: <${message.tagName}>`;
+			if (message.selector) {
+				contextText += `\nSelector: ${message.selector}`;
+			}
+			if (message.source) {
+				contextText += `\nSource: ${message.source.file}:${message.source.line}`;
+				if (message.source.column) {
+					contextText += `:${message.source.column}`;
+				}
+			}
+			contextText += `\n\nHTML:\n\`\`\`html\n${message.html}\n\`\`\``;
+
+			// Send to AI agent
+			await this.commandService.executeCommand('roodio.externalContext', {
+				promptText: contextText,
+				autoSend: false
+			});
+
+			this.logger.info('[InspectMode] Chat message with HTML forwarded to AI agent');
+		} catch (error) {
+			this.logger.error('[InspectMode] Failed to send chat message:', error);
+		}
+	}
+
+	/**
+	 * Handle attach element request (silent attachment)
+	 * Sends element HTML to AI agent without message
+	 */
+	private async handleAttachElement(message: import('../../common/projectMode/types.js').AttachElementMessage): Promise<void> {
+		if (!this.browserViewId) {
+			return;
+		}
+
+		try {
+			// Open chat panel (ensures extension is activated)
+			await this.viewsService.openView('roodio.ChatPanel', true);
+
+			// Small delay to ensure view is mounted
+			await new Promise(resolve => setTimeout(resolve, 300));
+
+			// Build context with element HTML only
+			let contextText = `Element: <${message.tagName}>`;
+			if (message.selector) {
+				contextText += `\nSelector: ${message.selector}`;
+			}
+			contextText += `\n\nHTML:\n\`\`\`html\n${message.html}\n\`\`\``;
+
+			// Send to AI agent as context (no auto-send, user types message in panel)
+			await this.commandService.executeCommand('roodio.externalContext', {
+				promptText: contextText,
+				autoSend: false
+			});
+
+			this.logger.info('[InspectMode] Element HTML attached to AI agent');
+		} catch (error) {
+			this.logger.error('[InspectMode] Failed to attach element:', error);
 		}
 	}
 
@@ -582,7 +836,6 @@ export class Editor extends EditorPane {
 			showHardReload: true,
 			showCopyUrl: true,
 			showBookmarks: true,
-			showEditMode: true,
 			showPendingChanges: true
 		};
 
@@ -599,6 +852,7 @@ export class Editor extends EditorPane {
 			onDevTools: () => this.toggleDevTools(),
 			onHardReload: () => this.hardReload(),
 			onScreenshot: () => this.takeScreenshot(),
+			onScreenshotClip: () => this.toggleClipMode(),
 			onCopyUrl: () => this.copyCurrentUrl(),
 			// Bookmark callbacks (delegate to Bookmarks feature)
 			onBookmarkAdd: (bookmark) => this.bookmarks.add(bookmark),
@@ -606,8 +860,6 @@ export class Editor extends EditorPane {
 			onBookmarkClick: (url) => this.navigate(url),
 			getBookmarks: () => this.bookmarks.getAll(),
 			isBookmarked: (url) => this.bookmarks.isBookmarked(url),
-			// Edit Mode callback
-			onEditModeToggle: (enabled: boolean) => this.toggleEditModeToolbar(enabled),
 			// Pending Changes callback
 			onPendingChangesClick: () => this.togglePendingChangesPanel()
 		};
@@ -1502,18 +1754,6 @@ export class Editor extends EditorPane {
 		this.controlBar?.setDevToolsActive(this.devtoolsVisible);
 	}
 
-	// ============================================
-	// Edit Mode (placeholder for future implementation)
-	// ============================================
-
-	/**
-	 * Toggle Edit Mode
-	 * TODO: Implement edit mode features (drag-drop, direct style editing)
-	 */
-	private toggleEditModeToolbar(enabled: boolean): void {
-		this.logger.info(`[ProjectMode] Edit Mode ${enabled ? 'ENABLED' : 'DISABLED'} (not yet implemented)`);
-		// TODO: Implement edit mode - will enable drag-drop, style editing, etc.
-	}
 
 	// ============================================
 	// Pending Changes Panel (drag-drop operations)
@@ -1813,13 +2053,31 @@ export class Editor extends EditorPane {
 		try {
 			const dataUrl = await this.browserService.takeScreenshot(this.browserViewId);
 
-			// Copy to clipboard or download
-			const link = document.createElement('a');
-			link.download = `screenshot-${Date.now()}.png`;
-			link.href = dataUrl;
-			link.click();
+			// Send to AI agent
+			await this.viewsService.openView('roodio.ChatPanel', true);
+
+			// Small delay to ensure view is mounted
+			await new Promise(resolve => setTimeout(resolve, 300));
+
+			// Get current URL for context
+			const currentUrl = this.getCurrentUrl();
+
+			// Build prompt with context and send screenshot to AI agent
+			const contextInfo = `Browser Screenshot\nURL: ${currentUrl}`;
+
+			await this.commandService.executeCommand('roodio.externalContext', {
+				promptText: contextInfo,
+				autoSend: false,
+				images: [dataUrl]
+			});
+
+			this.logger.info('[ProjectMode] Screenshot sent to AI agent');
 		} catch (error) {
-			this.logger.error('[ProjectMode] Screenshot failed:', error);
+			this.notificationService.notify({
+				severity: Severity.Error,
+				message: 'Failed to capture screenshot',
+				sticky: false
+			});
 		}
 	}
 

@@ -154,6 +154,18 @@ export interface OpenSourceRequestEvent {
 	error?: string;
 }
 
+/**
+ * Event payload when user requests to attach element from context menu
+ * Fired when user clicks "Attach Element to Context" in browser context menu
+ * Works WITHOUT inspect mode - direct from right-click
+ */
+export interface AttachElementRequestEvent {
+	browserViewId: number;
+	html: string;
+	selector: string;
+	tagName: string;
+}
+
 // ============================================
 // Browser Bridge Messages (CDP Runtime.bindingCalled)
 // ============================================
@@ -198,6 +210,45 @@ export interface InspectModeExitedMessage extends BrowserBridgeMessageBase {
 }
 
 /**
+ * Chat message from inspect mode
+ */
+export interface ChatMessage extends BrowserBridgeMessageBase {
+	type: 'chat-message';
+	text: string;
+	html: string; // Element HTML (stripped of Roopik metadata)
+	selector: string;
+	tagName: string;
+	source: {
+		file: string;
+		line: number;
+		column?: number;
+		endLine?: number;
+		endColumn?: number;
+	} | null;
+	boundingBox: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+		top: number;
+		right: number;
+		bottom: number;
+		left: number;
+	};
+	screenshot?: string; // Base64 data URL
+}
+
+/**
+ * Attach element message (silent attachment without chat)
+ */
+export interface AttachElementMessage extends BrowserBridgeMessageBase {
+	type: 'attach-element';
+	html: string; // Element HTML (stripped of Roopik metadata)
+	selector: string;
+	tagName: string;
+}
+
+/**
  * Drag started (element being dragged)
  */
 export interface DragStartedMessage extends BrowserBridgeMessageBase {
@@ -225,12 +276,44 @@ export interface DragEndedMessage extends BrowserBridgeMessageBase {
 }
 
 /**
+ * Clip mode ready message - overlay injected and ready
+ */
+export interface ClipModeReady extends BrowserBridgeMessageBase {
+	type: 'roopik-clip-ready';
+}
+
+/**
+ * Clip capture message - user selected a region to capture
+ */
+export interface ClipCaptureMessage extends BrowserBridgeMessageBase {
+	type: 'roopik-clip-capture';
+	rect: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	};
+}
+
+/**
+ * Clip cancelled message - user pressed ESC
+ */
+export interface ClipCancelledMessage extends BrowserBridgeMessageBase {
+	type: 'roopik-clip-cancelled';
+}
+
+/**
  * Union of all browser bridge message types
  * Add new message types here as we add features
  */
 export type BrowserBridgeMessage =
 	| ElementSelectedMessage
 	| InspectModeExitedMessage
+	| ChatMessage
+	| AttachElementMessage
+	| ClipModeReady
+	| ClipCaptureMessage
+	| ClipCancelledMessage
 	| DragStartedMessage
 	| DragEndedMessage;
 

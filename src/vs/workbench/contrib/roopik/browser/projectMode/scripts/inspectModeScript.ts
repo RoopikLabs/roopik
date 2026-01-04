@@ -27,6 +27,25 @@ export const INSPECT_MODE_SCRIPT = `
 		window.__roopikInspectCleanup();
 	}
 
+	// Wait for body to be ready before initializing
+	function initInspectMode() {
+		if (!document.body) {
+			// YouTube and other sites might not have body ready yet
+			if (document.readyState === 'loading') {
+				document.addEventListener('DOMContentLoaded', initInspectMode);
+			} else {
+				// DOM is already loaded, but body is missing (shouldn't happen, but be safe)
+				setTimeout(initInspectMode, 50);
+			}
+			return;
+		}
+
+		// Body is ready, proceed with initialization
+		initializeInspectModeUI();
+	}
+
+	function initializeInspectModeUI() {
+
 	// ========== Configuration ==========
 
 	/**
@@ -166,8 +185,8 @@ export const INSPECT_MODE_SCRIPT = `
 		// Create ghost element (semi-transparent clone)
 		createDragGhost(e.clientX, e.clientY);
 
-		// Hide chat icon during drag
-		chatIcon.style.display = 'none';
+		// Hide action buttons during drag
+		actionButtonsContainer.style.display = 'none';
 
 		// Hide hover overlay during drag
 		hoverOverlay.style.display = 'none';
@@ -310,40 +329,109 @@ export const INSPECT_MODE_SCRIPT = `
 		// Show immediate feedback for invalid drops
 		// Valid drops get feedback from VSCode after CDP operation completes
 		if (!dropZone) {
-			showToast('❌ Invalid drop location');
+			showToast('Invalid drop location');
 		}
 	}
 
-	// Chat icon (appears on selected element - top right corner)
-	const chatIcon = document.createElement('div');
-	chatIcon.id = '__roopik_inspect_chat';
-	chatIcon.style.cssText = [
+	// Action buttons container (appears on selected element - top right corner)
+	const actionButtonsContainer = document.createElement('div');
+	actionButtonsContainer.id = '__roopik_inspect_actions';
+	actionButtonsContainer.style.cssText = [
 		'position: fixed',
 		'z-index: 2147483647',
+		'display: none',
+		'gap: 8px',
+		'pointer-events: auto'
+	].join(';');
+	document.body.appendChild(actionButtonsContainer);
+
+	// Attach button (left) - paperclip icon
+	const attachButton = document.createElement('div');
+	attachButton.id = '__roopik_inspect_attach';
+	attachButton.style.cssText = [
+		'width: 28px',
+		'height: 28px',
+		'background-color: #059669',
+		'border-radius: 6px',
+		'cursor: pointer',
+		'box-shadow: 0 2px 8px rgba(5, 150, 105, 0.4)',
+		'transition: background-color 0.15s, transform 0.1s',
+		'display: flex',
+		'align-items: center',
+		'justify-content: center'
+	].join(';');
+	attachButton.title = 'Attach element HTML to AI context';
+
+	// Paperclip icon SVG
+	var attachSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+	attachSvg.setAttribute('width', '16');
+	attachSvg.setAttribute('height', '16');
+	attachSvg.setAttribute('viewBox', '0 0 24 24');
+	attachSvg.setAttribute('fill', 'none');
+	attachSvg.setAttribute('stroke', 'white');
+	attachSvg.setAttribute('stroke-width', '2');
+	attachSvg.setAttribute('stroke-linecap', 'round');
+	attachSvg.setAttribute('stroke-linejoin', 'round');
+	var attachPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+	attachPath.setAttribute('d', 'M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48');
+	attachSvg.appendChild(attachPath);
+	attachButton.appendChild(attachSvg);
+
+	// Attach button hover
+	attachButton.addEventListener('mouseenter', function() {
+		attachButton.style.backgroundColor = '#047857';
+		attachButton.style.transform = 'scale(1.1)';
+	});
+	attachButton.addEventListener('mouseleave', function() {
+		attachButton.style.backgroundColor = '#059669';
+		attachButton.style.transform = 'scale(1)';
+	});
+
+	// Chat button (right) - message icon
+	const chatButton = document.createElement('div');
+	chatButton.id = '__roopik_inspect_chat';
+	chatButton.style.cssText = [
 		'width: 28px',
 		'height: 28px',
 		'background-color: #7c3aed',
 		'border-radius: 6px',
-		'display: none',
 		'cursor: pointer',
-		'pointer-events: auto',
 		'box-shadow: 0 2px 8px rgba(124, 58, 237, 0.4)',
-		'transition: background-color 0.15s, transform 0.1s'
+		'transition: background-color 0.15s, transform 0.1s',
+		'display: flex',
+		'align-items: center',
+		'justify-content: center'
 	].join(';');
-	// Chat bubble icon (SVG) - centered with flexbox applied via JS
-	chatIcon.innerHTML = '<svg style="display:block;margin:auto;margin-top:6px;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
-	chatIcon.title = 'Ask AI';
-	document.body.appendChild(chatIcon);
+	chatButton.title = 'Chat about this element';
 
-	// Chat icon hover effects
-	chatIcon.addEventListener('mouseenter', function() {
-		chatIcon.style.backgroundColor = '#6d28d9';
-		chatIcon.style.transform = 'scale(1.1)';
+	// Message icon SVG
+	var chatSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+	chatSvg.setAttribute('width', '16');
+	chatSvg.setAttribute('height', '16');
+	chatSvg.setAttribute('viewBox', '0 0 24 24');
+	chatSvg.setAttribute('fill', 'none');
+	chatSvg.setAttribute('stroke', 'white');
+	chatSvg.setAttribute('stroke-width', '2');
+	chatSvg.setAttribute('stroke-linecap', 'round');
+	chatSvg.setAttribute('stroke-linejoin', 'round');
+	var chatPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+	chatPath.setAttribute('d', 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z');
+	chatSvg.appendChild(chatPath);
+	chatButton.appendChild(chatSvg);
+
+	// Chat button hover
+	chatButton.addEventListener('mouseenter', function() {
+		chatButton.style.backgroundColor = '#6d28d9';
+		chatButton.style.transform = 'scale(1.1)';
 	});
-	chatIcon.addEventListener('mouseleave', function() {
-		chatIcon.style.backgroundColor = '#7c3aed';
-		chatIcon.style.transform = 'scale(1)';
+	chatButton.addEventListener('mouseleave', function() {
+		chatButton.style.backgroundColor = '#7c3aed';
+		chatButton.style.transform = 'scale(1)';
 	});
+
+	// Add buttons to container (attach on left, chat on right)
+	actionButtonsContainer.appendChild(attachButton);
+	actionButtonsContainer.appendChild(chatButton);
 
 	// ========== Chat Input Bar ==========
 	const chatBar = document.createElement('div');
@@ -366,7 +454,7 @@ export const INSPECT_MODE_SCRIPT = `
 
 	const chatInput = document.createElement('input');
 	chatInput.type = 'text';
-	chatInput.placeholder = 'Describe changes... (Coming soon)';
+	chatInput.placeholder = 'Describe changes...';
 	chatInput.style.cssText = [
 		'flex: 1',
 		'background: #2d2d2d',
@@ -380,28 +468,150 @@ export const INSPECT_MODE_SCRIPT = `
 	].join(';');
 
 	const chatSendBtn = document.createElement('button');
-	chatSendBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>';
-	chatSendBtn.disabled = true;
+	// Create send icon SVG using DOM methods to avoid CSP errors
+	var sendSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+	sendSvg.setAttribute('width', '16');
+	sendSvg.setAttribute('height', '16');
+	sendSvg.setAttribute('viewBox', '0 0 24 24');
+	sendSvg.setAttribute('fill', 'none');
+	sendSvg.setAttribute('stroke', 'currentColor');
+	sendSvg.setAttribute('stroke-width', '2');
+	var sendPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+	sendPath.setAttribute('d', 'M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z');
+	sendSvg.appendChild(sendPath);
+	chatSendBtn.appendChild(sendSvg);
 	chatSendBtn.style.cssText = [
 		'background: #7c3aed',
 		'border: none',
 		'border-radius: 4px',
 		'padding: 8px',
-		'cursor: not-allowed',
-		'opacity: 0.5',
+		'cursor: pointer',
 		'color: white',
 		'display: flex',
 		'align-items: center',
-		'justify-content: center'
+		'justify-content: center',
+		'transition: opacity 0.2s ease'
 	].join(';');
+
+	// Enable/disable send button based on input
+	function updateSendButtonState() {
+		var hasText = chatInput.value.trim().length > 0;
+		chatSendBtn.disabled = !hasText;
+		chatSendBtn.style.opacity = hasText ? '1' : '0.5';
+		chatSendBtn.style.cursor = hasText ? 'pointer' : 'not-allowed';
+	}
+
+	chatInput.addEventListener('input', updateSendButtonState);
+	chatInput.addEventListener('keypress', function(e) {
+		if (e.key === 'Enter' && chatInput.value.trim()) {
+			sendChatMessage(chatInput.value.trim());
+		}
+	});
+
+	chatSendBtn.addEventListener('click', function(e) {
+		e.preventDefault();
+		e.stopPropagation();
+		if (chatInput.value.trim()) {
+			sendChatMessage(chatInput.value.trim());
+		}
+	});
+
+	function sendChatMessage(text) {
+		if (!selectedElement || typeof window.__roopikBridge !== 'function') {
+			return;
+		}
+
+		// Disable send button while processing
+		chatSendBtn.disabled = true;
+		chatSendBtn.style.opacity = '0.5';
+
+		var sourceAttr = selectedElement.getAttribute('data-roopik-source');
+		var rect = selectedElement.getBoundingClientRect();
+
+		// Get element HTML and strip metadata
+		var rawHTML = selectedElement.outerHTML;
+		var cleanHTML = stripRoopikMetadata(rawHTML);
+
+		var message = {
+			type: 'chat-message',
+			text: text,
+			html: cleanHTML, // Auto-attach element HTML
+			selector: getElementSelector(selectedElement),
+			tagName: selectedElement.tagName.toLowerCase(),
+			source: sourceAttr ? parseSourceAttr(sourceAttr) : null,
+			boundingBox: {
+				x: rect.x,
+				y: rect.y,
+				width: rect.width,
+				height: rect.height,
+				top: rect.top,
+				right: rect.right,
+				bottom: rect.bottom,
+				left: rect.left
+			}
+		};
+
+		window.__roopikBridge(JSON.stringify(message));
+		closeChatBar();
+		chatInput.value = '';
+		updateSendButtonState();
+	}
 
 	chatInputContainer.appendChild(chatInput);
 	chatInputContainer.appendChild(chatSendBtn);
 	chatBar.appendChild(chatInputContainer);
 	document.body.appendChild(chatBar);
 
-	// Chat icon click handler - toggles chat bar
-	chatIcon.addEventListener('click', function(e) {
+	// ========== Utility: Strip Roopik Metadata ==========
+	/**
+	 * Strip all data-roopik-* attributes from HTML
+	 *
+	 * SHARED UTILITY: This function is synchronized with htmlUtils.ts
+	 * Any changes here MUST be reflected in both places!
+	 * See: src/vs/workbench/contrib/roopik/browser/projectMode/utils/htmlUtils.ts
+	 */
+	function stripRoopikMetadata(html) {
+		// NOTE: Double-escaped backslashes because this is inside a template literal!
+		return html
+			.replace(/\\s+data-roopik-[a-z-]+\\s*=\\s*"[^"]*"/gi, '')
+			.replace(/\\s+/g, ' ')
+			.trim();
+	}
+
+	// ========== Attach Button Handler ==========
+	attachButton.addEventListener('click', function(e) {
+		e.preventDefault();
+		e.stopPropagation();
+
+		if (!selectedElement || typeof window.__roopikBridge !== 'function') {
+			return;
+		}
+
+		// Get outer HTML of selected element
+		var rawHTML = selectedElement.outerHTML;
+
+		// Strip Roopik metadata
+		var cleanHTML = stripRoopikMetadata(rawHTML);
+
+		// Send to main process for agent attachment
+		var message = {
+			type: 'attach-element',
+			html: cleanHTML,
+			selector: getElementSelector(selectedElement),
+			tagName: selectedElement.tagName.toLowerCase()
+		};
+
+		window.__roopikBridge(JSON.stringify(message));
+
+		// Visual feedback (green flash)
+		attachButton.style.backgroundColor = '#10b981';
+		setTimeout(function() {
+			attachButton.style.backgroundColor = '#059669';
+		}, 200);
+	});
+
+	// ========== Chat Button Handler ==========
+	chatButton.addEventListener('click', function(e) {
 		e.preventDefault();
 		e.stopPropagation();
 		toggleChatBar();
@@ -446,7 +656,7 @@ export const INSPECT_MODE_SCRIPT = `
 		chatBar.style.display = 'block';
 
 		// Hide chat icon while chat bar is open
-		chatIcon.style.display = 'none';
+		actionButtonsContainer.style.display = 'none';
 
 		// Focus the input
 		setTimeout(function() {
@@ -624,7 +834,15 @@ export const INSPECT_MODE_SCRIPT = `
 		return result;
 	}
 
+	/**
+	 * Get unique CSS selector path for an element
+	 *
+	 * SHARED UTILITY: This function is synchronized with htmlUtils.ts
+	 * Any changes here MUST be reflected in both places!
+	 * See: src/vs/workbench/contrib/roopik/browser/projectMode/utils/htmlUtils.ts
+	 */
 	function getElementSelector(el) {
+		// NOTE: Double-escaped backslashes because this is inside a template literal!
 		if (!el || el === document.body || el === document.documentElement) return null;
 		var parts = [];
 		var current = el;
@@ -677,7 +895,7 @@ export const INSPECT_MODE_SCRIPT = `
 		if (!el || el === document.body || el === document.documentElement) {
 			overlay.style.display = 'none';
 			if (label) label.style.display = 'none';
-			if (isSelected) chatIcon.style.display = 'none';
+			if (isSelected) actionButtonsContainer.style.display = 'none';
 			return;
 		}
 		var rect = el.getBoundingClientRect();
@@ -700,29 +918,46 @@ export const INSPECT_MODE_SCRIPT = `
 			label.style.left = Math.max(0, rect.left) + 'px';
 		}
 
-		// Position chat icon responsive like HTML tag (bottom-right default, moves to top-right if no space)
+		// Position action buttons responsive (bottom-right default, moves to top-right if no space)
 		if (isSelected) {
-			var iconSize = 28;
-			var iconGap = 6;
-			var iconLeft = rect.right - iconSize;
-			var iconTop;
+			var buttonSize = 28;
+			var buttonGap = 8; // Gap between buttons
+			var containerWidth = buttonSize * 2 + buttonGap; // Two buttons + gap
+			var containerHeight = buttonSize;
+			var edgeGap = 6;
+			var containerLeft, containerTop;
 
-			// Default: try bottom-right (like HTML tag default position)
-			if (rect.bottom + iconSize + iconGap + 4 < window.innerHeight) {
-				// Space below - position below element at bottom-right
-				iconTop = rect.bottom + iconGap;
+			// Horizontal positioning: prefer right side, fall back to left if needed
+			if (rect.right - containerWidth >= 4) {
+				// Enough space on right side - align to right edge of element
+				containerLeft = rect.right - containerWidth;
+			} else if (rect.left + containerWidth <= window.innerWidth - 4) {
+				// Not enough space on right, but enough on left - align to left edge
+				containerLeft = rect.left;
 			} else {
-				// No space below - move to top-right (like HTML tag does)
-				iconTop = rect.top - iconSize - iconGap;
+				// Not enough space on either side - center on element
+				containerLeft = rect.left + (rect.width / 2) - (containerWidth / 2);
 			}
 
-			// Keep within viewport boundaries
-			iconLeft = Math.max(4, Math.min(iconLeft, window.innerWidth - iconSize - 4));
-			iconTop = Math.max(4, Math.min(iconTop, window.innerHeight - iconSize - 4));
+			// Vertical positioning: prefer bottom, fall back to top if needed
+			if (rect.bottom + containerHeight + edgeGap + 4 < window.innerHeight) {
+				// Space below - position below element
+				containerTop = rect.bottom + edgeGap;
+			} else if (rect.top - containerHeight - edgeGap > 4) {
+				// No space below but space above - move to top
+				containerTop = rect.top - containerHeight - edgeGap;
+			} else {
+				// No space on either side - position inside element at top
+				containerTop = rect.top + 4;
+			}
 
-			chatIcon.style.display = 'block';
-			chatIcon.style.left = iconLeft + 'px';
-			chatIcon.style.top = iconTop + 'px';
+			// Keep within viewport boundaries (final safety check)
+			containerLeft = Math.max(4, Math.min(containerLeft, window.innerWidth - containerWidth - 4));
+			containerTop = Math.max(4, Math.min(containerTop, window.innerHeight - containerHeight - 4));
+
+			actionButtonsContainer.style.display = 'flex';
+			actionButtonsContainer.style.left = containerLeft + 'px';
+			actionButtonsContainer.style.top = containerTop + 'px';
 		}
 	}
 
@@ -1150,12 +1385,15 @@ export const INSPECT_MODE_SCRIPT = `
 	// Keys are intercepted by Electron's before-input-event and forwarded via IPC
 	// This allows unified key handling without scattered listeners
 	function onKeyDown(e) {
-		// Close chat bar on ESC
+		// Close chat bar on ESC (if chat is open)
+		// Otherwise, let the event propagate to centralized handler for inspect mode exit
 		if (e.key === 'Escape' && isChatOpen) {
 			closeChatBar();
 			e.preventDefault();
 			e.stopPropagation();
+			return;
 		}
+		// For all other cases, let event propagate to centralized handler
 	}
 
 	function onScroll() {
@@ -1220,7 +1458,7 @@ export const INSPECT_MODE_SCRIPT = `
 	function cleanup() {
 		document.removeEventListener('mousemove', onMouseMove, true);
 		document.removeEventListener('click', onClick, true);
-		document.removeEventListener('keydown', onKeyDown, true);
+		// NOTE: keydown listener removed - handled centrally in editor.ts
 		document.removeEventListener('scroll', onScroll, true);
 		document.removeEventListener('mousemove', onDragMove, true);
 		document.removeEventListener('mouseup', onDragEnd, true);
@@ -1233,7 +1471,7 @@ export const INSPECT_MODE_SCRIPT = `
 		if (selectedOverlay.parentNode) selectedOverlay.remove();
 		if (hoverLabel.parentNode) hoverLabel.remove();
 		if (selectedLabel.parentNode) selectedLabel.remove();
-		if (chatIcon.parentNode) chatIcon.remove();
+		if (actionButtonsContainer.parentNode) actionButtonsContainer.remove();
 		if (chatBar.parentNode) chatBar.remove();
 		if (toast.parentNode) toast.remove();
 		if (dragGhost && dragGhost.parentNode) dragGhost.remove();
@@ -1264,10 +1502,15 @@ export const INSPECT_MODE_SCRIPT = `
 
 	document.addEventListener('mousemove', onMouseMove, true);
 	document.addEventListener('click', onClick, true);
-	document.addEventListener('keydown', onKeyDown, true);
+	// NOTE: keydown listener removed - all key handling is centralized in editor.ts
+	// Keys are intercepted by Electron's before-input-event and forwarded via IPC
 	document.addEventListener('scroll', onScroll, true);
 	window.addEventListener('resize', onScroll);
 
 	return 'Inspect mode enabled';
+	} // End of initializeInspectModeUI()
+
+	// Start initialization (waits for body if needed)
+	initInspectMode();
 })();
 `;

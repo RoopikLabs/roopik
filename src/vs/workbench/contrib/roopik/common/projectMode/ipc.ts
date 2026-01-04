@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserKeyEvent, McpBrowserOpenRequestEvent, McpBrowserCloseRequestEvent } from './types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, AttachElementRequestEvent, BrowserBridgeEvent, BrowserKeyEvent, McpBrowserOpenRequestEvent, McpBrowserCloseRequestEvent } from './types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../cssResolvers/types.js';
 
 export const IProjectModeService = createDecorator<IProjectModeService>('projectModeService');
@@ -46,6 +46,12 @@ export interface IProjectModeService {
 	 * Contains parsed source location from data-roopik-source attribute
 	 */
 	readonly onOpenSourceRequest: Event<OpenSourceRequestEvent>;
+
+	/**
+	 * Fired when user clicks "Attach Element to Context" in browser context menu
+	 * Works WITHOUT inspect mode - directly from right-click
+	 */
+	readonly onAttachElementRequest: Event<AttachElementRequestEvent>;
 
 	/**
 	 * Fired when injected script sends a message via window.__roopikBridge()
@@ -199,6 +205,17 @@ export interface IProjectModeService {
 	 * Take screenshot
 	 */
 	takeScreenshot(browserViewId: number): Promise<string>;
+
+	/**
+	 * Take screenshot of a specific region (clip mode)
+	 * Coordinates are viewport-relative (clientX/Y from browser)
+	 */
+	takeScreenshotClip(browserViewId: number, x: number, y: number, width: number, height: number): Promise<string>;
+
+	/**
+	 * Focus the browser view to receive keyboard events
+	 */
+	focusBrowserView(browserViewId: number): Promise<void>;
 
 	/**
 	 * Execute JavaScript in browser

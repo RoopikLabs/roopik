@@ -20,10 +20,12 @@
 		"useDefineForClassFields": true,
 		"useUnknownInCatchVariables": false
 	},
-	"include": ["."],
+	// "include": ["."],
+	"include": ["src"],
 	"exclude": [
 		"node_modules",
 		"**/__tests__/**",
+		"webview-ui",
 		"**/*.spec.ts",
 		"**/*.test.ts",
 		"packages/evals/**"

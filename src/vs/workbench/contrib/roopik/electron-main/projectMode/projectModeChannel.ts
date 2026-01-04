@@ -23,6 +23,8 @@ export class ProjectModeChannel implements IServerChannel {
 				return this.service.onNavigationStateChanged;
 			case 'onOpenSourceRequest':
 				return this.service.onOpenSourceRequest;
+			case 'onAttachElementRequest':
+				return this.service.onAttachElementRequest;
 			case 'onBrowserBridgeMessage':
 				return this.service.onBrowserBridgeMessage;
 			case 'onBrowserKeyPress':
@@ -85,6 +87,10 @@ export class ProjectModeChannel implements IServerChannel {
 			// Utilities
 			case 'takeScreenshot':
 				return this.service.takeScreenshot(arg);
+			case 'takeScreenshotClip':
+				return this.service.takeScreenshotClip(arg.browserViewId, arg.x, arg.y, arg.width, arg.height);
+			case 'focusBrowserView':
+				return this.service.focusBrowserView(arg);
 			case 'executeScript':
 				return this.service.executeScript(arg.browserViewId, arg.script);
 			case 'getPageHTML':
