@@ -11,13 +11,35 @@
  */
 
 /**
+ * Extract metadata from element BEFORE stripping
+ *
+ * Gets source tracking metadata from data-roopik-* attributes.
+ * Call this BEFORE stripRoopikMetadata() to preserve the information.
+ *
+ * @param element - DOM element to extract metadata from
+ * @returns Metadata object with optional fields
+ *
+ * @example
+ * const metadata = extractRoopikMetadata(element);
+ * // { source: "file.jsx:1:2:3:4", component: "Link" }
+ */
+export function extractRoopikMetadata(element: Element): { source: string | null; component: string | null } {
+	return {
+		source: element.getAttribute('data-roopik-source'),
+		component: element.getAttribute('data-roopik-component')
+	};
+}
+
+/**
  * Strip all data-roopik-* attributes from HTML string
  *
- * Removes metadata attributes injected during build:
+ * Removes ALL metadata attributes injected during build:
  * - data-roopik-source (file:line:col)
  * - data-roopik-component (tag name)
  * - data-roopik-parent (parent chain) [deprecated]
  * - Any future data-roopik-* attributes
+ *
+ * IMPORTANT: Extract metadata FIRST using extractRoopikMetadata() if you need it!
  *
  * IMPORTANT: This is the SINGLE SOURCE OF TRUTH for stripping metadata.
  * Used by:
@@ -115,22 +137,27 @@ export function getElementSelector(el: Element | null): string | null {
 }
 
 /**
- * Generate JavaScript code for stripping metadata (for injection into page context)
+ * Generate JavaScript code for extracting and stripping metadata (for injection)
  *
- * Returns a string containing the stripRoopikMetadata function definition
- * that can be injected into page scripts or executed via executeJavaScript.
+ * Returns function definitions for both extracting metadata and stripping it from HTML.
+ * Used in injected scripts that need to preserve source information.
  *
- * IMPORTANT: This ensures injected scripts use the SAME stripping logic.
- *
- * ⚠️ CRITICAL: When copying to template literals (like INSPECT_MODE_SCRIPT),
+ * CRITICAL: When copying to template literals (like INSPECT_MODE_SCRIPT),
  * backslashes must be DOUBLE-ESCAPED: /\s+/ becomes /\\s+/
  * Otherwise \s becomes just 's' and matches the letter 's' instead of whitespace!
  *
- * @returns JavaScript function definition as string
+ * @returns JavaScript function definitions as string
  */
-export function getStripMetadataScriptSource(): string {
+export function getMetadataUtilsScriptSource(): string {
 	// NOTE: Backslashes are double-escaped here because this returns a string
 	return `
+		function extractRoopikMetadata(element) {
+			return {
+				source: element.getAttribute('data-roopik-source'),
+				component: element.getAttribute('data-roopik-component')
+			};
+		}
+
 		function stripRoopikMetadata(html) {
 			return html
 				.replace(/\\s+data-roopik-[a-z-]+\\s*=\\s*"[^"]*"/gi, '')
@@ -148,7 +175,7 @@ export function getStripMetadataScriptSource(): string {
  *
  * IMPORTANT: This ensures injected scripts use the SAME selector logic.
  *
- * ⚠️ CRITICAL: When copying to template literals (like INSPECT_MODE_SCRIPT),
+ * CRITICAL: When copying to template literals (like INSPECT_MODE_SCRIPT),
  * backslashes must be DOUBLE-ESCAPED: /\s+/ becomes /\\s+/
  * Otherwise \s becomes just 's' and matches the letter 's' instead of whitespace!
  *

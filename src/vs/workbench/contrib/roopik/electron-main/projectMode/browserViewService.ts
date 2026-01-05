@@ -1539,20 +1539,27 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 							return; // Silently ignore clicks on inspect overlay
 						}
 						try {
-							// Execute script to get element HTML and strip metadata
+							// Execute script to get element HTML, extract metadata, and strip
 							const result = await wc.executeJavaScript(`
-									(function() {
-										const x = ${params.x};
-										const y = ${params.y};
-										const el = document.elementFromPoint(x, y);
+								(function() {
+									const x = ${params.x};
+									const y = ${params.y};
+									const el = document.elementFromPoint(x, y);
 
-										if (!el || el === document.body || el === document.documentElement) {
-											return null;
-										}
+									if (!el || el === document.body || el === document.documentElement) {
+										return null;
+									}
 
 									// SHARED UTILITY FUNCTIONS (from htmlUtils.ts)
 									// These are copied here to maintain single source of truth
 									// See: src/vs/workbench/contrib/roopik/browser/projectMode/utils/htmlUtils.ts
+
+									function extractRoopikMetadata(element) {
+										return {
+											source: element.getAttribute('data-roopik-source'),
+											component: element.getAttribute('data-roopik-component')
+										};
+									}
 
 									function stripRoopikMetadata(html) {
 										return html
@@ -1591,13 +1598,19 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 										return parts.join(' > ');
 									}
 
+									// Extract metadata BEFORE stripping
+									const metadata = extractRoopikMetadata(el);
+
+									// Strip ALL metadata from HTML
 									const rawHTML = el.outerHTML;
 									const cleanHTML = stripRoopikMetadata(rawHTML);
 
 									return {
 										html: cleanHTML,
 										selector: getElementSelector(el),
-										tagName: el.tagName.toLowerCase()
+										tagName: el.tagName.toLowerCase(),
+										source: metadata.source,
+										component: metadata.component
 									};
 								})();
 							`);
@@ -1608,9 +1621,17 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 									browserViewId,
 									html: result.html,
 									selector: result.selector,
-									tagName: result.tagName
+									tagName: result.tagName,
+									source: result.source,
+									component: result.component
 								});
-								this.logger.info('[ContextMenu] Element attach request sent');
+								this.logger.info('[ContextMenu] Element attach request sent', {
+									tagName: result.tagName,
+									hasSource: !!result.source,
+									hasComponent: !!result.component,
+									source: result.source,
+									component: result.component
+								});
 							}
 						} catch (error) {
 							this.logger.error('[ContextMenu] Failed to attach element', { error });
