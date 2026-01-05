@@ -603,9 +603,13 @@ export class Editor extends EditorPane {
 			// Small delay to ensure view is mounted
 			await new Promise(resolve => setTimeout(resolve, 300));
 
+			// Get current URL (helps agent determine if element is from local project or external site)
+			const currentUrl = this.lastKnownUrl || await this.browserService.getNavigationState(this.browserViewId).then(state => state.url).catch(() => 'unknown');
+
 			// Build context with user message and element HTML + metadata (user message + element context)
 			let contextText = `${message.text}\n\n`;
 			contextText += `ELEMENT_CONTEXT\n`;
+			contextText += `URL: ${currentUrl}\n`;
 			contextText += `DOM Path: ${message.selector || 'unknown'}\n`;
 			if (message.component) {
 				contextText += `Component: ${message.component}\n`;
@@ -644,8 +648,12 @@ export class Editor extends EditorPane {
 			// Small delay to ensure view is mounted
 			await new Promise(resolve => setTimeout(resolve, 300));
 
+			// Get current URL (helps agent determine if element is from local project or external site)
+			const currentUrl = this.lastKnownUrl || await this.browserService.getNavigationState(this.browserViewId).then(state => state.url).catch(() => 'unknown');
+
 			// Build context with element HTML + metadata (silent attachment - no user message)
 			let contextText = `ELEMENT_CONTEXT\n`;
+			contextText += `URL: ${currentUrl}\n`;
 			contextText += `DOM Path: ${message.selector || 'unknown'}\n`;
 			if (message.component) {
 				contextText += `Component: ${message.component}\n`;

@@ -103,8 +103,8 @@ export const INSPECT_MODE_SCRIPT = `
 	// ========== State ==========
 	let hoverElement = null;
 	let selectedElement = null;
+	let originalCursor = '';  // Store original cursor to restore later
 	let toastTimeout = null;
-	let isHoveringSelected = false;
 	let isChatOpen = false;
 
 	// Drag state
@@ -134,68 +134,30 @@ export const INSPECT_MODE_SCRIPT = `
 		'position: fixed',
 		'pointer-events: none',
 		'z-index: 2147483646',
-		'border: 2px solid #007acc',
-		'background-color: rgba(0, 122, 204, 0.1)',
+		'border: 2px dotted #007acc',  // Dotted border like Chrome/Cursor
+		'background-color: transparent',  // No background
 		'transition: top 0.12s ease-out, left 0.12s ease-out, width 0.12s ease-out, height 0.12s ease-out',
 		'display: none'
 	].join(';');
 	document.body.appendChild(hoverOverlay);
 
 	// Selected overlay (green - stays on selected element)
-	// pointer-events: auto so we can detect hover for grab cursor
+	// pointer-events: none - cursor is on the element itself, not overlay
 	const selectedOverlay = document.createElement('div');
 	selectedOverlay.id = '__roopik_inspect_selected';
 	selectedOverlay.style.cssText = [
 		'position: fixed',
-		'pointer-events: auto',
+		'pointer-events: none',  // Changed: never intercept mouse events
 		'z-index: 2147483645',
 		'border: 2px solid #22c55e',
-		'background-color: rgba(34, 197, 94, 0.15)',
-		// Only show grab cursor if drag mode is enabled (our project with source tracking)
-		'cursor: ' + (dragModeEnabled ? 'grab' : 'default'),
+		'background-color: transparent',  // No background
 		'display: none'
 	].join(';');
 	document.body.appendChild(selectedOverlay);
 
-	// Selected overlay hover handlers - change cursor to indicate draggable
-	selectedOverlay.addEventListener('mouseenter', function() {
-		isHoveringSelected = true;
-		// Hide hover overlay when entering selected element
-		hoverOverlay.style.display = 'none';
-		hoverLabel.style.display = 'none';
-	});
-	selectedOverlay.addEventListener('mouseleave', function() {
-		isHoveringSelected = false;
-	});
-
-	// ========== Drag Handlers on Selected Overlay ==========
-	selectedOverlay.addEventListener('mousedown', function(e) {
-		// Guard: Only allow drag if drag mode is enabled (our project)
-		if (!dragModeEnabled) return;
-		if (!selectedElement || e.button !== 0) return;
-
-		e.preventDefault();
-		e.stopPropagation();
-
-		isDragging = true;
-		dragStartX = e.clientX;
-		dragStartY = e.clientY;
-		selectedOverlay.style.cursor = 'grabbing';
-
-		// Create ghost element (semi-transparent clone)
-		createDragGhost(e.clientX, e.clientY);
-
-		// Hide action buttons during drag
-		actionButtonsContainer.style.display = 'none';
-
-		// Hide hover overlay during drag
-		hoverOverlay.style.display = 'none';
-		hoverLabel.style.display = 'none';
-
-		// Add document-level listeners for drag
-		document.addEventListener('mousemove', onDragMove, true);
-		document.addEventListener('mouseup', onDragEnd, true);
-	});
+	// ========== Drag Handlers Moved to Document Level ==========
+	// Note: Drag is now initiated via document mousedown listener below
+	// This allows cursor to be on the element itself, not the overlay
 
 	function createDragGhost(x, y) {
 		if (!selectedElement) return;
@@ -280,7 +242,10 @@ export const INSPECT_MODE_SCRIPT = `
 		e.preventDefault();
 
 		isDragging = false;
-		selectedOverlay.style.cursor = 'grab';
+		// Restore grab cursor on the element (not overlay)
+		if (selectedElement && dragModeEnabled) {
+			selectedElement.style.cursor = 'grab';
+		}
 
 		// Capture drop zone before cleanup
 		var dropZone = currentDropZone;
@@ -1321,10 +1286,7 @@ export const INSPECT_MODE_SCRIPT = `
 		var el = document.elementFromPoint(e.clientX, e.clientY);
 		if (isOurElement(el)) return;
 
-		// If hovering the selected overlay, don't update hover state
-		if (isHoveringSelected) {
-			return;
-		}
+		// Removed: isHoveringSelected check - now we can hover on nested elements!
 
 		if (el && el !== hoverElement) {
 			hoverElement = el;
@@ -1356,8 +1318,19 @@ export const INSPECT_MODE_SCRIPT = `
 			closeChatBar();
 		}
 
+		// Clear previous selection cursor
+		if (selectedElement && selectedElement !== el) {
+			selectedElement.style.cursor = originalCursor;
+		}
+
 		// Select this element
 		selectedElement = el;
+
+		// Store original cursor and apply grab cursor directly to element
+		originalCursor = el.style.cursor || '';
+		if (dragModeEnabled) {
+			el.style.cursor = 'grab';
+		}
 
 		// Build result
 		var rect = el.getBoundingClientRect();
@@ -1494,10 +1467,15 @@ export const INSPECT_MODE_SCRIPT = `
 		if (dropTargetOverlay && dropTargetOverlay.parentNode) dropTargetOverlay.remove();
 		if (invalidDropOverlay && invalidDropOverlay.parentNode) invalidDropOverlay.remove();
 
+		// Restore cursor on selected element
+		if (selectedElement) {
+			selectedElement.style.cursor = originalCursor;
+		}
+
 		// Reset all state
 		hoverElement = null;
 		selectedElement = null;
-		isHoveringSelected = false;
+		originalCursor = '';
 		isChatOpen = false;
 		isDragging = false;
 		dragGhost = null;
@@ -1519,6 +1497,42 @@ export const INSPECT_MODE_SCRIPT = `
 	document.addEventListener('click', onClick, true);
 	// NOTE: keydown listener removed - all key handling is centralized in editor.ts
 	// Keys are intercepted by Electron's before-input-event and forwarded via IPC
+
+	// Drag initiation - detect mousedown on selected element
+	document.addEventListener('mousedown', function(e) {
+		// Only handle if drag mode is enabled
+		if (!dragModeEnabled) return;
+
+		// Check if clicking on selected element
+		var el = document.elementFromPoint(e.clientX, e.clientY);
+		if (!selectedElement || el !== selectedElement) return;
+		if (e.button !== 0) return;  // Left click only
+
+		e.preventDefault();
+		e.stopPropagation();
+
+		isDragging = true;
+		dragStartX = e.clientX;
+		dragStartY = e.clientY;
+
+		// Change cursor to grabbing
+		selectedElement.style.cursor = 'grabbing';
+
+		// Create ghost element
+		createDragGhost(e.clientX, e.clientY);
+
+		// Hide action buttons during drag
+		actionButtonsContainer.style.display = 'none';
+
+		// Hide hover overlay during drag
+		hoverOverlay.style.display = 'none';
+		hoverLabel.style.display = 'none';
+
+		// Add document-level listeners for drag
+		document.addEventListener('mousemove', onDragMove, true);
+		document.addEventListener('mouseup', onDragEnd, true);
+	}, true);
+
 	document.addEventListener('scroll', onScroll, true);
 	window.addEventListener('resize', onScroll);
 
