@@ -79,6 +79,10 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	private browserViews = new Map<number, WebContentsView>();
 	private browserWindows = new Map<number, BrowserWindow>();
 
+	// Track safety leash listeners per window to prevent memory leaks
+	// Map: windowId -> Set of browserViewIds that have listeners on this window
+	private windowSafetyLeashListeners = new Map<number, Set<number>>();
+
 
 	// CDP debugger state
 	private debuggerAttached = new Map<number, boolean>();
@@ -277,17 +281,17 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		}
 
 		const browserView = this.browserViews.get(browserViewId);
-		const window = this.browserWindows.get(browserViewId);
+		const browserWindow = this.browserWindows.get(browserViewId);
 
 		if (browserView) {
-			this.logger.info('Destroying browser view', { browserViewId, windowId: window?.id, webContentsDestroyed: browserView.webContents.isDestroyed() });
+			this.logger.info('Destroying browser view', { browserViewId, windowId: browserWindow?.id, webContentsDestroyed: browserView.webContents.isDestroyed() });
 
 			const webContents = browserView.webContents;
 
 			// 1. Remove from window FIRST
-			if (window && !window.isDestroyed() && window.contentView) {
+			if (browserWindow && !browserWindow.isDestroyed() && browserWindow.contentView) {
 				try {
-					window.contentView.removeChildView(browserView);
+					browserWindow.contentView.removeChildView(browserView);
 				} catch (e) {
 					this.logger.error('Error removing browser view from window', { error: e });
 				}
@@ -316,6 +320,19 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			this.lastNavigationErrors.delete(browserViewId);
 			this.favicons.delete(browserViewId);
 			this.faviconReceivedForCurrentLoad.delete(browserViewId);
+
+			// Clean up safety leash tracking (remove browserViewId from window's set)
+			if (browserWindow) {
+				const windowId = browserWindow.id;
+				const browserViewIds = this.windowSafetyLeashListeners.get(windowId);
+				if (browserViewIds) {
+					browserViewIds.delete(browserViewId);
+					// If no more browser views for this window, clean up the set
+					if (browserViewIds.size === 0) {
+						this.windowSafetyLeashListeners.delete(windowId);
+					}
+				}
+			}
 
 			// Remove from static set
 			BrowserViewService.managedWebContentsIds.delete(browserViewId);
@@ -1213,11 +1230,31 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	 * browser views to die when the legacy extension's activity panel refreshed.
 	 */
 	private attachSafetyLeash(window: BrowserWindow, browserViewId: number): void {
-		// Define a cleanup function that triggers automatically
+		const windowId = window.id;
+
+		// Check if we already have listeners for this window
+		// If yes, just track this browserViewId - don't add duplicate listeners
+		let browserViewIds = this.windowSafetyLeashListeners.get(windowId);
+		if (browserViewIds) {
+			browserViewIds.add(browserViewId);
+			return; // Listeners already attached to this window
+		}
+
+		// First time adding listeners for this window - create the set
+		browserViewIds = new Set([browserViewId]);
+		this.windowSafetyLeashListeners.set(windowId, browserViewIds);
+
+		// Define a cleanup function that triggers automatically for ALL browser views on this window
 		const autoDestruct = (reason: string) => {
-			this.logger.info('Safety leash auto-destroy triggered', { browserViewId, windowId: window.id, reason });
-			// Fire and forget - we don't await because the window is dying
-			this.destroyBrowserViewSync(browserViewId, `safety-leash:${reason}`);
+			this.logger.info('Safety leash auto-destroy triggered', { windowId, reason });
+			// Destroy ALL browser views for this window
+			const viewsToDestroy = Array.from(browserViewIds || []);
+			for (const viewId of viewsToDestroy) {
+				// Fire and forget - we don't await because the window is dying
+				this.destroyBrowserViewSync(viewId, `safety-leash:${reason}`);
+			}
+			// Clean up the listener tracking
+			this.windowSafetyLeashListeners.delete(windowId);
 		};
 
 		// 1. HISTORICAL: 'did-start-loading' was too broad - fired on ANY workbench reload
@@ -1229,7 +1266,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// 3. If the renderer process crashes or is killed
 		window.webContents.once('render-process-gone', (_event, details) => {
-			this.logger.warn('render-process-gone detected', { windowId: window.id, details });
+			this.logger.warn('render-process-gone detected', { windowId, details });
 			autoDestruct(`render-process-gone:${details?.reason ?? 'unknown'}`);
 		});
 
