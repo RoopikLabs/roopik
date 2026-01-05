@@ -1514,13 +1514,74 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 				menuItems.push({ type: 'separator' });
 
+				// "Open Source" - opens the source file for the clicked element
+				// Uses data-roopik-source attribute injected at build time
+				menuItems.push({
+					label: 'Open Source',
+					click: async () => {
+						try {
+							// Execute script to find element at click position and get data-roopik-source
+							const sourceAttr = await wc.executeJavaScript(`
+								(function() {
+									const x = ${params.x};
+									const y = ${params.y};
+									let el = document.elementFromPoint(x, y);
+
+									// Walk up the DOM tree to find nearest element with data-roopik-source
+									while (el && el !== document.body && el !== document.documentElement) {
+										const source = el.getAttribute('data-roopik-source');
+										if (source) {
+											return source;
+										}
+										el = el.parentElement;
+									}
+									return null;
+								})();
+							`);
+
+							if (sourceAttr) {
+								// Parse the source location: file:startLine:startCol:endLine:endCol
+								// Windows paths contain colons (C:\\), so we find the last 4 numeric parts
+								const parsed = this.parseSourceAttribute(sourceAttr);
+								if (parsed) {
+									this._onOpenSourceRequest.fire({
+										browserViewId,
+										sourceLocation: parsed
+									});
+								} else {
+									this._onOpenSourceRequest.fire({
+										browserViewId,
+										sourceLocation: null,
+										error: `Could not parse source location: ${sourceAttr}`
+									});
+								}
+							} else {
+								this._onOpenSourceRequest.fire({
+									browserViewId,
+									sourceLocation: null,
+									error: 'No source tracking found for this element. Source tracking is only available for components built with Roopik.'
+								});
+							}
+						} catch (error) {
+							this.logger.error('Failed to get source location', { error });
+							this._onOpenSourceRequest.fire({
+								browserViewId,
+								sourceLocation: null,
+								error: `Failed to get source location: ${error}`
+							});
+						}
+					}
+				});
+
+				menuItems.push({ type: 'separator' });
+
 				return menuItems;
 			},
 			append: (_defaultActions, params, _browserWindow) => {
 				const menuItems: Electron.MenuItemConstructorOptions[] = [];
 				const wc = browserView.webContents;
 
-				// "Attach Element to Context" - sends element HTML to AI agent
+				// "Attach Element to Context" - sends element HTML to AI agent (at bottom)
 				menuItems.push({ type: 'separator' });
 				menuItems.push({
 					label: 'Attach Element to Context',
@@ -1625,75 +1686,16 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 									source: result.source,
 									component: result.component
 								});
-								this.logger.info('[ContextMenu] Element attach request sent', {
-									tagName: result.tagName,
-									hasSource: !!result.source,
-									hasComponent: !!result.component,
-									source: result.source,
-									component: result.component
-								});
+								// this.logger.info('[ContextMenu] Element attach request sent', {
+								// 	tagName: result.tagName,
+								// 	hasSource: !!result.source,
+								// 	hasComponent: !!result.component,
+								// 	source: result.source,
+								// 	component: result.component
+								// });
 							}
 						} catch (error) {
 							this.logger.error('[ContextMenu] Failed to attach element', { error });
-						}
-					}
-				});
-
-				// "Open Source" - opens the source file for the clicked element
-				// Uses data-roopik-source attribute injected at build time
-				menuItems.push({
-					label: 'Open Source',
-					click: async () => {
-						try {
-							// Execute script to find element at click position and get data-roopik-source
-							const sourceAttr = await wc.executeJavaScript(`
-								(function() {
-									const x = ${params.x};
-									const y = ${params.y};
-									let el = document.elementFromPoint(x, y);
-
-									// Walk up the DOM tree to find nearest element with data-roopik-source
-									while (el && el !== document.body && el !== document.documentElement) {
-										const source = el.getAttribute('data-roopik-source');
-										if (source) {
-											return source;
-										}
-										el = el.parentElement;
-									}
-									return null;
-								})();
-							`);
-
-							if (sourceAttr) {
-								// Parse the source location: file:startLine:startCol:endLine:endCol
-								// Windows paths contain colons (C:\), so we find the last 4 numeric parts
-								const parsed = this.parseSourceAttribute(sourceAttr);
-								if (parsed) {
-									this._onOpenSourceRequest.fire({
-										browserViewId,
-										sourceLocation: parsed
-									});
-								} else {
-									this._onOpenSourceRequest.fire({
-										browserViewId,
-										sourceLocation: null,
-										error: `Could not parse source location: ${sourceAttr}`
-									});
-								}
-							} else {
-								this._onOpenSourceRequest.fire({
-									browserViewId,
-									sourceLocation: null,
-									error: 'No source tracking found for this element. Source tracking is only available for components built with Roopik.'
-								});
-							}
-						} catch (error) {
-							this.logger.error('Failed to get source location', { error });
-							this._onOpenSourceRequest.fire({
-								browserViewId,
-								sourceLocation: null,
-								error: `Failed to get source location: ${error}`
-							});
 						}
 					}
 				});
