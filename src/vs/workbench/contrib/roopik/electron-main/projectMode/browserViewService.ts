@@ -1143,6 +1143,14 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	 * Called automatically when page loads to capture stylesheet events
 	 */
 	private async enableCSSForStyleInspection(browserViewId: number): Promise<void> {
+		// CRITICAL: Validate browser view exists before attempting CDP operations
+		// During page reload, the view might be destroyed but event listeners still fire
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView) {
+			this.logger.warn('Cannot enable CSS: Browser view not found', { browserViewId });
+			return;
+		}
+
 		try {
 			// Reset CSS state first - this clears the cache and marks as not enabled
 			// so we get fresh styleSheetAdded events for this page load
@@ -1366,6 +1374,11 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		});
 
 		webContents.on('did-navigate', () => {
+			// Validate browser view still exists (might be destroyed during reload)
+			if (!this.browserViews.has(browserViewId)) {
+				return;
+			}
+
 			// Clear any previous error on successful navigation
 			this.clearNavigationError(browserViewId);
 
@@ -1408,6 +1421,13 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		});
 
 		webContents.on('did-start-loading', () => {
+			// CRITICAL: Check if browser view still exists before proceeding
+			// During reload, the view might be destroyed but event listeners still fire
+			if (!this.browserViews.has(browserViewId)) {
+				this.logger.warn('did-start-loading fired for destroyed browser view', { browserViewId });
+				return;
+			}
+
 			// Mark that we haven't received favicon for this page load yet
 			this.faviconReceivedForCurrentLoad.set(browserViewId, false);
 			// DON'T clear favicon here - keep showing old favicon until new one arrives
@@ -1423,6 +1443,10 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		});
 
 		webContents.on('did-finish-load', () => {
+			if (!this.browserViews.has(browserViewId)) {
+				return;
+			}
+
 			// Clear any previous error on successful load
 			this.clearNavigationError(browserViewId);
 			// Fire event with EXPLICIT isLoading = false
@@ -1431,6 +1455,10 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// did-stop-loading is more reliable than did-finish-load for complex pages
 		webContents.on('did-stop-loading', () => {
+			if (!this.browserViews.has(browserViewId)) {
+				return;
+			}
+
 			// If no favicon was received during this page load, clear the old one
 			// This handles sites that have no favicon
 			if (!this.faviconReceivedForCurrentLoad.get(browserViewId)) {
@@ -1748,8 +1776,10 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 			// Handle keyboard zoom shortcuts (Ctrl++, Ctrl+-, Ctrl+0) locally
 			// These are handled here because they affect the webContents directly
-			if (input.type !== 'keyDown') return;
-			if (!input.control && !input.meta) return;
+			if (input.type !== 'keyDown') {
+				return;
+			}
+			if (!input.control && !input.meta) { return; }
 
 			const currentZoom = wc.getZoomLevel();
 
