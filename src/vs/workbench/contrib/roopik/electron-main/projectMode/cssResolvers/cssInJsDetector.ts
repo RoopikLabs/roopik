@@ -31,6 +31,13 @@ import type { CSSInJSLibrary, CSSInJSDetectionResult } from '../../../common/css
  */
 export class CSSInJsDetector {
 
+	// Tailwind/utility CSS class patterns (to EXCLUDE from CSS-in-JS detection)
+	private readonly tailwindPatterns = [
+		/\b(text|font|bg|border|rounded|shadow|p|m|w|h|flex|grid|gap|space)-/i,  // Common prefixes
+		/\b(hover|focus|active|disabled|sm|md|lg|xl|2xl):/i,  // Modifiers
+		/\b[a-z]+-\d+$/i,  // Numeric variants (mt-4, p-8)
+	];
+
 	// Class name patterns for different libraries
 	// These patterns match the generated class name formats used by each library
 	private readonly classPatterns: Array<{
@@ -38,49 +45,44 @@ export class CSSInJsDetector {
 		pattern: RegExp;
 		priority: number; // Lower = higher priority (more specific)
 	}> = [
-		// Emotion: css-XXXXXX (7+ alphanumeric chars after css-)
-		{
-			library: 'emotion',
-			pattern: /\bcss-[a-z0-9]{7,}\b/i,
-			priority: 1
-		},
-		// styled-components: sc-XXXXX-X (component name hash)
-		{
-			library: 'styled-components',
-			pattern: /\bsc-[a-zA-Z][a-zA-Z0-9]*-[a-zA-Z0-9]+\b/,
-			priority: 1
-		},
-		// styled-components: short form sc-XXXXX
-		{
-			library: 'styled-components',
-			pattern: /\bsc-[a-zA-Z]{2,}[a-zA-Z0-9]*\b/,
-			priority: 2
-		},
-		// Linaria: uses short class names with hash
-		{
-			library: 'linaria',
-			pattern: /\b[a-z][a-z0-9]{5,7}_[a-z0-9]+\b/i,
-			priority: 2
-		},
-		// vanilla-extract: namespace_hash format
-		{
-			library: 'vanilla-extract',
-			pattern: /\b[a-z]+_[a-z0-9]{7,}\b/i,
-			priority: 2
-		},
-		// Stitches: s_XXX format or c_XXX for components
-		{
-			library: 'stitches',
-			pattern: /\b[sc]_[a-zA-Z0-9]+\b/,
-			priority: 2
-		},
-		// Generic pattern for unknown CSS-in-JS (fallback)
-		{
-			library: 'other',
-			pattern: /\b[a-z]{2,4}-[a-zA-Z0-9]{8,}\b/i,
-			priority: 10
-		}
-	];
+			// Emotion: css-XXXXXX (7+ alphanumeric chars after css-)
+			{
+				library: 'emotion',
+				pattern: /\bcss-[a-z0-9]{7,}\b/i,
+				priority: 1
+			},
+			// styled-components: sc-XXXXX-X (component name hash)
+			{
+				library: 'styled-components',
+				pattern: /\bsc-[a-zA-Z][a-zA-Z0-9]*-[a-zA-Z0-9]+\b/,
+				priority: 1
+			},
+			// styled-components: short form sc-XXXXX
+			{
+				library: 'styled-components',
+				pattern: /\bsc-[a-zA-Z]{2,}[a-zA-Z0-9]*\b/,
+				priority: 2
+			},
+			// Linaria: uses short class names with hash
+			{
+				library: 'linaria',
+				pattern: /\b[a-z][a-z0-9]{5,7}_[a-z0-9]+\b/i,
+				priority: 2
+			},
+			// vanilla-extract: namespace_hash format
+			{
+				library: 'vanilla-extract',
+				pattern: /\b[a-z]+_[a-z0-9]{7,}\b/i,
+				priority: 2
+			},
+			// Stitches: s_XXX format or c_XXX for components
+			{
+				library: 'stitches',
+				pattern: /\b[sc]_[a-zA-Z0-9]+\b/,
+				priority: 2
+			}
+			// NOTE: Removed generic "other" pattern - too many false positives with Tailwind
+		];
 
 	// Style tag data attributes for library detection
 	private readonly styleTagAttributes: Record<string, CSSInJSLibrary> = {
@@ -102,6 +104,18 @@ export class CSSInJsDetector {
 		componentFile?: string
 	): CSSInJSDetectionResult {
 		if (!className) {
+			return { detected: false, confidence: 'low' };
+		}
+
+		// CRITICAL: Exclude Tailwind/utility CSS classes first (prevent false positives)
+		// Check if ANY class matches Tailwind patterns
+		const classes = className.split(/\s+/);
+		const hasTailwind = classes.some(cls =>
+			this.tailwindPatterns.some(pattern => pattern.test(cls))
+		);
+
+		if (hasTailwind) {
+			// Don't treat Tailwind as CSS-in-JS
 			return { detected: false, confidence: 'low' };
 		}
 

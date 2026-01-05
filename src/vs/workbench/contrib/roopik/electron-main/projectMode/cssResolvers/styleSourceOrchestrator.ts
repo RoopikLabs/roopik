@@ -90,7 +90,11 @@ export class StyleSourceOrchestrator {
 				this.setProjectRoot(projectRoot);
 			}
 
-			// 1. Get node ID
+			// CRITICAL FIX: Ensure CSS/DOM enabled FIRST (before any DOM queries)
+			// This prevents DOM invalidation issues
+			await this.cdpService.ensureCSSEnabled(browserViewId);
+
+			// 1. Get node ID (AFTER ensuring domains are enabled)
 			let nodeId: number | null;
 			if (typeof target === 'string') {
 				nodeId = await this.cdpService.getNodeIdBySelector(browserViewId, target);
@@ -102,10 +106,19 @@ export class StyleSourceOrchestrator {
 				return { success: false, error: 'Element not found' };
 			}
 
-			// 2. Get element info (tag, classes, data-roopik-source)
-			const nodeAttrs = await this.cdpService.getNodeAttributes(browserViewId, nodeId);
+			// 2. Get element info AND matched styles in quick succession
+			// This minimizes risk of DOM invalidation between calls
+			const [nodeAttrs, matchedStyles] = await Promise.all([
+				this.cdpService.getNodeAttributes(browserViewId, nodeId),
+				this.cdpService.getMatchedStyles(browserViewId, nodeId)
+			]);
+
 			if (!nodeAttrs) {
 				return { success: false, error: 'Failed to get element attributes' };
+			}
+
+			if (!matchedStyles) {
+				return { success: false, error: 'Failed to get matched styles' };
 			}
 
 			// Parse data-roopik-source attribute for HTML source location
@@ -118,12 +131,6 @@ export class StyleSourceOrchestrator {
 
 			// Get class list
 			const classes = nodeAttrs.className ? nodeAttrs.className.split(/\s+/).filter(Boolean) : [];
-
-			// 3. Get matched styles via CDP
-			const matchedStyles = await this.cdpService.getMatchedStyles(browserViewId, nodeId);
-			if (!matchedStyles) {
-				return { success: false, error: 'Failed to get matched styles' };
-			}
 
 			// 4. Process matched rules
 			const { rules: matchedRules, scanned, mapsUsed } = await this.processMatchedRules(

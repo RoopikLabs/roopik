@@ -525,29 +525,27 @@ export const INSPECT_MODE_SCRIPT = `
 		chatSendBtn.disabled = true;
 		chatSendBtn.style.opacity = '0.5';
 
-		var sourceAttr = selectedElement.getAttribute('data-roopik-source');
+		// Extract metadata BEFORE stripping
+		var metadata = extractRoopikMetadata(selectedElement);
 		var rect = selectedElement.getBoundingClientRect();
 
-		// Get element HTML and strip metadata
+		// Get element HTML and strip ALL metadata
 		var rawHTML = selectedElement.outerHTML;
 		var cleanHTML = stripRoopikMetadata(rawHTML);
 
 		var message = {
 			type: 'chat-message',
 			text: text,
-			html: cleanHTML, // Auto-attach element HTML
+			html: cleanHTML, // Auto-attach element HTML (cleaned)
 			selector: getElementSelector(selectedElement),
 			tagName: selectedElement.tagName.toLowerCase(),
-			source: sourceAttr ? parseSourceAttr(sourceAttr) : null,
+			source: metadata.source, // Raw source string (or null)
+			component: metadata.component, // Raw component name (or null)
 			boundingBox: {
 				x: rect.x,
 				y: rect.y,
 				width: rect.width,
-				height: rect.height,
-				top: rect.top,
-				right: rect.right,
-				bottom: rect.bottom,
-				left: rect.left
+				height: rect.height
 			}
 		};
 
@@ -564,7 +562,21 @@ export const INSPECT_MODE_SCRIPT = `
 
 	// ========== Utility: Strip Roopik Metadata ==========
 	/**
-	 * Strip all data-roopik-* attributes from HTML
+	 * Extract metadata from element BEFORE stripping
+	 *
+	 * SHARED UTILITY: This function is synchronized with htmlUtils.ts
+	 * Any changes here MUST be reflected in both places!
+	 * See: src/vs/workbench/contrib/roopik/browser/projectMode/utils/htmlUtils.ts
+	 */
+	function extractRoopikMetadata(element) {
+		return {
+			source: element.getAttribute('data-roopik-source'),
+			component: element.getAttribute('data-roopik-component')
+		};
+	}
+
+	/**
+	 * Strip ALL data-roopik-* attributes from HTML
 	 *
 	 * SHARED UTILITY: This function is synchronized with htmlUtils.ts
 	 * Any changes here MUST be reflected in both places!
@@ -587,10 +599,11 @@ export const INSPECT_MODE_SCRIPT = `
 			return;
 		}
 
-		// Get outer HTML of selected element
-		var rawHTML = selectedElement.outerHTML;
+		// Extract metadata BEFORE stripping
+		var metadata = extractRoopikMetadata(selectedElement);
 
-		// Strip Roopik metadata
+		// Get outer HTML and strip ALL metadata
+		var rawHTML = selectedElement.outerHTML;
 		var cleanHTML = stripRoopikMetadata(rawHTML);
 
 		// Send to main process for agent attachment
@@ -598,7 +611,9 @@ export const INSPECT_MODE_SCRIPT = `
 			type: 'attach-element',
 			html: cleanHTML,
 			selector: getElementSelector(selectedElement),
-			tagName: selectedElement.tagName.toLowerCase()
+			tagName: selectedElement.tagName.toLowerCase(),
+			source: metadata.source, // Raw source string (or null)
+			component: metadata.component // Raw component name (or null)
 		};
 
 		window.__roopikBridge(JSON.stringify(message));

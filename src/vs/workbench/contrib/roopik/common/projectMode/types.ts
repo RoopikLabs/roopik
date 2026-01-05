@@ -161,9 +161,11 @@ export interface OpenSourceRequestEvent {
  */
 export interface AttachElementRequestEvent {
 	browserViewId: number;
-	html: string;
+	html: string; // Cleaned HTML (no data-roopik-* attributes)
 	selector: string;
 	tagName: string;
+	source: string | null; // "file.jsx:100:12:100:73" (optional, from data-roopik-source)
+	component: string | null; // "Link" (optional, from data-roopik-component)
 }
 
 // ============================================
@@ -210,32 +212,23 @@ export interface InspectModeExitedMessage extends BrowserBridgeMessageBase {
 }
 
 /**
- * Chat message from inspect mode
+ * Chat message from inspect mode inline chat
+ * Contains user's text message and element context (HTML, selector, etc.)
  */
 export interface ChatMessage extends BrowserBridgeMessageBase {
 	type: 'chat-message';
 	text: string;
-	html: string; // Element HTML (stripped of Roopik metadata)
+	html: string; // Element HTML (stripped of ALL Roopik metadata)
 	selector: string;
 	tagName: string;
-	source: {
-		file: string;
-		line: number;
-		column?: number;
-		endLine?: number;
-		endColumn?: number;
-	} | null;
+	source: string | null; // "file.jsx:100:12:100:73" (raw from data-roopik-source)
+	component: string | null; // "Link" (raw from data-roopik-component)
 	boundingBox: {
 		x: number;
 		y: number;
 		width: number;
 		height: number;
-		top: number;
-		right: number;
-		bottom: number;
-		left: number;
 	};
-	screenshot?: string; // Base64 data URL
 }
 
 /**
@@ -243,9 +236,11 @@ export interface ChatMessage extends BrowserBridgeMessageBase {
  */
 export interface AttachElementMessage extends BrowserBridgeMessageBase {
 	type: 'attach-element';
-	html: string; // Element HTML (stripped of Roopik metadata)
+	html: string; // Element HTML (stripped of ALL Roopik metadata)
 	selector: string;
 	tagName: string;
+	source: string | null; // "file.jsx:100:12:100:73" (optional, from data-roopik-source)
+	component: string | null; // "Link" (optional, from data-roopik-component)
 }
 
 /**

@@ -339,7 +339,9 @@ export class Editor extends EditorPane {
 				type: 'attach-element',
 				html: event.html,
 				selector: event.selector,
-				tagName: event.tagName
+				tagName: event.tagName,
+				source: event.source,
+				component: event.component
 			});
 		}));
 	}
@@ -601,27 +603,26 @@ export class Editor extends EditorPane {
 			// Small delay to ensure view is mounted
 			await new Promise(resolve => setTimeout(resolve, 300));
 
-			// Build context with element HTML + metadata
+			// Build context with user message and element HTML + metadata (user message + element context)
 			let contextText = `${message.text}\n\n`;
-			contextText += `Element: <${message.tagName}>`;
-			if (message.selector) {
-				contextText += `\nSelector: ${message.selector}`;
+			contextText += `ELEMENT_CONTEXT\n`;
+			contextText += `DOM Path: ${message.selector || 'unknown'}\n`;
+			if (message.component) {
+				contextText += `Component: ${message.component}\n`;
 			}
+			contextText += `Tag: <${message.tagName}>\n`;
 			if (message.source) {
-				contextText += `\nSource: ${message.source.file}:${message.source.line}`;
-				if (message.source.column) {
-					contextText += `:${message.source.column}`;
-				}
+				contextText += `Source: ${message.source}\n`;
 			}
-			contextText += `\n\nHTML:\n\`\`\`html\n${message.html}\n\`\`\``;
+			contextText += `\nHTML:\n\`\`\`html\n${message.html}\n\`\`\``;
 
-			// Send to AI agent
+			// Send to AI agent (autoSend = true - send immediately since user typed a message)
 			await this.commandService.executeCommand('roodio.externalContext', {
 				promptText: contextText,
-				autoSend: false
+				autoSend: true
 			});
 
-			this.logger.info('[InspectMode] Chat message with HTML forwarded to AI agent');
+			this.logger.info('[InspectMode] Chat message with element context auto-sent to AI agent');
 		} catch (error) {
 			this.logger.error('[InspectMode] Failed to send chat message:', error);
 		}
@@ -643,12 +644,17 @@ export class Editor extends EditorPane {
 			// Small delay to ensure view is mounted
 			await new Promise(resolve => setTimeout(resolve, 300));
 
-			// Build context with element HTML only
-			let contextText = `Element: <${message.tagName}>`;
-			if (message.selector) {
-				contextText += `\nSelector: ${message.selector}`;
+			// Build context with element HTML + metadata (silent attachment - no user message)
+			let contextText = `ELEMENT_CONTEXT\n`;
+			contextText += `DOM Path: ${message.selector || 'unknown'}\n`;
+			if (message.component) {
+				contextText += `Component: ${message.component}\n`;
 			}
-			contextText += `\n\nHTML:\n\`\`\`html\n${message.html}\n\`\`\``;
+			contextText += `Tag: <${message.tagName}>\n`;
+			if (message.source) {
+				contextText += `Source: ${message.source}\n`;
+			}
+			contextText += `\nHTML:\n\`\`\`html\n${message.html}\n\`\`\``;
 
 			// Send to AI agent as context (no auto-send, user types message in panel)
 			await this.commandService.executeCommand('roodio.externalContext', {
@@ -656,7 +662,7 @@ export class Editor extends EditorPane {
 				autoSend: false
 			});
 
-			this.logger.info('[InspectMode] Element HTML attached to AI agent');
+			this.logger.info('[InspectMode] Element context attached to AI agent');
 		} catch (error) {
 			this.logger.error('[InspectMode] Failed to attach element:', error);
 		}
