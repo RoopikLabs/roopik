@@ -1368,6 +1368,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		webContents.on('did-navigate', () => {
 			// Clear any previous error on successful navigation
 			this.clearNavigationError(browserViewId);
+
 			// Fire event to notify renderer (URL changed)
 			this.fireNavigationStateChanged(browserViewId);
 		});

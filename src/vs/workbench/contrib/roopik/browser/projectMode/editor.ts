@@ -616,13 +616,13 @@ export class Editor extends EditorPane {
 			}
 			contextText += `\nHTML:\n\`\`\`html\n${message.html}\n\`\`\``;
 
-			// Send to AI agent (autoSend = false - user can edit before sending)
+			// Send to AI agent (autoSend = true - send immediately since user typed a message)
 			await this.commandService.executeCommand('roodio.externalContext', {
 				promptText: contextText,
-				autoSend: false
+				autoSend: true
 			});
 
-			this.logger.info('[InspectMode] Chat message with element context forwarded to AI agent');
+			this.logger.info('[InspectMode] Chat message with element context auto-sent to AI agent');
 		} catch (error) {
 			this.logger.error('[InspectMode] Failed to send chat message:', error);
 		}

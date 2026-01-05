@@ -111,6 +111,11 @@ export class CDPCssService {
 			// Enable CSS domain - this triggers styleSheetAdded events
 			await this.browserService.sendCDPCommand(browserViewId, 'CSS.enable');
 
+			// CRITICAL: Wait for CSS domain to be fully initialized
+			// CDP needs time to scan stylesheets and register listeners
+			// Without this, getMatchedStylesForNode might fail with "No node found"
+			await new Promise(resolve => setTimeout(resolve, 100));
+
 			this.cssEnabledViews.add(browserViewId);
 
 			// Also try to fetch all stylesheets as a fallback
@@ -183,10 +188,22 @@ export class CDPCssService {
 
 	/**
 	 * Get document root node ID
+	 *
+	 * NOTE: We deliberately DO NOT cache the document root!
+	 *
+	 * Reason: The renderer process (styleInspect.ts) also calls DOM.getDocument
+	 * via raw CDP for tree fetching and element highlighting. Each DOM.getDocument
+	 * call invalidates ALL previous nodeIds. If we cached here, the renderer's
+	 * calls would invalidate our cache, causing "Could not find node with given id" errors.
+	 *
+	 * By getting a fresh root for each operation, we ensure each operation
+	 * has its own valid document context. Performance impact is negligible
+	 * since DOM.getDocument({depth:0}) is fast.
 	 */
 	async getDocumentRoot(browserViewId: number): Promise<number> {
 		await this.ensureCSSEnabled(browserViewId);
 
+		// Always get fresh document root (no caching - see note above)
 		const result = await this.browserService.sendCDPCommand(
 			browserViewId,
 			'DOM.getDocument',
@@ -360,7 +377,7 @@ export class CDPCssService {
 
 			return result;
 		} catch (error) {
-			console.error('[CDPCssService] Failed to get matched styles:', error);
+			console.error('[CDPCssService] Failed to get matched styles:', error, { browserViewId, nodeId });
 			return null;
 		}
 	}
