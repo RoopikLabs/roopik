@@ -134,7 +134,7 @@ export const INSPECT_MODE_SCRIPT = `
 		'position: fixed',
 		'pointer-events: none',
 		'z-index: 2147483646',
-		'border: 2px dotted #007acc',  // Dotted border like Chrome/Cursor
+		'border: 3px dotted #0ea5e9',  // Bright cyan, thicker border for visibility
 		'background-color: transparent',  // No background
 		'transition: top 0.12s ease-out, left 0.12s ease-out, width 0.12s ease-out, height 0.12s ease-out',
 		'display: none'
