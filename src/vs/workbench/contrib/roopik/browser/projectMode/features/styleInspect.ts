@@ -61,6 +61,9 @@ export class StyleInspect {
 	private currentBrowserViewId: number | null = null;
 	private domTreeCache: DOMTreeNode | null = null;
 
+	// Flag to prevent DOM invalidation during style fetching
+	private isFetchingStyles: boolean = false;
+
 	// Callback for tree node selection (to highlight in browser)
 	private onTreeNodeSelectedCallback: ((nodeId: number) => void) | undefined;
 
@@ -242,6 +245,9 @@ export class StyleInspect {
 		}
 
 		try {
+			// Set flag to prevent highlightElementInBrowser from interfering
+			this.isFetchingStyles = true;
+
 			// Get element styles via IPC
 			// projectRoot is optional - without it, source file paths won't be resolved
 			const result: GetElementStylesResult = await this.browserService.getElementStyles({
@@ -275,6 +281,9 @@ export class StyleInspect {
 				message: 'Failed to inspect element styles',
 				sticky: false
 			});
+		} finally {
+			// Clear flag after style fetch completes
+			this.isFetchingStyles = false;
 		}
 	}
 
@@ -795,6 +804,12 @@ export class StyleInspect {
 	 */
 	async highlightElementInBrowser(nodeId: number): Promise<void> {
 		if (!this.currentBrowserViewId || !this.domTreeCache) {
+			return;
+		}
+
+		// CRITICAL: Skip highlighting if style fetch is in progress to avoid DOM invalidation
+		// The DOM.getDocument call here would invalidate nodeIds used by getElementStyles()
+		if (this.isFetchingStyles) {
 			return;
 		}
 

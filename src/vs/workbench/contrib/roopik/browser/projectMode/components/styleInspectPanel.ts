@@ -72,6 +72,7 @@ export class StyleInspectPanel {
 
 	// Split view sections
 	private componentsSection: HTMLElement; // Always visible at top (collapsible)
+	private componentsContent!: HTMLElement; // DOM tree content container (created in createComponentsSection())
 	private verticalSeparator: HTMLElement; // Draggable divider
 	private tabsSection: HTMLElement; // CSS/Design/Changes tabs below
 
@@ -121,6 +122,7 @@ export class StyleInspectPanel {
 	private domTree: DOMTreeNode | null = null;
 	private selectedNodeId: number | null = null;
 	private expandedNodes = new Set<number>();
+	private nodeIdToElement = new Map<number, HTMLElement>(); // Map nodeId -> HTMLElement (avoid querySelector)
 
 	// Pending changes data for Changes tab
 	private pendingMoves: PendingMove[] = [];
@@ -325,7 +327,7 @@ export class StyleInspectPanel {
 			opacity: 0.7;
 			transition: opacity 0.15s;
 		`;
-		closeBtn.textContent = '✕';
+		closeBtn.className = 'codicon codicon-close';
 		closeBtn.title = 'Close panel (ESC)';
 		closeBtn.addEventListener('mouseenter', () => { closeBtn.style.opacity = '1'; });
 		closeBtn.addEventListener('mouseleave', () => { closeBtn.style.opacity = '0.7'; });
@@ -528,6 +530,9 @@ export class StyleInspectPanel {
 		section.appendChild(header);
 		section.appendChild(content);
 
+		// Store direct reference to avoid querySelector
+		this.componentsContent = content;
+
 		return section;
 	}
 
@@ -629,15 +634,15 @@ export class StyleInspectPanel {
 	}
 
 	private renderComponentsSection(): void {
-		const content = this.componentsSection.querySelector('.components-content') as HTMLElement;
-		if (!content) {
+		if (!this.componentsContent) {
 			return;
 		}
 
-		// Clear content
-		while (content.firstChild) {
-			content.removeChild(content.firstChild);
+		// Clear content and nodeId map
+		while (this.componentsContent.firstChild) {
+			this.componentsContent.removeChild(this.componentsContent.firstChild);
 		}
+		this.nodeIdToElement.clear();
 
 		if (!this.domTree) {
 			const placeholder = document.createElement('div');
@@ -647,27 +652,23 @@ export class StyleInspectPanel {
 				font-size: 12px;
 			`;
 			placeholder.textContent = 'No DOM tree available';
-			content.appendChild(placeholder);
+			this.componentsContent.appendChild(placeholder);
 			return;
 		}
 
 		// Render tree (reuse existing renderTreeNode method)
-		this.renderTreeNode(content, this.domTree, 0);
+		this.renderTreeNode(this.componentsContent, this.domTree, 0);
 	}
 
 	private scrollToSelectedNode(nodeId: number): void {
-		const content = this.componentsSection.querySelector('.components-content') as HTMLElement;
-		if (!content) {
-			return;
-		}
-
-		// Find the selected node element and scroll it into view
-		setTimeout(() => {
-			const selectedElement = content.querySelector(`[data-node-id="${nodeId}"]`) as HTMLElement;
-			if (selectedElement) {
+		// Use direct reference from map (no querySelector needed)
+		const selectedElement = this.nodeIdToElement.get(nodeId);
+		if (selectedElement) {
+			// Use setTimeout to ensure DOM is fully rendered
+			setTimeout(() => {
 				selectedElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
-			}
-		}, 100);
+			}, 100);
+		}
 	}
 
 	// ============================================
@@ -717,7 +718,9 @@ export class StyleInspectPanel {
 
 	private renderCssTab(): void {
 		const content = this.tabContents.get('css');
-		if (!content) return;
+		if (!content) {
+			return;
+		}
 
 		// Clear content
 		while (content.firstChild) {
@@ -783,7 +786,9 @@ export class StyleInspectPanel {
 
 	private renderDesignTab(): void {
 		const content = this.tabContents.get('design');
-		if (!content) return;
+		if (!content) {
+			return;
+		}
 
 		// Clear content
 		while (content.firstChild) {
@@ -803,8 +808,8 @@ export class StyleInspectPanel {
 		`;
 
 		const icon = document.createElement('div');
+		icon.className = 'codicon codicon-paintbrush';
 		icon.style.cssText = `font-size: 32px; margin-bottom: 12px; opacity: 0.5;`;
-		icon.textContent = '🎨';
 		stub.appendChild(icon);
 
 		const title = document.createElement('div');
@@ -908,8 +913,8 @@ export class StyleInspectPanel {
 		const isExpanded = this.expandedNodes.has(node.nodeId);
 		const hasChildren = node.children && node.children.length > 0;
 
-		// Add data attribute for scrolling
-		row.setAttribute('data-node-id', node.nodeId.toString());
+		// Store direct reference to avoid querySelector (VS Code best practice)
+		this.nodeIdToElement.set(node.nodeId, row);
 
 		row.style.cssText = `
 			display: flex;
@@ -1028,7 +1033,9 @@ export class StyleInspectPanel {
 
 	private renderChangesTab(): void {
 		const content = this.tabContents.get('changes');
-		if (!content) return;
+		if (!content) {
+			return;
+		}
 
 		// Clear content (CSP-safe)
 		while (content.firstChild) {
@@ -1134,7 +1141,7 @@ export class StyleInspectPanel {
 			font-size: 14px;
 			opacity: 0.8;
 		`;
-		icon.textContent = '\u2195'; // ↕
+		icon.className = 'codicon codicon-arrow-both';
 
 		// Info
 		const info = document.createElement('div');
@@ -1491,9 +1498,14 @@ export class StyleInspectPanel {
 			}
 
 			if (data.htmlSource) {
-				const btn = this.createButton('📄 Open in Editor', () => {
+				const btn = this.createButton('Open in Editor', () => {
 					this.callbacks.onOpenFile(data.htmlSource!);
 				});
+				// Add file icon using codicon
+				const icon = document.createElement('span');
+				icon.className = 'codicon codicon-file';
+				icon.style.cssText = 'margin-right: 4px;';
+				btn.insertBefore(icon, btn.firstChild);
 				btn.title = `${data.htmlSource.file}:${data.htmlSource.line}`;
 				btn.style.marginBottom = '0';
 				rowContainer.appendChild(btn);
@@ -1518,8 +1530,11 @@ export class StyleInspectPanel {
 		const libraryName = cssInJs.library || 'CSS-in-JS';
 
 		const titleDiv = document.createElement('div');
-		titleDiv.style.cssText = 'font-weight: 600; margin-bottom: 4px;';
-		titleDiv.textContent = `💅 ${libraryName} Detected`;
+		titleDiv.style.cssText = 'font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;';
+		const icon = document.createElement('span');
+		icon.className = 'codicon codicon-paintbrush';
+		titleDiv.appendChild(icon);
+		titleDiv.appendChild(document.createTextNode(`${libraryName} Detected`));
 		notice.appendChild(titleDiv);
 
 		const descDiv = document.createElement('div');
@@ -1574,7 +1589,7 @@ export class StyleInspectPanel {
 		const list = document.createElement('div');
 		list.style.cssText = `
 			font-family: var(--vscode-editor-font-family), monospace;
-			font-size: 11px;
+			font-size: 13px;
 		`;
 
 		for (const prop of properties) {
@@ -1606,6 +1621,7 @@ export class StyleInspectPanel {
 			align-items: flex-start;
 			padding: 3px 0;
 			gap: 8px;
+			font-size: 13px;
 			${prop.isOverridden ? 'opacity: 0.5;' : ''}
 		`;
 
@@ -1681,7 +1697,7 @@ export class StyleInspectPanel {
 		el.style.cssText = `
 			margin-bottom: 12px;
 			font-family: var(--vscode-editor-font-family), monospace;
-			font-size: 11px;
+			font-size: 13px;
 		`;
 
 		const header = document.createElement('div');
@@ -1803,7 +1819,7 @@ export class StyleInspectPanel {
 				section.content.appendChild(inlineHeader);
 
 				const list = document.createElement('div');
-				list.style.cssText = `font-family: var(--vscode-editor-font-family), monospace; font-size: 11px; padding-left: 12px;`;
+				list.style.cssText = `font-family: var(--vscode-editor-font-family), monospace; font-size: 13px; padding-left: 12px;`;
 
 				for (const style of inherited.inlineStyle) {
 					const row = document.createElement('div');
@@ -1842,7 +1858,7 @@ export class StyleInspectPanel {
 			transition: transform 0.15s;
 			${this.expandedSections.has(id) ? 'transform: rotate(90deg);' : ''}
 		`;
-		chevron.textContent = '▶';
+		chevron.className = 'codicon codicon-chevron-right';
 		header.appendChild(chevron);
 
 		const titleEl = document.createElement('span');
