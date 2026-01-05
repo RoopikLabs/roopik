@@ -3,6 +3,8 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
+import * as DOM from '../../../../../../base/browser/dom.js';
+import { mainWindow } from '../../../../../../base/browser/window.js';
 import type {
 	ElementStyleInfo,
 	ResolvedCSSProperty,
@@ -49,17 +51,17 @@ export interface IStyleInspectPanelCallbacks {
 }
 
 /**
- * Tab identifiers
+ * Tab identifiers (Components is now always visible at top, not a tab)
  */
-type TabId = 'css' | 'design' | 'components' | 'changes';
+type TabId = 'css' | 'design' | 'changes';
 
 /**
- * Style Inspect Panel (Tabbed)
+ * Style Inspect Panel (Split View)
  *
- * Four-tab panel for element inspection:
+ * Layout: Components (collapsible, top) + Draggable Separator + Tabs (bottom)
+ * - Components: DOM tree from CDP, always visible at top, collapsible
  * - CSS: Current styles panel (Element, Inline, Rules, Inherited)
  * - Design: Figma-like Position/Layout/Dimensions editors (stub for now)
- * - Components: DOM tree from CDP, expandable, synced with inspect
  * - Changes: Pending DOM changes from drag-drop with Undo/Apply actions
  *
  * Uses VSCode theming variables for consistent appearance.
@@ -67,9 +69,15 @@ type TabId = 'css' | 'design' | 'components' | 'changes';
 export class StyleInspectPanel {
 	private container: HTMLElement;
 	private headerContainer: HTMLElement;
-	private tabBar: HTMLElement;
-	private contentContainer: HTMLElement;
-	private resizeHandle: HTMLElement;
+
+	// Split view sections
+	private componentsSection: HTMLElement; // Always visible at top (collapsible)
+	private verticalSeparator: HTMLElement; // Draggable divider
+	private tabsSection: HTMLElement; // CSS/Design/Changes tabs below
+
+	private tabBar!: HTMLElement; // Created in createTabsSection()
+	private contentContainer!: HTMLElement; // Created in createTabsSection()
+	private resizeHandle: HTMLElement; // Horizontal resize (panel width)
 	private isVisible: boolean = false;
 	private currentData: ElementStyleInfo | null = null;
 
@@ -78,16 +86,28 @@ export class StyleInspectPanel {
 	private static readonly MIN_WIDTH = 200;
 	private static readonly MAX_WIDTH = 600;
 
-	// Current width (persisted during session)
+	// Components section size
+	private static readonly DEFAULT_COMPONENTS_HEIGHT = 200;
+	private static readonly MIN_COMPONENTS_HEIGHT = 100;
+	private static readonly MAX_COMPONENTS_HEIGHT = 600;
+
+	// Current sizes (persisted during session)
 	private currentWidth: number = StyleInspectPanel.DEFAULT_WIDTH;
+	private componentsHeight: number = StyleInspectPanel.DEFAULT_COMPONENTS_HEIGHT;
+	private isComponentsExpanded: boolean = true;
 
 	// Project mode flag - when false, file links are disabled
 	private isProjectMode: boolean = false;
 
-	// Resize state
+	// Horizontal resize state (panel width)
 	private isResizing: boolean = false;
 	private resizeStartX: number = 0;
 	private resizeStartWidth: number = 0;
+
+	// Vertical resize state (components height)
+	private isResizingVertical: boolean = false;
+	private resizeStartY: number = 0;
+	private resizeStartHeight: number = 0;
 
 	// Tab state
 	private activeTab: TabId = 'css';
@@ -97,7 +117,7 @@ export class StyleInspectPanel {
 	// Collapsible section states for CSS tab
 	private expandedSections = new Set<string>(['element', 'inline', 'rules']);
 
-	// DOM tree data for Components tab
+	// DOM tree data for Components section
 	private domTree: DOMTreeNode | null = null;
 	private selectedNodeId: number | null = null;
 	private expandedNodes = new Set<number>();
@@ -111,7 +131,7 @@ export class StyleInspectPanel {
 	) {
 		this.container = this.createContainer();
 
-		// Create resize handle (on left edge of panel)
+		// Create horizontal resize handle (on left edge of panel for width)
 		this.resizeHandle = this.createResizeHandle();
 		this.container.appendChild(this.resizeHandle);
 
@@ -119,26 +139,21 @@ export class StyleInspectPanel {
 		this.headerContainer = this.createHeaderContainer();
 		this.container.appendChild(this.headerContainer);
 
-		// Tab bar
-		this.tabBar = this.createTabBar();
-		this.container.appendChild(this.tabBar);
+		// Components section (always visible at top, collapsible)
+		this.componentsSection = this.createComponentsSection();
+		this.container.appendChild(this.componentsSection);
 
-		// Content container (holds tab contents)
-		this.contentContainer = document.createElement('div');
-		this.contentContainer.className = 'style-inspect-content';
-		this.contentContainer.style.cssText = `
-			flex: 1;
-			overflow-y: auto;
-			overflow-x: hidden;
-		`;
-		this.container.appendChild(this.contentContainer);
+		// Vertical separator (draggable divider between components and tabs)
+		this.verticalSeparator = this.createVerticalSeparator();
+		this.container.appendChild(this.verticalSeparator);
 
-		// Create tab content containers
-		this.createTabContents();
+		// Tabs section (CSS, Design, Changes)
+		this.tabsSection = this.createTabsSection();
+		this.container.appendChild(this.tabsSection);
 
 		this.parent.appendChild(this.container);
 
-		// Setup resize event listeners
+		// Setup resize event listeners (both horizontal and vertical)
 		this.setupResizeListeners();
 	}
 
@@ -188,7 +203,7 @@ export class StyleInspectPanel {
 	}
 
 	/**
-	 * Set DOM tree for Components tab
+	 * Set DOM tree for Components section (always visible at top)
 	 */
 	setDOMTree(tree: DOMTreeNode): void {
 		this.domTree = tree;
@@ -198,25 +213,22 @@ export class StyleInspectPanel {
 			this.expandedNodes.add(tree.nodeId);
 		}
 
-		if (this.activeTab === 'components') {
-			this.renderComponentsTab();
-		}
+		// Render Components section (it's always visible, not a tab)
+		this.renderComponentsSection();
 	}
 
 	/**
 	 * Highlight a node in the Components tree (called when user selects element in browser)
+	 * Components is always visible at top, so we just update the tree (don't switch tabs)
 	 */
 	highlightTreeNode(nodeId: number): void {
 		this.selectedNodeId = nodeId;
 		// Expand parent nodes to make selected node visible
 		this.expandParentsOfNode(nodeId);
-		// Switch to Components tab if not already there (use switchTab to update UI properly)
-		if (this.activeTab !== 'components') {
-			this.switchTab('components');
-		} else {
-			// Already on components tab, just re-render to update selection
-			this.renderComponentsTab();
-		}
+		// Update Components section (always visible at top, not a tab anymore)
+		this.renderComponentsSection();
+		// Scroll to selected node
+		this.scrollToSelectedNode(nodeId);
 	}
 
 	/**
@@ -331,15 +343,16 @@ export class StyleInspectPanel {
 		const tabBar = document.createElement('div');
 		tabBar.style.cssText = `
 			display: flex;
-			border-bottom: 1px solid var(--vscode-sideBar-border);
-			background: var(--vscode-sideBar-background);
+			gap: 1px;
+			border-bottom: 2px solid var(--vscode-sideBar-border);
+			background: var(--vscode-sideBarSectionHeader-background);
+			padding: 4px 8px 0 8px;
 			flex-shrink: 0;
 		`;
 
 		const tabs: { id: TabId; label: string }[] = [
 			{ id: 'css', label: 'CSS' },
 			{ id: 'design', label: 'Design' },
-			{ id: 'components', label: 'Components' },
 			{ id: 'changes', label: 'Changes' }
 		];
 
@@ -355,33 +368,41 @@ export class StyleInspectPanel {
 	private createTabButton(id: TabId, label: string): HTMLElement {
 		const btn = document.createElement('button');
 		btn.style.cssText = `
-			flex: 1;
-			padding: 8px 12px;
-			border: none;
-			background: transparent;
-			color: var(--vscode-foreground);
+			padding: 8px 16px;
+			background: var(--vscode-tab-inactiveBackground);
+			border: 1px solid var(--vscode-sideBar-border);
+			border-bottom: none;
+			border-radius: 4px 4px 0 0;
+			cursor: pointer;
 			font-size: 12px;
 			font-weight: 500;
-			cursor: pointer;
+			color: var(--vscode-foreground);
 			opacity: 0.7;
-			transition: opacity 0.15s, border-bottom 0.15s;
-			border-bottom: 2px solid transparent;
+			transition: all 0.15s;
+			outline: none;
+			position: relative;
 		`;
 		btn.textContent = label;
 
 		if (id === this.activeTab) {
 			btn.style.opacity = '1';
-			btn.style.borderBottom = '2px solid var(--vscode-focusBorder)';
+			btn.style.background = 'var(--vscode-sideBar-background)';
+			btn.style.borderBottom = '2px solid var(--vscode-sideBar-background)';
+			btn.style.borderTop = '2px solid var(--vscode-focusBorder)';
+			btn.style.marginBottom = '-2px';
+			btn.style.fontWeight = '600';
 		}
 
 		btn.addEventListener('mouseenter', () => {
 			if (id !== this.activeTab) {
 				btn.style.opacity = '0.9';
+				btn.style.background = 'var(--vscode-list-hoverBackground)';
 			}
 		});
 		btn.addEventListener('mouseleave', () => {
 			if (id !== this.activeTab) {
 				btn.style.opacity = '0.7';
+				btn.style.background = 'var(--vscode-tab-inactiveBackground)';
 			}
 		});
 		btn.addEventListener('click', () => this.switchTab(id));
@@ -398,13 +419,21 @@ export class StyleInspectPanel {
 		const prevBtn = this.tabButtons.get(this.activeTab);
 		if (prevBtn) {
 			prevBtn.style.opacity = '0.7';
-			prevBtn.style.borderBottom = '2px solid transparent';
+			prevBtn.style.background = 'var(--vscode-tab-inactiveBackground)';
+			prevBtn.style.borderBottom = 'none';
+			prevBtn.style.borderTop = '1px solid var(--vscode-sideBar-border)';
+			prevBtn.style.marginBottom = '0';
+			prevBtn.style.fontWeight = '500';
 		}
 
 		const newBtn = this.tabButtons.get(tabId);
 		if (newBtn) {
 			newBtn.style.opacity = '1';
-			newBtn.style.borderBottom = '2px solid var(--vscode-focusBorder)';
+			newBtn.style.background = 'var(--vscode-sideBar-background)';
+			newBtn.style.borderBottom = '2px solid var(--vscode-sideBar-background)';
+			newBtn.style.borderTop = '2px solid var(--vscode-focusBorder)';
+			newBtn.style.marginBottom = '-2px';
+			newBtn.style.fontWeight = '600';
 		}
 
 		// Hide previous content, show new content
@@ -420,6 +449,225 @@ export class StyleInspectPanel {
 
 		this.activeTab = tabId;
 		this.renderActiveTab();
+	}
+
+	// ============================================
+	// Components Section (Always Visible, Collapsible)
+	// ============================================
+
+	private createComponentsSection(): HTMLElement {
+		const section = document.createElement('div');
+		section.className = 'components-section';
+		section.style.cssText = `
+			display: flex;
+			flex-direction: column;
+			height: ${this.componentsHeight}px;
+			flex-shrink: 0;
+			border-bottom: 1px solid var(--vscode-sideBar-border);
+			background: var(--vscode-sideBar-background);
+		`;
+
+		// Collapsible header
+		const header = document.createElement('div');
+		header.style.cssText = `
+			padding: 8px 12px;
+			display: flex;
+			align-items: center;
+			cursor: pointer;
+			user-select: none;
+			background: var(--vscode-sideBarSectionHeader-background);
+			border-bottom: 1px solid var(--vscode-sideBar-border);
+		`;
+
+		const toggleIcon = document.createElement('span');
+		toggleIcon.textContent = '▼';
+		toggleIcon.style.cssText = `
+			font-size: 10px;
+			margin-right: 6px;
+			transition: transform 0.2s;
+		`;
+
+		const title = document.createElement('span');
+		title.textContent = 'Components';
+		title.style.cssText = `
+			font-weight: 600;
+			font-size: 11px;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+			color: var(--vscode-sideBarSectionHeader-foreground);
+		`;
+
+		header.appendChild(toggleIcon);
+		header.appendChild(title);
+
+		// Toggle collapse on click
+		header.addEventListener('click', () => {
+			this.isComponentsExpanded = !this.isComponentsExpanded;
+			if (this.isComponentsExpanded) {
+				toggleIcon.style.transform = 'rotate(0deg)';
+				content.style.display = 'block';
+			} else {
+				toggleIcon.style.transform = 'rotate(-90deg)';
+				content.style.display = 'none';
+			}
+		});
+
+		// Content container (DOM tree)
+		const content = document.createElement('div');
+		content.className = 'components-content';
+		content.style.cssText = `
+			flex: 1;
+			overflow-y: auto;
+			overflow-x: hidden;
+			padding: 8px;
+		`;
+
+		// Apply VS Code-style scrollbar
+		this.applyScrollbarStyles(content);
+
+		section.appendChild(header);
+		section.appendChild(content);
+
+		return section;
+	}
+
+	private createVerticalSeparator(): HTMLElement {
+		const separator = document.createElement('div');
+		separator.className = 'vertical-separator';
+		separator.style.cssText = `
+			height: 6px;
+			background: var(--vscode-sideBarSectionHeader-background);
+			border-top: 1px solid var(--vscode-sideBar-border);
+			border-bottom: 1px solid var(--vscode-sideBar-border);
+			cursor: ns-resize;
+			flex-shrink: 0;
+			transition: all 0.15s;
+			position: relative;
+		`;
+
+		// Add a visual grip indicator (three dots)
+		const grip = document.createElement('div');
+		grip.style.cssText = `
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			display: flex;
+			gap: 3px;
+			pointer-events: none;
+		`;
+
+		for (let i = 0; i < 3; i++) {
+			const dot = document.createElement('div');
+			dot.style.cssText = `
+				width: 3px;
+				height: 3px;
+				border-radius: 50%;
+				background: var(--vscode-icon-foreground);
+				opacity: 0.4;
+			`;
+			grip.appendChild(dot);
+		}
+		separator.appendChild(grip);
+
+		separator.addEventListener('mouseenter', () => {
+			separator.style.background = 'var(--vscode-list-hoverBackground)';
+			grip.style.opacity = '1';
+		});
+
+		separator.addEventListener('mouseleave', () => {
+			if (!this.isResizingVertical) {
+				separator.style.background = 'var(--vscode-sideBarSectionHeader-background)';
+				grip.style.opacity = '1';
+			}
+		});
+
+		// Vertical resize (components height)
+		separator.addEventListener('mousedown', (e) => {
+			this.isResizingVertical = true;
+			this.resizeStartY = e.clientY;
+			this.resizeStartHeight = this.componentsHeight;
+			separator.style.background = 'var(--vscode-focusBorder)';
+			e.preventDefault();
+		});
+
+		return separator;
+	}
+
+	private createTabsSection(): HTMLElement {
+		const section = document.createElement('div');
+		section.className = 'tabs-section';
+		section.style.cssText = `
+			display: flex;
+			flex-direction: column;
+			flex: 1;
+			overflow: hidden;
+		`;
+
+		// Tab bar
+		this.tabBar = this.createTabBar();
+		section.appendChild(this.tabBar);
+
+		// Content container (holds tab contents)
+		this.contentContainer = document.createElement('div');
+		this.contentContainer.className = 'style-inspect-content';
+		this.contentContainer.style.cssText = `
+			flex: 1;
+			overflow-y: auto;
+			overflow-x: hidden;
+		`;
+
+		// Apply VS Code-style scrollbar
+		this.applyScrollbarStyles(this.contentContainer);
+
+		section.appendChild(this.contentContainer);
+
+		// Create tab content containers
+		this.createTabContents();
+
+		return section;
+	}
+
+	private renderComponentsSection(): void {
+		const content = this.componentsSection.querySelector('.components-content') as HTMLElement;
+		if (!content) {
+			return;
+		}
+
+		// Clear content
+		while (content.firstChild) {
+			content.removeChild(content.firstChild);
+		}
+
+		if (!this.domTree) {
+			const placeholder = document.createElement('div');
+			placeholder.style.cssText = `
+				padding: 12px;
+				color: var(--vscode-descriptionForeground);
+				font-size: 12px;
+			`;
+			placeholder.textContent = 'No DOM tree available';
+			content.appendChild(placeholder);
+			return;
+		}
+
+		// Render tree (reuse existing renderTreeNode method)
+		this.renderTreeNode(content, this.domTree, 0);
+	}
+
+	private scrollToSelectedNode(nodeId: number): void {
+		const content = this.componentsSection.querySelector('.components-content') as HTMLElement;
+		if (!content) {
+			return;
+		}
+
+		// Find the selected node element and scroll it into view
+		setTimeout(() => {
+			const selectedElement = content.querySelector(`[data-node-id="${nodeId}"]`) as HTMLElement;
+			if (selectedElement) {
+				selectedElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
+			}
+		}, 100);
 	}
 
 	// ============================================
@@ -441,13 +689,6 @@ export class StyleInspectPanel {
 		this.tabContents.set('design', designContent);
 		this.contentContainer.appendChild(designContent);
 
-		// Components tab content
-		const componentsContent = document.createElement('div');
-		componentsContent.className = 'tab-content-components';
-		componentsContent.style.display = 'none';
-		this.tabContents.set('components', componentsContent);
-		this.contentContainer.appendChild(componentsContent);
-
 		// Changes tab content
 		const changesContent = document.createElement('div');
 		changesContent.className = 'tab-content-changes';
@@ -463,9 +704,6 @@ export class StyleInspectPanel {
 				break;
 			case 'design':
 				this.renderDesignTab();
-				break;
-			case 'components':
-				this.renderComponentsTab();
 				break;
 			case 'changes':
 				this.renderChangesTab();
@@ -663,69 +901,15 @@ export class StyleInspectPanel {
 	// Components Tab (DOM Tree)
 	// ============================================
 
-	private renderComponentsTab(): void {
-		const content = this.tabContents.get('components');
-		if (!content) return;
-
-		// Clear content
-		while (content.firstChild) {
-			content.removeChild(content.firstChild);
-		}
-
-		if (!this.domTree) {
-			// Empty state - waiting for DOM tree
-			const empty = document.createElement('div');
-			empty.style.cssText = `
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				justify-content: center;
-				padding: 40px 20px;
-				text-align: center;
-				color: var(--vscode-descriptionForeground);
-			`;
-
-			const icon = document.createElement('div');
-			icon.style.cssText = `font-size: 32px; margin-bottom: 12px; opacity: 0.5;`;
-			icon.textContent = '🌲';
-			empty.appendChild(icon);
-
-			const hint = document.createElement('div');
-			hint.style.cssText = `font-size: 13px; line-height: 1.5;`;
-			hint.textContent = 'DOM tree will appear here';
-			empty.appendChild(hint);
-
-			const subHint = document.createElement('div');
-			subHint.style.cssText = `font-size: 11px; margin-top: 8px; opacity: 0.7;`;
-			subHint.textContent = 'Navigate to a page to see the component structure';
-			empty.appendChild(subHint);
-
-			content.appendChild(empty);
-			return;
-		}
-
-		// Render tree
-		const treeContainer = document.createElement('div');
-		treeContainer.style.cssText = `
-			font-family: var(--vscode-editor-font-family), monospace;
-			font-size: 12px;
-			padding: 8px 0;
-		`;
-
-		// Clear highlight when mouse leaves tree container
-		treeContainer.addEventListener('mouseleave', () => {
-			this.callbacks.onTreeNodeHover?.(null);
-		});
-
-		this.renderTreeNode(treeContainer, this.domTree, 0);
-		content.appendChild(treeContainer);
-	}
 
 	private renderTreeNode(container: HTMLElement, node: DOMTreeNode, depth: number): void {
 		const row = document.createElement('div');
 		const isSelected = node.nodeId === this.selectedNodeId;
 		const isExpanded = this.expandedNodes.has(node.nodeId);
 		const hasChildren = node.children && node.children.length > 0;
+
+		// Add data attribute for scrolling
+		row.setAttribute('data-node-id', node.nodeId.toString());
 
 		row.style.cssText = `
 			display: flex;
@@ -790,7 +974,7 @@ export class StyleInspectPanel {
 		row.addEventListener('click', () => {
 			this.selectedNodeId = node.nodeId;
 			this.callbacks.onTreeNodeSelected?.(node.nodeId);
-			this.renderComponentsTab();
+			this.renderComponentsSection();
 		});
 
 		container.appendChild(row);
@@ -809,7 +993,7 @@ export class StyleInspectPanel {
 		} else {
 			this.expandedNodes.add(nodeId);
 		}
-		this.renderComponentsTab();
+		this.renderComponentsSection();
 	}
 
 	private expandParentsOfNode(targetNodeId: number): void {
@@ -1107,35 +1291,112 @@ export class StyleInspectPanel {
 		return handle;
 	}
 
+	/**
+	 * Apply VS Code-style scrollbar to an element
+	 * Creates thin, dark, sleek scrollbars matching the IDE theme
+	 */
+	private applyScrollbarStyles(element: HTMLElement): void {
+		// Create a style element for this specific scrollbar
+		const styleId = `scrollbar-style-${Math.random().toString(36).substr(2, 9)}`;
+		element.setAttribute('data-scrollbar-id', styleId);
+
+		const style = document.createElement('style');
+		style.textContent = `
+			[data-scrollbar-id="${styleId}"]::-webkit-scrollbar {
+				width: 10px;
+				height: 10px;
+			}
+
+			[data-scrollbar-id="${styleId}"]::-webkit-scrollbar-track {
+				background: transparent;
+			}
+
+			[data-scrollbar-id="${styleId}"]::-webkit-scrollbar-thumb {
+				background: var(--vscode-scrollbarSlider-background);
+				border-radius: 10px;
+				border: 2px solid transparent;
+				background-clip: padding-box;
+			}
+
+			[data-scrollbar-id="${styleId}"]::-webkit-scrollbar-thumb:hover {
+				background: var(--vscode-scrollbarSlider-hoverBackground);
+				border-radius: 10px;
+				border: 2px solid transparent;
+				background-clip: padding-box;
+			}
+
+			[data-scrollbar-id="${styleId}"]::-webkit-scrollbar-thumb:active {
+				background: var(--vscode-scrollbarSlider-activeBackground);
+				border-radius: 10px;
+				border: 2px solid transparent;
+				background-clip: padding-box;
+			}
+
+			/* For Firefox */
+			[data-scrollbar-id="${styleId}"] {
+				scrollbar-width: thin;
+				scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+			}
+		`;
+
+		// Use mainWindow.document.head for multi-window support
+		mainWindow.document.head.appendChild(style);
+	}
+
 	private setupResizeListeners(): void {
+		const targetWindow = DOM.getWindow(this.container);
+		const targetDocument = targetWindow.document;
+
+		// Horizontal resize (panel width)
 		this.resizeHandle.addEventListener('mousedown', (e) => {
 			e.preventDefault();
 			this.isResizing = true;
 			this.resizeStartX = e.clientX;
 			this.resizeStartWidth = this.currentWidth;
 			this.resizeHandle.style.background = 'var(--vscode-focusBorder)';
-			document.body.style.cursor = 'ew-resize';
-			document.body.style.userSelect = 'none';
+			targetDocument.body.style.cursor = 'ew-resize';
+			targetDocument.body.style.userSelect = 'none';
 		});
 
-		document.addEventListener('mousemove', (e) => {
-			if (!this.isResizing) return;
+		targetDocument.addEventListener('mousemove', (e: MouseEvent) => {
+			// Horizontal resize (panel width)
+			if (this.isResizing) {
+				const deltaX = this.resizeStartX - e.clientX;
+				let newWidth = this.resizeStartWidth + deltaX;
+				newWidth = Math.max(StyleInspectPanel.MIN_WIDTH, Math.min(StyleInspectPanel.MAX_WIDTH, newWidth));
 
-			const deltaX = this.resizeStartX - e.clientX;
-			let newWidth = this.resizeStartWidth + deltaX;
-			newWidth = Math.max(StyleInspectPanel.MIN_WIDTH, Math.min(StyleInspectPanel.MAX_WIDTH, newWidth));
+				this.currentWidth = newWidth;
+				this.container.style.width = `${newWidth}px`;
+				this.callbacks.onVisibilityChanged?.(true, newWidth);
+			}
 
-			this.currentWidth = newWidth;
-			this.container.style.width = `${newWidth}px`;
-			this.callbacks.onVisibilityChanged?.(true, newWidth);
+			// Vertical resize (components height)
+			if (this.isResizingVertical) {
+				const deltaY = e.clientY - this.resizeStartY;
+				let newHeight = this.resizeStartHeight + deltaY;
+				newHeight = Math.max(
+					StyleInspectPanel.MIN_COMPONENTS_HEIGHT,
+					Math.min(StyleInspectPanel.MAX_COMPONENTS_HEIGHT, newHeight)
+				);
+
+				this.componentsHeight = newHeight;
+				this.componentsSection.style.height = `${newHeight}px`;
+			}
 		});
 
-		document.addEventListener('mouseup', () => {
+		targetDocument.addEventListener('mouseup', () => {
 			if (this.isResizing) {
 				this.isResizing = false;
 				this.resizeHandle.style.background = 'transparent';
-				document.body.style.cursor = '';
-				document.body.style.userSelect = '';
+				targetDocument.body.style.cursor = '';
+				targetDocument.body.style.userSelect = '';
+			}
+
+			if (this.isResizingVertical) {
+				this.isResizingVertical = false;
+				this.verticalSeparator.style.background = 'var(--vscode-sideBarSectionHeader-background)';
+				targetDocument.body.style.cursor = '';
+				targetDocument.body.style.userSelect = '';
 			}
 		});
 	}
