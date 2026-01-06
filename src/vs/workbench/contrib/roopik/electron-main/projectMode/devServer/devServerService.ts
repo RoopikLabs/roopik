@@ -6,8 +6,11 @@
 import * as fs from 'fs';
 import { join, normalize, dirname } from '../../../../../../base/common/path.js';
 import * as cp from 'child_process';
+import { exec } from 'child_process';
 import { fileURLToPath } from 'url';
+import { app } from 'electron';
 import { Emitter, Event } from '../../../../../../base/common/event.js';
+import { isWindows } from '../../../../../../base/common/platform.js';
 import type {
 	IDevServerService,
 	DevServerStartOptions,
@@ -55,14 +58,48 @@ interface WorkerErrorMessage extends WorkerMessageBase {
 type WorkerMessage = WorkerReadyMessage | WorkerErrorMessage;
 
 /**
- * Get the directory of this module (ES module compatible)
- * Uses import.meta.url which is available in ES modules
+ * Get the directory where devServerWorker.mjs is located
+ * Handles both development and production builds
  */
 function getModuleDir(): string {
-	// In ES modules, import.meta.url gives us the file:// URL of this module
-	const thisFileUrl = import.meta.url;
-	const thisFilePath = fileURLToPath(thisFileUrl);
-	return dirname(thisFilePath);
+	// Try import.meta.url first (works in most cases)
+	try {
+		const thisFileUrl = import.meta.url;
+		const thisFilePath = fileURLToPath(thisFileUrl);
+		const moduleDir = dirname(thisFilePath);
+
+		// Verify worker exists at this location
+		const workerPath = join(moduleDir, 'devServerWorker.mjs');
+		if (fs.existsSync(workerPath)) {
+			return moduleDir;
+		}
+	} catch {
+		// import.meta.url might not work in all contexts
+	}
+
+	// Fallback: Use app.getAppPath() and construct relative path
+	// In production: app.getAppPath() = resources/app
+	// Worker should be at: resources/app/out/vs/workbench/contrib/roopik/electron-main/projectMode/devServer/
+	const appPath = app.getAppPath();
+	const relativePath = 'out/vs/workbench/contrib/roopik/electron-main/projectMode/devServer';
+	const fallbackDir = join(appPath, relativePath);
+
+	// Verify worker exists at fallback location
+	const fallbackWorkerPath = join(fallbackDir, 'devServerWorker.mjs');
+	if (fs.existsSync(fallbackWorkerPath)) {
+		return fallbackDir;
+	}
+
+	// Last resort: return the import.meta.url dirname even if worker not found
+	// (will fail with proper error message later)
+	try {
+		const thisFileUrl = import.meta.url;
+		const thisFilePath = fileURLToPath(thisFileUrl);
+		return dirname(thisFilePath);
+	} catch {
+		// If all else fails, return a path that will produce a clear error
+		return join(appPath, 'out');
+	}
 }
 
 /**
@@ -672,5 +709,133 @@ export class DevServerService implements IDevServerService {
 		this.servers.clear();
 		this._onStatusChanged.dispose();
 		this._onLog.dispose();
+	}
+
+	/**
+	 * Kill a process running on a specific port
+	 * Used to stop externally started dev servers (e.g., npm run dev, yarn dev)
+	 * @param port - Port number as string
+	 * @returns Process ID that was killed
+	 */
+	async killProcessByPort(port: string): Promise<{ port: string; processId: string }> {
+		// Windows: netstat -ano | findstr ":PORT"
+		// Unix/Mac: lsof -nP -iTCP -sTCP:LISTEN | grep :PORT
+		const command = isWindows
+			? `netstat -ano | findstr ":${port}"`
+			: `lsof -nP -iTCP -sTCP:LISTEN | grep ":${port}"`;
+
+		const stdout = await new Promise<string>((resolve, reject) => {
+			exec(command, {}, (err, stdout) => {
+				if (err) {
+					return reject(new Error(`No process found on port ${port}`));
+				}
+				resolve(stdout);
+			});
+		});
+
+		const processesForPort = stdout.split(/\r?\n/).filter(s => !!s.trim());
+		if (processesForPort.length === 0) {
+			throw new Error(`No process found on port ${port}`);
+		}
+
+		// Extract PID from output
+		let processId: string | undefined;
+		if (isWindows) {
+			// Windows netstat format: TCP    0.0.0.0:5173    0.0.0.0:0    LISTENING    12345
+			// Find the LISTENING line and extract PID (last number)
+			for (const line of processesForPort) {
+				if (line.includes('LISTENING')) {
+					const match = line.match(/\s+(\d+)\s*$/);
+					if (match) {
+						processId = match[1];
+						break;
+					}
+				}
+			}
+		} else {
+			// Unix lsof format: node    12345  user   23u  IPv6 0x...  TCP *:5173 (LISTEN)
+			// PID is the second field
+			const match = processesForPort[0].match(/^\S+\s+(\d+)/);
+			processId = match?.[1];
+		}
+
+		if (!processId) {
+			throw new Error(`Could not extract process ID from port ${port}`);
+		}
+
+		const pid = Number.parseInt(processId);
+
+		// Kill the process
+		if (isWindows) {
+			// Windows: Use taskkill to kill process tree (force kill)
+			// /T = kill child processes, /F = force
+			try {
+				cp.execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'pipe', timeout: 5000 });
+			} catch (killError) {
+				// taskkill might fail, but check if process still exists
+			}
+
+			// Verify process was killed
+			await new Promise(resolve => setTimeout(resolve, 500));
+			try {
+				const checkOutput = cp.execSync(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`, { stdio: 'pipe', timeout: 2000 });
+				const output = checkOutput.toString().trim();
+				if (output && output.includes(pid.toString())) {
+					throw new Error(`Failed to kill process ${pid} on port ${port} - process still running`);
+				}
+			} catch (checkError) {
+				// If tasklist fails or process not found, assume killed successfully
+				// (tasklist throws if no process found, which is what we want)
+			}
+		} else {
+			// Unix: Try SIGTERM first (graceful), then SIGKILL if needed
+			try {
+				process.kill(pid, 'SIGTERM');
+				// Wait for graceful shutdown
+				await new Promise(resolve => setTimeout(resolve, 1000));
+
+				// Check if process still exists
+				try {
+					process.kill(pid, 0); // Signal 0 checks if process exists (throws if it doesn't)
+					// Process still exists - force kill
+					process.kill(pid, 'SIGKILL');
+					await new Promise(resolve => setTimeout(resolve, 500));
+
+					// Verify it's dead
+					try {
+						process.kill(pid, 0);
+						throw new Error(`Failed to kill process ${pid} on port ${port} - process still running after SIGKILL`);
+					} catch {
+						// Process killed successfully
+					}
+				} catch {
+					// Process already dead - SIGTERM worked
+				}
+			} catch (killError) {
+				// SIGTERM failed - try SIGKILL
+				try {
+					process.kill(pid, 'SIGKILL');
+					await new Promise(resolve => setTimeout(resolve, 500));
+
+					// Verify it's dead
+					try {
+						process.kill(pid, 0);
+						throw new Error(`Failed to kill process ${pid} on port ${port} - process still running after SIGKILL`);
+					} catch {
+						// Process killed successfully
+					}
+				} catch (finalError) {
+					// Check if process exists
+					try {
+						process.kill(pid, 0);
+						throw new Error(`Failed to kill process ${pid} on port ${port}`);
+					} catch {
+						// Process doesn't exist - already dead
+					}
+				}
+			}
+		}
+
+		return { port, processId };
 	}
 }

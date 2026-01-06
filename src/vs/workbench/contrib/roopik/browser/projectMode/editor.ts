@@ -1571,13 +1571,37 @@ export class Editor extends EditorPane {
 	 * Stop Dev Server
 	 * Stops the Vite dev server for the current project
 	 * Queries electron-main for running server (survives IDE reload)
+	 * If no internal server is running, attempts to kill external server on current URL's port
 	 */
 	private async stopDevServer(): Promise<void> {
 		try {
-			// Check electron-main for actually running server (not browser state)
+			// Step 1: Check electron-main for internally running server (not browser state)
 			const runningServer = await this.devServerService.getRunningServer();
 
-			if (!runningServer) {
+			if (runningServer) {
+				// Internal server is running - stop it normally
+				await this.devServerService.stopServer(runningServer.projectRoot);
+
+				// Clear active project metadata (fire-and-forget - don't block stop operation!)
+				this.projectStorageService.clearActiveProject()
+					.then(() => this.logger.info('[ProjectMode] Active project metadata cleared'))
+					.catch((err) => this.logger.warn('[ProjectMode] Failed to clear active project metadata (non-fatal):', err));
+				this.currentProjectRoot = undefined;
+
+				// Show home screen after stopping server (don't navigate to about:blank)
+				this.goHome();
+
+				this.notificationService.notify({
+					severity: Severity.Info,
+					message: 'Dev server stopped',
+					sticky: false
+				});
+				return;
+			}
+
+			// Step 2: No internal server - check if current URL is a localhost dev server
+			const currentUrl = this.getCurrentUrl();
+			if (!currentUrl || currentUrl === 'about:blank') {
 				this.logger.warn('[ProjectMode] No project to stop');
 				this.notificationService.notify({
 					severity: Severity.Warning,
@@ -1587,23 +1611,68 @@ export class Editor extends EditorPane {
 				return;
 			}
 
-			// Stop the server using the actual projectRoot from electron-main
-			await this.devServerService.stopServer(runningServer.projectRoot);
+			// Parse URL to check if it's localhost and extract port
+			let urlObj: URL;
+			try {
+				urlObj = new URL(currentUrl);
+			} catch {
+				// Invalid URL - can't extract port
+				this.notificationService.notify({
+					severity: Severity.Warning,
+					message: 'No dev server is running',
+					sticky: false
+				});
+				return;
+			}
 
-			// Clear active project metadata (fire-and-forget - don't block stop operation!)
-			this.projectStorageService.clearActiveProject()
-				.then(() => this.logger.info('[ProjectMode] Active project metadata cleared'))
-				.catch((err) => this.logger.warn('[ProjectMode] Failed to clear active project metadata (non-fatal):', err));
-			this.currentProjectRoot = undefined;
+			// Check if it's a localhost URL (localhost, 127.0.0.1, or 0.0.0.0)
+			const hostname = urlObj.hostname.toLowerCase();
+			const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0' || hostname === '::1';
 
-			// Show home screen after stopping server (don't navigate to about:blank)
-			this.goHome();
+			if (!isLocalhost) {
+				// Not a localhost URL - can't stop external servers
+				this.notificationService.notify({
+					severity: Severity.Warning,
+					message: 'No dev server is running',
+					sticky: false
+				});
+				return;
+			}
 
-			this.notificationService.notify({
-				severity: Severity.Info,
-				message: 'Dev server stopped',
-				sticky: false
-			});
+			// Extract port from URL
+			const port = urlObj.port || (urlObj.protocol === 'https:' ? '443' : '80');
+			if (!port || port === '80' || port === '443') {
+				// Standard HTTP/HTTPS ports - likely not a dev server
+				this.notificationService.notify({
+					severity: Severity.Warning,
+					message: 'No dev server is running',
+					sticky: false
+				});
+				return;
+			}
+
+			// Step 3: Try to kill the process on this port
+			try {
+				const result = await this.devServerService.killProcessByPort(port);
+				// Success! Process was actually killed - redirect to home screen
+				this.logger.info(`[ProjectMode] Killed external dev server on port ${port} (PID: ${result.processId})`);
+				this.notificationService.notify({
+					severity: Severity.Info,
+					message: `External dev server stopped (port ${port})`,
+					sticky: false
+				});
+				// Redirect to home screen only on successful kill
+				this.goHome();
+			} catch (killError) {
+				// Process not found or couldn't be killed - don't redirect
+				this.logger.warn(`[ProjectMode] Could not kill process on port ${port}:`, killError);
+				this.notificationService.notify({
+					severity: Severity.Warning,
+					message: `No process found on port ${port}`,
+					sticky: false
+				});
+				// Don't redirect - keep user on current page since kill failed
+			}
 		} catch (error) {
 			this.logger.error('[ProjectMode] Failed to stop dev server:', error);
 			this.notificationService.notify({

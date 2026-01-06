@@ -81,4 +81,8 @@ export class DevServerBridge implements IDevServerService {
 	async installDependencies(projectRoot: string): Promise<void> {
 		return this.channel.call('installDependencies', projectRoot);
 	}
+
+	async killProcessByPort(port: string): Promise<{ port: string; processId: string }> {
+		return this.channel.call('killProcessByPort', port);
+	}
 }
