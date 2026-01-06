@@ -180,4 +180,12 @@ export interface IDevServerService {
 	 * @param projectRoot - Project root path
 	 */
 	installDependencies(projectRoot: string): Promise<void>;
+
+	/**
+	 * Kill a process running on a specific port
+	 * Used to stop externally started dev servers (e.g., npm run dev)
+	 * @param port - Port number as string
+	 * @returns Process ID that was killed, or throws if not found
+	 */
+	killProcessByPort(port: string): Promise<{ port: string; processId: string }>;
 }
