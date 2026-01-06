@@ -63,7 +63,14 @@ export abstract class AbstractUpdateService implements IUpdateService {
 	 * https://github.com/microsoft/vscode/issues/89784
 	 */
 	protected async initialize(): Promise<void> {
+		this.logService.info('update#initialize - starting initialization');
+		this.logService.info(`update#initialize - isBuilt: ${this.environmentMainService.isBuilt}`);
+		this.logService.info(`update#initialize - updateUrl: ${this.productService.updateUrl}`);
+		this.logService.info(`update#initialize - commit: ${this.productService.commit}`);
+		this.logService.info(`update#initialize - quality: ${this.productService.quality}`);
+
 		if (!this.environmentMainService.isBuilt) {
+			this.logService.warn('update#initialize - DISABLED: Not a built version (VSCODE_DEV is set)');
 			this.setState(State.Disabled(DisablementReason.NotBuilt));
 			return; // updates are never enabled when running out of sources
 		}
@@ -75,6 +82,7 @@ export abstract class AbstractUpdateService implements IUpdateService {
 		}
 
 		if (!this.productService.updateUrl || !this.productService.commit) {
+			this.logService.warn(`update#initialize - DISABLED: Missing configuration (updateUrl: ${!!this.productService.updateUrl}, commit: ${!!this.productService.commit})`);
 			this.setState(State.Disabled(DisablementReason.MissingConfiguration));
 			this.logService.info('update#ctor - updates are disabled as there is no update URL');
 			return;
@@ -82,15 +90,19 @@ export abstract class AbstractUpdateService implements IUpdateService {
 
 		const updateMode = this.configurationService.getValue<'none' | 'manual' | 'start' | 'default'>('update.mode');
 		const quality = this.getProductQuality(updateMode);
+		this.logService.info(`update#initialize - updateMode: ${updateMode}, quality: ${quality}`);
 
 		if (!quality) {
+			this.logService.warn('update#initialize - DISABLED: User preference (update.mode = none)');
 			this.setState(State.Disabled(DisablementReason.ManuallyDisabled));
 			this.logService.info('update#ctor - updates are disabled by user preference');
 			return;
 		}
 
 		this.url = this.buildUpdateFeedUrl(quality);
+		this.logService.info(`update#initialize - built URL: ${this.url}`);
 		if (!this.url) {
+			this.logService.warn('update#initialize - DISABLED: Could not build update feed URL');
 			this.setState(State.Disabled(DisablementReason.InvalidConfiguration));
 			this.logService.info('update#ctor - updates are disabled as the update URL is badly formed');
 			return;
@@ -103,6 +115,7 @@ export abstract class AbstractUpdateService implements IUpdateService {
 			this.url = url.toString();
 		}
 
+		this.logService.info('update#initialize - SUCCESS: Setting state to Idle, updates ENABLED');
 		this.setState(State.Idle(this.getUpdateType()));
 
 		await this.postInitialize();
