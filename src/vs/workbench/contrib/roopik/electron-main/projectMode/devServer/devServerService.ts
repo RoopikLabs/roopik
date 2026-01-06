@@ -59,47 +59,45 @@ type WorkerMessage = WorkerReadyMessage | WorkerErrorMessage;
 
 /**
  * Get the directory where devServerWorker.mjs is located
- * Handles both development and production builds
+ * Unified approach that works in both dev and production
+ *
+ * Why we need this:
+ * - In dev: Files are in out-build/, app.getAppPath() = workspace root
+ * - In production: Files are in out/, app.getAppPath() = resources/app
+ * - import.meta.url can resolve differently depending on bundling
+ *
+ * Strategy: Try multiple known locations, use the one where worker actually exists
  */
 function getModuleDir(): string {
-	// Try import.meta.url first (works in most cases)
+	const appPath = app.getAppPath();
+	const basePath = 'vs/workbench/contrib/roopik/electron-main/projectMode/devServer';
+
+	// Try production path first: [appPath]/out/vs/...
+	const productionPath = join(appPath, 'out', basePath);
+	if (fs.existsSync(join(productionPath, 'devServerWorker.mjs'))) {
+		return productionPath;
+	}
+
+	// Try dev path: [appPath]/out-build/vs/...
+	const devPath = join(appPath, 'out-build', basePath);
+	if (fs.existsSync(join(devPath, 'devServerWorker.mjs'))) {
+		return devPath;
+	}
+
+	// Fallback: Try import.meta.url (works if module resolution is correct)
 	try {
 		const thisFileUrl = import.meta.url;
 		const thisFilePath = fileURLToPath(thisFileUrl);
 		const moduleDir = dirname(thisFilePath);
-
-		// Verify worker exists at this location
-		const workerPath = join(moduleDir, 'devServerWorker.mjs');
-		if (fs.existsSync(workerPath)) {
+		if (fs.existsSync(join(moduleDir, 'devServerWorker.mjs'))) {
 			return moduleDir;
 		}
 	} catch {
-		// import.meta.url might not work in all contexts
+		// import.meta.url not available
 	}
 
-	// Fallback: Use app.getAppPath() and construct relative path
-	// In production: app.getAppPath() = resources/app
-	// Worker should be at: resources/app/out/vs/workbench/contrib/roopik/electron-main/projectMode/devServer/
-	const appPath = app.getAppPath();
-	const relativePath = 'out/vs/workbench/contrib/roopik/electron-main/projectMode/devServer';
-	const fallbackDir = join(appPath, relativePath);
-
-	// Verify worker exists at fallback location
-	const fallbackWorkerPath = join(fallbackDir, 'devServerWorker.mjs');
-	if (fs.existsSync(fallbackWorkerPath)) {
-		return fallbackDir;
-	}
-
-	// Last resort: return the import.meta.url dirname even if worker not found
-	// (will fail with proper error message later)
-	try {
-		const thisFileUrl = import.meta.url;
-		const thisFilePath = fileURLToPath(thisFileUrl);
-		return dirname(thisFilePath);
-	} catch {
-		// If all else fails, return a path that will produce a clear error
-		return join(appPath, 'out');
-	}
+	// Last resort: return production path (will fail with clear error message)
+	return productionPath;
 }
 
 /**
