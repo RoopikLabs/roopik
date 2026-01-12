@@ -105,6 +105,70 @@ export const CLOSING_TAG_REGEX = /<\/([a-zA-Z][a-zA-Z0-9.-]*)>/g;
 // ============================================
 
 /**
+ * Check if a position in code is inside a TypeScript type context.
+ * This prevents injecting attributes into TypeScript generics like:
+ *   - React.MouseEvent<HTMLDivElement> (type annotation)
+ *   - Array<string> (generic parameter)
+ *   - T extends HTMLElement (extends clause)
+ *   - Promise<Result<T>> (nested generics)
+ *
+ * @param code - The full source code
+ * @param position - Character position to check (position of '<')
+ * @returns True if inside a TypeScript type context
+ */
+export function isInsideTypeScriptTypeContext(code: string, position: number): boolean {
+	// Look backwards from position to find context
+	const beforeMatch = code.substring(Math.max(0, position - 100), position);
+
+	// Pattern 1: Type annotation - "event: React.MouseEvent<" or "value: Array<"
+	// Look for ": TypeName<" pattern (colon followed by identifier then our position)
+	if (/:\s*[A-Za-z_$][A-Za-z0-9_$.<>]*$/.test(beforeMatch)) {
+		return true;
+	}
+
+	// Pattern 2: Generic parameter - "Promise<Result<" (nested angle brackets)
+	// Count unclosed < before this position
+	let angleBracketDepth = 0;
+	for (let i = 0; i < beforeMatch.length; i++) {
+		const char = beforeMatch[i];
+		if (char === '<') {
+			angleBracketDepth++;
+		} else if (char === '>') {
+			angleBracketDepth = Math.max(0, angleBracketDepth - 1);
+		}
+	}
+	if (angleBracketDepth > 0) {
+		return true;
+	}
+
+	// Pattern 3: Extends clause - "T extends HTMLElement" or "interface Foo extends Bar<"
+	if (/\bextends\s+[A-Za-z_$][A-Za-z0-9_$.<>]*$/.test(beforeMatch)) {
+		return true;
+	}
+
+	// Pattern 4: Type parameter declaration - "function foo<T extends "
+	if (/[<,]\s*[A-Za-z_$][A-Za-z0-9_$]*\s+extends\s+[A-Za-z_$][A-Za-z0-9_$.<>]*$/.test(beforeMatch)) {
+		return true;
+	}
+
+	// Pattern 5: Return type annotation - "): Promise<" or "=> Array<"
+	if (/[):]\s*[A-Za-z_$][A-Za-z0-9_$.<>]*$/.test(beforeMatch)) {
+		// Extra check: make sure it's not JSX return like "return <div>"
+		// JSX returns usually have whitespace/newline after return keyword
+		if (!/\breturn\s+$/.test(beforeMatch) && !/=>\s*$/.test(beforeMatch.replace(/[A-Za-z_$][A-Za-z0-9_$.<>]*$/, ''))) {
+			return true;
+		}
+	}
+
+	// Pattern 6: Type assertion - "as HTMLDivElement" or "<HTMLDivElement>"
+	if (/\bas\s+[A-Za-z_$][A-Za-z0-9_$.<>]*$/.test(beforeMatch)) {
+		return true;
+	}
+
+	return false;
+}
+
+/**
  * Check if a position in code is inside a string literal or template literal.
  * This prevents modifying HTML code that's displayed as text content
  * (e.g., code examples on tutorial websites).
@@ -278,7 +342,9 @@ export function findMatchingClosingTag(allMatches: TagMatch[], openingPos: numbe
 			foundOpening = true;
 			continue;
 		}
-		if (!foundOpening) continue;
+		if (!foundOpening) {
+			continue;
+		}
 
 		if (match.tagName === tagName) {
 			if (match.type === 'opening') {
@@ -353,6 +419,12 @@ export function parseElements(code: string, options: ParseOptions): ElementRepla
 
 			// SECURITY: Skip if inside script/style tag (HTML only)
 			if (checkScriptStyle && isInsideScriptOrStyle(code, matchStart)) {
+				continue;
+			}
+
+			// TYPESCRIPT: Skip if inside TypeScript type context (generics, type annotations)
+			// This prevents injecting into: React.MouseEvent<HTMLDivElement>, Array<string>, etc.
+			if (isInsideTypeScriptTypeContext(code, matchStart)) {
 				continue;
 			}
 

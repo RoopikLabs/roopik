@@ -11,6 +11,13 @@
  *
  * Supports all frameworks: React, Vue, Svelte, HTML
  *
+ * Strategy for React/TSX:
+ * - PRIMARY: Babel AST transformation (accurate, handles TypeScript correctly)
+ * - FALLBACK: Regex-based transformation (when Babel fails or unavailable)
+ *
+ * Strategy for other frameworks:
+ * - Regex-based transformation with TypeScript type context detection
+ *
  * Attributes injected:
  * - data-roopik-source: "file:startLine:startCol:endLine:endCol"
  * - data-roopik-component: tag name (div, Button, etc.)
@@ -30,49 +37,212 @@ interface FrameworkConfig {
 	skipTags: string[];
 	/** Check for script/style context */
 	checkScriptStyle: boolean;
+	/** Use Babel AST transformation (more accurate for JSX/TSX) */
+	useBabelAST: boolean;
 }
 
 const FRAMEWORK_CONFIGS: Record<string, FrameworkConfig> = {
 	react: {
 		extensions: ['.jsx', '.tsx'],
 		skipTags: [],
-		checkScriptStyle: false
+		checkScriptStyle: false,
+		useBabelAST: true // PRIMARY: Babel AST for React (handles TypeScript correctly)
 	},
 	vue: {
 		extensions: ['.vue'],
 		skipTags: ['script', 'style'],
-		checkScriptStyle: false
+		checkScriptStyle: false,
+		useBabelAST: false
 	},
 	svelte: {
 		extensions: ['.svelte'],
 		skipTags: ['script', 'style'],
-		checkScriptStyle: false
+		checkScriptStyle: false,
+		useBabelAST: false
 	},
 	html: {
 		extensions: ['.html', '.htm'],
 		skipTags: ['script', 'style', 'head', 'meta', 'link'],
-		checkScriptStyle: true
+		checkScriptStyle: true,
+		useBabelAST: false
 	},
 	// Solid and Preact use JSX like React
 	solid: {
 		extensions: ['.jsx', '.tsx'],
 		skipTags: [],
-		checkScriptStyle: false
+		checkScriptStyle: false,
+		useBabelAST: true // Solid also uses JSX/TSX
 	},
 	preact: {
 		extensions: ['.jsx', '.tsx'],
 		skipTags: [],
-		checkScriptStyle: false
+		checkScriptStyle: false,
+		useBabelAST: true // Preact also uses JSX/TSX
 	}
 };
+
+/**
+ * Babel core interface (minimal types for our usage)
+ * We don't depend on @types/babel__core to avoid external type dependencies
+ */
+interface IBabelCore {
+	transformSync(code: string, options?: {
+		filename?: string;
+		plugins?: any[];
+		sourceType?: string;
+		parserOpts?: {
+			sourceType?: string;
+			plugins?: string[];
+		};
+	}): { code: string | null } | null;
+}
 
 export class SourceTrackingInjector extends BaseInjector {
 	override readonly name = 'source-tracking';
 	override readonly priority = 5; // Run FIRST, before error boundary
 
+	// Cache Babel to avoid re-requiring it on every file
+	private babelCore: IBabelCore | null = null;
+	private babelLoadAttempted = false;
+
+	/**
+	 * Try to load Babel for AST-based transformation.
+	 * Returns null if Babel is not available.
+	 */
+	private getBabel(): IBabelCore | null {
+		if (this.babelLoadAttempted) {
+			return this.babelCore;
+		}
+
+		this.babelLoadAttempted = true;
+
+		try {
+			// eslint-disable-next-line local/code-no-dangerous-type-assertions
+			this.babelCore = require('@babel/core') as IBabelCore;
+			console.log('[SourceTracking] Babel loaded successfully - using AST transformation');
+			return this.babelCore;
+		} catch (e) {
+			console.log('[SourceTracking] Babel not available - using regex fallback');
+			return null;
+		}
+	}
+
+	/**
+	 * Transform JSX/TSX using Babel AST (PRIMARY METHOD for React/Solid/Preact)
+	 *
+	 * This method uses Babel to properly parse JSX and TypeScript, ensuring
+	 * we only inject attributes into actual JSX elements, not TypeScript types.
+	 *
+	 * @param code - Source code
+	 * @param filename - File path
+	 * @returns Transformed code or null if transformation failed
+	 */
+	private transformWithBabel(code: string, filename: string): string | null {
+		const babel = this.getBabel();
+		if (!babel) {
+			return null;
+		}
+
+		try {
+			const result = babel.transformSync(code, {
+				filename,
+				plugins: [
+					this.createRoopikBabelPlugin(filename)
+				],
+				sourceType: 'module',
+				parserOpts: {
+					sourceType: 'module',
+					plugins: ['jsx', 'typescript']
+				}
+			});
+
+			return result?.code || null;
+		} catch (error) {
+			console.warn('[SourceTracking] Babel transformation failed:', error);
+			return null;
+		}
+	}
+
+	/**
+	 * Create the Roopik Babel plugin for JSX transformation.
+	 *
+	 * This plugin visits all JSXElement nodes and injects our tracking attributes.
+	 * Because Babel properly parses TypeScript, it will NOT match type annotations
+	 * like React.MouseEvent<HTMLDivElement> - only actual JSX elements.
+	 *
+	 * @param filename - Source file path
+	 * @returns Babel plugin
+	 */
+	private createRoopikBabelPlugin(filename: string) {
+		const relPath = filename.replace(/\\/g, '/');
+
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		return function roopikBabelPlugin({ types: t }: { types: any }) {
+			return {
+				visitor: {
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					JSXElement(path: any, state: any) {
+						const { node } = path;
+						const elementLoc = node.loc;
+						if (!elementLoc) {
+							return;
+						}
+
+						const openingElement = node.openingElement;
+						if (!openingElement) {
+							return;
+						}
+
+						// Extract current element's tag name
+						const name = openingElement.name;
+						let currentElementName: string;
+						if (t.isJSXIdentifier(name)) {
+							currentElementName = name.name;
+						} else if (t.isJSXMemberExpression(name)) {
+							currentElementName = `${name.object.name}.${name.property.name}`;
+						} else {
+							currentElementName = 'Unknown';
+						}
+
+						// Full element location (from opening < to closing >)
+						const sourceValue = `${relPath}:${elementLoc.start.line}:${elementLoc.start.column}:${elementLoc.end.line}:${elementLoc.end.column}`;
+
+						// Check if already has our attributes
+						// eslint-disable-next-line @typescript-eslint/no-explicit-any
+						const hasRoopikAttr = openingElement.attributes.some(
+							// eslint-disable-next-line @typescript-eslint/no-explicit-any
+							(attr: any) => t.isJSXAttribute(attr) && attr.name.name === 'data-roopik-source'
+						);
+
+						if (!hasRoopikAttr) {
+							// Add source attribute
+							openingElement.attributes.push(
+								t.jsxAttribute(
+									t.jsxIdentifier('data-roopik-source'),
+									t.stringLiteral(sourceValue)
+								)
+							);
+
+							// Add component name attribute
+							openingElement.attributes.push(
+								t.jsxAttribute(
+									t.jsxIdentifier('data-roopik-component'),
+									t.stringLiteral(currentElementName)
+								)
+							);
+						}
+					}
+				}
+			};
+		};
+	}
+
 	/**
 	 * Transform source code to add tracking attributes.
 	 * This is called for each file during build.
+	 *
+	 * For React/Solid/Preact: Uses Babel AST (PRIMARY) with regex fallback
+	 * For Vue/Svelte/HTML: Uses regex with TypeScript type context detection
 	 *
 	 * @param code - The source code
 	 * @param context - Injector context with componentId and framework
@@ -93,6 +263,18 @@ export class SourceTrackingInjector extends BaseInjector {
 		}
 
 		try {
+			// For JSX/TSX frameworks with Babel AST enabled, try Babel first
+			if (config.useBabelAST && (ext === '.jsx' || ext === '.tsx')) {
+				const babelResult = this.transformWithBabel(code, filename);
+				if (babelResult) {
+					// console.log(`[SourceTracking] Babel AST transformation successful: ${filename}`);
+					return babelResult;
+				}
+				// Fall through to regex if Babel fails
+				console.log(`[SourceTracking] Babel failed, falling back to regex: ${filename}`);
+			}
+
+			// Fallback to regex-based transformation
 			const options: ParseOptions = {
 				filePath: filename,
 				baseLineOffset: 0,
@@ -146,11 +328,114 @@ export class SourceTrackingInjector extends BaseInjector {
  * Create a standalone transform function for use outside the injector pipeline.
  * Useful for direct integration with ESBuild plugins.
  *
+ * For React/Solid/Preact: Uses Babel AST (PRIMARY) with regex fallback
+ * For Vue/Svelte/HTML: Uses regex with TypeScript type context detection
+ *
  * @param framework - Target framework (react, vue, svelte, html, solid, preact)
  * @returns Transform function
  */
 export function createSourceTrackingTransform(framework: string = 'react') {
 	const config = FRAMEWORK_CONFIGS[framework] || FRAMEWORK_CONFIGS['react'];
+
+	// Cache Babel loading for performance
+	let babelCore: IBabelCore | null = null;
+	let babelLoadAttempted = false;
+
+	function getBabel(): IBabelCore | null {
+		if (babelLoadAttempted) {
+			return babelCore;
+		}
+		babelLoadAttempted = true;
+
+		try {
+			// eslint-disable-next-line local/code-no-dangerous-type-assertions
+			babelCore = require('@babel/core') as IBabelCore;
+			return babelCore;
+		} catch (e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Transform using Babel AST (for JSX/TSX)
+	 */
+	function transformWithBabel(code: string, filename: string): string | null {
+		const babel = getBabel();
+		if (!babel) {
+			return null;
+		}
+
+		const relPath = filename.replace(/\\/g, '/');
+
+		try {
+			const result = babel.transformSync(code, {
+				filename,
+				plugins: [
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					function roopikBabelPlugin({ types: t }: { types: any }) {
+						return {
+							visitor: {
+								// eslint-disable-next-line @typescript-eslint/no-explicit-any
+								JSXElement(path: any) {
+									const { node } = path;
+									const elementLoc = node.loc;
+									if (!elementLoc) return;
+
+									const openingElement = node.openingElement;
+									if (!openingElement) return;
+
+									// Extract tag name
+									const name = openingElement.name;
+									let currentElementName: string;
+									if (t.isJSXIdentifier(name)) {
+										currentElementName = name.name;
+									} else if (t.isJSXMemberExpression(name)) {
+										currentElementName = `${name.object.name}.${name.property.name}`;
+									} else {
+										currentElementName = 'Unknown';
+									}
+
+									// Build source value
+									const sourceValue = `${relPath}:${elementLoc.start.line}:${elementLoc.start.column}:${elementLoc.end.line}:${elementLoc.end.column}`;
+
+									// Check if already has attribute
+									// eslint-disable-next-line @typescript-eslint/no-explicit-any
+									const hasRoopikAttr = openingElement.attributes.some(
+										// eslint-disable-next-line @typescript-eslint/no-explicit-any
+										(attr: any) => t.isJSXAttribute(attr) && attr.name.name === 'data-roopik-source'
+									);
+
+									if (!hasRoopikAttr) {
+										openingElement.attributes.push(
+											t.jsxAttribute(
+												t.jsxIdentifier('data-roopik-source'),
+												t.stringLiteral(sourceValue)
+											)
+										);
+										openingElement.attributes.push(
+											t.jsxAttribute(
+												t.jsxIdentifier('data-roopik-component'),
+												t.stringLiteral(currentElementName)
+											)
+										);
+									}
+								}
+							}
+						};
+					}
+				],
+				sourceType: 'module',
+				parserOpts: {
+					sourceType: 'module',
+					plugins: ['jsx', 'typescript']
+				}
+			});
+
+			return result?.code || null;
+		} catch (error) {
+			return null;
+		}
+	}
 
 	return function transform(code: string, filename: string, componentId?: string): string {
 		// Check extension
@@ -168,6 +453,16 @@ export function createSourceTrackingTransform(framework: string = 'react') {
 		}
 
 		try {
+			// For JSX/TSX frameworks, try Babel first
+			if (config.useBabelAST && (ext === '.jsx' || ext === '.tsx')) {
+				const babelResult = transformWithBabel(code, filename);
+				if (babelResult) {
+					return babelResult;
+				}
+				// Fall through to regex
+			}
+
+			// Fallback to regex-based transformation
 			const options: ParseOptions = {
 				filePath: filename,
 				baseLineOffset: 0,
