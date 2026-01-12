@@ -25,6 +25,8 @@ interface SandboxCardProps {
 	viewport?: { width: number; height: number };
 	/** Position of the focused sandbox (for calculating push-away offset) */
 	focusedSandboxPosition?: { x: number; y: number } | null;
+	/** Whether select mode is enabled globally */
+	isSelectMode?: boolean;
 	/** Whether inspect mode is enabled globally */
 	isInspectMode?: boolean;
 	/** Whether inspect mode should auto-capture screenshots */
@@ -490,6 +492,7 @@ export function SandboxCard({
 	globalDeviceMode,
 	viewport,
 	focusedSandboxPosition,
+	isSelectMode = false,
 	isInspectMode = false,
 	captureOnInspectSelect = false,
 	onMouseDown,
@@ -507,6 +510,16 @@ export function SandboxCard({
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 	// Track if component is "activated" for interaction (click-to-activate for better zoom UX)
 	const [isActivated, setIsActivated] = useState(false);
+
+	// Send select mode toggle to iframe when isSelectMode changes
+	useEffect(() => {
+		if (iframeRef.current?.contentWindow) {
+			iframeRef.current.contentWindow.postMessage({
+				type: 'roopik-toggle-select',
+				enabled: isSelectMode
+			}, '*');
+		}
+	}, [isSelectMode, sandbox.id]);
 
 	// Send inspect mode toggle to iframe when isInspectMode changes
 	useEffect(() => {

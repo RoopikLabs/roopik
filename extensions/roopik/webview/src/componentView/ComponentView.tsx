@@ -763,6 +763,59 @@ function App() {
 					}
 				});
 			}
+
+			// Handle select mode: open source file in editor with selection
+			if (data.type === "roopik-select-open-source") {
+				const { sourceLocation, componentId } = data;
+				if (sourceLocation?.file) {
+					// Source file is relative (e.g., "index.tsx"), need to resolve to absolute
+					// using the component's folderPath
+					let absoluteFilePath = sourceLocation.file;
+					const sandbox = sandboxes.find(s => s.id === componentId);
+					if (sandbox?.componentInput?.folderPath && !sourceLocation.file.includes('/') && !sourceLocation.file.includes('\\')) {
+						// Relative path - combine with folderPath
+						absoluteFilePath = `${sandbox.componentInput.folderPath}/${sourceLocation.file}`;
+					}
+
+					vscode.postMessage({
+						type: 'openFile',
+						payload: {
+							filePath: absoluteFilePath,
+							line: sourceLocation.startLine || 1,
+							column: sourceLocation.startCol || 1,
+							endLine: sourceLocation.endLine,
+							endColumn: sourceLocation.endCol
+						}
+					});
+				}
+			}
+
+			// Handle select mode: open component in editor
+			if (data.type === "roopik-select-open-component") {
+				const { componentId } = data;
+				const sandbox = sandboxes.find(s => s.id === componentId);
+				if (sandbox?.componentInput?.folderPath && sandbox.componentInput.entryFile) {
+					const filePath = `${sandbox.componentInput.folderPath}/${sandbox.componentInput.entryFile}`;
+					vscode.postMessage({
+						type: 'openFile',
+						payload: {
+							filePath,
+							line: 1,
+							column: 1
+						}
+					});
+				}
+			}
+
+			// Handle select mode: ESC pressed, deselect
+			if (data.type === "roopik-select-escape") {
+				setIsSelectMode(false);
+			}
+
+			// Handle select mode: selection cleared (click outside elements)
+			if (data.type === "roopik-select-cleared") {
+				// Selection was cleared in the sandbox
+			}
 		};
 
 		window.addEventListener("message", handleIframeMessage);
@@ -1513,6 +1566,7 @@ function App() {
 					globalDeviceMode={globalDeviceMode}
 					snapMode={snapMode}
 					viewport={viewport}
+					isSelectMode={isSelectMode}
 					isInspectMode={isInspectMode}
 					captureOnInspectSelect={AUTO_ATTACH_SCREENSHOT_ON_INSPECT}
 					onTransformChange={setTransform}

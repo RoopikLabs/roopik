@@ -331,7 +331,7 @@ export type WebviewMessage =
 	// Canvas state
 	| { type: 'saveCanvas'; payload: { canvasId: string; state: CanvasState } }
 	| { type: 'loadCanvas'; payload: { canvasId: string } }
-	| { type: 'openFile'; payload: { filePath: string; line?: number; column?: number } }
+	| { type: 'openFile'; payload: { filePath: string; line?: number; column?: number; endLine?: number; endColumn?: number } }
 	| { type: 'log'; payload: { level: 'debug' | 'info' | 'warn' | 'error'; message: string; data?: unknown } }
 	// Code editor - request to load component files from workspace
 	| { type: 'loadComponentFiles'; payload: { componentId: string } }
