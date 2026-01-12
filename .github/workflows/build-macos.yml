@@ -176,7 +176,7 @@ jobs:
           name: roopik-macos-arm64
           path: |
             .artifacts/Roopik-macos-signed.zip
-          retention-days: 30
+          retention-days: 10
 
   notarize-macos-arm64:
     name: Notarize macOS (ARM64)
@@ -288,7 +288,7 @@ jobs:
         with:
           name: roopik-macos-release
           path: .artifacts/public/
-          retention-days: 30
+          retention-days: 10
 
       - name: Install AWS CLI
         continue-on-error: true

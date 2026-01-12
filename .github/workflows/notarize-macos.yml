@@ -148,7 +148,7 @@ jobs:
         with:
           name: roopik-macos-release
           path: .artifacts/public/
-          retention-days: 30
+          retention-days: 10
 
       - name: Install AWS CLI
         continue-on-error: true

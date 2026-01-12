@@ -149,7 +149,7 @@ jobs:
           path: |
             .artifacts/public/
             Roopik-Portable-win32-x64/
-          retention-days: 30
+          retention-days: 10
 
       - name: Install AWS CLI
         continue-on-error: true
