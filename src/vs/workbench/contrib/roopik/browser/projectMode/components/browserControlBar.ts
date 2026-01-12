@@ -22,11 +22,12 @@ export interface BrowserBookmark {
 export interface IBrowserControlBarConfig {
 	showDevTools?: boolean;
 	showInspectMode?: boolean;
+	showStyleInspect?: boolean;
 	showScreenshot?: boolean;
 	showHardReload?: boolean;
 	showCopyUrl?: boolean;
 	showBookmarks?: boolean;
-	showEditMode?: boolean;
+	showPendingChanges?: boolean;
 }
 
 /**
@@ -44,8 +45,10 @@ export interface IBrowserControlBarCallbacks {
 	// Features
 	onDevTools?: () => void;
 	onInspectMode?: () => void;
+	onStylePanelToggle?: () => void;  // Toggle style panel visibility
 	onHardReload?: () => void;
 	onScreenshot?: () => void;
+	onScreenshotClip?: () => void;  // Clip mode (drag-to-select region)
 	onCopyUrl?: () => void;
 
 	// Bookmarks
@@ -55,8 +58,8 @@ export interface IBrowserControlBarCallbacks {
 	getBookmarks?: () => BrowserBookmark[];
 	isBookmarked?: (url: string) => boolean;
 
-	// Edit Mode (canvas-like bottom action bar)
-	onEditModeToggle?: (enabled: boolean) => void;
+	// Pending Changes
+	onPendingChangesClick?: () => void;
 }
 
 /**
@@ -81,9 +84,14 @@ export class BrowserControlBar extends Disposable {
 	private isBookmarkOverlayVisible: boolean = false;
 	private bookmarkHideTimeout: number | undefined;
 
-	// Edit Mode state
-	private editModeButton: HTMLButtonElement | undefined;
-	private isEditModeActive: boolean = false;
+	// Feature buttons for active state styling
+	private inspectModeButton: HTMLButtonElement | undefined;
+	private stylePanelButton: HTMLButtonElement | undefined;
+	private devToolsButton: HTMLButtonElement | undefined;
+
+	// Pending changes button with badge
+	private pendingChangesButton: HTMLButtonElement | undefined;
+	private pendingChangesBadge: HTMLElement | undefined;
 
 	constructor(
 		parent: HTMLElement,
@@ -92,7 +100,7 @@ export class BrowserControlBar extends Disposable {
 	) {
 		super();
 		this.container = this.createContainer(parent);
-		this.progressBar = this.createProgressBar(parent);
+		this.progressBar = this.createProgressBar(this.container); // Fix: attach to control bar container, not parent
 		this.urlInput = this.createUrlInput();
 		this.render();
 	}
@@ -101,11 +109,13 @@ export class BrowserControlBar extends Disposable {
 		const container = document.createElement('div');
 		container.style.display = 'flex';
 		container.style.alignItems = 'center';
-		container.style.padding = '8px';
-		container.style.gap = '8px';
-		container.style.borderBottom = '1px solid var(--vscode-panel-border)';
-		container.style.backgroundColor = 'var(--vscode-editor-background)';
-		container.style.position = 'relative';
+		container.style.padding = '4px 8px';
+		container.style.gap = '4px';
+		container.style.border = '1px solid var(--vscode-panel-border)';
+		container.style.borderTop = 'none';
+		container.style.backgroundColor = 'var(--vscode-sideBar-background)';
+		container.style.position = 'relative'; // Required for absolute positioning of progress bar
+		container.style.overflow = 'hidden'; // Ensure progress bar doesn't overflow
 		parent.appendChild(container);
 		return container;
 	}
@@ -120,6 +130,7 @@ export class BrowserControlBar extends Disposable {
 		progressContainer.style.backgroundColor = 'transparent';
 		progressContainer.style.overflow = 'hidden';
 		progressContainer.style.zIndex = '1000';
+		progressContainer.style.pointerEvents = 'none'; // Prevent interaction with progress bar
 
 		const progressBar = document.createElement('div');
 		progressBar.style.height = '100%';
@@ -155,28 +166,32 @@ export class BrowserControlBar extends Disposable {
 		// Stop Dev Server button (placeholder - feature coming later)
 		this.createIconButton(Codicon.debugStop, 'Stop Dev Server', () => this.callbacks.onStopDevServer());
 
-		// Edit Mode button (shows/hides the bottom action bar for canvas-like editing)
-		if (this.config.showEditMode && this.callbacks.onEditModeToggle) {
-			this.editModeButton = this.createIconButton(Codicon.edit, 'Toggle Edit Mode', () => this.toggleEditMode());
-			this.updateEditModeButtonState();
-		}
-
 		// Separator before action buttons
 		this.createSeparator();
 
 		// Inspect Mode button (for element inspection)
 		if (this.config.showInspectMode && this.callbacks.onInspectMode) {
-			this.createIconButton(Codicon.inspect, 'Inspect Mode', () => this.callbacks.onInspectMode!());
+			this.inspectModeButton = this.createIconButton(Codicon.inspect, 'Inspect Mode', () => this.callbacks.onInspectMode!());
+		}
+
+		// Style Panel toggle button (sidebar icon - toggles CSS panel)
+		if (this.config.showStyleInspect && this.callbacks.onStylePanelToggle) {
+			this.stylePanelButton = this.createIconButton(Codicon.layoutSidebarRight, 'Toggle Style Panel', () => this.callbacks.onStylePanelToggle!());
 		}
 
 		// DevTools button
 		if (this.config.showDevTools && this.callbacks.onDevTools) {
-			this.createIconButton(Codicon.terminal, 'Toggle DevTools', () => this.callbacks.onDevTools!());
+			this.devToolsButton = this.createIconButton(Codicon.terminal, 'Toggle DevTools', () => this.callbacks.onDevTools!());
 		}
 
-		// Screenshot button
-		if (this.config.showScreenshot && this.callbacks.onScreenshot) {
-			this.createIconButton(Codicon.deviceCamera, 'Take Screenshot', () => this.callbacks.onScreenshot!());
+		// Screenshot button (left click = clip, right click = full)
+		if (this.config.showScreenshot && this.callbacks.onScreenshot && this.callbacks.onScreenshotClip) {
+			this.createDualActionScreenshotButton();
+		}
+
+		// Pending Changes button with badge
+		if (this.config.showPendingChanges && this.callbacks.onPendingChangesClick) {
+			this.createPendingChangesButton();
 		}
 
 		// Overflow menu for Hard Reload and Copy URL
@@ -322,6 +337,20 @@ export class BrowserControlBar extends Disposable {
 				}
 			};
 			setTimeout(() => document.addEventListener('click', closeOnClickOutside), 0);
+
+			// Auto-close after 1.5s when mouse leaves menu
+			let autoCloseTimer: ReturnType<typeof setTimeout> | undefined;
+			const startAutoClose = () => {
+				autoCloseTimer = setTimeout(() => this.hideOverflowMenu(), 1500);
+			};
+			const cancelAutoClose = () => {
+				if (autoCloseTimer) {
+					clearTimeout(autoCloseTimer);
+					autoCloseTimer = undefined;
+				}
+			};
+			this.overflowMenu.onmouseleave = startAutoClose;
+			this.overflowMenu.onmouseenter = cancelAutoClose;
 		}
 	}
 
@@ -363,7 +392,7 @@ export class BrowserControlBar extends Disposable {
 	private createIconButton(icon: ThemeIcon, tooltip: string, onClick: () => void): HTMLButtonElement {
 		const button = document.createElement('button');
 		button.title = tooltip;
-		button.style.padding = '4px';
+		button.style.padding = '2px';
 		button.style.cursor = 'pointer';
 		button.style.border = 'none';
 		button.style.backgroundColor = 'transparent';
@@ -371,13 +400,13 @@ export class BrowserControlBar extends Disposable {
 		button.style.display = 'flex';
 		button.style.alignItems = 'center';
 		button.style.justifyContent = 'center';
-		button.style.width = '28px';
-		button.style.height = '28px';
+		button.style.width = '24px';
+		button.style.height = '24px';
 		button.style.color = 'var(--vscode-foreground)';
 
 		const iconElement = document.createElement('span');
 		iconElement.className = ThemeIcon.asClassName(icon);
-		iconElement.style.fontSize = '16px';
+		iconElement.style.fontSize = '14px';
 		button.appendChild(iconElement);
 
 		button.onmouseenter = () => {
@@ -395,12 +424,60 @@ export class BrowserControlBar extends Disposable {
 		return button;
 	}
 
+	/**
+	 * Create dual-action screenshot button
+	 * Left click = clip mode, Right click = full screenshot
+	 */
+	private createDualActionScreenshotButton(): void {
+		const button = document.createElement('button');
+		button.title = 'Click to clip, right click to capture whole screen';
+		button.style.padding = '2px';
+		button.style.cursor = 'pointer';
+		button.style.border = 'none';
+		button.style.backgroundColor = 'transparent';
+		button.style.borderRadius = '2px';
+		button.style.display = 'flex';
+		button.style.alignItems = 'center';
+		button.style.justifyContent = 'center';
+		button.style.width = '24px';
+		button.style.height = '24px';
+		button.style.color = 'var(--vscode-foreground)';
+
+		const iconElement = document.createElement('span');
+		iconElement.className = ThemeIcon.asClassName(Codicon.deviceCamera);
+		iconElement.style.fontSize = '14px';
+		button.appendChild(iconElement);
+
+		button.onmouseenter = () => {
+			button.style.backgroundColor = 'var(--vscode-toolbar-hoverBackground)';
+		};
+		button.onmouseleave = () => {
+			button.style.backgroundColor = 'transparent';
+		};
+
+		// Left click = clip mode
+		button.onclick = (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+			this.callbacks.onScreenshotClip?.();
+		};
+
+		// Right click = full screenshot
+		button.oncontextmenu = (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			this.callbacks.onScreenshot?.();
+		};
+
+		this.container.appendChild(button);
+	}
+
 	private createSeparator(): void {
 		const separator = document.createElement('div');
 		separator.style.width = '1px';
-		separator.style.height = '20px';
+		separator.style.height = '16px';
 		separator.style.backgroundColor = 'var(--vscode-panel-border)';
-		separator.style.margin = '0 4px';
+		separator.style.margin = '0 2px';
 		this.container.appendChild(separator);
 	}
 
@@ -408,6 +485,7 @@ export class BrowserControlBar extends Disposable {
 		// Create wrapper for URL input + bookmark star
 		this.urlInputWrapper = document.createElement('div');
 		this.urlInputWrapper.style.flex = '1';
+		this.urlInputWrapper.style.minWidth = '200px'; // Minimum width to prevent disappearing
 		this.urlInputWrapper.style.position = 'relative';
 		this.urlInputWrapper.style.display = 'flex';
 		this.urlInputWrapper.style.alignItems = 'center';
@@ -416,14 +494,25 @@ export class BrowserControlBar extends Disposable {
 		input.type = 'text';
 		input.placeholder = 'Enter URL (e.g., http://localhost:3000)';
 		input.style.width = '100%';
-		input.style.padding = '6px 12px';
-		input.style.paddingRight = this.config.showBookmarks ? '32px' : '12px'; // Space for star
+		input.style.padding = '4px 8px';
+		input.style.paddingRight = this.config.showBookmarks ? '28px' : '8px'; // Space for star
 		input.style.border = '1px solid var(--vscode-input-border)';
 		input.style.backgroundColor = 'var(--vscode-input-background)';
 		input.style.color = 'var(--vscode-input-foreground)';
-		input.style.borderRadius = '2px';
-		input.style.fontSize = '13px';
+		input.style.borderRadius = '3px';
+		input.style.fontSize = '12px';
 		input.style.boxSizing = 'border-box';
+		input.style.outline = 'none';
+
+		// Focus/blur handlers for visual feedback
+		input.onfocus = () => {
+			input.style.border = '1px solid var(--vscode-focusBorder)';
+			input.style.outline = '1px solid var(--vscode-focusBorder)';
+		};
+		input.onblur = () => {
+			input.style.border = '1px solid var(--vscode-input-border)';
+			input.style.outline = 'none';
+		};
 
 		input.onkeydown = (e) => {
 			if (e.key === 'Enter') {
@@ -924,50 +1013,134 @@ export class BrowserControlBar extends Disposable {
 	}
 
 	// ============================================
-	// Edit Mode
+	// Pending Changes Button
 	// ============================================
 
 	/**
-	 * Toggle edit mode (shows/hides the bottom action bar)
+	 * Create pending changes button with badge
 	 */
-	private toggleEditMode(): void {
-		this.isEditModeActive = !this.isEditModeActive;
-		this.updateEditModeButtonState();
-		this.callbacks.onEditModeToggle?.(this.isEditModeActive);
+	private createPendingChangesButton(): void {
+		// Container for button + badge
+		const wrapper = document.createElement('div');
+		wrapper.style.cssText = `
+			position: relative;
+			display: inline-flex;
+		`;
+
+		// Create the button
+		this.pendingChangesButton = document.createElement('button');
+		this.pendingChangesButton.style.cssText = `
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 24px;
+			height: 24px;
+			padding: 0;
+			border: none;
+			background: transparent;
+			color: var(--vscode-foreground);
+			cursor: pointer;
+			border-radius: 3px;
+		`;
+		this.pendingChangesButton.title = 'Pending Changes';
+
+		// Icon
+		const icon = document.createElement('span');
+		icon.className = ThemeIcon.asClassName(Codicon.diff);
+		icon.style.fontSize = '14px';
+		this.pendingChangesButton.appendChild(icon);
+
+		// Hover effects
+		this.pendingChangesButton.onmouseenter = () => {
+			this.pendingChangesButton!.style.backgroundColor = 'var(--vscode-toolbar-hoverBackground)';
+		};
+		this.pendingChangesButton.onmouseleave = () => {
+			this.pendingChangesButton!.style.backgroundColor = 'transparent';
+		};
+
+		// Click handler
+		this.pendingChangesButton.onclick = () => {
+			this.callbacks.onPendingChangesClick?.();
+		};
+
+		// Create badge (hidden by default)
+		this.pendingChangesBadge = document.createElement('span');
+		this.pendingChangesBadge.style.cssText = `
+			position: absolute;
+			top: -2px;
+			right: -2px;
+			min-width: 12px;
+			height: 12px;
+			padding: 0 3px;
+			font-size: 9px;
+			font-weight: 600;
+			line-height: 12px;
+			text-align: center;
+			border-radius: 6px;
+			background: var(--vscode-badge-background, #007acc);
+			color: var(--vscode-badge-foreground, #fff);
+			display: none;
+		`;
+
+		wrapper.appendChild(this.pendingChangesButton);
+		wrapper.appendChild(this.pendingChangesBadge);
+		this.container.appendChild(wrapper);
 	}
 
 	/**
-	 * Update the edit mode button appearance based on state
+	 * Update pending changes count badge
 	 */
-	private updateEditModeButtonState(): void {
-		if (!this.editModeButton) {
+	setPendingChangesCount(count: number): void {
+		if (!this.pendingChangesBadge) return;
+
+		if (count > 0) {
+			this.pendingChangesBadge.textContent = count > 99 ? '99+' : String(count);
+			this.pendingChangesBadge.style.display = 'block';
+		} else {
+			this.pendingChangesBadge.style.display = 'none';
+		}
+	}
+
+	// ============================================
+	// Feature Button Active States
+	// ============================================
+
+	/**
+	 * Update inspect mode button active state (blue outline when active)
+	 */
+	setInspectModeActive(active: boolean): void {
+		this.updateButtonActiveState(this.inspectModeButton, active);
+	}
+
+	/**
+	 * Update style panel button active state (blue outline when active)
+	 */
+	setStylePanelActive(active: boolean): void {
+		this.updateButtonActiveState(this.stylePanelButton, active);
+	}
+
+	/**
+	 * Update devtools button active state (blue outline when active)
+	 */
+	setDevToolsActive(active: boolean): void {
+		this.updateButtonActiveState(this.devToolsButton, active);
+	}
+
+	/**
+	 * Helper to update button active state with blue outline
+	 */
+	private updateButtonActiveState(button: HTMLButtonElement | undefined, active: boolean): void {
+		if (!button) {
 			return;
 		}
 
-		if (this.isEditModeActive) {
-			// Active state - highlighted (override hover handlers)
-			this.editModeButton.style.backgroundColor = 'var(--vscode-toolbar-activeBackground, rgba(99, 102, 241, 0.2))';
-			this.editModeButton.style.color = 'var(--vscode-focusBorder, #007acc)';
-
-			// Keep highlighted even on hover
-			this.editModeButton.onmouseenter = () => {
-				this.editModeButton!.style.backgroundColor = 'var(--vscode-toolbar-activeBackground, rgba(99, 102, 241, 0.3))';
-			};
-			this.editModeButton.onmouseleave = () => {
-				this.editModeButton!.style.backgroundColor = 'var(--vscode-toolbar-activeBackground, rgba(99, 102, 241, 0.2))';
-			};
+		if (active) {
+			// Active state - blue outline
+			button.style.outline = '1px solid var(--vscode-focusBorder, #007acc)';
+			button.style.outlineOffset = '-1px';
 		} else {
-			// Inactive state - normal hover behavior
-			this.editModeButton.style.backgroundColor = 'transparent';
-			this.editModeButton.style.color = 'var(--vscode-foreground)';
-
-			// Restore normal hover handlers
-			this.editModeButton.onmouseenter = () => {
-				this.editModeButton!.style.backgroundColor = 'var(--vscode-toolbar-hoverBackground)';
-			};
-			this.editModeButton.onmouseleave = () => {
-				this.editModeButton!.style.backgroundColor = 'transparent';
-			};
+			// Inactive state - no outline
+			button.style.outline = 'none';
 		}
 	}
 
@@ -1019,13 +1192,14 @@ export class BrowserControlBar extends Disposable {
 	}
 
 	showLoading(): void {
-		// Stop any existing animation
+		// Stop any existing animation FIRST to prevent duplicates
 		if (this.loadingAnimation) {
 			cancelAnimationFrame(this.loadingAnimation);
 			this.loadingAnimation = undefined;
 		}
 
-		// Use indeterminate animation (like Chrome's loading bar)
+		// Reset progress bar state
+		this.progressBar.style.marginLeft = '0';
 		this.progressBar.style.transition = 'none';
 		this.progressBar.style.width = '30%';
 

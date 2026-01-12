@@ -88,13 +88,11 @@ export class DevToolsExtensionLoader {
 
 		// Check if extensions directory exists
 		if (!fs.existsSync(this.extensionsDir)) {
-			console.log('[DevToolsExtensions] Extensions directory not found:', this.extensionsDir);
 			return results;
 		}
 
 		// Check if manifest exists
 		if (!fs.existsSync(this.manifestPath)) {
-			console.log('[DevToolsExtensions] Manifest not found:', this.manifestPath);
 			return results;
 		}
 
@@ -117,7 +115,6 @@ export class DevToolsExtensionLoader {
 		// Load each enabled extension
 		for (const entry of manifest.extensions) {
 			if (!entry.enabled) {
-				console.log(`[DevToolsExtensions] Skipping disabled extension: ${entry.name}`);
 				continue;
 			}
 
@@ -163,7 +160,6 @@ export class DevToolsExtensionLoader {
 			});
 
 			this.loadedExtensions.set(entry.name, extension);
-			console.log(`[DevToolsExtensions] Loaded: ${entry.name} (ID: ${extension.id})`);
 
 			return {
 				name: entry.name,
@@ -201,7 +197,6 @@ export class DevToolsExtensionLoader {
 		for (const [name, extension] of this.loadedExtensions) {
 			try {
 				await targetSession.removeExtension(extension.id);
-				console.log(`[DevToolsExtensions] Removed: ${name}`);
 			} catch (e) {
 				console.error(`[DevToolsExtensions] Failed to remove ${name}:`, e);
 			}

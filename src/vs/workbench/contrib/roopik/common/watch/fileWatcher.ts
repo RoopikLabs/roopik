@@ -192,6 +192,41 @@ export interface IFileWatcher {
 	clearIgnoredComponents(): void;
 
 	// ============================================================================
+	// Folder Watch Registration (Metadata-Only Architecture)
+	// ============================================================================
+
+	/**
+	 * Register a folder to watch for a specific component
+	 *
+	 * With metadata-only architecture, components stay in their original locations.
+	 * This method watches the ORIGINAL folder (not .roopik/)
+	 *
+	 * @param componentId Component ID
+	 * @param folderPath Absolute path to component folder (original location)
+	 */
+	registerFolderWatch(componentId: string, folderPath: string, canvasId: string): void;
+
+	/**
+	 * Unregister folder watch for a component
+	 *
+	 * @param componentId Component ID to stop watching
+	 */
+	unregisterFolderWatch(componentId: string): void;
+
+	/**
+	 * Check if a folder is currently being watched for a component
+	 *
+	 * @param componentId Component ID to check
+	 */
+	isFolderWatched(componentId: string): boolean;
+
+	/**
+	 * Get all registered folder watches
+	 * Returns map of componentId → folderPath
+	 */
+	getRegisteredWatches(): Map<string, string>;
+
+	// ============================================================================
 	// Events
 	// ============================================================================
 

@@ -10,14 +10,7 @@
 // Types
 export {
 	Component,
-	CreateComponentRequest,
-	SourceData,
-	AIAgentSourceData,
-	LocalFileSourceData,
-	GitHubSourceData,
-	FigmaSourceData,
-	ManualSourceData,
-	ImportResult,
+	AddComponentRequest,
 	BuildResult,
 	BuildError,
 	BuildErrorInfo,
@@ -32,3 +25,8 @@ export {
 	ComponentDeletedEvent,
 	ComponentUpdatedEvent
 } from './componentService.js';
+
+/**
+ * IPC Channel name for ComponentService communication.
+*/
+export const COMPONENT_CHANNEL_NAME = 'roopikComponent';

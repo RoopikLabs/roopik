@@ -8,14 +8,14 @@
 AppId={#AppId}
 AppName={#NameLong}
 AppVerName={#NameVersion}
-AppPublisher=Microsoft Corporation
-AppPublisherURL=https://code.visualstudio.com/
-AppSupportURL=https://code.visualstudio.com/
-AppUpdatesURL=https://code.visualstudio.com/
+AppPublisher=Roopik Labs
+AppPublisherURL=https://roopik.com/
+AppSupportURL=https://roopik.com/support
+AppUpdatesURL=https://roopik.com/updates
 DefaultGroupName={#NameLong}
 AllowNoIcons=yes
 OutputDir={#OutputDir}
-OutputBaseFilename=VSCodeSetup
+OutputBaseFilename=RoopikSetup
 Compression=lzma
 SolidCompression=yes
 AppMutex={code:GetAppMutex}
@@ -1315,7 +1315,7 @@ begin
 
   #if "user" == InstallTarget
     if not WizardSilent() and IsAdmin() then begin
-      if MsgBox('This User Installer is not meant to be run as an Administrator. If you would like to install VS Code for all users in this system, download the System Installer instead from https://code.visualstudio.com. Are you sure you want to continue?', mbError, MB_OKCANCEL) = IDCANCEL then begin
+      if MsgBox('This User Installer is not meant to be run as an Administrator. If you would like to install Roopik for all users in this system, download the System Installer instead from https://roopik.com. Are you sure you want to continue?', mbError, MB_OKCANCEL) = IDCANCEL then begin
         Result := False;
       end;
     end;
@@ -1357,7 +1357,7 @@ var
 	TaskKilled: Integer;
 begin
 	Log('Stopping all tunnel services (at ' + ExpandConstant('"{app}\bin\{#TunnelApplicationName}.exe"') + ')');
-	ShellExec('', 'powershell.exe', '-Command "Get-WmiObject Win32_Process | Where-Object { $_.ExecutablePath -eq ' + ExpandConstant('''{app}\bin\{#TunnelApplicationName}.exe''') + ' } | Select @{Name=''Id''; Expression={$_.ProcessId}} | Stop-Process -Force"', '', SW_HIDE, ewWaitUntilTerminated, TaskKilled)
+	ShellExec('', 'powershell.exe', '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command "Get-WmiObject Win32_Process | Where-Object { $_.ExecutablePath -eq ' + ExpandConstant('''{app}\bin\{#TunnelApplicationName}.exe''') + ' } | Select @{Name=''Id''; Expression={$_.ProcessId}} | Stop-Process -Force"', '', SW_HIDE, ewWaitUntilTerminated, TaskKilled)
 
 	WaitCounter := 10;
 	while (WaitCounter > 0) and CheckForMutexes('{#TunnelMutex}') do

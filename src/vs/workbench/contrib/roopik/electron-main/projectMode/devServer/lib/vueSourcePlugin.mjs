@@ -189,8 +189,20 @@ function transformWithRegex(code, id, verboseLogging) {
 	const templateContent = templateMatch[1];
 
 	// Count lines before template to get correct line offset
+	// The <template> tag itself is on some line N.
+	// Content inside starts after the opening tag.
+	// We need to calculate what line number the template content starts at.
+	//
+	// beforeTemplate.split('\n').length gives us the line count, but:
+	// - If <template> is on line 1: beforeTemplate="", split gives [""], length=1
+	// - If <template> is on line 2: beforeTemplate="<script>...\n", split gives [..., ""], length=2
+	//
+	// So linesBeforeTemplate is actually (line number of <template>), not (lines before).
+	// We need to subtract 1 to get the actual offset for the base calculation,
+	// because sourceTrackingCore.calculatePosition adds baseLineOffset + lineOffset + 1.
 	const beforeTemplate = code.substring(0, templateMatch.index);
-	const linesBeforeTemplate = beforeTemplate.split('\n').length;
+	const templateLineNumber = beforeTemplate.split('\n').length; // Line where <template> appears (1-indexed)
+	const linesBeforeTemplate = templateLineNumber - 1; // Convert to 0-indexed offset (like AST method)
 
 	// Extract component name from .vue filename
 	const componentName = basename(id, '.vue');

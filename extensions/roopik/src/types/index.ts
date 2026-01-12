@@ -1,6 +1,6 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Roopik. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
 /**
@@ -27,11 +27,9 @@ export type {
 // Component types
 export type {
 	Component,
-	ComponentSource,
 	ComponentFramework,
 	ComponentBuildState,
-	SourceData,
-	CreateComponentRequest,
+	AddComponentRequest,
 	BuildResult,
 	BuildErrorInfo
 } from './component';

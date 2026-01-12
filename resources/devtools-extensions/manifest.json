@@ -1,52 +1,25 @@
 {
-	"$schema": "./manifest.schema.json",
-	"description": "DevTools extensions for Roopik browser preview. Add unpacked Chrome DevTools extensions here.",
-	"instructions": {
-		"howToAdd": [
-			"1. Download the extension from Chrome Web Store (use CRX Extractor)",
-			"2. Extract the .crx file (rename to .zip and unzip)",
-			"3. Create a folder with the extension name (e.g., 'react-devtools')",
-			"4. Copy the extracted contents into that folder",
-			"5. Add an entry to the 'extensions' array below",
-			"6. Restart Roopik"
-		],
-		"supportedExtensions": [
-			"React Developer Tools",
-			"Vue.js devtools",
-			"Redux DevTools",
-			"Angular DevTools",
-			"Preact DevTools",
-			"Svelte DevTools",
-			"Most DevTools-only extensions"
-		],
-		"notSupported": [
-			"Extensions requiring chrome.tabs API",
-			"Extensions requiring chrome.storage.sync",
-			"Extensions that modify browser UI",
-			"Ad blockers, password managers, etc."
-		]
-	},
-	"extensions": [
-		{
-			"name": "React Developer Tools",
-			"path": "react-devtools",
-			"enabled": true,
-			"description": "Inspect React component hierarchy, props, state, and hooks",
-			"chromeWebStoreId": "fmkadmapgofadopljbjfkapdkoienihi"
-		},
-		{
-			"name": "Vue.js devtools",
-			"path": "vue-devtools",
-			"enabled": true,
-			"description": "Debug Vue.js applications",
-			"chromeWebStoreId": "nhdogjmejiglipccpnnnanhbledajbpd"
-		},
-		{
-			"name": "Redux DevTools",
-			"path": "redux-devtools",
-			"enabled": true,
-			"description": "Debug Redux state changes",
-			"chromeWebStoreId": "lmhkpmbekcpmknklioeibfkpmmfibljd"
-		}
-	]
+  "extensions": [
+    {
+      "name": "React DevTools",
+      "path": "react-devtools",
+      "enabled": true,
+      "description": "React Developer Tools for debugging React applications",
+      "chromeWebStoreId": "fmkadmapgofadopljbjfkapdkoienihi"
+    },
+    {
+      "name": "Vue DevTools",
+      "path": "vue-devtools",
+      "enabled": true,
+      "description": "Vue.js devtools for debugging Vue applications",
+      "chromeWebStoreId": "nhdogjmejiglipccpnnnanhbledajbpd"
+    },
+    {
+      "name": "Redux DevTools",
+      "path": "redux-devtools",
+      "enabled": true,
+      "description": "Redux DevTools for debugging Redux applications",
+      "chromeWebStoreId": "lmhkpmbekcpmknklioeibfkpmmfibljd"
+    }
+  ]
 }

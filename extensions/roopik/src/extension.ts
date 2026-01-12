@@ -1,12 +1,13 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Roopik. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { RoopikExtensionManager } from './roopikExtensionManager';
 import { Logger, LogLevel } from './logger';
+import type { Component, BuildResult, BuildErrorInfo } from './types/component';
 
 /**
  * Roopik Canvas Extension
@@ -53,6 +54,18 @@ export async function activate(context: vscode.ExtensionContext) {
 	try {
 		await manager.initialize(context);
 		logger.info('Extension', 'RoopikExtensionManager initialized');
+
+		// Restore last active canvas (if any)
+		try {
+			// const restored = await manager.restoreLastActiveCanvas(context.extensionUri);
+			await manager.restoreLastActiveCanvas(context.extensionUri);
+			// if (restored) {
+			// 	logger.info('Extension', 'Last active canvas restored successfully');
+			// }
+		} catch (error) {
+			// Don't fail activation if restoration fails
+			logger.warn('Extension', `Failed to restore last active canvas: ${error}`);
+		}
 	} catch (error) {
 		logger.error('Extension', 'Failed to initialize RoopikExtensionManager', error);
 		vscode.window.showErrorMessage(`Roopik initialization failed: ${error}`);
@@ -126,16 +139,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	const importComponentCommand = vscode.commands.registerCommand(
 		'roopik.canvas.importComponent',
 		async (request: { path: string; canvasId: string; position?: { x: number; y: number } }) => {
-			const { path: filePath, canvasId, position } = request;
+			const { path: filePath, canvasId } = request;
 
 			logger.info('Extension', `Importing component from ${filePath} to canvas ${canvasId}`);
 
 			try {
-				// Read the file content
-				const fileUri = vscode.Uri.file(filePath);
-				const fileContent = await vscode.workspace.fs.readFile(fileUri);
-				const code = Buffer.from(fileContent).toString('utf-8');
-
 				// Extract filename for component name
 				const fileName = filePath.split(/[\\/]/).pop() || 'Component';
 				const componentName = fileName.replace(/\.[^/.]+$/, '');
@@ -154,15 +162,12 @@ export async function activate(context: vscode.ExtensionContext) {
 				}
 
 				// Create component via manager (which calls Core)
+				// With new API, just pass folderPath - Core handles everything else
 				await manager!.createComponent({
+					folderPath: filePath, // Core will smart-parse this (extract folder + entry file)
 					canvasId,
-					name: componentName,
-					sourceData: {
-						type: 'local-file',
-						filePath,
-						files: { [fileName]: code }
-					},
-					position
+					componentName,
+					origin: 'local'
 				});
 
 				logger.info('Extension', `Component ${componentName} import initiated for canvas ${canvasId}`);
@@ -188,7 +193,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			manager!.handleComponentCreatedFromCore({
 				componentId: event.componentId,
 				canvasId: event.canvasId,
-				component: event.component as any
+				component: event.component as Component
 			});
 		}
 	);
@@ -202,9 +207,9 @@ export async function activate(context: vscode.ExtensionContext) {
 				componentId: event.componentId,
 				canvasId: event.canvasId,
 				success: event.success,
-				result: event.result as any,
-				errorInfo: event.errorInfo as any,
-				trigger: event.trigger as any
+				result: event.result as (Omit<BuildResult, 'bundledCode'> & { bundlePath?: string }) | undefined,
+				errorInfo: event.errorInfo as BuildErrorInfo | undefined,
+				trigger: event.trigger as 'create' | 'update' | 'rebuild' | 'file-change'
 			});
 		}
 	);
@@ -226,8 +231,8 @@ export async function activate(context: vscode.ExtensionContext) {
 			manager!.handleComponentUpdatedFromCore({
 				componentId: event.componentId,
 				canvasId: event.canvasId,
-				component: event.component as any,
-				changes: event.changes as any
+				component: event.component as Component,
+				changes: event.changes as ('name' | 'source')[]
 			});
 		}
 	);
@@ -244,9 +249,9 @@ export async function activate(context: vscode.ExtensionContext) {
 		componentUpdatedCommand
 	);
 
-	logger.info('Extension', 'Roopik Canvas extension activated');
-	logger.info('Extension', 'Canvas commands: roopik.canvas.open, roopik.canvas.close, roopik.canvas.update, roopik.canvas.importComponent');
-	logger.info('Extension', 'Component event commands: roopik.component.created, roopik.component.built, roopik.component.deleted, roopik.component.updated');
+	// logger.info('Extension', 'Roopik Canvas extension activated');
+	// logger.info('Extension', 'Canvas commands: roopik.canvas.open, roopik.canvas.close, roopik.canvas.update, roopik.canvas.importComponent');
+	// logger.info('Extension', 'Component event commands: roopik.component.created, roopik.component.built, roopik.component.deleted, roopik.component.updated');
 }
 
 export function deactivate() {

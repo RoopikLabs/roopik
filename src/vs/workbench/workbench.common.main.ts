@@ -126,6 +126,7 @@ import './services/textMate/browser/textMateTokenizationFeature.contribution.js'
 import './services/treeSitter/browser/treeSitter.contribution.js';
 import './services/userActivity/common/userActivityService.js';
 import './services/userActivity/browser/userActivityBrowser.js';
+import './services/userAttention/browser/userAttentionBrowser.js';
 import './services/editor/browser/editorPaneService.js';
 import './services/editor/common/customEditorLabelService.js';
 import './services/dataChannel/browser/dataChannelService.js';
@@ -205,6 +206,7 @@ import './contrib/speech/browser/speech.contribution.js';
 
 // Roopik Design IDE
 import './contrib/roopik/browser/roopik.contribution.js';
+import './contrib/roopik/browser/roodioChatActions.js';  // ROOPIK AGENT CHAT ICON
 
 // Chat
 import './contrib/chat/browser/chat.contribution.js';

@@ -16,6 +16,11 @@ import { IEditorGroup } from '../../../services/editor/common/editorGroupsServic
 import { FileAccess } from '../../../../base/common/network.js';
 import { IRoopikSettingsService } from '../common/settings/index.js';
 import { RoopikWelcomeInput, WelcomeViewMode } from './welcomeInput.js';
+import { ICanvasService } from '../common/canvas/index.js';
+import { IProjectStorageService } from '../common/projectStorage/index.js';
+import type { CanvasMeta } from '../common/canvas/types.js';
+import type { ProjectInfo } from '../common/storage/storageTypes.js';
+import { IViewsService } from '../../../services/views/common/viewsService.js';
 import './media/welcomeEditor.css';
 
 export class RoopikWelcomeEditor extends EditorPane {
@@ -27,21 +32,61 @@ export class RoopikWelcomeEditor extends EditorPane {
 	// Current view mode (welcome screen or settings)
 	private currentView: WelcomeViewMode = 'welcome';
 
+	// Containers for dynamic content
+	private recentCanvasesContainer: HTMLElement | undefined;
+	private recentProjectsContainer: HTMLElement | undefined;
+
+	// Loading guards to prevent concurrent loads
+	private isLoadingCanvases: boolean = false;
+	private isLoadingProjects: boolean = false;
+
+	/** Timeout handle for project loading */
+	private projectLoadingTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
+	/** Whether project service is initialized */
+	private projectServiceInitialized: boolean = false;
+	/** Loading timeout (5 seconds) */
+	private static readonly LOADING_TIMEOUT_MS = 5000;
+
 	constructor(
 		group: IEditorGroup,
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IThemeService themeService: IThemeService,
 		@IStorageService private readonly storageService: IStorageService,
 		@ICommandService private readonly commandService: ICommandService,
-		@IRoopikSettingsService private readonly settingsService: IRoopikSettingsService
+		@IRoopikSettingsService private readonly settingsService: IRoopikSettingsService,
+		@ICanvasService private readonly canvasService: ICanvasService,
+		@IProjectStorageService private readonly projectStorageService: IProjectStorageService,
+		@IViewsService private readonly viewsService: IViewsService
 	) {
 		super(RoopikWelcomeEditor.ID, group, telemetryService, themeService, storageService);
+
+		// Subscribe to service events to auto-refresh
+		this._register(this.canvasService.onDidInitialize(() => this.loadRecentCanvases()));
+		this._register(this.canvasService.onCanvasCreated(() => this.loadRecentCanvases()));
+		this._register(this.canvasService.onCanvasDeleted(() => this.loadRecentCanvases()));
+		this._register(this.canvasService.onCanvasUpdated(() => this.loadRecentCanvases()));
+
+		this._register(this.projectStorageService.onDidInitialize(() => {
+			this.projectServiceInitialized = true;
+			this.clearProjectLoadingTimeout();
+			this.loadRecentProjects();
+		}));
+		this._register(this.projectStorageService.onProjectsChanged(() => this.loadRecentProjects()));
 	}
 
 	protected createEditor(parent: HTMLElement): void {
 		this.rootElement = parent;
 		this.rootElement.classList.add('roopik-welcome');
 		this.renderCurrentView();
+
+		// Auto-open the Dio agent sidebar after a short delay
+		// This ensures the extension is activated and webview is mounted
+		// before the user tries to send their first message
+		setTimeout(() => {
+			this.viewsService.openView('roodio.ChatPanel', false).catch(() => {
+				// Agent not available - ignore silently
+			});
+		}, 1500);
 	}
 
 	private renderCurrentView(): void {
@@ -83,17 +128,54 @@ export class RoopikWelcomeEditor extends EditorPane {
 		subtitle.textContent = 'Visual canvas + AI copilots';
 
 		const heroDescription = append(heroContent, $('.hero-description'));
+		// allow-any-unicode-next-line
 		heroDescription.textContent = 'Start designing components, preview production-ready UI, and collaborate with AI agents— all inside a single workspace.';
 
 		const heroActions = append(heroContent, $('.hero-actions'));
 		this.createHeroButton(heroActions, 'codicon-new-file', 'New Canvas', 'roopik.openCanvas', true);
-		this.createHeroButton(heroActions, 'codicon-globe', 'Project Mode', 'roopik.openProjectPreview');
+		// Project button opens file explorer directly (folder icon)
+		this.createHeroButton(heroActions, 'codicon-folder', 'Open Project', 'roopik.openProjectPicker', true);
 
 		const heroShowcase = append(hero, $('.hero-showcase'));
 		const showcaseLabel = append(heroShowcase, $('.showcase-label'));
 		showcaseLabel.textContent = 'Live preview + DevTools';
 		const showcaseHighlight = append(heroShowcase, $('.showcase-highlight'));
 		showcaseHighlight.textContent = 'Preview, inspect, and edit with zero context switching.';
+
+		// AI Input Section (between hero and quick start)
+		const aiInputSection = append(container, $('.ai-input-section'));
+		const aiInputWrapper = append(aiInputSection, $('.ai-input-wrapper'));
+		const aiInputBox = append(aiInputWrapper, $('.ai-input-box'));
+
+		// Input field - fills the whole container
+		const aiInput = $('input', {
+			type: 'text',
+			class: 'ai-input-field',
+			placeholder: 'What do you want to build today?',
+			'aria-label': 'AI creation prompt'
+		}) as HTMLInputElement;
+		append(aiInputBox, aiInput);
+
+		// Submit button
+		const aiSubmitButton = append(aiInputBox, $('.ai-submit-button'));
+		const arrowIcon = append(aiSubmitButton, $('span.codicon.codicon-arrow-right'));
+		arrowIcon.setAttribute('aria-hidden', 'true');
+		aiSubmitButton.title = 'Send to AI';
+
+		// Event handlers for AI input
+		this._register(addDisposableListener(aiInput, 'keydown', (e: KeyboardEvent) => {
+			if (e.key === 'Enter' && aiInput.value.trim()) {
+				this.submitAiPrompt(aiInput.value.trim());
+				aiInput.value = '';
+			}
+		}));
+
+		this._register(addDisposableListener(aiSubmitButton, 'click', () => {
+			if (aiInput.value.trim()) {
+				this.submitAiPrompt(aiInput.value.trim());
+				aiInput.value = '';
+			}
+		}));
 
 		// Quick start section with two columns
 		const quickStartSection = append(container, $('.welcome-section'));
@@ -109,9 +191,10 @@ export class RoopikWelcomeEditor extends EditorPane {
 
 		const startActions = [
 			{ icon: 'codicon-new-file', label: 'New Canvas', commandId: 'roopik.openCanvas' },
-			{ icon: 'codicon-folder', label: 'Open Canvas', commandId: 'roopik.openCanvas' },
+			{ icon: 'codicon-folder-opened', label: 'Open Canvas', commandId: 'roopik.openCanvas' },
 			{ icon: 'codicon-file-symlink-directory', label: 'Import Canvas', commandId: 'roopik.openCanvas' },
-			{ icon: 'codicon-globe', label: 'Project Mode', commandId: 'roopik.openProjectPreview' },
+			{ icon: 'codicon-folder', label: 'Open Project', commandId: 'roopik.openProjectPicker' },
+			{ icon: 'codicon-globe', label: 'Browse Web', commandId: 'roopik.openProjectPreview' },
 			{ icon: 'codicon-keyboard', label: 'Run Command...', commandId: 'workbench.action.showCommands' }
 		];
 
@@ -119,25 +202,31 @@ export class RoopikWelcomeEditor extends EditorPane {
 			this.createQuickStartAction(startColumn, action.icon, action.label, action.commandId);
 		}
 
-		// Right column: Recent canvases
-		const recentColumn = append(quickStartContainer, $('.quick-start-column'));
-		const recentTitle = append(recentColumn, $('.quick-start-column-title'));
-		recentTitle.textContent = 'Recent';
+		// Right column: Recent canvases (dynamic)
+		const recentCanvasColumn = append(quickStartContainer, $('.quick-start-column'));
+		const recentCanvasTitle = append(recentCanvasColumn, $('.quick-start-column-title'));
+		recentCanvasTitle.textContent = 'Recent Canvases';
 
-		// Placeholder canvases (will be dynamic later)
-		const recentCanvases = [
-			{ name: 'Dashboard Design', path: '~/Projects/dashboard.canvas' },
-			{ name: 'Landing Page', path: '~/Projects/landing.canvas' }
-		];
+		// Container for dynamic canvas list
+		this.recentCanvasesContainer = append(recentCanvasColumn, $('.recent-items-container'));
+		const canvasLoadingText = append(this.recentCanvasesContainer, $('.quick-start-empty'));
+		canvasLoadingText.textContent = 'Loading...';
 
-		if (recentCanvases.length > 0) {
-			for (const canvas of recentCanvases) {
-				this.createRecentCanvasItem(recentColumn, canvas.name, canvas.path);
-			}
-		} else {
-			const emptyState = append(recentColumn, $('.quick-start-empty'));
-			emptyState.textContent = 'No recent canvases';
-		}
+		// Load canvases (check if already initialized)
+		this.checkAndLoadCanvases();
+
+		// Third column: Recent projects (dynamic)
+		const recentProjectColumn = append(quickStartContainer, $('.quick-start-column'));
+		const recentProjectTitle = append(recentProjectColumn, $('.quick-start-column-title'));
+		recentProjectTitle.textContent = 'Recent Projects';
+
+		// Container for dynamic project list
+		this.recentProjectsContainer = append(recentProjectColumn, $('.recent-items-container'));
+		const projectLoadingText = append(this.recentProjectsContainer, $('.quick-start-empty'));
+		projectLoadingText.textContent = 'Loading...';
+
+		// Load projects (check if already initialized)
+		this.checkAndLoadProjects();
 
 		// Footer with checkbox (sticky bar)
 		const footer = append(this.rootElement, $('.welcome-footer'));
@@ -172,6 +261,45 @@ export class RoopikWelcomeEditor extends EditorPane {
 				StorageTarget.USER
 			);
 		}));
+	}
+
+	/**
+	 * Submit AI prompt to roopik-roo extension
+	 *
+	 * Strategy: Use IViewsService.openView() to open the secondary sidebar (right side)
+	 *
+	 * IViewsService.openView() is the correct VS Code API that:
+	 * 1. Activates the extension that contributes the view
+	 * 2. Waits for the view to be created and visible
+	 * 3. Returns the view instance (or null if failed)
+	 *
+	 * We open roodio.ChatPanel (right side auxiliary bar) instead of
+	 * roodio.SidebarProvider (left activity bar) as the preferred default.
+	 */
+	private async submitAiPrompt(promptText: string): Promise<void> {
+		try {
+			// Use IViewsService to open the ChatPanel in the secondary sidebar (right side)
+			// This activates the extension and waits for the view to be ready
+			const view = await this.viewsService.openView('roodio.ChatPanel', true);
+
+			if (!view) {
+				console.debug('AI agent view not available');
+				return;
+			}
+
+			// Wait for webview to fully mount and initialize
+			// (the webview sends 'webviewDidLaunch' message when ready,
+			// but we can't listen for it from here, so we use a delay)
+			await new Promise(resolve => setTimeout(resolve, 500));
+
+			// Now send the message - webview should be ready
+			await this.commandService.executeCommand('roodio.externalContext', {
+				promptText: promptText,
+				autoSend: true,
+			});
+		} catch (error) {
+			console.debug('AI agent not available:', error);
+		}
 	}
 
 	// ============================================================================
@@ -342,20 +470,235 @@ export class RoopikWelcomeEditor extends EditorPane {
 	/**
 	 * Create a recent canvas item
 	 */
-	private createRecentCanvasItem(parent: HTMLElement, name: string, path: string): void {
+	private createRecentCanvasItem(parent: HTMLElement, canvas: CanvasMeta): void {
 		const item = append(parent, $('.recent-canvas-item'));
 
 		const nameEl = append(item, $('.recent-canvas-name'));
-		nameEl.textContent = name;
+		nameEl.textContent = canvas.name;
 
 		const pathEl = append(item, $('.recent-canvas-path'));
-		pathEl.textContent = path;
+		pathEl.textContent = this.formatTimeAgo(canvas.updatedAt);
 
-		// Placeholder click handler (will be implemented when canvas system is ready)
 		item.onclick = () => {
-			// TODO: Open canvas when implemented
-			this.commandService.executeCommand('roopik.openCanvas');
+			this.commandService.executeCommand('roopik.canvas.open', {
+				canvasId: canvas.id,
+				canvasName: canvas.name
+			});
 		};
+	}
+
+	/**
+	 * Create a recent project item
+	 */
+	private createRecentProjectItem(parent: HTMLElement, project: ProjectInfo): void {
+		const item = append(parent, $('.recent-canvas-item'));
+
+		const nameEl = append(item, $('.recent-canvas-name'));
+		nameEl.textContent = project.name;
+
+		const pathEl = append(item, $('.recent-canvas-path'));
+		// Build description: time + framework (if available)
+		let description = this.formatTimeAgo(project.updatedAt);
+		if (project.frameworkDisplayName) {
+			description += ` • ${project.frameworkDisplayName}`;
+		}
+		pathEl.textContent = description;
+
+		item.onclick = () => {
+			this.commandService.executeCommand('roopik.openProjectPreview', {
+				projectPath: project.path,
+				projectName: project.name
+			});
+		};
+	}
+
+	// ============================================================================
+	// Dynamic Loading Methods
+	// ============================================================================
+
+	/**
+	 * Check if canvas service is initialized and load canvases
+	 */
+	private async checkAndLoadCanvases(): Promise<void> {
+		try {
+			const isInitialized = await this.canvasService.isInitializedAsync();
+			if (isInitialized) {
+				this.loadRecentCanvases();
+			}
+			// Otherwise wait for onDidInitialize event
+		} catch (err) {
+			// Service not ready - will retry via event
+		}
+	}
+
+	/**
+	 * Check if project storage service is initialized and load projects
+	 */
+	private async checkAndLoadProjects(): Promise<void> {
+		try {
+			const isInitialized = await this.projectStorageService.isInitializedAsync();
+			if (isInitialized) {
+				this.projectServiceInitialized = true;
+				this.clearProjectLoadingTimeout();
+				this.loadRecentProjects();
+			} else {
+				// Not initialized - start timeout
+				this.startProjectLoadingTimeout();
+			}
+		} catch (err) {
+			// Service not ready - will retry via event
+			this.startProjectLoadingTimeout();
+		}
+	}
+
+	/**
+	 * Clear project loading timeout
+	 */
+	private clearProjectLoadingTimeout(): void {
+		if (this.projectLoadingTimeoutHandle) {
+			clearTimeout(this.projectLoadingTimeoutHandle);
+			this.projectLoadingTimeoutHandle = undefined;
+		}
+	}
+
+	/**
+	 * Start project loading timeout
+	 */
+	private startProjectLoadingTimeout(): void {
+		this.clearProjectLoadingTimeout();
+		this.projectLoadingTimeoutHandle = setTimeout(() => {
+			if (!this.projectServiceInitialized) {
+				// Timeout - service initialization took too long
+				this.showProjectTimeoutState();
+			}
+		}, RoopikWelcomeEditor.LOADING_TIMEOUT_MS);
+	}
+
+	/**
+	 * Show timeout state for projects
+	 */
+	private showProjectTimeoutState(): void {
+		if (!this.recentProjectsContainer) {
+			return;
+		}
+		clearNode(this.recentProjectsContainer);
+		const errorState = append(this.recentProjectsContainer, $('.quick-start-empty'));
+		errorState.textContent = 'Open a workspace first';
+	}
+
+	/**
+	 * Load recent canvases from CanvasService
+	 */
+	private async loadRecentCanvases(): Promise<void> {
+		if (!this.recentCanvasesContainer) {
+			return;
+		}
+
+		// Prevent concurrent loads
+		if (this.isLoadingCanvases) {
+			return;
+		}
+		this.isLoadingCanvases = true;
+
+		try {
+			// Clear existing content (use DOM API like activity panel)
+			while (this.recentCanvasesContainer.firstChild) {
+				this.recentCanvasesContainer.removeChild(this.recentCanvasesContainer.firstChild);
+			}
+
+			const canvases = await this.canvasService.listCanvasesAsync();
+
+			if (canvases.length === 0) {
+				const emptyState = append(this.recentCanvasesContainer, $('.quick-start-empty'));
+				emptyState.textContent = 'No recent canvases';
+				return;
+			}
+
+			// Deduplicate by canvas ID
+			const uniqueCanvases = Array.from(
+				new Map(canvases.map(canvas => [canvas.id, canvas])).values()
+			);
+
+			// Show up to 5 most recent canvases
+			const recentCanvases = uniqueCanvases.slice(0, 5);
+			for (const canvas of recentCanvases) {
+				this.createRecentCanvasItem(this.recentCanvasesContainer, canvas);
+			}
+		} catch (err) {
+			// Failed to load - show error state
+			const errorState = append(this.recentCanvasesContainer, $('.quick-start-empty'));
+			errorState.textContent = 'Failed to load canvases';
+		} finally {
+			this.isLoadingCanvases = false;
+		}
+	}
+
+	/**
+	 * Load recent projects from ProjectStorageService
+	 */
+	private async loadRecentProjects(): Promise<void> {
+		if (!this.recentProjectsContainer) {
+			return;
+		}
+
+		// Prevent concurrent loads
+		if (this.isLoadingProjects) {
+			return;
+		}
+		this.isLoadingProjects = true;
+
+		try {
+			// Clear existing content (use DOM API like activity panel)
+			while (this.recentProjectsContainer.firstChild) {
+				this.recentProjectsContainer.removeChild(this.recentProjectsContainer.firstChild);
+			}
+
+			const projects = await this.projectStorageService.getRecentProjects(5);
+
+			if (projects.length === 0) {
+				const emptyState = append(this.recentProjectsContainer, $('.quick-start-empty'));
+				emptyState.textContent = 'No recent projects';
+				return;
+			}
+
+			// Deduplicate by project path
+			const uniqueProjects = Array.from(
+				new Map(projects.map(project => [project.path, project])).values()
+			);
+
+			for (const project of uniqueProjects) {
+				this.createRecentProjectItem(this.recentProjectsContainer, project);
+			}
+		} catch (err) {
+			// Failed to load - show error state
+			const errorState = append(this.recentProjectsContainer, $('.quick-start-empty'));
+			errorState.textContent = 'Failed to load projects';
+		} finally {
+			this.isLoadingProjects = false;
+		}
+	}
+
+	/**
+	 * Format timestamp as "X ago"
+	 */
+	private formatTimeAgo(timestamp: number): string {
+		const now = Date.now();
+		const diff = now - timestamp;
+
+		const seconds = Math.floor(diff / 1000);
+		const minutes = Math.floor(seconds / 60);
+		const hours = Math.floor(minutes / 60);
+		const days = Math.floor(hours / 24);
+
+		if (days > 0) {
+			return `${days}d ago`;
+		} else if (hours > 0) {
+			return `${hours}h ago`;
+		} else if (minutes > 0) {
+			return `${minutes}m ago`;
+		} else {
+			return 'Just now';
+		}
 	}
 
 	override async setInput(input: EditorInput, options: undefined, context: IEditorOpenContext, token: CancellationToken): Promise<void> {

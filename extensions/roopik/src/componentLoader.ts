@@ -1,6 +1,6 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Roopik. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
 /**
@@ -35,7 +35,7 @@ export interface CachedBundle {
 	buildMeta: {
 		componentId: string;
 		canvasId: string;
-		sourceHash: string;
+		contentHash: string;
 		cdnUrls: string[];
 		buildTime: number;
 		bundleSize: number;
@@ -62,6 +62,9 @@ export interface LoadResult {
 export interface ComponentLoadInfo {
 	componentId: string;
 	contentHash: string;
+	name?: string;
+	folderPath?: string;
+	entryFile?: string;
 }
 
 // ============================================================================
@@ -178,9 +181,9 @@ export class ComponentLoader {
 
 			if (cached) {
 				// 2. Validate cache freshness by comparing hashes
-				if (cached.buildMeta.sourceHash === contentHash) {
+				if (cached.buildMeta.contentHash === contentHash) {
 					// Cache is valid!
-					this.logger.info(`Cache hit for ${componentId} - using cached bundle`);
+					// this.logger.info(`Cache hit for ${componentId} - using cached bundle`);
 					return {
 						success: true,
 						fromCache: true,
@@ -191,7 +194,7 @@ export class ComponentLoader {
 					};
 				} else {
 					// Cache is stale - hashes don't match
-					this.logger.info(`Cache stale for ${componentId} - hash mismatch (cached: ${cached.buildMeta.sourceHash}, current: ${contentHash})`);
+					this.logger.info(`Cache stale for ${componentId} - hash mismatch (cached: ${cached.buildMeta.contentHash}, current: ${contentHash})`);
 				}
 			} else {
 				this.logger.info(`No cache found for ${componentId}`);

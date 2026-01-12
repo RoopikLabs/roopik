@@ -1,0 +1,6 @@
+dist
+npm/package.json
+
+# Prevent compiled JS in source folder
+src/**/*.js
+src/**/*.js.map

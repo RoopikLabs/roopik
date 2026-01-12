@@ -1,15 +1,36 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Roopik. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
+
+import { useState } from 'react';
 
 interface DeleteConfirmModalProps {
 	sandboxId: string;
-	onConfirm: () => void;
+	onConfirm: (deleteSourceCode: boolean) => void;
 	onCancel: () => void;
+	// In-memory state for checkbox (persists during session)
+	initialDeleteSourceCode?: boolean;
+	onDeleteSourceCodeChange?: (value: boolean) => void;
 }
 
-export function DeleteConfirmModal({ sandboxId, onConfirm, onCancel }: DeleteConfirmModalProps) {
+export function DeleteConfirmModal({
+	sandboxId,
+	onConfirm,
+	onCancel,
+	initialDeleteSourceCode = false,
+	onDeleteSourceCodeChange
+}: DeleteConfirmModalProps) {
+	const [deleteSourceCode, setDeleteSourceCode] = useState(initialDeleteSourceCode);
+
+	const handleCheckboxChange = (checked: boolean) => {
+		setDeleteSourceCode(checked);
+		onDeleteSourceCodeChange?.(checked);
+	};
+
+	const handleConfirm = () => {
+		onConfirm(deleteSourceCode);
+	};
 	return (
 		<div
 			className="modal-overlay"
@@ -103,6 +124,33 @@ export function DeleteConfirmModal({ sandboxId, onConfirm, onCancel }: DeleteCon
 					This action cannot be undone.
 				</p>
 
+				{/* Checkbox for deleting source code */}
+				<label
+					style={{
+						display: 'flex',
+						alignItems: 'center',
+						gap: '8px',
+						fontSize: '13px',
+						color: 'rgba(255, 255, 255, 0.7)',
+						marginBottom: '24px',
+						cursor: 'pointer',
+						userSelect: 'none',
+					}}
+				>
+					<input
+						type="checkbox"
+						checked={deleteSourceCode}
+						onChange={(e) => handleCheckboxChange(e.target.checked)}
+						style={{
+							width: '16px',
+							height: '16px',
+							cursor: 'pointer',
+							accentColor: '#ef4444',
+						}}
+					/>
+					<span>Also delete source code files</span>
+				</label>
+
 				{/* Buttons */}
 				<div
 					style={{
@@ -136,7 +184,7 @@ export function DeleteConfirmModal({ sandboxId, onConfirm, onCancel }: DeleteCon
 						Cancel
 					</button>
 					<button
-						onClick={onConfirm}
+						onClick={handleConfirm}
 						style={{
 							flex: 1,
 							padding: '12px 24px',

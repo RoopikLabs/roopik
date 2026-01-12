@@ -26,13 +26,15 @@ import {
 } from '../common/component/componentService.js';
 import {
 	Component,
-	CreateComponentRequest
+	AddComponentRequest,
+	ComponentInfo,
+	RuntimeError
 } from '../common/component/types.js';
 
-/**
- * IPC Channel name for ComponentService communication
- */
-export const COMPONENT_CHANNEL_NAME = 'roopikComponent';
+import { COMPONENT_CHANNEL_NAME } from '../common/component/index.js';
+
+// IPC Channel name for ComponentService communication
+export { COMPONENT_CHANNEL_NAME };
 
 export class ComponentServiceClient implements IComponentService {
 	readonly _serviceBrand: undefined;
@@ -88,8 +90,12 @@ export class ComponentServiceClient implements IComponentService {
 	// Create
 	// ========================================================================
 
-	async createComponent(request: CreateComponentRequest): Promise<Component> {
-		return this.channel.call('createComponent', request);
+	async addComponent(request: AddComponentRequest): Promise<Component> {
+		return this.channel.call('addComponent', request);
+	}
+
+	async addComponents(requests: AddComponentRequest[]): Promise<Component[]> {
+		return this.channel.call('addComponents', requests);
 	}
 
 	// ========================================================================
@@ -132,6 +138,14 @@ export class ComponentServiceClient implements IComponentService {
 	}
 
 	// ========================================================================
+	// Component Info (Unified API)
+	// ========================================================================
+
+	async getComponentInfo(id: string): Promise<ComponentInfo> {
+		return this.channel.call('getComponentInfo', id);
+	}
+
+	// ========================================================================
 	// Code Access
 	// ========================================================================
 
@@ -143,20 +157,12 @@ export class ComponentServiceClient implements IComponentService {
 		return this.channel.call('getBundledCode', id);
 	}
 
-	async getCdnUrls(id: string): Promise<string[]> {
-		return this.channel.call('getCdnUrls', id);
-	}
-
 	// ========================================================================
 	// Update
 	// ========================================================================
 
-	async updateComponentSource(id: string, files: Record<string, string>): Promise<void> {
-		return this.channel.call('updateComponentSource', { id, files });
-	}
-
-	async updateComponentMeta(id: string, updates: { name?: string }): Promise<void> {
-		return this.channel.call('updateComponentMeta', { id, updates });
+	async updateComponentName(id: string, componentName: string): Promise<void> {
+		return this.channel.call('updateComponentName', { id, componentName });
 	}
 
 	// ========================================================================
@@ -197,8 +203,8 @@ export class ComponentServiceClient implements IComponentService {
 	// Delete
 	// ========================================================================
 
-	async deleteComponent(id: string): Promise<void> {
-		return this.channel.call('deleteComponent', id);
+	async deleteComponent(id: string, deleteSourceCode?: boolean): Promise<void> {
+		return this.channel.call('deleteComponent', { id, deleteSourceCode });
 	}
 
 	// ========================================================================
@@ -220,5 +226,26 @@ export class ComponentServiceClient implements IComponentService {
 
 	unignoreComponentFileChanges(id: string): void {
 		this.channel.call('unignoreComponentFileChanges', id);
+	}
+
+	// ========================================================================
+	// Runtime Error Reporting
+	// ========================================================================
+
+	/**
+	 * Report a runtime error from canvas rendering.
+	 * Called when the error boundary in the sandbox catches an error.
+	 * This is fire-and-forget - no response expected.
+	 */
+	reportRuntimeError(componentId: string, error: RuntimeError): void {
+		this.channel.call('reportRuntimeError', { componentId, error });
+	}
+
+	/**
+	 * Clear runtime error for a component.
+	 * Called after successful rebuild to clear previous runtime errors.
+	 */
+	clearRuntimeError(componentId: string): void {
+		this.channel.call('clearRuntimeError', componentId);
 	}
 }

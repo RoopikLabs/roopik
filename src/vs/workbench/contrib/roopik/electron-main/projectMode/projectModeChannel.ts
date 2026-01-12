@@ -21,6 +21,18 @@ export class ProjectModeChannel implements IServerChannel {
 				return this.service.onDevToolsClosed;
 			case 'onNavigationStateChanged':
 				return this.service.onNavigationStateChanged;
+			case 'onOpenSourceRequest':
+				return this.service.onOpenSourceRequest;
+			case 'onAttachElementRequest':
+				return this.service.onAttachElementRequest;
+			case 'onBrowserBridgeMessage':
+				return this.service.onBrowserBridgeMessage;
+			case 'onBrowserKeyPress':
+				return this.service.onBrowserKeyPress;
+			case 'onMcpBrowserOpenRequest':
+				return this.service.onMcpBrowserOpenRequest;
+			case 'onMcpBrowserCloseRequest':
+				return this.service.onMcpBrowserCloseRequest;
 			default:
 				throw new Error(`[ProjectModeChannel] Unknown event: ${event}`);
 		}
@@ -57,8 +69,6 @@ export class ProjectModeChannel implements IServerChannel {
 				return this.service.openDevTools(arg.browserViewId, arg.options);
 			case 'closeDevTools':
 				return this.service.closeDevTools(arg);
-			case 'setDevToolsBounds':
-				return this.service.setDevToolsBounds(arg.browserViewId, arg.bounds);
 			case 'isDevToolsOpen':
 				return this.service.isDevToolsOpen(arg);
 
@@ -71,16 +81,16 @@ export class ProjectModeChannel implements IServerChannel {
 				return this.service.enableCDPDomains(arg.browserViewId, arg.domains);
 			case 'sendCDPCommand':
 				return this.service.sendCDPCommand(arg.browserViewId, arg.method, arg.params);
-
-			// Device Emulation
-			case 'setDeviceEmulation':
-				return this.service.setDeviceEmulation(arg.browserViewId, arg.device);
-			case 'clearDeviceEmulation':
-				return this.service.clearDeviceEmulation(arg);
+			case 'setupBrowserBridge':
+				return this.service.setupBrowserBridge(arg);
 
 			// Utilities
 			case 'takeScreenshot':
 				return this.service.takeScreenshot(arg);
+			case 'takeScreenshotClip':
+				return this.service.takeScreenshotClip(arg.browserViewId, arg.x, arg.y, arg.width, arg.height);
+			case 'focusBrowserView':
+				return this.service.focusBrowserView(arg);
 			case 'executeScript':
 				return this.service.executeScript(arg.browserViewId, arg.script);
 			case 'getPageHTML':
@@ -88,19 +98,9 @@ export class ProjectModeChannel implements IServerChannel {
 			case 'getDebuggingUrl':
 				return this.service.getDebuggingUrl(arg);
 
-			// Overlay View
-			case 'createOverlayView':
-				return this.service.createOverlayView(arg.browserViewId, arg.bounds, arg.htmlContent);
-			case 'setOverlayBounds':
-				return this.service.setOverlayBounds(arg.overlayViewId, arg.bounds);
-			case 'setOverlayContent':
-				return this.service.setOverlayContent(arg.overlayViewId, arg.htmlContent);
-			case 'setOverlayVisible':
-				return this.service.setOverlayVisible(arg.overlayViewId, arg.visible);
-			case 'destroyOverlayView':
-				return this.service.destroyOverlayView(arg);
-			case 'executeScriptOnOverlay':
-				return this.service.executeScriptOnOverlay(arg.overlayViewId, arg.script);
+			// CSS Source Resolution
+			case 'getElementStyles':
+				return this.service.getElementStyles(arg);
 
 			default:
 				throw new Error(`[ProjectModeChannel] Unknown command: ${command}`);

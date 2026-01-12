@@ -3,11 +3,12 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { useRef, useState, useMemo } from 'react';
-import type { Sandbox, Point, DevicePreset } from '../../types';
+import { useRef, useState, useMemo, useEffect, useCallback } from 'react';
+import type { Sandbox, Point, DevicePreset, BuildErrorInfo } from '../../types';
 import { DEVICE_PRESETS, getNextDevicePreset } from '../../types';
 import { DeviceIcon } from '../DeviceToggle';
-import { DEFAULT_CONFIG } from '../../services/gridManager';
+import { DeleteConfirmModal } from '../Toolbar/DeleteConfirmModal';
+import { DEFAULT_CONFIG, getFocusedSandboxDimensions } from '../../services/gridManager';
 import '../../styles/sandboxCard.css';
 
 interface SandboxCardProps {
@@ -20,13 +21,28 @@ interface SandboxCardProps {
 	isExiting?: boolean;
 	/** Global device mode from canvas */
 	globalDeviceMode: DevicePreset;
+	/** Viewport dimensions for dynamic focused sandbox sizing */
+	viewport?: { width: number; height: number };
+	/** Position of the focused sandbox (for calculating push-away offset) */
+	focusedSandboxPosition?: { x: number; y: number } | null;
+	/** Whether inspect mode is enabled globally */
+	isInspectMode?: boolean;
+	/** Whether inspect mode should auto-capture screenshots */
+	captureOnInspectSelect?: boolean;
 	onMouseDown: (e: React.MouseEvent) => void;
 	onClick: () => void;
 	onDoubleClick: () => void;
-	onDelete: () => void;
-	onExpand: () => void;
+	onDelete: (deleteSourceCode?: boolean) => void;
+	/** Callback to show code view for this sandbox */
+	onShowCode: () => void;
+	/** Callback to force rebuild this sandbox */
+	onRebuild: () => void;
 	/** Callback to update sandbox device mode */
 	onDeviceModeChange: (mode: DevicePreset | undefined) => void;
+	/** Delete source code preference from parent */
+	deleteSourceCodePref?: boolean;
+	/** Callback when delete source code preference changes */
+	onDeleteSourceCodePrefChange?: (value: boolean) => void;
 }
 
 /**
@@ -38,7 +54,7 @@ interface SandboxCardProps {
  * We embed the ESM code directly in <script type="module"> tag.
  * No blob URLs needed - the code runs inline as a module.
  */
-function generateSandboxHTML(bundledCode: string): string {
+function generateSandboxHTML(bundledCode: string, componentId: string): string {
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -51,6 +67,7 @@ function generateSandboxHTML(bundledCode: string): string {
 			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 			background: #ffffff;
 			overflow: auto;
+			overflow-x: hidden; /* Prevent horizontal scrollbar in device emulation */
 		}
 		#root {
 			min-height: 100vh;
@@ -134,6 +151,44 @@ ${bundledCode}
 		window.parent.postMessage({ type: 'sandbox-ready' }, '*');
 	</script>
 
+	<!-- Screenshot capture helper (delegates to parent) -->
+	<script>
+		(function() {
+			const componentId = ${JSON.stringify(componentId)};
+			window.__roopikCaptureElement = (element, options) => {
+				if (window.parent && window.parent.__roopikRequestScreenshot) {
+					window.parent.__roopikRequestScreenshot({
+						componentId,
+						element,
+						target: options?.target || "component",
+						requestId: options?.requestId,
+						intent: options?.intent
+					});
+					return;
+				}
+
+				window.parent.postMessage({
+					type: "roopik-screenshot-error",
+					componentId,
+					requestId: options?.requestId,
+					message: "Screenshot capture is unavailable in parent window"
+				}, "*");
+			};
+
+			window.addEventListener("message", (event) => {
+				if (event.data?.type === "roopik-capture-screenshot") {
+					const requestId = event.data.requestId;
+					const intent = event.data.intent;
+					window.__roopikCaptureElement(document.body, {
+						target: "component",
+						requestId,
+						intent
+					});
+				}
+			});
+		})();
+	</script>
+
 	<!-- Error handler for uncaught errors -->
 	<script>
 		window.onerror = function(msg, url, line, col, error) {
@@ -207,8 +262,71 @@ const LOADING_HTML = `<!DOCTYPE html>
 
 /**
  * Error state HTML shown when build fails
+ * Now accepts optional structured errorInfo for detailed display
+ * Supports both esbuild format (errors array) and simple format
  */
-function generateErrorHTML(error: string): string {
+function generateErrorHTML(error: string, errorInfo?: BuildErrorInfo): string {
+	// Extract location from errorInfo - check both esbuild format and simple format
+	let file: string | undefined;
+	let line: number | undefined;
+	let column: number | undefined;
+	let lineText: string | undefined;
+
+	if (errorInfo) {
+		// Check esbuild format first (errors array with location)
+		if (errorInfo.errors && errorInfo.errors.length > 0) {
+			const firstError = errorInfo.errors[0];
+			if (firstError.location) {
+				file = firstError.location.file;
+				line = firstError.location.line;
+				column = firstError.location.column;
+				lineText = firstError.location.lineText;
+			}
+		}
+		// Fallback to simple format
+		if (!file && !line) {
+			file = errorInfo.file;
+			line = errorInfo.line;
+			column = errorInfo.column;
+		}
+	}
+
+	// Clean up file path (remove vfs:./ prefix if present)
+	if (file) {
+		file = file.replace(/^vfs:\.\//, '');
+	}
+
+	// Build location HTML
+	let locationHtml = '';
+	if (file || line) {
+		const parts: string[] = [];
+		if (file) {
+			parts.push(escapeHtml(file));
+		}
+		if (line) {
+			parts.push(`line ${line}`);
+			if (column) {
+				parts.push(`col ${column}`);
+			}
+		}
+		if (parts.length > 0) {
+			locationHtml = `<div class="error-location">${parts.join(' : ')}</div>`;
+		}
+	}
+
+	// Build line preview HTML if we have lineText
+	let linePreviewHtml = '';
+	if (lineText && column) {
+		// Show the problematic line with a caret pointing to the error column
+		const escapedLine = escapeHtml(lineText);
+		const caretPadding = ' '.repeat(Math.max(0, column - 1));
+		linePreviewHtml = `
+		<div class="error-line-preview">
+			<code>${escapedLine}</code>
+			<code class="error-caret">${caretPadding}^</code>
+		</div>`;
+	}
+
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -236,7 +354,7 @@ function generateErrorHTML(error: string): string {
 		}
 		h3 {
 			color: #dc2626;
-			margin-bottom: 12px;
+			margin-bottom: 8px;
 			font-size: 16px;
 			display: flex;
 			align-items: center;
@@ -245,6 +363,36 @@ function generateErrorHTML(error: string): string {
 		.icon {
 			width: 20px;
 			height: 20px;
+		}
+		.error-location {
+			background: #fef3c7;
+			color: #92400e;
+			padding: 6px 10px;
+			border-radius: 6px;
+			font-size: 12px;
+			font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+			margin-bottom: 12px;
+			display: flex;
+			align-items: center;
+			gap: 6px;
+		}
+		.error-line-preview {
+			background: #1e1e1e;
+			padding: 8px 12px;
+			border-radius: 6px;
+			margin-bottom: 12px;
+			overflow-x: auto;
+		}
+		.error-line-preview code {
+			display: block;
+			font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+			font-size: 11px;
+			color: #d4d4d4;
+			white-space: pre;
+		}
+		.error-caret {
+			color: #f87171;
+			font-weight: bold;
 		}
 		pre {
 			background: #f5f5f5;
@@ -266,6 +414,8 @@ function generateErrorHTML(error: string): string {
 			</svg>
 			Build Failed
 		</h3>
+		${locationHtml}
+		${linePreviewHtml}
 		<pre>${escapeHtml(error)}</pre>
 	</div>
 </body>
@@ -338,15 +488,45 @@ export function SandboxCard({
 	isOverlapping = false,
 	isExiting = false,
 	globalDeviceMode,
+	viewport,
+	focusedSandboxPosition,
+	isInspectMode = false,
+	captureOnInspectSelect = false,
 	onMouseDown,
 	onClick,
 	onDoubleClick,
 	onDelete,
-	onExpand,
-	onDeviceModeChange
+	onShowCode,
+	onRebuild,
+	onDeviceModeChange,
+	deleteSourceCodePref = false,
+	onDeleteSourceCodePrefChange
 }: SandboxCardProps) {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [isHovered, setIsHovered] = useState(false);
+	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+	// Track if component is "activated" for interaction (click-to-activate for better zoom UX)
+	const [isActivated, setIsActivated] = useState(false);
+
+	// Send inspect mode toggle to iframe when isInspectMode changes
+	useEffect(() => {
+		if (iframeRef.current?.contentWindow) {
+			iframeRef.current.contentWindow.postMessage({
+				type: 'roopik-toggle-inspect',
+				enabled: isInspectMode,
+				captureOnSelect: captureOnInspectSelect
+			}, '*');
+		} else {
+			console.log('[SandboxCard] Cannot send - iframe not ready');
+		}
+	}, [isInspectMode, captureOnInspectSelect, sandbox.id]);
+
+	// Reset activation when not focused or not selected
+	useEffect(() => {
+		if (!isFocused && !isSelected) {
+			setIsActivated(false);
+		}
+	}, [isFocused, isSelected]);
 
 	// Effective device mode: sandbox override or global
 	const effectiveDeviceMode = sandbox.deviceMode ?? globalDeviceMode;
@@ -354,47 +534,66 @@ export function SandboxCard({
 	const preset = DEVICE_PRESETS[effectiveDeviceMode];
 	const isDeviceMode = preset.width !== 'auto';
 
-	// Generate srcDoc based on build status
-	const srcDoc = useMemo(() => {
-		console.log('[SandboxCard] Generating srcDoc for:', {
-			sandboxId: sandbox.id,
-			buildStatus: sandbox.buildStatus,
-			hasBundledCode: !!sandbox.bundledCode,
-			bundledCodeLength: sandbox.bundledCode?.length || 0
-		});
+	// FIX: Use blob URL instead of srcDoc to work around VS Code webview rendering issues.
+	const [blobUrl, setBlobUrl] = useState<string | null>(null);
+	const prevBlobUrlRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		let html: string;
 
 		switch (sandbox.buildStatus) {
 			case 'pending':
-				console.log('[SandboxCard] ⏳ Status: pending');
-				return PENDING_HTML;
+				html = PENDING_HTML;
+				break;
 			case 'building':
-				console.log('[SandboxCard] 🔨 Status: building');
-				return LOADING_HTML;
+				html = LOADING_HTML;
+				break;
 			case 'error':
-				console.error('[SandboxCard] ❌ Status: error -', sandbox.buildError);
-				return generateErrorHTML(sandbox.buildError || 'Unknown error');
+				html = generateErrorHTML(sandbox.buildError || 'Unknown error', sandbox.buildErrorInfo);
+				break;
 			case 'ready':
 				if (sandbox.bundledCode) {
-					// console.log('[SandboxCard] ✅ Status: ready - Injecting bundledCode');
-					// console.log('[SandboxCard] 📦 BundledCode preview (first 500 chars):', sandbox.bundledCode.substring(0, 500));
-					const html = generateSandboxHTML(sandbox.bundledCode);
-					// console.log('[SandboxCard] 📄 Generated HTML length:', html.length);
-					return html;
+					html = generateSandboxHTML(sandbox.bundledCode, sandbox.id);
+				} else {
+					html = generateErrorHTML('No bundled code available');
 				}
-				console.error('[SandboxCard] ❌ Status: ready but no bundledCode!');
-				return generateErrorHTML('No bundled code available');
+				break;
 			default:
-				console.warn('[SandboxCard] ⚠️ Unknown status:', sandbox.buildStatus);
-				return PENDING_HTML;
+				html = PENDING_HTML;
 		}
-	}, [sandbox.buildStatus, sandbox.buildError, sandbox.bundledCode, sandbox.id]);
 
-	// Get display name from componentInput
+		// Revoke previous blob URL to prevent memory leaks
+		if (prevBlobUrlRef.current) {
+			URL.revokeObjectURL(prevBlobUrlRef.current);
+		}
+
+		// Create new blob URL
+		const blob = new Blob([html], { type: 'text/html' });
+		const url = URL.createObjectURL(blob);
+
+		prevBlobUrlRef.current = url;
+		setBlobUrl(url);
+
+		// Cleanup on unmount
+		return () => {
+			if (prevBlobUrlRef.current) {
+				URL.revokeObjectURL(prevBlobUrlRef.current);
+				prevBlobUrlRef.current = null;
+			}
+		};
+	}, [sandbox.buildStatus, sandbox.bundledCode, sandbox.bundleNonce, sandbox.id, sandbox.buildError, sandbox.buildErrorInfo]);
+
+	// Get display name from componentInput (prefer name, fallback to filename)
 	const displayName = useMemo(() => {
 		const input = sandbox.componentInput;
 		if (!input) return sandbox.id;
 
-		// Use the first filename without extension
+		// Prefer the name field if available
+		if (input.name) {
+			return input.name;
+		}
+
+		// Fallback: use the first filename without extension
 		const filename = Object.keys(input.files)[0];
 		if (filename) {
 			return filename.replace(/\.(jsx|tsx|js|ts|vue|svelte)$/, '');
@@ -402,14 +601,42 @@ export function SandboxCard({
 		return input.id;
 	}, [sandbox.id, sandbox.componentInput]);
 
-	const handleExpandClick = (e: React.MouseEvent) => {
+	const handleShowCodeClick = (e: React.MouseEvent) => {
 		e.stopPropagation();
-		onExpand();
+		onShowCode();
+	};
+
+	const handleRebuildClick = (e: React.MouseEvent) => {
+		e.stopPropagation();
+		onRebuild();
+	};
+
+	const handleCaptureClick = (e: React.MouseEvent) => {
+		e.stopPropagation();
+		if (!iframeRef.current?.contentWindow) {
+			console.warn('[SandboxCard] Cannot capture - iframe not ready');
+			return;
+		}
+		const requestId = `manual-${sandbox.id}-${Date.now()}`;
+		iframeRef.current.contentWindow.postMessage({
+			type: 'roopik-capture-screenshot',
+			requestId,
+			intent: 'attach'
+		}, '*');
 	};
 
 	const handleDeleteClick = (e: React.MouseEvent) => {
 		e.stopPropagation();
-		onDelete();
+		setShowDeleteConfirm(true);
+	};
+
+	const handleConfirmDelete = (deleteSourceCode: boolean) => {
+		setShowDeleteConfirm(false);
+		onDelete(deleteSourceCode);
+	};
+
+	const handleCancelDelete = () => {
+		setShowDeleteConfirm(false);
 	};
 
 	// Toggle device mode for this sandbox
@@ -431,6 +658,46 @@ export function SandboxCard({
 		}
 	};
 
+	// Get sandbox dimensions based on focus state
+	// When focused, sandbox expands dynamically to fill most of the viewport
+	const focusedDimensions = useMemo(() => {
+		if (!isFocused || !viewport) return null;
+		return getFocusedSandboxDimensions(viewport.width, viewport.height, DEFAULT_CONFIG);
+	}, [isFocused, viewport]);
+
+	const sandboxWidth = focusedDimensions?.width ?? DEFAULT_CONFIG.sandboxWidth;
+	const sandboxHeight = focusedDimensions?.height ?? DEFAULT_CONFIG.sandboxHeight;
+
+	// Calculate push-away offset for non-focused sandboxes when another is focused
+	// This creates a smooth "making room" effect without changing actual positions
+	const pushAwayOffset = useMemo(() => {
+		// Only apply to non-focused sandboxes when there's a focused one
+		if (isFocused || !focusedSandboxPosition) {
+			return { x: 0, y: 0 };
+		}
+
+		// Calculate direction from focused sandbox to this sandbox
+		const dx = sandbox.x - focusedSandboxPosition.x;
+		const dy = sandbox.y - focusedSandboxPosition.y;
+		const distance = Math.sqrt(dx * dx + dy * dy);
+
+		// If sandboxes are at the same position, push in a default direction
+		if (distance < 10) {
+			return { x: 800, y: 0 };
+		}
+
+		// Push all sandboxes far away - the focused sandbox expands to fill most of viewport
+		// Use a large fixed distance so all sandboxes are pushed well out of view
+		const pushDistance = 1200;
+		const normalizedX = dx / distance;
+		const normalizedY = dy / distance;
+
+		return {
+			x: normalizedX * pushDistance,
+			y: normalizedY * pushDistance,
+		};
+	}, [isFocused, focusedSandboxPosition, sandbox.x, sandbox.y]);
+
 	// Calculate iframe container style for device mode
 	// Device mode: set container to device dimensions, scale to fit available space
 	const iframeContainerStyle = useMemo((): React.CSSProperties => {
@@ -447,9 +714,9 @@ export function SandboxCard({
 		const deviceHeight = preset.height as number;
 
 		// Available space is the CONTENT area of sandbox card
-		// All sandboxes use the same dimensions from DEFAULT_CONFIG
-		const availableWidth = DEFAULT_CONFIG.sandboxWidth;
-		const availableHeight = DEFAULT_CONFIG.sandboxHeight;
+		// Use focus-aware dimensions
+		const availableWidth = sandboxWidth;
+		const availableHeight = sandboxHeight;
 
 		// Scale to fill available space while maintaining aspect ratio
 		const scaleX = availableWidth / deviceWidth;
@@ -472,17 +739,30 @@ export function SandboxCard({
 			transformOrigin: 'center center',
 			margin: `-${marginY}px -${marginX}px`,
 		};
-	}, [isDeviceMode, preset]);
+	}, [isDeviceMode, preset, sandboxWidth, sandboxHeight]);
+
+	// Check if this sandbox is being pushed away (another sandbox is focused)
+	const isPushedAway = !isFocused && focusedSandboxPosition !== null;
+
+	// Handle overlay click - activate component for interaction
+	const handleOverlayClick = useCallback((e: React.MouseEvent) => {
+		e.stopPropagation();
+		setIsActivated(true);
+		// Also select the component
+		onClick();
+	}, [onClick]);
 
 	// Build className
 	const classNames = ['sandbox-card'];
 	if (isSelected) classNames.push('selected');
 	if (isFocused) classNames.push('focused');
+	if (isPushedAway) classNames.push('pushed-away');
 	if (isDragging) classNames.push('dragging');
 	if (isOverlapping) classNames.push('overlapping');
 	if (isExiting) classNames.push('exiting');
 	if (isDeviceMode) classNames.push('device-mode');
 	if (hasOverride) classNames.push('device-override');
+	if (isActivated) classNames.push('activated');
 
 	// Add build status class for visual feedback
 	if (sandbox.buildStatus === 'building') classNames.push('building');
@@ -494,10 +774,15 @@ export function SandboxCard({
 			style={{
 				left: sandbox.x,
 				top: sandbox.y,
-				width: DEFAULT_CONFIG.sandboxWidth,
-				height: DEFAULT_CONFIG.sandboxHeight,
+				width: sandboxWidth,
+				height: sandboxHeight,
 				zIndex: sandbox.zIndex,
-				transform: dragOffset ? `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)` : 'none',
+				// Combine drag offset with push-away offset for smooth transitions
+				transform: dragOffset
+					? `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)`
+					: pushAwayOffset.x !== 0 || pushAwayOffset.y !== 0
+						? `translate3d(${pushAwayOffset.x}px, ${pushAwayOffset.y}px, 0)`
+						: 'none',
 			}}
 			onMouseEnter={() => setIsHovered(true)}
 			onMouseLeave={() => setIsHovered(false)}
@@ -548,12 +833,27 @@ export function SandboxCard({
 						>
 							<DeviceIcon preset={effectiveDeviceMode} size={16} />
 						</button>
-						<button onClick={handleExpandClick} title="Expand to fullscreen">
+						{/* Code view button */}
+						<button onClick={handleShowCodeClick} title="View component source code">
 							<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="rgba(255, 255, 255, 0.9)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-								<path d="M2 6 L2 2 L6 2" />
-								<path d="M10 2 L14 2 L14 6" />
-								<path d="M14 10 L14 14 L10 14" />
-								<path d="M6 14 L2 14 L2 10" />
+								<path d="M5 4 L1 8 L5 12" />
+								<path d="M11 4 L15 8 L11 12" />
+								<path d="M10 2 L6 14" />
+							</svg>
+						</button>
+						{/* Rebuild button */}
+						<button onClick={handleRebuildClick} title="Force rebuild component">
+							<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="rgba(255, 255, 255, 0.9)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+								<path d="M2 8 A6 6 0 1 1 8 14" />
+								<path d="M2 4 L2 8 L6 8" />
+							</svg>
+						</button>
+						{/* Screenshot button */}
+						<button onClick={handleCaptureClick} title="Capture screenshot to chat">
+							<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="rgba(255, 255, 255, 0.9)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+								<rect x="2.5" y="4" width="11" height="8" rx="1.5" />
+								<path d="M6 4 L7 2.5 H9 L10 4" />
+								<circle cx="8" cy="8" r="2.2" />
 							</svg>
 						</button>
 						<button className="delete" onClick={handleDeleteClick} title="Delete sandbox">
@@ -575,19 +875,71 @@ export function SandboxCard({
 						className="webview-container"
 						style={iframeContainerStyle}
 					>
+						{/* Interaction overlay - click to activate component, allows canvas zoom to work */}
+						{!isActivated && !isFocused && (
+							<div
+								className="interaction-overlay"
+								onClick={handleOverlayClick}
+								title="Click to interact with component"
+							/>
+						)}
 						<iframe
 							ref={iframeRef}
-							// KEY FIX: Force iframe recreation when content changes
-							// Without this, srcDoc updates sometimes don't refresh the iframe content
-							key={`${sandbox.id}-${sandbox.buildStatus}-${sandbox.bundledCode?.length || 0}`}
-							srcDoc={srcDoc}
+							// FIX: Use blob URL instead of srcDoc
+							// VS Code webviews defer srcDoc updates, blob URLs force navigation
+							key={`${sandbox.id}-${sandbox.bundleNonce ?? 0}`}
+							data-sandbox-id={sandbox.id}
+							src={blobUrl || 'about:blank'}
 							sandbox="allow-scripts allow-same-origin"
 							title={displayName}
 							style={{ pointerEvents: isDragging ? 'none' : 'auto' }}
 						/>
 					</div>
-				</div>
 			</div>
+		</div>
+
+		{/* Focus button - only show when NOT focused and on hover */}
+		{!isFocused && isHovered && (
+			<button
+				className="focus-button"
+				onClick={(e) => {
+					e.stopPropagation();
+					onDoubleClick();
+				}}
+				title="Enter focus mode"
+			>
+				<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+					<path d="M8 3h8M3 8v8M21 8v8M8 21h8M3 8l3 3M21 8l-3 3M3 16l3-3M21 16l-3-3" />
+				</svg>
+			</button>
+		)}
+
+		{/* Unfocus button - only show when focused */}
+		{isFocused && (
+			<button
+				className="unfocus-button"
+				onClick={(e) => {
+					e.stopPropagation();
+					onDoubleClick(); // Reuse double-click handler to unfocus
+				}}
+				title="Exit focus mode (ESC, double-click, or click outside)"
+			>
+				<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+					<path d="M4 14h6m0 0v6m0-6l-7 7M20 10h-6m0 0V4m0 6l7-7" />
+				</svg>
+			</button>
+		)}
+
+		{/* Delete confirmation modal */}
+			{showDeleteConfirm && (
+				<DeleteConfirmModal
+					sandboxId={displayName}
+					initialDeleteSourceCode={deleteSourceCodePref}
+					onDeleteSourceCodeChange={onDeleteSourceCodePrefChange}
+					onConfirm={handleConfirmDelete}
+					onCancel={handleCancelDelete}
+				/>
+			)}
 		</div>
 	);
 }

@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import { Component, CreateComponentRequest, BuildResult, BuildErrorInfo } from './types.js';
+import { Component, AddComponentRequest, BuildResult, BuildErrorInfo, ComponentInfo, RuntimeError } from './types.js';
 
 // ============================================================================
 // Event Types
@@ -55,7 +55,7 @@ export interface ComponentDeletedEvent {
  */
 export interface ComponentUpdatedEvent {
 	component: Component;
-	changes: ('name' | 'source')[];
+	changes: ('componentName' | 'source')[];
 }
 
 // ============================================================================
@@ -71,7 +71,7 @@ export const IComponentService = createDecorator<IComponentService>('roopikCompo
  * that agents and UI will use to create, build, and manage components.
  *
  * Responsibilities:
- * - Coordinate ImportService, BuildService, StorageService, FileWatcher
+ * - Coordinate BuildService, StorageService, FileWatcher
  * - Maintain in-memory component registry
  * - Handle component lifecycle (create → build → ready)
  * - React to file changes (via FileWatcher)
@@ -127,23 +127,41 @@ export interface IComponentService {
 	dispose(): void;
 
 	// ========================================================================
-	// Create
+	// Create/Add Component
 	// ========================================================================
 
 	/**
-	 * Create a new component from any source
+	 * Add component to canvas by reference (metadata-only architecture)
 	 *
-	 * Flow:
-	 * 1. Get canvasId (from request or active canvas)
-	 * 2. Import files via ImportService
-	 * 3. Save to workspace via StorageService
-	 * 4. Build via BuildService (async, result via event)
-	 * 5. Return Component (with buildState: 'building')
+	 * Simple workflow:
+	 * 1. Validate folder exists
+	 * 2. Auto-detect entryFile if not provided (index.tsx → index.ts → {folderName}.tsx)
+	 * 3. Auto-detect framework from imports (react/vue/svelte/unknown)
+	 * 4. Save reference to .roopik/canvases/{canvas-id}.json (NO copying!)
+	 * 5. Register folder watcher on original folderPath
+	 * 6. Queue build (reads from original location)
+	 * 7. Return Component (with buildState: 'building')
 	 *
-	 * The returned component may still be building. Listen to onComponentBuilt
+	 * The returned component may still be building. Listen to onComponentAdded/onComponentBuilt
 	 * for the final result.
+	 *
+	 * @param request AddComponentRequest with name, folderPath, optional entryFile/origin
+	 * @returns Component with populated id, canvasId, folderPath, framework
 	 */
-	createComponent(request: CreateComponentRequest): Promise<Component>;
+	addComponent(request: AddComponentRequest): Promise<Component>;
+
+	/**
+	 * Add multiple components in batch (for AI agents generating multiple variants)
+	 *
+	 * More efficient than calling addComponent() in a loop:
+	 * - Single canvas file write (not N writes)
+	 * - Builds are queued together
+	 * - Returns all components with their IDs
+	 *
+	 * @param requests Array of AddComponentRequest
+	 * @returns Array of created Components (in same order as requests)
+	 */
+	addComponents(requests: AddComponentRequest[]): Promise<Component[]>;
 
 	// ========================================================================
 	// Read
@@ -165,6 +183,24 @@ export interface IComponentService {
 	getAllComponents(): Component[];
 
 	// ========================================================================
+	// Component Info (Unified API for AI agents)
+	// ========================================================================
+
+	/**
+	 * Get comprehensive component info in a single call
+	 *
+	 * Returns everything an AI agent needs:
+	 * - Component metadata (name, path, framework)
+	 * - Build status (building/ready/error)
+	 * - Error details if build failed
+	 * - Cache validity
+	 * - CDN URLs and build stats
+	 *
+	 * This is the primary API for AI agents to understand component state.
+	 */
+	getComponentInfo(id: string): Promise<ComponentInfo>;
+
+	// ========================================================================
 	// Code Access
 	// ========================================================================
 
@@ -182,25 +218,15 @@ export interface IComponentService {
 	 */
 	getBundledCode(id: string): Promise<string>;
 
-	/**
-	 * Get CDN URLs for a component's dependencies
-	 */
-	getCdnUrls(id: string): Promise<string[]>;
-
 	// ========================================================================
 	// Update
 	// ========================================================================
 
 	/**
-	 * Update component source code
-	 * Writes to workspace, triggers rebuild (async, result via event)
+	 * Update component display name
+	 * NOTE: Source code is edited directly via VS Code, FileWatcher triggers rebuild
 	 */
-	updateComponentSource(id: string, files: Record<string, string>): Promise<void>;
-
-	/**
-	 * Update component metadata (name only)
-	 */
-	updateComponentMeta(id: string, updates: { name?: string }): Promise<void>;
+	updateComponentName(id: string, componentName: string): Promise<void>;
 
 	// ========================================================================
 	// Build
@@ -234,8 +260,10 @@ export interface IComponentService {
 	/**
 	 * Delete a component (workspace + cache)
 	 * Cancels any pending builds for this component
+	 * @param id Component ID to delete
+	 * @param deleteSourceCode If true, also delete the source code files from disk (default: false)
 	 */
-	deleteComponent(id: string): Promise<void>;
+	deleteComponent(id: string, deleteSourceCode?: boolean): Promise<void>;
 
 	// ========================================================================
 	// File Watcher Control
@@ -263,6 +291,28 @@ export interface IComponentService {
 	 * Stop ignoring file changes for a component
 	 */
 	unignoreComponentFileChanges(id: string): void;
+
+	// ========================================================================
+	// Runtime Error Reporting
+	// ========================================================================
+
+	/**
+	 * Report a runtime error from canvas rendering.
+	 * Called by the extension when a component crashes at runtime in the sandbox.
+	 * The error is stored in component state and exposed via getComponentInfo().
+	 *
+	 * @param componentId - The component that crashed
+	 * @param error - The runtime error details
+	 */
+	reportRuntimeError(componentId: string, error: RuntimeError): void;
+
+	/**
+	 * Clear runtime error for a component.
+	 * Called automatically after a successful rebuild.
+	 *
+	 * @param componentId - The component to clear error for
+	 */
+	clearRuntimeError(componentId: string): void;
 
 	// ========================================================================
 	// Events

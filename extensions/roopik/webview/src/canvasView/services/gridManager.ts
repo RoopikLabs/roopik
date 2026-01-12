@@ -23,17 +23,54 @@ export interface GridConfig {
 }
 
 const DEFAULT_CONFIG: GridConfig = {
-	sandboxWidth: 500,
-	sandboxHeight: 500,
+	sandboxWidth: 600,
+	sandboxHeight: 600,
 	gridColumns: 4,
 	containerMargin: 20,
 	containerPaddingLR: 120,
 	containerPaddingTB: 40,
-	gapX: 60,
-	gapY: 60,
+	gapX: 150,
+	gapY: 100,
 	startX: 100,
 	startY: 100,
 };
+
+// Focused mode: calculate dynamic dimensions based on viewport
+// These values control how much space the focused sandbox fills
+export const FOCUSED_VIEWPORT_WIDTH_RATIO = 0.90;   // 90% of viewport width
+export const FOCUSED_TOOLBAR_HEIGHT = 100;          // Reserve space for bottom toolbar
+export const FOCUSED_TOP_MARGIN = 40;               // Small margin at top
+
+/**
+ * Calculate focused sandbox dimensions based on viewport size.
+ * Returns dimensions that fill most of the available viewport while
+ * reserving space for the bottom toolbar.
+ * Ensures dimensions are large enough to fit device emulations without scrollbars.
+ */
+export function getFocusedSandboxDimensions(
+	viewportWidth: number,
+	viewportHeight: number,
+	config: GridConfig = DEFAULT_CONFIG
+): { width: number; height: number } {
+	// Account for container padding in the calculation
+	const paddingX = config.containerPaddingLR * 2 + config.containerMargin * 2;
+	const paddingY = config.containerPaddingTB * 2 + config.containerMargin * 2;
+
+	// Calculate available space:
+	// - Width: 90% of viewport minus padding
+	// - Height: viewport minus toolbar, top margin, and padding
+	const availableHeight = viewportHeight - FOCUSED_TOOLBAR_HEIGHT - FOCUSED_TOP_MARGIN;
+
+	const maxWidth = viewportWidth * FOCUSED_VIEWPORT_WIDTH_RATIO - paddingX;
+	const maxHeight = availableHeight - paddingY;
+
+	// In focused mode, use generous dimensions to fit devices completely
+	// Minimum 700px height to fit tall mobile devices (e.g., 667px) with some breathing room
+	const width = Math.max(maxWidth, 800);  // Ensure wide enough
+	const height = Math.max(maxHeight, 700); // Ensure tall enough for mobile portrait
+
+	return { width, height };
+}
 
 // ============================================================
 // Grid Calculations
@@ -170,33 +207,54 @@ export function calculateFitAllTransform(
 
 /**
  * Calculate transform to focus on a single sandbox.
+ * @param sandbox The sandbox to focus on
+ * @param viewport The viewport dimensions
+ * @param config Grid configuration
+ * @param options Additional options including custom sandbox dimensions for focused mode
  */
 export function calculateFocusTransform(
 	sandbox: Sandbox,
 	viewport: ViewportSize,
 	config: GridConfig = DEFAULT_CONFIG,
-	options: { usableHeightRatio?: number; usableWidthRatio?: number; maxScale?: number } = {}
+	options: {
+		usableHeightRatio?: number;
+		usableWidthRatio?: number;
+		maxScale?: number;
+		/** Custom sandbox width (for focused/expanded mode) */
+		sandboxWidth?: number;
+		/** Custom sandbox height (for focused/expanded mode) */
+		sandboxHeight?: number;
+	} = {}
 ): Transform {
 	const {
-		usableHeightRatio = 0.8,
 		usableWidthRatio = 0.9,
 		maxScale = 1.2,
+		sandboxWidth,
+		sandboxHeight,
 	} = options;
 
-	const { totalWidth, totalHeight } = getSandboxTotalDimensions(config);
+	// Use custom dimensions if provided, otherwise use config defaults
+	const effectiveConfig = sandboxWidth && sandboxHeight
+		? { ...config, sandboxWidth, sandboxHeight }
+		: config;
 
-	const usableHeight = viewport.height * usableHeightRatio;
+	const { totalWidth, totalHeight } = getSandboxTotalDimensions(effectiveConfig);
+
+	// Calculate usable area accounting for toolbar at bottom
+	const usableHeight = viewport.height - FOCUSED_TOOLBAR_HEIGHT - FOCUSED_TOP_MARGIN;
 	const usableWidth = viewport.width * usableWidthRatio;
 
 	const scaleX = usableWidth / totalWidth;
 	const scaleY = usableHeight / totalHeight;
 	const scale = Math.min(scaleX, scaleY, maxScale);
 
-	// Calculate center position
+	// Calculate center position based on the EXPANDED size
+	// Position horizontally centered, vertically positioned with top margin
 	const sandboxVisualCenterX = sandbox.x + totalWidth / 2;
 	const sandboxVisualCenterY = sandbox.y + totalHeight / 2;
 	const viewportCenterX = viewport.width / 2;
-	const viewportCenterY = viewport.height / 2;
+	// Vertical center is offset to account for toolbar - center in the usable area
+	const viewportCenterY = FOCUSED_TOP_MARGIN + usableHeight / 2;
 
 	const x = viewportCenterX - sandboxVisualCenterX * scale;
 	const y = viewportCenterY - sandboxVisualCenterY * scale;
@@ -310,13 +368,13 @@ export function findNearestAvailableSlot(
 		for (let dr = -radius; dr <= radius; dr++) {
 			for (let dc = -radius; dc <= radius; dc++) {
 				// Only check the perimeter of the ring
-				if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) continue;
+				if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) { continue; }
 
 				const testRow = targetSlot.row + dr;
 				const testCol = targetSlot.col + dc;
 
 				// Skip invalid positions
-				if (testRow < 0 || testCol < 0 || testCol >= config.gridColumns) continue;
+				if (testRow < 0 || testCol < 0 || testCol >= config.gridColumns) { continue; }
 
 				const testSlotIndex = testRow * config.gridColumns + testCol;
 
@@ -362,7 +420,7 @@ export function snapToGridSlot(
 
 	// Check if this slot is occupied by another sandbox
 	const isOccupied = sandboxes.some(sandbox => {
-		if (sandbox.id === excludeSandboxId) return false;
+		if (sandbox.id === excludeSandboxId) { return false; }
 		const sandboxSlot = getSlotFromPosition(sandbox.x, sandbox.y, config);
 		return sandboxSlot.slotIndex === slot.slotIndex;
 	});
@@ -388,7 +446,7 @@ export function checkOverlap(
 	const overlappingWith: string[] = [];
 
 	sandboxes.forEach(sandbox => {
-		if (sandbox.id === excludeSandboxId) return;
+		if (sandbox.id === excludeSandboxId) { return; }
 
 		// Check bounding box overlap
 		const overlapX = x < sandbox.x + totalWidth && x + totalWidth > sandbox.x;

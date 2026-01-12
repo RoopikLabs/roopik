@@ -55,6 +55,61 @@
 }
 
 /* ============================================================
+   Drop Zone Overlay (for drag-drop import from OS file manager)
+   ============================================================ */
+
+.drop-zone-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(59, 130, 246, 0.15);
+	backdrop-filter: blur(4px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 10000;
+	pointer-events: none;
+	animation: dropZoneFadeIn 0.15s ease-out;
+}
+
+.drop-zone-content {
+	background: rgba(30, 30, 35, 0.95);
+	border: 2px dashed rgba(59, 130, 246, 0.6);
+	border-radius: 16px;
+	padding: 48px 64px;
+	text-align: center;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.drop-zone-icon {
+	font-size: 48px;
+	margin-bottom: 16px;
+}
+
+.drop-zone-text {
+	font-size: 18px;
+	font-weight: 600;
+	color: rgba(255, 255, 255, 0.95);
+	margin-bottom: 8px;
+}
+
+.drop-zone-hint {
+	font-size: 13px;
+	color: rgba(255, 255, 255, 0.5);
+}
+
+@keyframes dropZoneFadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+/* ============================================================
    Component styles are now in separate files:
    - canvasView/styles/floatingToolbar.css
    - canvasView/styles/infiniteCanvas.css

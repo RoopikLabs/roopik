@@ -23,12 +23,16 @@ import { IWorkspaceContextService } from '../../../../../platform/workspace/comm
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { RoopikWelcomeEditor } from '../welcomeEditor.js';
 import { RoopikWelcomeInput } from '../welcomeInput.js';
-import { RoopikLogger } from '../../common/roopikLogger.js';
 import { ICanvasService } from '../../common/canvas/index.js';
 import { IComponentService } from '../../common/component/componentService.js';
+import { IProjectStorageService } from '../../common/projectStorage/index.js';
+import { ILoggerService } from '../../../../../platform/log/common/log.js';
+import { getRoopikLogger } from '../../common/roopikLogger.js';
 
 export class RoopikStartupContribution extends Disposable implements IWorkbenchContribution {
 	static readonly ID = 'roopik.startupContribution';
+
+	private readonly logger;
 
 	constructor(
 		@IEditorService private readonly editorService: IEditorService,
@@ -39,9 +43,12 @@ export class RoopikStartupContribution extends Disposable implements IWorkbenchC
 		@IOutputService private readonly outputService: IOutputService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 		@ICanvasService private readonly canvasService: ICanvasService,
-		@IComponentService private readonly componentService: IComponentService
+		@IComponentService private readonly componentService: IComponentService,
+		@IProjectStorageService private readonly projectStorageService: IProjectStorageService,
+		@ILoggerService loggerService: ILoggerService
 	) {
 		super();
+		this.logger = getRoopikLogger(loggerService, 'STARTUP');
 		this.clearOutputOnStartup();
 		this.openWelcomeOnStartup();
 		this.initializeRoopikServices();
@@ -55,21 +62,18 @@ export class RoopikStartupContribution extends Disposable implements IWorkbenchC
 
 		const workspace = this.workspaceContextService.getWorkspace();
 		if (!workspace.folders || workspace.folders.length === 0) {
-			console.warn('[RoopikStartupContribution] No workspace folder found, services not initialized');
+			this.logger.warn('No workspace folder found, services not initialized');
 			return;
 		}
 
 		const workspacePath = workspace.folders[0].uri.fsPath;
-		console.log('[RoopikStartupContribution] Initializing services with workspace:', workspacePath);
 
 		try {
 			await this.canvasService.initialize(workspacePath);
-			console.log('[RoopikStartupContribution] CanvasService initialized');
-
 			await this.componentService.initialize(workspacePath);
-			console.log('[RoopikStartupContribution] ComponentService initialized');
+			await this.projectStorageService.initialize(workspacePath);
 		} catch (err) {
-			console.error('[RoopikStartupContribution] Failed to initialize services:', err);
+			this.logger.error('Failed to initialize services', { error: err });
 		}
 	}
 
@@ -83,7 +87,7 @@ export class RoopikStartupContribution extends Disposable implements IWorkbenchC
 
 		this.lifecycleService.when(LifecyclePhase.Restored).then(() => {
 			setTimeout(() => {
-				const roopikChannel = this.outputService.getChannel(RoopikLogger.LOGGER_ID);
+				const roopikChannel = this.outputService.getChannel('roopik');
 				if (roopikChannel) {
 					roopikChannel.clear();
 				}

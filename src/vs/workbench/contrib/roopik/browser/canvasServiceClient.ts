@@ -32,10 +32,10 @@ import {
 	CanvasPanelState
 } from '../common/canvas/types.js';
 
-/**
- * IPC Channel name for CanvasService communication
- */
-export const CANVAS_CHANNEL_NAME = 'roopikCanvas';
+import { CANVAS_CHANNEL_NAME } from '../common/canvas/index.js';
+
+// IPC Channel name for CanvasService communication
+export { CANVAS_CHANNEL_NAME };
 
 export class CanvasServiceClient implements ICanvasService {
 	readonly _serviceBrand: undefined;
@@ -117,10 +117,7 @@ export class CanvasServiceClient implements ICanvasService {
 	}
 
 	async listCanvasesAsync(options?: ListCanvasOptions): Promise<CanvasMeta[]> {
-		console.log('[CanvasServiceClient] listCanvasesAsync called, options:', options);
-		const result = await this.channel.call<CanvasMeta[]>('listCanvases', options);
-		console.log('[CanvasServiceClient] listCanvasesAsync returned:', result);
-		return result;
+		return this.channel.call<CanvasMeta[]>('listCanvases', options);
 	}
 
 	async updateCanvas(

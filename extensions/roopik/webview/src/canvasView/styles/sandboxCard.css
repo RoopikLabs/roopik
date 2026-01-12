@@ -20,6 +20,7 @@
 	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 	cursor: pointer;
 	padding: 40px 120px;
+	box-sizing: content-box;
 	/* Smooth entry animation from old extension */
 	animation: sandbox-enter 0.4s cubic-bezier(0.4, 0, 0.2, 1) backwards;
 }
@@ -71,6 +72,16 @@
 	border-color: rgba(0, 122, 204, 0.5);
 	box-shadow: 0 0 0 4px rgba(0, 122, 204, 0.15), 0 32px 80px rgba(0, 0, 0, 0.4),
 		inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(255, 255, 255, 0.05);
+	/* Focused mode expands the sandbox - transition handles smooth animation */
+	/* The expanded dimensions are set dynamically via JS based on viewport */
+	z-index: 9999 !important; /* Ensure focused sandbox is always on top */
+}
+
+/* Pushed-away state: other sandboxes slide away when one is focused */
+.sandbox-card.pushed-away {
+	opacity: 0.3;
+	filter: blur(2px);
+	pointer-events: none; /* Prevent interaction with pushed-away sandboxes */
 }
 
 .sandbox-card.dragging {
@@ -182,9 +193,32 @@
 
 /* Container that holds the iframe - gets device dimensions + scale */
 .sandbox-card .webview-container {
+	position: relative;
 	border-radius: 8px;
 	overflow: hidden;
 	background: #ffffff;
+}
+
+/* Interaction overlay - click to activate component interaction */
+.sandbox-card .interaction-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 10;
+	cursor: pointer;
+	background: rgba(100, 100, 255, 0.03); /* Subtle hint */
+	transition: background 0.2s ease;
+}
+
+.sandbox-card:hover .interaction-overlay {
+	background: rgba(100, 100, 255, 0.06); /* Slightly more visible on hover */
+}
+
+/* When activated, overlay is removed (handled in JSX) */
+.sandbox-card.activated .interaction-overlay {
+	display: none;
 }
 
 /* Device mode: subtle shadow to lift the device screen off the glassmorphism background */
@@ -266,3 +300,47 @@
 		inset 0 2px 0 rgba(255, 255, 255, 0.15), inset 0 -2px 0 rgba(255, 255, 255, 0.05),
 		0 0 20px rgba(239, 68, 68, 0.2);
 }
+
+/* ============================================================
+   Unfocus Button (only visible when focused)
+   ============================================================ */
+.sandbox-card .focus-button,
+.sandbox-card .unfocus-button {
+	position: absolute;
+	bottom: 20px;
+	right: 20px;
+	width: 44px;
+	height: 44px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(30, 30, 35, 0.85);
+	backdrop-filter: blur(10px);
+	border: none;
+	border-radius: 50%;
+	color: rgba(255, 255, 255, 0.8);
+	cursor: pointer;
+	transition: all 0.2s ease;
+	z-index: 1000;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.sandbox-card .focus-button:hover {
+	background: rgba(40, 40, 45, 0.95);
+	color: rgba(102, 204, 204, 0.9);
+	transform: scale(1.1);
+	box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.sandbox-card .unfocus-button:hover {
+	background: rgba(40, 40, 45, 0.95);
+	color: rgba(255, 165, 0, 0.9);
+	transform: scale(1.1);
+	box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+.sandbox-card .focus-button svg,
+.sandbox-card .unfocus-button svg {
+	flex-shrink: 0;
+}
+

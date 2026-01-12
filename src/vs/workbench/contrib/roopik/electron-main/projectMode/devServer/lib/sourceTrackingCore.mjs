@@ -15,7 +15,7 @@
  *
  * Features:
  * - Multi-line element detection (startLine:startCol:endLine:endCol)
- * - Parent context metadata (ComponentName|tag>parent>grandparent)
+ * - Parent context metadata (DISABLED - using CSS selectors instead)
  * - Component name tracking (data-roopik-component)
  * - String literal safety (skip tags inside strings/template literals)
  * - Configurable skip tags for HTML
@@ -30,8 +30,8 @@ import { basename, extname } from 'path';
 /** Maximum number of parent elements to track in hierarchy */
 export const MAX_PARENT_DEPTH = 3;
 
-/** Enable/disable parent metadata collection */
-export const ENABLE_PARENT_METADATA = true;
+/** Enable/disable parent metadata collection (DISABLED - using CSS selectors instead) */
+export const ENABLE_PARENT_METADATA = false;
 
 // ============================================
 // Regex Patterns (Shared by all frameworks)
@@ -52,6 +52,71 @@ export const CLOSING_TAG_REGEX = /<\/([a-zA-Z][a-zA-Z0-9.-]*)>/g;
 // ============================================
 // String Safety Checks
 // ============================================
+
+/**
+ * Check if a position in code is inside a TypeScript type context.
+ * This prevents injecting attributes into TypeScript generics like:
+ *   - React.MouseEvent<HTMLDivElement> (type annotation)
+ *   - Array<string> (generic parameter)
+ *   - T extends HTMLElement (extends clause)
+ *   - Promise<Result<T>> (nested generics)
+ *
+ * @param {string} code - The full source code
+ * @param {number} position - Character position to check (position of '<')
+ * @returns {boolean} - True if inside a TypeScript type context
+ */
+export function isInsideTypeScriptTypeContext(code, position) {
+	// Look backwards from position to find context
+	const beforeMatch = code.substring(Math.max(0, position - 100), position);
+
+	// Pattern 1: Type annotation - "event: React.MouseEvent<" or "value: Array<"
+	// Look for ": TypeName<" pattern (colon followed by identifier then our position)
+	if (/:\s*[A-Za-z_$][A-Za-z0-9_$.<>]*$/.test(beforeMatch)) {
+		return true;
+	}
+
+	// Pattern 2: Generic parameter - "Promise<Result<" (nested angle brackets)
+	// Count unclosed < before this position
+	let angleBracketDepth = 0;
+	for (let i = 0; i < beforeMatch.length; i++) {
+		const char = beforeMatch[i];
+		if (char === '<') {
+			angleBracketDepth++;
+		} else if (char === '>') {
+			angleBracketDepth = Math.max(0, angleBracketDepth - 1);
+		}
+	}
+	if (angleBracketDepth > 0) {
+		return true;
+	}
+
+	// Pattern 3: Extends clause - "T extends HTMLElement" or "interface Foo extends Bar<"
+	if (/\bextends\s+[A-Za-z_$][A-Za-z0-9_$.<>]*$/.test(beforeMatch)) {
+		return true;
+	}
+
+	// Pattern 4: Type parameter declaration - "function foo<T extends "
+	if (/[<,]\s*[A-Za-z_$][A-Za-z0-9_$]*\s+extends\s+[A-Za-z_$][A-Za-z0-9_$.<>]*$/.test(beforeMatch)) {
+		return true;
+	}
+
+	// Pattern 5: Return type annotation - "): Promise<" or "=> Array<"
+	if (/[):]\s*[A-Za-z_$][A-Za-z0-9_$.<>]*$/.test(beforeMatch)) {
+		// Extra check: make sure it's not JSX return like "return <div>"
+		// JSX returns usually have whitespace/newline after return keyword
+		const trimmed = beforeMatch.replace(/[A-Za-z_$][A-Za-z0-9_$.<>]*$/, '');
+		if (!/\breturn\s+$/.test(beforeMatch) && !/=>\s*$/.test(trimmed)) {
+			return true;
+		}
+	}
+
+	// Pattern 6: Type assertion - "as HTMLDivElement" or "<HTMLDivElement>"
+	if (/\bas\s+[A-Za-z_$][A-Za-z0-9_$.<>]*$/.test(beforeMatch)) {
+		return true;
+	}
+
+	return false;
+}
 
 /**
  * Check if a position in code is inside a string literal or template literal.
@@ -78,7 +143,7 @@ export function isInsideString(code, position) {
 		}
 
 		// Toggle string states
-		if (char === "'" && !inDoubleQuote && !inTemplateString) {
+		if (char === `'` && !inDoubleQuote && !inTemplateString) {
 			inSingleQuote = !inSingleQuote;
 		} else if (char === '"' && !inSingleQuote && !inTemplateString) {
 			inDoubleQuote = !inDoubleQuote;
@@ -130,7 +195,7 @@ export function isInsideScriptOrStyle(html, position) {
 
 		// Track quote context (for attribute values)
 		if (!inScript && !inStyle) {
-			if (char === "'" && !inDoubleQuote) {
+			if (char === `'` && !inDoubleQuote) {
 				inSingleQuote = !inSingleQuote;
 			} else if (char === '"' && !inSingleQuote) {
 				inDoubleQuote = !inDoubleQuote;
@@ -222,12 +287,12 @@ export function findMatchingClosingTag(allMatches, openingPos, tagName) {
 	let foundOpening = false;
 
 	for (const match of allMatches) {
-		if (match.start < openingPos) continue;
+		if (match.start < openingPos) { continue; }
 		if (match.start === openingPos && match.type === 'opening') {
 			foundOpening = true;
 			continue;
 		}
-		if (!foundOpening) continue;
+		if (!foundOpening) { continue; }
 
 		if (match.tagName === tagName) {
 			if (match.type === 'opening') {
@@ -319,6 +384,12 @@ export function parseElements(code, options) {
 
 			// SECURITY: Skip if inside script/style tag (HTML only)
 			if (checkScriptStyle && isInsideScriptOrStyle(code, matchStart)) {
+				continue;
+			}
+
+			// TYPESCRIPT: Skip if inside TypeScript type context (generics, type annotations)
+			// This prevents injecting into: React.MouseEvent<HTMLDivElement>, Array<string>, etc.
+			if (isInsideTypeScriptTypeContext(code, matchStart)) {
 				continue;
 			}
 

@@ -212,10 +212,14 @@ function createRoopikBabelPlugin(filename) {
 				JSXElement(path, state) {
 					const { node } = path;
 					const elementLoc = node.loc;
-					if (!elementLoc) return;
+					if (!elementLoc) {
+						return;
+					}
 
 					const openingElement = node.openingElement;
-					if (!openingElement) return;
+					if (!openingElement) {
+						return;
+					}
 
 					// Extract current element's tag name
 					const name = openingElement.name;

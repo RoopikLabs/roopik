@@ -5,7 +5,8 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import type { ViewBounds, DevicePreset, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent } from './types.js';
+import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, AttachElementRequestEvent, BrowserBridgeEvent, BrowserKeyEvent, McpBrowserOpenRequestEvent, McpBrowserCloseRequestEvent } from './types.js';
+import type { GetElementStylesRequest, GetElementStylesResult } from '../cssResolvers/types.js';
 
 export const IProjectModeService = createDecorator<IProjectModeService>('projectModeService');
 
@@ -40,6 +41,44 @@ export interface IProjectModeService {
 	 */
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent>;
 
+	/**
+	 * Fired when user clicks "Open Source" in browser context menu
+	 * Contains parsed source location from data-roopik-source attribute
+	 */
+	readonly onOpenSourceRequest: Event<OpenSourceRequestEvent>;
+
+	/**
+	 * Fired when user clicks "Attach Element to Context" in browser context menu
+	 * Works WITHOUT inspect mode - directly from right-click
+	 */
+	readonly onAttachElementRequest: Event<AttachElementRequestEvent>;
+
+	/**
+	 * Fired when injected script sends a message via window.__roopikBridge()
+	 * Used for element selection, inspect mode events, etc.
+	 */
+	readonly onBrowserBridgeMessage: Event<BrowserBridgeEvent>;
+
+	/**
+	 * Fired when a key is pressed in the browser view
+	 * Centralized key handling - all key presses from BrowserView are forwarded here
+	 * Replaces scattered key handling in injected scripts
+	 */
+	readonly onBrowserKeyPress: Event<BrowserKeyEvent>;
+
+	/**
+	 * Fired when MCP requests browser to be opened
+	 * Renderer listens and opens the browser editor with proper UI
+	 * Used by MCP tools (browser_open) when no browser is currently open
+	 */
+	readonly onMcpBrowserOpenRequest: Event<McpBrowserOpenRequestEvent>;
+
+	/**
+	 * Fired when MCP requests browser to be closed
+	 * Renderer listens and closes the editor tab properly (triggers full cleanup chain)
+	 * Used by MCP tools (browser_close) to ensure proper cleanup
+	 */
+	readonly onMcpBrowserCloseRequest: Event<McpBrowserCloseRequestEvent>;
 
 	// ============================================
 	// Browser View Lifecycle
@@ -123,11 +162,6 @@ export interface IProjectModeService {
 	closeDevTools(browserViewId: number): Promise<void>;
 
 	/**
-	 * Set DevTools view bounds
-	 */
-	setDevToolsBounds(browserViewId: number, bounds: ViewBounds): Promise<void>;
-
-	/**
 	 * Check if DevTools is open
 	 */
 	isDevToolsOpen(browserViewId: number): Promise<boolean>;
@@ -156,19 +190,12 @@ export interface IProjectModeService {
 	 */
 	sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any>;
 
-	// ============================================
-	// Device Emulation (via CDP)
-	// ============================================
-
 	/**
-	 * Set device emulation
+	 * Setup the browser bridge for script-to-main communication
+	 * Creates window.__roopikBridge() in the page via CDP Runtime.addBinding
+	 * Must be called before injecting inspect script
 	 */
-	setDeviceEmulation(browserViewId: number, device: DevicePreset): Promise<void>;
-
-	/**
-	 * Clear device emulation
-	 */
-	clearDeviceEmulation(browserViewId: number): Promise<void>;
+	setupBrowserBridge(browserViewId: number): Promise<void>;
 
 	// ============================================
 	// Utilities
@@ -178,6 +205,17 @@ export interface IProjectModeService {
 	 * Take screenshot
 	 */
 	takeScreenshot(browserViewId: number): Promise<string>;
+
+	/**
+	 * Take screenshot of a specific region (clip mode)
+	 * Coordinates are viewport-relative (clientX/Y from browser)
+	 */
+	takeScreenshotClip(browserViewId: number, x: number, y: number, width: number, height: number): Promise<string>;
+
+	/**
+	 * Focus the browser view to receive keyboard events
+	 */
+	focusBrowserView(browserViewId: number): Promise<void>;
 
 	/**
 	 * Execute JavaScript in browser
@@ -195,43 +233,21 @@ export interface IProjectModeService {
 	getDebuggingUrl(browserViewId: number): Promise<string>;
 
 	// ============================================
-	// Overlay View (for floating toolbar, menus)
-	// CRITICAL: Creates WebContentsView that renders ON TOP of browser
+	// CSS Source Resolution (for Inspect Panel)
 	// ============================================
 
 	/**
-	 * Create overlay view for floating UI elements (toolbar, menus)
-	 * This creates a transparent WebContentsView positioned above the browser
-	 * @param browserViewId - Parent browser view ID
-	 * @param bounds - Position and size of overlay
-	 * @param htmlContent - HTML content to render in overlay
-	 * @returns Overlay view ID
+	 * Get complete style information for an element
+	 *
+	 * Uses CDP (Chrome DevTools Protocol) for deterministic source resolution.
+	 * Returns all matched CSS rules with source file locations, handling:
+	 * - Plain CSS files
+	 * - SCSS/LESS (via source maps)
+	 * - CSS-in-JS (with component redirect)
+	 * - Inline styles
+	 *
+	 * @param request - Element identification and project context
+	 * @returns Complete style information including source locations
 	 */
-	createOverlayView(browserViewId: number, bounds: ViewBounds, htmlContent: string): Promise<number>;
-
-	/**
-	 * Update overlay view bounds
-	 */
-	setOverlayBounds(overlayViewId: number, bounds: ViewBounds): Promise<void>;
-
-	/**
-	 * Update overlay HTML content
-	 */
-	setOverlayContent(overlayViewId: number, htmlContent: string): Promise<void>;
-
-	/**
-	 * Show/hide overlay view
-	 */
-	setOverlayVisible(overlayViewId: number, visible: boolean): Promise<void>;
-
-	/**
-	 * Destroy overlay view
-	 */
-	destroyOverlayView(overlayViewId: number): Promise<void>;
-
-	/**
-	 * Execute JavaScript in overlay view
-	 * Used for getting/setting state in floating toolbar
-	 */
-	executeScriptOnOverlay(overlayViewId: number, script: string): Promise<any>;
+	getElementStyles(request: GetElementStylesRequest): Promise<GetElementStylesResult>;
 }

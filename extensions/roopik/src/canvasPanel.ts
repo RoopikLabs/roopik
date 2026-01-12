@@ -1,6 +1,6 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Roopik. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
@@ -55,18 +55,28 @@ interface SandboxData {
 }
 
 /**
- * Component entry with position and hash (subset of Core's ComponentIndexEntry)
+ * Component reference (matches Core's ComponentReference in storageTypes.ts)
+ * New architecture: stored directly in canvas file, not separate index.json
  */
-interface ComponentIndexEntry {
+interface ComponentReference {
+	componentName?: string;
+	folderPath: string;
+	entryFile: string;
 	contentHash: string;
-	sandboxPosition?: SandboxPosition;
+	position?: SandboxPosition;
 	// Other fields exist but we only care about these here
 	[key: string]: unknown;
 }
 
-interface ComponentIndex {
-	components: Record<string, ComponentIndexEntry>;
+/**
+ * Canvas file structure (matches Core's CanvasFile in storageTypes.ts)
+ * New architecture: .roopik/canvases/{canvas-id}.json (flat file, not folder)
+ */
+interface CanvasFile {
+	id: string;
+	name: string;
 	preferences: CanvasPreferences;
+	components: Record<string, ComponentReference>;
 }
 
 /**
@@ -179,6 +189,10 @@ export class CanvasPanel implements vscode.Disposable {
 			}
 		);
 
+		// Set custom icon for the tab using VS Code Codicon
+		// Options: palette, paintbrush, layout, window, pencil, beaker
+		panel.iconPath = new vscode.ThemeIcon('pencil');
+
 		return new CanvasPanel(panel, extensionUri, canvasId, canvasName, workspaceRoot, manager);
 	}
 
@@ -269,8 +283,17 @@ export class CanvasPanel implements vscode.Disposable {
 	 * Handle component created event (routed from manager)
 	 */
 	public onComponentCreated(event: ComponentCreatedEvent): void {
-		this.logger.debug(`Component created: ${event.componentId}`);
-		this.postToWebview('componentCreated', event);
+		this.logger.debug(`Component created: ${event.componentId}, name: ${event.component?.componentName}`);
+		// Extract fields webview expects: { componentId, canvasId, name, folderPath, entryFile }
+		this.postToWebview('componentCreated', {
+			componentId: event.componentId,
+			canvasId: event.canvasId,
+			name: event.component?.componentName,
+			folderPath: event.component?.folderPath,
+			entryFile: event.component?.entryFile
+		});
+
+		// console.log('Component created:', event.component);
 	}
 
 	/**
@@ -311,10 +334,11 @@ export class CanvasPanel implements vscode.Disposable {
 				error: 'Build succeeded but bundle path not provided'
 			});
 		} else {
-			// Build failed
+			// Build failed - send full errorInfo for detailed display
 			this.postToWebview('componentError', {
 				componentId: event.componentId,
-				error: event.errorInfo?.message || 'Build failed'
+				error: event.errorInfo?.message || 'Build failed',
+				errorInfo: event.errorInfo
 			});
 		}
 	}
@@ -374,11 +398,11 @@ export class CanvasPanel implements vscode.Disposable {
 					}
 					break;
 
-				case 'createComponent':
-					await this.handleCreateComponent(message.payload as {
-						name: string;
-						sourceData: unknown;
-						position?: { x: number; y: number };
+				case 'dropComponent':
+					await this.handleDropComponent(message.payload as {
+						fileName: string;
+						content: string;
+						componentName: string;
 					});
 					break;
 
@@ -387,18 +411,7 @@ export class CanvasPanel implements vscode.Disposable {
 					break;
 
 				case 'deleteComponent':
-					await this.handleDeleteComponent(message.payload as { componentId: string });
-					break;
-
-				case 'updateComponentSource':
-					await this.handleUpdateComponentSource(message.payload as {
-						componentId: string;
-						files: Record<string, string>;
-					});
-					break;
-
-				case 'getComponentSource':
-					await this.handleGetComponentSource(message.payload as { componentId: string });
+					await this.handleDeleteComponent(message.payload as { componentId: string; deleteSourceCode?: boolean });
 					break;
 
 				case 'saveCanvas':
@@ -413,11 +426,90 @@ export class CanvasPanel implements vscode.Disposable {
 					});
 					break;
 
+				case 'openFile':
+					await this.handleOpenFile(message.payload as {
+						filePath: string;
+						line?: number;
+						column?: number;
+					});
+					break;
+
+				case 'showNotification':
+					this.handleShowNotification(message.payload as {
+						level: 'info' | 'warning' | 'error';
+						message: string;
+					});
+					break;
+
 				case 'error':
 					this.handleWebviewError(message.payload);
 					break;
 
-				default:
+				case 'canvasAiChat':
+					await this.handleCanvasAiChat(message.payload as {
+						userInput: string;
+						images?: string[];
+						imageMetadata?: { deviceMode: string; deviceViewport: { width: number; height: number } };
+						context: {
+							canvasId: string;
+							canvasName?: string;
+							componentCount?: number;
+							components: Array<{
+								id: string;
+								name?: string;
+								folderPath?: string;
+								entryFile?: string;
+							}>;
+							selectedComponent?: {
+								id: string;
+								name?: string;
+								folderPath?: string;
+								entryFile?: string;
+							};
+							selectedElement?: {
+								componentId: string;
+								sourceLocation?: {
+									file: string;
+									startLine: number;
+									endLine?: number;
+									column?: number;
+								};
+							};
+						};
+						autoSend?: boolean;
+					});
+					break;
+
+				case 'componentRuntimeError':
+					// Forward runtime error to componentService
+					await this.handleComponentRuntimeError(message.payload as {
+						componentId: string;
+						error: {
+							message: string;
+							type: 'runtime' | 'promise' | 'unknown';
+							stack?: string;
+							source?: string;
+							line?: number;
+							column?: number;
+							timestamp: number;
+						};
+					});
+					break;
+
+				case 'debugLog': {
+					// Handle debug logs from webview for tracing
+					const debugPayload = message.payload as { level?: string; message: string };
+					const logLevel = debugPayload?.level || 'info';
+					const logMsg = debugPayload?.message || 'Unknown debug message';
+					if (logLevel === 'error') {
+						this.logger.error(`[WebviewTrace] ${logMsg}`);
+					} else if (logLevel === 'warn') {
+						this.logger.warn(`[WebviewTrace] ${logMsg}`);
+					} else {
+						this.logger.info(`[WebviewTrace] ${logMsg}`);
+					}
+					break;
+				}
 					this.logger.warn(`Unknown webview message type: ${message.type}`);
 			}
 		} catch (error) {
@@ -428,25 +520,148 @@ export class CanvasPanel implements vscode.Disposable {
 		}
 	}
 
-	/**
-	 * Handle create component request from webview
-	 */
-	private async handleCreateComponent(payload: {
-		name: string;
-		sourceData: unknown;
-		position?: { x: number; y: number };
+	private async handleCanvasAiChat(payload: {
+		userInput: string;
+		images?: string[];
+		imageMetadata?: { deviceMode: string; deviceViewport: { width: number; height: number } };
+		context: {
+			canvasId: string;
+			canvasName?: string;
+			componentCount?: number;
+			components: Array<{
+				id: string;
+				name?: string;
+				folderPath?: string;
+				entryFile?: string;
+			}>;
+			selectedComponent?: {
+				id: string;
+				name?: string;
+				folderPath?: string;
+				entryFile?: string;
+			};
+			selectedElement?: {
+				componentId: string;
+				sourceLocation?: {
+					file: string;
+					startLine: number;
+					endLine?: number;
+					column?: number;
+				};
+			};
+		};
+		autoSend?: boolean;
 	}): Promise<void> {
-		this.logger.info(`Creating component: ${payload.name}`);
+		const userInput = payload?.userInput?.trim() ?? '';
+		const images = payload?.images;
+		const imageMetadata = payload?.imageMetadata;
+		if (!userInput && (!images || images.length === 0)) {
+			return;
+		}
 
+		const context = payload.context;
+		const lines: string[] = [];
+		lines.push('[Roopik Canvas Context]');
+		lines.push(`canvasId: ${context.canvasId}`);
+		if (context.canvasName) {
+			lines.push(`canvasName: ${context.canvasName}`);
+		}
+
+		if (context.selectedComponent) {
+			lines.push('Selected component:');
+			lines.push(`- id: ${context.selectedComponent.id}`);
+			if (context.selectedComponent.name) {
+				lines.push(`- name: ${context.selectedComponent.name}`);
+			}
+			if (context.selectedComponent.folderPath) {
+				lines.push(`- folderPath: ${context.selectedComponent.folderPath}`);
+			}
+			if (context.selectedComponent.entryFile) {
+				const entryPath = context.selectedComponent.folderPath
+					? path.join(context.selectedComponent.folderPath, context.selectedComponent.entryFile)
+					: context.selectedComponent.entryFile;
+				lines.push(`- entryFile: ${entryPath}`);
+			}
+		}
+
+		if (context.selectedElement?.sourceLocation) {
+			const source = context.selectedElement.sourceLocation;
+			const lineRange = source.endLine && source.endLine !== source.startLine
+				? `${source.startLine}-${source.endLine}`
+				: `${source.startLine}`;
+			lines.push('Selected element:');
+			lines.push(`- componentId: ${context.selectedElement.componentId}`);
+			lines.push(`- source: ${source.file}:${lineRange}`);
+		}
+
+		lines.push('');
+		if (images && images.length > 0 && imageMetadata) {
+			lines.push(`Device mode: ${imageMetadata.deviceMode}`);
+			lines.push(`Device viewport: ${imageMetadata.deviceViewport.width}x${imageMetadata.deviceViewport.height}`);
+		}
+
+		if (userInput) {
+			lines.push('User request:');
+			lines.push(userInput);
+		}
+
+		try {
+			await vscode.commands.executeCommand('roodio.externalContext', {
+				promptText: lines.join('\n'),
+				images,
+				autoSend: payload.autoSend === true,
+			});
+		} catch (error) {
+			this.logger.error(`Failed to forward canvas AI context: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	/**
+	 * Handle drop component request from webview (drag-drop from OS file manager)
+	 *
+	 * NOTE: Webview can only get file content from drag-drop (browser security),
+	 * so we save it temporarily and pass the path to Core.
+	 */
+	private async handleDropComponent(payload: {
+		fileName: string;
+		content: string;
+		componentName: string;
+	}): Promise<void> {
+		this.logger.info(`Dropping component: ${payload.componentName} (${payload.fileName})`);
+
+		// Save dropped file to temp location in workspace
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder) {
+			throw new Error('No workspace folder open');
+		}
+
+		// Create temp folder for dropped components if it doesn't exist
+		const tempDir = path.join(workspaceFolder.uri.fsPath, '.roopik', 'temp', 'drag-drop');
+		if (!fs.existsSync(tempDir)) {
+			fs.mkdirSync(tempDir, { recursive: true });
+		}
+
+		// Save file with timestamp to avoid conflicts
+		const timestamp = Date.now();
+		const safeFileName = payload.fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+		const componentFolder = path.join(tempDir, `${payload.componentName}_${timestamp}`);
+		fs.mkdirSync(componentFolder, { recursive: true });
+
+		const filePath = path.join(componentFolder, safeFileName);
+		fs.writeFileSync(filePath, payload.content, 'utf8');
+
+		this.logger.info(`Saved dropped file to: ${filePath}`);
+
+		// Now create component with the file path
 		const component = await this.manager.createComponent({
+			folderPath: filePath, // Core will extract folder + entry file
 			canvasId: this.canvasId,
-			name: payload.name,
-			sourceData: payload.sourceData as any,
-			position: payload.position
+			componentName: payload.componentName,
+			origin: 'drag-drop'
 		});
 
 		// Component created - onComponentCreated event will be routed back
-		this.logger.info(`Component creation initiated: ${component.id}`);
+		this.logger.info(`Component drop initiated: ${component.id}`);
 	}
 
 	/**
@@ -465,34 +680,110 @@ export class CanvasPanel implements vscode.Disposable {
 	/**
 	 * Handle delete component request from webview
 	 */
-	private async handleDeleteComponent(payload: { componentId: string }): Promise<void> {
-		this.logger.info(`Deleting component: ${payload.componentId}`);
-		await this.manager.deleteComponent(payload.componentId);
+	private async handleDeleteComponent(payload: { componentId: string; deleteSourceCode?: boolean }): Promise<void> {
+		await this.manager.deleteComponent(payload.componentId, payload.deleteSourceCode);
 		// onComponentDeleted event will be routed back
 	}
 
 	/**
-	 * Handle update component source request from webview
+	 * Handle runtime error from component sandbox
+	 *
+	 * When a component crashes at runtime (not during build), the error boundary
+	 * catches it and sends it via postMessage to the webview, which forwards it here.
+	 * We then call the core's reportRuntimeError to store it in component state.
 	 */
-	private async handleUpdateComponentSource(payload: {
+	private async handleComponentRuntimeError(payload: {
 		componentId: string;
-		files: Record<string, string>;
+		error: {
+			message: string;
+			type: 'runtime' | 'promise' | 'unknown';
+			stack?: string;
+			source?: string;
+			line?: number;
+			column?: number;
+			timestamp: number;
+		};
 	}): Promise<void> {
-		this.logger.info(`Updating component source: ${payload.componentId}`);
-		await this.manager.updateComponentSource(payload.componentId, payload.files);
-		// This triggers rebuild, onComponentBuilt event will be routed back
+		this.logger.warn(`Component runtime error: ${payload.componentId} - ${payload.error.message}`);
+
+		// Forward to manager which calls componentService.reportRuntimeError
+		await this.manager.reportComponentRuntimeError(payload.componentId, payload.error);
 	}
 
 	/**
-	 * Handle get component source request from webview
+	 * Handle show notification request from webview
 	 */
-	private async handleGetComponentSource(payload: { componentId: string }): Promise<void> {
-		this.logger.info(`Getting component source: ${payload.componentId}`);
-		const source = await this.manager.getComponentSource(payload.componentId);
-		this.postToWebview('componentSource', {
-			componentId: payload.componentId,
-			files: source
-		});
+	private handleShowNotification(payload: {
+		level: 'info' | 'warning' | 'error';
+		message: string;
+	}): void {
+		// Log to output channel instead of showing notification popup
+		switch (payload.level) {
+			case 'info':
+				this.logger.info(payload.message);
+				break;
+			case 'warning':
+				// vscode.window.showWarningMessage(payload.message);
+				this.logger.warn(payload.message);
+				break;
+			case 'error':
+				vscode.window.showErrorMessage(payload.message);
+				break;
+		}
+	}
+
+	/**
+	 * Handle open file request from webview (View Code button)
+	 */
+	private async handleOpenFile(payload: {
+		filePath: string;
+		line?: number;
+		column?: number;
+	}): Promise<void> {
+		this.logger.info(`Opening file: ${payload.filePath}`);
+
+		try {
+			// Resolve the file path relative to workspace
+			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+			if (!workspaceFolder) {
+				throw new Error('No workspace folder open');
+			}
+
+			// Construct absolute path
+			const absolutePath = path.isAbsolute(payload.filePath)
+				? payload.filePath
+				: path.join(workspaceFolder.uri.fsPath, payload.filePath);
+
+			// Check if file exists
+			if (!fs.existsSync(absolutePath)) {
+				throw new Error(`File not found: ${absolutePath}`);
+			}
+
+			// Open the file in VS Code
+			const document = await vscode.workspace.openTextDocument(absolutePath);
+			const editor = await vscode.window.showTextDocument(document, {
+				preview: false,
+				viewColumn: vscode.ViewColumn.One
+			});
+
+			// Move cursor to specified line/column if provided
+			if (payload.line !== undefined) {
+				const line = Math.max(0, payload.line - 1); // Convert to 0-based
+				const column = Math.max(0, (payload.column || 1) - 1); // Convert to 0-based
+				const position = new vscode.Position(line, column);
+				editor.selection = new vscode.Selection(position, position);
+				editor.revealRange(
+					new vscode.Range(position, position),
+					vscode.TextEditorRevealType.InCenter
+				);
+			}
+
+			// this.logger.info(`File opened successfully: ${absolutePath}`);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			this.logger.error(`Failed to open file: ${errorMessage}`);
+			vscode.window.showErrorMessage(`Failed to open file: ${errorMessage}`);
+		}
 	}
 
 	/**
@@ -508,18 +799,19 @@ export class CanvasPanel implements vscode.Disposable {
 	}
 
 	// ============================================================================
-	// Canvas State Loading (file-based, reads from index.json)
+	// Canvas State Loading (file-based, reads from canvas file)
 	// ============================================================================
 
 	/**
-	 * Get the path to the canvas index.json file
+	 * Get the path to the canvas file
+	 * New architecture: .roopik/canvases/{canvas-id}.json (flat file, not folder)
 	 */
-	private getIndexJsonPath(): string {
-		return path.join(this.workspacePath, '.roopik', 'canvases', this.canvasId, 'components', 'index.json');
+	private getCanvasFilePath(): string {
+		return path.join(this.workspacePath, '.roopik', 'canvases', `${this.canvasId}.json`);
 	}
 
 	/**
-	 * Load canvas state from index.json on panel init
+	 * Load canvas state from canvas file on panel init
 	 * Extracts:
 	 * - Canvas preferences (background color, pattern, viewport)
 	 * - Sandbox positions (for restoring component placement)
@@ -528,19 +820,19 @@ export class CanvasPanel implements vscode.Disposable {
 	 * Does NOT send to webview - call sendPreferencesToWebview() after webview is ready
 	 */
 	private loadCanvasStateFromFile(): void {
-		const indexPath = this.getIndexJsonPath();
-		this.logger.debug(`Loading canvas state from: ${indexPath}`);
+		const canvasFilePath = this.getCanvasFilePath();
+		this.logger.debug(`Loading canvas state from: ${canvasFilePath}`);
 
 		try {
-			if (fs.existsSync(indexPath)) {
-				const content = fs.readFileSync(indexPath, 'utf-8');
-				const index: ComponentIndex = JSON.parse(content);
+			if (fs.existsSync(canvasFilePath)) {
+				const content = fs.readFileSync(canvasFilePath, 'utf-8');
+				const canvasFile: CanvasFile = JSON.parse(content);
 
-				if (index.preferences) {
+				if (canvasFile.preferences) {
 					this.currentPreferences = {
-						backgroundColor: index.preferences.backgroundColor || DEFAULT_CANVAS_PREFERENCES.backgroundColor,
-						backgroundPattern: index.preferences.backgroundPattern || DEFAULT_CANVAS_PREFERENCES.backgroundPattern,
-						viewport: index.preferences.viewport || { ...DEFAULT_CANVAS_PREFERENCES.viewport }
+						backgroundColor: canvasFile.preferences.backgroundColor || DEFAULT_CANVAS_PREFERENCES.backgroundColor,
+						backgroundPattern: canvasFile.preferences.backgroundPattern || DEFAULT_CANVAS_PREFERENCES.backgroundPattern,
+						viewport: canvasFile.preferences.viewport || { ...DEFAULT_CANVAS_PREFERENCES.viewport }
 					};
 					this.lastSavedBackgroundColor = this.currentPreferences.backgroundColor;
 					this.lastSavedBackgroundPattern = this.currentPreferences.backgroundPattern;
@@ -554,17 +846,20 @@ export class CanvasPanel implements vscode.Disposable {
 				// Extract sandbox positions and component info from components map
 				this.loadedSandboxPositions = {};
 				this.loadedComponents = [];
-				if (index.components) {
-					for (const [componentId, entry] of Object.entries(index.components)) {
-						// Extract position
-						if (entry.sandboxPosition) {
-							this.loadedSandboxPositions[componentId] = entry.sandboxPosition;
+				if (canvasFile.components) {
+					for (const [componentId, ref] of Object.entries(canvasFile.components)) {
+						// Extract position (new architecture uses 'position' not 'sandboxPosition')
+						if (ref.position) {
+							this.loadedSandboxPositions[componentId] = ref.position;
 						}
-						// Extract component info for loading (need contentHash for cache validation)
-						if (entry.contentHash) {
+						// Extract component info for loading (need contentHash for cache validation, name for display)
+						if (ref.contentHash) {
 							this.loadedComponents.push({
 								componentId,
-								contentHash: entry.contentHash
+								contentHash: ref.contentHash,
+								name: ref.componentName,
+								folderPath: ref.folderPath,
+								entryFile: ref.entryFile
 							});
 						}
 					}
@@ -579,7 +874,7 @@ export class CanvasPanel implements vscode.Disposable {
 			} else {
 				// File doesn't exist - will be created by Core on canvas creation
 				// Use defaults for now
-				this.logger.debug('Index file not found, using defaults');
+				this.logger.debug('Canvas file not found, using defaults');
 			}
 		} catch (error) {
 			this.logger.error(`Failed to load canvas state: ${error}`);
@@ -615,12 +910,15 @@ export class CanvasPanel implements vscode.Disposable {
 		this.logger.info(`Loading ${this.loadedComponents.length} existing components`);
 
 		for (const component of this.loadedComponents) {
-			const { componentId, contentHash } = component;
+			const { componentId, contentHash, name, folderPath, entryFile } = component;
 
 			// 1. Notify webview that component exists (shows loading spinner)
 			this.postToWebview('componentCreated', {
 				componentId,
-				canvasId: this.canvasId
+				canvasId: this.canvasId,
+				name,
+				folderPath,
+				entryFile
 			});
 
 			// 2. Load component (checks cache, rebuilds if needed)
@@ -662,33 +960,29 @@ export class CanvasPanel implements vscode.Disposable {
 	}
 
 	/**
-	 * Save preferences to index.json
+	 * Save preferences to canvas file
 	 * Preserves existing components data, only updates preferences
 	 */
 	private savePreferencesToFile(): void {
-		const indexPath = this.getIndexJsonPath();
-		this.logger.debug(`Saving preferences to: ${indexPath}`);
+		const canvasFilePath = this.getCanvasFilePath();
+		this.logger.debug(`Saving preferences to: ${canvasFilePath}`);
 
 		try {
-			let index: ComponentIndex = { components: {}, preferences: { ...DEFAULT_CANVAS_PREFERENCES } };
-
-			// Read existing file to preserve components
-			if (fs.existsSync(indexPath)) {
-				const content = fs.readFileSync(indexPath, 'utf-8');
-				index = JSON.parse(content);
+			// Canvas file must exist (created by Core on canvas creation)
+			if (!fs.existsSync(canvasFilePath)) {
+				this.logger.debug('Canvas file not found, skipping preferences save');
+				return;
 			}
+
+			// Read existing file to preserve components and other data
+			const content = fs.readFileSync(canvasFilePath, 'utf-8');
+			const canvasFile: CanvasFile = JSON.parse(content);
 
 			// Update preferences
-			index.preferences = { ...this.currentPreferences };
-
-			// Ensure directory exists
-			const dir = path.dirname(indexPath);
-			if (!fs.existsSync(dir)) {
-				fs.mkdirSync(dir, { recursive: true });
-			}
+			canvasFile.preferences = { ...this.currentPreferences };
 
 			// Write file
-			fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf-8');
+			fs.writeFileSync(canvasFilePath, JSON.stringify(canvasFile, null, 2), 'utf-8');
 			this.logger.debug('Preferences saved to file');
 		} catch (error) {
 			this.logger.error(`Failed to save preferences: ${error}`);
@@ -720,36 +1014,36 @@ export class CanvasPanel implements vscode.Disposable {
 	}
 
 	/**
-	 * Actually write sandbox positions to index.json
+	 * Actually write sandbox positions to canvas file
 	 */
 	private doSaveComponentPositions(): void {
 		if (this.pendingPositions.length === 0) {
 			return;
 		}
 
-		const indexPath = this.getIndexJsonPath();
+		const canvasFilePath = this.getCanvasFilePath();
 
 		try {
-			if (!fs.existsSync(indexPath)) {
-				this.logger.debug('Index file not found, skipping position save');
+			if (!fs.existsSync(canvasFilePath)) {
+				this.logger.debug('Canvas file not found, skipping position save');
 				return;
 			}
 
-			const content = fs.readFileSync(indexPath, 'utf-8');
-			const index: ComponentIndex = JSON.parse(content);
+			const content = fs.readFileSync(canvasFilePath, 'utf-8');
+			const canvasFile: CanvasFile = JSON.parse(content);
 			let changed = false;
 
 			// Update each sandbox's position
 			for (const sandbox of this.pendingPositions) {
-				const entry = index.components[sandbox.id];
-				if (entry) {
-					const currentPos = entry.sandboxPosition;
+				const ref = canvasFile.components[sandbox.id];
+				if (ref) {
+					const currentPos = ref.position;
 					// Only update if position actually changed
 					if (!currentPos ||
 						currentPos.x !== sandbox.x ||
 						currentPos.y !== sandbox.y ||
 						currentPos.zIndex !== sandbox.zIndex) {
-						entry.sandboxPosition = {
+						ref.position = {
 							x: sandbox.x,
 							y: sandbox.y,
 							zIndex: sandbox.zIndex
@@ -761,7 +1055,7 @@ export class CanvasPanel implements vscode.Disposable {
 
 			// Only write if something changed
 			if (changed) {
-				fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf-8');
+				fs.writeFileSync(canvasFilePath, JSON.stringify(canvasFile, null, 2), 'utf-8');
 				this.logger.debug(`Saved positions for ${this.pendingPositions.length} sandboxes`);
 			}
 
@@ -867,7 +1161,7 @@ export class CanvasPanel implements vscode.Disposable {
 			default-src 'none';
 			style-src ${webview.cspSource} 'unsafe-inline';
 			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https://esm.sh https://cdn.skypack.dev;
-			font-src ${webview.cspSource};
+			font-src ${webview.cspSource} data:;
 			img-src ${webview.cspSource} data: https:;
 			connect-src https://esm.sh https://cdn.skypack.dev;
 			frame-src blob: data: https:;

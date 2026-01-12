@@ -51,6 +51,8 @@ export class DevServerChannel implements IServerChannel {
 				return this.service.hasNodeModules(arg);
 			case 'installDependencies':
 				return this.service.installDependencies(arg);
+			case 'killProcessByPort':
+				return this.service.killProcessByPort(arg);
 
 			default:
 				throw new Error(`[DevServerChannel] Unknown command: ${command}`);

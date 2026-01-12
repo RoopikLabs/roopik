@@ -21,6 +21,7 @@ export type Framework =
 	| 'vue-vite'
 	| 'svelte-vite'
 	| 'solid-vite'
+	| 'preact-vite'
 	| 'plain-html-vite'
 	| 'nextjs'
 	| 'nuxt'
@@ -44,6 +45,7 @@ export interface DevServerStatusEvent {
 	url?: string;
 	port?: number;
 	framework?: Framework;
+	frameworkDisplayName?: string;
 	error?: string;
 }
 
@@ -74,6 +76,7 @@ export interface DevServerInfo {
 	state: DevServerState;
 	url?: string;
 	port?: number;
+	pid?: number; // Process ID for orphaned process cleanup
 	framework?: Framework;
 	frameworkDisplayName?: string;
 	supportsClickToSource?: boolean;
@@ -177,4 +180,12 @@ export interface IDevServerService {
 	 * @param projectRoot - Project root path
 	 */
 	installDependencies(projectRoot: string): Promise<void>;
+
+	/**
+	 * Kill a process running on a specific port
+	 * Used to stop externally started dev servers (e.g., npm run dev)
+	 * @param port - Port number as string
+	 * @returns Process ID that was killed, or throws if not found
+	 */
+	killProcessByPort(port: string): Promise<{ port: string; processId: string }>;
 }

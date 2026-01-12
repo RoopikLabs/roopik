@@ -116,7 +116,7 @@ export class DefaultBrowserScreen {
 		const openProjectBtn = this.createButton({
 			text: 'Open Project',
 			iconClass: 'codicon-folder',
-			primary: true,
+			primary: false,
 			title: 'Select a project folder to preview with live reload',
 			onClick: () => this.callbacks.onOpenProject()
 		});
@@ -162,7 +162,7 @@ export class DefaultBrowserScreen {
 			text-align: center;
 			max-width: 400px;
 		`;
-		hint.textContent = 'Tip: You can also enter a URL directly in the address bar above';
+		hint.textContent = 'You can also enter a URL directly in the address bar above';
 		this.element.appendChild(hint);
 
 		this.container.appendChild(this.element);

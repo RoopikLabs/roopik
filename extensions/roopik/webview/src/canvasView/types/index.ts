@@ -16,10 +16,12 @@ export type JobPriority = 'high' | 'normal' | 'low';
  */
 export interface ComponentInput {
 	id: string;
+	name?: string;
 	source: ComponentSource;
 	framework?: Framework;
 	files: { [filename: string]: string };
 	entryFile?: string;
+	folderPath?: string;  // Workspace-relative path to component folder
 	priority?: JobPriority;
 	dependencies?: Record<string, string>;
 }
@@ -68,6 +70,50 @@ import type { DevicePreset } from './device';
 export type SandboxBuildStatus = 'pending' | 'building' | 'ready' | 'error';
 
 /**
+ * ESBuild error location
+ */
+export interface EsbuildErrorLocation {
+	file?: string;
+	line?: number;
+	column?: number;
+	length?: number;
+	lineText?: string;
+}
+
+/**
+ * ESBuild error entry
+ */
+export interface EsbuildError {
+	category?: string;
+	message?: string;
+	location?: EsbuildErrorLocation;
+	notes?: Array<{ text?: string }>;
+}
+
+/**
+ * Structured build error info from Core's build pipeline
+ * Can be either esbuild format (with errors array) or simple format
+ */
+export interface BuildErrorInfo {
+	/** Error message (simple format) */
+	message?: string;
+	/** Error code (for categorization) */
+	code?: string;
+	/** File that caused the error (simple format) */
+	file?: string;
+	/** Line number (1-indexed, simple format) */
+	line?: number;
+	/** Column number (1-indexed, simple format) */
+	column?: number;
+	/** Stack trace */
+	stack?: string;
+	/** Build time in ms (esbuild format) */
+	buildTime?: number;
+	/** Array of esbuild errors (esbuild format) */
+	errors?: EsbuildError[];
+}
+
+/**
  * Sandbox represents a live, interactive preview environment (iframe)
  *
  * All components are built via Core's ESBuild pipeline.
@@ -86,14 +132,20 @@ export interface Sandbox {
 	/** Build status */
 	buildStatus: SandboxBuildStatus;
 
-	/** Error message if build failed */
+	/** Error message if build failed (simple string for display) */
 	buildError?: string;
+
+	/** Structured error info with file, line, column (for detailed display) */
+	buildErrorInfo?: BuildErrorInfo;
 
 	/** Pre-built ESM from Core's ESBuild pipeline */
 	bundledCode?: string;
 
 	/** CDN URLs used in the bundle */
 	cdnUrls?: string[];
+
+	/** Monotonic nonce updated on each build/rebuild to force iframe remounts */
+	bundleNonce?: number;
 
 	/** Original ComponentInput (for rebuild/persistence) */
 	componentInput: ComponentInput;
@@ -214,6 +266,32 @@ export interface SandboxPosition {
 	zIndex: number;
 }
 
+export interface CanvasContextComponent {
+	id: string;
+	name?: string;
+	folderPath?: string;
+	entryFile?: string;
+}
+
+export interface CanvasElementSelection {
+	componentId: string;
+	sourceLocation?: {
+		file: string;
+		startLine: number;
+		endLine?: number;
+		column?: number;
+	};
+}
+
+export interface CanvasAIContext {
+	canvasId: string;
+	canvasName?: string;
+	componentCount?: number;
+	components: CanvasContextComponent[];
+	selectedComponent?: CanvasContextComponent;
+	selectedElement?: CanvasElementSelection;
+}
+
 /**
  * Map of component IDs to their sandbox positions
  */
@@ -224,9 +302,9 @@ export type SandboxPositions = Record<string, SandboxPosition>;
  */
 export type ExtensionMessage =
 	// Core pipeline responses
-	| { type: 'componentCreated'; payload: { componentId: string; canvasId: string } }
+	| { type: 'componentCreated'; payload: { componentId: string; canvasId: string; name?: string; folderPath?: string; entryFile?: string } }
 	| { type: 'componentBuilt'; payload: { componentId: string; result: TransformedComponent } }
-	| { type: 'componentError'; payload: { componentId: string; error: string } }
+	| { type: 'componentError'; payload: { componentId: string; error: string; errorInfo?: BuildErrorInfo } }
 	// Canvas state
 	| { type: 'canvasLoaded'; payload: { state: CanvasState } }
 	| { type: 'canvasSaved'; payload: { success: boolean } }
@@ -237,7 +315,11 @@ export type ExtensionMessage =
 	| { type: 'canvasLoadingStarted'; payload: { componentCount: number } }
 	| { type: 'canvasLoadingComplete'; payload: { componentCount: number } }
 	// Import
-	| { type: 'addImportedComponent'; payload: { componentInput: ComponentInput; position?: { x: number; y: number }; replaceExisting?: boolean; replaceName?: string } };
+	| { type: 'addImportedComponent'; payload: { componentInput: ComponentInput; position?: { x: number; y: number }; replaceExisting?: boolean; replaceName?: string } }
+	// Code editor - files loaded from workspace
+	| { type: 'componentFilesLoaded'; payload: { componentId: string; componentName?: string; files: Array<{ filename: string; content: string; isEntry?: boolean }> } }
+	// Code editor - file saved confirmation
+	| { type: 'componentFileSaved'; payload: { componentId: string; filename: string; success: boolean } };
 
 /**
  * Message types from Webview to Extension
@@ -250,7 +332,54 @@ export type WebviewMessage =
 	| { type: 'saveCanvas'; payload: { canvasId: string; state: CanvasState } }
 	| { type: 'loadCanvas'; payload: { canvasId: string } }
 	| { type: 'openFile'; payload: { filePath: string; line?: number; column?: number } }
-	| { type: 'log'; payload: { level: 'debug' | 'info' | 'warn' | 'error'; message: string; data?: unknown } };
+	| { type: 'log'; payload: { level: 'debug' | 'info' | 'warn' | 'error'; message: string; data?: unknown } }
+	// Code editor - request to load component files from workspace
+	| { type: 'loadComponentFiles'; payload: { componentId: string } }
+	// Code editor - save file to workspace
+	| { type: 'saveComponentFile'; payload: { componentId: string; filename: string; content: string } }
+	// Drag-drop import from OS file manager
+	| { type: 'dropComponent'; payload: { fileName: string; content: string; componentName: string } }
+	// Show notification in VSCode
+	| { type: 'showNotification'; payload: { level: 'info' | 'warning' | 'error'; message: string } }
+	// Delete component from storage
+	| { type: 'deleteComponent'; payload: { componentId: string; deleteSourceCode?: boolean } }
+	// Force rebuild component (bypasses cache)
+	| { type: 'rebuildComponent'; payload: { componentId: string } }
+	// Canvas AI chat input
+	| {
+		type: 'canvasAiChat';
+		payload: {
+			userInput: string;
+			context: CanvasAIContext;
+			images?: string[];
+			imageMetadata?: { deviceMode: string; deviceViewport: { width: number; height: number } };
+			autoSend?: boolean;
+		};
+	}
+	// Report runtime error from component sandbox
+	| {
+		type: 'componentRuntimeError';
+		payload: {
+			componentId: string;
+			error: {
+				message: string;
+				type: string;
+				stack?: string;
+				source?: string;
+				line?: number;
+				column?: number;
+				timestamp: number;
+			};
+		};
+	}
+	// Debug logging to extension output channel (DevTools-free debugging)
+	| {
+		type: 'debugLog';
+		payload: {
+			level?: 'debug' | 'info' | 'warn' | 'error';
+			message: string;
+		};
+	};
 
 /**
  * VSCode API interface

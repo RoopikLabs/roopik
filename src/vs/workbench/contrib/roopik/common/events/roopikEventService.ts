@@ -229,7 +229,7 @@ export class RoopikEventService extends Disposable implements IRoopikEventServic
 
 	// Logging configuration
 	private readonly LOG_PREFIX = '[RoopikEventBus]';
-	private readonly enableDebugLogging = true; // Set to false in production
+	private readonly enableDebugLogging = false; // Set to false in production
 
 	constructor(
 		@ILogService private readonly logService: ILogService
@@ -254,10 +254,9 @@ export class RoopikEventService extends Disposable implements IRoopikEventServic
 		}
 
 		// Add timestamp to event
-		const eventWithTimestamp = {
-			...data,
+		const eventWithTimestamp: RoopikEventMap[T] = Object.assign({}, data, {
 			timestamp: Date.now()
-		} as RoopikEventMap[T];
+		}) as RoopikEventMap[T];
 
 		// Log the event being published
 		if (this.enableDebugLogging) {

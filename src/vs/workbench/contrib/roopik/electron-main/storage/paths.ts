@@ -28,17 +28,17 @@ export const CANVASES_FOLDER = 'canvases';
 /** Components subfolder */
 export const COMPONENTS_FOLDER = 'components';
 
+/** Projects subfolder (for Mode 2 - Browser Preview) */
+export const PROJECTS_FOLDER = 'projects';
+
+/** Project registry file name */
+export const PROJECT_REGISTRY_FILE = 'projects.json';
+
 /** Config file name */
 export const CONFIG_FILE = 'config.json';
 
 /** Canvas registry file name (list of all canvases) */
 export const CANVAS_REGISTRY_FILE = 'canvases.json';
-
-/** Component index file name (list of components in a canvas) */
-export const COMPONENT_INDEX_FILE = 'index.json';
-
-/** Component metadata file name */
-export const META_FILE = 'meta.json';
 
 /** Bundle cache file name */
 export const BUNDLE_FILE = 'bundle.js';
@@ -75,52 +75,17 @@ export function getCanvasesFolderPath(workspaceRoot: string): string {
 }
 
 /**
- * Get the canvas registry file path (.roopik/canvases/canvases.json)
+ * Get the canvas registry file path (.roopik/canvases.json)
  */
 export function getCanvasRegistryPath(workspaceRoot: string): string {
-	return path.join(getCanvasesFolderPath(workspaceRoot), CANVAS_REGISTRY_FILE);
+	return path.join(getWorkspaceRoopikPath(workspaceRoot), CANVAS_REGISTRY_FILE);
 }
 
 /**
- * Get a specific canvas folder path
+ * Get a specific canvas file path (.roopik/canvases/{id}.json)
  */
 export function getCanvasPath(workspaceRoot: string, canvasId: string): string {
-	return path.join(getCanvasesFolderPath(workspaceRoot), canvasId);
-}
-
-/**
- * Get the canvas layout file path (written by extension)
- */
-export function getCanvasLayoutPath(workspaceRoot: string, canvasId: string): string {
-	return path.join(getCanvasPath(workspaceRoot, canvasId), CANVAS_LAYOUT_FILE);
-}
-
-/**
- * Get the components folder path for a canvas
- */
-export function getComponentsFolderPath(workspaceRoot: string, canvasId: string): string {
-	return path.join(getCanvasPath(workspaceRoot, canvasId), COMPONENTS_FOLDER);
-}
-
-/**
- * Get the component index file path for a canvas
- */
-export function getComponentIndexPath(workspaceRoot: string, canvasId: string): string {
-	return path.join(getComponentsFolderPath(workspaceRoot, canvasId), COMPONENT_INDEX_FILE);
-}
-
-/**
- * Get a specific component folder path
- */
-export function getComponentPath(workspaceRoot: string, canvasId: string, componentId: string): string {
-	return path.join(getComponentsFolderPath(workspaceRoot, canvasId), componentId);
-}
-
-/**
- * Get the component metadata file path
- */
-export function getComponentMetaPath(workspaceRoot: string, canvasId: string, componentId: string): string {
-	return path.join(getComponentPath(workspaceRoot, canvasId, componentId), META_FILE);
+	return path.join(getCanvasesFolderPath(workspaceRoot), `${canvasId}.json`);
 }
 
 // ============================================================================
@@ -233,6 +198,24 @@ export function getBundlePath(workspacePath: string, canvasId: string, component
  */
 export function getBuildMetaPath(workspacePath: string, canvasId: string, componentId: string): string {
 	return path.join(getCacheComponentPath(workspacePath, canvasId, componentId), BUILD_META_FILE);
+}
+
+// ============================================================================
+// Project Paths (Mode 2 - Browser Preview)
+// ============================================================================
+
+/**
+ * Get the projects folder path (.roopik/projects/)
+ */
+export function getProjectsFolderPath(workspaceRoot: string): string {
+	return path.join(getWorkspaceRoopikPath(workspaceRoot), PROJECTS_FOLDER);
+}
+
+/**
+ * Get the project registry file path (.roopik/projects/projects.json)
+ */
+export function getProjectRegistryPath(workspaceRoot: string): string {
+	return path.join(getProjectsFolderPath(workspaceRoot), PROJECT_REGISTRY_FILE);
 }
 
 // ============================================================================

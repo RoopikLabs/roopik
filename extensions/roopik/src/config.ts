@@ -1,11 +1,10 @@
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Roopik. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as vscode from 'vscode';
 import { Logger } from './logger';
 
 /**
@@ -205,10 +204,7 @@ export class ConfigManager {
 				return this.mergeWithDefaults(userConfig);
 			}
 		} catch (error) {
-			this.logger.error('Failed to load config', error);
-			vscode.window.showWarningMessage(
-				'Failed to load Roopik config. Using defaults.'
-			);
+			this.logger.error('Failed to load config, using defaults', error);
 		}
 
 		// Return default config if file doesn't exist or failed to load
@@ -274,7 +270,7 @@ export class ConfigManager {
 			this.logger.info('Configuration updated successfully');
 		} catch (error) {
 			this.logger.error('Failed to save config', error);
-			vscode.window.showErrorMessage('Failed to save Roopik configuration.');
+			throw error;
 		}
 	}
 
@@ -312,7 +308,7 @@ export class ConfigManager {
 
 	/**
 	 * Check if regex mode is forced
-	 * @returns {boolean}
+	 * @returns True if regex mode is forced
 	 */
 	public isRegexModeForced(): boolean {
 		return this.config.plugins.forceRegexMode;
@@ -320,8 +316,8 @@ export class ConfigManager {
 
 	/**
 	 * Get plugin strategy for a specific framework
-	 * @param {string} framework - Framework identifier
-	 * @returns {Object} Strategy configuration
+	 * @param framework - Framework identifier
+	 * @returns Strategy configuration
 	 */
 	public getPluginStrategy(framework: string): {
 		forceRegex: boolean;

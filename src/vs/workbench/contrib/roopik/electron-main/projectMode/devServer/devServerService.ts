@@ -3,11 +3,14 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import * as path from 'path';
 import * as fs from 'fs';
+import { join, normalize, dirname } from '../../../../../../base/common/path.js';
 import * as cp from 'child_process';
+import { exec } from 'child_process';
 import { fileURLToPath } from 'url';
+import { app } from 'electron';
 import { Emitter, Event } from '../../../../../../base/common/event.js';
+import { isWindows } from '../../../../../../base/common/platform.js';
 import type {
 	IDevServerService,
 	DevServerStartOptions,
@@ -18,6 +21,7 @@ import type {
 	Framework,
 	FrameworkInfo
 } from '../../../common/projectMode/devServer.js';
+import type { ProjectStorageService } from '../../projectStorage/projectStorageService.js';
 
 /**
  * Server instance data
@@ -32,20 +36,68 @@ interface ServerInstance {
 }
 
 /**
- * Get the directory of this module (ES module compatible)
- * Works with both __dirname (CJS) and import.meta.url (ESM)
+ * Worker process message types
+ */
+interface WorkerMessageBase {
+	type: string;
+}
+
+interface WorkerReadyMessage extends WorkerMessageBase {
+	type: 'READY';
+	url: string;
+	port: number;
+	framework: Framework;
+	frameworkName?: string; // Human-readable name (e.g., "React + Vite")
+}
+
+interface WorkerErrorMessage extends WorkerMessageBase {
+	type: 'ERROR';
+	message: string;
+}
+
+type WorkerMessage = WorkerReadyMessage | WorkerErrorMessage;
+
+/**
+ * Get the directory where devServerWorker.mjs is located
+ * Unified approach that works in both dev and production
+ *
+ * Why we need this:
+ * - In dev: Files are in out-build/, app.getAppPath() = workspace root
+ * - In production: Files are in out/, app.getAppPath() = resources/app
+ * - import.meta.url can resolve differently depending on bundling
+ *
+ * Strategy: Try multiple known locations, use the one where worker actually exists
  */
 function getModuleDir(): string {
-	// In VSCode's compiled output, we're in ESM context
-	// Use import.meta.url if available, otherwise fall back to __dirname
-	try {
-		// This file's URL when running as ESM
-		const thisFileUrl = import.meta.url;
-		return path.dirname(fileURLToPath(thisFileUrl));
-	} catch {
-		// Fallback for CJS context (shouldn't happen in VSCode core)
-		return __dirname;
+	const appPath = app.getAppPath();
+	const basePath = 'vs/workbench/contrib/roopik/electron-main/projectMode/devServer';
+
+	// Try production path first: [appPath]/out/vs/...
+	const productionPath = join(appPath, 'out', basePath);
+	if (fs.existsSync(join(productionPath, 'devServerWorker.mjs'))) {
+		return productionPath;
 	}
+
+	// Try dev path: [appPath]/out-build/vs/...
+	const devPath = join(appPath, 'out-build', basePath);
+	if (fs.existsSync(join(devPath, 'devServerWorker.mjs'))) {
+		return devPath;
+	}
+
+	// Fallback: Try import.meta.url (works if module resolution is correct)
+	try {
+		const thisFileUrl = import.meta.url;
+		const thisFilePath = fileURLToPath(thisFileUrl);
+		const moduleDir = dirname(thisFilePath);
+		if (fs.existsSync(join(moduleDir, 'devServerWorker.mjs'))) {
+			return moduleDir;
+		}
+	} catch {
+		// import.meta.url not available
+	}
+
+	// Last resort: return production path (will fail with clear error message)
+	return productionPath;
 }
 
 /**
@@ -80,6 +132,14 @@ export class DevServerService implements IDevServerService {
 	private servers = new Map<string, ServerInstance>();
 
 	// ============================================
+	// Dependencies
+	// ============================================
+
+	constructor(
+		private readonly projectStorageService?: ProjectStorageService
+	) { }
+
+	// ============================================
 	// Server Lifecycle
 	// ============================================
 
@@ -87,7 +147,22 @@ export class DevServerService implements IDevServerService {
 		const { projectRoot, port = 5173, forceRegexMode = false, verboseLogging = false } = options;
 
 		// Normalize path
-		const normalizedRoot = path.normalize(projectRoot);
+		const normalizedRoot = normalize(projectRoot);
+
+		// =====================================================
+		// VALIDATE PROJECT DIRECTORY EXISTS
+		// =====================================================
+		if (!fs.existsSync(normalizedRoot)) {
+			const error = new Error(`Project directory not found: ${normalizedRoot}`);
+			this.setError(normalizedRoot, error.message);
+			throw error;
+		}
+
+		if (!fs.statSync(normalizedRoot).isDirectory()) {
+			const error = new Error(`Path is not a directory: ${normalizedRoot}`);
+			this.setError(normalizedRoot, error.message);
+			throw error;
+		}
 
 		// =====================================================
 		// SINGLE SERVER CONSTRAINT (Defense in Depth)
@@ -131,7 +206,7 @@ export class DevServerService implements IDevServerService {
 		return new Promise((resolve, reject) => {
 			// Find worker script (ES module version)
 			const moduleDir = getModuleDir();
-			const workerPath = path.join(moduleDir, 'devServerWorker.mjs');
+			const workerPath = join(moduleDir, 'devServerWorker.mjs');
 
 			// Check if worker exists
 			if (!fs.existsSync(workerPath)) {
@@ -175,21 +250,33 @@ export class DevServerService implements IDevServerService {
 			});
 
 			// Handle IPC messages from worker
-			workerProcess.on('message', (msg: any) => {
+			workerProcess.on('message', (msg: WorkerMessage) => {
 				if (msg.type === 'READY') {
 					// Worker successfully started the server
 					instance.state = 'running';
 					instance.url = msg.url;
 					instance.port = msg.port;
-					instance.framework = msg.framework as Framework;
+					instance.framework = msg.framework;
+
+					// Update active project in storage (unified flow for UI and MCP)
+					// This saves project AND sets it as active in one place
+					this.updateActiveProjectStorage(
+						normalizedRoot,
+						instance.workerProcess?.pid,
+						msg.port,
+						msg.url,
+						msg.framework,
+						msg.frameworkName
+					);
 
 					this.fireStatus(normalizedRoot, 'running', {
 						url: msg.url,
 						port: msg.port,
-						framework: instance.framework
+						framework: instance.framework,
+						frameworkDisplayName: msg.frameworkName
 					});
 
-					this.log(normalizedRoot, 'info', `✅ Server ready at ${msg.url}`);
+					this.log(normalizedRoot, 'info', `Server ready at ${msg.url}`);
 					resolve(msg.url);
 
 				} else if (msg.type === 'ERROR') {
@@ -244,7 +331,7 @@ export class DevServerService implements IDevServerService {
 	}
 
 	async stopServer(projectRoot: string): Promise<void> {
-		const normalizedRoot = path.normalize(projectRoot);
+		const normalizedRoot = normalize(projectRoot);
 		const instance = this.servers.get(normalizedRoot);
 
 		if (!instance) {
@@ -287,6 +374,9 @@ export class DevServerService implements IDevServerService {
 		instance.port = undefined;
 		instance.workerProcess = undefined;
 
+		// Clear active project in storage (unified flow for UI and MCP)
+		this.clearActiveProjectStorage();
+
 		this.fireStatus(normalizedRoot, 'stopped');
 		this.log(normalizedRoot, 'info', 'Server stopped');
 	}
@@ -302,7 +392,7 @@ export class DevServerService implements IDevServerService {
 	}
 
 	async getServerInfo(projectRoot: string): Promise<DevServerInfo | undefined> {
-		const normalizedRoot = path.normalize(projectRoot);
+		const normalizedRoot = normalize(projectRoot);
 		const instance = this.servers.get(normalizedRoot);
 
 		if (!instance) {
@@ -318,6 +408,7 @@ export class DevServerService implements IDevServerService {
 			state: instance.state,
 			url: instance.url,
 			port: instance.port,
+			pid: instance.workerProcess?.pid,
 			framework: instance.framework,
 			frameworkDisplayName: frameworkInfo?.displayName,
 			supportsClickToSource: frameworkInfo?.supportsClickToSource
@@ -367,8 +458,8 @@ export class DevServerService implements IDevServerService {
 	// ============================================
 
 	async detectFramework(projectRoot: string): Promise<FrameworkInfo> {
-		const normalizedRoot = path.normalize(projectRoot);
-		const packageJsonPath = path.join(normalizedRoot, 'package.json');
+		const normalizedRoot = normalize(projectRoot);
+		const packageJsonPath = join(normalizedRoot, 'package.json');
 
 		if (!fs.existsSync(packageJsonPath)) {
 			return {
@@ -395,6 +486,8 @@ export class DevServerService implements IDevServerService {
 					framework = 'svelte-vite';
 				} else if (deps['solid-js'] || deps['vite-plugin-solid']) {
 					framework = 'solid-vite';
+				} else if (deps['preact'] || deps['@preact/preset-vite']) {
+					framework = 'preact-vite';
 				} else {
 					framework = 'plain-html-vite';
 				}
@@ -429,6 +522,7 @@ export class DevServerService implements IDevServerService {
 			'vue-vite': 'Vue 3 (Vite)',
 			'svelte-vite': 'Svelte (Vite)',
 			'solid-vite': 'SolidJS (Vite)',
+			'preact-vite': 'Preact (Vite)',
 			'plain-html-vite': 'Plain HTML (Vite)',
 			'nextjs': 'Next.js',
 			'nuxt': 'Nuxt',
@@ -444,6 +538,7 @@ export class DevServerService implements IDevServerService {
 			'vue-vite',
 			'svelte-vite',
 			'solid-vite',
+			'preact-vite',
 			'plain-html-vite'
 		].includes(framework);
 
@@ -451,6 +546,7 @@ export class DevServerService implements IDevServerService {
 			'react-vite',
 			'vue-vite',
 			'solid-vite',
+			'preact-vite',
 			'plain-html-vite'
 		].includes(framework);
 
@@ -463,13 +559,13 @@ export class DevServerService implements IDevServerService {
 	}
 
 	async hasNodeModules(projectRoot: string): Promise<boolean> {
-		const normalizedRoot = path.normalize(projectRoot);
-		const nodeModulesPath = path.join(normalizedRoot, 'node_modules');
+		const normalizedRoot = normalize(projectRoot);
+		const nodeModulesPath = join(normalizedRoot, 'node_modules');
 		return fs.existsSync(nodeModulesPath);
 	}
 
 	async installDependencies(projectRoot: string): Promise<void> {
-		const normalizedRoot = path.normalize(projectRoot);
+		const normalizedRoot = normalize(projectRoot);
 
 		return new Promise((resolve, reject) => {
 			const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -510,7 +606,7 @@ export class DevServerService implements IDevServerService {
 	private fireStatus(
 		projectRoot: string,
 		state: DevServerState,
-		extra?: { url?: string; port?: number; framework?: Framework; error?: string }
+		extra?: { url?: string; port?: number; framework?: Framework; frameworkDisplayName?: string; error?: string }
 	): void {
 		this._onStatusChanged.fire({
 			projectRoot,
@@ -533,6 +629,66 @@ export class DevServerService implements IDevServerService {
 	}
 
 	// ============================================
+	// Project Storage (Unified Flow)
+	// ============================================
+
+	/**
+	 * Update active project in storage when server starts
+	 * Called from both UI and MCP flows
+	 *
+	 * This does TWO things:
+	 * 1. upsertProject - adds/updates project in recent projects list (returns projectId)
+	 * 2. setActiveProject - marks this project as the currently running one (uses that projectId)
+	 */
+	private async updateActiveProjectStorage(
+		projectRoot: string,
+		pid: number | undefined,
+		port: number,
+		url: string,
+		framework?: string,
+		frameworkDisplayName?: string
+	): Promise<void> {
+		if (!this.projectStorageService) {
+			return;
+		}
+
+		try {
+			const projectName = projectRoot.split(/[/\\]/).pop() || 'project';
+
+			// 1. Upsert project to recent projects list (returns the actual projectId)
+			const projectId = await this.projectStorageService.upsertProject(
+				projectName,
+				projectRoot,
+				framework,
+				frameworkDisplayName
+			);
+			this.log(projectRoot, 'info', `Project saved: ${projectId}`);
+
+			// 2. Set as active project using the SAME projectId
+			await this.projectStorageService.setActiveProject(projectId, pid || 0, port, url);
+			this.log(projectRoot, 'info', `Active project set: ${projectId}`);
+		} catch (error) {
+			this.log(projectRoot, 'warn', `Failed to update active project storage: ${error}`);
+		}
+	}
+
+	/**
+	 * Clear active project in storage when server stops
+	 * Called from both UI and MCP flows
+	 */
+	private async clearActiveProjectStorage(): Promise<void> {
+		if (!this.projectStorageService) {
+			return;
+		}
+
+		try {
+			await this.projectStorageService.clearActiveProject();
+		} catch (error) {
+			// Silently ignore - error already logged elsewhere
+		}
+	}
+
+	// ============================================
 	// Cleanup
 	// ============================================
 
@@ -551,5 +707,133 @@ export class DevServerService implements IDevServerService {
 		this.servers.clear();
 		this._onStatusChanged.dispose();
 		this._onLog.dispose();
+	}
+
+	/**
+	 * Kill a process running on a specific port
+	 * Used to stop externally started dev servers (e.g., npm run dev, yarn dev)
+	 * @param port - Port number as string
+	 * @returns Process ID that was killed
+	 */
+	async killProcessByPort(port: string): Promise<{ port: string; processId: string }> {
+		// Windows: netstat -ano | findstr ":PORT"
+		// Unix/Mac: lsof -nP -iTCP -sTCP:LISTEN | grep :PORT
+		const command = isWindows
+			? `netstat -ano | findstr ":${port}"`
+			: `lsof -nP -iTCP -sTCP:LISTEN | grep ":${port}"`;
+
+		const stdout = await new Promise<string>((resolve, reject) => {
+			exec(command, {}, (err, stdout) => {
+				if (err) {
+					return reject(new Error(`No process found on port ${port}`));
+				}
+				resolve(stdout);
+			});
+		});
+
+		const processesForPort = stdout.split(/\r?\n/).filter(s => !!s.trim());
+		if (processesForPort.length === 0) {
+			throw new Error(`No process found on port ${port}`);
+		}
+
+		// Extract PID from output
+		let processId: string | undefined;
+		if (isWindows) {
+			// Windows netstat format: TCP    0.0.0.0:5173    0.0.0.0:0    LISTENING    12345
+			// Find the LISTENING line and extract PID (last number)
+			for (const line of processesForPort) {
+				if (line.includes('LISTENING')) {
+					const match = line.match(/\s+(\d+)\s*$/);
+					if (match) {
+						processId = match[1];
+						break;
+					}
+				}
+			}
+		} else {
+			// Unix lsof format: node    12345  user   23u  IPv6 0x...  TCP *:5173 (LISTEN)
+			// PID is the second field
+			const match = processesForPort[0].match(/^\S+\s+(\d+)/);
+			processId = match?.[1];
+		}
+
+		if (!processId) {
+			throw new Error(`Could not extract process ID from port ${port}`);
+		}
+
+		const pid = Number.parseInt(processId);
+
+		// Kill the process
+		if (isWindows) {
+			// Windows: Use taskkill to kill process tree (force kill)
+			// /T = kill child processes, /F = force
+			try {
+				cp.execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'pipe', timeout: 5000 });
+			} catch (killError) {
+				// taskkill might fail, but check if process still exists
+			}
+
+			// Verify process was killed
+			await new Promise(resolve => setTimeout(resolve, 500));
+			try {
+				const checkOutput = cp.execSync(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`, { stdio: 'pipe', timeout: 2000 });
+				const output = checkOutput.toString().trim();
+				if (output && output.includes(pid.toString())) {
+					throw new Error(`Failed to kill process ${pid} on port ${port} - process still running`);
+				}
+			} catch (checkError) {
+				// If tasklist fails or process not found, assume killed successfully
+				// (tasklist throws if no process found, which is what we want)
+			}
+		} else {
+			// Unix: Try SIGTERM first (graceful), then SIGKILL if needed
+			try {
+				process.kill(pid, 'SIGTERM');
+				// Wait for graceful shutdown
+				await new Promise(resolve => setTimeout(resolve, 1000));
+
+				// Check if process still exists
+				try {
+					process.kill(pid, 0); // Signal 0 checks if process exists (throws if it doesn't)
+					// Process still exists - force kill
+					process.kill(pid, 'SIGKILL');
+					await new Promise(resolve => setTimeout(resolve, 500));
+
+					// Verify it's dead
+					try {
+						process.kill(pid, 0);
+						throw new Error(`Failed to kill process ${pid} on port ${port} - process still running after SIGKILL`);
+					} catch {
+						// Process killed successfully
+					}
+				} catch {
+					// Process already dead - SIGTERM worked
+				}
+			} catch (killError) {
+				// SIGTERM failed - try SIGKILL
+				try {
+					process.kill(pid, 'SIGKILL');
+					await new Promise(resolve => setTimeout(resolve, 500));
+
+					// Verify it's dead
+					try {
+						process.kill(pid, 0);
+						throw new Error(`Failed to kill process ${pid} on port ${port} - process still running after SIGKILL`);
+					} catch {
+						// Process killed successfully
+					}
+				} catch (finalError) {
+					// Check if process exists
+					try {
+						process.kill(pid, 0);
+						throw new Error(`Failed to kill process ${pid} on port ${port}`);
+					} catch {
+						// Process doesn't exist - already dead
+					}
+				}
+			}
+		}
+
+		return { port, processId };
 	}
 }

@@ -5,6 +5,7 @@
 
 import { localize, localize2 } from '../../../../nls.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
+import { mainWindow } from '../../../../base/browser/window.js';
 import { IWorkbenchContribution } from '../../../common/contributions.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { IViewsRegistry, IViewDescriptor, Extensions, ViewContainer, IViewContainersRegistry, ViewContainerLocation, IViewDescriptorService } from '../../../common/views.js';
@@ -27,13 +28,14 @@ import { IWorkbenchLayoutService } from '../../../services/layout/browser/layout
 import { IStorageService } from '../../../../platform/storage/common/storage.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { IExtensionService } from '../../../services/extensions/common/extensions.js';
-import { ILogService } from '../../../../platform/log/common/log.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { Action } from '../../../../base/common/actions.js';
 import { ICanvasService } from '../common/canvas/index.js';
 import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
 import type { CanvasMeta } from '../common/canvas/types.js';
+import { IProjectStorageService } from '../common/projectStorage/index.js';
+import type { ProjectInfo } from '../common/storage/storageTypes.js';
 
 const roopikViewIcon = registerIcon('roopik-view-icon', Codicon.paintcan, localize('roopikViewIcon', 'View icon of the Roopik view.'));
 
@@ -44,6 +46,9 @@ export const ROOPIK_VIEW_ID = 'roopik.dashboardView';
  * Roopik Dashboard View
  * Shows canvases and projects in a tree structure
  */
+import { getRoopikLogger } from '../common/roopikLogger.js';
+import { ILoggerService, ILogService } from '../../../../platform/log/common/log.js';
+
 export class RoopikDashboardView extends ViewPane {
 	static readonly ID = ROOPIK_VIEW_ID;
 	static readonly NAME = localize2('roopikDashboard', "Dashboard");
@@ -52,14 +57,22 @@ export class RoopikDashboardView extends ViewPane {
 	private projectsContainer: HTMLElement | undefined;
 	private static animationsInjected = false;
 
-	/** Timeout handle for loading state */
+	/** Timeout handle for canvas loading state */
 	private loadingTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
 
-	/** Whether we've received the initialization event */
+	/** Timeout handle for project loading state */
+	private projectLoadingTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+	/** Whether we've received the canvas initialization event */
 	private serviceInitialized: boolean = false;
+
+	/** Whether we've received the project storage initialization event */
+	private projectServiceInitialized: boolean = false;
 
 	/** Loading timeout in milliseconds (5 seconds) */
 	private static readonly LOADING_TIMEOUT_MS = 5000;
+
+	private readonly logger;
 
 	constructor(
 		options: { id: string; title: string },
@@ -76,15 +89,16 @@ export class RoopikDashboardView extends ViewPane {
 		@INotificationService private readonly notificationService: INotificationService,
 		@ICanvasService private readonly canvasService: ICanvasService,
 		@IQuickInputService private readonly quickInputService: IQuickInputService,
+		@IProjectStorageService private readonly projectStorageService: IProjectStorageService,
+		@ILoggerService loggerService: ILoggerService,
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
-
-		console.log('[RoopikDashboardView] Constructor called');
+		this.logger = getRoopikLogger(loggerService, 'ROOPIK_DASHBOARD_VIEW');
 
 		// Subscribe to onDidInitialize - this fires when CanvasService is fully ready
 		// This is the ONLY trigger for loading canvases - no premature attempts!
 		this._register(this.canvasService.onDidInitialize(() => {
-			console.log('[RoopikDashboardView] EVENT: onDidInitialize received - CanvasService is ready');
+			// Service ready - load canvases
 			this.serviceInitialized = true;
 			this.clearLoadingTimeout();
 			this.loadCanvasesNow();
@@ -92,21 +106,31 @@ export class RoopikDashboardView extends ViewPane {
 
 		// Subscribe to canvas events to auto-refresh the list
 		this._register(this.canvasService.onCanvasCreated((event) => {
-			console.log('[RoopikDashboardView] EVENT: onCanvasCreated received', event);
+			// Canvas created - reload list
 			this.loadCanvasesNow();
 		}));
 		this._register(this.canvasService.onCanvasDeleted((event) => {
-			console.log('[RoopikDashboardView] EVENT: onCanvasDeleted received', event);
+			// Canvas deleted - reload list
 			this.loadCanvasesNow();
 		}));
 		this._register(this.canvasService.onCanvasUpdated((event) => {
-			console.log('[RoopikDashboardView] EVENT: onCanvasUpdated received', event);
+			// Canvas updated - reload list
 			this.loadCanvasesNow();
+		}));
+
+		// Subscribe to project storage events to auto-refresh projects list
+		this._register(this.projectStorageService.onDidInitialize(() => {
+			this.projectServiceInitialized = true;
+			this.clearProjectLoadingTimeout();
+			this.loadProjectsNow();
+		}));
+		this._register(this.projectStorageService.onProjectsChanged(() => {
+			this.loadProjectsNow();
 		}));
 	}
 
 	/**
-	 * Clear the loading timeout if it exists
+	 * Clear the canvas loading timeout if it exists
 	 */
 	private clearLoadingTimeout(): void {
 		if (this.loadingTimeoutHandle) {
@@ -116,20 +140,43 @@ export class RoopikDashboardView extends ViewPane {
 	}
 
 	/**
-	 * Start loading timeout - shows error state if onDidInitialize never fires
+	 * Clear the project loading timeout if it exists
+	 */
+	private clearProjectLoadingTimeout(): void {
+		if (this.projectLoadingTimeoutHandle) {
+			clearTimeout(this.projectLoadingTimeoutHandle);
+			this.projectLoadingTimeoutHandle = undefined;
+		}
+	}
+
+	/**
+	 * Start canvas loading timeout - shows error state if onDidInitialize never fires
 	 */
 	private startLoadingTimeout(): void {
 		this.clearLoadingTimeout();
 		this.loadingTimeoutHandle = setTimeout(() => {
 			if (!this.serviceInitialized) {
-				console.warn('[RoopikDashboardView] Loading timeout - service initialization took too long');
+				// Timeout - show error state
 				this.showTimeoutState();
 			}
 		}, RoopikDashboardView.LOADING_TIMEOUT_MS);
 	}
 
 	/**
-	 * Show timeout/error state when initialization takes too long
+	 * Start project loading timeout - shows error state if onDidInitialize never fires
+	 */
+	private startProjectLoadingTimeout(): void {
+		this.clearProjectLoadingTimeout();
+		this.projectLoadingTimeoutHandle = setTimeout(() => {
+			if (!this.projectServiceInitialized) {
+				// Timeout - show error state
+				this.showProjectTimeoutState();
+			}
+		}, RoopikDashboardView.LOADING_TIMEOUT_MS);
+	}
+
+	/**
+	 * Show timeout/error state when canvas initialization takes too long
 	 */
 	private showTimeoutState(): void {
 		if (!this.canvasesContainer) {
@@ -153,37 +200,52 @@ export class RoopikDashboardView extends ViewPane {
 	}
 
 	/**
+	 * Show timeout/error state when project initialization takes too long
+	 */
+	private showProjectTimeoutState(): void {
+		if (!this.projectsContainer) {
+			return;
+		}
+
+		while (this.projectsContainer.firstChild) {
+			this.projectsContainer.removeChild(this.projectsContainer.firstChild);
+		}
+
+		this.createSection(this.projectsContainer, 'Projects', [
+			{
+				label: 'Service unavailable',
+				description: 'Open a workspace first',
+				onClick: () => { }
+			}
+		]);
+	}
+
+	/**
 	 * Check if service is already initialized and load canvases
 	 * This handles the IDE reload case where onDidInitialize already fired
 	 */
 	private async checkAndLoadCanvases(): Promise<void> {
-		console.log('[RoopikDashboardView] checkAndLoadCanvases: checking if service is already initialized...');
-
+		// this.logger.debug('Checking if CanvasService is already initialized...');
 		try {
 			const isInitialized = await this.canvasService.isInitializedAsync();
-			console.log('[RoopikDashboardView] checkAndLoadCanvases: isInitialized =', isInitialized);
-
+			// this.logger.debug('CanvasService isInitialized =', { isInitialized });
 			if (isInitialized) {
-				// Service already initialized (IDE reload case) - load immediately
-				console.log('[RoopikDashboardView] Service already initialized, loading canvases now');
+				// this.logger.debug('Service already initialized, loading canvases now');
 				this.serviceInitialized = true;
 				this.clearLoadingTimeout();
 				this.loadCanvasesNow();
 			} else {
-				// Not initialized yet - start timeout, wait for onDidInitialize event
-				console.log('[RoopikDashboardView] Service not initialized yet, waiting for event...');
+				// this.logger.debug('Service not initialized yet, waiting for event...');
 				this.startLoadingTimeout();
 			}
 		} catch (err) {
-			console.error('[RoopikDashboardView] checkAndLoadCanvases: error checking initialization:', err);
-			// Start timeout as fallback
+			this.logger.error('Error checking CanvasService initialization', err);
 			this.startLoadingTimeout();
 		}
 	}
 
 	protected override renderBody(container: HTMLElement): void {
 		super.renderBody(container);
-		console.log('[RoopikDashboardView] renderBody called');
 
 		// Inject CSS for professional animations
 		this.injectDeleteAnimations();
@@ -211,9 +273,11 @@ export class RoopikDashboardView extends ViewPane {
 		modeButtonsRow.style.alignItems = 'center';
 		modeButtonsRow.style.gap = '4px';
 		modeButtonsRow.style.flexWrap = 'wrap'; // Allow wrapping when space is limited
+		modeButtonsRow.style.minWidth = '0'; // Ensure flex children respect min-width
 
 		const newCanvasBtn = this.createPrimaryActionButton('Canvas', 'codicon-new-file', 'roopik.openCanvas', true, true);
-		const projectModeBtn = this.createSecondaryActionButton('Project', 'codicon-globe', 'roopik.openProjectPreview', true, true);
+		// Project button opens file explorer directly (folder icon)
+		const projectModeBtn = this.createSecondaryActionButton('Project', 'codicon-folder', 'roopik.openProjectPicker', true, true);
 
 		modeButtonsRow.appendChild(newCanvasBtn);
 		modeButtonsRow.appendChild(projectModeBtn);
@@ -225,14 +289,19 @@ export class RoopikDashboardView extends ViewPane {
 		separator.style.background = 'var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
 		separator.style.margin = '4px 0';
 
-		// Second row: Import button (always on separate row)
+		// Second row: Import and Browse buttons - responsive wrapping
 		const importButtonsRow = document.createElement('div');
 		importButtonsRow.style.display = 'flex';
 		importButtonsRow.style.alignItems = 'center';
 		importButtonsRow.style.gap = '4px';
+		importButtonsRow.style.flexWrap = 'wrap'; // Allow Browse button to wrap down on narrow screens
+		importButtonsRow.style.minWidth = '0'; // Ensure flex children respect min-width
 
 		const importBtn = this.createSecondaryActionButton('Import', 'codicon-cloud-download', 'roopik.import.showPicker', true, false);
+		// Browse button opens browser preview with default welcome screen (globe icon)
+		const browseBtn = this.createSecondaryActionButton('Browse', 'codicon-globe', 'roopik.openProjectPreview', true, false);
 		importButtonsRow.appendChild(importBtn);
+		importButtonsRow.appendChild(browseBtn);
 
 		actionsContainer.appendChild(modeButtonsRow);
 		actionsContainer.appendChild(separator);
@@ -287,32 +356,22 @@ export class RoopikDashboardView extends ViewPane {
 	 * No timers, no waiting - proper event-based loading!
 	 */
 	private async loadCanvasesNow(): Promise<void> {
-		console.log('[RoopikDashboardView] loadCanvasesNow called');
-
 		if (!this.canvasesContainer) {
-			console.warn('[RoopikDashboardView] loadCanvasesNow: canvasesContainer is null');
+			this.logger.warn('loadCanvasesNow: canvasesContainer is null');
 			return;
 		}
-
-		// Clear existing content (use DOM API, not innerHTML due to TrustedTypes)
 		while (this.canvasesContainer.firstChild) {
 			this.canvasesContainer.removeChild(this.canvasesContainer.firstChild);
 		}
-
 		try {
-			console.log('[RoopikDashboardView] Calling canvasService.listCanvasesAsync()...');
 			const canvases = await this.canvasService.listCanvasesAsync();
-			console.log(`[RoopikDashboardView] listCanvasesAsync returned ${canvases.length} canvases:`, canvases);
-
+			// this.logger.debug('listCanvasesAsync returned canvases', { count: canvases.length, canvases });
 			if (canvases.length === 0) {
-				console.log('[RoopikDashboardView] No canvases found, showing empty state');
 				this.createSection(this.canvasesContainer, 'Canvases', [
 					{ label: 'No canvases yet', description: 'Click "Canvas" to create one', onClick: () => { } }
 				]);
 				return;
 			}
-
-			// Convert to section items
 			const items = canvases.map((canvas: CanvasMeta) => ({
 				label: canvas.name,
 				description: this.formatTimeAgo(canvas.updatedAt),
@@ -320,11 +379,10 @@ export class RoopikDashboardView extends ViewPane {
 				onDelete: () => this.deleteCanvas(canvas.id, canvas.name),
 				onRename: () => this.renameCanvas(canvas.id, canvas.name)
 			}));
-
-			console.log(`[RoopikDashboardView] Rendering ${items.length} canvas items`);
+			// this.logger.debug('Rendering canvas items', { count: items.length });
 			this.createSection(this.canvasesContainer, 'Canvases', items);
 		} catch (err) {
-			console.error('[RoopikDashboardView] Failed to load canvases:', err);
+			this.logger.error('Failed to load canvases', err);
 			this.createSection(this.canvasesContainer, 'Canvases', [
 				{ label: 'Failed to load canvases', description: 'Check console for details', onClick: () => { } }
 			]);
@@ -375,7 +433,6 @@ export class RoopikDashboardView extends ViewPane {
 		if (confirmed === canvasName) {
 			try {
 				await this.canvasService.deleteCanvas(canvasId);
-				this.notificationService.info(localize('roopik.deleteCanvas.success', 'Canvas "{0}" deleted', canvasName));
 			} catch (err) {
 				const errorMsg = err instanceof Error ? err.message : String(err);
 				this.notificationService.error(localize('roopik.deleteCanvas.error', 'Failed to delete canvas: {0}', errorMsg));
@@ -402,7 +459,6 @@ export class RoopikDashboardView extends ViewPane {
 		if (newName && newName !== currentName) {
 			try {
 				await this.canvasService.updateCanvas(canvasId, { name: newName });
-				this.notificationService.info(localize('roopik.renameCanvas.success', 'Canvas renamed to "{0}"', newName));
 			} catch (err) {
 				const errorMsg = err instanceof Error ? err.message : String(err);
 				this.notificationService.error(localize('roopik.renameCanvas.error', 'Failed to rename canvas: {0}', errorMsg));
@@ -434,7 +490,7 @@ export class RoopikDashboardView extends ViewPane {
 	}
 
 	/**
-	 * Load projects section (static placeholder for now)
+	 * Load projects section - shows loading state initially
 	 */
 	private loadProjects(): void {
 		if (!this.projectsContainer) {
@@ -446,11 +502,112 @@ export class RoopikDashboardView extends ViewPane {
 			this.projectsContainer.removeChild(this.projectsContainer.firstChild);
 		}
 
-		// Static placeholder projects
-		this.createSection(this.projectsContainer, 'Projects', [
-			{ label: 'E-commerce App', description: 'React + Vite', onClick: () => { } },
-			{ label: 'Dashboard UI', description: 'Next.js', onClick: () => { } }
+		// Show loading state
+		this.createSection(this.projectsContainer, 'Recent Projects', [
+			{ label: 'Loading...', description: 'Waiting for services...', onClick: () => { } }
 		]);
+
+		// Check if already initialized and load
+		this.checkAndLoadProjects();
+	}
+
+	/**
+	 * Check if project storage service is already initialized and load projects
+	 * Handles IDE reload case where onDidInitialize already fired
+	 */
+	private async checkAndLoadProjects(): Promise<void> {
+		try {
+			const isInitialized = await this.projectStorageService.isInitializedAsync();
+			if (isInitialized) {
+				// Service already initialized (IDE reload case) - load immediately
+				this.projectServiceInitialized = true;
+				this.clearProjectLoadingTimeout();
+				this.loadProjectsNow();
+			} else {
+				// Not initialized yet - start timeout, wait for onDidInitialize event
+				this.startProjectLoadingTimeout();
+			}
+		} catch (err) {
+			// Service not ready - start timeout as fallback
+			this.startProjectLoadingTimeout();
+		}
+	}
+
+	/**
+	 * Load projects from ProjectStorageService immediately
+	 * Called when onDidInitialize fires or on project events
+	 */
+	private async loadProjectsNow(): Promise<void> {
+		if (!this.projectsContainer) {
+			return;
+		}
+
+		// Clear existing content
+		while (this.projectsContainer.firstChild) {
+			this.projectsContainer.removeChild(this.projectsContainer.firstChild);
+		}
+
+		try {
+			const projects = await this.projectStorageService.getRecentProjects(5);
+
+			if (projects.length === 0) {
+				this.createSection(this.projectsContainer, 'Recent Projects', [
+					{ label: 'No recent projects', description: 'Click "Project" to open one', onClick: () => { } }
+				]);
+				return;
+			}
+
+			// Convert to section items
+			const items = projects.map((project: ProjectInfo) => {
+				// Build description: time + framework (if available)
+				let description = this.formatTimeAgo(project.updatedAt);
+				if (project.frameworkDisplayName) {
+					description += ` • ${project.frameworkDisplayName}`;
+				}
+
+				return {
+					label: project.name,
+					description,
+					onClick: () => this.openProject(project),
+					onDelete: () => this.deleteProject(project.id, project.name)
+				};
+			});
+
+			this.createSection(this.projectsContainer, 'Recent Projects', items);
+		} catch (err) {
+			// Failed to load - show error state
+			this.createSection(this.projectsContainer, 'Recent Projects', [
+				{ label: 'Failed to load projects', description: 'Check console for details', onClick: () => { } }
+			]);
+		}
+	}
+
+	/**
+	 * Open a project in Project Mode
+	 */
+	private async openProject(project: ProjectInfo): Promise<void> {
+		try {
+			// Execute the project preview command with the project path
+			await this.commandService.executeCommand('roopik.openProjectPreview', {
+				projectPath: project.path,
+				projectName: project.name
+			});
+		} catch (err) {
+			const errorMsg = err instanceof Error ? err.message : String(err);
+			this.notificationService.error(localize('roopik.openProject.error', 'Failed to open project: {0}', errorMsg));
+		}
+	}
+
+	/**
+	 * Delete a project from recent projects
+	 */
+	private async deleteProject(projectId: string, projectName: string): Promise<void> {
+		try {
+			await this.projectStorageService.deleteProject(projectId);
+		} catch (err) {
+			const errorMsg = err instanceof Error ? err.message : String(err);
+			this.notificationService.error(localize('roopik.deleteProject.error', 'Failed to remove project: {0}', errorMsg));
+		}
 	}
 
 	/**
@@ -679,7 +836,7 @@ export class RoopikDashboardView extends ViewPane {
 				50% { transform: scale(1.15); }
 			}
 		`;
-		document.head.appendChild(style);
+		mainWindow.document.head.appendChild(style);
 		RoopikDashboardView.animationsInjected = true;
 	}
 

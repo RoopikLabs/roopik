@@ -4,15 +4,15 @@
 	<metadata_license>@@LICENSE@@</metadata_license>
 	<project_license>@@LICENSE@@</project_license>
 	<name>@@NAME_LONG@@</name>
-	<url type="homepage">https://code.visualstudio.com</url>
-	<summary>Visual Studio Code. Code editing. Redefined.</summary>
+	<url type="homepage">https://roopik.com</url>
+	<summary>Roopik. AI-Native Canvas-First IDE.</summary>
 	<description>
-		<p>Visual Studio Code is a new choice of tool that combines the simplicity of a code editor with what developers need for the core edit-build-debug cycle. See https://code.visualstudio.com/docs/setup/linux for installation instructions and FAQ.</p>
+		<p>Roopik is an AI-native, canvas-first IDE built for modern development. See https://roopik.com for installation instructions and FAQ.</p>
 	</description>
 	<screenshots>
 		<screenshot type="default">
-			<image>https://code.visualstudio.com/home/home-screenshot-linux-lg.png</image>
-			<caption>Editing TypeScript and searching for extensions</caption>
+			<image>https://roopik.com/screenshot.png</image>
+			<caption>Roopik IDE interface</caption>
 		</screenshot>
 	</screenshots>
 </component>
