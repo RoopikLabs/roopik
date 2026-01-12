@@ -649,6 +649,14 @@ export class ESBuildTransformer {
 			}
 		}
 
+		// Prepend Vue feature flags (suppress warnings for CDN-loaded Vue)
+		const vueGlobals = `// Vue feature flags (for CDN-loaded Vue)
+globalThis.__VUE_OPTIONS_API__ = true;
+globalThis.__VUE_PROD_DEVTOOLS__ = false;
+globalThis.__VUE_PROD_HYDRATION_MISMATCH_DETAILS__ = false;
+`;
+		jsCode = vueGlobals + jsCode;
+
 		// If CSS was generated, inject it into the JS bundle
 		if (cssCode) {
 			const escapedCss = JSON.stringify(cssCode);
