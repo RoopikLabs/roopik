@@ -102,6 +102,14 @@ export class ProjectModeChannel implements IServerChannel {
 			case 'getElementStyles':
 				return this.service.getElementStyles(arg);
 
+			// Live Style Editing (Preview)
+			case 'setInlineStyle':
+				return this.service.setInlineStyle(arg);
+			case 'setMultipleInlineStyles':
+				return this.service.setMultipleInlineStyles(arg);
+			case 'removeInlineStyle':
+				return this.service.removeInlineStyle(arg);
+
 			default:
 				throw new Error(`[ProjectModeChannel] Unknown command: ${command}`);
 		}

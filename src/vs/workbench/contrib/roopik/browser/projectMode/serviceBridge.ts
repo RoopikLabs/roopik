@@ -203,4 +203,43 @@ export class ServiceBridge implements IProjectModeService {
 	async getElementStyles(request: GetElementStylesRequest): Promise<GetElementStylesResult> {
 		return this.channel.call('getElementStyles', request);
 	}
+
+	// ============================================
+	// Live Style Editing (Preview)
+	// ============================================
+
+	/**
+	 * Set an inline style property on an element for live preview.
+	 * This applies temporary changes that are visible immediately but not persisted.
+	 */
+	async setInlineStyle(request: {
+		browserViewId: number;
+		nodeId: number;
+		property: string;
+		value: string;
+	}): Promise<{ success: boolean; error?: string }> {
+		return this.channel.call('setInlineStyle', request);
+	}
+
+	/**
+	 * Set multiple inline style properties at once for live preview.
+	 */
+	async setMultipleInlineStyles(request: {
+		browserViewId: number;
+		nodeId: number;
+		styles: Array<{ property: string; value: string }>;
+	}): Promise<{ success: boolean; error?: string }> {
+		return this.channel.call('setMultipleInlineStyles', request);
+	}
+
+	/**
+	 * Remove an inline style property for live preview.
+	 */
+	async removeInlineStyle(request: {
+		browserViewId: number;
+		nodeId: number;
+		property: string;
+	}): Promise<{ success: boolean; error?: string }> {
+		return this.channel.call('removeInlineStyle', request);
+	}
 }

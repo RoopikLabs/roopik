@@ -179,6 +179,7 @@ export class StyleSourceOrchestrator {
 
 			// 10. Build final result
 			const result: ElementStyleInfo = {
+				nodeId,
 				tagName: nodeAttrs.tagName,
 				id: nodeAttrs.id,
 				classes,

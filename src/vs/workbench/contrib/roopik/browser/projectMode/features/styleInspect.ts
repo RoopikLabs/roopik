@@ -60,6 +60,7 @@ export class StyleInspect {
 	// DOM tree state
 	private currentBrowserViewId: number | null = null;
 	private domTreeCache: DOMTreeNode | null = null;
+	private currentNodeId: number | null = null; // CDP nodeId for live style editing
 
 	// Flag to prevent DOM invalidation during style fetching
 	private isFetchingStyles: boolean = false;
@@ -158,6 +159,10 @@ export class StyleInspect {
 			},
 			onApplyAll: () => {
 				this.onApplyAllCallback?.();
+			},
+			// Live style preview callback - applies temporary style to browser
+			onLiveStyleChange: (cssProperty, value) => {
+				this.applyLiveStyleChange(cssProperty, value);
 			}
 		};
 
@@ -503,6 +508,9 @@ export class StyleInspect {
 	 */
 	private showStylePanel(data: ElementStyleInfo): void {
 		if (this.panel) {
+			// Store nodeId for live style editing
+			this.currentNodeId = data.nodeId ?? null;
+
 			// Pass isProjectMode flag - file links only work in project mode
 			const isProjectMode = !!this.currentProjectRoot;
 			this.panel.show(data, isProjectMode);
@@ -614,6 +622,28 @@ export class StyleInspect {
 			message: 'Live CSS editing coming soon!',
 			sticky: false
 		});
+	}
+
+	/**
+	 * Apply a live style change to the browser (temporary/preview only)
+	 * Uses CDP to set inline styles directly on the element
+	 */
+	private async applyLiveStyleChange(cssProperty: string, value: string): Promise<void> {
+		if (!this.currentBrowserViewId || !this.currentNodeId) {
+			console.warn('[StyleInspect] Cannot apply live style - no browserViewId or nodeId');
+			return;
+		}
+
+		try {
+			await this.browserService.setInlineStyle({
+				browserViewId: this.currentBrowserViewId,
+				nodeId: this.currentNodeId,
+				property: cssProperty,
+				value
+			});
+		} catch (error) {
+			console.error('[StyleInspect] Failed to apply live style change:', error);
+		}
 	}
 
 	/**

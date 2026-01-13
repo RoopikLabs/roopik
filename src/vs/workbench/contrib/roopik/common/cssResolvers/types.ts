@@ -268,6 +268,12 @@ export interface ElementStyleInfo {
 	 * Used by the Design tab to show resolved values (e.g., 16px instead of clamp(...))
 	 */
 	computedStyles?: ComputedStyleValues;
+
+	/**
+	 * CDP nodeId for the element
+	 * Used for live style editing via CDP
+	 */
+	nodeId?: number;
 }
 
 /**

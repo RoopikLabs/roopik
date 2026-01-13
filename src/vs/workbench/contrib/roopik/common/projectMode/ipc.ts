@@ -250,4 +250,25 @@ export interface IProjectModeService {
 	 * @returns Complete style information including source locations
 	 */
 	getElementStyles(request: GetElementStylesRequest): Promise<GetElementStylesResult>;
+
+	// ============================================
+	// Live Style Editing (CDP)
+	// ============================================
+
+	/**
+	 * Set an inline style property on an element
+	 * Used for live preview - changes are temporary until page reload
+	 */
+	setInlineStyle(request: { browserViewId: number; nodeId: number; property: string; value: string }): Promise<{ success: boolean; error?: string }>;
+
+	/**
+	 * Set multiple inline style properties at once
+	 * More efficient than multiple setInlineStyle calls
+	 */
+	setMultipleInlineStyles(request: { browserViewId: number; nodeId: number; styles: Array<{ property: string; value: string }> }): Promise<{ success: boolean; error?: string }>;
+
+	/**
+	 * Remove an inline style property from an element
+	 */
+	removeInlineStyle(request: { browserViewId: number; nodeId: number; property: string }): Promise<{ success: boolean; error?: string }>;
 }

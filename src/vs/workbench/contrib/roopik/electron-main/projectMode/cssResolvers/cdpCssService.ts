@@ -429,6 +429,212 @@ export class CDPCssService {
 	}
 
 	// ============================================
+	// Live Style Editing (Preview)
+	// ============================================
+
+	/**
+	 * Set inline style property on an element for live preview.
+	 * This modifies the element's style attribute directly.
+	 *
+	 * @param browserViewId - Browser view ID
+	 * @param nodeId - DOM node ID
+	 * @param propertyName - CSS property name (e.g., "font-size")
+	 * @param value - CSS value (e.g., "16px")
+	 * @returns The updated inline style
+	 */
+	async setInlineStyleProperty(
+		browserViewId: number,
+		nodeId: number,
+		propertyName: string,
+		value: string
+	): Promise<{ success: boolean; error?: string }> {
+		try {
+			await this.ensureCSSEnabled(browserViewId);
+
+			// Get current inline styles for this node
+			const inlineResult = await this.browserService.sendCDPCommand(
+				browserViewId,
+				'CSS.getInlineStylesForNode',
+				{ nodeId }
+			) as { inlineStyle?: { styleSheetId: string; cssText: string; range: CDPSourceRange } };
+
+			if (!inlineResult?.inlineStyle) {
+				// No inline style exists - we need to set the attribute directly
+				// Use DOM.setAttributeValue instead
+				await this.browserService.sendCDPCommand(
+					browserViewId,
+					'DOM.setAttributeValue',
+					{
+						nodeId,
+						name: 'style',
+						value: `${propertyName}: ${value};`
+					}
+				);
+				return { success: true };
+			}
+
+			// Parse existing inline style and update/add the property
+			const existingStyle = inlineResult.inlineStyle.cssText;
+			const newStyle = this.updateStyleText(existingStyle, propertyName, value);
+
+			// Use CSS.setStyleTexts to update the inline style
+			await this.browserService.sendCDPCommand(
+				browserViewId,
+				'CSS.setStyleTexts',
+				{
+					edits: [{
+						styleSheetId: inlineResult.inlineStyle.styleSheetId,
+						range: inlineResult.inlineStyle.range,
+						text: newStyle
+					}]
+				}
+			);
+
+			return { success: true };
+		} catch (error) {
+			console.error('[CDPCssService] Failed to set inline style:', error);
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			};
+		}
+	}
+
+	/**
+	 * Remove an inline style property for live preview.
+	 */
+	async removeInlineStyleProperty(
+		browserViewId: number,
+		nodeId: number,
+		propertyName: string
+	): Promise<{ success: boolean; error?: string }> {
+		try {
+			await this.ensureCSSEnabled(browserViewId);
+
+			const inlineResult = await this.browserService.sendCDPCommand(
+				browserViewId,
+				'CSS.getInlineStylesForNode',
+				{ nodeId }
+			) as { inlineStyle?: { styleSheetId: string; cssText: string; range: CDPSourceRange } };
+
+			if (!inlineResult?.inlineStyle) {
+				return { success: true }; // No inline style, nothing to remove
+			}
+
+			// Remove the property from the style text
+			const existingStyle = inlineResult.inlineStyle.cssText;
+			const newStyle = this.removePropertyFromStyleText(existingStyle, propertyName);
+
+			await this.browserService.sendCDPCommand(
+				browserViewId,
+				'CSS.setStyleTexts',
+				{
+					edits: [{
+						styleSheetId: inlineResult.inlineStyle.styleSheetId,
+						range: inlineResult.inlineStyle.range,
+						text: newStyle
+					}]
+				}
+			);
+
+			return { success: true };
+		} catch (error) {
+			console.error('[CDPCssService] Failed to remove inline style:', error);
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			};
+		}
+	}
+
+	/**
+	 * Apply multiple style changes at once for live preview.
+	 */
+	async setMultipleInlineStyles(
+		browserViewId: number,
+		nodeId: number,
+		styles: Array<{ property: string; value: string }>
+	): Promise<{ success: boolean; error?: string }> {
+		try {
+			await this.ensureCSSEnabled(browserViewId);
+
+			const inlineResult = await this.browserService.sendCDPCommand(
+				browserViewId,
+				'CSS.getInlineStylesForNode',
+				{ nodeId }
+			) as { inlineStyle?: { styleSheetId: string; cssText: string; range: CDPSourceRange } };
+
+			// Build the new style text
+			let styleText = inlineResult?.inlineStyle?.cssText || '';
+			for (const { property, value } of styles) {
+				styleText = this.updateStyleText(styleText, property, value);
+			}
+
+			if (!inlineResult?.inlineStyle) {
+				// No existing inline style - set attribute directly
+				await this.browserService.sendCDPCommand(
+					browserViewId,
+					'DOM.setAttributeValue',
+					{
+						nodeId,
+						name: 'style',
+						value: styleText
+					}
+				);
+			} else {
+				// Update existing inline style
+				await this.browserService.sendCDPCommand(
+					browserViewId,
+					'CSS.setStyleTexts',
+					{
+						edits: [{
+							styleSheetId: inlineResult.inlineStyle.styleSheetId,
+							range: inlineResult.inlineStyle.range,
+							text: styleText
+						}]
+					}
+				);
+			}
+
+			return { success: true };
+		} catch (error) {
+			console.error('[CDPCssService] Failed to set multiple inline styles:', error);
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			};
+		}
+	}
+
+	/**
+	 * Helper: Update a property in style text (or add if not present)
+	 */
+	private updateStyleText(styleText: string, propertyName: string, value: string): string {
+		// Regex to find the property (handles various formatting)
+		const regex = new RegExp(`(^|;|\\s)${propertyName}\\s*:\\s*[^;]+;?`, 'gi');
+
+		if (regex.test(styleText)) {
+			// Replace existing property
+			return styleText.replace(regex, `$1${propertyName}: ${value};`);
+		} else {
+			// Add new property
+			const trimmed = styleText.trim();
+			if (trimmed && !trimmed.endsWith(';')) {
+				return `${trimmed}; ${propertyName}: ${value};`;
+			}
+			return `${trimmed} ${propertyName}: ${value};`.trim();
+		}
+	}
+
+	/**
+	 * Helper: Remove a property from style text
+	 */
+	private removePropertyFromStyleText(styleText: string, propertyName: string): string {
+		const regex = new RegExp(`(^|;|\\s)${propertyName}\\s*:\\s*[^;]+;?`, 'gi');
+		return styleText.replace(regex, '$1').trim();
+	}
+
+	// ============================================
 	// Stylesheet Resolution
 	// ============================================
 

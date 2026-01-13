@@ -1978,4 +1978,110 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			orchestrator.clearCaches();
 		}
 	}
+
+	// ============================================
+	// Live Style Editing (Preview)
+	// ============================================
+
+	/**
+	 * Set an inline style property on an element for live preview.
+	 * This modifies the element's style attribute directly via CDP.
+	 */
+	async setInlineStyle(request: {
+		browserViewId: number;
+		nodeId: number;
+		property: string;
+		value: string;
+	}): Promise<{ success: boolean; error?: string }> {
+		const { browserViewId, nodeId, property, value } = request;
+
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			return {
+				success: false,
+				error: 'Browser view not found or destroyed'
+			};
+		}
+
+		try {
+			return await this.cdpCssService.setInlineStyleProperty(
+				browserViewId,
+				nodeId,
+				property,
+				value
+			);
+		} catch (error) {
+			this.logger.error('setInlineStyle error', { error });
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			};
+		}
+	}
+
+	/**
+	 * Set multiple inline style properties at once for live preview.
+	 */
+	async setMultipleInlineStyles(request: {
+		browserViewId: number;
+		nodeId: number;
+		styles: Array<{ property: string; value: string }>;
+	}): Promise<{ success: boolean; error?: string }> {
+		const { browserViewId, nodeId, styles } = request;
+
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			return {
+				success: false,
+				error: 'Browser view not found or destroyed'
+			};
+		}
+
+		try {
+			return await this.cdpCssService.setMultipleInlineStyles(
+				browserViewId,
+				nodeId,
+				styles
+			);
+		} catch (error) {
+			this.logger.error('setMultipleInlineStyles error', { error });
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			};
+		}
+	}
+
+	/**
+	 * Remove an inline style property for live preview.
+	 */
+	async removeInlineStyle(request: {
+		browserViewId: number;
+		nodeId: number;
+		property: string;
+	}): Promise<{ success: boolean; error?: string }> {
+		const { browserViewId, nodeId, property } = request;
+
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			return {
+				success: false,
+				error: 'Browser view not found or destroyed'
+			};
+		}
+
+		try {
+			return await this.cdpCssService.removeInlineStyleProperty(
+				browserViewId,
+				nodeId,
+				property
+			);
+		} catch (error) {
+			this.logger.error('removeInlineStyle error', { error });
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			};
+		}
+	}
 }

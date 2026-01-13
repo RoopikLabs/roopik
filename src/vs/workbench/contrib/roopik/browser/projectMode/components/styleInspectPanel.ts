@@ -48,6 +48,11 @@ export interface IStyleInspectPanelCallbacks {
 	onUndoAll?: () => void;
 	/** Called when user clicks Apply All */
 	onApplyAll?: () => void;
+	/**
+	 * Called when user changes a style value in the Design tab for live preview.
+	 * This triggers immediate visual update in the browser (temporary, not saved).
+	 */
+	onLiveStyleChange?: (cssProperty: string, value: string) => void;
 }
 
 /**
@@ -1066,6 +1071,11 @@ export class StyleInspectPanel {
 		const value = this.getComputedValue(cssProperty);
 		const { num, unit } = this.parseValueAndUnit(value);
 
+		// Helper to trigger live style change
+		const triggerLiveChange = (newValue: string) => {
+			this.callbacks.onLiveStyleChange?.(cssProperty, newValue);
+		};
+
 		if (options?.type === 'select' && options.selectOptions) {
 			// Select dropdown
 			const select = document.createElement('select');
@@ -1085,6 +1095,10 @@ export class StyleInspectPanel {
 				option.textContent = opt;
 				option.selected = value === opt;
 				select.appendChild(option);
+			});
+			// Live preview on change
+			select.addEventListener('change', () => {
+				triggerLiveChange(select.value);
 			});
 			inputContainer.appendChild(select);
 		} else if (options?.type === 'color') {
@@ -1113,6 +1127,17 @@ export class StyleInspectPanel {
 				border-radius: 3px;
 				font-family: var(--vscode-editor-font-family);
 			`;
+			// Live preview on input (debounced via blur or Enter key)
+			colorValue.addEventListener('blur', () => {
+				colorPreview.style.background = colorValue.value || 'transparent';
+				triggerLiveChange(colorValue.value);
+			});
+			colorValue.addEventListener('keydown', (e) => {
+				if (e.key === 'Enter') {
+					colorPreview.style.background = colorValue.value || 'transparent';
+					triggerLiveChange(colorValue.value);
+				}
+			});
 			inputContainer.appendChild(colorValue);
 		} else {
 			// Number/Text input
@@ -1130,6 +1155,28 @@ export class StyleInspectPanel {
 				border-radius: 3px;
 				text-align: right;
 			`;
+
+			// Track current unit for combining value + unit
+			let currentUnit = unit || 'px';
+
+			// Live preview helper for number inputs
+			const triggerNumberChange = () => {
+				const val = input.value;
+				if (val === 'auto' || val === '') {
+					triggerLiveChange(val || 'auto');
+				} else {
+					triggerLiveChange(`${val}${currentUnit}`);
+				}
+			};
+
+			// Live preview on blur or Enter
+			input.addEventListener('blur', triggerNumberChange);
+			input.addEventListener('keydown', (e) => {
+				if (e.key === 'Enter') {
+					triggerNumberChange();
+				}
+			});
+
 			inputContainer.appendChild(input);
 
 			// Unit selector if enabled
@@ -1150,6 +1197,16 @@ export class StyleInspectPanel {
 					option.textContent = u;
 					option.selected = unit === u || (u === 'auto' && num === 'auto');
 					unitSelect.appendChild(option);
+				});
+				// Live preview when unit changes
+				unitSelect.addEventListener('change', () => {
+					currentUnit = unitSelect.value;
+					if (unitSelect.value === 'auto') {
+						input.value = 'auto';
+						triggerLiveChange('auto');
+					} else {
+						triggerNumberChange();
+					}
 				});
 				inputContainer.appendChild(unitSelect);
 			}
@@ -1299,6 +1356,19 @@ export class StyleInspectPanel {
 			${position === 'right' ? 'right: 2px; top: 50%; transform: translateY(-50%);' : ''}
 		`;
 
+		// Construct CSS property name: margin-top, padding-left, etc.
+		const cssProperty = `${type}-${position}`;
+
+		// Live preview handler
+		const triggerLiveChange = () => {
+			let val = input.value.trim();
+			// Add px if it's just a number
+			if (val && !isNaN(Number(val))) {
+				val = `${val}px`;
+			}
+			this.callbacks.onLiveStyleChange?.(cssProperty, val || '0');
+		};
+
 		input.addEventListener('focus', () => {
 			input.style.border = '1px solid var(--vscode-focusBorder)';
 			input.style.background = 'var(--vscode-input-background)';
@@ -1306,6 +1376,12 @@ export class StyleInspectPanel {
 		input.addEventListener('blur', () => {
 			input.style.border = '1px solid transparent';
 			input.style.background = 'transparent';
+			triggerLiveChange();
+		});
+		input.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter') {
+				input.blur();
+			}
 		});
 
 		return input;
