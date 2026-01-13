@@ -785,14 +785,107 @@ export class StyleInspectPanel {
 	// ============================================
 
 	/**
-	 * Get computed style value for a property from current data
+	 * Get computed style value for a property from current data.
+	 * For Design tab, we want the RESOLVED computed value (actual pixels),
+	 * not the declared CSS value (like clamp(), calc(), rem, etc.)
+	 *
+	 * Priority order for Design tab (Figma-like):
+	 * 1. Browser computed styles (actual pixel values from CDP getComputedStyleForNode)
+	 * 2. All computed properties (fallback)
+	 * 3. Inline styles
+	 * 4. Matched CSS rules
 	 */
 	private getComputedValue(propertyName: string): string {
 		if (!this.currentData) {
 			return '';
 		}
-		const prop = this.currentData.properties.find(p => p.name === propertyName);
-		return prop?.value || '';
+
+		// Map CSS property names to ComputedStyleValues field names
+		const computedStylesMap: Record<string, string> = {
+			'display': 'display',
+			'position': 'position',
+			'flex-direction': 'flexDirection',
+			'justify-content': 'justifyContent',
+			'align-items': 'alignItems',
+			'gap': 'gap',
+			'width': 'width',
+			'height': 'height',
+			'min-width': 'minWidth',
+			'max-width': 'maxWidth',
+			'min-height': 'minHeight',
+			'max-height': 'maxHeight',
+			'margin-top': 'marginTop',
+			'margin-right': 'marginRight',
+			'margin-bottom': 'marginBottom',
+			'margin-left': 'marginLeft',
+			'padding-top': 'paddingTop',
+			'padding-right': 'paddingRight',
+			'padding-bottom': 'paddingBottom',
+			'padding-left': 'paddingLeft',
+			'border-width': 'borderWidth',
+			'border-style': 'borderStyle',
+			'border-color': 'borderColor',
+			'border-radius': 'borderRadius',
+			'font-family': 'fontFamily',
+			'font-size': 'fontSize',
+			'font-weight': 'fontWeight',
+			'line-height': 'lineHeight',
+			'letter-spacing': 'letterSpacing',
+			'text-align': 'textAlign',
+			'color': 'color',
+			'background-color': 'backgroundColor',
+			'opacity': 'opacity',
+			'box-shadow': 'boxShadow',
+			'overflow': 'overflow',
+			'transform': 'transform',
+			'z-index': 'zIndex',
+			'top': 'top',
+			'right': 'right',
+			'bottom': 'bottom',
+			'left': 'left',
+		};
+
+		// 1. Check browser computed styles FIRST - these are the actual rendered values
+		// (e.g., "64px" instead of "clamp(2.5rem, 8vw, 4.5rem)")
+		if (this.currentData.computedStyles) {
+			const fieldName = computedStylesMap[propertyName];
+			if (fieldName) {
+				const value = (this.currentData.computedStyles as Record<string, string | undefined>)[fieldName];
+				if (value) {
+					return value;
+				}
+			}
+		}
+
+		// 2. Fallback to properties array (also computed values but from a different source)
+		if (this.currentData.properties && this.currentData.properties.length > 0) {
+			const prop = this.currentData.properties.find(p => p.name === propertyName);
+			if (prop && prop.value) {
+				return prop.value;
+			}
+		}
+
+		// 3. Fallback to inline styles (declared values)
+		if (this.currentData.inlineStyles && this.currentData.inlineStyles.length > 0) {
+			const inlineProp = this.currentData.inlineStyles.find(p => p.name === propertyName);
+			if (inlineProp) {
+				return inlineProp.value;
+			}
+		}
+
+		// 4. Fallback to matched CSS rules
+		if (this.currentData.matchedRules && this.currentData.matchedRules.length > 0) {
+			for (const rule of this.currentData.matchedRules) {
+				if (rule.properties) {
+					const ruleProp = rule.properties.find(p => p.name === propertyName);
+					if (ruleProp && !ruleProp.isOverridden) {
+						return ruleProp.value;
+					}
+				}
+			}
+		}
+
+		return '';
 	}
 
 	/**
