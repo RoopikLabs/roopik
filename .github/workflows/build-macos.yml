@@ -106,6 +106,8 @@ jobs:
         run: npm run build
 
       - name: Build macOS application (arm64)
+        env:
+          BUILD_SOURCEVERSION: ${{ github.sha }}
         run: npm run gulp vscode-darwin-arm64
 
       - name: Import Apple signing certificate

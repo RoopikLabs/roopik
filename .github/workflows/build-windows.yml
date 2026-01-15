@@ -120,12 +120,18 @@ jobs:
           ' sh {} \;
 
       - name: Build Windows application
+        env:
+          BUILD_SOURCEVERSION: ${{ github.sha }}
         run: npm run gulp vscode-win32-x64
 
       - name: Prepare Inno Setup tools
+        env:
+          BUILD_SOURCEVERSION: ${{ github.sha }}
         run: npm run gulp vscode-win32-x64-inno-updater
 
       - name: Build Windows installer (User)
+        env:
+          BUILD_SOURCEVERSION: ${{ github.sha }}
         run: npm run gulp vscode-win32-x64-user-setup
 
       # System installer commented out - use User installer for most cases

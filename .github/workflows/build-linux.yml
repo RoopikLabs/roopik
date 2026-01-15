@@ -133,12 +133,14 @@ jobs:
       - name: Build Linux application (x64)
         env:
           NODE_OPTIONS: --max-old-space-size=4096
+          BUILD_SOURCEVERSION: ${{ github.sha }}
         run: npm run gulp vscode-linux-x64
 
       - name: Build DEB package (custom)
         env:
           APP_NAME: roopik
           VSCODE_ARCH: x64
+          BUILD_SOURCEVERSION: ${{ github.sha }}
         run: bash .github/build/linux/package_roopik_deb.sh
         continue-on-error: true
 
