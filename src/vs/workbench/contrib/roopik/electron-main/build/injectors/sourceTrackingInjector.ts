@@ -27,6 +27,10 @@
 import { BaseInjector, InjectorContext } from './types.js';
 import { transformCode, ParseOptions } from './sourceTrackingCore.js';
 
+// Import Babel statically - this ensures it's bundled/resolved correctly
+// eslint-disable-next-line local/code-amd-node-module
+import * as babelCoreModule from '@babel/core';
+
 /**
  * Framework-specific configuration for source tracking
  */
@@ -116,15 +120,15 @@ export class SourceTrackingInjector extends BaseInjector {
 
 		this.babelLoadAttempted = true;
 
-		try {
-			// eslint-disable-next-line local/code-no-dangerous-type-assertions
-			this.babelCore = require('@babel/core') as IBabelCore;
-			console.log('[SourceTracking] Babel loaded successfully - using AST transformation');
+		// Use statically imported Babel module
+		if (babelCoreModule && typeof babelCoreModule.transformSync === 'function') {
+			this.babelCore = babelCoreModule as IBabelCore;
+			console.log('[SourceTracking] Babel module loaded - using AST transformation');
 			return this.babelCore;
-		} catch (e) {
-			console.log('[SourceTracking] Babel not available - using regex fallback');
-			return null;
 		}
+
+		console.warn('[SourceTracking] Babel module not available - will use regex fallback');
+		return null;
 	}
 
 	/**
@@ -158,7 +162,10 @@ export class SourceTrackingInjector extends BaseInjector {
 
 			return result?.code || null;
 		} catch (error) {
-			console.warn('[SourceTracking] Babel transformation failed:', error);
+			console.error('[SourceTracking] Babel transformation exception:', error);
+			if (error instanceof Error) {
+				console.error('   Stack:', error.stack);
+			}
 			return null;
 		}
 	}
@@ -265,9 +272,10 @@ export class SourceTrackingInjector extends BaseInjector {
 		try {
 			// For JSX/TSX frameworks with Babel AST enabled, try Babel first
 			if (config.useBabelAST && (ext === '.jsx' || ext === '.tsx')) {
+				console.log(`[SourceTracking] Attempting Babel AST for: ${filename}`);
 				const babelResult = this.transformWithBabel(code, filename);
 				if (babelResult) {
-					// console.log(`[SourceTracking] Babel AST transformation successful: ${filename}`);
+					console.log(`[SourceTracking] Babel AST success: ${filename}`);
 					return babelResult;
 				}
 				// Fall through to regex if Babel fails
@@ -285,9 +293,11 @@ export class SourceTrackingInjector extends BaseInjector {
 
 			const result = transformCode(code, options);
 
-			// if (result.count > 0) {
-			// 	console.log(`[SourceTracking] Added tracking to ${result.count} elements in: ${filename}`);
-			// }
+			if (result.count > 0) {
+				console.log(`[SourceTracking] Regex added tracking to ${result.count} elements in: ${filename}`);
+			} else {
+				console.log(`[SourceTracking] Regex found 0 elements in: ${filename}`);
+			}
 
 			return result.code;
 		} catch (error) {
@@ -332,9 +342,10 @@ export class SourceTrackingInjector extends BaseInjector {
  * For Vue/Svelte/HTML: Uses regex with TypeScript type context detection
  *
  * @param framework - Target framework (react, vue, svelte, html, solid, preact)
+ * @param logger - Optional logger for diagnostic output
  * @returns Transform function
  */
-export function createSourceTrackingTransform(framework: string = 'react') {
+export function createSourceTrackingTransform(framework: string = 'react', logger?: { info: (msg: string, meta?: any) => void; warn: (msg: string, meta?: any) => void; debug: (msg: string, meta?: any) => void }) {
 	const config = FRAMEWORK_CONFIGS[framework] || FRAMEWORK_CONFIGS['react'];
 
 	// Cache Babel loading for performance
@@ -347,13 +358,15 @@ export function createSourceTrackingTransform(framework: string = 'react') {
 		}
 		babelLoadAttempted = true;
 
-		try {
-			// eslint-disable-next-line local/code-no-dangerous-type-assertions
-			babelCore = require('@babel/core') as IBabelCore;
+		// Use statically imported Babel module
+		if (babelCoreModule && typeof babelCoreModule.transformSync === 'function') {
+			babelCore = babelCoreModule as IBabelCore;
+			if (logger) logger.info('[SOURCE_TRACKING] Babel loaded - using AST transformation');
 			return babelCore;
-		} catch (e) {
-			return null;
 		}
+
+		if (logger) logger.warn('[SOURCE_TRACKING] Babel module not available - using regex fallback');
+		return null;
 	}
 
 	/**
@@ -433,6 +446,7 @@ export function createSourceTrackingTransform(framework: string = 'react') {
 
 			return result?.code || null;
 		} catch (error) {
+			if (logger) logger.warn('[SOURCE_TRACKING] Babel transformation failed', { filename, error });
 			return null;
 		}
 	}
@@ -455,11 +469,14 @@ export function createSourceTrackingTransform(framework: string = 'react') {
 		try {
 			// For JSX/TSX frameworks, try Babel first
 			if (config.useBabelAST && (ext === '.jsx' || ext === '.tsx')) {
+				if (logger) logger.debug('[SOURCE_TRACKING] Attempting Babel AST', { filename });
 				const babelResult = transformWithBabel(code, filename);
 				if (babelResult) {
+					if (logger) logger.info('[SOURCE_TRACKING] Babel AST success', { filename });
 					return babelResult;
 				}
 				// Fall through to regex
+				if (logger) logger.debug('[SOURCE_TRACKING] Babel failed, using regex fallback', { filename });
 			}
 
 			// Fallback to regex-based transformation
@@ -472,9 +489,16 @@ export function createSourceTrackingTransform(framework: string = 'react') {
 			};
 
 			const result = transformCode(code, options);
+
+			if (result.count > 0) {
+				if (logger) logger.info(`[SOURCE_TRACKING] Regex added ${result.count} attributes`, { filename });
+			} else {
+				if (logger) logger.debug('[SOURCE_TRACKING] Regex found 0 elements', { filename });
+			}
+
 			return result.code;
 		} catch (error) {
-			console.warn(`[SourceTracking] Transform failed for ${filename}:`, error);
+			if (logger) logger.warn('[SOURCE_TRACKING] Transform failed', { filename, error });
 			return code;
 		}
 	};

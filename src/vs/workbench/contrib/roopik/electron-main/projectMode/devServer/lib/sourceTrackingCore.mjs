@@ -69,6 +69,21 @@ export function isInsideTypeScriptTypeContext(code, position) {
 	// Look backwards from position to find context
 	const beforeMatch = code.substring(Math.max(0, position - 100), position);
 
+	// CRITICAL Pattern: Generic function/method calls - "useState<", "React.useState<", "useRef<T>"
+	// This is the MOST COMMON case that causes bugs!
+	// If an identifier immediately precedes '<', it's almost always a TypeScript generic, NOT JSX
+	// The ONLY exception is: "return <Component>" (the 'return' keyword)
+	// Note: "=> <Component>" doesn't match because '=>' isn't an identifier
+	const identifierBeforeAngleBracket = /[A-Za-z_$][A-Za-z0-9_$.]*\s*$/.exec(beforeMatch);
+	if (identifierBeforeAngleBracket) {
+		const matchedIdentifier = identifierBeforeAngleBracket[0].trim();
+		// If the identifier is 'return', it's JSX (e.g., "return <div>")
+		// Otherwise, it's a TypeScript generic (e.g., "useState<T>", "Array<string>")
+		if (matchedIdentifier !== 'return') {
+			return true; // Skip - it's a generic
+		}
+	}
+
 	// Pattern 1: Type annotation - "event: React.MouseEvent<" or "value: Array<"
 	// Look for ": TypeName<" pattern (colon followed by identifier then our position)
 	if (/:\s*[A-Za-z_$][A-Za-z0-9_$.<>]*$/.test(beforeMatch)) {
