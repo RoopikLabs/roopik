@@ -781,8 +781,126 @@ export class StyleInspectPanel {
 	}
 
 	// ============================================
-	// Design Tab (stub - future Figma-like editing)
+	// Design Tab (Figma-like Visual Editor)
 	// ============================================
+
+	/**
+	 * Get computed style value for a property from current data.
+	 * For Design tab, we want the RESOLVED computed value (actual pixels),
+	 * not the declared CSS value (like clamp(), calc(), rem, etc.)
+	 *
+	 * Priority order for Design tab (Figma-like):
+	 * 1. Browser computed styles (actual pixel values from CDP getComputedStyleForNode)
+	 * 2. All computed properties (fallback)
+	 * 3. Inline styles
+	 * 4. Matched CSS rules
+	 */
+	private getComputedValue(propertyName: string): string {
+		if (!this.currentData) {
+			return '';
+		}
+
+		// Map CSS property names to ComputedStyleValues field names
+		const computedStylesMap: Record<string, string> = {
+			'display': 'display',
+			'position': 'position',
+			'flex-direction': 'flexDirection',
+			'justify-content': 'justifyContent',
+			'align-items': 'alignItems',
+			'gap': 'gap',
+			'width': 'width',
+			'height': 'height',
+			'min-width': 'minWidth',
+			'max-width': 'maxWidth',
+			'min-height': 'minHeight',
+			'max-height': 'maxHeight',
+			'margin-top': 'marginTop',
+			'margin-right': 'marginRight',
+			'margin-bottom': 'marginBottom',
+			'margin-left': 'marginLeft',
+			'padding-top': 'paddingTop',
+			'padding-right': 'paddingRight',
+			'padding-bottom': 'paddingBottom',
+			'padding-left': 'paddingLeft',
+			'border-width': 'borderWidth',
+			'border-style': 'borderStyle',
+			'border-color': 'borderColor',
+			'border-radius': 'borderRadius',
+			'font-family': 'fontFamily',
+			'font-size': 'fontSize',
+			'font-weight': 'fontWeight',
+			'line-height': 'lineHeight',
+			'letter-spacing': 'letterSpacing',
+			'text-align': 'textAlign',
+			'color': 'color',
+			'background-color': 'backgroundColor',
+			'opacity': 'opacity',
+			'box-shadow': 'boxShadow',
+			'overflow': 'overflow',
+			'transform': 'transform',
+			'z-index': 'zIndex',
+			'top': 'top',
+			'right': 'right',
+			'bottom': 'bottom',
+			'left': 'left',
+		};
+
+		// 1. Check browser computed styles FIRST - these are the actual rendered values
+		// (e.g., "64px" instead of "clamp(2.5rem, 8vw, 4.5rem)")
+		if (this.currentData.computedStyles) {
+			const fieldName = computedStylesMap[propertyName];
+			if (fieldName) {
+				const value = (this.currentData.computedStyles as Record<string, string | undefined>)[fieldName];
+				if (value) {
+					return value;
+				}
+			}
+		}
+
+		// 2. Fallback to properties array (also computed values but from a different source)
+		if (this.currentData.properties && this.currentData.properties.length > 0) {
+			const prop = this.currentData.properties.find(p => p.name === propertyName);
+			if (prop && prop.value) {
+				return prop.value;
+			}
+		}
+
+		// 3. Fallback to inline styles (declared values)
+		if (this.currentData.inlineStyles && this.currentData.inlineStyles.length > 0) {
+			const inlineProp = this.currentData.inlineStyles.find(p => p.name === propertyName);
+			if (inlineProp) {
+				return inlineProp.value;
+			}
+		}
+
+		// 4. Fallback to matched CSS rules
+		if (this.currentData.matchedRules && this.currentData.matchedRules.length > 0) {
+			for (const rule of this.currentData.matchedRules) {
+				if (rule.properties) {
+					const ruleProp = rule.properties.find(p => p.name === propertyName);
+					if (ruleProp && !ruleProp.isOverridden) {
+						return ruleProp.value;
+					}
+				}
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Parse a CSS value into number and unit
+	 */
+	private parseValueAndUnit(value: string): { num: string; unit: string } {
+		if (!value || value === 'auto' || value === 'none' || value === 'inherit' || value === 'initial') {
+			return { num: value, unit: '' };
+		}
+		const match = value.match(/^(-?[\d.]+)(.*)$/);
+		if (match) {
+			return { num: match[1], unit: match[2] || 'px' };
+		}
+		return { num: value, unit: '' };
+	}
 
 	private renderDesignTab(): void {
 		const content = this.tabContents.get('design');
@@ -795,9 +913,47 @@ export class StyleInspectPanel {
 			content.removeChild(content.firstChild);
 		}
 
-		// Stub message
-		const stub = document.createElement('div');
-		stub.style.cssText = `
+		// Show empty state if no element selected
+		if (!this.currentData || !this.currentData.tagName) {
+			content.appendChild(this.createDesignEmptyState());
+			return;
+		}
+
+		// Main scrollable container
+		const scrollContainer = document.createElement('div');
+		scrollContainer.style.cssText = `
+			overflow-y: auto;
+			height: 100%;
+			padding: 12px;
+		`;
+
+		// 1. SPACING Section (Margin & Padding)
+		scrollContainer.appendChild(this.createSpacingSection());
+
+		// 2. LAYOUT Section (Display, Position, Flex)
+		scrollContainer.appendChild(this.createLayoutSection());
+
+		// 3. TYPOGRAPHY Section
+		scrollContainer.appendChild(this.createTypographySection());
+
+		// 4. SIZE Section (Width, Height)
+		scrollContainer.appendChild(this.createSizeSection());
+
+		// 5. COLORS Section
+		scrollContainer.appendChild(this.createColorsSection());
+
+		// 6. BORDERS Section
+		scrollContainer.appendChild(this.createBordersSection());
+
+		// 7. EFFECTS Section
+		scrollContainer.appendChild(this.createEffectsSection());
+
+		content.appendChild(scrollContainer);
+	}
+
+	private createDesignEmptyState(): HTMLElement {
+		const empty = document.createElement('div');
+		empty.style.cssText = `
 			display: flex;
 			flex-direction: column;
 			align-items: center;
@@ -805,101 +961,488 @@ export class StyleInspectPanel {
 			padding: 40px 20px;
 			text-align: center;
 			color: var(--vscode-descriptionForeground);
+			height: 100%;
 		`;
 
 		const icon = document.createElement('div');
-		icon.className = 'codicon codicon-paintbrush';
+		icon.className = 'codicon codicon-inspect';
 		icon.style.cssText = `font-size: 32px; margin-bottom: 12px; opacity: 0.5;`;
-		stub.appendChild(icon);
+		empty.appendChild(icon);
 
-		const title = document.createElement('div');
-		title.style.cssText = `font-size: 13px; font-weight: 600; margin-bottom: 8px;`;
-		title.textContent = 'Visual Design Editor';
-		stub.appendChild(title);
+		const text = document.createElement('div');
+		text.style.cssText = `font-size: 12px; opacity: 0.7;`;
+		text.textContent = 'Select an element to view its design properties';
+		empty.appendChild(text);
 
-		const desc = document.createElement('div');
-		desc.style.cssText = `font-size: 11px; opacity: 0.7; line-height: 1.5;`;
-		desc.textContent = 'Figma-like visual editing for Position, Layout, Dimensions, Padding, and Margin. Coming soon!';
-		stub.appendChild(desc);
-
-		// Preview of what's coming (non-functional)
-		const preview = this.createDesignTabPreview();
-		stub.appendChild(preview);
-
-		content.appendChild(stub);
+		return empty;
 	}
 
-	private createDesignTabPreview(): HTMLElement {
-		const preview = document.createElement('div');
-		preview.style.cssText = `
-			margin-top: 20px;
-			padding: 16px;
-			background: var(--vscode-editor-background);
-			border-radius: 4px;
-			width: 100%;
-			opacity: 0.5;
+	/**
+	 * Create a collapsible section for Design tab
+	 */
+	private createDesignSection(title: string, icon: string): { section: HTMLElement; content: HTMLElement } {
+		const section = document.createElement('div');
+		section.style.cssText = `margin-bottom: 16px;`;
+
+		const header = document.createElement('div');
+		header.style.cssText = `
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			padding: 6px 0;
+			cursor: pointer;
+			user-select: none;
 		`;
 
-		// Position section
-		const posSection = document.createElement('div');
-		posSection.style.cssText = `margin-bottom: 16px;`;
+		const chevron = document.createElement('span');
+		chevron.className = 'codicon codicon-chevron-down';
+		chevron.style.cssText = `font-size: 12px; opacity: 0.7; transition: transform 0.15s;`;
+		header.appendChild(chevron);
 
-		const posLabel = document.createElement('div');
-		posLabel.style.cssText = `font-size: 10px; text-transform: uppercase; margin-bottom: 8px; opacity: 0.7;`;
-		posLabel.textContent = 'Position';
-		posSection.appendChild(posLabel);
+		const iconEl = document.createElement('span');
+		iconEl.className = `codicon codicon-${icon}`;
+		iconEl.style.cssText = `font-size: 14px; opacity: 0.8;`;
+		header.appendChild(iconEl);
 
-		const posInputs = document.createElement('div');
-		posInputs.style.cssText = `display: flex; gap: 8px;`;
-		posInputs.appendChild(this.createMiniInput('X', '0'));
-		posInputs.appendChild(this.createMiniInput('Y', '0'));
-		posSection.appendChild(posInputs);
-		preview.appendChild(posSection);
+		const titleEl = document.createElement('span');
+		titleEl.style.cssText = `font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;`;
+		titleEl.textContent = title;
+		header.appendChild(titleEl);
 
-		// Dimensions section
-		const dimSection = document.createElement('div');
-		dimSection.style.cssText = `margin-bottom: 16px;`;
+		section.appendChild(header);
 
-		const dimLabel = document.createElement('div');
-		dimLabel.style.cssText = `font-size: 10px; text-transform: uppercase; margin-bottom: 8px; opacity: 0.7;`;
-		dimLabel.textContent = 'Dimensions';
-		dimSection.appendChild(dimLabel);
+		const content = document.createElement('div');
+		content.style.cssText = `padding-left: 4px;`;
+		section.appendChild(content);
 
-		const dimInputs = document.createElement('div');
-		dimInputs.style.cssText = `display: flex; gap: 8px;`;
-		dimInputs.appendChild(this.createMiniInput('W', 'auto'));
-		dimInputs.appendChild(this.createMiniInput('H', 'auto'));
-		dimSection.appendChild(dimInputs);
-		preview.appendChild(dimSection);
+		// Toggle collapse
+		header.addEventListener('click', () => {
+			const isCollapsed = content.style.display === 'none';
+			content.style.display = isCollapsed ? 'block' : 'none';
+			chevron.style.transform = isCollapsed ? '' : 'rotate(-90deg)';
+		});
 
-		return preview;
+		return { section, content };
 	}
 
-	private createMiniInput(label: string, value: string): HTMLElement {
-		const container = document.createElement('div');
-		container.style.cssText = `flex: 1;`;
+	/**
+	 * Create a property row with label and input (for Design tab)
+	 */
+	private createDesignPropertyRow(label: string, cssProperty: string, options?: {
+		type?: 'text' | 'number' | 'select' | 'color';
+		selectOptions?: string[];
+		unit?: boolean;
+		placeholder?: string;
+	}): HTMLElement {
+		const row = document.createElement('div');
+		row.style.cssText = `
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 4px 0;
+			gap: 8px;
+		`;
 
-		const labelEl = document.createElement('span');
-		labelEl.style.cssText = `font-size: 10px; color: var(--vscode-descriptionForeground); margin-right: 4px;`;
-		labelEl.textContent = label;
-		container.appendChild(labelEl);
-
-		const input = document.createElement('input');
-		input.type = 'text';
-		input.value = value;
-		input.disabled = true;
-		input.style.cssText = `
-			width: 50px;
-			padding: 4px 6px;
-			border: 1px solid var(--vscode-input-border);
-			background: var(--vscode-input-background);
-			color: var(--vscode-input-foreground);
+		const labelEl = document.createElement('label');
+		labelEl.style.cssText = `
 			font-size: 11px;
-			border-radius: 2px;
+			color: var(--vscode-foreground);
+			opacity: 0.8;
+			flex-shrink: 0;
+			min-width: 70px;
 		`;
-		container.appendChild(input);
+		labelEl.textContent = label;
+		row.appendChild(labelEl);
+
+		const inputContainer = document.createElement('div');
+		inputContainer.style.cssText = `
+			display: flex;
+			align-items: center;
+			gap: 4px;
+			flex: 1;
+			justify-content: flex-end;
+		`;
+
+		const value = this.getComputedValue(cssProperty);
+		const { num, unit } = this.parseValueAndUnit(value);
+
+		if (options?.type === 'select' && options.selectOptions) {
+			// Select dropdown
+			const select = document.createElement('select');
+			select.style.cssText = `
+				padding: 4px 6px;
+				border: 1px solid var(--vscode-input-border);
+				background: var(--vscode-input-background);
+				color: var(--vscode-input-foreground);
+				font-size: 11px;
+				border-radius: 3px;
+				min-width: 80px;
+				cursor: pointer;
+			`;
+			options.selectOptions.forEach(opt => {
+				const option = document.createElement('option');
+				option.value = opt;
+				option.textContent = opt;
+				option.selected = value === opt;
+				select.appendChild(option);
+			});
+			inputContainer.appendChild(select);
+		} else if (options?.type === 'color') {
+			// Color input
+			const colorPreview = document.createElement('div');
+			colorPreview.style.cssText = `
+				width: 20px;
+				height: 20px;
+				border-radius: 3px;
+				border: 1px solid var(--vscode-input-border);
+				background: ${value || 'transparent'};
+				cursor: pointer;
+			`;
+			inputContainer.appendChild(colorPreview);
+
+			const colorValue = document.createElement('input');
+			colorValue.type = 'text';
+			colorValue.value = value;
+			colorValue.style.cssText = `
+				width: 70px;
+				padding: 4px 6px;
+				border: 1px solid var(--vscode-input-border);
+				background: var(--vscode-input-background);
+				color: var(--vscode-input-foreground);
+				font-size: 11px;
+				border-radius: 3px;
+				font-family: var(--vscode-editor-font-family);
+			`;
+			inputContainer.appendChild(colorValue);
+		} else {
+			// Number/Text input
+			const input = document.createElement('input');
+			input.type = options?.type === 'number' ? 'number' : 'text';
+			input.value = num;
+			input.placeholder = options?.placeholder || '';
+			input.style.cssText = `
+				width: ${options?.unit ? '50px' : '70px'};
+				padding: 4px 6px;
+				border: 1px solid var(--vscode-input-border);
+				background: var(--vscode-input-background);
+				color: var(--vscode-input-foreground);
+				font-size: 11px;
+				border-radius: 3px;
+				text-align: right;
+			`;
+			inputContainer.appendChild(input);
+
+			// Unit selector if enabled
+			if (options?.unit && unit) {
+				const unitSelect = document.createElement('select');
+				unitSelect.style.cssText = `
+					padding: 4px 2px;
+					border: 1px solid var(--vscode-input-border);
+					background: var(--vscode-input-background);
+					color: var(--vscode-input-foreground);
+					font-size: 10px;
+					border-radius: 3px;
+					cursor: pointer;
+				`;
+				['px', '%', 'em', 'rem', 'vw', 'vh', 'auto'].forEach(u => {
+					const option = document.createElement('option');
+					option.value = u;
+					option.textContent = u;
+					option.selected = unit === u || (u === 'auto' && num === 'auto');
+					unitSelect.appendChild(option);
+				});
+				inputContainer.appendChild(unitSelect);
+			}
+		}
+
+		row.appendChild(inputContainer);
+		return row;
+	}
+
+	/**
+	 * SPACING Section - Margin & Padding visual editor
+	 */
+	private createSpacingSection(): HTMLElement {
+		const { section, content } = this.createDesignSection('Spacing', 'layout');
+
+		// Box model visualization
+		const boxModel = this.createBoxModelVisualization();
+		content.appendChild(boxModel);
+
+		return section;
+	}
+
+	/**
+	 * Create visual box model (margin -> border -> padding -> content)
+	 */
+	private createBoxModelVisualization(): HTMLElement {
+		const container = document.createElement('div');
+		container.style.cssText = `
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			padding: 12px;
+		`;
+
+		// Get computed values
+		const mt = this.parseValueAndUnit(this.getComputedValue('margin-top')).num;
+		const mr = this.parseValueAndUnit(this.getComputedValue('margin-right')).num;
+		const mb = this.parseValueAndUnit(this.getComputedValue('margin-bottom')).num;
+		const ml = this.parseValueAndUnit(this.getComputedValue('margin-left')).num;
+
+		const pt = this.parseValueAndUnit(this.getComputedValue('padding-top')).num;
+		const pr = this.parseValueAndUnit(this.getComputedValue('padding-right')).num;
+		const pb = this.parseValueAndUnit(this.getComputedValue('padding-bottom')).num;
+		const pl = this.parseValueAndUnit(this.getComputedValue('padding-left')).num;
+
+		const width = this.getComputedValue('width') || 'auto';
+		const height = this.getComputedValue('height') || 'auto';
+
+		// Margin box (outer)
+		const marginBox = document.createElement('div');
+		marginBox.style.cssText = `
+			background: rgba(255, 190, 125, 0.15);
+			border: 1px dashed rgba(255, 190, 125, 0.5);
+			padding: 16px;
+			position: relative;
+		`;
+
+		// Margin label
+		const marginLabel = document.createElement('div');
+		marginLabel.style.cssText = `
+			position: absolute;
+			top: 2px;
+			left: 4px;
+			font-size: 9px;
+			color: var(--vscode-descriptionForeground);
+			text-transform: uppercase;
+		`;
+		marginLabel.textContent = 'margin';
+		marginBox.appendChild(marginLabel);
+
+		// Margin values (positioned around the box)
+		marginBox.appendChild(this.createBoxValue(mt, 'top', 'margin'));
+		marginBox.appendChild(this.createBoxValue(mr, 'right', 'margin'));
+		marginBox.appendChild(this.createBoxValue(mb, 'bottom', 'margin'));
+		marginBox.appendChild(this.createBoxValue(ml, 'left', 'margin'));
+
+		// Padding box (inner)
+		const paddingBox = document.createElement('div');
+		paddingBox.style.cssText = `
+			background: rgba(125, 200, 125, 0.15);
+			border: 1px dashed rgba(125, 200, 125, 0.5);
+			padding: 16px;
+			position: relative;
+			min-width: 100px;
+		`;
+
+		// Padding label
+		const paddingLabel = document.createElement('div');
+		paddingLabel.style.cssText = `
+			position: absolute;
+			top: 2px;
+			left: 4px;
+			font-size: 9px;
+			color: var(--vscode-descriptionForeground);
+			text-transform: uppercase;
+		`;
+		paddingLabel.textContent = 'padding';
+		paddingBox.appendChild(paddingLabel);
+
+		// Padding values
+		paddingBox.appendChild(this.createBoxValue(pt, 'top', 'padding'));
+		paddingBox.appendChild(this.createBoxValue(pr, 'right', 'padding'));
+		paddingBox.appendChild(this.createBoxValue(pb, 'bottom', 'padding'));
+		paddingBox.appendChild(this.createBoxValue(pl, 'left', 'padding'));
+
+		// Content box (innermost)
+		const contentBox = document.createElement('div');
+		contentBox.style.cssText = `
+			background: rgba(125, 175, 255, 0.2);
+			border: 1px solid rgba(125, 175, 255, 0.5);
+			padding: 8px 12px;
+			text-align: center;
+			min-width: 60px;
+		`;
+		const contentText = document.createElement('div');
+		contentText.style.cssText = `font-size: 10px; color: var(--vscode-foreground); opacity: 0.8;`;
+		contentText.textContent = `${this.parseValueAndUnit(width).num} × ${this.parseValueAndUnit(height).num}`;
+		contentBox.appendChild(contentText);
+
+		paddingBox.appendChild(contentBox);
+		marginBox.appendChild(paddingBox);
+		container.appendChild(marginBox);
 
 		return container;
+	}
+
+	/**
+	 * Create an editable value input positioned on a box edge
+	 */
+	private createBoxValue(value: string, position: 'top' | 'right' | 'bottom' | 'left', type: 'margin' | 'padding'): HTMLElement {
+		const input = document.createElement('input');
+		input.type = 'text';
+		input.value = value === '0px' ? '0' : value;
+		input.style.cssText = `
+			position: absolute;
+			width: 32px;
+			padding: 2px;
+			border: 1px solid transparent;
+			background: transparent;
+			color: var(--vscode-foreground);
+			font-size: 10px;
+			text-align: center;
+			border-radius: 2px;
+			${position === 'top' ? 'top: 2px; left: 50%; transform: translateX(-50%);' : ''}
+			${position === 'bottom' ? 'bottom: 2px; left: 50%; transform: translateX(-50%);' : ''}
+			${position === 'left' ? 'left: 2px; top: 50%; transform: translateY(-50%);' : ''}
+			${position === 'right' ? 'right: 2px; top: 50%; transform: translateY(-50%);' : ''}
+		`;
+
+		input.addEventListener('focus', () => {
+			input.style.border = '1px solid var(--vscode-focusBorder)';
+			input.style.background = 'var(--vscode-input-background)';
+		});
+		input.addEventListener('blur', () => {
+			input.style.border = '1px solid transparent';
+			input.style.background = 'transparent';
+		});
+
+		return input;
+	}
+
+	/**
+	 * LAYOUT Section - Display, Position, Flex properties
+	 */
+	private createLayoutSection(): HTMLElement {
+		const { section, content } = this.createDesignSection('Layout', 'layout');
+
+		// Display property
+		content.appendChild(this.createDesignPropertyRow('Display', 'display', {
+			type: 'select',
+			selectOptions: ['block', 'inline', 'inline-block', 'flex', 'inline-flex', 'grid', 'none']
+		}));
+
+		// Position property
+		content.appendChild(this.createDesignPropertyRow('Position', 'position', {
+			type: 'select',
+			selectOptions: ['static', 'relative', 'absolute', 'fixed', 'sticky']
+		}));
+
+		// Flex container properties (if display is flex)
+		const display = this.getComputedValue('display');
+		if (display === 'flex' || display === 'inline-flex') {
+			const flexHeader = document.createElement('div');
+			flexHeader.style.cssText = `
+				font-size: 10px;
+				color: var(--vscode-descriptionForeground);
+				margin: 8px 0 4px;
+				text-transform: uppercase;
+			`;
+			flexHeader.textContent = 'Flexbox';
+			content.appendChild(flexHeader);
+
+			content.appendChild(this.createDesignPropertyRow('Direction', 'flex-direction', {
+				type: 'select',
+				selectOptions: ['row', 'row-reverse', 'column', 'column-reverse']
+			}));
+
+			content.appendChild(this.createDesignPropertyRow('Justify', 'justify-content', {
+				type: 'select',
+				selectOptions: ['flex-start', 'center', 'flex-end', 'space-between', 'space-around', 'space-evenly']
+			}));
+
+			content.appendChild(this.createDesignPropertyRow('Align', 'align-items', {
+				type: 'select',
+				selectOptions: ['flex-start', 'center', 'flex-end', 'stretch', 'baseline']
+			}));
+
+			content.appendChild(this.createDesignPropertyRow('Gap', 'gap', { type: 'number', unit: true }));
+		}
+
+		return section;
+	}
+
+	/**
+	 * TYPOGRAPHY Section
+	 */
+	private createTypographySection(): HTMLElement {
+		const { section, content } = this.createDesignSection('Typography', 'text-size');
+
+		content.appendChild(this.createDesignPropertyRow('Font Size', 'font-size', { type: 'number', unit: true }));
+		content.appendChild(this.createDesignPropertyRow('Font Weight', 'font-weight', {
+			type: 'select',
+			selectOptions: ['100', '200', '300', '400', '500', '600', '700', '800', '900', 'normal', 'bold']
+		}));
+		content.appendChild(this.createDesignPropertyRow('Line Height', 'line-height', { type: 'number', unit: true }));
+		content.appendChild(this.createDesignPropertyRow('Letter Spacing', 'letter-spacing', { type: 'number', unit: true }));
+		content.appendChild(this.createDesignPropertyRow('Text Align', 'text-align', {
+			type: 'select',
+			selectOptions: ['left', 'center', 'right', 'justify']
+		}));
+
+		return section;
+	}
+
+	/**
+	 * SIZE Section - Width & Height
+	 */
+	private createSizeSection(): HTMLElement {
+		const { section, content } = this.createDesignSection('Size', 'symbol-ruler');
+
+		content.appendChild(this.createDesignPropertyRow('Width', 'width', { type: 'number', unit: true }));
+		content.appendChild(this.createDesignPropertyRow('Height', 'height', { type: 'number', unit: true }));
+		content.appendChild(this.createDesignPropertyRow('Min Width', 'min-width', { type: 'number', unit: true }));
+		content.appendChild(this.createDesignPropertyRow('Max Width', 'max-width', { type: 'number', unit: true }));
+		content.appendChild(this.createDesignPropertyRow('Min Height', 'min-height', { type: 'number', unit: true }));
+		content.appendChild(this.createDesignPropertyRow('Max Height', 'max-height', { type: 'number', unit: true }));
+
+		return section;
+	}
+
+	/**
+	 * COLORS Section
+	 */
+	private createColorsSection(): HTMLElement {
+		const { section, content } = this.createDesignSection('Colors', 'symbol-color');
+
+		content.appendChild(this.createDesignPropertyRow('Text Color', 'color', { type: 'color' }));
+		content.appendChild(this.createDesignPropertyRow('Background', 'background-color', { type: 'color' }));
+
+		return section;
+	}
+
+	/**
+	 * BORDERS Section
+	 */
+	private createBordersSection(): HTMLElement {
+		const { section, content } = this.createDesignSection('Borders', 'chrome-minimize');
+
+		content.appendChild(this.createDesignPropertyRow('Width', 'border-width', { type: 'number', unit: true }));
+		content.appendChild(this.createDesignPropertyRow('Style', 'border-style', {
+			type: 'select',
+			selectOptions: ['none', 'solid', 'dashed', 'dotted', 'double', 'groove', 'ridge']
+		}));
+		content.appendChild(this.createDesignPropertyRow('Color', 'border-color', { type: 'color' }));
+		content.appendChild(this.createDesignPropertyRow('Radius', 'border-radius', { type: 'number', unit: true }));
+
+		return section;
+	}
+
+	/**
+	 * EFFECTS Section - Opacity, Shadow
+	 */
+	private createEffectsSection(): HTMLElement {
+		const { section, content } = this.createDesignSection('Effects', 'sparkle');
+
+		content.appendChild(this.createDesignPropertyRow('Opacity', 'opacity', { type: 'number', placeholder: '1' }));
+		content.appendChild(this.createDesignPropertyRow('Box Shadow', 'box-shadow', { type: 'text' }));
+		content.appendChild(this.createDesignPropertyRow('Overflow', 'overflow', {
+			type: 'select',
+			selectOptions: ['visible', 'hidden', 'scroll', 'auto']
+		}));
+
+		return section;
 	}
 
 	// ============================================

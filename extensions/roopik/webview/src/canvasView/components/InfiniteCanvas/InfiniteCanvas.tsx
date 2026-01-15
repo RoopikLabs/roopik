@@ -27,6 +27,8 @@ export interface InfiniteCanvasProps {
 	snapMode?: SnapMode;
 	/** Viewport dimensions for dynamic focused sandbox sizing */
 	viewport?: { width: number; height: number };
+	/** Whether select mode is enabled globally */
+	isSelectMode?: boolean;
 	/** Whether inspect mode is enabled globally */
 	isInspectMode?: boolean;
 	/** Whether inspect mode should auto-capture screenshots */
@@ -61,6 +63,8 @@ interface SandboxLayerProps {
 	globalDeviceMode: DevicePreset;
 	/** Viewport dimensions for dynamic focused sandbox sizing */
 	viewport?: { width: number; height: number };
+	/** Whether select mode is enabled globally */
+	isSelectMode?: boolean;
 	/** Whether inspect mode is enabled globally */
 	isInspectMode?: boolean;
 	/** Whether inspect mode should auto-capture screenshots */
@@ -87,6 +91,7 @@ function SandboxLayer({
 	dragOffset,
 	globalDeviceMode,
 	viewport,
+	isSelectMode,
 	isInspectMode,
 	captureOnInspectSelect,
 	onSandboxDragStart,
@@ -125,6 +130,7 @@ function SandboxLayer({
 						globalDeviceMode={globalDeviceMode}
 						viewport={viewport}
 						focusedSandboxPosition={focusedSandboxPosition}
+						isSelectMode={isSelectMode}
 						isInspectMode={isInspectMode}
 						captureOnInspectSelect={captureOnInspectSelect}
 						onMouseDown={(e) => onSandboxDragStart(e, sandbox.id)}
@@ -167,6 +173,7 @@ export function InfiniteCanvas({
 	globalDeviceMode,
 	snapMode = 'free',
 	viewport,
+	isSelectMode,
 	isInspectMode,
 	captureOnInspectSelect,
 	onTransformChange,
@@ -240,6 +247,7 @@ export function InfiniteCanvas({
 					dragOffset={dragOffset}
 					globalDeviceMode={globalDeviceMode}
 					viewport={viewport}
+					isSelectMode={isSelectMode}
 					isInspectMode={isInspectMode}
 					captureOnInspectSelect={captureOnInspectSelect}
 					onSandboxDragStart={handleSandboxDragStart}

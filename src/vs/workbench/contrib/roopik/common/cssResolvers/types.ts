@@ -148,6 +148,76 @@ export interface MatchedCSSProperty {
 // ============================================
 
 /**
+ * Computed styles from browser - actual pixel values after CSS calculations
+ */
+export interface ComputedStyleValues {
+	// Layout
+	display?: string;
+	position?: string;
+	flexDirection?: string;
+	justifyContent?: string;
+	alignItems?: string;
+	gap?: string;
+
+	// Box Model (all in pixels)
+	width?: string;
+	height?: string;
+	minWidth?: string;
+	maxWidth?: string;
+	minHeight?: string;
+	maxHeight?: string;
+
+	// Spacing (individual values)
+	marginTop?: string;
+	marginRight?: string;
+	marginBottom?: string;
+	marginLeft?: string;
+	paddingTop?: string;
+	paddingRight?: string;
+	paddingBottom?: string;
+	paddingLeft?: string;
+
+	// Border
+	borderWidth?: string;
+	borderStyle?: string;
+	borderColor?: string;
+	borderRadius?: string;
+
+	// Typography
+	fontFamily?: string;
+	fontSize?: string;
+	fontWeight?: string;
+	lineHeight?: string;
+	letterSpacing?: string;
+	textAlign?: string;
+
+	// Colors
+	color?: string;
+	backgroundColor?: string;
+
+	// Effects
+	opacity?: string;
+	boxShadow?: string;
+	overflow?: string;
+	transform?: string;
+	zIndex?: string;
+
+	// Position values
+	top?: string;
+	right?: string;
+	bottom?: string;
+	left?: string;
+
+	// Bounding box (from getBoundingClientRect)
+	boundingBox?: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	};
+}
+
+/**
  * Complete style information for an inspected element
  */
 export interface ElementStyleInfo {
@@ -192,6 +262,12 @@ export interface ElementStyleInfo {
 	 * Inherited styles from parent elements
 	 */
 	inheritedStyles?: InheritedStyleInfo[];
+
+	/**
+	 * Actual computed pixel values from the browser
+	 * Used by the Design tab to show resolved values (e.g., 16px instead of clamp(...))
+	 */
+	computedStyles?: ComputedStyleValues;
 }
 
 /**

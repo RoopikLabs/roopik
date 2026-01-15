@@ -18,6 +18,7 @@ export { InjectorPipeline } from './injectorPipeline.js';
 // Built-in Injectors
 export { ErrorBoundaryInjector } from './errorBoundaryInjector.js';
 export { InspectModeInjector } from './inspectModeInjector.js';
+export { SelectModeInjector } from './selectModeInjector.js';
 export { HmrBridgeInjector } from './hmrBridgeInjector.js';
 export { SourceTrackingInjector, createSourceTrackingTransform } from './sourceTrackingInjector.js';
 
@@ -31,6 +32,7 @@ export { transformCode, parseElements, ParseOptions, TransformResult } from './s
 import { InjectorPipeline } from './injectorPipeline.js';
 import { ErrorBoundaryInjector } from './errorBoundaryInjector.js';
 import { InspectModeInjector } from './inspectModeInjector.js';
+import { SelectModeInjector } from './selectModeInjector.js';
 import { HmrBridgeInjector } from './hmrBridgeInjector.js';
 
 /**
@@ -38,7 +40,8 @@ import { HmrBridgeInjector } from './hmrBridgeInjector.js';
  *
  * Includes:
  * - ErrorBoundaryInjector (priority 10): Error handling and display
- * - InspectModeInjector (priority 50): Element inspection
+ * - SelectModeInjector (priority 45): Element selection with properties panel
+ * - InspectModeInjector (priority 50): Element inspection for AI
  * - HmrBridgeInjector (priority 90): Hot module replacement
  *
  * @returns Configured InjectorPipeline
@@ -48,6 +51,7 @@ export function createDefaultPipeline(): InjectorPipeline {
 
 	// Add new injectors
 	pipeline.register(new ErrorBoundaryInjector());
+	pipeline.register(new SelectModeInjector());
 	pipeline.register(new InspectModeInjector());
 	pipeline.register(new HmrBridgeInjector());
 	// pipeline.register(new MyCustomInjector()); // Future extensibility
