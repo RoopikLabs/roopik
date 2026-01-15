@@ -103,8 +103,21 @@ export class CanvasService implements ICanvasService {
 	// ========================================================================
 
 	async initialize(workspacePath: string): Promise<void> {
+		// If already initialized with a DIFFERENT workspace, re-initialize
+		if (this.initialized && this._workspacePath !== workspacePath) {
+			this.logger.info('Workspace changed, re-initializing', {
+				oldPath: this._workspacePath,
+				newPath: workspacePath
+			});
+			// Clear old state
+			this.canvases.clear();
+			this.panelStates.clear();
+			this.focusedCanvasId = null;
+			this.initialized = false;
+		}
+
 		if (this.initialized) {
-			console.warn('[CanvasService] Already initialized');
+			this.logger.debug('Already initialized for this workspace');
 			return;
 		}
 
@@ -112,7 +125,7 @@ export class CanvasService implements ICanvasService {
 
 		// CRITICAL: Initialize storage service first before loading canvases
 		// The storage service needs the workspace path to know where to read/write files
-		if (!this.storageService.isInitialized()) {
+		if (!this.storageService.isInitialized() || this.storageService.getWorkspacePath() !== workspacePath) {
 			await this.storageService.initialize(workspacePath);
 		}
 
@@ -149,6 +162,27 @@ export class CanvasService implements ICanvasService {
 		this._onCanvasFocusChanged.dispose();
 		this.canvases.clear();
 		this.panelStates.clear();
+	}
+
+	/**
+	 * Clear all canvas data (called when workspace is closed)
+	 * Resets to uninitialized state and fires events to update UI
+	 */
+	async clear(): Promise<void> {
+		this.logger.info('Clearing canvas service (workspace closed)');
+
+		// Fire delete events for all canvases so UI updates
+		for (const [canvasId] of this.canvases) {
+			this._onCanvasDeleted.fire({ canvasId });
+		}
+
+		this.canvases.clear();
+		this.panelStates.clear();
+		this.focusedCanvasId = null;
+		this._workspacePath = '';
+		this.initialized = false;
+
+		this.logger.info('Canvas service cleared');
 	}
 
 	// ========================================================================

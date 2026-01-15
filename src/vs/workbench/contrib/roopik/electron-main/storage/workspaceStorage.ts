@@ -50,8 +50,14 @@ export class WorkspaceStorage {
 	/**
 	 * Initialize workspace storage
 	 * Creates .roopik/ folder structure if it doesn't exist
+	 * Supports re-initialization for workspace change
 	 */
 	async initialize(workspacePath: string): Promise<void> {
+		// Handle workspace change - reset state
+		if (this.initialized && this.workspacePath !== workspacePath) {
+			this.initialized = false;
+		}
+
 		this.workspacePath = workspacePath;
 
 		// Create .roopik folder if it doesn't exist

@@ -191,14 +191,27 @@ export class ComponentService extends Disposable implements IComponentService {
 	// ========================================================================
 
 	async initialize(workspacePath: string): Promise<void> {
+		// Handle workspace change - reset state
+		if (this.initialized && this._workspacePath !== workspacePath) {
+			this.logger.info('Workspace changed, re-initializing', {
+				oldPath: this._workspacePath,
+				newPath: workspacePath
+			});
+			// Stop file watcher for old workspace
+			this.fileWatcher.stop();
+			// Clear old components
+			this.components.clear();
+			this.initialized = false;
+		}
+
 		if (this.initialized) {
-			this.logger.warn('Already initialized');
+			this.logger.debug('Already initialized for this workspace');
 			return;
 		}
 
 		this._workspacePath = workspacePath;
 
-		if (!this.storageService.isInitialized()) {
+		if (!this.storageService.isInitialized() || this.storageService.getWorkspacePath() !== workspacePath) {
 			await this.storageService.initialize(workspacePath);
 		}
 
@@ -213,6 +226,21 @@ export class ComponentService extends Disposable implements IComponentService {
 
 	isInitialized(): boolean {
 		return this.initialized;
+	}
+
+	/**
+	 * Clear all component data (called when workspace is closed)
+	 * Resets to uninitialized state
+	 */
+	async clear(): Promise<void> {
+		this.logger.info('Clearing component service (workspace closed)');
+
+		this.fileWatcher.stop();
+		this.components.clear();
+		this._workspacePath = '';
+		this.initialized = false;
+
+		this.logger.info('Component service cleared');
 	}
 
 	override dispose(): void {
@@ -738,13 +766,22 @@ export class ComponentService extends Disposable implements IComponentService {
 	}
 
 	/**
+	 * Check if error is an ESBuild error (type discriminator)
+	 */
+	private isESBuildError(error: unknown): error is { errors: Array<{ text: string; location?: { file: string; line: number; column: number; length?: number; lineText?: string }; notes?: Array<{ text: string }> }> } {
+		return error !== null
+			&& typeof error === 'object'
+			&& Array.isArray((error as Record<string, unknown>).errors);
+	}
+
+	/**
 	 * Parse error into structured BuildErrorInfo
 	 */
 	private parseError(error: unknown, buildTime: number): NonNullable<QueueBuildResult['errorInfo']> {
 		const message = error instanceof Error ? error.message : String(error);
 
 		// Check if this is an ESBuild error (has errors array)
-		if (error && typeof error === 'object' && 'errors' in error && Array.isArray((error as { errors: unknown[] }).errors)) {
+		if (this.isESBuildError(error)) {
 			const esbuildError = error as { errors: Array<{ text: string; location?: { file: string; line: number; column: number; length?: number; lineText?: string }; notes?: Array<{ text: string }> }> };
 
 			return {

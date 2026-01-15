@@ -55,17 +55,9 @@ export async function activate(context: vscode.ExtensionContext) {
 		await manager.initialize(context);
 		logger.info('Extension', 'RoopikExtensionManager initialized');
 
-		// Restore last active canvas (if any)
-		try {
-			// const restored = await manager.restoreLastActiveCanvas(context.extensionUri);
-			await manager.restoreLastActiveCanvas(context.extensionUri);
-			// if (restored) {
-			// 	logger.info('Extension', 'Last active canvas restored successfully');
-			// }
-		} catch (error) {
-			// Don't fail activation if restoration fails
-			logger.warn('Extension', `Failed to restore last active canvas: ${error}`);
-		}
+		// NOTE: Auto-restore feature disabled
+		// Canvas will not automatically reopen on IDE restart
+		// User must manually open canvas from Roopik dashboard
 	} catch (error) {
 		logger.error('Extension', 'Failed to initialize RoopikExtensionManager', error);
 		vscode.window.showErrorMessage(`Roopik initialization failed: ${error}`);

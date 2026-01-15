@@ -116,6 +116,12 @@ export interface ICanvasService {
 	 */
 	dispose(): void;
 
+	/**
+	 * Clear all canvas data (called when workspace is closed)
+	 * This resets the service to uninitialized state without a workspace
+	 */
+	clear(): Promise<void>;
+
 	// ========================================================================
 	// Canvas CRUD
 	// ========================================================================

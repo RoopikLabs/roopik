@@ -361,7 +361,7 @@ export function createSourceTrackingTransform(framework: string = 'react', logge
 		// Use statically imported Babel module
 		if (babelCoreModule && typeof babelCoreModule.transformSync === 'function') {
 			babelCore = babelCoreModule as IBabelCore;
-			if (logger) logger.info('[SOURCE_TRACKING] Babel loaded - using AST transformation');
+			if (logger) logger.debug('[SOURCE_TRACKING] Babel loaded - using AST transformation');
 			return babelCore;
 		}
 

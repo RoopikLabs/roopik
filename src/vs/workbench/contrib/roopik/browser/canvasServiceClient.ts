@@ -94,6 +94,14 @@ export class CanvasServiceClient implements ICanvasService {
 		// No-op on client side - main process owns the service lifecycle
 	}
 
+	/**
+	 * Clear all canvas data (called when workspace is closed)
+	 * Proxies to main process
+	 */
+	async clear(): Promise<void> {
+		return this.channel.call('clear');
+	}
+
 	// ========================================================================
 	// Canvas CRUD
 	// ========================================================================

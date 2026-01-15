@@ -58,6 +58,14 @@ export class ProjectStorageServiceClient implements IProjectStorageService {
 		return this.channel.call('isInitialized');
 	}
 
+	/**
+	 * Clear all project data (called when workspace is closed)
+	 * Proxies to main process
+	 */
+	async clear(): Promise<void> {
+		return this.channel.call('clear');
+	}
+
 	// ========================================================================
 	// Project Operations
 	// ========================================================================

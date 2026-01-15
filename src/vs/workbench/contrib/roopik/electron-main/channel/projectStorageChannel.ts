@@ -46,6 +46,8 @@ export class ProjectStorageChannel implements IServerChannel {
 				return this.service.initialize(arg as string);
 			case 'isInitialized':
 				return Promise.resolve(this.service.isInitialized());
+			case 'clear':
+				return this.service.clear();
 
 			// Project Operations
 			case 'getRecentProjects':

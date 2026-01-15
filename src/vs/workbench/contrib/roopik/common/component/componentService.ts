@@ -122,6 +122,12 @@ export interface IComponentService {
 	isInitialized(): boolean;
 
 	/**
+	 * Clear all component data (called when workspace is closed)
+	 * Resets to uninitialized state
+	 */
+	clear(): Promise<void>;
+
+	/**
 	 * Dispose resources (stops file watcher, clears state)
 	 */
 	dispose(): void;

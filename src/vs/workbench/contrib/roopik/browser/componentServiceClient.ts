@@ -86,6 +86,14 @@ export class ComponentServiceClient implements IComponentService {
 		// No-op on client side - main process owns the service lifecycle
 	}
 
+	/**
+	 * Clear all component data (called when workspace is closed)
+	 * Proxies to main process
+	 */
+	async clear(): Promise<void> {
+		return this.channel.call('clear');
+	}
+
 	// ========================================================================
 	// Create
 	// ========================================================================

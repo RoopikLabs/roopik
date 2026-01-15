@@ -52,6 +52,7 @@ export class RoopikStartupContribution extends Disposable implements IWorkbenchC
 		this.clearOutputOnStartup();
 		this.openWelcomeOnStartup();
 		this.initializeRoopikServices();
+		this.listenForWorkspaceChanges();
 	}
 
 	/**
@@ -75,6 +76,48 @@ export class RoopikStartupContribution extends Disposable implements IWorkbenchC
 		} catch (err) {
 			this.logger.error('Failed to initialize services', { error: err });
 		}
+	}
+
+	/**
+	 * Listen for workspace folder changes and re-initialize services
+	 * This ensures canvas/project lists update when switching workspaces
+	 */
+	private listenForWorkspaceChanges(): void {
+		this._register(this.workspaceContextService.onDidChangeWorkspaceFolders(async (e) => {
+			const workspace = this.workspaceContextService.getWorkspace();
+
+			// If no folders, clear all services (workspace closed)
+			if (!workspace.folders || workspace.folders.length === 0) {
+				this.logger.info('Workspace closed, clearing services');
+				try {
+					await this.clearServices();
+				} catch (err) {
+					this.logger.error('Failed to clear services', { error: err });
+				}
+				return;
+			}
+
+			const newWorkspacePath = workspace.folders[0].uri.fsPath;
+			this.logger.info('Workspace changed, re-initializing services', { workspacePath: newWorkspacePath });
+
+			try {
+				// Re-initialize all services with the new workspace path
+				await this.canvasService.initialize(newWorkspacePath);
+				await this.componentService.initialize(newWorkspacePath);
+				await this.projectStorageService.initialize(newWorkspacePath);
+			} catch (err) {
+				this.logger.error('Failed to re-initialize services on workspace change', { error: err });
+			}
+		}));
+	}
+
+	/**
+	 * Clear all Roopik services (when workspace is closed)
+	 */
+	private async clearServices(): Promise<void> {
+		await this.canvasService.clear();
+		await this.componentService.clear();
+		await this.projectStorageService.clear();
 	}
 
 	/**

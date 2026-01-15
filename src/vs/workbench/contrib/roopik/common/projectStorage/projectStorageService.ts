@@ -59,6 +59,12 @@ export interface IProjectStorageService {
 	 */
 	isInitializedAsync(): Promise<boolean>;
 
+	/**
+	 * Clear all project data (called when workspace is closed)
+	 * Resets to uninitialized state
+	 */
+	clear(): Promise<void>;
+
 	// ========================================================================
 	// Project Operations
 	// ========================================================================
