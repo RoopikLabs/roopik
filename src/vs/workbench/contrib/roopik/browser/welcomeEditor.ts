@@ -195,6 +195,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 			{ icon: 'codicon-file-symlink-directory', label: 'Import Canvas', commandId: 'roopik.openCanvas' },
 			{ icon: 'codicon-folder', label: 'Open Project', commandId: 'roopik.openProjectPicker' },
 			{ icon: 'codicon-globe', label: 'Browse Web', commandId: 'roopik.openProjectPreview' },
+			{ icon: 'codicon-symbol-namespace', label: 'Import from VS Code', commandId: 'workbench.action.importFromVSCode' },
 			{ icon: 'codicon-keyboard', label: 'Run Command...', commandId: 'workbench.action.showCommands' }
 		];
 

@@ -59,7 +59,16 @@ export class Win32UpdateService extends AbstractUpdateService implements IRelaun
 		const quality = this.productService.quality || 'stable';
 		const target = this.productService.target || 'user';
 		const result = path.join(tmpdir(), `${this.productService.applicationName}-${quality}-${target}-${process.arch}`);
-		return mkdir(result, { recursive: true }).then(() => result);
+		return mkdir(result, { recursive: true }).then(async () => {
+			// Use realpathSync to resolve any 8.3 short path names on Windows
+			// as app.setPath may not accept short paths
+			try {
+				const { realpathSync } = await import('fs');
+				return realpathSync(result);
+			} catch {
+				return result;
+			}
+		});
 	}
 
 	constructor(
@@ -94,15 +103,37 @@ export class Win32UpdateService extends AbstractUpdateService implements IRelaun
 	}
 
 	protected override async initialize(): Promise<void> {
-		if (this.environmentMainService.isBuilt) {
+		// TEMPORARY: Test in dev mode too - REMOVE AFTER TESTING
+		const shouldTestCachePath = this.environmentMainService.isBuilt || true; // Always test for now
+		if (shouldTestCachePath) {
 			try {
 				const cachePath = await this.cachePath;
+				this.logService.info('update#initialize - cachePath:', cachePath);
+				this.logService.info('update#initialize - tmpdir:', tmpdir());
+				this.logService.info('update#initialize - applicationName:', this.productService.applicationName);
+				this.logService.info('update#initialize - quality:', this.productService.quality);
+				this.logService.info('update#initialize - target:', this.productService.target);
+
+				// Verify the directory exists before calling setPath
+				const { existsSync, statSync } = await import('fs');
+				const exists = existsSync(cachePath);
+				this.logService.info('update#initialize - directory exists:', exists);
+				if (exists) {
+					const stats = statSync(cachePath);
+					this.logService.info('update#initialize - isDirectory:', stats.isDirectory());
+				}
+
 				app.setPath('appUpdate', cachePath);
+				this.logService.info('update#initialize - setPath succeeded');
+
 				try {
 					await unlink(path.join(cachePath, 'session-ending.flag'));
 				} catch { }
 			} catch (err) {
-				this.logService.error('update#initialize - Failed to set update cache path', err);
+				this.logService.error('update#initialize - Failed to set update cache path');
+				this.logService.error('update#initialize - Error name:', (err as Error)?.name);
+				this.logService.error('update#initialize - Error message:', (err as Error)?.message);
+				this.logService.error('update#initialize - Error stack:', (err as Error)?.stack);
 				this.setState(State.Disabled(DisablementReason.InvalidConfiguration));
 				return;
 			}

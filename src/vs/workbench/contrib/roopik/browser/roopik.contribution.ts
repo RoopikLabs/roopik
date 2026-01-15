@@ -40,6 +40,7 @@ import { EditorTabInputSerializer } from './projectMode/editorTabInputSerializer
 // Command Imports (modular)
 // ============================================================================
 import { registerAllCommands } from './commands/index.js';
+import { registerImportFromVSCodeAction } from './importFromVSCodeAction.js';
 
 // ============================================================================
 // Contribution Imports (modular)
@@ -132,6 +133,9 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 
 // Register all commands from modular command files
 registerAllCommands();
+
+// Register VS Code import command
+registerImportFromVSCodeAction();
 
 // ============================================================================
 // Workbench Contribution Registration
