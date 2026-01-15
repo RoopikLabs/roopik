@@ -57,13 +57,20 @@ export class RoopikStartupContribution extends Disposable implements IWorkbenchC
 
 	/**
 	 * Initialize Roopik services with workspace path
+	 * If no workspace folder, clear services to remove stale data
 	 */
 	private async initializeRoopikServices(): Promise<void> {
 		await this.lifecycleService.when(LifecyclePhase.Restored);
 
 		const workspace = this.workspaceContextService.getWorkspace();
 		if (!workspace.folders || workspace.folders.length === 0) {
-			this.logger.warn('No workspace folder found, services not initialized');
+			this.logger.info('No workspace folder found, clearing services');
+			// Clear services to remove any stale data from previous sessions
+			try {
+				await this.clearServices();
+			} catch (err) {
+				this.logger.error('Failed to clear services on startup', { error: err });
+			}
 			return;
 		}
 
@@ -88,7 +95,7 @@ export class RoopikStartupContribution extends Disposable implements IWorkbenchC
 
 			// If no folders, clear all services (workspace closed)
 			if (!workspace.folders || workspace.folders.length === 0) {
-				this.logger.info('Workspace closed, clearing services');
+				// this.logger.info('Workspace closed, clearing services');
 				try {
 					await this.clearServices();
 				} catch (err) {
@@ -98,7 +105,7 @@ export class RoopikStartupContribution extends Disposable implements IWorkbenchC
 			}
 
 			const newWorkspacePath = workspace.folders[0].uri.fsPath;
-			this.logger.info('Workspace changed, re-initializing services', { workspacePath: newWorkspacePath });
+			// this.logger.info('Workspace changed, re-initializing services', { workspacePath: newWorkspacePath });
 
 			try {
 				// Re-initialize all services with the new workspace path

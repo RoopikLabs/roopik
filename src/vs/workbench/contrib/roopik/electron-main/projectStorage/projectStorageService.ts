@@ -56,10 +56,11 @@ export class ProjectStorageService implements IProjectStorageService {
 	async initialize(workspacePath: string): Promise<void> {
 		// Handle workspace change - reset state
 		if (this.initialized && this._workspacePath !== workspacePath) {
-			this.logger.info('Workspace changed, re-initializing', {
-				oldPath: this._workspacePath,
-				newPath: workspacePath
-			});
+			// this.logger.info('Workspace changed, re-initializing', {
+			// 	oldPath: this._workspacePath,
+			// 	newPath: workspacePath
+			// });
+
 			this.storage = null;
 			this.initialized = false;
 		}
@@ -96,7 +97,7 @@ export class ProjectStorageService implements IProjectStorageService {
 	 * Resets to uninitialized state
 	 */
 	async clear(): Promise<void> {
-		this.logger.info('Clearing project storage service (workspace closed)');
+		// this.logger.info('Clearing project storage service (workspace closed)');
 
 		this.storage = null;
 		this._workspacePath = null;
@@ -105,7 +106,10 @@ export class ProjectStorageService implements IProjectStorageService {
 		// Fire event so UI clears project list
 		this._onProjectsChanged.fire();
 
-		this.logger.info('Project storage service cleared');
+		// Fire onDidInitialize to signal UI that service state changed (now uninitialized)
+		this._onDidInitialize.fire();
+
+		// this.logger.info('Project storage service cleared');
 	}
 
 	// ========================================================================
@@ -117,7 +121,7 @@ export class ProjectStorageService implements IProjectStorageService {
 	 */
 	async getRecentProjects(limit: number = 5): Promise<ProjectInfo[]> {
 		if (!this.storage || !this.initialized) {
-			this.logger.warn('Not initialized, returning empty list');
+			// this.logger.warn('Not initialized, returning empty list');
 			return [];
 		}
 

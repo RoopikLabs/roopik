@@ -193,10 +193,11 @@ export class ComponentService extends Disposable implements IComponentService {
 	async initialize(workspacePath: string): Promise<void> {
 		// Handle workspace change - reset state
 		if (this.initialized && this._workspacePath !== workspacePath) {
-			this.logger.info('Workspace changed, re-initializing', {
-				oldPath: this._workspacePath,
-				newPath: workspacePath
-			});
+			// this.logger.info('Workspace changed, re-initializing', {
+			// 	oldPath: this._workspacePath,
+			// 	newPath: workspacePath
+			// });
+
 			// Stop file watcher for old workspace
 			this.fileWatcher.stop();
 			// Clear old components

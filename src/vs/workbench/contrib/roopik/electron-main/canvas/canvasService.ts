@@ -105,10 +105,11 @@ export class CanvasService implements ICanvasService {
 	async initialize(workspacePath: string): Promise<void> {
 		// If already initialized with a DIFFERENT workspace, re-initialize
 		if (this.initialized && this._workspacePath !== workspacePath) {
-			this.logger.info('Workspace changed, re-initializing', {
-				oldPath: this._workspacePath,
-				newPath: workspacePath
-			});
+			// this.logger.info('Workspace changed, re-initializing', {
+			// 	oldPath: this._workspacePath,
+			// 	newPath: workspacePath
+			// });
+
 			// Clear old state
 			this.canvases.clear();
 			this.panelStates.clear();
@@ -169,7 +170,7 @@ export class CanvasService implements ICanvasService {
 	 * Resets to uninitialized state and fires events to update UI
 	 */
 	async clear(): Promise<void> {
-		this.logger.info('Clearing canvas service (workspace closed)');
+		// this.logger.info('Clearing canvas service (workspace closed)');
 
 		// Fire delete events for all canvases so UI updates
 		for (const [canvasId] of this.canvases) {
@@ -182,7 +183,10 @@ export class CanvasService implements ICanvasService {
 		this._workspacePath = '';
 		this.initialized = false;
 
-		this.logger.info('Canvas service cleared');
+		// Fire onDidInitialize to signal UI that service state changed (now uninitialized)
+		this._onDidInitialize.fire();
+
+		// this.logger.info('Canvas service cleared');
 	}
 
 	// ========================================================================
@@ -319,70 +323,17 @@ export class CanvasService implements ICanvasService {
 	}
 
 	async listCanvasesAsync(options?: ListCanvasOptions): Promise<CanvasMeta[]> {
-		// When initialized, use in-memory cache (Map is always in sync with disk)
+		// When not initialized (no workspace), return empty list
+		if (!this.initialized) {
+			this.logger.debug('Not initialized, returning empty canvas list');
+			return [];
+		}
+
+		// Use in-memory cache (Map is always in sync with disk)
 		// This avoids redundant filesystem reads since:
 		// - loadAllCanvases() populates Map during initialize()
 		// - createCanvas(), deleteCanvas(), updateCanvas() keep Map in sync
-		if (this.initialized) {
-			return this.listCanvases(options);
-		}
-
-		try {
-			const canvasIds = await this.storageService.listCanvases();
-
-			const canvases: CanvasMeta[] = [];
-			for (const canvasId of canvasIds) {
-				const meta = await this.storageService.loadCanvasMeta(canvasId);
-				if (meta) {
-					canvases.push(meta);
-					// Also update in-memory cache
-					if (!this.canvases.has(canvasId)) {
-						this.canvases.set(canvasId, {
-							...meta,
-							isOpen: false,
-							isFocused: false
-						});
-					}
-				}
-			}
-
-			this.logger.info('listCanvasesAsync: loaded canvases from storage', { count: canvases.length });
-
-			// Apply name filter
-			let result = canvases;
-			if (options?.nameFilter) {
-				const filter = options.nameFilter.toLowerCase();
-				result = result.filter(c => c.name.toLowerCase().includes(filter));
-			}
-
-			// Apply sorting
-			const sortBy = options?.sortBy || 'updatedAt';
-			const sortDir = options?.sortDirection || 'desc';
-
-			result.sort((a, b) => {
-				let comparison = 0;
-				switch (sortBy) {
-					case 'name':
-						comparison = a.name.localeCompare(b.name);
-						break;
-					case 'createdAt':
-						comparison = a.createdAt - b.createdAt;
-						break;
-					case 'updatedAt':
-						comparison = a.updatedAt - b.updatedAt;
-						break;
-					case 'componentCount':
-						comparison = a.componentCount - b.componentCount;
-						break;
-				}
-				return sortDir === 'asc' ? comparison : -comparison;
-			});
-
-			return result;
-		} catch (err) {
-			this.logger.error('Failed to read canvases from storage', err);
-			return this.listCanvases(options);
-		}
+		return this.listCanvases(options);
 	}
 
 	async updateCanvas(
