@@ -56,7 +56,9 @@ export class Win32UpdateService extends AbstractUpdateService implements IRelaun
 
 	@memoize
 	get cachePath(): Promise<string> {
-		const result = path.join(tmpdir(), `vscode-${this.productService.quality}-${this.productService.target}-${process.arch}`);
+		const quality = this.productService.quality || 'stable';
+		const target = this.productService.target || 'user';
+		const result = path.join(tmpdir(), `${this.productService.applicationName}-${quality}-${target}-${process.arch}`);
 		return mkdir(result, { recursive: true }).then(() => result);
 	}
 
@@ -93,11 +95,17 @@ export class Win32UpdateService extends AbstractUpdateService implements IRelaun
 
 	protected override async initialize(): Promise<void> {
 		if (this.environmentMainService.isBuilt) {
-			const cachePath = await this.cachePath;
-			app.setPath('appUpdate', cachePath);
 			try {
-				await unlink(path.join(cachePath, 'session-ending.flag'));
-			} catch { }
+				const cachePath = await this.cachePath;
+				app.setPath('appUpdate', cachePath);
+				try {
+					await unlink(path.join(cachePath, 'session-ending.flag'));
+				} catch { }
+			} catch (err) {
+				this.logService.error('update#initialize - Failed to set update cache path', err);
+				this.setState(State.Disabled(DisablementReason.InvalidConfiguration));
+				return;
+			}
 		}
 
 		if (this.productService.target === 'user' && await this.nativeHostMainService.isAdmin(undefined)) {
