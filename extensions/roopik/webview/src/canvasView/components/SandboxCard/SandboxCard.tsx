@@ -48,6 +48,113 @@ interface SandboxCardProps {
 }
 
 /**
+ * Styling configuration for conditional CSS framework injection
+ */
+interface StylingConfig {
+	usesTailwind: boolean;
+	usesShadcn: boolean;
+	detectedLibraries: string[];
+}
+
+/**
+ * Generate Tailwind CSS CDN injection script
+ * Uses Tailwind Play CDN for JIT compilation in browser
+ * CDN is cached by browser, so subsequent iframes load instantly
+ */
+function generateTailwindInjection(styling: StylingConfig): string {
+	if (!styling.usesTailwind) {
+		return '';
+	}
+
+	// Base Tailwind CDN script
+	let injection = `
+	<!-- Tailwind CSS (detected: ${styling.detectedLibraries.join(', ')}) -->
+	<script src="https://cdn.tailwindcss.com"></script>`;
+
+	// Add shadcn/ui CSS variables if shadcn is detected
+	if (styling.usesShadcn) {
+		injection += `
+	<script>
+		// Configure Tailwind for shadcn/ui compatibility
+		tailwind.config = {
+			darkMode: ['class'],
+			theme: {
+				extend: {
+					colors: {
+						border: 'hsl(var(--border))',
+						input: 'hsl(var(--input))',
+						ring: 'hsl(var(--ring))',
+						background: 'hsl(var(--background))',
+						foreground: 'hsl(var(--foreground))',
+						primary: {
+							DEFAULT: 'hsl(var(--primary))',
+							foreground: 'hsl(var(--primary-foreground))',
+						},
+						secondary: {
+							DEFAULT: 'hsl(var(--secondary))',
+							foreground: 'hsl(var(--secondary-foreground))',
+						},
+						destructive: {
+							DEFAULT: 'hsl(var(--destructive))',
+							foreground: 'hsl(var(--destructive-foreground))',
+						},
+						muted: {
+							DEFAULT: 'hsl(var(--muted))',
+							foreground: 'hsl(var(--muted-foreground))',
+						},
+						accent: {
+							DEFAULT: 'hsl(var(--accent))',
+							foreground: 'hsl(var(--accent-foreground))',
+						},
+						popover: {
+							DEFAULT: 'hsl(var(--popover))',
+							foreground: 'hsl(var(--popover-foreground))',
+						},
+						card: {
+							DEFAULT: 'hsl(var(--card))',
+							foreground: 'hsl(var(--card-foreground))',
+						},
+					},
+					borderRadius: {
+						lg: 'var(--radius)',
+						md: 'calc(var(--radius) - 2px)',
+						sm: 'calc(var(--radius) - 4px)',
+					},
+				},
+			},
+		};
+	</script>
+	<style>
+		/* shadcn/ui CSS Variables - Light Theme */
+		:root {
+			--background: 0 0% 100%;
+			--foreground: 222.2 84% 4.9%;
+			--card: 0 0% 100%;
+			--card-foreground: 222.2 84% 4.9%;
+			--popover: 0 0% 100%;
+			--popover-foreground: 222.2 84% 4.9%;
+			--primary: 222.2 47.4% 11.2%;
+			--primary-foreground: 210 40% 98%;
+			--secondary: 210 40% 96.1%;
+			--secondary-foreground: 222.2 47.4% 11.2%;
+			--muted: 210 40% 96.1%;
+			--muted-foreground: 215.4 16.3% 46.9%;
+			--accent: 210 40% 96.1%;
+			--accent-foreground: 222.2 47.4% 11.2%;
+			--destructive: 0 84.2% 60.2%;
+			--destructive-foreground: 210 40% 98%;
+			--border: 214.3 31.8% 91.4%;
+			--input: 214.3 31.8% 91.4%;
+			--ring: 222.2 84% 4.9%;
+			--radius: 0.5rem;
+		}
+	</style>`;
+	}
+
+	return injection;
+}
+
+/**
  * Generate sandbox HTML that executes pre-built ESM from Core's pipeline
  *
  * The bundledCode is already transpiled by Core's ESBuild pipeline as ESM
@@ -55,14 +162,24 @@ interface SandboxCardProps {
  *
  * We embed the ESM code directly in <script type="module"> tag.
  * No blob URLs needed - the code runs inline as a module.
+ *
+ * @param bundledCode - Pre-built ESM code from Core
+ * @param componentId - Unique identifier for the component
+ * @param styling - Optional styling configuration for conditional CSS injection
  */
-function generateSandboxHTML(bundledCode: string, componentId: string): string {
+function generateSandboxHTML(
+	bundledCode: string,
+	componentId: string,
+	styling?: StylingConfig
+): string {
+	const tailwindInjection = styling ? generateTailwindInjection(styling) : '';
+
 	return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Roopik Component Sandbox</title>
+	<title>Roopik Component Sandbox</title>${tailwindInjection}
 	<style>
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body {
@@ -566,7 +683,7 @@ export function SandboxCard({
 				break;
 			case 'ready':
 				if (sandbox.bundledCode) {
-					html = generateSandboxHTML(sandbox.bundledCode, sandbox.id);
+					html = generateSandboxHTML(sandbox.bundledCode, sandbox.id, sandbox.styling);
 				} else {
 					html = generateErrorHTML('No bundled code available');
 				}

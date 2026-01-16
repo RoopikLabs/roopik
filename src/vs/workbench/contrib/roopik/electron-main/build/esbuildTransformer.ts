@@ -14,6 +14,7 @@ import { fileURLToPath } from 'url';
 import { Framework, ComponentInput, TransformedComponent } from '../../common/build/types.js';
 import { ComponentParser } from '../../common/build/componentParser.js';
 import { createSourceTrackingTransform } from './injectors/sourceTrackingInjector.js';
+import { detectStylingLibraries } from '../../common/build/stylingDetector.js';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
 
@@ -397,6 +398,9 @@ export class ESBuildTransformer {
 		// 6. Handle HTML framework specially (no ESBuild needed)
 		if (framework === 'html') {
 			const result = this.transformHTML(input.files);
+			// Detect styling libraries in HTML/CSS/JS content
+			const combinedCode = Object.values(input.files).join('\n');
+			const styling = detectStylingLibraries(combinedCode);
 			return {
 				id: input.id,
 				framework,
@@ -406,7 +410,8 @@ export class ESBuildTransformer {
 				metadata: {
 					size: result.code.length,
 					transformTime: Date.now() - startTime
-				}
+				},
+				styling
 			};
 		}
 
@@ -454,6 +459,12 @@ export class ESBuildTransformer {
 			);
 		}
 
+		// Detect styling libraries in bundled code
+		const styling = detectStylingLibraries(result.code);
+		if (styling.usesTailwind) {
+			this.logger.info(`Component ${input.id} uses Tailwind CSS`, { libraries: styling.detectedLibraries });
+		}
+
 		return {
 			id: input.id,
 			framework,
@@ -463,7 +474,8 @@ export class ESBuildTransformer {
 			metadata: {
 				size: result.code.length,
 				transformTime: Date.now() - startTime
-			}
+			},
+			styling
 		};
 	}
 

@@ -70,7 +70,8 @@ export class BuildService implements IBuildService {
 			framework: transformed.framework,
 			resolvedDependencies: transformed.resolvedDependencies,
 			buildTime: Date.now() - startTime,
-			bundleSize: injectedCode.length
+			bundleSize: injectedCode.length,
+			styling: transformed.styling
 		};
 	}
 

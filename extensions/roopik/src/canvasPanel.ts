@@ -316,7 +316,8 @@ export class CanvasPanel implements vscode.Disposable {
 						framework: 'react', // TODO: Get from event
 						resolvedDependencies: {},
 						buildTime: event.result.buildTime || 0,
-						bundleSize: event.result.bundleSize || 0
+						bundleSize: event.result.bundleSize || 0,
+						styling: event.result.styling
 					}
 				});
 			} catch (err) {
@@ -960,7 +961,8 @@ export class CanvasPanel implements vscode.Disposable {
 							framework: 'react', // TODO: Get from component meta
 							resolvedDependencies: {},
 							buildTime: result.buildTime || 0,
-							bundleSize: result.bundleSize || 0
+							bundleSize: result.bundleSize || 0,
+							styling: result.styling
 						}
 					});
 				} else if (!result.success) {
@@ -1176,14 +1178,14 @@ export class CanvasPanel implements vscode.Disposable {
 			vscode.Uri.joinPath(this.extensionUri, 'webview', 'build', 'assets', 'componentView.css')
 		);
 
-		// CSP: Allow esm.sh for CDN imports in sandbox iframes
+		// CSP: Allow esm.sh for CDN imports and cdn.tailwindcss.com for Tailwind JIT
 		const csp = `
 			default-src 'none';
 			style-src ${webview.cspSource} 'unsafe-inline';
-			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https://esm.sh https://cdn.skypack.dev;
+			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https://esm.sh https://cdn.skypack.dev https://cdn.tailwindcss.com;
 			font-src ${webview.cspSource} data:;
 			img-src ${webview.cspSource} data: https:;
-			connect-src https://esm.sh https://cdn.skypack.dev;
+			connect-src https://esm.sh https://cdn.skypack.dev https://cdn.tailwindcss.com;
 			frame-src blob: data: https:;
 		`;
 

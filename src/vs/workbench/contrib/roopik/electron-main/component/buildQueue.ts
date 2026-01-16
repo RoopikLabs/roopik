@@ -68,6 +68,13 @@ export interface QueueBuildResult {
 	/** Bundle size in bytes */
 	bundleSize?: number;
 
+	/** Detected styling libraries for conditional CSS injection */
+	styling?: {
+		usesTailwind: boolean;
+		usesShadcn: boolean;
+		detectedLibraries: string[];
+	};
+
 	/** Structured error info (failure case) */
 	errorInfo?: {
 		message: string;

@@ -40,6 +40,11 @@ export interface CachedBundle {
 		buildTime: number;
 		bundleSize: number;
 		builtAt: number;
+		styling?: {
+			usesTailwind: boolean;
+			usesShadcn: boolean;
+			detectedLibraries: string[];
+		};
 	};
 }
 
@@ -54,6 +59,12 @@ export interface LoadResult {
 	buildTime?: number;
 	bundleSize?: number;
 	error?: string;
+	/** Detected styling libraries for conditional CSS injection */
+	styling?: {
+		usesTailwind: boolean;
+		usesShadcn: boolean;
+		detectedLibraries: string[];
+	};
 }
 
 /**
@@ -190,7 +201,8 @@ export class ComponentLoader {
 						bundledCode: cached.bundledCode,
 						cdnUrls: cached.buildMeta.cdnUrls,
 						buildTime: cached.buildMeta.buildTime,
-						bundleSize: cached.buildMeta.bundleSize
+						bundleSize: cached.buildMeta.bundleSize,
+						styling: cached.buildMeta.styling
 					};
 				} else {
 					// Cache is stale - hashes don't match

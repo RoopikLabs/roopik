@@ -60,6 +60,13 @@ export interface BuildOutput {
 
 	/** Bundle size in bytes */
 	bundleSize: number;
+
+	/** Detected styling libraries for conditional CSS injection */
+	styling?: {
+		usesTailwind: boolean;
+		usesShadcn: boolean;
+		detectedLibraries: string[];
+	};
 }
 
 // ============================================================================

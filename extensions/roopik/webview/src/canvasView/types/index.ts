@@ -38,6 +38,12 @@ export interface TransformedComponent {
 		size: number;
 		transformTime: number;
 	};
+	/** Detected styling libraries for conditional CSS injection */
+	styling?: {
+		usesTailwind: boolean;
+		usesShadcn: boolean;
+		detectedLibraries: string[];
+	};
 }
 
 // ============================================================
@@ -152,6 +158,13 @@ export interface Sandbox {
 
 	/** Per-sandbox device mode override (undefined = use global) */
 	deviceMode?: DevicePreset;
+
+	/** Detected styling libraries for conditional CSS injection */
+	styling?: {
+		usesTailwind: boolean;
+		usesShadcn: boolean;
+		detectedLibraries: string[];
+	};
 }
 
 /**

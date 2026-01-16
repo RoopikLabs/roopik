@@ -62,6 +62,13 @@ export interface BuildMeta {
 
 	/** When this build was created */
 	builtAt: number;
+
+	/** Detected styling libraries for conditional CSS injection */
+	styling?: {
+		usesTailwind: boolean;
+		usesShadcn: boolean;
+		detectedLibraries: string[];
+	};
 }
 
 // ============================================================================

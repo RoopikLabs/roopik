@@ -75,6 +75,21 @@ export interface TransformedComponent {
 		/** Transform time in ms */
 		transformTime: number;
 	};
+
+	/**
+	 * Styling library detection results
+	 * Used by sandbox to conditionally inject required CSS/scripts
+	 */
+	styling: {
+		/** Whether Tailwind CSS classes are used (requires Tailwind CDN) */
+		usesTailwind: boolean;
+
+		/** Whether shadcn/ui patterns are detected (implies Tailwind + CSS variables) */
+		usesShadcn: boolean;
+
+		/** All detected styling libraries (for logging/debugging) */
+		detectedLibraries: string[];
+	};
 }
 
 // ============================================================================

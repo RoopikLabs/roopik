@@ -211,6 +211,30 @@ export class SourceTrackingInjector extends BaseInjector {
 							currentElementName = 'Unknown';
 						}
 
+						// Skip fragments - they don't accept arbitrary props
+						// React.Fragment, Fragment, or shorthand <></>
+						if (currentElementName === 'Fragment' ||
+							currentElementName === 'React.Fragment' ||
+							currentElementName === '' || // JSXFragment (shorthand <>)
+							t.isJSXFragment(node)) {
+							return;
+						}
+
+						// Skip third-party provider components that don't accept DOM props
+						// These typically spread their props to children, not to a DOM element
+						const skipComponents = [
+							'ThemeProvider', 'Provider', 'StoreProvider', 'QueryClientProvider',
+							'BrowserRouter', 'Router', 'MemoryRouter', 'StaticRouter',
+							'ReduxProvider', 'AuthProvider', 'Context.Provider', 'ContextProvider',
+							'StrictMode', 'React.StrictMode', 'Suspense', 'React.Suspense',
+							'ErrorBoundary', 'Profiler', 'React.Profiler'
+						];
+						if (skipComponents.includes(currentElementName) ||
+							currentElementName.endsWith('Provider') ||
+							currentElementName.endsWith('Context')) {
+							return;
+						}
+
 						// Full element location (from opening < to closing >)
 						const sourceValue = `${relPath}:${elementLoc.start.line}:${elementLoc.start.column}:${elementLoc.end.line}:${elementLoc.end.column}`;
 
@@ -275,7 +299,7 @@ export class SourceTrackingInjector extends BaseInjector {
 				console.log(`[SourceTracking] Attempting Babel AST for: ${filename}`);
 				const babelResult = this.transformWithBabel(code, filename);
 				if (babelResult) {
-					console.log(`[SourceTracking] Babel AST success: ${filename}`);
+					// console.log(`[SourceTracking] Babel AST success: ${filename}`);
 					return babelResult;
 				}
 				// Fall through to regex if Babel fails
@@ -472,7 +496,7 @@ export function createSourceTrackingTransform(framework: string = 'react', logge
 				if (logger) logger.debug('[SOURCE_TRACKING] Attempting Babel AST', { filename });
 				const babelResult = transformWithBabel(code, filename);
 				if (babelResult) {
-					if (logger) logger.info('[SOURCE_TRACKING] Babel AST success', { filename });
+					// if (logger) logger.info('[SOURCE_TRACKING] Babel AST success', { filename });
 					return babelResult;
 				}
 				// Fall through to regex

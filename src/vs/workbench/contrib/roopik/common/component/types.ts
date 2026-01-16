@@ -195,6 +195,13 @@ export interface BuildResult {
 
 	/** Path to the bundle file (for extension to read directly) */
 	bundlePath?: string;
+
+	/** Detected styling libraries for conditional CSS injection */
+	styling?: {
+		usesTailwind: boolean;
+		usesShadcn: boolean;
+		detectedLibraries: string[];
+	};
 }
 
 /**

@@ -713,7 +713,8 @@ export class ComponentService extends Disposable implements IComponentService {
 					cdnUrls: buildOutput.cdnUrls,
 					buildTime: buildOutput.buildTime,
 					bundleSize: buildOutput.bundleSize,
-					builtAt: Date.now()
+					builtAt: Date.now(),
+					styling: buildOutput.styling
 				}
 			});
 
@@ -737,6 +738,10 @@ export class ComponentService extends Disposable implements IComponentService {
 				componentId,
 				canvasId,
 				success: true,
+				cdnUrls: buildOutput.cdnUrls,
+				buildTime: buildOutput.buildTime,
+				bundleSize: buildOutput.bundleSize,
+				styling: buildOutput.styling,
 				trigger
 			};
 
@@ -855,7 +860,8 @@ export class ComponentService extends Disposable implements IComponentService {
 				cdnUrls: result.cdnUrls || [],
 				buildTime: result.buildTime || 0,
 				bundleSize: result.bundleSize || 0,
-				bundlePath
+				bundlePath,
+				styling: result.styling
 			};
 		} else {
 			// Failure: include structured error info

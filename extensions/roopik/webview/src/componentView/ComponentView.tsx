@@ -344,6 +344,7 @@ function App() {
 									buildStatus: "ready" as const,
 									bundledCode: result.bundledCode,
 									cdnUrls: result.cdnUrls,
+									styling: result.styling,
 									buildError: undefined,
 									// Ensure iframe remounts by updating a monotonic nonce
 									bundleNonce: Date.now(),
