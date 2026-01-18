@@ -337,14 +337,14 @@ describe("MarketplaceManager", () => {
 
 			// Mock the installer
 			vi.spyOn(manager["installer"], "installItem").mockResolvedValue({
-				filePath: "/test/path/.dio/mcp.json",
+				filePath: "/test/path/.roo/mcp.json",
 				line: 3,
 			})
 
 			const result = await manager.installMarketplaceItem(item)
 
 			expect(manager["installer"].installItem).toHaveBeenCalledWith(item, { target: "project" })
-			expect(result).toBe("/test/path/.dio/mcp.json")
+			expect(result).toBe("/test/path/.roo/mcp.json")
 		})
 	})
 

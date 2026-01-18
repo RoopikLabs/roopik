@@ -1080,12 +1080,12 @@ describe("CustomModesManager", () => {
 
 				expect(result.success).toBe(true)
 
-				// Verify that no files were written outside the .dio directory
+				// Verify that no files were written outside the .roo directory
 				const mockWorkspacePath = path.resolve("/mock/workspace")
 				const writtenRuleFiles = writtenFiles.filter((p) => !p.includes(".roomodes"))
 				writtenRuleFiles.forEach((filePath) => {
 					const normalizedPath = path.normalize(filePath)
-					const expectedBasePath = path.normalize(path.join(mockWorkspacePath, ".dio"))
+					const expectedBasePath = path.normalize(path.join(mockWorkspacePath, ".roo"))
 					expect(normalizedPath.startsWith(expectedBasePath)).toBe(true)
 				})
 
@@ -1165,7 +1165,7 @@ describe("CustomModesManager", () => {
 				expect(result.success).toBe(true)
 
 				// Verify that fs.rm was called to remove the existing rules folder
-				expect(fs.rm).toHaveBeenCalledWith(expect.stringContaining(path.join(".dio", "rules-test-mode")), {
+				expect(fs.rm).toHaveBeenCalledWith(expect.stringContaining(path.join(".roo", "rules-test-mode")), {
 					recursive: true,
 					force: true,
 				})
@@ -1223,7 +1223,7 @@ describe("CustomModesManager", () => {
 				expect(result.success).toBe(true)
 
 				// Verify that fs.rm was called to remove the existing rules folder
-				expect(fs.rm).toHaveBeenCalledWith(expect.stringContaining(path.join(".dio", "rules-test-mode")), {
+				expect(fs.rm).toHaveBeenCalledWith(expect.stringContaining(path.join(".roo", "rules-test-mode")), {
 					recursive: true,
 					force: true,
 				})
@@ -1333,7 +1333,7 @@ describe("CustomModesManager", () => {
 			})
 			;(fs.stat as Mock).mockResolvedValue({ isDirectory: () => true })
 			;(fs.readdir as Mock).mockResolvedValue([
-				{ name: "rule1.md", isFile: () => true, parentPath: "/mock/workspace/.dio/rules-test-mode" },
+				{ name: "rule1.md", isFile: () => true, parentPath: "/mock/workspace/.roo/rules-test-mode" },
 			])
 
 			const result = await manager.checkRulesDirectoryHasContent("test-mode")
@@ -1363,7 +1363,7 @@ describe("CustomModesManager", () => {
 			})
 			;(fs.stat as Mock).mockResolvedValue({ isDirectory: () => true })
 			;(fs.readdir as Mock).mockResolvedValue([
-				{ name: "rule1.md", isFile: () => true, parentPath: "/mock/workspace/.dio/rules-test-mode" },
+				{ name: "rule1.md", isFile: () => true, parentPath: "/mock/workspace/.roo/rules-test-mode" },
 			])
 
 			const result = await freshManager.checkRulesDirectoryHasContent("test-mode")
@@ -1482,7 +1482,7 @@ describe("CustomModesManager", () => {
 			})
 			;(fs.stat as Mock).mockResolvedValue({ isDirectory: () => true })
 			;(fs.readdir as Mock).mockResolvedValue([
-				{ name: "rule1.md", isFile: () => true, parentPath: "/mock/workspace/.dio/rules-test-mode" },
+				{ name: "rule1.md", isFile: () => true, parentPath: "/mock/workspace/.roo/rules-test-mode" },
 			])
 
 			const result = await manager.exportModeWithRules("test-mode")
@@ -1524,7 +1524,7 @@ describe("CustomModesManager", () => {
 			})
 			;(fs.stat as Mock).mockResolvedValue({ isDirectory: () => true })
 			;(fs.readdir as Mock).mockResolvedValue([
-				{ name: "rule1.md", isFile: () => true, parentPath: "/mock/workspace/.dio/rules-code" },
+				{ name: "rule1.md", isFile: () => true, parentPath: "/mock/workspace/.roo/rules-code" },
 			])
 
 			const result = await manager.exportModeWithRules("code")
@@ -1562,7 +1562,7 @@ describe("CustomModesManager", () => {
 			})
 			;(fs.stat as Mock).mockResolvedValue({ isDirectory: () => true })
 			;(fs.readdir as Mock).mockResolvedValue([
-				{ name: "rule1.md", isFile: () => true, parentPath: "/mock/workspace/.dio/rules-test-mode" },
+				{ name: "rule1.md", isFile: () => true, parentPath: "/mock/workspace/.roo/rules-test-mode" },
 			])
 
 			const result = await manager.exportModeWithRules("test-mode")
@@ -1572,7 +1572,7 @@ describe("CustomModesManager", () => {
 			expect(result.yaml).toContain("test-mode")
 		})
 
-		it("should successfully export global mode with rules from global .dio directory", async () => {
+		it("should successfully export global mode with rules from global .roo directory", async () => {
 			// Mock a global mode
 			const globalMode = {
 				slug: "global-test-mode",
