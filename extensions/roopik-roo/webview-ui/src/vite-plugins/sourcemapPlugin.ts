@@ -2,12 +2,6 @@ import { Plugin } from "vite"
 import fs from "fs"
 import path from "path"
 
-// Build output directory configuration
-const BUILD_OUTPUT_DIRS = {
-	nightly: path.resolve("../apps/vscode-nightly/build/webview-ui/build"),
-	default: path.resolve("../webview-ui/build"),
-}
-
 /**
  * Custom Vite plugin to ensure source maps are properly included in the build
  * This plugin copies source maps to the build directory and ensures they're accessible
@@ -25,7 +19,13 @@ export function sourcemapPlugin(): Plugin {
 
 				// Determine the correct output directory based on the build mode
 				const mode = process.env.NODE_ENV
-				const outDir = mode === "nightly" ? BUILD_OUTPUT_DIRS.nightly : BUILD_OUTPUT_DIRS.default
+				let outDir
+
+				if (mode === "nightly") {
+					outDir = path.resolve("../apps/vscode-nightly/build/webview-ui/build")
+				} else {
+					outDir = path.resolve("../webview-ui/build")
+				}
 
 				const assetsDir = path.join(outDir, "assets")
 
