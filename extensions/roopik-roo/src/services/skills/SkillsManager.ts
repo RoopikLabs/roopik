@@ -31,8 +31,8 @@ export class SkillsManager {
 	 * Discover all skills from global and project directories.
 	 * Supports both generic skills (skills/) and mode-specific skills (skills-{mode}/).
 	 * Also supports symlinks:
-	 * - .dio/skills can be a symlink to a directory containing skill subdirectories
-	 * - .dio/skills/[dirname] can be a symlink to a skill directory
+	 * - .roo/skills can be a symlink to a directory containing skill subdirectories
+	 * - .roo/skills/[dirname] can be a symlink to a skill directory
 	 */
 	async discoverSkills(): Promise<void> {
 		this.skills.clear()
