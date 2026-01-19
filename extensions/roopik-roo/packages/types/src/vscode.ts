@@ -39,6 +39,7 @@ export const commandIds = [
 	"openInNewTab",
 
 	"newTask",
+	"externalContext",
 
 	"setCustomStoragePath",
 	"importSettings",
