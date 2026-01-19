@@ -282,8 +282,39 @@
 		"openRouterApiKey": "OpenRouter API 키",
 		"getOpenRouterApiKey": "OpenRouter API 키 받기",
 		"vercelAiGatewayApiKey": "Vercel AI Gateway API 키",
-		"getVercelAiGatewayApiKey": "Vercel AI Gateway API 키 받기",
+		"getVercelAiGatewayApiKey": "Vercel AI Gateway API ��� 받기",
 		"apiKeyStorageNotice": "API 키는 VSCode의 보안 저장소에 안전하게 저장됩니다",
+		"openAiCodexRateLimits": {
+			"title": "Usage Limits for Codex{{planLabel}}",
+			"loading": "Loading usage limits...",
+			"loadError": "Failed to load usage limits",
+			"retry": "Retry",
+			"usedPercent": "{{percent}}% used",
+			"resetsIn": "Resets in {{time}}",
+			"plan": {
+				"default": "",
+				"withType": " ({{planType}})"
+			},
+			"time": {
+				"now": "Now",
+				"notAvailable": "N/A"
+			},
+			"duration": {
+				"daysHours": "{{days}}d {{hours}}h",
+				"hoursMinutes": "{{hours}}h {{minutes}}m",
+				"minutes": "{{minutes}}m"
+			},
+			"window": {
+				"usage": "Usage",
+				"fiveHour": "5h limit",
+				"oneHour": "1h limit",
+				"daily": "Daily limit",
+				"weekly": "Weekly limit",
+				"days": "{{days}}d limit",
+				"hours": "{{hours}}h limit",
+				"minutes": "{{minutes}}m limit"
+			}
+		},
 		"useCustomBaseUrl": "사용자 정의 기본 URL 사용",
 		"useReasoning": "추론 활성화",
 		"useHostHeader": "사용자 정의 Host 헤더 사용",
@@ -546,7 +577,7 @@
 		},
 		"screenshotQuality": {
 			"label": "스크린샷 품질",
-			"description": "브라우저 스크린샷의 WebP 품질을 조정합니다. 높은 값은 더 선명한 스크린샷을 제공하지만 token 사용량이 증가합니다."
+			"description": "브라우저 스크린샷의 WebP 품질을 조정합니다. 높은 값은 더 선명한 스크린샷을 제공하지만 token 사용량이 ��가합니다."
 		},
 		"remote": {
 			"label": "원격 브라우저 연결 사용",
