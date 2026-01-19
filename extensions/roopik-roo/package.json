@@ -294,17 +294,17 @@
 				{
 					"command": "roodio.marketplaceButtonClicked",
 					"group": "navigation@3",
-					"when": "view == roodio.SidebarProvider"
+					"when": "view == roodio.ChatPanel"
 				},
 				{
 					"command": "roodio.historyButtonClicked",
 					"group": "overflow@1",
-					"when": "view == roodio.SidebarProvider"
+					"when": "view == roodio.ChatPanel"
 				},
 				{
 					"command": "roodio.popoutButtonClicked",
 					"group": "overflow@2",
-					"when": "view == roodio.SidebarProvider"
+					"when": "view == roodio.ChatPanel"
 				}
 			],
 			"editor/title": [
@@ -520,6 +520,7 @@
 		"@anthropic-ai/vertex-sdk": "^0.7.0",
 		"@aws-sdk/client-bedrock-runtime": "^3.922.0",
 		"@aws-sdk/credential-providers": "^3.922.0",
+		"@dotenvx/dotenvx": "^1.51.4",
 		"@google/genai": "^1.29.1",
 		"@lmstudio/sdk": "^1.1.1",
 		"@mistralai/mistralai": "^1.9.18",
