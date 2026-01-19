@@ -397,7 +397,49 @@ async function handleAddComponents(task: Task, block: ToolUse, callbacks: ToolCa
 		if (!Array.isArray(components)) {
 			return { success: false, error: "components must be an array" }
 		}
-		return roopikClient.addComponents(components)
+
+		// return roopikClient.addComponents(components)
+
+		// ------------------------------------------
+		// PROCESS SEQUENTIALLY to avoid race conditions in the backend file writing
+		const addedComponents: any[] = []
+		let successCount = 0
+
+		for (const component of components) {
+			try {
+				const result = await roopikClient.addComponent({
+					folderPath: component.folderPath,
+					canvasId: component.canvasId,
+					name: component.name,
+					entryFile: component.entryFile,
+					framework: component.framework,
+				})
+
+				if (result.success && result.data?.component) {
+					addedComponents.push(result.data.component)
+					successCount++
+				} else {
+					// Log error but continue with others?
+					// For now, let's include error info in case we want to return partial success
+					console.error(`Failed to add component ${component.name}: ${result.error}`)
+				}
+
+				// Small delay to ensure file system operations settle
+				await new Promise(resolve => setTimeout(resolve, 100))
+			} catch (err) {
+				console.error(`Exception adding component ${component.name}:`, err)
+			}
+		}
+
+		return {
+			success: true,
+			data: {
+				count: successCount,
+				components: addedComponents
+			}
+		}
+		// ------------------------------------------
+
 	} catch (e) {
 		return { success: false, error: `Invalid JSON in components: ${e}` }
 	}
@@ -408,7 +450,7 @@ async function handleRemoveComponent(task: Task, block: ToolUse, callbacks: Tool
 	if (!componentId) {
 		return { success: false, error: "Missing required parameter: componentId" }
 	}
-	const deleteSourceCode = block.params.deleteSourceCode === true || block.params.deleteSourceCode === "true"
+	const deleteSourceCode = block.params.deleteSourceCode === "true"
 	return roopikClient.removeComponent(componentId, deleteSourceCode)
 }
 
