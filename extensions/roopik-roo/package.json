@@ -636,5 +636,12 @@
 		"typescript": "^5.8.3",
 		"vitest": "^3.2.3",
 		"zod-to-ts": "^1.2.0"
+	},
+	"__metadata": {
+		"id": "roopik.roodio",
+		"publisherId": "roopik",
+		"publisherDisplayName": "Roopik",
+		"isBuiltin": true,
+		"isUninstallable": false
 	}
 }

@@ -40,11 +40,39 @@
 		"recommendationsUrl": "https://az764295.vo.msecnd.net/extensions/workspaceRecommendations.json.gz",
 		"nlsBaseUrl": "https://az764295.vo.msecnd.net/extensions/nlsBaseUrl"
 	},
+	"extensionRecommendations": [
+		"roopik.roodio",
+		"dbaeumer.vscode-eslint",
+		"esbenp.prettier-vscode",
+		"eamodio.gitlens",
+		"ms-python.python",
+		"ms-vscode.vscode-typescript-next",
+		"bradlc.vscode-tailwindcss",
+		"formulahendry.auto-rename-tag",
+		"christian-kohler.path-intellisense",
+		"ms-vscode.live-server",
+		"usernamehw.errorlens"
+	],
 	"updateUrl": "https://roopik-updates.humblebee.workers.dev",
 	"releaseNotesUrl": "https://github.com/RoopikHQ/roopik/releases/tag/{{VERSION}}",
 	"quality": "stable",
 	"webviewContentExternalBaseUrlTemplate": "https://{{uuid}}.vscode-cdn.net/insider/ef65ac1ba57f57f2a3961bfe94aa20481caca4c6/out/vs/workbench/contrib/webview/browser/pre/",
 	"builtInExtensions": [
+		{
+			"name": "roodio",
+			"version": "3.37.1",
+			"repo": "https://github.com/RoopikHQ/roopik",
+			"metadata": {
+				"id": "roopik.roodio",
+				"publisherId": {
+					"publisherName": "roopik",
+					"displayName": "Roopik"
+				},
+				"publisherDisplayName": "Roopik",
+				"isBuiltin": true,
+				"isUninstallable": false
+			}
+		},
 		{
 			"name": "ms-vscode.js-debug-companion",
 			"version": "1.1.3",
