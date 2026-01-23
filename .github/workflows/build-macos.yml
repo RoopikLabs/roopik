@@ -329,10 +329,12 @@ jobs:
           if [ -z "$version" ]; then
             version="0.0.0"
           fi
+          commit="${{ github.sha }}"
           hash="$(shasum -a 256 "Roopik-macos-notarized.zip" | awk '{print tolower($1)}')"
           pub_date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           base="${R2_PUBLIC_BASE_URL%/}"
           url="${base}/macos/roopik-macos-latest.zip"
-          json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$version" "$version" "$url" "$hash" "$pub_date")"
+          json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$commit" "$version" "$url" "$hash" "$pub_date")"
           printf '%s' "$json" > latest.json
           aws s3 cp latest.json "s3://${R2_BUCKET}/macos/stable/latest.json" --endpoint-url "$endpoint" --no-progress
+

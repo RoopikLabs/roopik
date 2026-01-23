@@ -212,10 +212,14 @@ jobs:
           fi
 
           version="$(node -p "require('./package.json').version")"
+          commit="${{ github.sha }}"
           hash="$(sha256sum "$deb_file" | awk '{print tolower($1)}')"
           pub_date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           base="${R2_PUBLIC_BASE_URL%/}"
           url="${base}/linux/roopik-linux-latest.deb"
-          json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$version" "$version" "$url" "$hash" "$pub_date")"
+          # CRITICAL: 'version' must be the commit hash for update comparison
+          # 'productVersion' is the human-readable version (e.g., "1.109.0")
+          json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$commit" "$version" "$url" "$hash" "$pub_date")"
           printf '%s' "$json" > latest.json
           aws s3 cp latest.json "s3://${R2_BUCKET}/linux/stable/latest.json" --endpoint-url "$endpoint" --no-progress
+
