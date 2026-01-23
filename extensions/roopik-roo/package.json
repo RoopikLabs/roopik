@@ -641,7 +641,7 @@
 		"id": "roopik.roodio",
 		"publisherId": "roopik",
 		"publisherDisplayName": "Roopik",
-		"isBuiltin": true,
+		"isBuiltin": false,
 		"isUninstallable": false
 	}
 }

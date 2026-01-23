@@ -69,7 +69,7 @@
 					"displayName": "Roopik"
 				},
 				"publisherDisplayName": "Roopik",
-				"isBuiltin": true,
+				"isBuiltin": false,
 				"isUninstallable": false
 			}
 		},
