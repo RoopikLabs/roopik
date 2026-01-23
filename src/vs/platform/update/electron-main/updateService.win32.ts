@@ -102,9 +102,9 @@ export class Win32UpdateService extends AbstractUpdateService implements IRelaun
 					await unlink(path.join(cachePath, 'session-ending.flag'));
 				} catch { }
 			} catch (err) {
-				this.logService.error('update#initialize - Failed to set update cache path', err);
-				this.setState(State.Disabled(DisablementReason.InvalidConfiguration));
-				return;
+				// Note: We skip setting appUpdate cache path as it can fail on some systems
+				// and is not required for update functionality. Following VSCodium's approach.
+				this.logService.warn('update#initialize - Failed to set update cache path, continuing anyway', err);
 			}
 		}
 
