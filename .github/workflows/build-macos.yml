@@ -322,13 +322,24 @@ jobs:
             exit 0
           fi
 
-          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
-          if [ -z "$version" ]; then
-            version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+          # Re-find APP_PATH since environment variables don't persist between steps
+          # Look in .notarize folder where we zipped it from earlier
+          APP_PATH="$(find .notarize -maxdepth 3 -name "*.app" -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+             echo "Could not find .app to read version from!"
+             # Fallback to package.json version if APP_PATH fails
+             version="$(node -p "require('./package.json').version")"
+          else
+             version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+             if [ -z "$version" ]; then
+               version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+             fi
           fi
+
           if [ -z "$version" ]; then
             version="0.0.0"
           fi
+
           commit="${{ github.sha }}"
           hash="$(shasum -a 256 "Roopik-macos-notarized.zip" | awk '{print tolower($1)}')"
           pub_date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
