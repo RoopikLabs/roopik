@@ -176,7 +176,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$SIGNED_ZIP"
 
       - name: Upload macOS artifacts (arm64)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: roopik-macos-arm64
           path: |
@@ -289,7 +289,7 @@ jobs:
           cp "$NOTARIZED_DMG" .artifacts/public/roopik-macos-latest.dmg
 
       - name: Upload macOS release artifact (arm64)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: roopik-macos-release
           path: .artifacts/public/

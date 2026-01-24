@@ -152,7 +152,7 @@ jobs:
           Copy-Item $installer.FullName .artifacts\public\roopik-windows-latest.exe -Force
 
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: roopik-windows-release
           path: |
