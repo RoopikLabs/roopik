@@ -39,7 +39,7 @@ jobs:
         run: npm install -g tsx
 
       - name: Setup GCC
-        uses: egor-tensin/setup-gcc@v1
+        uses: egor-tensin/setup-gcc@v2
         with:
           version: 10
           platform: x64
