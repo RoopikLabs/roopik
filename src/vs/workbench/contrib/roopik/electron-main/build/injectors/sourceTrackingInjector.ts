@@ -27,6 +27,9 @@
 import { BaseInjector, InjectorContext } from './types.js';
 import { transformCode, ParseOptions } from './sourceTrackingCore.js';
 
+// Type declaration for @babel/core (types are in @types/babel__core)
+/// \u003creference types="@types/babel__core" /\u003e
+
 // Import Babel statically - this ensures it's bundled/resolved correctly
 // eslint-disable-next-line local/code-amd-node-module
 import * as babelCoreModule from '@babel/core';

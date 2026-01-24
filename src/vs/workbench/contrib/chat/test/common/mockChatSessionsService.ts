@@ -9,9 +9,9 @@ import { IDisposable } from '../../../../../base/common/lifecycle.js';
 import { ResourceMap } from '../../../../../base/common/map.js';
 import { ThemeIcon } from '../../../../../base/common/themables.js';
 import { URI } from '../../../../../base/common/uri.js';
-import { IChatAgentAttachmentCapabilities } from '../../common/chatAgents.js';
-import { IChatModel } from '../../common/chatModel.js';
-import { IChatService } from '../../common/chatService.js';
+import { IChatAgentAttachmentCapabilities } from '../../common/participants/chatAgents.js';
+import { IChatModel } from '../../common/model/chatModel.js';
+import { IChatService } from '../../common/chatService/chatService.js';
 import { IChatSession, IChatSessionContentProvider, IChatSessionItem, IChatSessionItemProvider, IChatSessionProviderOptionGroup, IChatSessionsExtensionPoint, IChatSessionsService, SessionOptionsChangedCallback } from '../../common/chatSessionsService.js';
 
 export class MockChatSessionsService implements IChatSessionsService {
@@ -87,10 +87,6 @@ export class MockChatSessionsService implements IChatSessionsService {
 		return this.sessionItemProviders.get(chatSessionType);
 	}
 
-	getAllChatSessionItemProviders(): IChatSessionItemProvider[] {
-		return Array.from(this.sessionItemProviders.values());
-	}
-
 	getIconForSessionType(chatSessionType: string): ThemeIcon | URI | undefined {
 		const contribution = this.contributions.find(c => c.type === chatSessionType);
 		return contribution?.icon && typeof contribution.icon === 'string' ? ThemeIcon.fromId(contribution.icon) : undefined;
@@ -108,13 +104,13 @@ export class MockChatSessionsService implements IChatSessionsService {
 		return this.contributions.find(c => c.type === chatSessionType)?.inputPlaceholder;
 	}
 
-	getAllChatSessionItems(token: CancellationToken): Promise<Array<{ readonly chatSessionType: string; readonly items: IChatSessionItem[] }>> {
-		return Promise.all(Array.from(this.sessionItemProviders.values(), async provider => {
-			return {
+	getChatSessionItems(providersToResolve: readonly string[] | undefined, token: CancellationToken): Promise<Array<{ readonly chatSessionType: string; readonly items: IChatSessionItem[] }>> {
+		return Promise.all(Array.from(this.sessionItemProviders.values())
+			.filter(provider => !providersToResolve || providersToResolve.includes(provider.chatSessionType))
+			.map(async provider => ({
 				chatSessionType: provider.chatSessionType,
 				items: await provider.provideChatSessionItems(token),
-			};
-		}));
+			})));
 	}
 
 	reportInProgress(chatSessionType: string, count: number): void {
@@ -196,6 +192,10 @@ export class MockChatSessionsService implements IChatSessionsService {
 
 	getCapabilitiesForSessionType(chatSessionType: string): IChatAgentAttachmentCapabilities | undefined {
 		return this.contributions.find(c => c.type === chatSessionType)?.capabilities;
+	}
+
+	getCustomAgentTargetForSessionType(chatSessionType: string): string | undefined {
+		return this.contributions.find(c => c.type === chatSessionType)?.customAgentTarget;
 	}
 
 	getContentProviderSchemes(): string[] {

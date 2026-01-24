@@ -1,12 +1,12 @@
 Name:     @@NAME@@
 Version:  @@VERSION@@
 Release:  @@RELEASE@@.el8
-Summary:  AI-Native Canvas-First IDE
+Summary:  Code editing. Redefined.
 Group:    Development/Tools
-Vendor:   Roopik Labs
-Packager: Roopik Labs <support@roopik.com>
+Vendor:   Microsoft Corporation
+Packager: Visual Studio Code Team <vscode-linux@microsoft.com>
 License:  @@LICENSE@@
-URL:      https://roopik.com/
+URL:      https://code.visualstudio.com/
 Icon:     @@NAME@@.xpm
 Requires: @@DEPENDENCIES@@
 AutoReq:  0
@@ -17,7 +17,7 @@ AutoReq:  0
 %global __brp_strip_comment_note %{nil}
 
 %description
-Roopik is an AI-native, canvas-first IDE built for modern development. See https://roopik.com for installation instructions and FAQ.
+Visual Studio Code is a new choice of tool that combines the simplicity of a code editor with what developers need for the core edit-build-debug cycle. See https://code.visualstudio.com/docs/setup/linux for installation instructions and FAQ.
 
 # Don't generate build_id links to prevent conflicts when installing multiple
 # versions of VS Code alongside each other (e.g. `code` and `code-insiders`)

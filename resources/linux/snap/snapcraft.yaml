@@ -1,8 +1,10 @@
 name: @@NAME@@
 version: '@@VERSION@@'
-summary: AI-Native Canvas-First IDE
+summary: Code editing. Redefined.
 description: |
-  Roopik is an AI-native, canvas-first IDE built for modern development.
+  Visual Studio Code is a new choice of tool that combines the
+  simplicity of a code editor with what developers need for the core
+  edit-build-debug cycle.
 
 architectures:
   - build-on: amd64

@@ -46,6 +46,7 @@ export const unicodeFilter = Object.freeze<string[]>([
 	'!**/*.test.ts',
 	'!**/*.{d.ts,json,md}',
 	'!**/*.mp3',
+	'!**/*.tiff',
 
 	'!build/win32/**',
 	'!extensions/markdown-language-features/notebook-out/*.js',
@@ -79,7 +80,6 @@ export const indentationFilter = Object.freeze<string[]>([
 	'!LICENSES.chromium.html',
 	'!**/LICENSE',
 	'!**/*.mp3',
-	'!src/vs/loader.js',
 	'!src/vs/base/browser/dompurify/*',
 	'!src/vs/base/common/marked/marked.js',
 	'!src/vs/base/common/semver/semver.js',
@@ -141,6 +141,7 @@ export const indentationFilter = Object.freeze<string[]>([
 	'!**/Dockerfile.*',
 	'!**/*.Dockerfile',
 	'!**/*.dockerfile',
+	'!**/*.tiff',
 
 	// except for built files
 	'!extensions/mermaid-chat-features/chat-webview-out/*.js',
@@ -176,6 +177,7 @@ export const copyrightFilter = Object.freeze<string[]>([
 	'!**/*.code-workspace',
 	'!**/*.js.map',
 	'!**/*.wasm',
+	'!**/*.tiff',
 	'!build/**/*.init',
 	'!build/linux/libcxx-fetcher.*',
 	'!build/npm/gyp/custom-headers/*.patch',
