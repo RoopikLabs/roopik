@@ -11,6 +11,10 @@
 		"./browser": {
 			"types": "./src/browser.ts",
 			"default": "./src/browser.ts"
+		},
+		"./cli": {
+			"types": "./src/cli.ts",
+			"default": "./src/cli.ts"
 		}
 	},
 	"scripts": {

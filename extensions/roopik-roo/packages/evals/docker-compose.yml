@@ -27,7 +27,7 @@ services:
             - POSTGRES_PASSWORD=password
             - POSTGRES_DATABASES=evals_development,evals_test
         healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U postgres -d evals_development"]
+            test: [ "CMD-SHELL", "pg_isready -U postgres -d evals_development" ]
             interval: 5s
             timeout: 5s
             retries: 5

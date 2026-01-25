@@ -59,6 +59,12 @@ export const processTask = async ({
 			eventName: passed ? RooCodeEventName.EvalPass : RooCodeEventName.EvalFail,
 			taskId: task.id,
 		})
+	} catch (err: any) {
+		logger.error(`Task ${task.id} failed with error:`, err)
+		if (err.stack) {
+			logger.error(err.stack)
+		}
+		throw err
 	} finally {
 		await deregisterRunner({ runId: run.id, taskId })
 	}

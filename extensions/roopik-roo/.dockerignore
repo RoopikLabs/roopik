@@ -1,0 +1,9 @@
+**/node_modules
+**/.git
+**/.turbo
+**/*.vsix
+**/*.log
+evals
+tmp
+.vscode
+.cache

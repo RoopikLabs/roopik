@@ -119,7 +119,6 @@ RUN mkdir -p \
   packages/types \
   packages/cloud \
   packages/vscode-shim \
-  src \
   webview-ui
 
 COPY ./package.json                            ./
@@ -137,7 +136,6 @@ COPY ./packages/telemetry/package.json         ./packages/telemetry/
 COPY ./packages/types/package.json             ./packages/types/
 COPY ./packages/cloud/package.json             ./packages/cloud/
 COPY ./packages/vscode-shim/package.json       ./packages/vscode-shim/
-COPY ./src/package.json                        ./src/
 COPY ./webview-ui/package.json                 ./webview-ui/
 
 RUN pnpm install
@@ -149,7 +147,7 @@ COPY . ./
 RUN if [ ! -f "packages/evals/.env.local" ] || [ ! -s "packages/evals/.env.local" ]; then \
   echo "ERROR: packages/evals/.env.local is missing or empty. Please create it with your API keys before building."; \
   exit 1; \
-fi
+  fi
 
 # Copy ENV secrets
 COPY packages/evals/.env.local ./packages/evals/
@@ -159,12 +157,12 @@ RUN cp -r /roo/.vscode-template /roo/.vscode
 
 # Build the Roo Code extension (for VSCode execution method)
 RUN pnpm vsix -- --out ../bin/roo-code.vsix \
-    && yes | code --no-sandbox --user-data-dir /roo/.vscode --install-extension bin/roo-code.vsix
+  && yes | code --no-sandbox --user-data-dir /roo/.vscode --install-extension bin/roo-code.vsix
 
 # Build the extension bundle and CLI (for CLI execution method)
-# The CLI requires the extension bundle (src/dist/extension.js) and the CLI build (apps/cli/dist/index.js)
-RUN pnpm --filter roo-cline bundle \
-    && pnpm --filter @roo-code/cli build
+# The CLI requires the extension bundle (dist/extension.js) and the CLI build (apps/cli/dist/index.js)
+RUN pnpm --filter roodio bundle \
+  && pnpm --filter @roo-code/cli build
 
 # Copy entrypoint script
 COPY packages/evals/.docker/entrypoints/runner.sh /usr/local/bin/entrypoint.sh

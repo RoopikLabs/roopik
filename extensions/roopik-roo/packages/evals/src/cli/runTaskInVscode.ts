@@ -27,7 +27,10 @@ export const runTaskInVscode = async ({ run, task, publish, logger, jobToken }: 
 	const prompt = fs.readFileSync(path.resolve(EVALS_REPO_PATH, `prompts/${language}.md`), "utf-8")
 	const workspacePath = path.resolve(EVALS_REPO_PATH, language, exercise)
 	const ipcSocketPath = path.resolve(os.tmpdir(), `evals-${run.id}-${task.id}.sock`)
-	const env = { ROO_CODE_IPC_SOCKET_PATH: ipcSocketPath }
+	const env: Record<string, string> = { ROO_CODE_IPC_SOCKET_PATH: ipcSocketPath }
+	if (jobToken) {
+		env.ROO_CODE_CLOUD_TOKEN = jobToken
+	}
 	const controller = new AbortController()
 	const cancelSignal = controller.signal
 	const containerized = isDockerContainer()
@@ -35,11 +38,9 @@ export const runTaskInVscode = async ({ run, task, publish, logger, jobToken }: 
 
 	let codeCommand = containerized
 		? `xvfb-run --auto-servernum --server-num=1 code --wait --log trace --disable-workspace-trust --disable-gpu --disable-lcd-text --no-sandbox --user-data-dir /roo/.vscode --password-store="basic" -n ${workspacePath}`
-		: `code --disable-workspace-trust -n ${workspacePath}`
+		: `code --extensionDevelopmentPath=${path.resolve(__dirname, "..", "..", "..", "..")} --disable-workspace-trust -n ${workspacePath}`
 
-	if (jobToken) {
-		codeCommand = `ROO_CODE_CLOUD_TOKEN=${jobToken} ${codeCommand}`
-	}
+
 
 	logger.info(codeCommand)
 
@@ -50,7 +51,7 @@ export const runTaskInVscode = async ({ run, task, publish, logger, jobToken }: 
 		await new Promise((resolve) => setTimeout(resolve, Math.random() * 5_000 + 5_000))
 	}
 
-	const subprocess = execa({ env, shell: "/bin/bash", cancelSignal })`${codeCommand}`
+	const subprocess = execa({ env, shell: true, cancelSignal })`${codeCommand}`
 
 	// If debugging, add `--verbose` to `command` and uncomment the following line.
 	// subprocess.stdout.pipe(process.stdout)

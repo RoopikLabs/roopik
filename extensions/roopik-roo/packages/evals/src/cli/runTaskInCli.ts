@@ -1,5 +1,8 @@
 import * as path from "path"
 import * as os from "node:os"
+import { fileURLToPath } from "url"
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 import pWaitFor from "p-wait-for"
 import { execa } from "execa"
@@ -26,6 +29,7 @@ export const runTaskWithCli = async ({ run, task, publish, logger, jobToken }: R
 	const env: Record<string, string> = {
 		...(process.env as Record<string, string>),
 		ROO_CODE_IPC_SOCKET_PATH: ipcSocketPath,
+		ROO_CLI_ROOT: "C:\\Users\\Humblebee\\Documents\\GitHub\\roopik\\extensions\\roopik-roo",
 	}
 
 	if (jobToken) {

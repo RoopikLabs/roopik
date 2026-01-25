@@ -4,7 +4,10 @@ import { fileURLToPath } from "url"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-export const EVALS_REPO_PATH = path.resolve(__dirname, "..", "..", "..", "..", "..", "evals")
+// Use environment variable if set, otherwise calculate from __dirname
+// For Web UI: EVALS_REPO_PATH env var should be set
+// For CLI: Calculate from packages/evals/src/exercises -> ../../../../evals
+export const EVALS_REPO_PATH = process.env.EVALS_REPO_PATH || path.resolve(__dirname, "..", "..", "..", "..", "evals")
 
 export const exerciseLanguages = ["go", "java", "javascript", "python", "rust"] as const
 
@@ -22,4 +25,4 @@ export const listDirectories = async (basePath: string, relativePath: string) =>
 }
 
 export const getExercisesForLanguage = async (basePath: string, language: ExerciseLanguage) =>
-	listDirectories(__dirname, path.join(basePath, language))
+	listDirectories(basePath, language)
