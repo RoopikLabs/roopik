@@ -66,10 +66,12 @@ export async function runEvalWithIpc(options: RunEvalOptions): Promise<EvalResul
 			ROO_CODE_IPC_SOCKET_PATH: ipcSocketPath,
 		},
 		stdio: 'ignore',
-		detached: true,
+		// Don't use detached on Windows - causes issues with cleanup
+		detached: process.platform !== 'win32',
 	})
 
-	roopikProcess.unref()
+	// Don't unref - we want to track the process for cleanup
+	// roopikProcess.unref()
 
 	// Give Roopik time to start
 	console.log('⏳ Waiting for Roopik to start...')
@@ -179,9 +181,21 @@ export async function runEvalWithIpc(options: RunEvalOptions): Promise<EvalResul
 	// Kill Roopik process
 	console.log('🛑 Killing Roopik process...')
 	try {
-		process.kill(-roopikProcess.pid!, 'SIGTERM')
-	} catch (error) {
-		console.log('⚠️  Failed to kill process:', error)
+		if (process.platform === 'win32') {
+			// Windows: Use taskkill to force kill the process tree
+			const { execSync } = await import('child_process')
+			execSync(`taskkill /pid ${roopikProcess.pid} /T /F`, { stdio: 'ignore' })
+		} else {
+			// Unix: Kill process group
+			process.kill(-roopikProcess.pid!, 'SIGTERM')
+		}
+		// Wait a bit for process to die
+		await new Promise(resolve => setTimeout(resolve, 1000))
+	} catch (error: any) {
+		// ESRCH means process already dead - that's fine
+		if (error.code !== 'ESRCH' && error.errno !== -4058) {
+			console.log('⚠️  Failed to kill process:', error.message)
+		}
 	}
 
 	const duration = Date.now() - startTime

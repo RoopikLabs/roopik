@@ -1,46 +1,59 @@
 /**
- * Simple Canvas Creation Eval using IPC
+ * Canvas Creation Eval
  *
- * This eval tests if the agent can create a canvas when prompted.
+ * Tests if the agent can create a canvas when prompted.
  */
 
-import * as vscode from 'vscode'
 import { runEvalWithIpc } from '../ipc-runner.js'
 import { RooCodeEventName } from '@roo-code/types'
+import {
+	buildProviderSettings,
+	detectAvailableProvider,
+	getProviderConfig
+} from '../config/agent-config.js'
+import { getEvalConfig } from '../config/eval-config.js'
 
-const ROOPIK_PATH = 'C:\\Users\\Humblebee\\AppData\\Local\\Programs\\Roopik\\Roopik.exe'
-
-export async function runCanvasCreationEval(workspacePath: string) {
+export async function runCanvasCreationEval(
+	workspacePath: string,
+	providerName?: string
+) {
 	console.log('📝 Running Canvas Creation Eval...')
 
 	const prompt = 'Create a new canvas called "Login Page" for designing a login screen.'
 
-	// Get API key from environment
-	const geminiApiKey = process.env.GEMINI_API_KEY
-	const openRouterApiKey = process.env.OPENROUTER_API_KEY
+	// Get eval configuration
+	const evalConfig = getEvalConfig()
 
-	// Prefer Gemini if available, fallback to OpenRouter
-	const settings = geminiApiKey ? {
-		apiProvider: 'gemini',
-		geminiApiKey: geminiApiKey,
-		geminiModelId: 'gemini-2.0-flash-exp',
-	} : openRouterApiKey ? {
-		apiProvider: 'openrouter',
-		openRouterApiKey: openRouterApiKey,
-		openRouterModelId: 'google/gemini-2.0-flash-exp:free',
-	} : {
-		// Fallback - will fail but show clear error
-		apiProvider: 'gemini',
-		geminiModelId: 'gemini-2.0-flash-exp',
+	// Determine which provider to use
+	const provider = providerName || evalConfig.provider
+	const selectedProvider = provider === 'auto'
+		? detectAvailableProvider()
+		: provider
+
+	if (!selectedProvider) {
+		throw new Error(
+			'No provider configured. Set GEMINI_API_KEY, OPENROUTER_API_KEY, ' +
+			'or another supported provider API key in your .env file.'
+		)
 	}
 
-	console.log(`🔑 Using API provider: ${settings.apiProvider}`)
+	// Build settings for the selected provider
+	const settings = buildProviderSettings(selectedProvider)
+	if (!settings) {
+		throw new Error(`Unknown provider: ${selectedProvider}`)
+	}
 
+	const providerConfig = getProviderConfig(selectedProvider)!
+	console.log(`🔑 Provider: ${providerConfig.name}`)
+	console.log(`🤖 Model: ${providerConfig.modelId}`)
+	console.log(`✅ Auto-approval: ENABLED`)
+
+	// Run the eval
 	const result = await runEvalWithIpc({
-		roopikPath: ROOPIK_PATH,
+		roopikPath: evalConfig.roopikPath,
 		workspacePath,
 		prompt,
-		timeout: 2, // 2 minutes
+		timeout: evalConfig.timeout,
 		settings,
 	})
 
