@@ -112,6 +112,29 @@ export const PROVIDER_REGISTRY: Record<string, ProviderConfig> = {
 			openAiModelId: 'gpt-4o',
 		},
 	},
+
+	// Local providers - no API key needed!
+	ollama: {
+		name: 'Ollama (Local)',
+		apiProvider: 'ollama',
+		modelId: 'llama3.2',  // Default, overridden by OLLAMA_MODEL_ID
+		apiKeyEnvVar: 'OLLAMA_API_KEY',  // Optional, usually not needed
+		settings: {
+			// Ollama uses ollamaModelId (see provider-settings.ts:572)
+			// Note: These will be set dynamically in buildProviderSettings
+		},
+	},
+
+	lmstudio: {
+		name: 'LM Studio (Local)',
+		apiProvider: 'lmstudio',
+		modelId: 'local-model',  // Default, overridden by LMSTUDIO_MODEL_ID
+		apiKeyEnvVar: 'LMSTUDIO_API_KEY',  // Optional, usually not needed
+		settings: {
+			// LM Studio uses lmStudioModelId (see provider-settings.ts:573)
+			// Note: These will be set dynamically in buildProviderSettings
+		},
+	},
 }
 
 /**
@@ -141,9 +164,13 @@ export function buildProviderSettings(
 		return null
 	}
 
+	// Local providers (Ollama, LM Studio) don't require API keys
+	const localProviders = ['ollama', 'lmstudio']
+	const isLocalProvider = localProviders.includes(providerName)
+
 	// Get API key from parameter or environment
 	const key = apiKey || process.env[provider.apiKeyEnvVar]
-	if (!key) {
+	if (!key && !isLocalProvider) {
 		throw new Error(
 			`API key not found for ${provider.name}. ` +
 			`Set ${provider.apiKeyEnvVar} environment variable.`
@@ -151,12 +178,41 @@ export function buildProviderSettings(
 	}
 
 	// Build complete settings
-	return {
+	const baseSettings: Record<string, any> = {
 		apiProvider: provider.apiProvider,
-		[`${provider.apiProvider}ApiKey`]: key,
 		...provider.settings,
 		...AGENT_EVAL_SETTINGS,
 	}
+
+	// Add API key if present (not needed for local providers)
+	if (key) {
+		baseSettings[`${provider.apiProvider}ApiKey`] = key
+	}
+
+	// Add dynamic settings for local providers (read from env at runtime!)
+	if (providerName === 'ollama') {
+		const modelFromEnv = process.env.OLLAMA_MODEL_ID
+		const baseUrlFromEnv = process.env.OLLAMA_BASE_URL
+		console.log(`🔍 DEBUG - OLLAMA_MODEL_ID from env: "${modelFromEnv}"`)
+		console.log(`🔍 DEBUG - OLLAMA_BASE_URL from env: "${baseUrlFromEnv}"`)
+
+		baseSettings.ollamaModelId = modelFromEnv || 'llama3.2'
+		baseSettings.ollamaBaseUrl = baseUrlFromEnv || 'http://localhost:11434'
+		console.log(`🔧 Ollama config: ${baseSettings.ollamaModelId} @ ${baseSettings.ollamaBaseUrl}`)
+	}
+
+	if (providerName === 'lmstudio') {
+		const modelFromEnv = process.env.LMSTUDIO_MODEL_ID
+		const baseUrlFromEnv = process.env.LMSTUDIO_BASE_URL
+		console.log(`🔍 DEBUG - LMSTUDIO_MODEL_ID from env: "${modelFromEnv}"`)
+		console.log(`🔍 DEBUG - LMSTUDIO_BASE_URL from env: "${baseUrlFromEnv}"`)
+
+		baseSettings.lmStudioModelId = modelFromEnv || 'local-model'
+		baseSettings.lmStudioBaseUrl = baseUrlFromEnv || 'http://localhost:1234/v1'
+		console.log(`🔧 LM Studio config: ${baseSettings.lmStudioModelId} @ ${baseSettings.lmStudioBaseUrl}`)
+	}
+
+	return baseSettings
 }
 
 /**
@@ -167,14 +223,16 @@ export function buildProviderSettings(
  * 2. openrouter
  * 3. anthropic
  * 4. openai
+ * 5. ollama (if running locally)
+ * 6. lmstudio (if running locally)
  *
  * To override, set EVAL_PROVIDER environment variable or use --provider CLI flag
  */
 export function detectAvailableProvider(): string | null {
-	// Define priority order
+	// Define priority order for cloud providers
 	const priorityOrder = ['gemini', 'openrouter', 'anthropic', 'openai']
 
-	// Check in priority order
+	// Check cloud providers in priority order
 	for (const providerName of priorityOrder) {
 		const config = PROVIDER_REGISTRY[providerName]
 		if (config && process.env[config.apiKeyEnvVar]) {
@@ -182,9 +240,19 @@ export function detectAvailableProvider(): string | null {
 		}
 	}
 
+	// Check local providers (Ollama, LM Studio)
+	// These don't need API keys, just check if base URL is configured
+	const localProviders = ['ollama', 'lmstudio']
+	for (const providerName of localProviders) {
+		const baseUrlKey = providerName === 'ollama' ? 'OLLAMA_BASE_URL' : 'LMSTUDIO_BASE_URL'
+		if (process.env[baseUrlKey]) {
+			return providerName
+		}
+	}
+
 	// Fallback: check any other providers not in priority list
 	for (const [name, config] of Object.entries(PROVIDER_REGISTRY)) {
-		if (!priorityOrder.includes(name) && process.env[config.apiKeyEnvVar]) {
+		if (!priorityOrder.includes(name) && !localProviders.includes(name) && process.env[config.apiKeyEnvVar]) {
 			return name
 		}
 	}

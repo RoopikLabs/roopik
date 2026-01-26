@@ -45,7 +45,10 @@ export async function runCanvasCreationEval(
 
 	const providerConfig = getProviderConfig(selectedProvider)!
 	console.log(`🔑 Provider: ${providerConfig.name}`)
-	console.log(`🤖 Model: ${providerConfig.modelId}`)
+
+	// Show actual model being used (important for local providers)
+	const actualModel = settings.ollamaModelId || settings.lmStudioModelId || providerConfig.modelId
+	console.log(`🤖 Model: ${actualModel}`)
 	console.log(`✅ Auto-approval: ENABLED`)
 
 	// Run the eval
