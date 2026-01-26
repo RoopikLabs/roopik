@@ -112,6 +112,10 @@ async function main() {
 		} catch (e) {
 			console.log('   ⚠️  Failed to cleanup:', e)
 		}
+
+		// Force exit to ensure process terminates
+		// (Roopik process might have already exited but Node is waiting)
+		process.exit(0)
 	}
 }
 

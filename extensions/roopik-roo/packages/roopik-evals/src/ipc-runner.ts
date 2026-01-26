@@ -141,6 +141,11 @@ export async function runEvalWithIpc(options: RunEvalOptions): Promise<EvalResul
 
 	// Start the task
 	console.log('🚀 Starting task...')
+	console.log('📋 Config:', JSON.stringify({
+		apiProvider: settings.apiProvider,
+		apiModelId: settings.apiModelId,
+		openRouterModelId: settings.openRouterModelId,
+	}, null, 2))
 	client.sendCommand({
 		commandName: TaskCommandName.StartNewTask,
 		data: {
@@ -184,17 +189,24 @@ export async function runEvalWithIpc(options: RunEvalOptions): Promise<EvalResul
 		if (process.platform === 'win32') {
 			// Windows: Use taskkill to force kill the process tree
 			const { execSync } = await import('child_process')
-			execSync(`taskkill /pid ${roopikProcess.pid} /T /F`, { stdio: 'ignore' })
+			try {
+				execSync(`taskkill /pid ${roopikProcess.pid} /T /F`, { stdio: 'ignore' })
+			} catch (killError: any) {
+				// Process might already be dead - that's fine
+				if (!killError.message?.includes('not found') && killError.status !== 128) {
+					throw killError
+				}
+			}
 		} else {
 			// Unix: Kill process group
 			process.kill(-roopikProcess.pid!, 'SIGTERM')
 		}
 		// Wait a bit for process to die
-		await new Promise(resolve => setTimeout(resolve, 1000))
+		await new Promise(resolve => setTimeout(resolve, 500))
 	} catch (error: any) {
 		// ESRCH means process already dead - that's fine
 		if (error.code !== 'ESRCH' && error.errno !== -4058) {
-			console.log('⚠️  Failed to kill process:', error.message)
+			console.log('⚠️  Process cleanup:', error.message)
 		}
 	}
 

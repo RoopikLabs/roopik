@@ -55,16 +55,28 @@ export interface ProviderConfig {
 
 /**
  * Registry of supported providers
+ *
+ * IMPORTANT: Each provider uses different model ID keys!
+ * See packages/types/src/provider-settings.ts:modelIdKeysByProvider
+ *
+ * Common patterns:
+ * - Most providers: apiModelId (Gemini, Anthropic, Mistral, etc.)
+ * - OpenRouter: openRouterModelId
+ * - OpenAI: openAiModelId
+ * - Ollama: ollamaModelId
+ * - LM Studio: lmStudioModelId
+ *
  * Add new providers here to make them available for evals
  */
 export const PROVIDER_REGISTRY: Record<string, ProviderConfig> = {
 	gemini: {
 		name: 'Google Gemini',
 		apiProvider: 'gemini',
-		modelId: 'gemini-4.0-flash-exp',
+		modelId: 'gemini-3-flash-preview',
 		apiKeyEnvVar: 'GEMINI_API_KEY',
 		settings: {
-			geminiModelId: 'gemini-4.0-flash-exp',
+			// Gemini uses apiModelId (see provider-settings.ts:574)
+			apiModelId: 'gemini-3-flash-preview',
 		},
 	},
 
@@ -74,6 +86,7 @@ export const PROVIDER_REGISTRY: Record<string, ProviderConfig> = {
 		modelId: 'google/gemini-2.0-flash-exp:free',
 		apiKeyEnvVar: 'OPENROUTER_API_KEY',
 		settings: {
+			// OpenRouter uses openRouterModelId (see provider-settings.ts:567)
 			openRouterModelId: 'google/gemini-2.0-flash-exp:free',
 		},
 	},
@@ -84,16 +97,18 @@ export const PROVIDER_REGISTRY: Record<string, ProviderConfig> = {
 		modelId: 'claude-sonnet-4-20250514',
 		apiKeyEnvVar: 'ANTHROPIC_API_KEY',
 		settings: {
+			// Anthropic uses apiModelId (see provider-settings.ts:565)
 			apiModelId: 'claude-sonnet-4-20250514',
 		},
 	},
 
 	openai: {
 		name: 'OpenAI',
-		apiProvider: 'openai',
+		apiProvider: 'openai-native',
 		modelId: 'gpt-4o',
 		apiKeyEnvVar: 'OPENAI_API_KEY',
 		settings: {
+			// OpenAI uses openAiModelId (see provider-settings.ts:571)
 			openAiModelId: 'gpt-4o',
 		},
 	},
