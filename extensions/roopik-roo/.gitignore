@@ -61,3 +61,8 @@ plans/
 # Keep config files (if they need to be committed, uncomment these lines)
 # !vitest.config.js
 # !*.config.js
+
+#custom folder
+/apps
+/evals
+/test-workspaces
