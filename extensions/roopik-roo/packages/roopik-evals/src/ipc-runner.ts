@@ -15,6 +15,7 @@ import {
 	IpcMessageType,
 	type TaskEvent
 } from '@roo-code/types'
+import { EventRecorder } from './core/recorder.js'
 
 export interface RunEvalOptions {
 	roopikPath: string
@@ -22,6 +23,8 @@ export interface RunEvalOptions {
 	prompt: string
 	timeout?: number // in minutes
 	settings?: any
+	recorder?: EventRecorder  // Optional recorder
+	expectedTools?: string[]  // For metrics calculation
 }
 
 export interface EvalResult {
@@ -38,7 +41,9 @@ export async function runEvalWithIpc(options: RunEvalOptions): Promise<EvalResul
 		workspacePath,
 		prompt,
 		timeout = 5, // 5 minutes default
-		settings = {}
+		settings = {},
+		recorder,
+		expectedTools = []
 	} = options
 
 	const ipcSocketPath = path.resolve(os.tmpdir(), `roopik-eval-${Date.now()}.sock`)
@@ -70,37 +75,28 @@ export async function runEvalWithIpc(options: RunEvalOptions): Promise<EvalResul
 		detached: process.platform !== 'win32',
 	})
 
-	// Don't unref - we want to track the process for cleanup
-	// roopikProcess.unref()
-
 	// Give Roopik time to start
 	console.log('⏳ Waiting for Roopik to start...')
 	await new Promise(resolve => setTimeout(resolve, 5000))
 
 	// Connect to IPC socket
-	let client: IpcClient | undefined
-	let attempts = 10
-
 	console.log('🔌 Connecting to IPC socket...')
-	while (attempts > 0) {
-		try {
-			client = new IpcClient(ipcSocketPath)
-			await pWaitFor(() => client!.isReady, { interval: 250, timeout: 2000 })
-			console.log('✅ Connected to IPC socket!')
-			break
-		} catch (error) {
-			client?.disconnect()
-			attempts--
-			if (attempts <= 0) {
-				throw new Error(`Failed to connect to IPC socket: ${ipcSocketPath}`)
-			}
-			console.log(`⏳ Retrying connection... (${attempts} attempts left)`)
-			await new Promise(resolve => setTimeout(resolve, 1000))
-		}
-	}
 
-	if (!client) {
-		throw new Error('Failed to create IPC client')
+	// Create client - this starts connection automatically
+	const client = new IpcClient(ipcSocketPath)
+
+	// Wait for connection
+	try {
+		await pWaitFor(() => client.isReady, {
+			interval: 500,
+			timeout: 30000 // 30 seconds wait for connection
+		})
+		console.log('✅ Connected to IPC socket!')
+	} catch (e) {
+		console.error('❌ Failed to connect to IPC socket')
+		console.log(`Debug: isConnected=${client.isConnected}, clientId=${client.clientId}`)
+		cleanup()
+		throw new Error('Failed to connect to IPC socket')
 	}
 
 	// Track task state
@@ -111,9 +107,16 @@ export async function runEvalWithIpc(options: RunEvalOptions): Promise<EvalResul
 	let isClientDisconnected = false
 
 	// Listen for task events
+	// Note: We access the internal emitter or use proper type casting if needed
+	// The IpcClient extends EventEmitter
 	client.on(IpcMessageType.TaskEvent, (taskEvent: TaskEvent) => {
 		const { eventName, payload } = taskEvent
 		events.push(taskEvent)
+
+		// Record event if recorder is provided
+		if (recorder) {
+			recorder.recordTaskEvent(taskEvent)
+		}
 
 		console.log(`📡 Event: ${eventName}`, payload)
 
@@ -125,18 +128,27 @@ export async function runEvalWithIpc(options: RunEvalOptions): Promise<EvalResul
 
 		if (eventName === RooCodeEventName.TaskCompleted) {
 			taskFinished = true
-			console.log(`✅ Task completed!`)
+			console.log('✅ Task completed!')
 		}
 
 		if (eventName === RooCodeEventName.TaskAborted) {
 			taskAborted = true
-			console.log(`❌ Task aborted!`)
+			console.log('❌ Task aborted!')
 		}
 	})
 
-	client.on(IpcMessageType.Disconnect, () => {
+	// Handle disconnection
+	// @ts-ignore - Check if Disconnect is the right enum
+	client.on(IpcMessageType.Disconnect || 'disconnect', () => {
+		console.log('[client#onDisconnect]')
 		console.log('🔌 IPC disconnected')
 		isClientDisconnected = true
+	})
+
+	// Handle connection
+	// @ts-ignore - Check if Connect is the right enum
+	client.on(IpcMessageType.Connect || 'connect', () => {
+		console.log('[client#onConnect]')
 	})
 
 	// Start the task
@@ -146,6 +158,7 @@ export async function runEvalWithIpc(options: RunEvalOptions): Promise<EvalResul
 		apiModelId: settings.apiModelId,
 		openRouterModelId: settings.openRouterModelId,
 	}, null, 2))
+
 	client.sendCommand({
 		commandName: TaskCommandName.StartNewTask,
 		data: {
@@ -154,61 +167,84 @@ export async function runEvalWithIpc(options: RunEvalOptions): Promise<EvalResul
 		},
 	})
 
-	// Wait for task completion
+	// Wait for task to start
+	try {
+		await pWaitFor(() => taskStarted || isClientDisconnected, {
+			interval: 100,
+			timeout: 60000, // 60 seconds
+		})
+	} catch (e) {
+		if (!taskStarted) {
+			console.error('❌ Task failed to start within timeout')
+			cleanup()
+			throw new Error('Task failed to start within timeout')
+		}
+	}
+
+	if (isClientDisconnected && !taskStarted) {
+		cleanup()
+		throw new Error('Client disconnected before task started')
+	}
+
+	// Wait for task to complete or timeout
 	const timeoutMs = timeout * 60 * 1000
 	try {
 		await pWaitFor(
 			() => taskFinished || taskAborted || isClientDisconnected,
-			{ interval: 1000, timeout: timeoutMs }
+			{
+				interval: 100,
+				timeout: timeoutMs,
+			}
 		)
 	} catch (error) {
-		console.log('⏱️  Task timeout reached')
-		if (taskId && !isClientDisconnected) {
-			console.log('🛑 Cancelling task...')
-			client.sendCommand({ commandName: TaskCommandName.CancelTask, data: taskId })
-			await new Promise(resolve => setTimeout(resolve, 2000))
+		console.log('⏰ Task timeout reached')
+		// Try to cancel the task
+		if (taskId) {
+			console.log('🔒 Closing task...')
+			client.sendCommand({
+				commandName: TaskCommandName.CloseTask,
+				data: { id: taskId },
+			})
 		}
 	}
 
-	// Close task
-	if (taskId && !isClientDisconnected) {
+	// Close task if still running
+	if (taskId && !taskFinished && !taskAborted) {
 		console.log('🔒 Closing task...')
-		client.sendCommand({ commandName: TaskCommandName.CloseTask, data: taskId })
-		await new Promise(resolve => setTimeout(resolve, 2000))
+		client.sendCommand({
+			commandName: TaskCommandName.CloseTask,
+			data: { id: taskId },
+		})
+		await new Promise(resolve => setTimeout(resolve, 1000))
 	}
 
-	// Disconnect
-	if (!isClientDisconnected) {
-		console.log('🔌 Disconnecting client...')
-		client.disconnect()
-	}
+	// Clean up function
+	function cleanup() {
+		if (client) {
+			client.disconnect()
+		}
 
-	// Kill Roopik process
-	console.log('🛑 Killing Roopik process...')
-	try {
-		if (process.platform === 'win32') {
-			// Windows: Use taskkill to force kill the process tree
-			const { execSync } = await import('child_process')
-			try {
-				execSync(`taskkill /pid ${roopikProcess.pid} /T /F`, { stdio: 'ignore' })
-			} catch (killError: any) {
-				// Process might already be dead - that's fine
-				if (!killError.message?.includes('not found') && killError.status !== 128) {
-					throw killError
+		// Kill Roopik process
+		console.log('🛑 Killing Roopik process...')
+		try {
+			if (process.platform === 'win32') {
+				// Windows: Use taskkill to force kill the process tree
+				const { execSync } = require('child_process')
+				try {
+					execSync(`taskkill /pid ${roopikProcess.pid} /T /F`, { stdio: 'ignore' })
+				} catch (killError: any) {
+					// Ignore errors
 				}
+			} else {
+				// Unix: Kill process group
+				process.kill(-roopikProcess.pid!, 'SIGTERM')
 			}
-		} else {
-			// Unix: Kill process group
-			process.kill(-roopikProcess.pid!, 'SIGTERM')
-		}
-		// Wait a bit for process to die
-		await new Promise(resolve => setTimeout(resolve, 500))
-	} catch (error: any) {
-		// ESRCH means process already dead - that's fine
-		if (error.code !== 'ESRCH' && error.errno !== -4058) {
-			console.log('⚠️  Process cleanup:', error.message)
+		} catch (error) {
+			// Ignore cleanup errors
 		}
 	}
+
+	cleanup()
 
 	const duration = Date.now() - startTime
 

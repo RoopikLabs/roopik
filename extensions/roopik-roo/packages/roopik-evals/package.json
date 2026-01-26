@@ -10,6 +10,7 @@
 		"test": "node --loader ts-node/esm src/index.ts",
 		"test:ipc": "dotenvx run -f .env -- tsx src/index-ipc.ts",
 		"test:canvas": "node --loader ts-node/esm src/index.ts --eval canvas-creation",
+		"report": "tsx src/cli/report.ts",
 		"clean": "rimraf dist"
 	},
 	"dependencies": {
