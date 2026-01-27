@@ -63,6 +63,8 @@ function generateSandboxHTML(bundledCode: string, componentId: string): string {
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Roopik Component Sandbox</title>
+	<!-- Tailwind CSS v4 Play CDN - enables Tailwind utility classes in all components -->
+	<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 	<style>
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body {
