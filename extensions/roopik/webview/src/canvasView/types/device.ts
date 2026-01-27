@@ -13,7 +13,7 @@
 /**
  * Available device presets
  */
-export type DevicePreset = 'auto' | 'desktop' | 'tablet' | 'mobile';
+export type DevicePreset = 'auto' | 'desktop' | 'tablet' | 'mobile' | 'mobile-landscape';
 
 /**
  * Configuration for each device preset
@@ -47,13 +47,18 @@ export const DEVICE_PRESETS: Record<DevicePreset, DevicePresetConfig> = {
 		width: 375,
 		height: 812,
 		label: 'Mobile'
+	},
+	'mobile-landscape': {
+		width: 812,
+		height: 375,
+		label: 'Mobile Landscape'
 	}
 };
 
 /**
  * Order of device presets for cycling through modes
  */
-export const DEVICE_PRESET_ORDER: DevicePreset[] = ['auto', 'desktop', 'tablet', 'mobile'];
+export const DEVICE_PRESET_ORDER: DevicePreset[] = ['auto', 'desktop', 'tablet', 'mobile', 'mobile-landscape'];
 
 /**
  * Get the next device preset in the cycle

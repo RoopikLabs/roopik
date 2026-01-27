@@ -17,7 +17,14 @@
 	border: 1px solid rgba(255, 255, 255, 0.2);
 	box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2),
 		inset 0 2px 0 rgba(255, 255, 255, 0.15), inset 0 -2px 0 rgba(255, 255, 255, 0.05);
-	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	/* Smooth transitions for size changes (device mode switching) and other properties */
+	transition:
+		width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+		height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+		border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+		box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+		opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+		filter 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 	cursor: pointer;
 	padding: 40px 120px;
 	box-sizing: content-box;
@@ -31,6 +38,7 @@
 		opacity: 0;
 		transform: scale(0.9) translateY(20px);
 	}
+
 	to {
 		opacity: 1;
 		transform: scale(1) translateY(0);
@@ -47,6 +55,7 @@
 		opacity: 1;
 		transform: scale(1) translateY(0);
 	}
+
 	to {
 		opacity: 0;
 		transform: scale(0.9) translateY(-20px);
@@ -74,14 +83,16 @@
 		inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -2px 0 rgba(255, 255, 255, 0.05);
 	/* Focused mode expands the sandbox - transition handles smooth animation */
 	/* The expanded dimensions are set dynamically via JS based on viewport */
-	z-index: 9999 !important; /* Ensure focused sandbox is always on top */
+	z-index: 9999 !important;
+	/* Ensure focused sandbox is always on top */
 }
 
 /* Pushed-away state: other sandboxes slide away when one is focused */
 .sandbox-card.pushed-away {
 	opacity: 0.3;
 	filter: blur(2px);
-	pointer-events: none; /* Prevent interaction with pushed-away sandboxes */
+	pointer-events: none;
+	/* Prevent interaction with pushed-away sandboxes */
 }
 
 .sandbox-card.dragging {
@@ -89,6 +100,10 @@
 	-webkit-backdrop-filter: none;
 	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 	cursor: grabbing;
+	transition: none;
+}
+
+.sandbox-card.dragging .webview-container {
 	transition: none;
 }
 
@@ -188,7 +203,8 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	overflow: visible; /* Allow scaled content to be visible */
+	overflow: visible;
+	/* Allow scaled content to be visible */
 }
 
 /* Container that holds the iframe - gets device dimensions + scale */
@@ -197,6 +213,11 @@
 	border-radius: 8px;
 	overflow: hidden;
 	background: #ffffff;
+	/* Smooth transitions for device mode switching */
+	transition:
+		width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+		height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+		transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Interaction overlay - click to activate component interaction */
@@ -208,12 +229,14 @@
 	bottom: 0;
 	z-index: 10;
 	cursor: pointer;
-	background: rgba(100, 100, 255, 0.03); /* Subtle hint */
+	background: rgba(100, 100, 255, 0.03);
+	/* Subtle hint */
 	transition: background 0.2s ease;
 }
 
 .sandbox-card:hover .interaction-overlay {
-	background: rgba(100, 100, 255, 0.06); /* Slightly more visible on hover */
+	background: rgba(100, 100, 255, 0.06);
+	/* Slightly more visible on hover */
 }
 
 /* When activated, overlay is removed (handled in JSX) */
@@ -263,9 +286,12 @@
 }
 
 @keyframes pulse-building {
-	0%, 100% {
+
+	0%,
+	100% {
 		opacity: 1;
 	}
+
 	50% {
 		opacity: 0.5;
 	}
@@ -279,12 +305,15 @@
 }
 
 @keyframes border-pulse {
-	0%, 100% {
+
+	0%,
+	100% {
 		border-color: rgba(59, 130, 246, 0.4);
 		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2),
 			inset 0 2px 0 rgba(255, 255, 255, 0.15), inset 0 -2px 0 rgba(255, 255, 255, 0.05),
 			0 0 20px rgba(59, 130, 246, 0.15);
 	}
+
 	50% {
 		border-color: rgba(59, 130, 246, 0.6);
 		box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2),
@@ -343,4 +372,3 @@
 .sandbox-card .unfocus-button svg {
 	flex-shrink: 0;
 }
-
