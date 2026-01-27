@@ -1725,7 +1725,9 @@ export class McpHub {
 			timeout = 60 * 1000
 		}
 
-		return await connection.client.request(
+		// Type assertion needed due to MCP SDK version mismatch - the SDK returns
+		// additional properties (annotations, _meta) that our local type doesn't include
+		return (await connection.client.request(
 			{
 				method: "tools/call",
 				params: {
@@ -1737,7 +1739,7 @@ export class McpHub {
 			{
 				timeout,
 			},
-		)
+		)) as McpToolCallResponse
 	}
 
 	/**

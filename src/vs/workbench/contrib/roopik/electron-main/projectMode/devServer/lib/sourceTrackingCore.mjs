@@ -34,6 +34,83 @@ export const MAX_PARENT_DEPTH = 3;
 export const ENABLE_PARENT_METADATA = false;
 
 // ============================================
+// React Three Fiber (R3F) Element Detection
+// ============================================
+
+/**
+ * React Three Fiber (R3F) and Three.js element names to skip.
+ * These are NOT DOM elements - they're Three.js objects that don't support data-* attributes.
+ */
+const R3F_ELEMENTS = new Set([
+	// Core R3F elements
+	'primitive', 'group',
+	// Mesh types
+	'mesh', 'instancedMesh', 'skinnedMesh', 'line', 'lineLoop', 'lineSegments', 'points', 'sprite',
+	// Geometries
+	'bufferGeometry', 'boxGeometry', 'capsuleGeometry', 'circleGeometry', 'coneGeometry',
+	'cylinderGeometry', 'dodecahedronGeometry', 'edgesGeometry', 'extrudeGeometry',
+	'icosahedronGeometry', 'latheGeometry', 'octahedronGeometry', 'planeGeometry',
+	'polyhedronGeometry', 'ringGeometry', 'shapeGeometry', 'sphereGeometry',
+	'tetrahedronGeometry', 'torusGeometry', 'torusKnotGeometry', 'tubeGeometry', 'wireframeGeometry',
+	// Materials
+	'material', 'meshBasicMaterial', 'meshStandardMaterial', 'meshPhysicalMaterial',
+	'meshLambertMaterial', 'meshPhongMaterial', 'meshToonMaterial', 'meshNormalMaterial',
+	'meshMatcapMaterial', 'meshDepthMaterial', 'meshDistanceMaterial',
+	'lineBasicMaterial', 'lineDashedMaterial', 'pointsMaterial', 'spriteMaterial',
+	'shaderMaterial', 'rawShaderMaterial', 'shadowMaterial',
+	// Lights
+	'ambientLight', 'directionalLight', 'hemisphereLight', 'pointLight',
+	'rectAreaLight', 'spotLight', 'lightProbe',
+	// Cameras
+	'perspectiveCamera', 'orthographicCamera', 'cubeCamera', 'arrayCamera',
+	// Helpers
+	'arrowHelper', 'axesHelper', 'box3Helper', 'boxHelper', 'cameraHelper',
+	'directionalLightHelper', 'gridHelper', 'planeHelper', 'pointLightHelper',
+	'polarGridHelper', 'skeletonHelper', 'spotLightHelper',
+	// Controls
+	'orbitControls', 'trackballControls', 'flyControls', 'firstPersonControls',
+	'pointerLockControls', 'transformControls', 'dragControls',
+	// Audio
+	'audio', 'positionalAudio', 'audioListener',
+	// Fog, Scene, etc.
+	'fog', 'fogExp2', 'scene', 'color', 'object3D', 'bone', 'skeleton',
+	// Textures
+	'texture', 'cubeTexture', 'videoTexture', 'canvasTexture', 'dataTexture'
+]);
+
+/**
+ * Check if an element name is a React Three Fiber / Three.js element
+ * @param {string} name - Element name
+ * @returns {boolean}
+ */
+export function isR3FElement(name) {
+	if (!name) return false;
+
+	// Check exact match (case-insensitive for R3F lowercase convention)
+	if (R3F_ELEMENTS.has(name) || R3F_ELEMENTS.has(name.toLowerCase())) {
+		return true;
+	}
+
+	// Check common R3F patterns
+	const r3fPatterns = [
+		/Geometry$/i,
+		/Material$/i,
+		/Light$/i,
+		/Camera$/i,
+		/Helper$/i,
+		/Controls$/i,
+		/^mesh/i,
+		/^line[A-Z]/i,
+		/^point/i,
+		/^buffer/i,
+		/^instanced/i,
+		/^skinned/i
+	];
+
+	return r3fPatterns.some(pattern => pattern.test(name));
+}
+
+// ============================================
 // Regex Patterns (Shared by all frameworks)
 // ============================================
 
@@ -383,6 +460,11 @@ export function parseElements(code, options) {
 
 			// Skip configured tags (case-insensitive)
 			if (skipTags.length > 0 && skipTags.includes(tagName.toLowerCase())) {
+				continue;
+			}
+
+			// Skip React Three Fiber / Three.js elements (they're not DOM elements)
+			if (isR3FElement(tagName)) {
 				continue;
 			}
 

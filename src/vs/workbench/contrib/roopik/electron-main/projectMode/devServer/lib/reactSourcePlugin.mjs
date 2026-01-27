@@ -21,7 +21,11 @@
  */
 
 import { join } from 'path';
-import { transformCode, MAX_PARENT_DEPTH, ENABLE_PARENT_METADATA } from './sourceTrackingCore.mjs';
+import { transformCode, MAX_PARENT_DEPTH, ENABLE_PARENT_METADATA, isR3FElement } from './sourceTrackingCore.mjs';
+
+// Note: isR3FElement is imported from sourceTrackingCore.mjs
+// It detects React Three Fiber / Three.js elements that should NOT receive data-roopik-* attributes
+// (they're not DOM elements, they're Three.js objects)
 
 /**
  * Create React source plugin for Vite
@@ -230,6 +234,12 @@ function createRoopikBabelPlugin(filename) {
 						currentElementName = `${name.object.name}.${name.property.name}`;
 					} else {
 						currentElementName = 'Unknown';
+					}
+
+					// SKIP React Three Fiber / Three.js elements
+					// These are not DOM elements and don't support data-* attributes
+					if (isR3FElement(currentElementName)) {
+						return;
 					}
 
 					const relPath = (state.filename || filename).replace(/\\/g, '/');
