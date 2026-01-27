@@ -71,7 +71,7 @@ export function TabletIcon({ size = 16, className }: IconProps) {
 }
 
 /**
- * Mobile/Phone icon
+ * Mobile/Phone icon (portrait)
  */
 export function MobileIcon({ size = 16, className }: IconProps) {
 	return (
@@ -89,6 +89,24 @@ export function MobileIcon({ size = 16, className }: IconProps) {
 }
 
 /**
+ * Mobile/Phone icon (landscape) - rotated phone
+ */
+export function MobileLandscapeIcon({ size = 16, className }: IconProps) {
+	return (
+		<svg
+			width={size}
+			height={size}
+			viewBox="0 0 16 16"
+			fill="none"
+			className={className}
+		>
+			<rect x="1" y="4" width="14" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+			<circle cx="13" cy="8" r="0.75" fill="currentColor" />
+		</svg>
+	);
+}
+
+/**
  * Get icon component for a device preset
  */
 export function getDeviceIcon(preset: DevicePreset): React.FC<IconProps> {
@@ -101,6 +119,8 @@ export function getDeviceIcon(preset: DevicePreset): React.FC<IconProps> {
 			return TabletIcon;
 		case 'mobile':
 			return MobileIcon;
+		case 'mobile-landscape':
+			return MobileLandscapeIcon;
 		default:
 			return AutoIcon;
 	}

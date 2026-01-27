@@ -1050,6 +1050,31 @@ function App() {
 		return () => clearTimeout(timer);
 	}, [sandboxCount, sandboxes, focusedSandboxId, fitAllSandboxes]);
 
+	// Helper to calculate focused sandbox dimensions based on device mode
+	const getFocusedDimensionsForSandbox = useCallback(
+		(sandbox: Sandbox) => {
+			const effectiveDeviceMode = sandbox.deviceMode ?? globalDeviceMode;
+			const preset = DEVICE_PRESETS[effectiveDeviceMode];
+			const isDeviceMode = preset.width !== 'auto';
+
+			if (isDeviceMode) {
+				// Device mode: use exact device dimensions
+				return {
+					width: preset.width as number,
+					height: preset.height as number,
+				};
+			} else {
+				// Auto mode: expand to fill viewport
+				return getFocusedSandboxDimensions(
+					window.innerWidth,
+					window.innerHeight,
+					DEFAULT_CONFIG
+				);
+			}
+		},
+		[globalDeviceMode]
+	);
+
 	// Focus on a single sandbox (double-click)
 	// When focused, sandbox expands dynamically to fill most of the viewport
 	// Double-click toggles: focus if not focused, unfocus if already focused
@@ -1070,17 +1095,13 @@ function App() {
 			setFocusedSandboxId(sandboxId);
 			setSelectedSandboxId(sandboxId);
 
-			const viewport = { width: window.innerWidth, height: window.innerHeight };
-			// Calculate dynamic focused dimensions based on viewport
-			const focusedDimensions = getFocusedSandboxDimensions(
-				viewport.width,
-				viewport.height,
-				DEFAULT_CONFIG
-			);
-			// Use expanded dimensions for focus transform calculation
+			const viewportSize = { width: window.innerWidth, height: window.innerHeight };
+			// Calculate focused dimensions based on device mode
+			const focusedDimensions = getFocusedDimensionsForSandbox(sandbox);
+			// Use appropriate dimensions for focus transform calculation
 			const newTransform = calculateFocusTransform(
 				sandbox,
-				viewport,
+				viewportSize,
 				DEFAULT_CONFIG,
 				{
 					sandboxWidth: focusedDimensions.width,
@@ -1089,8 +1110,29 @@ function App() {
 			);
 			setTransform(newTransform);
 		},
-		[focusedSandboxId, sandboxes, fitAllSandboxes]
+		[focusedSandboxId, sandboxes, fitAllSandboxes, getFocusedDimensionsForSandbox]
 	);
+
+	// Recenter focused sandbox when device mode changes
+	useEffect(() => {
+		if (!focusedSandboxId) return;
+
+		const sandbox = sandboxes.find((s) => s.id === focusedSandboxId);
+		if (!sandbox) return;
+
+		const viewportSize = { width: window.innerWidth, height: window.innerHeight };
+		const focusedDimensions = getFocusedDimensionsForSandbox(sandbox);
+		const newTransform = calculateFocusTransform(
+			sandbox,
+			viewportSize,
+			DEFAULT_CONFIG,
+			{
+				sandboxWidth: focusedDimensions.width,
+				sandboxHeight: focusedDimensions.height,
+			}
+		);
+		setTransform(newTransform);
+	}, [focusedSandboxId, sandboxes, globalDeviceMode, getFocusedDimensionsForSandbox]);
 
 	// Reorganize all sandboxes to grid
 	const reorganizeToGrid = useCallback(
