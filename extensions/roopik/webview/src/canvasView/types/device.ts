@@ -45,7 +45,7 @@ export const DEVICE_PRESETS: Record<DevicePreset, DevicePresetConfig> = {
 	},
 	mobile: {
 		width: 375,
-		height: 667,
+		height: 812,
 		label: 'Mobile'
 	}
 };
