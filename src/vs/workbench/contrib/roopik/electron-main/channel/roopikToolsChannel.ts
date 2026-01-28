@@ -28,6 +28,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { IServerChannel } from '../../../../../base/parts/ipc/common/ipc.js';
+import { resolve, normalize } from '../../../../../base/common/path.js';
 import type { BrowserViewService } from '../projectMode/browserViewService.js';
 import type { DevServerService } from '../projectMode/devServer/devServerService.js';
 import type { ComponentService } from '../component/componentService.js';
@@ -800,8 +801,20 @@ export class RoopikToolsChannel implements IServerChannel {
 	}
 
 	private async handleStartProject(args: { projectPath: string; port?: number }): Promise<RoopikToolResult> {
+		// Resolve relative paths against workspace
+		// AI agents may pass relative paths like "." or "./frontend"
+		let inputPath = args.projectPath;
+
+		// On non-Windows platforms, convert backslashes to forward slashes
+		if (process.platform !== 'win32') {
+			inputPath = inputPath.replace(/\\/g, '/');
+		}
+
+		const workspacePath = this.storageService.getWorkspacePath();
+		const resolvedPath = resolve(workspacePath, normalize(inputPath));
+
 		const url = await this.devServerService.startServer({
-			projectRoot: args.projectPath,
+			projectRoot: resolvedPath,
 			port: args.port
 		});
 
@@ -809,7 +822,7 @@ export class RoopikToolsChannel implements IServerChannel {
 			success: true,
 			data: {
 				url,
-				projectPath: args.projectPath,
+				projectPath: resolvedPath,
 				message: `Dev server started at ${url}. Browser is now showing the project.`
 			}
 		};

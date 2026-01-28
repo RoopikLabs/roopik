@@ -17,7 +17,7 @@
  *   node sync-from-upstream.cjs abc1234
  *
  *   # Sync a range of commits (from...to)
- *   node sync-from-upstream.cjs abc1234...def5678
+ *   node sync-from-upstream.cjs abc1234...def5678 --stage
  *
  *   # Sync last N commits from main branch
  *   node sync-from-upstream.cjs --last 5

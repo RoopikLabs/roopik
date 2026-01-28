@@ -258,6 +258,34 @@ export class ComponentService extends Disposable implements IComponentService {
 		this.ensureInitialized();
 
 		// ====================================================================
+		// PIPELINE STEP 0: Resolve Relative Paths
+		// ====================================================================
+		// AI agents may pass relative paths (e.g., "src/Button", "./components/Card")
+		// Resolve them against the workspace path before any validation.
+		// Supports: absolute paths, relative paths, mixed separators, ./ and ../
+		let inputPath = request.folderPath;
+
+		// On non-Windows platforms, convert backslashes to forward slashes
+		// because backslash is a valid filename character on Unix systems
+		// but AI agents often send Windows-style paths regardless of platform
+		if (process.platform !== 'win32') {
+			inputPath = inputPath.replace(/\\/g, '/');
+		}
+
+		// Normalize to handle ./.. segments and platform-specific separators
+		const normalizedPath = path.normalize(inputPath);
+
+		// Resolve: if relative, resolves against workspace; if absolute, returns as-is
+		const resolvedPath = path.resolve(this._workspacePath, normalizedPath);
+
+		this.logger.debug('Path resolution', {
+			input: request.folderPath,
+			workspace: this._workspacePath,
+			resolved: resolvedPath,
+			isAbsolute: path.isAbsolute(normalizedPath)
+		});
+
+		// ====================================================================
 		// PIPELINE STEP 1: Smart Path Parsing
 		// ====================================================================
 		// Handles both file paths and folder paths flexibly:
@@ -268,7 +296,7 @@ export class ComponentService extends Disposable implements IComponentService {
 		// - UI file picker (user selects a file)
 		// - AI agents passing folder paths
 		// - AI agents passing file paths (if they know the entry file)
-		let folderPath = request.folderPath;
+		let folderPath = resolvedPath;
 		let entryFile = request.entryFile;
 
 		// Check if folderPath actually contains a file (has extension)
