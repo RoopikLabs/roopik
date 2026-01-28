@@ -140,13 +140,19 @@ export function getClipModeScript(): string {
 		selectionBox.style.display = 'none';
 		dimensionsLabel.style.display = 'none';
 
-		// Send capture request
-		sendCaptureRequest(rect);
+		// Wait for browser to repaint before capturing screenshot
+		// Double requestAnimationFrame ensures the UI is fully hidden from screen
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				// Send capture request after UI is hidden
+				sendCaptureRequest(rect);
 
-		// Small delay before cleanup to ensure CDP message is sent
-		setTimeout(() => {
-			cleanup();
-		}, 50);
+				// Small delay before cleanup to ensure CDP message is sent
+				setTimeout(() => {
+					cleanup();
+				}, 50);
+			});
+		});
 	}
 
 	function handleClick(e) {
@@ -227,11 +233,16 @@ export function getClipModeScript(): string {
 				selectionBox.style.display = 'none';
 				dimensionsLabel.style.display = 'none';
 
-				sendCaptureRequest(rect);
+				// Wait for browser to repaint before capturing
+				requestAnimationFrame(() => {
+					requestAnimationFrame(() => {
+						sendCaptureRequest(rect);
 
-				setTimeout(() => {
-					cleanup();
-				}, 50);
+						setTimeout(() => {
+							cleanup();
+						}, 50);
+					});
+				});
 			}
 		}
 	}
