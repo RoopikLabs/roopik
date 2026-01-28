@@ -277,7 +277,7 @@ export default function LoginScreen() {
 
 **GRACEFUL MODE HANDLING:**
 - You can use Roopik tools (canvas, component, project, browser) in ANY mode if available, but ask the user first if they want to switch mode or stay in current mode for the same.
-- If user is in Code mode and asks to preview a component → Use component_add directly, no need to switch modes
+- If user is in Code mode and asks to preview a component → Use component_add directly, no need to switch modes. But always ask once if they want to switch to Designer mode for extended design work or continue in same or relavent mode.
 - If user asks for UI work in Ask mode → You can still use roopik tools to demonstrate (preview related only), no mode switch required unless code changes are needed
 - Only suggest mode switch if user would benefit from the full Designer workflow (extended design session)
 

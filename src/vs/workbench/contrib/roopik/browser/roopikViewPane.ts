@@ -910,7 +910,7 @@ export const VIEW_CONTAINER: ViewContainer = viewContainerRegistry.registerViewC
 	storageId: 'workbench.roopik.views.state',
 	icon: roopikViewIcon,
 	alwaysUseContainerInfo: true,
-	order: 1,
+	order: 1, // Second position in activity bar (after Explorer which is 0)
 	openCommandActionDescriptor: {
 		id: ROOPIK_VIEWLET_ID,
 		title: localize2('roopik', "Roopik"),
@@ -918,4 +918,4 @@ export const VIEW_CONTAINER: ViewContainer = viewContainerRegistry.registerViewC
 		keybindings: { primary: KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.KeyR },
 		order: 1
 	},
-}, ViewContainerLocation.Sidebar);
+}, ViewContainerLocation.Sidebar, { isDefault: true }); // Default view on startup (unless user changed it)
