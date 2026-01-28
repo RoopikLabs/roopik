@@ -79,6 +79,9 @@ jobs:
       - name: Rebuild native modules
         run: npm rebuild
 
+      - name: Generate DOM whitelist from MDN
+        run: node build/scripts/generateDOMWhitelist.mjs
+
       - name: Install roopik-roo extension dependencies
         working-directory: extensions/roopik-roo
         run: |

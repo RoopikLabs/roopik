@@ -19,9 +19,14 @@
  * - Component name tracking (data-roopik-component)
  * - String literal safety (skip tags inside strings/template literals)
  * - Configurable skip tags for HTML
+ * - DOM element whitelist (only injects into real DOM elements)
  */
 
 import { basename, extname } from 'path';
+import { isDOMElement, DOM_ELEMENTS } from './domElements.mjs';
+
+// Re-export for use by plugins
+export { isDOMElement, DOM_ELEMENTS };
 
 // ============================================
 // Configuration
@@ -32,6 +37,19 @@ export const MAX_PARENT_DEPTH = 3;
 
 /** Enable/disable parent metadata collection (DISABLED - using CSS selectors instead) */
 export const ENABLE_PARENT_METADATA = false;
+
+// ============================================
+// DOM Element Detection (Whitelist Approach)
+// ============================================
+
+// Note: isDOMElement is imported from domElements.mjs (auto-generated)
+// It uses a whitelist approach:
+// - INCLUDE: HTML, SVG, MathML elements from MDN BCD
+// - INCLUDE: Custom elements / Web Components (names with hyphens)
+// - SKIP: React components, R3F/Three.js, react-konva, react-pixi, etc.
+//
+// This is the inverse of the old blocklist approach - instead of listing
+// infinite unknown elements to skip, we list finite known DOM elements to include.
 
 // ============================================
 // Regex Patterns (Shared by all frameworks)
@@ -383,6 +401,12 @@ export function parseElements(code, options) {
 
 			// Skip configured tags (case-insensitive)
 			if (skipTags.length > 0 && skipTags.includes(tagName.toLowerCase())) {
+				continue;
+			}
+
+			// WHITELIST: Only inject into real DOM elements
+			// Skip React components, R3F/Three.js, react-konva, react-pixi, etc.
+			if (!isDOMElement(tagName)) {
 				continue;
 			}
 

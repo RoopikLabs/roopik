@@ -15,13 +15,14 @@ import type {
 	ShareVisibility,
 	QueuedMessage,
 	SerializedCustomToolDefinition,
+	ModelRecord,
+	RouterModels,
 } from "@roo-code/types"
 
-import { GitCommit } from "../utils/git"
+import type { GitCommit } from "../utils/git"
 
 import { McpServer } from "./mcp"
 import { Mode } from "./modes"
-import { ModelRecord, RouterModels } from "./api"
 
 // Command interface for frontend/backend communication
 export interface Command {
