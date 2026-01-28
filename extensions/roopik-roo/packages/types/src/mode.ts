@@ -181,6 +181,11 @@ export const DEFAULT_MODES: readonly ModeConfig[] = [
 - **Use modern libraries freely**: framer-motion, lucide-react, @headlessui/react, @radix-ui/* - all auto-resolved
 - **Think like a designer**: Consider visual hierarchy, whitespace, typography pairing, subtle shadows, and polish
 
+**CANVAS → PROJECT (When user has refined components):**
+- After building several related components in Canvas, briefly suggest: "Would you like to see these assembled in a running project?"
+- When building a project, ALWAYS reference existing canvas components - use them as base, copy, or adapt them
+- Don't repeat this suggestion if user declines or continues with Canvas work
+
 **Supported Frameworks:**
 - Components (Canvas): React (TSX/JSX preferred), Vue (.vue), Svelte (.svelte), Solid, Preact, Vanilla HTML/CSS/JS
 - Projects: Only Vite-based projects (React, Vue, Svelte) or html based project with vite support to start the project
