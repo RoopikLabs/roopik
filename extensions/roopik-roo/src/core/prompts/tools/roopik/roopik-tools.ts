@@ -1,8 +1,8 @@
 /**
- * Roopik IDE Tool Descriptions
+ * Roopik Tool Names and Types
  *
- * XML-style tool descriptions for LLM system prompts.
- * These tools integrate with Roopik IDE's browser preview, canvas, and component features.
+ * This file contains the Roopik tool name constants and type definitions
+ * used for tool validation and routing.
  *
  * Tool Categories:
  * - Browser (12): open, close, action, navigate, reload, screenshot, execute_script, inspect_element,
@@ -12,11 +12,23 @@
  * - Component (6): add, add_batch, remove, get_info, list, rebuild
  */
 
-import { ToolArgs } from "../types"
+// =============================================================================
+// DEPRECATED XML TOOL DESCRIPTIONS - COMMENTED OUT
+// =============================================================================
+// The XML-style tool descriptions below are no longer used.
+// Roo Code upstream removed XML tool support in favor of native JSON schema tools.
+// Native tool definitions are now in: src/core/prompts/tools/native-tools/roopik.ts
+//
+// The import from "../types" (ToolArgs) was also removed by upstream.
+// Keeping this code commented for reference during transition.
+// =============================================================================
 
-// ============================================================================
-// Browser Tool Descriptions
-// ============================================================================
+/*
+// DEPRECATED: XML tool description functions
+// These were used to generate XML-style tool descriptions for the LLM system prompt.
+// Now replaced by native tool definitions in native-tools/roopik.ts
+
+import { ToolArgs } from "../types"  // File deleted by Roo Code upstream
 
 export function getBrowserOpenDescription(): string {
 	return `## browser_open
@@ -213,10 +225,6 @@ Usage:
 </browser_get_cdp_info>`
 }
 
-// ============================================================================
-// Project Tool Descriptions
-// ============================================================================
-
 export function getProjectGetActiveDescription(): string {
 	return `## project_get_active
 Description: [Roopik IDE] Get information about the currently running project. Returns project path, URL, port, framework detection, and server state. Use this to understand the current context.
@@ -247,10 +255,6 @@ Usage:
 <project_stop>
 </project_stop>`
 }
-
-// ============================================================================
-// Canvas Tool Descriptions
-// ============================================================================
 
 export function getCanvasListDescription(): string {
 	return `## canvas_list
@@ -286,10 +290,6 @@ Usage:
 <name>Canvas name</name>
 </canvas_create>`
 }
-
-// ============================================================================
-// Component Tool Descriptions
-// ============================================================================
 
 export function getComponentAddDescription(): string {
 	return `## component_add
@@ -367,14 +367,6 @@ Usage:
 </component_rebuild>`
 }
 
-// ============================================================================
-// Combined Export
-// ============================================================================
-
-/**
- * Get all Roopik tool descriptions for the LLM system prompt.
- * Call this to include Roopik IDE tools in the agent's available tools.
- */
 export function getRoopikToolDescriptions(args: ToolArgs): string {
 	const descriptions = [
 		// Browser (12 tools)
@@ -448,6 +440,11 @@ These tools integrate with Roopik IDE's browser preview, canvas, and component f
 
 ${descriptions.join("\n\n")}`
 }
+*/
+
+// =============================================================================
+// ACTIVE EXPORTS - Used for tool validation and routing
+// =============================================================================
 
 /**
  * List of all Roopik tool names.

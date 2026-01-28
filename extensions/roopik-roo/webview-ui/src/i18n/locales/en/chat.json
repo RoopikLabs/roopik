@@ -493,5 +493,66 @@
 		"serversPart_other": "{{count}} MCP servers",
 		"messageTemplate": "You have {{tools}} enabled via {{servers}}. Such a high number can confuse the model and lead to errors. Try to keep it below {{threshold}}.",
 		"openMcpSettings": "Open MCP Settings"
+	},
+	"roopik": {
+		"browser": {
+			"wantsToOpen": "Dio wants to open the browser",
+			"didOpen": "Dio opened the browser",
+			"wantsToClose": "Dio wants to close the browser",
+			"didClose": "Dio closed the browser",
+			"wantsToInteract": "Dio wants to interact with the browser",
+			"didInteract": "Dio interacted with the browser",
+			"wantsToNavigate": "Dio wants to navigate the browser",
+			"didNavigate": "Dio navigated the browser",
+			"wantsToReload": "Dio wants to reload the page",
+			"didReload": "Dio reloaded the page",
+			"wantsToScreenshot": "Dio wants to take a screenshot",
+			"didScreenshot": "Dio took a screenshot",
+			"wantsToExecuteScript": "Dio wants to execute JavaScript",
+			"didExecuteScript": "Dio executed JavaScript",
+			"wantsToInspect": "Dio wants to inspect an element",
+			"didInspect": "Dio inspected an element",
+			"wantsToGetErrors": "Dio wants to get browser errors",
+			"didGetErrors": "Dio retrieved browser errors",
+			"wantsToGetLogs": "Dio wants to get console logs",
+			"didGetLogs": "Dio retrieved console logs",
+			"wantsToGetPerformance": "Dio wants to get performance metrics",
+			"didGetPerformance": "Dio retrieved performance metrics",
+			"wantsToGetCdpInfo": "Dio wants to get browser info",
+			"didGetCdpInfo": "Dio retrieved browser info"
+		},
+		"project": {
+			"wantsToGetActive": "Dio wants to get the active project",
+			"didGetActive": "Dio retrieved the active project",
+			"wantsToStart": "Dio wants to start the dev server",
+			"didStart": "Dio started the dev server",
+			"wantsToStop": "Dio wants to stop the dev server",
+			"didStop": "Dio stopped the dev server"
+		},
+		"canvas": {
+			"wantsToList": "Dio wants to list canvases",
+			"didList": "Dio listed canvases",
+			"wantsToGetActive": "Dio wants to get the active canvas",
+			"didGetActive": "Dio retrieved the active canvas",
+			"wantsToCreate": "Dio wants to create a canvas",
+			"didCreate": "Dio created a canvas"
+		},
+		"component": {
+			"wantsToAdd": "Dio wants to add a component to the canvas",
+			"didAdd": "Dio added a component to the canvas",
+			"wantsToAddBatch": "Dio wants to add multiple components",
+			"didAddBatch": "Dio added multiple components",
+			"wantsToRemove": "Dio wants to remove a component",
+			"didRemove": "Dio removed a component",
+			"wantsToGetInfo": "Dio wants to get component info",
+			"didGetInfo": "Dio retrieved component info",
+			"wantsToList": "Dio wants to list components",
+			"didList": "Dio listed components",
+			"wantsToRebuild": "Dio wants to rebuild a component",
+			"didRebuild": "Dio rebuilt a component"
+		}
+	},
+	"readCommandOutput": {
+		"title": "Dio read command output"
 	}
 }

@@ -791,6 +791,34 @@ export interface ClineSayTool {
 		| "imageGenerated"
 		| "runSlashCommand"
 		| "updateTodoList"
+		// Roopik IDE Tools - Browser (12)
+		| "browser_open"
+		| "browser_close"
+		| "browser_action_input"
+		| "browser_navigate"
+		| "browser_reload"
+		| "browser_screenshot"
+		| "browser_execute_script"
+		| "browser_inspect_element"
+		| "browser_get_errors"
+		| "browser_get_console_logs"
+		| "browser_get_performance"
+		| "browser_get_cdp_info"
+		// Roopik IDE Tools - Project (3)
+		| "project_get_active"
+		| "project_start"
+		| "project_stop"
+		// Roopik IDE Tools - Canvas (3)
+		| "canvas_list"
+		| "canvas_get_active"
+		| "canvas_create"
+		// Roopik IDE Tools - Component (6)
+		| "component_add"
+		| "component_add_batch"
+		| "component_remove"
+		| "component_get_info"
+		| "component_list"
+		| "component_rebuild"
 	path?: string
 	// For readCommandOutput
 	readStart?: number
@@ -837,6 +865,15 @@ export interface ClineSayTool {
 	args?: string
 	source?: string
 	description?: string
+	// Roopik IDE Tool properties
+	url?: string // browser_open, browser_navigate
+	selector?: string // browser_inspect_element
+	action?: string // browser_action_input
+	coordinate?: string // browser_action_input
+	componentId?: string // component_remove, component_get_info, component_list, component_rebuild
+	canvasId?: string // canvas tools, component_list
+	projectPath?: string // project_start
+	name?: string // canvas_create, component_add
 }
 
 // Must keep in sync with system prompt.

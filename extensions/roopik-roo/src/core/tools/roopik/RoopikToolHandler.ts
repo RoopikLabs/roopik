@@ -2,14 +2,14 @@
  * RoopikToolHandler
  *
  * Handles Roopik IDE tool calls from the LLM.
- * Dispatches XML-parsed parameters to RoopikToolClient and formats responses.
+ * Dispatches native tool parameters to RoopikToolClient and formats responses.
  *
  * Architecture:
- * LLM → XML Tool Call → RoopikToolHandler → RoopikToolClient → VSCode Commands → IPC → Core
+ * LLM → Native Tool Call → RoopikToolHandler → RoopikToolClient → VSCode Commands → IPC → Core
  */
 
 import { Task } from "../../task/Task"
-import type { ToolUse, ToolResponse, HandleError, PushToolResult, RemoveClosingTag, AskApproval } from "../../../shared/tools"
+import type { ToolUse, ToolResponse, HandleError, PushToolResult, AskApproval } from "../../../shared/tools"
 import { formatResponse } from "../../prompts/responses"
 import { roopikClient, RoopikToolResult } from "../../../services/roopik"
 import { isRoopikTool, type RoopikToolName } from "../../prompts/tools/roopik/roopik-tools"
@@ -22,7 +22,6 @@ interface ToolCallbacks {
 	askApproval: AskApproval
 	handleError: HandleError
 	pushToolResult: PushToolResult
-	removeClosingTag: RemoveClosingTag
 }
 
 /**
@@ -37,7 +36,7 @@ export async function handleRoopikTool(
 	block: ToolUse,
 	callbacks: ToolCallbacks
 ): Promise<void> {
-	const { askApproval, handleError, pushToolResult, removeClosingTag } = callbacks
+	const { askApproval, handleError, pushToolResult } = callbacks
 	const toolName = block.name as RoopikToolName
 
 	// Handle partial streaming (show pending state in UI)
@@ -174,53 +173,10 @@ export async function handleRoopikTool(
 async function handleRoopikToolPartial(
 	task: Task,
 	block: ToolUse,
-	callbacks: ToolCallbacks
+	_callbacks: ToolCallbacks
 ): Promise<void> {
-	const { removeClosingTag } = callbacks
 	const toolName = block.name
-
-	// Show tool in progress in UI
-	// For most Roopik tools, we just show that we're calling the tool
 	const params = block.params
-	let displayMessage = ""
-
-	switch (toolName) {
-		case "browser_open":
-			displayMessage = `Opening browser${params.url ? `: ${removeClosingTag("url", params.url)}` : "..."}`
-			break
-		case "browser_close":
-			displayMessage = `Closing browser...`
-			break
-		case "browser_action_input":
-			displayMessage = `Browser action: ${removeClosingTag("action", params.action)}${params.coordinate ? ` at ${removeClosingTag("coordinate", params.coordinate)}` : ""}`
-			break
-		case "browser_navigate":
-			displayMessage = `Navigating to: ${removeClosingTag("url", params.url)}`
-			break
-		case "browser_execute_script":
-			displayMessage = `Executing script...`
-			break
-		case "browser_inspect_element":
-			displayMessage = `Inspecting: ${removeClosingTag("selector", params.args || params.path)}`
-			break
-		case "browser_get_performance":
-			displayMessage = `Getting performance metrics...`
-			break
-		case "browser_get_cdp_info":
-			displayMessage = `Getting CDP info...`
-			break
-		case "project_start":
-			displayMessage = `Starting project: ${removeClosingTag("projectPath", params.path || params.args)}`
-			break
-		case "canvas_create":
-			displayMessage = `Creating canvas: ${removeClosingTag("name", params.args)}`
-			break
-		case "component_add":
-			displayMessage = `Adding component: ${removeClosingTag("folderPath", params.path || params.args)}`
-			break
-		default:
-			displayMessage = `Running ${toolName}...`
-	}
 
 	// Use task.ask to show the partial message (for approval UI)
 	await task.ask("tool", JSON.stringify({ tool: toolName, ...params }), block.partial).catch(() => { })

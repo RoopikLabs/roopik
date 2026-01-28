@@ -992,6 +992,339 @@ export const ChatRowContent = ({
 						)}
 					</>
 				)
+			// ============================================================================
+			// Roopik IDE Tools
+			// ============================================================================
+
+			// Browser Tools (12)
+			case "browser_open":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("globe")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToOpen")
+								: t("chat:roopik.browser.didOpen")}
+						</span>
+						{tool.url && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.url})
+							</span>
+						)}
+					</div>
+				)
+			case "browser_close":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("close")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToClose")
+								: t("chat:roopik.browser.didClose")}
+						</span>
+					</div>
+				)
+			case "browser_action_input":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("target")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToInteract")
+								: t("chat:roopik.browser.didInteract")}
+						</span>
+						{tool.action && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.action}
+								{tool.coordinate ? ` at ${tool.coordinate}` : ""}
+								{tool.text ? `: "${tool.text}"` : ""})
+							</span>
+						)}
+					</div>
+				)
+			case "browser_navigate":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("link-external")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToNavigate")
+								: t("chat:roopik.browser.didNavigate")}
+						</span>
+						{tool.url && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.url})
+							</span>
+						)}
+					</div>
+				)
+			case "browser_reload":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("refresh")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToReload")
+								: t("chat:roopik.browser.didReload")}
+						</span>
+					</div>
+				)
+			case "browser_screenshot":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("device-camera")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToScreenshot")
+								: t("chat:roopik.browser.didScreenshot")}
+						</span>
+					</div>
+				)
+			case "browser_execute_script":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("code")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToExecuteScript")
+								: t("chat:roopik.browser.didExecuteScript")}
+						</span>
+					</div>
+				)
+			case "browser_inspect_element":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("inspect")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToInspect")
+								: t("chat:roopik.browser.didInspect")}
+						</span>
+						{tool.selector && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.selector})
+							</span>
+						)}
+					</div>
+				)
+			case "browser_get_errors":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("error")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetErrors")
+								: t("chat:roopik.browser.didGetErrors")}
+						</span>
+					</div>
+				)
+			case "browser_get_console_logs":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("output")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetLogs")
+								: t("chat:roopik.browser.didGetLogs")}
+						</span>
+					</div>
+				)
+			case "browser_get_performance":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("dashboard")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetPerformance")
+								: t("chat:roopik.browser.didGetPerformance")}
+						</span>
+					</div>
+				)
+			case "browser_get_cdp_info":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("info")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetCdpInfo")
+								: t("chat:roopik.browser.didGetCdpInfo")}
+						</span>
+					</div>
+				)
+
+			// Project Tools (3)
+			case "project_get_active":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("folder-active")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.project.wantsToGetActive")
+								: t("chat:roopik.project.didGetActive")}
+						</span>
+					</div>
+				)
+			case "project_start":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("play")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.project.wantsToStart")
+								: t("chat:roopik.project.didStart")}
+						</span>
+						{tool.projectPath && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.projectPath})
+							</span>
+						)}
+					</div>
+				)
+			case "project_stop":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("debug-stop")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.project.wantsToStop")
+								: t("chat:roopik.project.didStop")}
+						</span>
+					</div>
+				)
+
+			// Canvas Tools (3)
+			case "canvas_list":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("list-flat")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.canvas.wantsToList")
+								: t("chat:roopik.canvas.didList")}
+						</span>
+					</div>
+				)
+			case "canvas_get_active":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("layout")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.canvas.wantsToGetActive")
+								: t("chat:roopik.canvas.didGetActive")}
+						</span>
+					</div>
+				)
+			case "canvas_create":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("add")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.canvas.wantsToCreate")
+								: t("chat:roopik.canvas.didCreate")}
+						</span>
+						{tool.name && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.name})
+							</span>
+						)}
+					</div>
+				)
+
+			// Component Tools (6)
+			case "component_add":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("extensions")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToAdd")
+								: t("chat:roopik.component.didAdd")}
+						</span>
+						{tool.name && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.name})
+							</span>
+						)}
+					</div>
+				)
+			case "component_add_batch":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("files")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToAddBatch")
+								: t("chat:roopik.component.didAddBatch")}
+						</span>
+					</div>
+				)
+			case "component_remove":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("trash")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToRemove")
+								: t("chat:roopik.component.didRemove")}
+						</span>
+						{tool.componentId && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.componentId})
+							</span>
+						)}
+					</div>
+				)
+			case "component_get_info":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("info")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToGetInfo")
+								: t("chat:roopik.component.didGetInfo")}
+						</span>
+						{tool.componentId && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.componentId})
+							</span>
+						)}
+					</div>
+				)
+			case "component_list":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("list-tree")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToList")
+								: t("chat:roopik.component.didList")}
+						</span>
+						{tool.canvasId && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.canvasId})
+							</span>
+						)}
+					</div>
+				)
+			case "component_rebuild":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("sync")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToRebuild")
+								: t("chat:roopik.component.didRebuild")}
+						</span>
+						{tool.componentId && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.componentId})
+							</span>
+						)}
+					</div>
+				)
+
 			default:
 				return null
 		}
