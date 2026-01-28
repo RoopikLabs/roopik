@@ -874,6 +874,7 @@ export interface ClineSayTool {
 	canvasId?: string // canvas tools, component_list
 	projectPath?: string // project_start
 	name?: string // canvas_create, component_add
+	text?: string // browser_action_input text input
 }
 
 // Must keep in sync with system prompt.

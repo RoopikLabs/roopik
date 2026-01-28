@@ -28,7 +28,8 @@
 		"openInCloud": "Open task in Code Cloud",
 		"openInCloudIntro": "Keep monitoring or interacting with Dio from anywhere. Scan, click or copy to open.",
 		"openApiHistory": "Open API History",
-		"openUiHistory": "Open UI History"
+		"openUiHistory": "Open UI History",
+		"backToParentTask": "Parent task"
 	},
 	"unpin": "Unpin",
 	"pin": "Pin",
@@ -51,13 +52,16 @@
 	"tokenProgress": {
 		"availableSpace": "Available space: {{amount}} tokens",
 		"tokensUsed": "Tokens used: {{used}} of {{total}}",
-		"reservedForResponse": "Reserved for model response: {{amount}} tokens"
+		"reservedForResponse": "Reserved for model response: {{amount}} tokens",
+		"tokensUsedLabel": "Tokens used",
+		"reservedForResponseLabel": "Reserved for response",
+		"availableSpaceLabel": "Available space"
 	},
 	"reject": {
 		"title": "Deny",
 		"tooltip": "Prevent this action from occurring"
 	},
-	"completeSubtaskAndReturn": "Complete Subtask and Return",
+	"completeSubtaskAndReturn": "Complete subtask and keep going",
 	"approve": {
 		"title": "Approve",
 		"tooltip": "Allow this action to happen"
@@ -279,12 +283,12 @@
 	},
 	"subtasks": {
 		"wantsToCreate": "Dio wants to create a new subtask in {{mode}} mode",
-		"wantsToFinish": "Dio wants to finish this subtask",
+		"wantsToFinish": "Dio wants to mark this as completed",
 		"newTaskContent": "Subtask Instructions",
-		"completionContent": "Subtask Completed",
-		"resultContent": "Subtask Results",
+		"resultContent": "Subtask completed",
 		"defaultResult": "Please continue to the next task.",
-		"completionInstructions": "Subtask completed! You can review the results and suggest any corrections or next steps. If everything looks good, confirm to return the result to the parent task."
+		"completionInstructions": "You can review the results and suggest any corrections or next steps. If everything looks good, confirm to return the result to the parent task.",
+		"goToSubtask": "View task"
 	},
 	"questions": {
 		"hasQuestion": "Dio has a question"
@@ -304,7 +308,7 @@
 		"copyToClipboard": "Copy basic error info",
 		"copied": "Copied!",
 		"diagnostics": "Get detailed error info",
-		"proxyProvider": "You seem to be using a proxy-based provider. Make sure to check its logs and to ensure it's not rewriting Roo's requests."
+		"proxyProvider": "You seem to be using a proxy-based provider. Make sure to check its logs and to ensure it's not rewriting Dio's requests."
 	},
 	"diffError": {
 		"title": "Edit Unsuccessful"
@@ -337,14 +341,12 @@
 			"feature": "<bold>Limited-time FREE stealth model</bold> - Code Supernova: Now upgraded with a <bold>1M token context window</bold>! A versatile agentic coding model that supports image inputs, accessible through Code Cloud.",
 			"note": "(Note: prompts and completions are logged by the model creator and used to improve the model)",
 			"connectButton": "Connect to Code Cloud",
-			"selectModel": "Select <code>Dio/code-supernova</code> from the Code Cloud provider in Settings to get started.",
+			"selectModel": "Select <code>roo/code-supernova</code> from the Code Cloud provider in Settings to get started.",
 			"goToSettingsButton": "Go to Settings"
 		},
 		"release": {
 			"heading": "What's New:",
-			"openaiCodexProvider": "Added OpenAI - ChatGPT Plus/Pro Provider that gives subscription-based access to Codex models without per-token costs.",
-			"gpt52codexModel": "Added the new gpt-5.2-codex model to Code Cloud Router, the standard OpenAI provider, and more.",
-			"bugFixes": "Fixed memory leaks causing gray screens, Gemini thought signature issues, and more stability improvements."
+			"smartCodeFolding": "Smart Code Folding: Context condensation now preserves a lightweight map of your files: function signatures, class declarations, and type definitions. This provides better continuity after condensing and smarter edits when referencing previous work."
 		},
 		"cloudAgents": {
 			"heading": "New in the Cloud:",
