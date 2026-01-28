@@ -21,6 +21,7 @@ import { IProjectStorageService } from '../common/projectStorage/index.js';
 import type { CanvasMeta } from '../common/canvas/types.js';
 import type { ProjectInfo } from '../common/storage/storageTypes.js';
 import { IViewsService } from '../../../services/views/common/viewsService.js';
+import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
 import './media/welcomeEditor.css';
 
 export class RoopikWelcomeEditor extends EditorPane {
@@ -56,7 +57,8 @@ export class RoopikWelcomeEditor extends EditorPane {
 		@IRoopikSettingsService private readonly settingsService: IRoopikSettingsService,
 		@ICanvasService private readonly canvasService: ICanvasService,
 		@IProjectStorageService private readonly projectStorageService: IProjectStorageService,
-		@IViewsService private readonly viewsService: IViewsService
+		@IViewsService private readonly viewsService: IViewsService,
+		@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService
 	) {
 		super(RoopikWelcomeEditor.ID, group, telemetryService, themeService, storageService);
 
@@ -83,6 +85,9 @@ export class RoopikWelcomeEditor extends EditorPane {
 		// This ensures the extension is activated and webview is mounted
 		// before the user tries to send their first message
 		setTimeout(() => {
+			// Show the auxiliary bar (right sidebar) first
+			this.layoutService.setPartHidden(false, Parts.AUXILIARYBAR_PART);
+			// Then open the chat panel view
 			this.viewsService.openView('roodio.ChatPanel', false).catch(() => {
 				// Agent not available - ignore silently
 			});

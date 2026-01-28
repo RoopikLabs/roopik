@@ -13,8 +13,47 @@
  * These tools let AI agents manage canvases and components for live preview.
  */
 
+import { resolve, normalize } from '../../../../../../base/common/path.js';
 import type { ICanvasService } from '../../../common/canvas/canvasService.js';
 import type { ComponentService } from '../../component/componentService.js';
+
+/**
+ * Resolve a path that may be relative or absolute.
+ * Handles various path formats from AI agents:
+ * - Absolute: C:\project\src, /home/user/project
+ * - Relative: src/Button, ./src/Button, ../other
+ * - Mixed separators: src\Button, ./src\Button
+ *
+ * Cross-platform: Works on Windows, Linux, and macOS.
+ * On non-Windows platforms, backslashes are converted to forward slashes
+ * since backslash is a valid filename character on Unix systems.
+ *
+ * @param inputPath - Path from AI agent (may be relative or absolute)
+ * @param workspacePath - The workspace root path
+ * @returns Absolute path
+ */
+function resolvePath(inputPath: string, workspacePath: string): string {
+	// On non-Windows platforms, convert backslashes to forward slashes
+	// because backslash is a valid filename character on Unix systems
+	// but AI agents often send Windows-style paths regardless of platform
+	let sanitizedInput = inputPath;
+	if (process.platform !== 'win32') {
+		sanitizedInput = inputPath.replace(/\\/g, '/');
+	}
+
+	// Normalize to handle ./.. segments and platform-specific separators
+	const normalizedInput = normalize(sanitizedInput);
+
+	// resolve handles both cases:
+	// - If normalizedInput is absolute, returns normalizedInput
+	// - If normalizedInput is relative, resolves it against workspacePath
+	const result = resolve(workspacePath, normalizedInput);
+
+	// Debug log to help troubleshoot path resolution issues
+	console.log(`[MCP] Path resolution: "${inputPath}" -> "${result}" (workspace: "${workspacePath}", platform: ${process.platform})`);
+
+	return result;
+}
 
 /**
  * Register all canvas and component MCP tools
@@ -227,10 +266,10 @@ export function registerCanvasTools(
 	// --------------------------------------------------------------
 	server.tool(
 		'component_add',
-		'[Roopik IDE] Add a component to the visual Canvas for live preview. The component will be bundled and displayed in the IDE canvas where users can see it rendered. Auto-detects entry file and framework from the folder.',
+		'[Roopik IDE] Add a component to the visual Canvas for live preview. The component will be bundled and displayed in the IDE canvas where users can see it rendered. Auto-detects entry file and framework from the folder. Supports both absolute and relative paths (relative to workspace).',
 		{
 			canvasId: z.string().optional().describe('Canvas ID to add component to (optional, uses active canvas if not provided)'),
-			folderPath: z.string().describe('Absolute path to component folder (e.g., C:\\project\\src\\Button) or file path (e.g., C:\\project\\src\\Button\\Button.tsx)'),
+			folderPath: z.string().describe('Path to component folder or file. Can be absolute (e.g., C:\\project\\src\\Button) or relative to workspace (e.g., src/Button or ./src/Button)'),
 			name: z.string().optional().describe('Component name (optional, auto-detected from folder/file if not provided)'),
 			entryFile: z.string().optional().describe('Entry file name relative to folder (optional, auto-detected if not provided)'),
 			framework: z.enum(['react', 'vue', 'svelte', 'solid', 'preact', 'html']).optional().describe('Framework type (optional, auto-detected if not provided)')
@@ -243,8 +282,26 @@ export function registerCanvasTools(
 			framework?: 'react' | 'vue' | 'svelte' | 'solid' | 'preact' | 'html';
 		}) => {
 			try {
+				// Resolve path (handles both absolute and relative paths)
+				const workspacePath = canvasService.getWorkspacePath();
+				if (!workspacePath) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'No workspace is open. Please open a folder/workspace first.',
+								folderPath
+							})
+						}],
+						isError: true
+					};
+				}
+				const resolvedPath = resolvePath(folderPath, workspacePath);
+
 				const component = await componentService.addComponent({
-					folderPath,
+					folderPath: resolvedPath,
 					canvasId,
 					componentName: name,
 					entryFile,
@@ -296,11 +353,11 @@ export function registerCanvasTools(
 	// --------------------------------------------------------------
 	server.tool(
 		'component_add_batch',
-		'[Roopik IDE] Batch add multiple components to the visual Canvas. Efficient for adding component variants or multiple components at once. All components will be bundled and displayed in the IDE canvas for live preview.',
+		'[Roopik IDE] Batch add multiple components to the visual Canvas. Efficient for adding component variants or multiple components at once. All components will be bundled and displayed in the IDE canvas for live preview. Supports both absolute and relative paths (relative to workspace).',
 		{
 			components: z.array(z.object({
 				canvasId: z.string().optional().describe('Canvas ID (optional, uses active canvas)'),
-				folderPath: z.string().describe('Absolute path to component folder or file'),
+				folderPath: z.string().describe('Path to component folder or file. Can be absolute or relative to workspace'),
 				name: z.string().optional().describe('Component name (optional, auto-detected)'),
 				entryFile: z.string().optional().describe('Entry file (optional, auto-detected)'),
 				framework: z.enum(['react', 'vue', 'svelte', 'solid', 'preact', 'html']).optional().describe('Framework (optional, auto-detected)')
@@ -316,8 +373,10 @@ export function registerCanvasTools(
 			}>;
 		}) => {
 			try {
+				// Resolve all paths (handles both absolute and relative paths)
+				const workspacePath = canvasService.getWorkspacePath();
 				const requests = components.map(c => ({
-					folderPath: c.folderPath,
+					folderPath: resolvePath(c.folderPath, workspacePath),
 					canvasId: c.canvasId,
 					componentName: c.name,
 					entryFile: c.entryFile,

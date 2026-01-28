@@ -122,6 +122,11 @@ export interface ICanvasService {
 	 */
 	clear(): Promise<void>;
 
+	/**
+	 * Get the workspace path (stored during initialization)
+	 */
+	getWorkspacePath(): string;
+
 	// ========================================================================
 	// Canvas CRUD
 	// ========================================================================
