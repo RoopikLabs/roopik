@@ -64,6 +64,13 @@ export class StyleInspect {
 	// Flag to prevent DOM invalidation during style fetching
 	private isFetchingStyles: boolean = false;
 
+	// Flag to control auto-opening of style panel when clicking elements in inspect mode
+	// When false, clicking an element will NOT auto-open the panel
+	private autoOpenEnabled: boolean = true;
+
+	// Callback for auto-open toggle state changes
+	private onAutoOpenToggleCallback: ((enabled: boolean) => void) | undefined;
+
 	// Callback for tree node selection (to highlight in browser)
 	private onTreeNodeSelectedCallback: ((nodeId: number) => void) | undefined;
 
@@ -124,6 +131,33 @@ export class StyleInspect {
 	}
 
 	/**
+	 * Set callback for when auto-open toggle state changes
+	 */
+	setOnAutoOpenToggle(callback: (enabled: boolean) => void): void {
+		this.onAutoOpenToggleCallback = callback;
+	}
+
+	/**
+	 * Check if auto-open is enabled
+	 * When false, clicking elements in inspect mode won't auto-open the panel
+	 */
+	isAutoOpenEnabled(): boolean {
+		return this.autoOpenEnabled;
+	}
+
+	/**
+	 * Toggle auto-open state
+	 * Called when user clicks the toggle button in the panel header
+	 */
+	toggleAutoOpen(): void {
+		this.autoOpenEnabled = !this.autoOpenEnabled;
+		// Update panel UI
+		this.panel?.setAutoOpenEnabled(this.autoOpenEnabled);
+		// Notify callback (for persistence or other uses)
+		this.onAutoOpenToggleCallback?.(this.autoOpenEnabled);
+	}
+
+	/**
 	 * Initialize the style panel in a container
 	 */
 	initialize(container: HTMLElement): void {
@@ -158,10 +192,16 @@ export class StyleInspect {
 			},
 			onApplyAll: () => {
 				this.onApplyAllCallback?.();
+			},
+			// Auto-open toggle callback
+			onAutoOpenToggle: () => {
+				this.toggleAutoOpen();
 			}
 		};
 
 		this.panel = new StyleInspectPanel(container, callbacks);
+		// Initialize panel with current auto-open state
+		this.panel.setAutoOpenEnabled(this.autoOpenEnabled);
 	}
 
 	/**

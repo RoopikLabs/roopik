@@ -48,6 +48,8 @@ export interface IStyleInspectPanelCallbacks {
 	onUndoAll?: () => void;
 	/** Called when user clicks Apply All */
 	onApplyAll?: () => void;
+	/** Called when user toggles auto-open mode (pin/unpin) */
+	onAutoOpenToggle?: () => void;
 }
 
 /**
@@ -126,6 +128,10 @@ export class StyleInspectPanel {
 
 	// Pending changes data for Changes tab
 	private pendingMoves: PendingMove[] = [];
+
+	// Auto-open toggle state and button
+	private autoOpenEnabled: boolean = true;
+	private autoOpenToggleBtn: HTMLButtonElement | null = null;
 
 	constructor(
 		private readonly parent: HTMLElement,
@@ -314,6 +320,51 @@ export class StyleInspectPanel {
 		title.textContent = 'Inspect';
 		header.appendChild(title);
 
+		// Right side container for buttons
+		const buttonsContainer = document.createElement('div');
+		buttonsContainer.style.cssText = `
+			display: flex;
+			align-items: center;
+			gap: 4px;
+		`;
+
+		// Auto-open toggle button (ON/OFF text toggle)
+		// When enabled (default): panel auto-opens on element click
+		// When disabled: panel stays closed on element click (unless already open)
+		this.autoOpenToggleBtn = document.createElement('button');
+		this.autoOpenToggleBtn.style.cssText = `
+			background: none;
+			border: 1px solid var(--vscode-input-border);
+			cursor: pointer;
+			padding: 2px 6px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			transition: all 0.15s;
+			border-radius: 3px;
+			font-size: 9px;
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+			min-width: 32px;
+		`;
+		this.updateAutoOpenButtonState();
+		this.autoOpenToggleBtn.addEventListener('mouseenter', () => {
+			if (this.autoOpenToggleBtn) {
+				this.autoOpenToggleBtn.style.borderColor = 'var(--vscode-focusBorder)';
+			}
+		});
+		this.autoOpenToggleBtn.addEventListener('mouseleave', () => {
+			if (this.autoOpenToggleBtn) {
+				this.autoOpenToggleBtn.style.borderColor = 'var(--vscode-input-border)';
+			}
+		});
+		this.autoOpenToggleBtn.addEventListener('click', () => {
+			this.callbacks.onAutoOpenToggle?.();
+		});
+		buttonsContainer.appendChild(this.autoOpenToggleBtn);
+
+		// Close button
 		const closeBtn = document.createElement('button');
 		closeBtn.style.cssText = `
 			background: none;
@@ -332,9 +383,42 @@ export class StyleInspectPanel {
 		closeBtn.addEventListener('mouseenter', () => { closeBtn.style.opacity = '1'; });
 		closeBtn.addEventListener('mouseleave', () => { closeBtn.style.opacity = '0.7'; });
 		closeBtn.addEventListener('click', () => this.hide());
-		header.appendChild(closeBtn);
+		buttonsContainer.appendChild(closeBtn);
+
+		header.appendChild(buttonsContainer);
 
 		return header;
+	}
+
+	/**
+	 * Update the auto-open toggle button visual state
+	 */
+	private updateAutoOpenButtonState(): void {
+		if (!this.autoOpenToggleBtn) {
+			return;
+		}
+
+		if (this.autoOpenEnabled) {
+			// Auto-open is ON
+			this.autoOpenToggleBtn.textContent = 'ON';
+			this.autoOpenToggleBtn.title = 'Auto-open ON - panel opens when clicking elements. Click to disable.';
+			this.autoOpenToggleBtn.style.background = 'var(--vscode-button-background)';
+			this.autoOpenToggleBtn.style.color = 'var(--vscode-button-foreground)';
+		} else {
+			// Auto-open is OFF
+			this.autoOpenToggleBtn.textContent = 'OFF';
+			this.autoOpenToggleBtn.title = 'Auto-open OFF - panel won\'t open when clicking elements (unless already open). Click to enable.';
+			this.autoOpenToggleBtn.style.background = 'transparent';
+			this.autoOpenToggleBtn.style.color = 'var(--vscode-descriptionForeground)';
+		}
+	}
+
+	/**
+	 * Set auto-open enabled state (called from styleInspect.ts)
+	 */
+	setAutoOpenEnabled(enabled: boolean): void {
+		this.autoOpenEnabled = enabled;
+		this.updateAutoOpenButtonState();
 	}
 
 	// ============================================

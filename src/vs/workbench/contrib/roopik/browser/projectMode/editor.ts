@@ -399,10 +399,10 @@ export class Editor extends EditorPane {
 	/**
 	 * Handle element selection from inspect mode
 	 * - Copy HTML to clipboard
-	 * - Open style panel with CSS info
+	 * - Open style panel with CSS info (if auto-open is enabled OR panel already open)
 	 */
 	private async handleElementSelected(message: import('../../common/projectMode/types.js').ElementSelectedMessage): Promise<void> {
-		// Copy HTML to clipboard
+		// Copy HTML to clipboard (always, regardless of auto-open setting)
 		if (message.html) {
 			try {
 				await this.clipboardService.writeText(message.html);
@@ -413,8 +413,17 @@ export class Editor extends EditorPane {
 
 		// Open style panel with element CSS info
 		if (this.browserViewId && message.selector) {
-			// Ensure style panel is initialized
-			if (this.contentContainer && !this.styleInspect.isPanelVisible()) {
+			const panelAlreadyVisible = this.styleInspect.isPanelVisible();
+
+			// If auto-open is disabled AND panel is not already open, skip opening
+			// But if panel is already open, always load the new element's styles
+			if (!this.styleInspect.isAutoOpenEnabled() && !panelAlreadyVisible) {
+				this.logger.info('[InspectMode] Auto-open disabled and panel closed, not opening');
+				return;
+			}
+
+			// Ensure style panel is initialized (only if not already visible)
+			if (this.contentContainer && !panelAlreadyVisible) {
 				this.styleInspect.initialize(this.contentContainer);
 			}
 
