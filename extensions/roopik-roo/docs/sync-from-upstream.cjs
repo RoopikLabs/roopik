@@ -37,10 +37,9 @@
  *   Why? The compare shows differences BETWEEN two commits, not changes SINCE a commit.
  *   If you synced up to B, and new commits are C,D,E...Z, use B..Z to get all changes after B.
  *
- *   Best Practice: Track your last sync
- *     echo "abc123" > .last-sync-commit
- *     # Later...
- *     LAST=$(cat .last-sync-commit)
+ *   Best Practice: The script auto-saves last synced commit to .last-roocode-sync-commit
+ *     # Use it for your next sync:
+ *     LAST=$(cat .last-roocode-sync-commit)
  *     node sync-from-upstream.cjs $LAST..HEAD --dry-run
  */
 
@@ -158,12 +157,9 @@ function httpsGet(url, options = {}) {
 async function getCommits(commitSpec) {
 	const { upstreamOwner, upstreamRepo, apiBase } = CONFIG;
 
-	// Normalize: accept both ".." and "..." syntax
-	const normalizedSpec = commitSpec.replace('...', '..');
-
 	// If it's a range (contains ..)
-	if (normalizedSpec.includes('..')) {
-		const [from, to] = normalizedSpec.split('..');
+	if (commitSpec.includes('..')) {
+		const [from, to] = commitSpec.split('..');
 		const url = `https://${apiBase}/repos/${upstreamOwner}/${upstreamRepo}/compare/${from}...${to}`;
 		const { data } = await httpsGet(url);
 		const json = JSON.parse(data);
@@ -400,6 +396,13 @@ async function syncFromUpstream(commitSpec, options = {}) {
 	log('\n' + '='.repeat(60));
 	log(`Sync complete: ${colors.green}${successCount} succeeded${colors.reset}, ${colors.red}${errorCount} failed${colors.reset}`);
 	log('='.repeat(60) + '\n');
+
+	// Save last synced commit
+	if (!stage && successCount > 0) {
+		const lastSyncFile = path.join(CONFIG.localRepoRoot, '.last-roocode-sync-commit');
+		fs.writeFileSync(lastSyncFile, latestCommit);
+		logInfo(`Saved last sync commit to .last-roocode-sync-commit: ${latestCommit.substring(0, 7)}`);
+	}
 }
 
 /**
