@@ -194,7 +194,13 @@ export interface IRoopikStorageService {
 	// ========================================================================
 
 	/**
-	 * Get workspace root path (.roopik/)
+	 * Get the actual workspace root path (where user's project lives)
+	 * Use this for resolving relative paths from AI agents
+	 */
+	getWorkspaceRootPath(): string;
+
+	/**
+	 * Get workspace storage path (.roopik/)
 	 */
 	getWorkspacePath(): string;
 

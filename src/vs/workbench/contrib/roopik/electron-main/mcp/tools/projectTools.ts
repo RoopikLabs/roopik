@@ -141,7 +141,8 @@ export function registerProjectTools(
 		async ({ projectPath, port }: { projectPath: string; port?: number }) => {
 			try {
 				// Resolve path (handles both absolute and relative paths)
-				const workspacePath = storageService.getWorkspacePath();
+				// Use getWorkspaceRootPath() - NOT getWorkspacePath() which returns .roopik/ folder
+				const workspacePath = storageService.getWorkspaceRootPath();
 				const resolvedPath = resolvePath(projectPath, workspacePath);
 
 				const url = await devServerService.startServer({

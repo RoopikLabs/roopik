@@ -810,7 +810,7 @@ export class RoopikToolsChannel implements IServerChannel {
 			inputPath = inputPath.replace(/\\/g, '/');
 		}
 
-		const workspacePath = this.storageService.getWorkspacePath();
+		const workspacePath = this.storageService.getWorkspaceRootPath();
 		const resolvedPath = resolve(workspacePath, normalize(inputPath));
 
 		const url = await this.devServerService.startServer({
