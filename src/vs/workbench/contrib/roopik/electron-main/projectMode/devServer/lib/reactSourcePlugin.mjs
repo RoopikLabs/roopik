@@ -21,11 +21,15 @@
  */
 
 import { join } from 'path';
-import { transformCode, MAX_PARENT_DEPTH, ENABLE_PARENT_METADATA, isR3FElement } from './sourceTrackingCore.mjs';
+import { transformCode, MAX_PARENT_DEPTH, ENABLE_PARENT_METADATA, isDOMElement } from './sourceTrackingCore.mjs';
 
-// Note: isR3FElement is imported from sourceTrackingCore.mjs
-// It detects React Three Fiber / Three.js elements that should NOT receive data-roopik-* attributes
-// (they're not DOM elements, they're Three.js objects)
+// Note: isDOMElement is imported from sourceTrackingCore.mjs (via domElements.mjs)
+// It uses a whitelist approach - only injects into real DOM elements:
+// - HTML elements (div, span, button, etc.)
+// - SVG elements (svg, path, circle, etc.)
+// - MathML elements (math, mfrac, etc.)
+// - Web Components / Custom Elements (names with hyphens like <my-component>)
+// This automatically SKIPS: React components, R3F, react-konva, react-pixi, etc.
 
 /**
  * Create React source plugin for Vite
@@ -236,9 +240,9 @@ function createRoopikBabelPlugin(filename) {
 						currentElementName = 'Unknown';
 					}
 
-					// SKIP React Three Fiber / Three.js elements
-					// These are not DOM elements and don't support data-* attributes
-					if (isR3FElement(currentElementName)) {
+					// WHITELIST: Only inject into real DOM elements
+					// Skip React components, R3F, react-konva, react-pixi, etc.
+					if (!isDOMElement(currentElementName)) {
 						return;
 					}
 
