@@ -5,7 +5,7 @@
 
 import './media/browser.css';
 import { localize } from '../../../../nls.js';
-import { $, addDisposableListener, Dimension, disposableWindowInterval, EventType, IDomPosition, isHTMLElement, registerExternalFocusChecker } from '../../../../base/browser/dom.js';
+import { $, addDisposableListener, Dimension, disposableWindowInterval, EventType, IDomPosition, registerExternalFocusChecker } from '../../../../base/browser/dom.js';
 import { renderIcon } from '../../../../base/browser/ui/iconLabel/iconLabels.js';
 import { CancellationToken, CancellationTokenSource } from '../../../../base/common/cancellation.js';
 import { RawContextKey, IContextKey, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
@@ -36,6 +36,7 @@ import { HoverPosition } from '../../../../base/browser/ui/hover/hoverWidget.js'
 import { MenuWorkbenchToolBar } from '../../../../platform/actions/browser/toolbar.js';
 import { IBrowserElementsService } from '../../../services/browserElements/browser/browserElementsService.js';
 import { IChatWidgetService } from '../../chat/browser/chat.js';
+import { ChatContextKeys } from '../../chat/common/actions/chatContextKeys.js';
 import { BrowserFindWidget, CONTEXT_BROWSER_FIND_WIDGET_FOCUSED, CONTEXT_BROWSER_FIND_WIDGET_VISIBLE } from './browserFindWidget.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
@@ -54,6 +55,12 @@ export const CONTEXT_BROWSER_ELEMENT_SELECTION_ACTIVE = new RawContextKey<boolea
 
 // Re-export find widget context keys for use in actions
 export { CONTEXT_BROWSER_FIND_WIDGET_FOCUSED, CONTEXT_BROWSER_FIND_WIDGET_VISIBLE };
+
+/**
+ * Get the original implementation of HTMLElement focus (without window auto-focusing)
+ * before it gets overridden by the workbench.
+ */
+const originalHtmlElementFocus = HTMLElement.prototype.focus;
 
 class BrowserNavigationBar extends Disposable {
 	private readonly _urlInput: HTMLInputElement;
@@ -334,7 +341,7 @@ export class BrowserEditor extends EditorPane {
 		this.setBackgroundImage(this._model.screenshot);
 
 		if (context.newInGroup) {
-			this._navigationBar.focusUrlInput();
+			this.focusUrlInput();
 		}
 
 		// Listen to model events for UI updates
@@ -359,9 +366,7 @@ export class BrowserEditor extends EditorPane {
 			// but focus is removed from the workbench.
 			if (focused) {
 				this._onDidFocus?.fire();
-				if (isHTMLElement(this.window.document.activeElement)) {
-					this.window.document.activeElement.blur();
-				}
+				this.ensureBrowserFocus();
 			}
 		}));
 
@@ -410,6 +415,13 @@ export class BrowserEditor extends EditorPane {
 		this.updateVisibility();
 	}
 
+	/**
+	 * Make the browser container the active element without moving focus from the browser view.
+	 */
+	private ensureBrowserFocus(): void {
+		originalHtmlElementFocus.call(this._browserContainer);
+	}
+
 	private updateVisibility(): void {
 		const hasUrl = !!this._model?.url;
 		const hasError = !!this._model?.error;
@@ -429,8 +441,16 @@ export class BrowserEditor extends EditorPane {
 		this._overlayPauseContainer.classList.toggle('visible', isPaused);
 
 		if (this._model) {
-			// Blur the background placeholder screenshot if the view is hidden due to an overlay.
-			void this._model.setVisible(this.shouldShowView);
+			const show = this.shouldShowView;
+			void this._model.setVisible(show);
+			if (
+				show &&
+				this._browserContainer.ownerDocument.hasFocus() &&
+				this._browserContainer.ownerDocument.activeElement === this._browserContainer
+			) {
+				// If the editor is focused, ensure the browser view also gets focus
+				void this._model.focus();
+			}
 		}
 	}
 
@@ -525,8 +545,13 @@ export class BrowserEditor extends EditorPane {
 				url = 'http://' + url;
 			}
 
+			this.ensureBrowserFocus();
 			await this._model.loadURL(url);
 		}
+	}
+
+	focusUrlInput(): void {
+		this._navigationBar.focusUrlInput();
 	}
 
 	async goBack(): Promise<void> {
@@ -543,6 +568,10 @@ export class BrowserEditor extends EditorPane {
 
 	async toggleDevTools(): Promise<void> {
 		return this._model?.toggleDevTools();
+	}
+
+	async clearStorage(): Promise<void> {
+		return this._model?.clearStorage();
 	}
 
 	/**
@@ -606,6 +635,9 @@ export class BrowserEditor extends EditorPane {
 			if (!resourceUri) {
 				throw new Error('No resource URI found');
 			}
+
+			// Make the browser the focused view
+			this.ensureBrowserFocus();
 
 			// Create a locator - for integrated browser, use the URI scheme to identify
 			// Browser view URIs have a special scheme we can match against
@@ -728,9 +760,12 @@ export class BrowserEditor extends EditorPane {
 		subtitle.textContent = localize('browser.welcomeSubtitle', "Enter a URL above to get started.");
 		content.appendChild(subtitle);
 
-		const tip = $('.browser-welcome-tip');
-		tip.textContent = localize('browser.welcomeTip', "Tip: Use the Add Element to Chat feature to reference UI elements when asking Copilot for changes.");
-		content.appendChild(tip);
+		const chatEnabled = this.contextKeyService.getContextKeyValue<boolean>(ChatContextKeys.enabled.key);
+		if (chatEnabled) {
+			const tip = $('.browser-welcome-tip');
+			tip.textContent = localize('browser.welcomeTip', "Tip: Use Add Element to Chat to reference UI elements in chat prompts.");
+			content.appendChild(tip);
+		}
 
 		container.appendChild(content);
 		return container;

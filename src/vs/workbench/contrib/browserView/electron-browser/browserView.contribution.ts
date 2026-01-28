@@ -29,8 +29,6 @@ import { Disposable } from '../../../../base/common/lifecycle.js';
 import { URI } from '../../../../base/common/uri.js';
 import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
 import { logBrowserOpen } from './browserViewTelemetry.js';
-import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
-import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 
 // Register actions
 import './browserViewActions.js';
@@ -101,28 +99,16 @@ class BrowserEditorResolverContribution implements IWorkbenchContribution {
 registerWorkbenchContribution2(BrowserEditorResolverContribution.ID, BrowserEditorResolverContribution, WorkbenchPhase.BlockStartup);
 
 /**
- * Opens localhost URLs in the Integrated Browser with notification prompt (like Cursor).
- * User can choose to:
- * - Open in Roopik Browser (default action)
- * - Don't Open (dismisses for this session)
- * - Don't Show Again (permanently disables prompts)
+ * Opens localhost URLs in the Integrated Browser when the setting is enabled.
  */
 class LocalhostLinkOpenerContribution extends Disposable implements IWorkbenchContribution, IOpener {
 	static readonly ID = 'workbench.contrib.localhostLinkOpener';
-
-	// Session-level dismissals (resets when IDE closes)
-	private _sessionDismissedHosts: Set<string> = new Set();
-
-	// Pending notifications (to prevent duplicates)
-	private _pendingNotifications: Set<string> = new Set();
 
 	constructor(
 		@IOpenerService openerService: IOpenerService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IEditorService private readonly editorService: IEditorService,
-		@ITelemetryService private readonly telemetryService: ITelemetryService,
-		@INotificationService private readonly notificationService: INotificationService,
-		@IStorageService private readonly storageService: IStorageService
+		@ITelemetryService private readonly telemetryService: ITelemetryService
 	) {
 		super();
 
@@ -130,12 +116,13 @@ class LocalhostLinkOpenerContribution extends Disposable implements IWorkbenchCo
 	}
 
 	async open(resource: URI | string, _options?: OpenInternalOptions | OpenExternalOptions): Promise<boolean> {
-		const url = typeof resource === 'string' ? resource : resource.toString(true);
+		if (!this.configurationService.getValue<boolean>('workbench.browser.openLocalhostLinks')) {
+			return false;
+		}
 
-		// Parse and validate localhost URL
-		let parsed: URL;
+		const url = typeof resource === 'string' ? resource : resource.toString(true);
 		try {
-			parsed = new URL(url);
+			const parsed = new URL(url);
 			if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
 				return false;
 			}
@@ -146,97 +133,6 @@ class LocalhostLinkOpenerContribution extends Disposable implements IWorkbenchCo
 			return false;
 		}
 
-		const host = parsed.host;
-
-		// Check if user has permanently disabled prompts
-		if (this._isDisabledPermanently()) {
-			return false; // Let system browser handle it
-		}
-
-		// Check if already set to always open
-		if (this._shouldAlwaysOpen()) {
-			return this._openInRoopikBrowser(url);
-		}
-
-		// Check if dismissed this session for this host
-		if (this._sessionDismissedHosts.has(host)) {
-			return false; // Let system browser handle it
-		}
-
-		// Check if there's already a pending notification for this host
-		if (this._pendingNotifications.has(host)) {
-			return true; // We're handling it, don't let others open it
-		}
-
-		// Show notification prompt (like Cursor)
-		return this._showNotificationPrompt(url, host);
-	}
-
-	private _isDisabledPermanently(): boolean {
-		return this.storageService.getBoolean('roopik.localhostBrowser.disabled', StorageScope.PROFILE, false);
-	}
-
-	private _shouldAlwaysOpen(): boolean {
-		return this.configurationService.getValue<boolean>('workbench.browser.openLocalhostLinks') === true;
-	}
-
-	private async _showNotificationPrompt(url: string, host: string): Promise<boolean> {
-		this._pendingNotifications.add(host);
-
-		return new Promise<boolean>((resolve) => {
-			const displayUrl = this._getDisplayUrl(url);
-
-			this.notificationService.prompt(
-				Severity.Info,
-				localize('localhostBrowser.prompt', "Opening {0} in Roopik Browser", displayUrl),
-				[
-					{
-						label: localize('localhostBrowser.open', "Open"),
-						run: () => {
-							this._pendingNotifications.delete(host);
-							this._openInRoopikBrowser(url).then(() => resolve(true));
-						}
-					},
-					{
-						label: localize('localhostBrowser.dontOpen', "Don't Open"),
-						run: () => {
-							this._pendingNotifications.delete(host);
-							this._sessionDismissedHosts.add(host);
-							resolve(false); // Let system browser handle it
-						}
-					},
-					{
-						label: localize('localhostBrowser.dontShowAgain', "Don't Show Again"),
-						run: () => {
-							this._pendingNotifications.delete(host);
-							this.storageService.store('roopik.localhostBrowser.disabled', true, StorageScope.PROFILE, StorageTarget.USER);
-							resolve(false); // Let system browser handle it
-						}
-					}
-				],
-				{
-					sticky: false,
-					onCancel: () => {
-						this._pendingNotifications.delete(host);
-						this._sessionDismissedHosts.add(host);
-						resolve(false); // Let system browser handle it on close
-					}
-				}
-			);
-		});
-	}
-
-	private _getDisplayUrl(url: string): string {
-		try {
-			const parsed = new URL(url);
-			const display = `${parsed.protocol}//${parsed.host}${parsed.pathname !== '/' ? parsed.pathname : ''}`;
-			return display.length > 50 ? display.substring(0, 47) + '...' : display;
-		} catch {
-			return url.length > 50 ? url.substring(0, 47) + '...' : url;
-		}
-	}
-
-	private async _openInRoopikBrowser(url: string): Promise<boolean> {
 		logBrowserOpen(this.telemetryService, 'localhostLinkOpener');
 
 		const browserUri = BrowserViewUri.forUrl(url);
@@ -269,7 +165,7 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 			],
 			markdownEnumDescriptions: [
 				localize({ comment: ['This is the description for a setting. Values surrounded by single quotes are not to be translated.'], key: 'browser.dataStorage.global' }, 'All browser views share a single persistent session across all workspaces.'),
-				localize({ comment: ['This is the description for a setting. Values surrounded by single quotes are not to be translated.'], key: 'browser.dataStorage.workspace' }, 'Browser views within the same workspace share a persistent session.'),
+				localize({ comment: ['This is the description for a setting. Values surrounded by single quotes are not to be translated.'], key: 'browser.dataStorage.workspace' }, 'Browser views within the same workspace share a persistent session. If no workspace is opened, `ephemeral` storage is used.'),
 				localize({ comment: ['This is the description for a setting. Values surrounded by single quotes are not to be translated.'], key: 'browser.dataStorage.ephemeral' }, 'Each browser view has its own session that is cleaned up when closed.')
 			],
 			restricted: true,

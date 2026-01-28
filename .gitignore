@@ -6,6 +6,7 @@ node_modules/
 .build/
 .vscode/extensions/**/out/
 extensions/**/dist/
+src/vs/base/browser/ui/codicons/codicon/codicon.ttf
 /out*/
 /extensions/**/out/
 build/node_modules
@@ -34,6 +35,6 @@ test-output.json
 .github/CODENOTIFY
 .github/commands/
 .github/commands.json
+/extensions/roopik-roo
 /docs
-/extensions/roopik-roo/apps
-/extensions/roopik-roo/packages
+/docs

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import './media/agenttitlebarstatuswidget.css';
-import { $, addDisposableListener, EventType, reset } from '../../../../../../base/browser/dom.js';
+import { $, addDisposableListener, EventType, getWindow, isHTMLElement, reset } from '../../../../../../base/browser/dom.js';
 import { renderIcon } from '../../../../../../base/browser/ui/iconLabel/iconLabels.js';
 import { Disposable, DisposableStore } from '../../../../../../base/common/lifecycle.js';
 import { Codicon } from '../../../../../../base/common/codicons.js';
@@ -45,6 +45,7 @@ import { mainWindow } from '../../../../../../base/browser/window.js';
 import { LayoutSettings } from '../../../../../services/layout/browser/layoutService.js';
 import { ChatConfiguration } from '../../../common/constants.js';
 import { ChatEntitlement, IChatEntitlementService } from '../../../../../services/chat/common/chatEntitlementService.js';
+import { IChatWidgetService } from '../../chat.js';
 
 // Action IDs
 const TOGGLE_CHAT_ACTION_ID = 'workbench.action.chat.toggle';
@@ -83,6 +84,9 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 	/** Guard to prevent re-entrant rendering */
 	private _isRendering = false;
 
+	/** First focusable element for keyboard navigation */
+	private _firstFocusableElement: HTMLElement | undefined;
+
 	/** Reusable menu for CommandCenterCenter items (e.g., debug toolbar) */
 	private readonly _commandCenterMenu;
 
@@ -108,6 +112,7 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 		@IStorageService private readonly storageService: IStorageService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IChatEntitlementService private readonly chatEntitlementService: IChatEntitlementService,
+		@IChatWidgetService private readonly chatWidgetService: IChatWidgetService,
 	) {
 		super(undefined, action, options);
 
@@ -156,7 +161,7 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 
 		// Re-render when settings change
 		this._register(this.configurationService.onDidChangeConfiguration(e => {
-			if (e.affectsConfiguration(ChatConfiguration.UnifiedAgentsBar) || e.affectsConfiguration(ChatConfiguration.AgentStatusEnabled)) {
+			if (e.affectsConfiguration(ChatConfiguration.UnifiedAgentsBar) || e.affectsConfiguration(ChatConfiguration.AgentStatusEnabled) || e.affectsConfiguration(ChatConfiguration.ChatViewSessionsEnabled)) {
 				this._lastRenderState = undefined; // Force re-render
 				this._render();
 			}
@@ -172,15 +177,47 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 			this._lastRenderState = undefined; // Force re-render
 			this._render();
 		}));
+
+		// Re-render when chat widgets are added or backgrounded to update active/unread session counts
+		this._register(this.chatWidgetService.onDidAddWidget(() => {
+			this._render();
+		}));
+
+		this._register(this.chatWidgetService.onDidBackgroundSession(() => {
+			this._render();
+		}));
 	}
 
 	override render(container: HTMLElement): void {
 		super.render(container);
 		this._container = container;
 		container.classList.add('agent-status-container');
+		// Container should not be focusable - inner elements handle focus
+		container.tabIndex = -1;
 
 		// Initial render
 		this._render();
+	}
+
+	// Override focus methods - the container itself shouldn't be focusable,
+	// focus is handled by the inner interactive elements (badge sections)
+	override setFocusable(_focusable: boolean): void {
+		// Don't set focusable on the container
+	}
+
+	override focus(): void {
+		// Focus the first focusable child instead
+		this._firstFocusableElement?.focus();
+	}
+
+	override blur(): void {
+		if (!this._container) {
+			return;
+		}
+		const activeElement = getWindow(this._container).document.activeElement;
+		if (isHTMLElement(activeElement) && this._container.contains(activeElement)) {
+			activeElement.blur();
+		}
 	}
 
 	private _render(): void {
@@ -222,6 +259,7 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 			// Check which settings are enabled (these are independent settings)
 			const unifiedAgentsBarEnabled = this.configurationService.getValue<boolean>(ChatConfiguration.UnifiedAgentsBar) === true;
 			const agentStatusEnabled = this.configurationService.getValue<boolean>(ChatConfiguration.AgentStatusEnabled) === true;
+			const viewSessionsEnabled = this.configurationService.getValue<boolean>(ChatConfiguration.ChatViewSessionsEnabled) !== false;
 
 			// Build state key for comparison
 			const stateKey = JSON.stringify({
@@ -236,6 +274,7 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 				isFilteredToInProgress,
 				unifiedAgentsBarEnabled,
 				agentStatusEnabled,
+				viewSessionsEnabled,
 			});
 
 			// Skip re-render if state hasn't changed
@@ -247,8 +286,9 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 			// Clear existing content
 			reset(this._container);
 
-			// Clear previous disposables for dynamic content
+			// Clear previous disposables and focusable element for dynamic content
 			this._dynamicDisposables.clear();
+			this._firstFocusableElement = undefined;
 
 			if (this.agentTitleBarStatusService.mode === AgentStatusMode.Session) {
 				// Agent Session Projection mode - show session title + close button
@@ -294,10 +334,11 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 			? sessions.filter(s => !excludedProviders.includes(s.providerType))
 			: sessions;
 
-		const activeSessions = filteredSessions.filter(s => isSessionInProgressStatus(s.status) && !s.isArchived());
-		const unreadSessions = filteredSessions.filter(s => !s.isRead());
-		// Sessions that need user attention (approval/confirmation/input)
-		const attentionNeededSessions = filteredSessions.filter(s => s.status === AgentSessionStatus.NeedsInput);
+		// Active sessions include both InProgress and NeedsInput
+		const activeSessions = filteredSessions.filter(s => isSessionInProgressStatus(s.status) && !s.isArchived() && !this.chatWidgetService.getWidgetBySessionResource(s.resource));
+		const unreadSessions = filteredSessions.filter(s => !s.isRead() && !this.chatWidgetService.getWidgetBySessionResource(s.resource));
+		// Sessions that need user input/attention (subset of active)
+		const attentionNeededSessions = filteredSessions.filter(s => s.status === AgentSessionStatus.NeedsInput && !this.chatWidgetService.getWidgetBySessionResource(s.resource));
 
 		return {
 			activeSessions,
@@ -331,6 +372,7 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 		pill.setAttribute('role', 'button');
 		pill.setAttribute('aria-label', localize('openQuickAccess', "Open Quick Access"));
 		pill.tabIndex = 0;
+		this._firstFocusableElement = pill;
 		this._container.appendChild(pill);
 
 		// Left icon container (sparkle by default, report+count when attention needed, search on hover)
@@ -419,7 +461,7 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 
 		// Status badge (separate rectangle on right) - only when Agent Status is enabled
 		if (this.configurationService.getValue<boolean>(ChatConfiguration.AgentStatusEnabled) === true) {
-			this._renderStatusBadge(disposables, activeSessions, unreadSessions);
+			this._renderStatusBadge(disposables, activeSessions, unreadSessions, attentionNeededSessions);
 		}
 	}
 
@@ -428,7 +470,7 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 			return;
 		}
 
-		const { activeSessions, unreadSessions } = this._getSessionStats();
+		const { activeSessions, unreadSessions, attentionNeededSessions } = this._getSessionStats();
 
 		// Render command center items (like debug toolbar) FIRST - to the left
 		this._renderCommandCenterToolbar(disposables);
@@ -466,7 +508,7 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 
 		// Status badge (separate rectangle on right) - only when Agent Status is enabled
 		if (this.configurationService.getValue<boolean>(ChatConfiguration.AgentStatusEnabled) === true) {
-			this._renderStatusBadge(disposables, activeSessions, unreadSessions);
+			this._renderStatusBadge(disposables, activeSessions, unreadSessions, attentionNeededSessions);
 		}
 	}
 
@@ -479,7 +521,7 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 			return;
 		}
 
-		const { activeSessions, unreadSessions } = this._getSessionStats();
+		const { activeSessions, unreadSessions, attentionNeededSessions } = this._getSessionStats();
 
 		const pill = $('div.agent-status-pill.session-ready-mode');
 		this._container.appendChild(pill);
@@ -517,7 +559,7 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 
 		// Status badge (separate rectangle on right) - only when Agent Status is enabled
 		if (this.configurationService.getValue<boolean>(ChatConfiguration.AgentStatusEnabled) === true) {
-			this._renderStatusBadge(disposables, activeSessions, unreadSessions);
+			this._renderStatusBadge(disposables, activeSessions, unreadSessions, attentionNeededSessions);
 		}
 	}
 
@@ -530,10 +572,10 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 			return;
 		}
 
-		const { activeSessions, unreadSessions } = this._getSessionStats();
+		const { activeSessions, unreadSessions, attentionNeededSessions } = this._getSessionStats();
 
 		// Status badge only - no pill, no command center toolbar
-		this._renderStatusBadge(disposables, activeSessions, unreadSessions);
+		this._renderStatusBadge(disposables, activeSessions, unreadSessions, attentionNeededSessions);
 	}
 
 	// #endregion
@@ -607,6 +649,9 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 		searchButton.setAttribute('role', 'button');
 		searchButton.setAttribute('aria-label', localize('openQuickOpen', "Open Quick Open"));
 		searchButton.tabIndex = 0;
+		if (!this._firstFocusableElement) {
+			this._firstFocusableElement = searchButton;
+		}
 		container.appendChild(searchButton);
 
 		// Setup hover
@@ -635,17 +680,18 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 	}
 
 	/**
-	 * Render the status badge showing in-progress and/or unread session counts.
-	 * Shows split UI with sparkle icon on left, then unread and active indicators.
+	 * Render the status badge showing in-progress, needs-input, and/or unread session counts.
+	 * Shows split UI with sparkle icon on left, then unread, needs-input, and active indicators.
 	 * Always renders the sparkle icon section.
 	 */
-	private _renderStatusBadge(disposables: DisposableStore, activeSessions: IAgentSession[], unreadSessions: IAgentSession[]): void {
+	private _renderStatusBadge(disposables: DisposableStore, activeSessions: IAgentSession[], unreadSessions: IAgentSession[], attentionNeededSessions: IAgentSession[]): void {
 		if (!this._container) {
 			return;
 		}
 
 		const hasActiveSessions = activeSessions.length > 0;
 		const hasUnreadSessions = unreadSessions.length > 0;
+		const hasAttentionNeeded = attentionNeededSessions.length > 0;
 
 		// Auto-clear filter if the filtered category becomes empty
 		this._clearFilterIfCategoryEmpty(hasUnreadSessions, hasActiveSessions);
@@ -655,6 +701,10 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 
 		// Sparkle dropdown button section (always visible on left) - proper button with dropdown menu
 		const sparkleContainer = $('span.agent-status-badge-section.sparkle');
+		sparkleContainer.tabIndex = 0;
+		if (!this._firstFocusableElement) {
+			this._firstFocusableElement = sparkleContainer;
+		}
 		badge.appendChild(sparkleContainer);
 
 		// Get menu actions for dropdown with proper group separators
@@ -711,11 +761,28 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 		sparkleDropdown.render(sparkleContainer);
 		disposables.add(sparkleDropdown);
 
+		// Add keyboard handler for Enter/Space on the sparkle container
+		disposables.add(addDisposableListener(sparkleContainer, EventType.KEY_DOWN, (e) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				e.stopPropagation();
+				this.commandService.executeCommand(primaryActionId);
+			} else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+				// Open dropdown menu with arrow keys
+				e.preventDefault();
+				e.stopPropagation();
+				sparkleDropdown.showDropdown();
+			}
+		}));
+
 		// Hover delegate for status sections
 		const hoverDelegate = getDefaultHoverDelegate('mouse');
 
+		// Only show status indicators if chat.viewSessions.enabled is true
+		const viewSessionsEnabled = this.configurationService.getValue<boolean>(ChatConfiguration.ChatViewSessionsEnabled) !== false;
+
 		// Unread section (blue dot + count)
-		if (hasUnreadSessions) {
+		if (viewSessionsEnabled && hasUnreadSessions) {
 			const { isFilteredToUnread } = this._getCurrentFilterState();
 			const unreadSection = $('span.agent-status-badge-section.unread');
 			if (isFilteredToUnread) {
@@ -752,21 +819,27 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 			disposables.add(this.hoverService.setupManagedHover(hoverDelegate, unreadSection, unreadTooltip));
 		}
 
-		// In-progress section (session-in-progress icon + count)
-		if (hasActiveSessions) {
+		// In-progress/Needs-input section - shows "needs input" state when any session needs attention,
+		// otherwise shows "in progress" state. This is a single section that transforms based on state.
+		if (viewSessionsEnabled && hasActiveSessions) {
 			const { isFilteredToInProgress } = this._getCurrentFilterState();
 			const activeSection = $('span.agent-status-badge-section.active');
+			if (hasAttentionNeeded) {
+				activeSection.classList.add('needs-input');
+			}
 			if (isFilteredToInProgress) {
 				activeSection.classList.add('filtered');
 			}
 			activeSection.setAttribute('role', 'button');
 			activeSection.tabIndex = 0;
-			const runningIcon = $('span.agent-status-icon');
-			reset(runningIcon, renderIcon(Codicon.sessionInProgress));
-			activeSection.appendChild(runningIcon);
-			const runningCount = $('span.agent-status-text');
-			runningCount.textContent = String(activeSessions.length);
-			activeSection.appendChild(runningCount);
+			const statusIcon = $('span.agent-status-icon');
+			// Show report icon when needs input, otherwise session-in-progress icon
+			reset(statusIcon, renderIcon(hasAttentionNeeded ? Codicon.report : Codicon.sessionInProgress));
+			activeSection.appendChild(statusIcon);
+			const statusCount = $('span.agent-status-text');
+			// Show needs-input count when attention needed, otherwise total active count
+			statusCount.textContent = String(hasAttentionNeeded ? attentionNeededSessions.length : activeSessions.length);
+			activeSection.appendChild(statusCount);
 			badge.appendChild(activeSection);
 
 			// Click handler - filter to in-progress sessions
@@ -783,10 +856,14 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 				}
 			}));
 
-			// Hover tooltip for active section
-			const activeTooltip = activeSessions.length === 1
-				? localize('activeSessionsTooltip1', "{0} session in progress", activeSessions.length)
-				: localize('activeSessionsTooltip', "{0} sessions in progress", activeSessions.length);
+			// Hover tooltip - different message based on state
+			const activeTooltip = hasAttentionNeeded
+				? (attentionNeededSessions.length === 1
+					? localize('needsInputSessionsTooltip1', "{0} session needs input", attentionNeededSessions.length)
+					: localize('needsInputSessionsTooltip', "{0} sessions need input", attentionNeededSessions.length))
+				: (activeSessions.length === 1
+					? localize('activeSessionsTooltip1', "{0} session in progress", activeSessions.length)
+					: localize('activeSessionsTooltip', "{0} sessions in progress", activeSessions.length));
 			disposables.add(this.hoverService.setupManagedHover(hoverDelegate, activeSection, activeTooltip));
 		}
 
@@ -994,6 +1071,9 @@ export class AgentTitleBarStatusWidget extends BaseActionViewItem {
 		enterButton.setAttribute('role', 'button');
 		enterButton.setAttribute('aria-label', localize('enterAgentSessionProjection', "Enter Agent Session Projection"));
 		enterButton.tabIndex = 0;
+		if (!this._firstFocusableElement) {
+			this._firstFocusableElement = enterButton;
+		}
 		parent.appendChild(enterButton);
 
 		// Setup hover
@@ -1173,11 +1253,6 @@ export class AgentTitleBarStatusRendering extends Disposable implements IWorkben
 			// Force enable command center when agent status or unified agents bar is enabled
 			if ((enabled || enhanced) && configurationService.getValue<boolean>(LayoutSettings.COMMAND_CENTER) !== true) {
 				configurationService.updateValue(LayoutSettings.COMMAND_CENTER, true);
-			}
-
-			// Turn off chat controls when agent status or unified agents bar is enabled (they would be duplicates)
-			if ((enabled || enhanced) && configurationService.getValue<boolean>('chat.commandCenter.enabled') === true) {
-				configurationService.updateValue('chat.commandCenter.enabled', false);
 			}
 		};
 		updateClass();

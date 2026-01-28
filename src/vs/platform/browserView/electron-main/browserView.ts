@@ -73,7 +73,7 @@ export class BrowserView extends Disposable {
 	readonly onDidClose: Event<void> = this._onDidClose.event;
 
 	constructor(
-		viewSession: Electron.Session,
+		private readonly viewSession: Electron.Session,
 		private readonly storageScope: BrowserViewStorageScope,
 		@IWindowsMainService private readonly windowsMainService: IWindowsMainService,
 		@IAuxiliaryWindowsMainService private readonly auxiliaryWindowsMainService: IAuxiliaryWindowsMainService
@@ -193,6 +193,12 @@ export class BrowserView extends Disposable {
 		webContents.on('did-stop-loading', () => fireLoadingEvent(false));
 		webContents.on('did-fail-load', (e, errorCode, errorDescription, validatedURL, isMainFrame) => {
 			if (isMainFrame) {
+				// Ignore ERR_ABORTED (-3) which is the expected error when user stops a page load.
+				if (errorCode === -3) {
+					fireLoadingEvent(false);
+					return;
+				}
+
 				this._lastError = {
 					url: validatedURL,
 					errorCode,
@@ -458,6 +464,13 @@ export class BrowserView extends Disposable {
 	 */
 	async stopFindInPage(keepSelection?: boolean): Promise<void> {
 		this._view.webContents.stopFindInPage(keepSelection ? 'keepSelection' : 'clearSelection');
+	}
+
+	/**
+	 * Clear all storage data for this browser view's session
+	 */
+	async clearStorage(): Promise<void> {
+		await this.viewSession.clearData();
 	}
 
 	/**

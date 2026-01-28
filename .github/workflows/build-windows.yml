@@ -27,9 +27,6 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
-      - name: Sync Extension Version to product.json
-        run: node .github/scripts/sync-extension-version.cjs
-
       - name: Setup Python 3
         uses: actions/setup-python@v6
         with:
