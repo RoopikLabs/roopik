@@ -314,7 +314,7 @@ export const project_start: OpenAI.Chat.ChatCompletionTool = {
 			properties: {
 				projectPath: {
 					type: "string",
-					description: "Path to the project directory (Use absolute path to workspace)",
+					description: "Path to the project directory. Supports both absolute paths and relative paths from workspace root",
 				},
 				port: {
 					type: "number",
@@ -431,7 +431,7 @@ export const component_add: OpenAI.Chat.ChatCompletionTool = {
 			properties: {
 				folderPath: {
 					type: "string",
-					description: "The absolute system path to the component folder. Do not use relative paths. (contains the component files)",
+					description: "Path to the component folder. Supports both absolute paths and relative paths from workspace root",
 				},
 				canvasId: {
 					type: "string",
@@ -471,7 +471,7 @@ export const component_add_batch: OpenAI.Chat.ChatCompletionTool = {
 				components: {
 					type: "array",
 					description:
-						"Array of component objects, each with: absolute folderPath (required), canvasId, name, entryFile, framework (all optional)",
+						"Array of component objects, each with: folderPath (required, absolute or relative to workspace), canvasId, name, entryFile, framework (all optional)",
 					items: {
 						type: "object",
 						properties: {

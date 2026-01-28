@@ -238,7 +238,7 @@ export function getProjectStartDescription(args: ToolArgs): string {
 	return `## project_start
 Description: [Roopik IDE - Projects Only] Start a FULL APPLICATION's dev server and preview in the integrated Browser (NOT used for Canvas components). Use for complete runnable vite based projects with routing/navigation (e.g., todo app with multiple pages). The browser shows the running app at localhost. For ISOLATED UI components/screens, use component_add instead.
 Parameters:
-- projectPath: (required) Path to the project directory (Use absolute path to workspace)
+- projectPath: (required) Path to the project directory. Supports both absolute paths and relative paths from workspace root
 - port: (optional) Port to run the dev server on. Default is auto-detected or 5173.
 Usage:
 <project_start>
@@ -295,7 +295,7 @@ export function getComponentAddDescription(): string {
 	return `## component_add
 Description: [Roopik IDE - Canvas Only] Add an ISOLATED UI component to the Canvas for preview in the IDE's Canvas UI. Use for individual screens/sections (login, onboarding, card, hero, etc.). The Canvas automatically shows the preview - this is a sandbox environment for previewing isolated components.
 Parameters:
-- folderPath: (required) The absolute system path to the component folder. Do not use relative paths.(contains the component files)
+- folderPath: (required) Path to the component folder. Supports both absolute paths and relative paths from workspace root
 - canvasId: (optional) Canvas to add the component to. Uses active canvas if not specified.
 - name: (optional) Display name for the component.  Always try to pass logical short name (one word or max 2-3 words) for the component.
 - entryFile: (optional) Entry file name (e.g., index.tsx). Auto-detected in IDE if not specified.
@@ -314,7 +314,7 @@ export function getComponentAddBatchDescription(): string {
 	return `## component_add_batch
 Description: [Roopik IDE - Canvas Only] Batch add multiple ISOLATED UI components to Canvas (NOT for projects). Use when creating variations (e.g., 3 login screens). Each component appears in the Canvas UI automatically.
 Parameters:
-- components: (required) Array of component objects, each with: absolute folderPath (required), canvasId, name, entryFile, framework (all optional)
+- components: (required) Array of component objects, each with: folderPath (required, absolute or relative to workspace), canvasId, name, entryFile, framework (all optional)
 Usage:
 <component_add_batch>
 <components>[{"folderPath": "path/to/comp1"}, {"folderPath": "path/to/comp2", "name": "MyComponent"}]</components>
@@ -431,7 +431,7 @@ These tools integrate with Roopik IDE's browser preview, canvas, and component f
 
 **Component Canvas Workflow:**
 1. \`canvas_create\` or \`canvas_get_active\` - Get/create canvas (first try to get active canvas, if not found create a new one, use your judgment to determine better canvas short generic name)
-2. \`component_add\` - Add component folder to canvas (Once you write a component code, you have to pass the absolute path of the component file to the canvas add tool which shows the live preview of the component in the canvas UI).
+2. \`component_add\` - Add component folder to canvas (Once you write a component code, pass the path to the component folder - can be absolute or relative to workspace root - to show live preview in the canvas UI).
 3. \`component_list\` - See all components on canvas (this will show the list of all components added to the canvas to you if you need to see the list of components added to the canvas or get info about a specific component use \`component_get_info\`)
 4. \`component_rebuild\` - Force rebuild after changes (use this tool if you make changes to the component code and want to rebuild the component)
 5. \`component_remove\` - Remove component (set deleteSourceCode=true to delete files automatically - never use terminal commands to delete files)
