@@ -158,9 +158,12 @@ function httpsGet(url, options = {}) {
 async function getCommits(commitSpec) {
 	const { upstreamOwner, upstreamRepo, apiBase } = CONFIG;
 
+	// Normalize: accept both ".." and "..." syntax
+	const normalizedSpec = commitSpec.replace('...', '..');
+
 	// If it's a range (contains ..)
-	if (commitSpec.includes('..')) {
-		const [from, to] = commitSpec.split('..');
+	if (normalizedSpec.includes('..')) {
+		const [from, to] = normalizedSpec.split('..');
 		const url = `https://${apiBase}/repos/${upstreamOwner}/${upstreamRepo}/compare/${from}...${to}`;
 		const { data } = await httpsGet(url);
 		const json = JSON.parse(data);
