@@ -6,9 +6,6 @@ import { promisify } from "util"
 
 import type { GitRepositoryInfo, GitCommit } from "@roo-code/types"
 
-// Re-export types for other modules
-export type { GitCommit, GitRepositoryInfo }
-
 import { truncateOutput } from "../integrations/misc/extract-text"
 
 const execAsync = promisify(exec)

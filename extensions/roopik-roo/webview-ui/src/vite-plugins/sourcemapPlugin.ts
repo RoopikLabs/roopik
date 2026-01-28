@@ -24,7 +24,7 @@ export function sourcemapPlugin(): Plugin {
 				if (mode === "nightly") {
 					outDir = path.resolve("../apps/vscode-nightly/build/webview-ui/build")
 				} else {
-					outDir = path.resolve("../webview-ui/build")
+					outDir = path.resolve("./build")
 				}
 
 				const assetsDir = path.join(outDir, "assets")

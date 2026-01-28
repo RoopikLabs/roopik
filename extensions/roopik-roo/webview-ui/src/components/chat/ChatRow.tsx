@@ -68,6 +68,9 @@ import {
 	TerminalSquare,
 	MessageCircle,
 	Repeat2,
+	Split,
+	ArrowRight,
+	Check,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PathTooltip } from "../ui/PathTooltip"
@@ -124,7 +127,7 @@ interface ChatRowProps {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-interface ChatRowContentProps extends Omit<ChatRowProps, "onHeightChange"> { }
+interface ChatRowContentProps extends Omit<ChatRowProps, "onHeightChange"> {}
 
 const ChatRow = memo(
 	(props: ChatRowProps) => {
@@ -176,7 +179,8 @@ export const ChatRowContent = ({
 }: ChatRowContentProps) => {
 	const { t, i18n } = useTranslation()
 
-	const { mcpServers, alwaysAllowMcp, currentCheckpoint, mode, apiConfiguration, clineMessages } = useExtensionState()
+	const { mcpServers, alwaysAllowMcp, currentCheckpoint, mode, apiConfiguration, clineMessages, currentTaskItem } =
+		useExtensionState()
 	const { info: model } = useSelectedModel(apiConfiguration)
 	const [isEditing, setIsEditing] = useState(false)
 	const [editedContent, setEditedContent] = useState("")
@@ -385,6 +389,7 @@ export const ChatRowContent = ({
 		display: "flex",
 		alignItems: "center",
 		gap: "10px",
+		cursor: "default",
 		marginBottom: "10px",
 		wordBreak: "break-word",
 	}
@@ -486,8 +491,8 @@ export const ChatRowContent = ({
 										: tool.lineNumber === 0
 											? t("chat:fileOperations.wantsToInsertAtEnd")
 											: t("chat:fileOperations.wantsToInsertWithLineNumber", {
-												lineNumber: tool.lineNumber,
-											})}
+													lineNumber: tool.lineNumber,
+												})}
 							</span>
 						</div>
 						<div className="pl-6">
@@ -634,8 +639,8 @@ export const ChatRowContent = ({
 										? t("chat:fileOperations.wantsToReadOutsideWorkspace")
 										: tool.additionalFileCount && tool.additionalFileCount > 0
 											? t("chat:fileOperations.wantsToReadAndXMore", {
-												count: tool.additionalFileCount,
-											})
+													count: tool.additionalFileCount,
+												})
 											: t("chat:fileOperations.wantsToRead")
 									: t("chat:fileOperations.didRead")}
 							</span>
@@ -815,10 +820,34 @@ export const ChatRowContent = ({
 					</>
 				)
 			case "newTask":
+				// Find all newTask messages to determine which child task ID corresponds to this message
+				const newTaskMessages = clineMessages.filter((msg) => {
+					if (msg.type === "ask" && msg.ask === "tool") {
+						const t = safeJsonParse<ClineSayTool>(msg.text)
+						return t?.tool === "newTask"
+					}
+					return false
+				})
+				const thisNewTaskIndex = newTaskMessages.findIndex((msg) => msg.ts === message.ts)
+				const childIds = currentTaskItem?.childIds || []
+
+				// Only get the child task ID if this newTask has been approved (has a corresponding entry in childIds)
+				// This prevents showing a link to a previous task when the current newTask is still awaiting approval
+				// Note: We don't use delegatedToId here because it persists after child tasks complete and would
+				// incorrectly point to the previous task when a new newTask is awaiting approval
+				const childTaskId =
+					thisNewTaskIndex >= 0 && thisNewTaskIndex < childIds.length ? childIds[thisNewTaskIndex] : undefined
+
+				// Check if the next message is a subtask_result - if so, don't show the button
+				// since the result is displayed right after this message
+				const currentMessageIndex = clineMessages.findIndex((msg) => msg.ts === message.ts)
+				const nextMessage = currentMessageIndex >= 0 ? clineMessages[currentMessageIndex + 1] : undefined
+				const isFollowedBySubtaskResult = nextMessage?.type === "say" && nextMessage?.say === "subtask_result"
+
 				return (
 					<>
 						<div style={headerStyle}>
-							{toolIcon("tasklist")}
+							<Split className="size-4" />
 							<span style={{ fontWeight: "bold" }}>
 								<Trans
 									i18nKey="chat:subtasks.wantsToCreate"
@@ -827,32 +856,19 @@ export const ChatRowContent = ({
 								/>
 							</span>
 						</div>
-						<div
-							style={{
-								marginTop: "4px",
-								backgroundColor: "var(--vscode-badge-background)",
-								border: "1px solid var(--vscode-badge-background)",
-								borderRadius: "4px 4px 0 0",
-								overflow: "hidden",
-								marginBottom: "2px",
-							}}>
-							<div
-								style={{
-									padding: "9px 10px 9px 14px",
-									backgroundColor: "var(--vscode-badge-background)",
-									borderBottom: "1px solid var(--vscode-editorGroup-border)",
-									fontWeight: "bold",
-									fontSize: "var(--vscode-font-size)",
-									color: "var(--vscode-badge-foreground)",
-									display: "flex",
-									alignItems: "center",
-									gap: "6px",
-								}}>
-								<span className="codicon codicon-arrow-right"></span>
-								{t("chat:subtasks.newTaskContent")}
-							</div>
-							<div style={{ padding: "12px 16px", backgroundColor: "var(--vscode-editor-background)" }}>
-								<MarkdownBlock markdown={tool.content} />
+						<div className="border-l border-muted-foreground/80 ml-2 pl-4 pb-1">
+							<MarkdownBlock markdown={tool.content} />
+							<div>
+								{childTaskId && !isFollowedBySubtaskResult && (
+									<button
+										className="cursor-pointer flex gap-1 items-center mt-2 text-vscode-descriptionForeground hover:text-vscode-descriptionForeground hover:underline font-normal"
+										onClick={() =>
+											vscode.postMessage({ type: "showTaskWithId", text: childTaskId })
+										}>
+										{t("chat:subtasks.goToSubtask")}
+										<ArrowRight className="size-3" />
+									</button>
+								)}
 							</div>
 						</div>
 					</>
@@ -864,33 +880,8 @@ export const ChatRowContent = ({
 							{toolIcon("check-all")}
 							<span style={{ fontWeight: "bold" }}>{t("chat:subtasks.wantsToFinish")}</span>
 						</div>
-						<div
-							style={{
-								marginTop: "4px",
-								backgroundColor: "var(--vscode-editor-background)",
-								border: "1px solid var(--vscode-badge-background)",
-								borderRadius: "4px",
-								overflow: "hidden",
-								marginBottom: "8px",
-							}}>
-							<div
-								style={{
-									padding: "9px 10px 9px 14px",
-									backgroundColor: "var(--vscode-badge-background)",
-									borderBottom: "1px solid var(--vscode-editorGroup-border)",
-									fontWeight: "bold",
-									fontSize: "var(--vscode-font-size)",
-									color: "var(--vscode-badge-foreground)",
-									display: "flex",
-									alignItems: "center",
-									gap: "6px",
-								}}>
-								<span className="codicon codicon-check"></span>
-								{t("chat:subtasks.completionContent")}
-							</div>
-							<div style={{ padding: "12px 16px", backgroundColor: "var(--vscode-editor-background)" }}>
-								<MarkdownBlock markdown={t("chat:subtasks.completionInstructions")} />
-							</div>
+						<div className="text-muted-foreground pl-6">
+							<MarkdownBlock markdown={t("chat:subtasks.completionInstructions")} />
 						</div>
 					</>
 				)
@@ -1001,6 +992,339 @@ export const ChatRowContent = ({
 						)}
 					</>
 				)
+			// ============================================================================
+			// Roopik IDE Tools
+			// ============================================================================
+
+			// Browser Tools (12)
+			case "browser_open":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("globe")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToOpen")
+								: t("chat:roopik.browser.didOpen")}
+						</span>
+						{tool.url && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.url})
+							</span>
+						)}
+					</div>
+				)
+			case "browser_close":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("close")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToClose")
+								: t("chat:roopik.browser.didClose")}
+						</span>
+					</div>
+				)
+			case "browser_action_input":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("target")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToInteract")
+								: t("chat:roopik.browser.didInteract")}
+						</span>
+						{tool.action && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.action}
+								{tool.coordinate ? ` at ${tool.coordinate}` : ""}
+								{tool.text ? `: "${tool.text}"` : ""})
+							</span>
+						)}
+					</div>
+				)
+			case "browser_navigate":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("link-external")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToNavigate")
+								: t("chat:roopik.browser.didNavigate")}
+						</span>
+						{tool.url && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.url})
+							</span>
+						)}
+					</div>
+				)
+			case "browser_reload":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("refresh")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToReload")
+								: t("chat:roopik.browser.didReload")}
+						</span>
+					</div>
+				)
+			case "browser_screenshot":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("device-camera")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToScreenshot")
+								: t("chat:roopik.browser.didScreenshot")}
+						</span>
+					</div>
+				)
+			case "browser_execute_script":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("code")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToExecuteScript")
+								: t("chat:roopik.browser.didExecuteScript")}
+						</span>
+					</div>
+				)
+			case "browser_inspect_element":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("inspect")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToInspect")
+								: t("chat:roopik.browser.didInspect")}
+						</span>
+						{tool.selector && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.selector})
+							</span>
+						)}
+					</div>
+				)
+			case "browser_get_errors":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("error")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetErrors")
+								: t("chat:roopik.browser.didGetErrors")}
+						</span>
+					</div>
+				)
+			case "browser_get_console_logs":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("output")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetLogs")
+								: t("chat:roopik.browser.didGetLogs")}
+						</span>
+					</div>
+				)
+			case "browser_get_performance":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("dashboard")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetPerformance")
+								: t("chat:roopik.browser.didGetPerformance")}
+						</span>
+					</div>
+				)
+			case "browser_get_cdp_info":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("info")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetCdpInfo")
+								: t("chat:roopik.browser.didGetCdpInfo")}
+						</span>
+					</div>
+				)
+
+			// Project Tools (3)
+			case "project_get_active":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("folder-active")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.project.wantsToGetActive")
+								: t("chat:roopik.project.didGetActive")}
+						</span>
+					</div>
+				)
+			case "project_start":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("play")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.project.wantsToStart")
+								: t("chat:roopik.project.didStart")}
+						</span>
+						{tool.projectPath && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.projectPath})
+							</span>
+						)}
+					</div>
+				)
+			case "project_stop":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("debug-stop")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.project.wantsToStop")
+								: t("chat:roopik.project.didStop")}
+						</span>
+					</div>
+				)
+
+			// Canvas Tools (3)
+			case "canvas_list":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("list-flat")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.canvas.wantsToList")
+								: t("chat:roopik.canvas.didList")}
+						</span>
+					</div>
+				)
+			case "canvas_get_active":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("layout")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.canvas.wantsToGetActive")
+								: t("chat:roopik.canvas.didGetActive")}
+						</span>
+					</div>
+				)
+			case "canvas_create":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("add")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.canvas.wantsToCreate")
+								: t("chat:roopik.canvas.didCreate")}
+						</span>
+						{tool.name && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.name})
+							</span>
+						)}
+					</div>
+				)
+
+			// Component Tools (6)
+			case "component_add":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("extensions")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToAdd")
+								: t("chat:roopik.component.didAdd")}
+						</span>
+						{tool.name && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.name})
+							</span>
+						)}
+					</div>
+				)
+			case "component_add_batch":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("files")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToAddBatch")
+								: t("chat:roopik.component.didAddBatch")}
+						</span>
+					</div>
+				)
+			case "component_remove":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("trash")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToRemove")
+								: t("chat:roopik.component.didRemove")}
+						</span>
+						{tool.componentId && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.componentId})
+							</span>
+						)}
+					</div>
+				)
+			case "component_get_info":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("info")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToGetInfo")
+								: t("chat:roopik.component.didGetInfo")}
+						</span>
+						{tool.componentId && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.componentId})
+							</span>
+						)}
+					</div>
+				)
+			case "component_list":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("list-tree")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToList")
+								: t("chat:roopik.component.didList")}
+						</span>
+						{tool.canvasId && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.canvasId})
+							</span>
+						)}
+					</div>
+				)
+			case "component_rebuild":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("sync")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToRebuild")
+								: t("chat:roopik.component.didRebuild")}
+						</span>
+						{tool.componentId && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.componentId})
+							</span>
+						)}
+					</div>
+				)
+
 			default:
 				return null
 		}
@@ -1019,40 +1343,25 @@ export const ChatRowContent = ({
 						/>
 					)
 				case "subtask_result":
+					// Get the child task ID that produced this result
+					const completedChildTaskId = currentTaskItem?.completedByChildId
 					return (
-						<div>
-							<div
-								style={{
-									marginTop: "0px",
-									backgroundColor: "var(--vscode-badge-background)",
-									border: "1px solid var(--vscode-badge-background)",
-									borderRadius: "0 0 4px 4px",
-									overflow: "hidden",
-									marginBottom: "8px",
-								}}>
-								<div
-									style={{
-										padding: "9px 10px 9px 14px",
-										backgroundColor: "var(--vscode-badge-background)",
-										borderBottom: "1px solid var(--vscode-editorGroup-border)",
-										fontWeight: "bold",
-										fontSize: "var(--vscode-font-size)",
-										color: "var(--vscode-badge-foreground)",
-										display: "flex",
-										alignItems: "center",
-										gap: "6px",
-									}}>
-									<span className="codicon codicon-arrow-left"></span>
-									{t("chat:subtasks.resultContent")}
-								</div>
-								<div
-									style={{
-										padding: "12px 16px",
-										backgroundColor: "var(--vscode-editor-background)",
-									}}>
-									<MarkdownBlock markdown={message.text} />
-								</div>
+						<div className="border-l border-muted-foreground/80 ml-2 pl-4 pt-2 pb-1 -mt-5">
+							<div style={headerStyle}>
+								<span style={{ fontWeight: "bold" }}>{t("chat:subtasks.resultContent")}</span>
+								<Check className="size-3" />
 							</div>
+							<MarkdownBlock markdown={message.text} />
+							{completedChildTaskId && (
+								<button
+									className="cursor-pointer flex gap-1 items-center mt-2 text-vscode-descriptionForeground hover:text-vscode-descriptionForeground hover:underline font-normal"
+									onClick={() =>
+										vscode.postMessage({ type: "showTaskWithId", text: completedChildTaskId })
+									}>
+									{t("chat:subtasks.goToSubtask")}
+									<ArrowRight className="size-3" />
+								</button>
+							)}
 						</div>
 					)
 				case "reasoning":
@@ -1072,13 +1381,14 @@ export const ChatRowContent = ({
 					return (
 						<>
 							<div
-								className={`group text-sm transition-opacity ${isApiRequestInProgress ? "opacity-100" : "opacity-40 hover:opacity-100"
-									}`}
+								className={`group text-sm transition-opacity ${
+									isApiRequestInProgress ? "opacity-100" : "opacity-40 hover:opacity-100"
+								}`}
 								style={{
 									...headerStyle,
 									marginBottom:
 										((cost === null || cost === undefined) && apiRequestFailedMessage) ||
-											apiReqStreamingFailedMessage
+										apiReqStreamingFailedMessage
 											? 10
 											: 0,
 									justifyContent: "space-between",
@@ -1095,49 +1405,37 @@ export const ChatRowContent = ({
 							</div>
 							{(((cost === null || cost === undefined) && apiRequestFailedMessage) ||
 								apiReqStreamingFailedMessage) && (
-									<ErrorRow
-										type="api_failure"
-										message={apiRequestFailedMessage || apiReqStreamingFailedMessage || ""}
-										docsURL={
-											apiRequestFailedMessage?.toLowerCase().includes("powershell")
-												? "https://github.com/cline/cline/wiki/TroubleShooting-%E2%80%90-%22PowerShell-is-not-recognized-as-an-internal-or-external-command%22"
-												: undefined
-										}
-										errorDetails={apiReqStreamingFailedMessage}
-									/>
-								)}
+								<ErrorRow
+									type="api_failure"
+									message={apiRequestFailedMessage || apiReqStreamingFailedMessage || ""}
+									docsURL={
+										apiRequestFailedMessage?.toLowerCase().includes("powershell")
+											? "https://github.com/cline/cline/wiki/TroubleShooting-%E2%80%90-%22PowerShell-is-not-recognized-as-an-internal-or-external-command%22"
+											: undefined
+									}
+									errorDetails={apiReqStreamingFailedMessage}
+								/>
+							)}
 						</>
 					)
 				case "api_req_retry_delayed":
 					let body = t(`chat:apiRequest.failed`)
 					let retryInfo, rawError, code, docsURL
 					if (message.text !== undefined) {
-						// Check for Claude Code authentication error first
-						if (message.text.includes("Not authenticated with Claude Code")) {
-							body = t("chat:apiRequest.errorMessage.claudeCodeNotAuthenticated")
-							docsURL = "roocode://settings?provider=claude-code"
-						} else {
-							// Try to show richer error message for that code, if available
-							const potentialCode = parseInt(message.text.substring(0, 3))
-							if (!isNaN(potentialCode) && potentialCode >= 400) {
-								code = potentialCode
-								const stringForError = `chat:apiRequest.errorMessage.${code}`
-								if (i18n.exists(stringForError)) {
-									body = t(stringForError)
-									// Fill this out in upcoming PRs
-									// Do not remove this
-									// switch(code) {
-									// 	case ERROR_CODE:
-									// 		docsURL = ???
-									// 		break;
-									// }
-								} else {
-									body = t("chat:apiRequest.errorMessage.unknown")
-									docsURL =
-										"mailto:support@roopik.com?subject=Unknown API Error&body=[Please include full error details]"
-								}
-							} else if (message.text.indexOf("Connection error") === 0) {
-								body = t("chat:apiRequest.errorMessage.connection")
+						// Try to show richer error message for that code, if available
+						const potentialCode = parseInt(message.text.substring(0, 3))
+						if (!isNaN(potentialCode) && potentialCode >= 400) {
+							code = potentialCode
+							const stringForError = `chat:apiRequest.errorMessage.${code}`
+							if (i18n.exists(stringForError)) {
+								body = t(stringForError)
+								// Fill this out in upcoming PRs
+								// Do not remove this
+								// switch(code) {
+								// 	case ERROR_CODE:
+								// 		docsURL = ???
+								// 		break;
+								// }
 							} else {
 								// Non-HTTP-status-code error message - store full text as errorDetails
 								body = t("chat:apiRequest.errorMessage.unknown")
@@ -1422,7 +1720,7 @@ export const ChatRowContent = ({
 
 					return <CodebaseSearchResultsDisplay results={results} />
 				case "user_edit_todos":
-					return <UpdateTodoListToolBlock userEdited onChange={() => { }} />
+					return <UpdateTodoListToolBlock userEdited onChange={() => {}} />
 				case "tool" as any:
 					// Handle say tool messages
 					const sayTool = safeJsonParse<ClineSayTool>(message.text)
@@ -1497,6 +1795,51 @@ export const ChatRowContent = ({
 										</ToolUseBlock>
 									</div>
 								</>
+							)
+						}
+						case "readCommandOutput": {
+							const formatBytes = (bytes: number) => {
+								if (bytes < 1024) return `${bytes} B`
+								if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+								return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+							}
+
+							// Determine if this is a search operation
+							const isSearch = sayTool.searchPattern !== undefined
+
+							let infoText = ""
+							if (isSearch) {
+								// Search mode: show pattern and match count
+								const matchText =
+									sayTool.matchCount !== undefined
+										? sayTool.matchCount === 1
+											? "1 match"
+											: `${sayTool.matchCount} matches`
+										: ""
+								infoText = `search: "${sayTool.searchPattern}"${matchText ? ` • ${matchText}` : ""}`
+							} else if (
+								sayTool.readStart !== undefined &&
+								sayTool.readEnd !== undefined &&
+								sayTool.totalBytes !== undefined
+							) {
+								// Read mode: show byte range
+								infoText = `${formatBytes(sayTool.readStart)} - ${formatBytes(sayTool.readEnd)} of ${formatBytes(sayTool.totalBytes)}`
+							} else if (sayTool.totalBytes !== undefined) {
+								infoText = formatBytes(sayTool.totalBytes)
+							}
+
+							return (
+								<div style={headerStyle}>
+									<FileCode2 className="w-4 shrink-0" aria-label="Read command output icon" />
+									<span style={{ fontWeight: "bold" }}>{t("chat:readCommandOutput.title")}</span>
+									{infoText && (
+										<span
+											className="text-xs ml-1"
+											style={{ color: "var(--vscode-descriptionForeground)" }}>
+											({infoText})
+										</span>
+									)}
+								</div>
 							)
 						}
 						default:

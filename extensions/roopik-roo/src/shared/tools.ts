@@ -23,11 +23,7 @@ export type HandleError = (action: string, error: Error) => Promise<void>
 
 export type PushToolResult = (content: ToolResponse) => void
 
-export type RemoveClosingTag = (tag: ToolParamName, content?: string) => string
-
 export type AskFinishSubTaskApproval = () => Promise<boolean>
-
-export type ToolDescription = () => string
 
 export interface TextContent {
 	type: "text"
@@ -76,6 +72,10 @@ export const toolParamNames = [
 	"old_string", // search_replace and edit_file parameter
 	"new_string", // search_replace and edit_file parameter
 	"expected_replacements", // edit_file parameter for multiple occurrences
+	"artifact_id", // read_command_output parameter
+	"search", // read_command_output parameter for grep-like search
+	"offset", // read_command_output parameter for pagination
+	"limit", // read_command_output parameter for max bytes to return
 	// Roopik tool parameters
 	"selector", // browser_inspect_element
 	"includeInherited", // browser_inspect_element
@@ -105,8 +105,6 @@ export const toolParamNames = [
 
 export type ToolParamName = (typeof toolParamNames)[number]
 
-export type ToolProtocol = "xml" | "native"
-
 /**
  * Type map defining the native (typed) argument structure for each tool.
  * Tools not listed here will fall back to `any` for backward compatibility.
@@ -114,6 +112,7 @@ export type ToolProtocol = "xml" | "native"
 export type NativeToolArgs = {
 	access_mcp_resource: { server_name: string; uri: string }
 	read_file: { files: FileEntry[] }
+	read_command_output: { artifact_id: string; search?: string; offset?: number; limit?: number }
 	attempt_completion: { result: string }
 	execute_command: { command: string; cwd?: string }
 	apply_diff: { path: string; diff: string }
@@ -121,6 +120,8 @@ export type NativeToolArgs = {
 	search_replace: { file_path: string; old_string: string; new_string: string }
 	edit_file: { file_path: string; old_string: string; new_string: string; expected_replacements?: number }
 	apply_patch: { patch: string }
+	list_files: { path: string; recursive?: boolean }
+	new_task: { mode: string; message: string; todos?: string }
 	ask_followup_question: {
 		question: string
 		follow_up: Array<{ text: string; mode?: string }>
@@ -271,6 +272,7 @@ export type ToolGroupConfig = {
 export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	execute_command: "run commands",
 	read_file: "read files",
+	read_command_output: "read command output",
 	fetch_instructions: "fetch instructions",
 	write_to_file: "write files",
 	apply_diff: "apply changes",
@@ -335,7 +337,7 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 		tools: ["browser_action"],
 	},
 	command: {
-		tools: ["execute_command"],
+		tools: ["execute_command", "read_command_output"],
 	},
 	mcp: {
 		tools: ["use_mcp_tool", "access_mcp_resource"],
@@ -405,17 +407,17 @@ export const TOOL_ALIASES: Record<string, ToolName> = {
 export type DiffResult =
 	| { success: true; content: string; failParts?: DiffResult[] }
 	| ({
-			success: false
-			error?: string
-			details?: {
-				similarity?: number
-				threshold?: number
-				matchedRange?: { start: number; end: number }
-				searchContent?: string
-				bestMatch?: string
-			}
-			failParts?: DiffResult[]
-	  } & ({ error: string } | { failParts: DiffResult[] }))
+		success: false
+		error?: string
+		details?: {
+			similarity?: number
+			threshold?: number
+			matchedRange?: { start: number; end: number }
+			searchContent?: string
+			bestMatch?: string
+		}
+		failParts?: DiffResult[]
+	} & ({ error: string } | { failParts: DiffResult[] }))
 
 export interface DiffItem {
 	content: string
@@ -428,13 +430,6 @@ export interface DiffStrategy {
 	 * @returns The name of the diff strategy
 	 */
 	getName(): string
-
-	/**
-	 * Get the tool description for this diff strategy
-	 * @param args The tool arguments including cwd and toolOptions
-	 * @returns The complete tool description including format requirements and examples
-	 */
-	getToolDescription(args: { cwd: string; toolOptions?: { [key: string]: string } }): string
 
 	/**
 	 * Apply a diff to the original content
