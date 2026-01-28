@@ -186,6 +186,12 @@ configurationRegistry.registerConfiguration({
 			description: nls.localize('interactiveSession.editor.lineHeight', "Controls the line height in pixels in chat codeblocks. Use 0 to compute the line height from the font size."),
 			default: 0
 		},
+		'roodio.titleBarIcon.enabled': {
+			type: 'boolean',
+			description: nls.localize('roodio.titleBarIcon.enabled', "Controls whether the Roo Dio chat icon is shown in the title bar."),
+			default: true
+		},
+
 		[ChatConfiguration.AgentsControlClickBehavior]: {
 			type: 'string',
 			enum: [AgentsControlClickBehavior.Default, AgentsControlClickBehavior.TriStateToggle, AgentsControlClickBehavior.Focus],
