@@ -578,6 +578,117 @@ export class NativeToolCallParser {
 				}
 				break
 
+			// ============================================================================
+			// Roopik IDE Tools - Partial args for streaming
+			// ============================================================================
+
+			// Browser Tools (12)
+			case "browser_open":
+				nativeArgs = { url: partialArgs.url }
+				break
+			case "browser_close":
+				nativeArgs = {}
+				break
+			case "browser_action_input":
+				nativeArgs = {
+					action: partialArgs.action,
+					coordinate: partialArgs.coordinate,
+					text: partialArgs.text,
+					key: partialArgs.key,
+					modifiers: partialArgs.modifiers,
+					deltaX: partialArgs.deltaX,
+					deltaY: partialArgs.deltaY,
+				}
+				break
+			case "browser_navigate":
+				nativeArgs = { url: partialArgs.url }
+				break
+			case "browser_reload":
+				nativeArgs = { ignoreCache: partialArgs.ignoreCache }
+				break
+			case "browser_screenshot":
+				nativeArgs = {}
+				break
+			case "browser_execute_script":
+				nativeArgs = { script: partialArgs.script }
+				break
+			case "browser_inspect_element":
+				nativeArgs = {
+					selector: partialArgs.selector,
+					includeInherited: partialArgs.includeInherited,
+				}
+				break
+			case "browser_get_errors":
+				nativeArgs = { limit: partialArgs.limit }
+				break
+			case "browser_get_console_logs":
+				nativeArgs = { limit: partialArgs.limit, type: partialArgs.type }
+				break
+			case "browser_get_performance":
+				nativeArgs = {}
+				break
+			case "browser_get_cdp_info":
+				nativeArgs = {}
+				break
+
+			// Project Tools (3)
+			case "project_get_active":
+				nativeArgs = {}
+				break
+			case "project_start":
+				nativeArgs = {
+					projectPath: partialArgs.projectPath,
+					port: partialArgs.port,
+				}
+				break
+			case "project_stop":
+				nativeArgs = {}
+				break
+
+			// Canvas Tools (3)
+			case "canvas_list":
+				nativeArgs = {
+					nameFilter: partialArgs.nameFilter,
+					sortBy: partialArgs.sortBy,
+					sortDirection: partialArgs.sortDirection,
+				}
+				break
+			case "canvas_get_active":
+				nativeArgs = {}
+				break
+			case "canvas_create":
+				nativeArgs = { name: partialArgs.name }
+				break
+
+			// Component Tools (6)
+			case "component_add":
+				nativeArgs = {
+					folderPath: partialArgs.folderPath,
+					canvasId: partialArgs.canvasId,
+					name: partialArgs.name,
+					entryFile: partialArgs.entryFile,
+					framework: partialArgs.framework,
+				}
+				break
+			case "component_add_batch":
+				nativeArgs = { components: partialArgs.components }
+				break
+			case "component_remove":
+				nativeArgs = {
+					componentId: partialArgs.componentId,
+					deleteSourceCode: partialArgs.deleteSourceCode,
+				}
+				break
+			case "component_get_info":
+				nativeArgs = { componentId: partialArgs.componentId }
+				break
+			case "component_list":
+				nativeArgs = { canvasId: partialArgs.canvasId }
+				break
+			case "component_rebuild":
+				nativeArgs = { componentId: partialArgs.componentId }
+				break
+
 			default:
 				break
 		}
@@ -882,6 +993,142 @@ export class NativeToolCallParser {
 							message: args.message,
 							todos: args.todos,
 						} as NativeArgsFor<TName>
+					}
+					break
+
+				// ============================================================================
+				// Roopik IDE Tools
+				// ============================================================================
+
+				// Browser Tools (12)
+				case "browser_open":
+					// url is optional
+					nativeArgs = { url: args.url } as NativeArgsFor<TName>
+					break
+				case "browser_close":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+				case "browser_action_input":
+					if (args.action !== undefined) {
+						nativeArgs = {
+							action: args.action,
+							coordinate: args.coordinate,
+							text: args.text,
+							key: args.key,
+							modifiers: args.modifiers,
+							deltaX: args.deltaX,
+							deltaY: args.deltaY,
+						} as NativeArgsFor<TName>
+					}
+					break
+				case "browser_navigate":
+					if (args.url !== undefined) {
+						nativeArgs = { url: args.url } as NativeArgsFor<TName>
+					}
+					break
+				case "browser_reload":
+					nativeArgs = { ignoreCache: args.ignoreCache } as NativeArgsFor<TName>
+					break
+				case "browser_screenshot":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+				case "browser_execute_script":
+					if (args.script !== undefined) {
+						nativeArgs = { script: args.script } as NativeArgsFor<TName>
+					}
+					break
+				case "browser_inspect_element":
+					if (args.selector !== undefined) {
+						nativeArgs = {
+							selector: args.selector,
+							includeInherited: args.includeInherited,
+						} as NativeArgsFor<TName>
+					}
+					break
+				case "browser_get_errors":
+					nativeArgs = { limit: args.limit } as NativeArgsFor<TName>
+					break
+				case "browser_get_console_logs":
+					nativeArgs = { limit: args.limit, type: args.type } as NativeArgsFor<TName>
+					break
+				case "browser_get_performance":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+				case "browser_get_cdp_info":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+
+				// Project Tools (3)
+				case "project_get_active":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+				case "project_start":
+					if (args.projectPath !== undefined) {
+						nativeArgs = {
+							projectPath: args.projectPath,
+							port: args.port,
+						} as NativeArgsFor<TName>
+					}
+					break
+				case "project_stop":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+
+				// Canvas Tools (3)
+				case "canvas_list":
+					nativeArgs = {
+						nameFilter: args.nameFilter,
+						sortBy: args.sortBy,
+						sortDirection: args.sortDirection,
+					} as NativeArgsFor<TName>
+					break
+				case "canvas_get_active":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+				case "canvas_create":
+					if (args.name !== undefined) {
+						nativeArgs = { name: args.name } as NativeArgsFor<TName>
+					}
+					break
+
+				// Component Tools (6)
+				case "component_add":
+					if (args.folderPath !== undefined) {
+						nativeArgs = {
+							folderPath: args.folderPath,
+							canvasId: args.canvasId,
+							name: args.name,
+							entryFile: args.entryFile,
+							framework: args.framework,
+						} as NativeArgsFor<TName>
+					}
+					break
+				case "component_add_batch":
+					if (args.components !== undefined) {
+						nativeArgs = { components: args.components } as NativeArgsFor<TName>
+					}
+					break
+				case "component_remove":
+					if (args.componentId !== undefined) {
+						nativeArgs = {
+							componentId: args.componentId,
+							deleteSourceCode: args.deleteSourceCode,
+						} as NativeArgsFor<TName>
+					}
+					break
+				case "component_get_info":
+					if (args.componentId !== undefined) {
+						nativeArgs = { componentId: args.componentId } as NativeArgsFor<TName>
+					}
+					break
+				case "component_list":
+					if (args.canvasId !== undefined) {
+						nativeArgs = { canvasId: args.canvasId } as NativeArgsFor<TName>
+					}
+					break
+				case "component_rebuild":
+					if (args.componentId !== undefined) {
+						nativeArgs = { componentId: args.componentId } as NativeArgsFor<TName>
 					}
 					break
 

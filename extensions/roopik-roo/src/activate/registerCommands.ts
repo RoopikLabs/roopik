@@ -195,6 +195,49 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 			action: "toggleAutoApprove",
 		})
 	},
+	externalContext: async (options?: { promptText?: string; autoSend?: boolean; images?: string[] }) => {
+		const promptText = options?.promptText?.trim() || ""
+
+		// Allow empty prompt if images are provided
+		if (!promptText && (!options?.images || options.images.length === 0)) {
+			return
+		}
+
+		const visibleProvider = getVisibleProviderOrLog(outputChannel)
+
+		if (!visibleProvider) {
+			return
+		}
+
+		// Focus the chat panel first
+		await vscode.commands.executeCommand("roodio.ChatPanel.focus")
+
+		// Small delay to ensure the webview is ready
+		await delay(100)
+
+		// Add spacing after context for better readability
+		const formattedText = promptText ? `${promptText}\n\n` : ""
+
+		if (options?.autoSend) {
+			// Send message immediately (user already typed message in inspect mode)
+			await visibleProvider.postMessageToWebview({
+				type: "invoke",
+				invoke: "sendMessage",
+				text: formattedText,
+				images: options?.images ?? [],
+			})
+		} else {
+			// Just set the chat box content (silent attachment - user types message)
+			await visibleProvider.postMessageToWebview({
+				type: "invoke",
+				invoke: "setChatBoxMessage",
+				text: formattedText,
+				images: options?.images ?? [],
+			})
+			// Focus input so user can immediately type
+			await visibleProvider.postMessageToWebview({ type: "action", action: "focusInput" })
+		}
+	},
 })
 
 export const openClineInNewTab = async ({ context, outputChannel }: Omit<RegisterCommandOptions, "provider">) => {

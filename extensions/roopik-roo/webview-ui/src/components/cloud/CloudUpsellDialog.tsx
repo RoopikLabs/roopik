@@ -51,6 +51,9 @@ export const renderCloudBenefitsContent = (t: any) => {
 }
 
 export const CloudUpsellDialog = ({ open, onOpenChange, onConnect }: CloudUpsellDialogProps) => {
+	// Roopik: Permanently disable Code Cloud upsell dialog
+	return null
+
 	const { t } = useTranslation()
 
 	return (

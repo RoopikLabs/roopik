@@ -44,6 +44,7 @@
 		"about": "About Dio Code"
 	},
 	"about": {
+		"integrationNote": "This extension is forked from Roo-Code and rebuilt with Roopik IDE's browser preview, canvas, and component toolchain.",
 		"bugReport": {
 			"label": "Found a bug?",
 			"link": "Report on GitHub"
