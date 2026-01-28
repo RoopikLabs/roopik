@@ -35,3 +35,5 @@ test-output.json
 .github/commands/
 .github/commands.json
 /docs
+/extensions/roopik-roo/apps
+/extensions/roopik-roo/packages
