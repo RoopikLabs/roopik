@@ -15,14 +15,16 @@
 
 /**
  * Supported external AI agents that can use MCP
+ * Supported external AI agents for MCP registration
  */
 export type AiAgent =
-	| 'claude-code'      // Claude Code VS Code extension
-	| 'claude-cli'       // Claude CLI (standalone)
-	| 'codex'            // OpenAI Codex
-	| 'gemini'           // Google Gemini
-	| 'windsurf'         // Windsurf IDE
-	| 'cursor';          // Cursor IDE
+	| 'claude-code'      // Claude Code VS Code extension (CLI binary)
+	| 'claude-cli'       // Claude CLI (global PATH command)
+	| 'codex'            // OpenAI Codex VS Code extension (CLI binary)
+	| 'codex-cli'        // Codex CLI (global PATH command)
+	| 'gemini'           // Google Gemini (config file)
+	| 'windsurf'         // Windsurf IDE (config file)
+	| 'cursor';          // Cursor IDE (config file)
 
 /**
  * Agent configuration info
@@ -142,12 +144,14 @@ export interface InstallerOptions {
 
 /**
  * Settings for which agents to auto-register with
+ * User settings for which agents to auto-register with
  */
 export interface McpIntegrationSettings {
-	claudeCode: boolean;
-	claudeCli: boolean;
-	codex: boolean;
-	gemini: boolean;
-	windsurf: boolean;
-	cursor: boolean;
+	claudeCode?: boolean;    // Claude Code VS Code extension
+	claudeCli?: boolean;     // Claude CLI (global)
+	codex?: boolean;         // Codex VS Code extension
+	codexCli?: boolean;      // Codex CLI (global)
+	gemini?: boolean;        // Gemini (config file)
+	windsurf?: boolean;      // Windsurf (config file)
+	cursor?: boolean;        // Cursor (config file)
 }

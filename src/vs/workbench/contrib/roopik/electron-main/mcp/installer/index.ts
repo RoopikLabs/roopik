@@ -7,10 +7,12 @@
  * MCP Installer Module
  *
  * Exports for auto-registration with external AI agents.
+ * Exports for auto-registration with external AI agents.
  */
 
 // Main installer
 export { McpInstaller } from './mcpInstaller.js';
+export type { McpPlatformAdapter } from './mcpInstaller.js';
 
 // Types
 export type {
@@ -26,21 +28,48 @@ export type {
 	McpIntegrationSettings
 } from './mcpInstallerTypes.js';
 
-// Utilities
+// Utilities - Path resolution
 export {
-	getAgentConfigPath,
-	isAgentInstalled,
+	isWindows,
+	isMac,
+	isLinux,
+	getHomeDir,
+	getAppDataDir,
 	getMcpBinaryPath,
+	getAgentConfigPath,
+	getClaudeSettingsPath,
+	isAgentInstalled
+} from './mcpInstallerUtils.js';
+
+// Utilities - CLI helpers
+export {
+	isCommandAvailable,
+	executeCommand,
+	getClaudeCodeBinaryPath,
+	getCodexBinaryPath,
+	buildClaudeExtensionAddCommand,
+	buildClaudeExtensionRemoveCommand,
+	buildGlobalClaudeAddCommand,
+	buildGlobalClaudeRemoveCommand,
+	buildCodexExtensionAddCommand,
+	buildCodexExtensionRemoveCommand,
+	buildGlobalCodexAddCommand,
+	buildGlobalCodexRemoveCommand
+} from './mcpInstallerUtils.js';
+
+// Utilities - Claude allow rules (CRITICAL for auto-approval)
+export {
+	addClaudeAllowRule,
+	removeClaudeAllowRule
+} from './mcpInstallerUtils.js';
+
+// Utilities - Config file operations
+export {
 	readJsonConfig,
 	writeJsonConfig,
 	backupConfig,
 	generateMcpServerEntry,
 	isRoopikRegistered,
 	addRoopikToConfig,
-	removeRoopikFromConfig,
-	isWindows,
-	isMac,
-	isLinux,
-	getHomeDir,
-	getAppDataDir
+	removeRoopikFromConfig
 } from './mcpInstallerUtils.js';
