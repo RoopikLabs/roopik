@@ -302,8 +302,9 @@ function getClaudeCliDir(): string {
  * Get the Claude Code binary path from the VS Code extension
  * Finds the Claude CLI binary inside the VS Code extension
  *
- * Path structure: {extensionPath}/cli-{platform}-{arch}/claude(.exe)
- * Example: ~/.roopik-dev/extensions/anthropic.claude-code-2.1.23-win32-x64/cli-win32-x64/claude.exe
+ * Checks multiple path structures:
+ * 1. Roopik/newer structure: {extensionPath}/resources/native-binary/claude(.exe)
+ * 2. VS Code/older structure: {extensionPath}/cli-{platform}-{arch}/claude(.exe)
  *
  * @param extensionPath - Optional path from platform adapter. If not provided, scans filesystem.
  */
@@ -315,12 +316,19 @@ export function getClaudeCodeBinaryPath(extensionPath: string | undefined): stri
 		return undefined;
 	}
 
-	const cliDir = getClaudeCliDir();
 	const binaryName = isWindows ? 'claude.exe' : 'claude';
-	const binaryPath = path.join(actualExtPath, cliDir, binaryName);
 
-	if (fs.existsSync(binaryPath)) {
-		return binaryPath;
+	// Check Roopik/newer structure first: resources/native-binary/
+	const nativeBinaryPath = path.join(actualExtPath, 'resources', 'native-binary', binaryName);
+	if (fs.existsSync(nativeBinaryPath)) {
+		return nativeBinaryPath;
+	}
+
+	// Fallback to VS Code/older structure: cli-{platform}-{arch}/
+	const cliDir = getClaudeCliDir();
+	const cliBinaryPath = path.join(actualExtPath, cliDir, binaryName);
+	if (fs.existsSync(cliBinaryPath)) {
+		return cliBinaryPath;
 	}
 
 	return undefined;
