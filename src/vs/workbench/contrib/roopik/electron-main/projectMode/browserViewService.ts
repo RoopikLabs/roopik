@@ -831,6 +831,210 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	}
 
 	/**
+	 * Capture screenshot of a specific element using CDP DOM.getBoxModel
+	 * This provides pixel-perfect bounds unlike JavaScript getBoundingClientRect
+	 *
+	 * Uses the same technique as VS Code's simple browser overlay:
+	 * 1. Query element by CSS selector
+	 * 2. Get box model via CDP for accurate bounds
+	 * 3. Account for zoom factor
+	 * 4. Capture screenshot of that region
+	 *
+	 * @param browserViewId - The browser view ID
+	 * @param selector - CSS selector to find the element
+	 * @returns Base64 data URL of the element screenshot, or null if element not found
+	 */
+	async captureElementScreenshot(browserViewId: number, selector: string): Promise<string | null> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			throw new Error(`Browser view ${browserViewId} not found`);
+		}
+
+		this.logger.info('captureElementScreenshot called', { browserViewId, selector });
+
+		try {
+			// Ensure debugger is attached
+			if (!this.debuggerAttached.get(browserViewId)) {
+				await this.attachDebugger(browserViewId);
+			}
+
+			const debugger_ = browserView.webContents.debugger;
+
+			// Enable DOM domain
+			await debugger_.sendCommand('DOM.enable');
+
+			// Get the document root with full depth to traverse all nodes
+			const { root } = await debugger_.sendCommand('DOM.getDocument', { depth: -1, pierce: true });
+
+			this.logger.debug('Got document root', { rootNodeId: root.nodeId });
+
+			// Query the element by selector
+			const { nodeId } = await debugger_.sendCommand('DOM.querySelector', {
+				nodeId: root.nodeId,
+				selector: selector
+			});
+
+			this.logger.debug('DOM.querySelector result', { selector, nodeId });
+
+			if (!nodeId || nodeId === 0) {
+				this.logger.warn('Element not found for selector via CDP', { selector });
+				// Fallback: Try using JavaScript to get bounds
+				return this.captureElementScreenshotFallback(browserViewId, selector);
+			}
+
+			// Get the box model for accurate bounds
+			// This is the key - CDP gives us pixel-perfect coordinates
+			const { model } = await debugger_.sendCommand('DOM.getBoxModel', { nodeId });
+
+			if (!model) {
+				this.logger.warn('Failed to get box model for element', { selector, nodeId });
+				return this.captureElementScreenshotFallback(browserViewId, selector);
+			}
+
+			// Box model returns quad coordinates (8 values for 4 corners)
+			// content: [x1,y1, x2,y1, x2,y2, x1,y2] - content box corners
+			// margin: [x1,y1, x2,y1, x2,y2, x1,y2] - margin box corners
+			const content = model.content as number[];
+			const margin = model.margin as number[];
+
+			// Calculate bounds from quads (same as VS Code's approach)
+			// Use margin box for full element including margins
+			const x = Math.min(margin[0], content[0]);
+			const y = Math.min(margin[1], content[1]);
+			const width = Math.max(margin[2] - margin[0], content[2] - content[0]);
+			const height = Math.max(margin[5] - margin[1], content[5] - content[1]);
+
+			// Account for zoom factor
+			const zoomFactor = browserView.webContents.getZoomFactor();
+
+			// Calculate scaled bounds
+			const scaledX = Math.floor(x * zoomFactor);
+			const scaledY = Math.floor(y * zoomFactor);
+			const scaledWidth = Math.ceil(width * zoomFactor);
+			const scaledHeight = Math.ceil(height * zoomFactor);
+
+			// Ensure bounds are within viewport
+			const viewportBounds = browserView.getBounds();
+			const clippedX = Math.max(0, scaledX);
+			const clippedY = Math.max(0, scaledY);
+			const clippedWidth = Math.min(scaledWidth, viewportBounds.width - clippedX);
+			const clippedHeight = Math.min(scaledHeight, viewportBounds.height - clippedY);
+
+			// Skip if element is not visible or too small
+			if (clippedWidth <= 0 || clippedHeight <= 0) {
+				this.logger.warn('Element is not visible in viewport', { selector, bounds: { x, y, width, height } });
+				return null;
+			}
+
+			this.logger.info('Capturing element screenshot', {
+				selector,
+				originalBounds: { x, y, width, height },
+				zoomFactor,
+				scaledBounds: { x: scaledX, y: scaledY, width: scaledWidth, height: scaledHeight },
+				clippedBounds: { x: clippedX, y: clippedY, width: clippedWidth, height: clippedHeight }
+			});
+
+			// Capture the screenshot of the element region
+			const image = await browserView.webContents.capturePage({
+				x: clippedX,
+				y: clippedY,
+				width: clippedWidth,
+				height: clippedHeight
+			});
+
+			const dataUrl = image.toDataURL();
+			this.logger.info('Element screenshot captured successfully', { dataUrlLength: dataUrl.length });
+			return dataUrl;
+
+		} catch (error) {
+			this.logger.error('Failed to capture element screenshot via CDP', { selector, error });
+			// Try fallback approach
+			return this.captureElementScreenshotFallback(browserViewId, selector);
+		}
+	}
+
+	/**
+	 * Fallback method to capture element screenshot using JavaScript bounds
+	 * Used when CDP DOM.querySelector fails (e.g., for dynamically added elements)
+	 */
+	private async captureElementScreenshotFallback(browserViewId: number, selector: string): Promise<string | null> {
+		const browserView = this.browserViews.get(browserViewId);
+		if (!browserView || browserView.webContents.isDestroyed()) {
+			return null;
+		}
+
+		try {
+			this.logger.info('Using fallback JS method for element screenshot', { selector });
+
+			// Get bounds using JavaScript
+			const boundsJson = await browserView.webContents.executeJavaScript(`
+				(function() {
+					try {
+						const el = document.querySelector(${JSON.stringify(selector)});
+						if (!el) return null;
+						const rect = el.getBoundingClientRect();
+						return JSON.stringify({
+							x: rect.x,
+							y: rect.y,
+							width: rect.width,
+							height: rect.height
+						});
+					} catch (e) {
+						return null;
+					}
+				})();
+			`);
+
+			if (!boundsJson) {
+				this.logger.warn('Fallback: Element not found via JS', { selector });
+				return null;
+			}
+
+			const bounds = JSON.parse(boundsJson);
+
+			// Apply zoom factor
+			const zoomFactor = browserView.webContents.getZoomFactor();
+			const scaledX = Math.floor(bounds.x * zoomFactor);
+			const scaledY = Math.floor(bounds.y * zoomFactor);
+			const scaledWidth = Math.ceil(bounds.width * zoomFactor);
+			const scaledHeight = Math.ceil(bounds.height * zoomFactor);
+
+			// Ensure bounds are within viewport
+			const viewportBounds = browserView.getBounds();
+			const clippedX = Math.max(0, scaledX);
+			const clippedY = Math.max(0, scaledY);
+			const clippedWidth = Math.min(scaledWidth, viewportBounds.width - clippedX);
+			const clippedHeight = Math.min(scaledHeight, viewportBounds.height - clippedY);
+
+			if (clippedWidth <= 0 || clippedHeight <= 0) {
+				this.logger.warn('Fallback: Element not visible in viewport', { selector, bounds });
+				return null;
+			}
+
+			this.logger.info('Fallback: Capturing element screenshot', {
+				selector,
+				bounds,
+				clippedBounds: { x: clippedX, y: clippedY, width: clippedWidth, height: clippedHeight }
+			});
+
+			const image = await browserView.webContents.capturePage({
+				x: clippedX,
+				y: clippedY,
+				width: clippedWidth,
+				height: clippedHeight
+			});
+
+			const dataUrl = image.toDataURL();
+			this.logger.info('Fallback: Element screenshot captured', { dataUrlLength: dataUrl.length });
+			return dataUrl;
+
+		} catch (error) {
+			this.logger.error('Fallback: Failed to capture element screenshot', { selector, error });
+			return null;
+		}
+	}
+
+	/**
 	 * Focus the browser view to receive keyboard events
 	 * This is important for ESC key handling in inspect mode
 	 */

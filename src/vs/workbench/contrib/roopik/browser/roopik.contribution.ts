@@ -122,6 +122,11 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 			minimum: 1024,
 			maximum: 65535,
 			description: 'Port for the internal Roopik MCP Server. If the port is already in use, Roopik will automatically try the next available port.'
+		},
+		'roopik.inspect.attachElementScreenshot': {
+			type: 'boolean',
+			default: true,
+			description: 'When enabled, attaching an element to AI chat will also include a screenshot of the element along with its HTML context.'
 		}
 	}
 });

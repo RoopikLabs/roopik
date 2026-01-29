@@ -213,6 +213,16 @@ export interface IProjectModeService {
 	takeScreenshotClip(browserViewId: number, x: number, y: number, width: number, height: number): Promise<string>;
 
 	/**
+	 * Capture screenshot of a specific element using CDP DOM.getBoxModel
+	 * This provides pixel-perfect bounds for accurate element screenshots
+	 *
+	 * @param browserViewId - The browser view ID
+	 * @param selector - CSS selector to find the element
+	 * @returns Base64 data URL of the element screenshot, or null if element not found
+	 */
+	captureElementScreenshot(browserViewId: number, selector: string): Promise<string | null>;
+
+	/**
 	 * Focus the browser view to receive keyboard events
 	 */
 	focusBrowserView(browserViewId: number): Promise<void>;
