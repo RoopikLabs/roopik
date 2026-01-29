@@ -28,6 +28,9 @@ export type {
 	McpIntegrationSettings
 } from './mcpInstallerTypes.js';
 
+// Constants
+export { ROOPIK_MCP_NAME } from './mcpInstallerUtils.js';
+
 // Utilities - Path resolution
 export {
 	isWindows,

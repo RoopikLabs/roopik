@@ -20,6 +20,7 @@
  */
 
 import * as fs from 'fs';
+import * as path from 'path';
 import { Emitter, Event } from '../../../../../../base/common/event.js';
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import type {
@@ -451,7 +452,7 @@ export class McpInstaller extends Disposable {
 			}
 
 			// Create directory if needed
-			const dir = configPath.substring(0, configPath.lastIndexOf('/'));
+			const dir = path.dirname(configPath);
 			if (!fs.existsSync(dir)) {
 				fs.mkdirSync(dir, { recursive: true });
 			}

@@ -26,6 +26,16 @@ import type { AiAgent, McpServerEntry } from './mcpInstallerTypes.js';
 const execAsync = promisify(exec);
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/** MCP server name used for registration (change this to rebrand) */
+export const ROOPIK_MCP_NAME = 'roopik';
+
+/** Claude allow rule pattern */
+const ROOPIK_MCP_ALLOW_RULE = `mcp__${ROOPIK_MCP_NAME}`;
+
+// ============================================================================
 // Platform Detection
 // ============================================================================
 
@@ -206,34 +216,31 @@ export async function executeCommand(command: string): Promise<{ success: boolea
 /**
  * Get the Claude Code binary path from the VS Code extension
  * Finds the Claude CLI binary inside the VS Code extension
+ *
+ * Path structure: {extensionPath}/cli-{platform}-{arch}/claude(.exe)
+ * Example: ~/.vscode/extensions/anthropic.claude-code-2.1.23/cli-win32-x64/claude.exe
  */
 export function getClaudeCodeBinaryPath(extensionPath: string | undefined): string | undefined {
 	if (!extensionPath) {
 		return undefined;
 	}
 
-	const platform = isWindows ? 'claude.exe' : 'claude';
-
-	// Try new path format first (newer Claude Code versions)
-	const binariesPath = path.join(
-		extensionPath,
-		'resources',
-		'native-binaries',
-		`${process.platform}-${process.arch}`,
-		platform
-	);
-
-	if (fs.existsSync(binariesPath)) {
-		return binariesPath;
+	// Determine CLI directory based on platform (matches Pencil Dev structure)
+	let cliDir: string;
+	switch (process.platform) {
+		case 'win32':
+			cliDir = 'cli-win32-x64';
+			break;
+		case 'darwin':
+			cliDir = process.arch === 'arm64' ? 'cli-darwin-arm64' : 'cli-darwin-x64';
+			break;
+		default:
+			cliDir = 'cli-linux-x64';
+			break;
 	}
 
-	// Try old path format (older Claude Code versions)
-	const binaryPath = path.join(
-		extensionPath,
-		'resources',
-		'native-binary',
-		platform
-	);
+	const binaryName = isWindows ? 'claude.exe' : 'claude';
+	const binaryPath = path.join(extensionPath, cliDir, binaryName);
 
 	if (fs.existsSync(binaryPath)) {
 		return binaryPath;
@@ -285,65 +292,75 @@ export function getCodexBinaryPath(extensionPath: string | undefined): string | 
 
 /**
  * Build Claude MCP add command (extension version)
+ * Uses the Claude binary bundled with the VS Code extension
+ *
+ * IMPORTANT: -s user flag registers at USER scope (global, all projects)
+ * Without it, defaults to PROJECT scope (only current folder)
  */
 export function buildClaudeExtensionAddCommand(claudeBinaryPath: string, mcpBinaryPath: string, wsPort: number): string {
-	return `"${claudeBinaryPath}" mcp add --transport stdio roopik "${mcpBinaryPath}" -s user -- --ws-port ${wsPort}`;
+	// Format: claude mcp add <name> -s user -- <command> [args...]
+	return `"${claudeBinaryPath}" mcp add ${ROOPIK_MCP_NAME} -s user -- "${mcpBinaryPath}" --ws-port ${wsPort}`;
 }
 
 /**
  * Build Claude MCP remove command (extension version)
  */
 export function buildClaudeExtensionRemoveCommand(claudeBinaryPath: string): string {
-	return `"${claudeBinaryPath}" mcp remove roopik -s user`;
+	return `"${claudeBinaryPath}" mcp remove ${ROOPIK_MCP_NAME} -s user`;
 }
 
 /**
  * Build global Claude CLI add command
+ * Uses the global `claude` command installed in PATH
+ *
+ * Format matches Pencil Dev: claude mcp add <name> --launch "<binary>" --scope user
  */
 export function buildGlobalClaudeAddCommand(mcpBinaryPath: string, wsPort: number): string {
-	return `claude mcp add --transport stdio --scope user roopik "${mcpBinaryPath}" -- --ws-port ${wsPort}`;
+	// Note: Using --launch flag as per Pencil Dev pattern
+	// The --ws-port is passed via the launch command
+	return `claude mcp add ${ROOPIK_MCP_NAME} --launch "${mcpBinaryPath} --ws-port ${wsPort}" --scope user`;
 }
 
 /**
  * Build global Claude CLI remove command
  */
 export function buildGlobalClaudeRemoveCommand(): string {
-	return 'claude mcp remove roopik --scope user';
+	return `claude mcp remove ${ROOPIK_MCP_NAME} --scope user`;
 }
 
 /**
  * Build Codex extension add command
+ * Uses the Codex binary bundled with the VS Code extension
  */
 export function buildCodexExtensionAddCommand(codexBinaryPath: string, mcpBinaryPath: string, wsPort: number): string {
-	return `"${codexBinaryPath}" mcp add roopik -- "${mcpBinaryPath}" --ws-port ${wsPort}`;
+	return `"${codexBinaryPath}" mcp add ${ROOPIK_MCP_NAME} -- "${mcpBinaryPath}" --ws-port ${wsPort}`;
 }
 
 /**
  * Build Codex extension remove command
  */
 export function buildCodexExtensionRemoveCommand(codexBinaryPath: string): string {
-	return `"${codexBinaryPath}" mcp remove roopik`;
+	return `"${codexBinaryPath}" mcp remove ${ROOPIK_MCP_NAME}`;
 }
 
 /**
  * Build global Codex CLI add command
+ * Uses the global `codex` command installed in PATH
  */
 export function buildGlobalCodexAddCommand(mcpBinaryPath: string, wsPort: number): string {
-	return `codex mcp add roopik -- "${mcpBinaryPath}" --ws-port ${wsPort}`;
+	return `codex mcp add ${ROOPIK_MCP_NAME} -- "${mcpBinaryPath}" --ws-port ${wsPort}`;
 }
 
 /**
  * Build global Codex CLI remove command
  */
 export function buildGlobalCodexRemoveCommand(): string {
-	return 'codex mcp remove roopik';
+	return `codex mcp remove ${ROOPIK_MCP_NAME}`;
 }
 
 // ============================================================================
 // Claude Allow Rules
 // ============================================================================
-
-const ROOPIK_MCP_ALLOW_RULE = 'mcp__roopik';
 
 /**
  * Add Roopik to Claude Code's permission allow list
@@ -473,7 +490,7 @@ export function generateMcpServerEntry(options: {
 	wsPort: number;
 }): McpServerEntry {
 	return {
-		name: 'roopik',
+		name: ROOPIK_MCP_NAME,
 		transport: 'stdio',
 		command: options.binaryPath,
 		args: ['--ws-port', options.wsPort.toString()],
@@ -488,7 +505,7 @@ export function isRoopikRegistered(config: { mcpServers?: Record<string, unknown
 	if (!config || !config.mcpServers) {
 		return false;
 	}
-	return 'roopik' in config.mcpServers;
+	return ROOPIK_MCP_NAME in config.mcpServers;
 }
 
 /**
@@ -503,7 +520,7 @@ export function addRoopikToConfig<T extends { mcpServers?: Record<string, unknow
 		result.mcpServers = {};
 	}
 
-	result.mcpServers['roopik'] = {
+	result.mcpServers[ROOPIK_MCP_NAME] = {
 		command: entry.command,
 		args: entry.args,
 		env: entry.env
@@ -522,6 +539,6 @@ export function removeRoopikFromConfig<T extends { mcpServers?: Record<string, u
 		return config;
 	}
 
-	delete config.mcpServers['roopik'];
+	delete config.mcpServers[ROOPIK_MCP_NAME];
 	return config;
 }
