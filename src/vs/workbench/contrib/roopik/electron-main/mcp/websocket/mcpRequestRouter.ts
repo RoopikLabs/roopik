@@ -204,14 +204,20 @@ export class McpRequestRouter {
 
 		if (result.success) {
 			// Return tool result in MCP format
+			const contentType = this.getContentType(result.data);
+			let contentItem: { type: string; text?: string; data?: string; mimeType?: string };
+
+			if (contentType === 'image') {
+				// Extract raw base64 from data-url format (strip "data:image/png;base64," prefix)
+				const imageData = (result.data as { image: string }).image;
+				const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
+				contentItem = { type: 'image', data: base64Data, mimeType: 'image/png' };
+			} else {
+				contentItem = { type: 'text', text: JSON.stringify(result.data, null, 2) };
+			}
+
 			return this.createSuccessResponse(id, {
-				content: [{
-					type: this.getContentType(result.data),
-					...(this.getContentType(result.data) === 'image'
-						? { data: (result.data as { image: string }).image, mimeType: 'image/png' }
-						: { text: JSON.stringify(result.data, null, 2) }
-					)
-				}],
+				content: [contentItem],
 				isError: false
 			});
 		} else {

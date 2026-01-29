@@ -21,9 +21,14 @@ import * as path from 'path';
 import * as os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { fileURLToPath } from 'url';
 import type { AiAgent, McpServerEntry } from './mcpInstallerTypes.js';
 
 const execAsync = promisify(exec);
+
+// ES Module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ============================================================================
 // Constants
@@ -98,11 +103,13 @@ function getResourcesPath(): string {
 		// Not in electron context
 	}
 
-	// Development fallback - find resources directory
+	// Development fallback - find resources/mcp-binaries directory
+	// Must check for mcp-binaries subfolder to avoid finding wrong resources folder
 	let currentDir = __dirname;
-	for (let i = 0; i < 10; i++) {
+	for (let i = 0; i < 15; i++) {
 		const resourcesDir = path.join(currentDir, 'resources');
-		if (fs.existsSync(resourcesDir)) {
+		const mcpBinariesDir = path.join(resourcesDir, 'mcp-binaries');
+		if (fs.existsSync(mcpBinariesDir)) {
 			return resourcesDir;
 		}
 		currentDir = path.dirname(currentDir);
@@ -210,37 +217,107 @@ export async function executeCommand(command: string): Promise<{ success: boolea
 }
 
 // ============================================================================
+// IDE Extension Folder Scanning
+// ============================================================================
+
+/**
+ * Get all IDE extension folders to scan
+ * Includes Roopik, VS Code, Cursor, and other IDE extension directories
+ *
+ * WHY SCAN OTHER IDEs?
+ * If user has Claude Code installed in VS Code but uses Roopik as main IDE,
+ * we can still register Roopik's MCP with their Claude by finding the binary there.
+ * This enables cross-IDE integration.
+ */
+function getExtensionFolders(): string[] {
+	const home = getHomeDir();
+	return [
+		// Roopik (production) - FIRST priority
+		path.join(home, '.roopik', 'extensions'),
+		// Roopik (development)
+		path.join(home, '.roopik-dev', 'extensions'),
+		// VS Code - scan to find Claude/Codex if installed there
+		path.join(home, '.vscode', 'extensions'),
+		// Cursor - scan to find Claude/Codex if installed there
+		path.join(home, '.cursor', 'extensions'),
+		// VSCodium
+		path.join(home, '.vscode-oss', 'extensions'),
+		// Windsurf (Codeium's IDE)
+		path.join(home, '.windsurf', 'extensions'),
+	];
+}
+
+/**
+ * Find an extension by ID prefix across all IDE extension folders
+ * Returns the most recent version (highest version number)
+ *
+ * @param extensionIdPrefix - e.g., "anthropic.claude-code" or "openai.chatgpt"
+ */
+export function findExtensionPath(extensionIdPrefix: string): string | undefined {
+	for (const folder of getExtensionFolders()) {
+		if (!fs.existsSync(folder)) {
+			continue;
+		}
+
+		try {
+			const entries = fs.readdirSync(folder);
+			// Find folders matching the extension ID prefix
+			const matches = entries
+				.filter(name => name.startsWith(extensionIdPrefix))
+				.map(name => path.join(folder, name))
+				.filter(p => fs.statSync(p).isDirectory());
+
+			if (matches.length > 0) {
+				// Sort to get highest version (last alphabetically)
+				matches.sort();
+				return matches[matches.length - 1];
+			}
+		} catch {
+			// Folder not readable, skip
+		}
+	}
+
+	return undefined;
+}
+
+// ============================================================================
 // Claude Code Extension Binary
 // ============================================================================
+
+/**
+ * Get the Claude Code CLI directory name for current platform
+ */
+function getClaudeCliDir(): string {
+	switch (process.platform) {
+		case 'win32':
+			return 'cli-win32-x64';
+		case 'darwin':
+			return process.arch === 'arm64' ? 'cli-darwin-arm64' : 'cli-darwin-x64';
+		default:
+			return 'cli-linux-x64';
+	}
+}
 
 /**
  * Get the Claude Code binary path from the VS Code extension
  * Finds the Claude CLI binary inside the VS Code extension
  *
  * Path structure: {extensionPath}/cli-{platform}-{arch}/claude(.exe)
- * Example: ~/.vscode/extensions/anthropic.claude-code-2.1.23/cli-win32-x64/claude.exe
+ * Example: ~/.roopik-dev/extensions/anthropic.claude-code-2.1.23-win32-x64/cli-win32-x64/claude.exe
+ *
+ * @param extensionPath - Optional path from platform adapter. If not provided, scans filesystem.
  */
 export function getClaudeCodeBinaryPath(extensionPath: string | undefined): string | undefined {
-	if (!extensionPath) {
+	// If no extension path provided, scan filesystem to find it
+	const actualExtPath = extensionPath || findExtensionPath('anthropic.claude-code');
+
+	if (!actualExtPath) {
 		return undefined;
 	}
 
-	// Determine CLI directory based on platform (matches Pencil Dev structure)
-	let cliDir: string;
-	switch (process.platform) {
-		case 'win32':
-			cliDir = 'cli-win32-x64';
-			break;
-		case 'darwin':
-			cliDir = process.arch === 'arm64' ? 'cli-darwin-arm64' : 'cli-darwin-x64';
-			break;
-		default:
-			cliDir = 'cli-linux-x64';
-			break;
-	}
-
+	const cliDir = getClaudeCliDir();
 	const binaryName = isWindows ? 'claude.exe' : 'claude';
-	const binaryPath = path.join(extensionPath, cliDir, binaryName);
+	const binaryPath = path.join(actualExtPath, cliDir, binaryName);
 
 	if (fs.existsSync(binaryPath)) {
 		return binaryPath;
@@ -252,9 +329,17 @@ export function getClaudeCodeBinaryPath(extensionPath: string | undefined): stri
 /**
  * Get Codex binary path from the VS Code extension
  * Finds the Codex CLI binary inside the VS Code extension
+ *
+ * Path structure: {extensionPath}/bin/{platform}-{arch}/codex(.exe)
+ * Example: ~/.roopik-dev/extensions/openai.chatgpt-0.4.68/bin/windows-x86_64/codex.exe
+ *
+ * @param extensionPath - Optional path from platform adapter. If not provided, scans filesystem.
  */
 export function getCodexBinaryPath(extensionPath: string | undefined): string | undefined {
-	if (!extensionPath) {
+	// If no extension path provided, scan filesystem to find it
+	const actualExtPath = extensionPath || findExtensionPath('openai.chatgpt');
+
+	if (!actualExtPath) {
 		return undefined;
 	}
 
@@ -283,7 +368,13 @@ export function getCodexBinaryPath(extensionPath: string | undefined): string | 
 	}
 
 	const binaryName = `codex${isWindows ? '.exe' : ''}`;
-	return path.join(extensionPath, 'bin', `${platform}-${arch}`, binaryName);
+	const binaryPath = path.join(actualExtPath, 'bin', `${platform}-${arch}`, binaryName);
+
+	if (fs.existsSync(binaryPath)) {
+		return binaryPath;
+	}
+
+	return undefined;
 }
 
 // ============================================================================
@@ -313,19 +404,17 @@ export function buildClaudeExtensionRemoveCommand(claudeBinaryPath: string): str
  * Build global Claude CLI add command
  * Uses the global `claude` command installed in PATH
  *
- * Format matches Pencil Dev: claude mcp add <name> --launch "<binary>" --scope user
+ * Format: claude mcp add <name> -s user -- <command> [args...]
  */
 export function buildGlobalClaudeAddCommand(mcpBinaryPath: string, wsPort: number): string {
-	// Note: Using --launch flag as per Pencil Dev pattern
-	// The --ws-port is passed via the launch command
-	return `claude mcp add ${ROOPIK_MCP_NAME} --launch "${mcpBinaryPath} --ws-port ${wsPort}" --scope user`;
+	return `claude mcp add ${ROOPIK_MCP_NAME} -s user -- "${mcpBinaryPath}" --ws-port ${wsPort}`;
 }
 
 /**
  * Build global Claude CLI remove command
  */
 export function buildGlobalClaudeRemoveCommand(): string {
-	return `claude mcp remove ${ROOPIK_MCP_NAME} --scope user`;
+	return `claude mcp remove ${ROOPIK_MCP_NAME} -s user`;
 }
 
 /**

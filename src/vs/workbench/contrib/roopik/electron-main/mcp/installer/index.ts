@@ -48,6 +48,7 @@ export {
 export {
 	isCommandAvailable,
 	executeCommand,
+	findExtensionPath,
 	getClaudeCodeBinaryPath,
 	getCodexBinaryPath,
 	buildClaudeExtensionAddCommand,
