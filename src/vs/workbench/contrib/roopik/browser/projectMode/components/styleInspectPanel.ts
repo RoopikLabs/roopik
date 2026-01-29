@@ -604,7 +604,7 @@ export class StyleInspectPanel {
 		content.style.cssText = `
 			flex: 1;
 			overflow-y: auto;
-			overflow-x: hidden;
+			overflow-x: auto;
 			padding: 8px;
 		`;
 
@@ -747,11 +747,37 @@ export class StyleInspectPanel {
 	private scrollToSelectedNode(nodeId: number): void {
 		// Use direct reference from map (no querySelector needed)
 		const selectedElement = this.nodeIdToElement.get(nodeId);
-		if (selectedElement) {
-			// Use setTimeout to ensure DOM is fully rendered
-			setTimeout(() => {
-				selectedElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
-			}, 100);
+		if (selectedElement && this.componentsContent) {
+			// Use requestAnimationFrame for faster response (no artificial delay)
+			requestAnimationFrame(() => {
+				const container = this.componentsContent;
+
+				// Get element position relative to container using getBoundingClientRect
+				const containerRect = container.getBoundingClientRect();
+				const elementRect = selectedElement.getBoundingClientRect();
+
+				// Calculate element's position relative to container's scroll content
+				const elementTopRelative = elementRect.top - containerRect.top + container.scrollTop;
+				const elementHeight = elementRect.height;
+				const containerHeight = container.clientHeight;
+
+				// Target: element's center should be at container's vertical center
+				const targetScrollTop = elementTopRelative - (containerHeight / 2) + (elementHeight / 2);
+				const clampedScrollTop = Math.max(0, Math.min(targetScrollTop, container.scrollHeight - containerHeight));
+
+				// Calculate horizontal scroll to center of viewport
+				const containerWidth = container.clientWidth;
+				const scrollWidth = container.scrollWidth;
+				const centerScrollLeft = (scrollWidth - containerWidth) / 2;
+				const clampedScrollLeft = Math.max(0, centerScrollLeft);
+
+				// Scroll both axes together
+				container.scrollTo({
+					top: clampedScrollTop,
+					left: clampedScrollLeft,
+					behavior: 'smooth'
+				});
+			});
 		}
 	}
 
@@ -1548,6 +1574,7 @@ export class StyleInspectPanel {
 			align-items: center;
 			padding: 2px 8px 2px ${8 + depth * 16}px;
 			cursor: pointer;
+			white-space: nowrap;
 			${isSelected ? 'background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground);' : ''}
 		`;
 
