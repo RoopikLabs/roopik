@@ -110,6 +110,14 @@ jobs:
         working-directory: extensions/roopik
         run: npm run build
 
+      - name: Build MCP STDIO binary (Windows)
+        working-directory: tools/roopik/mcp-stdio-server
+        shell: bash
+        run: |
+          npm ci
+          mkdir -p ../../../resources/mcp-binaries
+          npm run build:binary:win
+
       - name: Clean non-Windows prebuilds from node_modules
         shell: bash
         run: |

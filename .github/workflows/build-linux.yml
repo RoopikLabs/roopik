@@ -133,6 +133,13 @@ jobs:
         working-directory: extensions/roopik
         run: npm run build
 
+      - name: Build MCP STDIO binary (Linux)
+        working-directory: tools/roopik/mcp-stdio-server
+        run: |
+          npm ci
+          mkdir -p ../../../resources/mcp-binaries
+          npm run build:binary:linux
+
       - name: Build Linux application (x64)
         env:
           NODE_OPTIONS: --max-old-space-size=4096

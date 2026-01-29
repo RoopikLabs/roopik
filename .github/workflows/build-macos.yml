@@ -108,6 +108,13 @@ jobs:
         working-directory: extensions/roopik
         run: npm run build
 
+      - name: Build MCP STDIO binary (macOS ARM64)
+        working-directory: tools/roopik/mcp-stdio-server
+        run: |
+          npm ci
+          mkdir -p ../../../resources/mcp-binaries
+          npm run build:binary:mac-arm64
+
       - name: Build macOS application (arm64)
         env:
           BUILD_SOURCEVERSION: ${{ github.sha }}
