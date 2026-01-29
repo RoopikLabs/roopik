@@ -80,8 +80,8 @@ export class DarwinUpdateService extends AbstractUpdateService implements IRelau
 			electron.autoUpdater.setFeedURL({ url });
 		} catch (e) {
 			// application is very likely not signed
-			this.logService.error('Failed to set update feed URL', e);
-			return undefined;
+			this.logService.warn('Failed to set update feed URL during initialization', e);
+			return url;
 		}
 		return url;
 	}
