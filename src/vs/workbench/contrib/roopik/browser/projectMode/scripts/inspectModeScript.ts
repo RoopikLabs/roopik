@@ -310,88 +310,111 @@ export const INSPECT_MODE_SCRIPT = `
 	].join(';');
 	document.body.appendChild(actionButtonsContainer);
 
-	// Attach button (left) - paperclip icon
+	// Attach button (left) - code element icon - light style for visibility
 	const attachButton = document.createElement('div');
 	attachButton.id = '__roopik_inspect_attach';
 	attachButton.style.cssText = [
-		'width: 28px',
-		'height: 28px',
-		'background-color: #059669',
-		'border-radius: 6px',
+		'width: 32px',
+		'height: 32px',
+		'background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+		'border: 1px solid rgba(0, 0, 0, 0.3)',
+		'border-radius: 8px',
 		'cursor: pointer',
-		'box-shadow: 0 2px 8px rgba(5, 150, 105, 0.4)',
-		'transition: background-color 0.15s, transform 0.1s',
+		'box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15)',
+		'transition: all 0.2s ease',
 		'display: flex',
 		'align-items: center',
 		'justify-content: center'
 	].join(';');
-	attachButton.title = 'Attach element HTML to AI context';
+	attachButton.title = 'Attach element to AI context';
 
-	// Paperclip icon SVG
+	// Code brackets icon </> (represents HTML element)
 	var attachSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 	attachSvg.setAttribute('width', '16');
 	attachSvg.setAttribute('height', '16');
 	attachSvg.setAttribute('viewBox', '0 0 24 24');
 	attachSvg.setAttribute('fill', 'none');
-	attachSvg.setAttribute('stroke', 'white');
-	attachSvg.setAttribute('stroke-width', '2');
+	attachSvg.setAttribute('stroke', '#475569');
+	attachSvg.setAttribute('stroke-width', '2.5');
 	attachSvg.setAttribute('stroke-linecap', 'round');
 	attachSvg.setAttribute('stroke-linejoin', 'round');
-	var attachPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-	attachPath.setAttribute('d', 'M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48');
-	attachSvg.appendChild(attachPath);
+	// < bracket
+	var path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+	path1.setAttribute('d', 'M8 6L3 12L8 18');
+	attachSvg.appendChild(path1);
+	// > bracket
+	var path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+	path2.setAttribute('d', 'M16 6L21 12L16 18');
+	attachSvg.appendChild(path2);
+	// / slash
+	var path3 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+	path3.setAttribute('d', 'M14 4L10 20');
+	attachSvg.appendChild(path3);
 	attachButton.appendChild(attachSvg);
 
 	// Attach button hover
 	attachButton.addEventListener('mouseenter', function() {
-		attachButton.style.backgroundColor = '#047857';
-		attachButton.style.transform = 'scale(1.1)';
+		attachButton.style.background = 'linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%)';
+		attachButton.style.borderColor = 'rgba(0, 0, 0, 0.4)';
+		attachButton.style.transform = 'translateY(-2px)';
+		attachButton.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.2)';
+		attachSvg.setAttribute('stroke', '#1e293b');
 	});
 	attachButton.addEventListener('mouseleave', function() {
-		attachButton.style.backgroundColor = '#059669';
-		attachButton.style.transform = 'scale(1)';
+		attachButton.style.background = 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)';
+		attachButton.style.borderColor = 'rgba(0, 0, 0, 0.3)';
+		attachButton.style.transform = 'translateY(0)';
+		attachButton.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+		attachSvg.setAttribute('stroke', '#475569');
 	});
 
-	// Chat button (right) - message icon
+	// Chat button (right) - message icon - matching sleek style
 	const chatButton = document.createElement('div');
 	chatButton.id = '__roopik_inspect_chat';
 	chatButton.style.cssText = [
-		'width: 28px',
-		'height: 28px',
-		'background-color: #7c3aed',
-		'border-radius: 6px',
+		'width: 32px',
+		'height: 32px',
+		'background: linear-gradient(135deg, #4c1d95 0%, #6d28d9 100%)',
+		'border: 1px solid rgba(255, 255, 255, 0.15)',
+		'border-radius: 8px',
 		'cursor: pointer',
-		'box-shadow: 0 2px 8px rgba(124, 58, 237, 0.4)',
-		'transition: background-color 0.15s, transform 0.1s',
+		'box-shadow: 0 4px 12px rgba(109, 40, 217, 0.4)',
+		'transition: all 0.2s ease',
 		'display: flex',
 		'align-items: center',
 		'justify-content: center'
 	].join(';');
 	chatButton.title = 'Chat about this element';
 
-	// Message icon SVG
+	// Send/chat icon SVG (paper plane - more modern)
 	var chatSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 	chatSvg.setAttribute('width', '16');
 	chatSvg.setAttribute('height', '16');
 	chatSvg.setAttribute('viewBox', '0 0 24 24');
 	chatSvg.setAttribute('fill', 'none');
-	chatSvg.setAttribute('stroke', 'white');
+	chatSvg.setAttribute('stroke', '#e9d5ff');
 	chatSvg.setAttribute('stroke-width', '2');
 	chatSvg.setAttribute('stroke-linecap', 'round');
 	chatSvg.setAttribute('stroke-linejoin', 'round');
 	var chatPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-	chatPath.setAttribute('d', 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z');
+	chatPath.setAttribute('d', 'M22 2L11 13M22 2L15 22L11 13L2 9L22 2Z');
 	chatSvg.appendChild(chatPath);
 	chatButton.appendChild(chatSvg);
 
 	// Chat button hover
 	chatButton.addEventListener('mouseenter', function() {
-		chatButton.style.backgroundColor = '#6d28d9';
-		chatButton.style.transform = 'scale(1.1)';
+		chatButton.style.background = 'linear-gradient(135deg, #5b21b6 0%, #7c3aed 100%)';
+		chatButton.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+		chatButton.style.transform = 'translateY(-2px)';
+		chatButton.style.boxShadow = '0 6px 16px rgba(109, 40, 217, 0.5)';
+		chatSvg.setAttribute('stroke', '#ffffff');
 	});
 	chatButton.addEventListener('mouseleave', function() {
-		chatButton.style.backgroundColor = '#7c3aed';
-		chatButton.style.transform = 'scale(1)';
+		chatButton.style.background = 'linear-gradient(135deg, #4c1d95 0%, #6d28d9 100%)';
+		chatButton.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+		chatButton.style.transform = 'translateY(0)';
+		chatButton.style.boxShadow = '0 4px 12px rgba(109, 40, 217, 0.4)';
+		chatSvg.setAttribute('stroke', '#e9d5ff');
 	});
 
 	// Add buttons to container (attach on left, chat on right)
