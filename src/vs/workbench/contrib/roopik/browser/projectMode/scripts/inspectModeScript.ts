@@ -405,31 +405,35 @@ export const INSPECT_MODE_SCRIPT = `
 		'position: fixed',
 		'z-index: 2147483647',
 		'display: none',
-		'background: #1e1e1e',
-		'border: 1px solid #3c3c3c',
-		'border-radius: 8px',
-		'padding: 10px',
-		'box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4)',
-		'width: 500px'
+		'background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+		'border: 1px solid rgba(255, 255, 255, 0.15)',
+		'border-radius: 12px',
+		'padding: 12px 14px',
+		'box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1) inset',
+		'max-width: 520px',
+		'width: calc(100vw - 32px)',
+		'backdrop-filter: blur(10px)',
+		'box-sizing: border-box'
 	].join(';');
 
 	// Chat input container (input + send button)
 	const chatInputContainer = document.createElement('div');
-	chatInputContainer.style.cssText = 'display: flex; gap: 8px; align-items: center;';
+	chatInputContainer.style.cssText = 'display: flex; gap: 10px; align-items: center;';
 
 	const chatInput = document.createElement('input');
 	chatInput.type = 'text';
 	chatInput.placeholder = 'Describe changes...';
 	chatInput.style.cssText = [
 		'flex: 1',
-		'background: #2d2d2d',
-		'border: 1px solid #3c3c3c',
-		'border-radius: 4px',
-		'padding: 10px 12px',
-		'color: #cccccc',
-		'font-size: 13px',
+		'background: rgba(255, 255, 255, 0.05)',
+		'border: 1px solid rgba(255, 255, 255, 0.2)',
+		'border-radius: 8px',
+		'padding: 12px 16px',
+		'color: #e0e0e0',
+		'font-size: 14px',
 		'font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-		'outline: none'
+		'outline: none',
+		'transition: border-color 0.2s ease, box-shadow 0.2s ease'
 	].join(';');
 
 	const chatSendBtn = document.createElement('button');
@@ -446,16 +450,17 @@ export const INSPECT_MODE_SCRIPT = `
 	sendSvg.appendChild(sendPath);
 	chatSendBtn.appendChild(sendSvg);
 	chatSendBtn.style.cssText = [
-		'background: #7c3aed',
+		'background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%)',
 		'border: none',
-		'border-radius: 4px',
-		'padding: 8px',
+		'border-radius: 8px',
+		'padding: 10px 12px',
 		'cursor: pointer',
 		'color: white',
 		'display: flex',
 		'align-items: center',
 		'justify-content: center',
-		'transition: opacity 0.2s ease'
+		'transition: all 0.2s ease',
+		'box-shadow: 0 2px 8px rgba(124, 58, 237, 0.4)'
 	].join(';');
 
 	// Enable/disable send button based on input
@@ -467,6 +472,14 @@ export const INSPECT_MODE_SCRIPT = `
 	}
 
 	chatInput.addEventListener('input', updateSendButtonState);
+	chatInput.addEventListener('focus', function() {
+		chatInput.style.borderColor = 'rgba(124, 58, 237, 0.6)';
+		chatInput.style.boxShadow = '0 0 0 2px rgba(124, 58, 237, 0.2)';
+	});
+	chatInput.addEventListener('blur', function() {
+		chatInput.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+		chatInput.style.boxShadow = 'none';
+	});
 	chatInput.addEventListener('keypress', function(e) {
 		if (e.key === 'Enter' && chatInput.value.trim()) {
 			sendChatMessage(chatInput.value.trim());
@@ -610,8 +623,8 @@ export const INSPECT_MODE_SCRIPT = `
 		isChatOpen = true;
 
 		var rect = selectedElement.getBoundingClientRect();
-		var barHeight = 60; // Clean input bar height
-		var barWidth = 500;
+		var barHeight = 60;
+		var barWidth = 520; // Match CSS width
 
 		// Determine position: prefer below element, fallback to above
 		var top, left;
@@ -627,9 +640,14 @@ export const INSPECT_MODE_SCRIPT = `
 			top = window.innerHeight - barHeight - 20;
 		}
 
-		// Horizontal: center under element, but keep in viewport
-		left = rect.left + (rect.width / 2) - (barWidth / 2);
-		left = Math.max(10, Math.min(left, window.innerWidth - barWidth - 10));
+		// Horizontal positioning - CSS handles responsive width via max-width + calc
+		var viewportWidth = window.innerWidth;
+		var margin = 16;
+		var actualBarWidth = Math.min(barWidth, viewportWidth - margin * 2);
+
+		// Center under element, but keep in viewport with margin
+		left = rect.left + (rect.width / 2) - (actualBarWidth / 2);
+		left = Math.max(margin, Math.min(left, viewportWidth - actualBarWidth - margin));
 
 		chatBar.style.top = top + 'px';
 		chatBar.style.left = left + 'px';
@@ -668,7 +686,7 @@ export const INSPECT_MODE_SCRIPT = `
 
 	// Close chat bar when clicking outside
 	document.addEventListener('click', function(e) {
-		if (isChatOpen && !chatBar.contains(e.target) && e.target !== chatIcon) {
+		if (isChatOpen && !chatBar.contains(e.target) && e.target !== chatButton && !chatButton.contains(e.target)) {
 			closeChatBar();
 		}
 	}, true);
