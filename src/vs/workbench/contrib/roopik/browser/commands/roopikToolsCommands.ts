@@ -89,7 +89,7 @@ export function registerRoopikToolsCommands(): void {
 	// ============================================================================
 
 	// --------------------------------------------------------------------------
-	// Browser Tools (12)
+	// Browser Tools (14)
 	// --------------------------------------------------------------------------
 
 	registerAction2(class extends Action2 {
@@ -359,8 +359,8 @@ export function registerRoopikToolsCommands(): void {
 	registerAction2(class extends Action2 {
 		constructor() {
 			super({
-				id: 'roopik.tools.browserGetCdpInfo',
-				title: { value: 'Get Browser CDP Info', original: 'Get Browser CDP Info' },
+				id: 'roopik.tools.browserGetState',
+				title: { value: 'Get Browser State', original: 'Get Browser State' },
 				category: { value: 'Roopik', original: 'Roopik' },
 				f1: false
 			});
@@ -369,7 +369,51 @@ export function registerRoopikToolsCommands(): void {
 		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('browser_get_cdp_info');
+			return channel.call('browser_get_state');
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserSetViewport',
+				title: { value: 'Set Browser Viewport', original: 'Set Browser Viewport' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: {
+			width?: number;
+			height?: number;
+			deviceScaleFactor?: number;
+			mobile?: boolean;
+		}): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('browser_set_viewport', args || {});
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserGetNetworkRequests',
+				title: { value: 'Get Network Requests', original: 'Get Network Requests' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: {
+			urlFilter?: string;
+			method?: string;
+			statusFilter?: string;
+			limit?: number;
+		}): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('browser_get_network_requests', args || {});
 		}
 	});
 

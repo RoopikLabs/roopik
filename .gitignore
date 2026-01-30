@@ -41,3 +41,4 @@ test-output.json
 
 # Roopik IDE metadata
 .roopik/
+/TESTING-LAB

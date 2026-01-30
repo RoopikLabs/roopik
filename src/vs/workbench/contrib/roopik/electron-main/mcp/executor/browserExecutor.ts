@@ -109,6 +109,8 @@ export class BrowserExecutor {
 			// Browser is already open - navigate if URL provided
 			if (url) {
 				await this.browserViewService.navigate(browserViewId, url);
+				// Enable CDP monitoring proactively to capture errors from page load
+				await this.ensureCDPMonitoring(browserViewId);
 				return {
 					success: true,
 					data: {
@@ -118,6 +120,9 @@ export class BrowserExecutor {
 					}
 				};
 			}
+
+			// Enable CDP monitoring even if not navigating (browser already open)
+			await this.ensureCDPMonitoring(browserViewId);
 
 			return {
 				success: true,
@@ -186,6 +191,9 @@ export class BrowserExecutor {
 
 			await this.browserViewService.navigate(browserViewId, url);
 
+			// Enable CDP monitoring proactively to capture errors from page load
+			await this.ensureCDPMonitoring(browserViewId);
+
 			return {
 				success: true,
 				data: {
@@ -217,6 +225,9 @@ export class BrowserExecutor {
 			}
 
 			await this.browserViewService.reload(browserViewId, hardReload);
+
+			// Enable CDP monitoring proactively to capture errors from reload
+			await this.ensureCDPMonitoring(browserViewId);
 
 			return {
 				success: true,

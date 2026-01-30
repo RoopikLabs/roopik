@@ -55,7 +55,7 @@ Call **project_start** with the project path:
 
 ### 3. Verify the Server is Running
 The browser should automatically open. You can verify with:
-- Call **browser_get_cdp_info** to check browser state
+- Call **browser_get_state** to check browser state
 - Call **browser_screenshot** to see the rendered page
 
 ### 4. Navigate to Specific Pages (Optional)
@@ -132,7 +132,7 @@ canvas_get_active → canvas_create (if needed) → component_add → component_
 		description: 'Step-by-step guide for inspecting CSS and finding source files to edit',
 		content: `# How to Inspect & Fix CSS in Roopik
 
-This workflow teaches you THE MOAT capability - CSS inspection with source resolution.
+This workflow teaches you how to inspect CSS and resolve styles to their source files.
 
 ## Step-by-Step Process:
 
@@ -183,10 +183,10 @@ Call **browser_reload** with ignoreCache: true:
 - Take another screenshot to verify the fix
 - Re-inspect if needed to confirm CSS changes
 
-## Why This Is THE MOAT:
-- Traditional: "This element has color: red" (but where from?)
-- Roopik: "color: red is in button.scss at line 45:3"
-- Includes source maps: SCSS/LESS resolve to original files
+## Key Benefit - Source File Resolution:
+- Traditional tools: "This element has color: red" (but where is it defined?)
+- With source maps: "color: red is defined in button.scss at line 45:3"
+- SCSS/LESS files resolve to original source locations
 - Shows full cascade: what's overridden and why
 
 ## Example Tool Chain:
@@ -334,8 +334,9 @@ This workflow teaches you the complete cycle for frontend development.
 - browser_execute_script, browser_inspect_element
 - browser_get_errors, browser_get_console_logs
 
-**Browser Info** (2):
-- browser_get_performance, browser_get_cdp_info
+**Browser Info** (4):
+- browser_get_performance, browser_get_state
+- browser_set_viewport, browser_get_network_requests
 
 **Canvas Tools** (3):
 - canvas_list, canvas_get_active, canvas_create
@@ -344,13 +345,13 @@ This workflow teaches you the complete cycle for frontend development.
 - component_add, component_add_batch, component_remove
 - component_get_info, component_list, component_rebuild
 
-## Total: 24 Tools
+## Total: 26 Tools
 
 ## Key Tips:
 - Always check project_get_active before starting
 - Take screenshots frequently for visual verification
 - Use browser_get_errors after any page load
-- browser_inspect_element is THE MOAT for CSS work
+- browser_inspect_element provides CSS source file resolution
 - Use ignoreCache: true when reloading after code changes`
 	}
 ];

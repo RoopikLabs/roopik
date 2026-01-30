@@ -79,9 +79,9 @@ roopik-mcp [--ws-port <port>] [--ws-url <url>]
 3. `ROOPIK_MCP_WS_URL` environment variable
 4. Auto-discovery (tries ports 9876-9880)
 
-## Available Tools (24)
+## Available Tools (26)
 
-### Browser Tools (12)
+### Browser Tools (14)
 - `browser_open` - Open the browser view
 - `browser_close` - Close the browser view
 - `browser_screenshot` - Take a screenshot
@@ -89,11 +89,13 @@ roopik-mcp [--ws-port <port>] [--ws-url <url>]
 - `browser_reload` - Reload the page
 - `browser_action_input` - Click, type, scroll, etc.
 - `browser_execute_script` - Run JavaScript
-- `browser_inspect_element` - **THE MOAT** - CSS inspection with source resolution
+- `browser_inspect_element` - CSS inspection with source file resolution
 - `browser_get_errors` - Get console + network errors
 - `browser_get_console_logs` - Get console logs
 - `browser_get_performance` - Get Web Vitals metrics
-- `browser_get_cdp_info` - Get browser state
+- `browser_get_state` - Get browser state (open/closed, URL, title)
+- `browser_set_viewport` - Set/clear viewport for responsive testing
+- `browser_get_network_requests` - Get captured network traffic
 
 ### Canvas Tools (3)
 - `canvas_list` - List all canvases
@@ -117,6 +119,6 @@ roopik-mcp [--ws-port <port>] [--ws-url <url>]
 
 - `how-to-start-project` - Guide for starting a dev server
 - `how-to-create-component` - Guide for adding components to canvas
-- `how-to-inspect-css` - Guide for CSS inspection (THE MOAT)
+- `how-to-inspect-css` - Guide for CSS inspection with source resolution
 - `how-to-debug-errors` - Guide for debugging browser errors
 - `full-dev-workflow` - Complete development workflow

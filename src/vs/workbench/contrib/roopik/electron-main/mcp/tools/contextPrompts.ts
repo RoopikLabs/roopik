@@ -156,7 +156,7 @@ getActiveCanvas → createComponent → (wait) → getComponentStatus → takeSc
 						type: 'text' as const,
 						text: `# How to Inspect & Fix CSS in Roopik
 
-This workflow teaches you THE MOAT capability - CSS inspection with source resolution that competitors can't match.
+This workflow teaches you how to inspect CSS and resolve styles to their source files.
 
 ## Step-by-Step Process:
 
@@ -179,7 +179,7 @@ Call **roopik_inspectElement** with:
 - includeUserAgent: false (usually don't need browser defaults)
 
 ### 4. Analyze the CSS Data
-The response gives you THE MOAT - file:line:column precision:
+The response provides precise source file information:
 - **matchedRules**: Array of CSS rules that apply to this element
   - Each rule has: selector, file (absolute path), location { line, column }
   - Properties with isOverridden: true are being overridden by more specific rules
@@ -208,10 +208,10 @@ Call **roopik_reload** to see the changes:
 - ignoreCache: true (for hard reload)
 - Then call takeScreenshot or inspectElement again to verify the fix
 
-## Why This Is THE MOAT:
-- Traditional tools: "This element has color: red" (but where does it come from?)
-- Roopik: "color: red is defined in button.scss at line 45:3, overriding button.css line 12:5"
-- Includes source maps: SCSS/LESS/PostCSS files, not just compiled CSS
+## Key Benefit - Source File Resolution:
+- Traditional tools: "This element has color: red" (but where is it defined?)
+- With source maps: "color: red is defined in button.scss at line 45:3, overriding button.css line 12:5"
+- Resolves SCSS/LESS/PostCSS to original source files
 - Detects CSS-in-JS with component file locations
 - Shows the full cascade: what's overridden and why
 

@@ -383,6 +383,8 @@ export function registerBrowserTools(
 				// URL normalization is done in browserViewService.navigate()
 				if (url) {
 					await browserViewService.navigate(browserViewId, url);
+					// Enable CDP monitoring proactively to capture errors from page load
+					await ensureCDPMonitoring(browserViewId, browserViewService);
 					return {
 						content: [{
 							type: 'text' as const,
@@ -395,6 +397,9 @@ export function registerBrowserTools(
 						}]
 					};
 				}
+
+				// Enable CDP monitoring even if not navigating (browser already open)
+				await ensureCDPMonitoring(browserViewId, browserViewService);
 
 				return {
 					content: [{
@@ -802,6 +807,9 @@ Actions:
 				// URL normalization is done in browserViewService.navigate()
 				await browserViewService.navigate(browserViewId, url);
 
+				// Enable CDP monitoring proactively to capture errors from page load
+				await ensureCDPMonitoring(browserViewId, browserViewService);
+
 				return {
 					content: [{
 						type: 'text' as const,
@@ -857,6 +865,9 @@ Actions:
 				}
 
 				await browserViewService.reload(browserViewId, ignoreCache);
+
+				// Enable CDP monitoring proactively to capture errors from reload
+				await ensureCDPMonitoring(browserViewId, browserViewService);
 
 				return {
 					content: [{

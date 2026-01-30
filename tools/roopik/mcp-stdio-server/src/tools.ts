@@ -202,7 +202,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_inspect_element',
-		description: 'Inspect CSS styles of an element with source file resolution. THE MOAT capability - returns exact file:line:column where styles are defined.',
+		description: 'Inspect CSS styles of an element with source file resolution. Returns exact file:line:column where styles are defined (requires source maps).',
 		schema: browserInspectElementSchema
 	},
 	{
@@ -377,7 +377,7 @@ canvas_get_active → canvas_create (if needed) → component_add → component_
 		description: 'Step-by-step guide for inspecting CSS and finding source files to edit',
 		content: `# How to Inspect & Fix CSS in Roopik
 
-This workflow teaches you THE MOAT capability - CSS inspection with source resolution.
+This workflow teaches you how to inspect CSS and resolve styles to their source files.
 
 ## Step-by-Step Process:
 
@@ -403,9 +403,9 @@ Look at matchedRules to find where to make changes:
 - Use the **file** path to know which file to edit
 - Use **location.line** for exact position
 
-## Why This Is THE MOAT:
-- Traditional: "This element has color: red" (but where from?)
-- Roopik: "color: red is in button.scss at line 45:3"
+## Key Benefit - Source File Resolution:
+- Traditional tools: "This element has color: red" (but where is it defined?)
+- With source maps: "color: red is defined in button.scss at line 45:3"
 
 ## Example Tool Chain:
 browser_screenshot → browser_inspect_element → (edit file) → browser_reload → browser_screenshot`

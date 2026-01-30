@@ -198,7 +198,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_inspect_element',
-		description: 'Inspect CSS styles of an element with source file resolution. THE MOAT capability - returns exact file:line:column where styles are defined.',
+		description: 'Inspect CSS styles of an element with source file resolution. Returns exact file:line:column where styles are defined (requires source maps).',
 		schema: browserInspectElementSchema
 	},
 	{
