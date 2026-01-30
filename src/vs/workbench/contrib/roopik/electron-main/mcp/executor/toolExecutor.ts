@@ -7,8 +7,12 @@
  * Tool Executor - Central Dispatcher
  *
  * Single entry point for all MCP tool calls.
- * Routes tool calls to the appropriate executor (browser, canvas, project).
- * Both HTTP MCP and WebSocket MCP call this dispatcher.
+ * Routes tool calls to the appropriate unified tool service.
+ *
+ * Architecture (Phase 3 Migration):
+ * - Uses unified tool services from electron-main/tools/
+ * - Services are single source of truth for all tool implementations
+ * - This file is now a thin adapter that routes and delegates
  */
 
 import type { BrowserViewService } from '../../projectMode/browserViewService.js';
@@ -17,9 +21,13 @@ import type { ICanvasService } from '../../../common/canvas/canvasService.js';
 import type { ComponentService } from '../../component/componentService.js';
 import type { DevServerService } from '../../projectMode/devServer/devServerService.js';
 import type { ToolResult } from './types.js';
-import { BrowserExecutor } from './browserExecutor.js';
-import { CanvasExecutor } from './canvasExecutor.js';
-import { ProjectExecutor } from './projectExecutor.js';
+
+// Import unified tool services
+import { CDPMonitorService } from '../../tools/cdpMonitorService.js';
+import { BrowserToolService } from '../../tools/browserToolService.js';
+import { CanvasToolService } from '../../tools/canvasToolService.js';
+import { ComponentToolService } from '../../tools/componentToolService.js';
+import { ProjectToolService } from '../../tools/projectToolService.js';
 
 // ============================================================================
 // Tool Call Types
@@ -41,20 +49,28 @@ export interface ToolCallResult {
 // ============================================================================
 
 export class ToolExecutor {
-	private readonly browserExecutor: BrowserExecutor;
-	private readonly canvasExecutor: CanvasExecutor;
-	private readonly projectExecutor: ProjectExecutor;
+	// Unified tool services (Phase 3 migration)
+	private readonly cdpMonitorService: CDPMonitorService;
+	private readonly browserToolService: BrowserToolService;
+	private readonly canvasToolService: CanvasToolService;
+	private readonly componentToolService: ComponentToolService;
+	private readonly projectToolService: ProjectToolService;
 
 	constructor(
 		browserViewService: BrowserViewService,
-		storageService: IRoopikStorageService,
+		_storageService: IRoopikStorageService, // Kept for backward compatibility, no longer used
 		canvasService: ICanvasService,
 		componentService: ComponentService,
 		devServerService: DevServerService
 	) {
-		this.browserExecutor = new BrowserExecutor(browserViewService, storageService);
-		this.canvasExecutor = new CanvasExecutor(canvasService, componentService);
-		this.projectExecutor = new ProjectExecutor(devServerService, browserViewService, storageService);
+		// Create CDPMonitorService first (used by BrowserToolService)
+		this.cdpMonitorService = new CDPMonitorService(browserViewService);
+
+		// Create unified tool services
+		this.browserToolService = new BrowserToolService(browserViewService, this.cdpMonitorService);
+		this.canvasToolService = new CanvasToolService(canvasService);
+		this.componentToolService = new ComponentToolService(componentService, canvasService);
+		this.projectToolService = new ProjectToolService(devServerService);
 	}
 
 	/**
@@ -132,28 +148,28 @@ export class ToolExecutor {
 	}
 
 	// ==========================================================================
-	// Browser Tool Routing (14 tools)
+	// Browser Tool Routing (14 tools) - Delegates to BrowserToolService
 	// ==========================================================================
 
 	private async executeBrowserTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
 		switch (tool) {
 			case 'browser_open':
-				return this.browserExecutor.open(params.url as string | undefined);
+				return this.browserToolService.open(params.url as string | undefined);
 
 			case 'browser_close':
-				return this.browserExecutor.close();
+				return this.browserToolService.close();
 
 			case 'browser_screenshot':
-				return this.browserExecutor.screenshot();
+				return this.browserToolService.screenshot();
 
 			case 'browser_navigate':
-				return this.browserExecutor.navigate(params.url as string);
+				return this.browserToolService.navigate(params.url as string);
 
 			case 'browser_reload':
-				return this.browserExecutor.reload(params.ignoreCache as boolean | undefined);
+				return this.browserToolService.reload(params.ignoreCache as boolean | undefined);
 
 			case 'browser_action_input':
-				return this.browserExecutor.actionInput({
+				return this.browserToolService.actionInput({
 					action: params.action as 'click' | 'right_click' | 'double_click' | 'hover' | 'drag' | 'type' | 'press' | 'scroll',
 					coordinate: params.coordinate as string | undefined,
 					text: params.text as string | undefined,
@@ -164,19 +180,19 @@ export class ToolExecutor {
 				});
 
 			case 'browser_execute_script':
-				return this.browserExecutor.executeScript(params.script as string);
+				return this.browserToolService.executeScript(params.script as string);
 
 			case 'browser_inspect_element':
-				return this.browserExecutor.inspectElement({
-					selector: params.selector as string,
-					includeInherited: params.includeInherited as boolean | undefined,
-				});
+				return this.browserToolService.inspectElement(
+					params.selector as string,
+					params.includeInherited as boolean | undefined
+				);
 
 			case 'browser_get_errors':
-				return this.browserExecutor.getErrors(params.limit as number | undefined);
+				return this.browserToolService.getErrors(params.limit as number | undefined);
 
 			case 'browser_get_console_logs':
-				return this.browserExecutor.getConsoleLogs({
+				return this.browserToolService.getConsoleLogs({
 					types: params.types as string[] | undefined,
 					since: params.since as number | undefined,
 					limit: params.limit as number | undefined,
@@ -184,14 +200,14 @@ export class ToolExecutor {
 				});
 
 			case 'browser_get_performance':
-				return this.browserExecutor.getPerformance();
+				return this.browserToolService.getPerformance();
 
 			case 'browser_get_state':
-				return this.browserExecutor.getState();
+				return this.browserToolService.getState();
 
 			case 'browser_set_viewport':
 				// If no params or no width/height, pass undefined to clear viewport
-				return this.browserExecutor.setViewport(
+				return this.browserToolService.setViewport(
 					Object.keys(params).length === 0 ? undefined : {
 						width: params.width as number | undefined,
 						height: params.height as number | undefined,
@@ -201,7 +217,7 @@ export class ToolExecutor {
 				);
 
 			case 'browser_get_network_requests':
-				return this.browserExecutor.getNetworkRequests({
+				return this.browserToolService.getNetworkRequests({
 					urlFilter: params.urlFilter as string | undefined,
 					method: params.method as string | undefined,
 					statusFilter: params.statusFilter as 'success' | 'error' | 'all' | undefined,
@@ -217,23 +233,23 @@ export class ToolExecutor {
 	}
 
 	// ==========================================================================
-	// Canvas Tool Routing (3 tools)
+	// Canvas Tool Routing (3 tools) - Delegates to CanvasToolService
 	// ==========================================================================
 
 	private async executeCanvasTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
 		switch (tool) {
 			case 'canvas_list':
-				return this.canvasExecutor.listCanvases({
+				return this.canvasToolService.list({
 					nameFilter: params.nameFilter as string | undefined,
 					sortBy: params.sortBy as 'name' | 'updatedAt' | 'createdAt' | 'componentCount' | undefined,
 					sortDirection: params.sortDirection as 'asc' | 'desc' | undefined,
 				});
 
 			case 'canvas_get_active':
-				return this.canvasExecutor.getActiveCanvas();
+				return this.canvasToolService.getActive();
 
 			case 'canvas_create':
-				return this.canvasExecutor.createCanvas(params.name as string);
+				return this.canvasToolService.create(params.name as string);
 
 			default:
 				return {
@@ -244,13 +260,13 @@ export class ToolExecutor {
 	}
 
 	// ==========================================================================
-	// Component Tool Routing (6 tools)
+	// Component Tool Routing (6 tools) - Delegates to ComponentToolService
 	// ==========================================================================
 
 	private async executeComponentTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
 		switch (tool) {
 			case 'component_add':
-				return this.canvasExecutor.addComponent({
+				return this.componentToolService.add({
 					canvasId: params.canvasId as string | undefined,
 					folderPath: params.folderPath as string,
 					name: params.name as string | undefined,
@@ -259,7 +275,7 @@ export class ToolExecutor {
 				});
 
 			case 'component_add_batch':
-				return this.canvasExecutor.addComponentBatch(params.components as Array<{
+				return this.componentToolService.addBatch(params.components as Array<{
 					canvasId?: string;
 					folderPath: string;
 					name?: string;
@@ -268,19 +284,19 @@ export class ToolExecutor {
 				}>);
 
 			case 'component_remove':
-				return this.canvasExecutor.removeComponent(
+				return this.componentToolService.remove(
 					params.componentId as string,
 					params.deleteSourceCode as boolean | undefined
 				);
 
 			case 'component_get_info':
-				return this.canvasExecutor.getComponentInfo(params.componentId as string);
+				return this.componentToolService.getInfo(params.componentId as string);
 
 			case 'component_list':
-				return this.canvasExecutor.listComponents(params.canvasId as string);
+				return this.componentToolService.list(params.canvasId as string);
 
 			case 'component_rebuild':
-				return this.canvasExecutor.rebuildComponent(params.componentId as string);
+				return this.componentToolService.rebuild(params.componentId as string);
 
 			default:
 				return {
@@ -291,22 +307,22 @@ export class ToolExecutor {
 	}
 
 	// ==========================================================================
-	// Project Tool Routing (3 tools)
+	// Project Tool Routing (3 tools) - Delegates to ProjectToolService
 	// ==========================================================================
 
 	private async executeProjectTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
 		switch (tool) {
 			case 'project_get_active':
-				return this.projectExecutor.getActiveProject();
+				return this.projectToolService.getActive();
 
 			case 'project_start':
-				return this.projectExecutor.startProject(
+				return this.projectToolService.start(
 					params.projectPath as string,
 					params.port as number | undefined
 				);
 
 			case 'project_stop':
-				return this.projectExecutor.stopProject();
+				return this.projectToolService.stop();
 
 			default:
 				return {

@@ -2152,9 +2152,12 @@ export default tseslint.config(
 			],
 		}
 	},
-	// ROOPIK: Override header rule for roopik extension
+	// ROOPIK: Override header rule for roopik files (extension + core)
 	{
-		files: ['extensions/roopik/**/*.{ts,tsx,js,jsx}'],
+		files: [
+			'extensions/roopik/**/*.{ts,tsx,js,jsx}',
+			'src/vs/workbench/contrib/roopik/**/*.{ts,tsx,js,jsx}'
+		],
 		plugins: { header: pluginHeader },
 		rules: {
 			'header/header': [2, 'block', [
