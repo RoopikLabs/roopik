@@ -1176,14 +1176,14 @@ export class CanvasPanel implements vscode.Disposable {
 			vscode.Uri.joinPath(this.extensionUri, 'webview', 'build', 'assets', 'componentView.css')
 		);
 
-		// CSP: Allow CDNs for imports in sandbox iframes (esm.sh, skypack, jsdelivr for Tailwind)
+		// CSP: Allow CDNs for imports in sandbox iframes (esm.sh, skypack, jsdelivr, tailwindcss)
 		const csp = `
 			default-src 'none';
 			style-src ${webview.cspSource} 'unsafe-inline';
-			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https://esm.sh https://cdn.skypack.dev https://cdn.jsdelivr.net;
+			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https://esm.sh https://cdn.skypack.dev https://cdn.jsdelivr.net https://cdn.tailwindcss.com;
 			font-src ${webview.cspSource} data:;
 			img-src ${webview.cspSource} data: https:;
-			connect-src https://esm.sh https://cdn.skypack.dev https://cdn.jsdelivr.net;
+			connect-src https://esm.sh https://cdn.skypack.dev https://cdn.jsdelivr.net https://cdn.tailwindcss.com;
 			frame-src blob: data: https:;
 		`;
 

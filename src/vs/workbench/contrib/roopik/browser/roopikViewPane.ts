@@ -36,6 +36,7 @@ import { IQuickInputService } from '../../../../platform/quickinput/common/quick
 import type { CanvasMeta } from '../common/canvas/types.js';
 import { IProjectStorageService } from '../common/projectStorage/index.js';
 import type { ProjectInfo } from '../common/storage/storageTypes.js';
+import { IMcpServerService } from '../common/mcp/index.js';
 
 const roopikViewIcon = registerIcon('roopik-view-icon', Codicon.paintcan, localize('roopikViewIcon', 'View icon of the Roopik view.'));
 
@@ -55,6 +56,7 @@ export class RoopikDashboardView extends ViewPane {
 
 	private canvasesContainer: HTMLElement | undefined;
 	private projectsContainer: HTMLElement | undefined;
+	private mcpButton: HTMLButtonElement | undefined;
 	private static animationsInjected = false;
 
 	/** Timeout handle for canvas loading state */
@@ -91,6 +93,7 @@ export class RoopikDashboardView extends ViewPane {
 		@IQuickInputService private readonly quickInputService: IQuickInputService,
 		@IProjectStorageService private readonly projectStorageService: IProjectStorageService,
 		@ILoggerService loggerService: ILoggerService,
+		@IMcpServerService private readonly mcpServerService: IMcpServerService,
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
 		this.logger = getRoopikLogger(loggerService, 'ROOPIK_DASHBOARD_VIEW');
@@ -126,6 +129,11 @@ export class RoopikDashboardView extends ViewPane {
 		}));
 		this._register(this.projectStorageService.onProjectsChanged(() => {
 			this.loadProjectsNow();
+		}));
+
+		// Subscribe to MCP status changes to update toggle buttons
+		this._register(this.mcpServerService.onStatusChanged(() => {
+			this.updateMcpButtonStates();
 		}));
 	}
 
@@ -289,23 +297,35 @@ export class RoopikDashboardView extends ViewPane {
 		separator.style.background = 'var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
 		separator.style.margin = '4px 0';
 
-		// Second row: Import and Browse buttons - responsive wrapping
+		// Second row: Import and Browse
 		const importButtonsRow = document.createElement('div');
 		importButtonsRow.style.display = 'flex';
 		importButtonsRow.style.alignItems = 'center';
 		importButtonsRow.style.gap = '4px';
-		importButtonsRow.style.flexWrap = 'wrap'; // Allow Browse button to wrap down on narrow screens
+		importButtonsRow.style.flexWrap = 'wrap'; // Allow buttons to wrap down on narrow screens
 		importButtonsRow.style.minWidth = '0'; // Ensure flex children respect min-width
 
 		const importBtn = this.createSecondaryActionButton('Import', 'codicon-cloud-download', 'roopik.import.showPicker', true, false);
 		// Browse button opens browser preview with default welcome screen (globe icon)
 		const browseBtn = this.createSecondaryActionButton('Browse', 'codicon-globe', 'roopik.openProjectPreview', true, false);
+
 		importButtonsRow.appendChild(importBtn);
 		importButtonsRow.appendChild(browseBtn);
+
+		// Third row: MCP toggle button
+		const mcpRow = document.createElement('div');
+		mcpRow.style.display = 'flex';
+		mcpRow.style.alignItems = 'center';
+		mcpRow.style.gap = '6px';
+		mcpRow.style.marginTop = '4px';
+
+		this.mcpButton = this.createMcpButton();
+		mcpRow.appendChild(this.mcpButton);
 
 		actionsContainer.appendChild(modeButtonsRow);
 		actionsContainer.appendChild(separator);
 		actionsContainer.appendChild(importButtonsRow);
+		actionsContainer.appendChild(mcpRow);
 
 		container.appendChild(actionsContainer);
 
@@ -326,6 +346,9 @@ export class RoopikDashboardView extends ViewPane {
 
 		// Load projects (static for now)
 		this.loadProjects();
+
+		// Update MCP button states
+		this.updateMcpButtonStates();
 
 		// Watch canvases.json for changes (auto-refresh on create/delete)
 		this.setupFileWatcher();
@@ -607,6 +630,112 @@ export class RoopikDashboardView extends ViewPane {
 		} catch (err) {
 			const errorMsg = err instanceof Error ? err.message : String(err);
 			this.notificationService.error(localize('roopik.deleteProject.error', 'Failed to remove project: {0}', errorMsg));
+		}
+	}
+
+	// ============================================================================
+	// MCP Toggle Button
+	// ============================================================================
+
+	/**
+	 * Create the MCP toggle button
+	 * Controls enabling/disabling MCP server for AI agent connections
+	 * Styled like Import/Browse buttons but turns blue when active
+	 */
+	private createMcpButton(): HTMLButtonElement {
+		const btn = document.createElement('button');
+		btn.style.display = 'inline-flex';
+		btn.style.alignItems = 'center';
+		btn.style.justifyContent = 'center';
+		btn.style.padding = '6px 14px';
+		btn.style.borderRadius = '999px';
+		btn.style.border = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
+		btn.style.boxShadow = '0 0 0 1px var(--vscode-button-border, rgba(96, 165, 250, 0.3))';
+		btn.style.cursor = 'pointer';
+		btn.style.fontSize = '12px';
+		btn.style.fontWeight = '500';
+		btn.style.fontFamily = 'inherit';
+		btn.style.background = 'transparent';
+		btn.style.color = 'var(--vscode-foreground)';
+		btn.style.transition = 'background 0.15s ease';
+
+		// Icon
+		const icon = document.createElement('span');
+		icon.classList.add('codicon', 'codicon-plug');
+		icon.style.fontSize = '16px';
+		btn.appendChild(icon);
+
+		// Text
+		const text = document.createElement('span');
+		text.style.marginLeft = '6px';
+		text.textContent = 'MCP';
+		btn.appendChild(text);
+
+		// Store references for updates
+		(btn as any)._mcpIcon = icon;
+		(btn as any)._mcpText = text;
+
+		btn.onclick = () => this.toggleMcp();
+
+		return btn;
+	}
+
+	/**
+	 * Update MCP button state based on server status
+	 * When running: blue background (like primary button)
+	 * When stopped: transparent with border (like Import/Browse)
+	 */
+	private async updateMcpButtonStates(): Promise<void> {
+		if (!this.mcpButton) {
+			return;
+		}
+
+		try {
+			const status = await this.mcpServerService.getStatus();
+			const icon = (this.mcpButton as any)._mcpIcon as HTMLSpanElement;
+
+			if (status.running) {
+				// Active state: blue background
+				this.mcpButton.style.background = 'var(--vscode-button-background)';
+				this.mcpButton.style.color = 'var(--vscode-button-foreground)';
+				this.mcpButton.style.border = '1px solid var(--vscode-button-background)';
+				icon.classList.remove('codicon-debug-disconnect');
+				icon.classList.add('codicon-plug');
+				this.mcpButton.title = `MCP Server Running (Port: ${status.wsPort}) - Click to stop`;
+			} else {
+				// Inactive state: transparent with border (like Import/Browse)
+				this.mcpButton.style.background = 'transparent';
+				this.mcpButton.style.color = 'var(--vscode-foreground)';
+				this.mcpButton.style.border = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
+				icon.classList.remove('codicon-plug');
+				icon.classList.add('codicon-debug-disconnect');
+				this.mcpButton.title = 'MCP Server Stopped - Click to start';
+			}
+		} catch {
+			// Error state: transparent with border
+			this.mcpButton.style.background = 'transparent';
+			this.mcpButton.style.color = 'var(--vscode-foreground)';
+			this.mcpButton.style.border = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
+			this.mcpButton.title = 'MCP Server (status unknown)';
+		}
+	}
+
+	/**
+	 * Toggle MCP server (enables/disables AI agent connections)
+	 */
+	private async toggleMcp(): Promise<void> {
+		try {
+			const isEnabled = await this.mcpServerService.isEnabled();
+			await this.mcpServerService.setEnabled(!isEnabled);
+
+			if (!isEnabled) {
+				this.notificationService.info('MCP Server enabled - AI agents can now connect');
+			} else {
+				this.notificationService.info('MCP Server disabled - Agent connections closed');
+			}
+		} catch (err) {
+			const errorMsg = err instanceof Error ? err.message : String(err);
+			this.notificationService.error(`Failed to toggle MCP Server: ${errorMsg}`);
 		}
 	}
 

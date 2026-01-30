@@ -619,7 +619,7 @@ export class Editor extends EditorPane {
 
 			// Capture element screenshot if setting is enabled (default: true)
 			let elementScreenshot: string | null = null;
-			const attachScreenshotEnabled = this.configurationService.getValue<boolean>('roopik.inspect.attachElementScreenshot') ?? true;
+			const attachScreenshotEnabled = this.configurationService.getValue<boolean>('roopik.browser.attachElementScreenshot') ?? true;
 			if (message.selector && attachScreenshotEnabled) {
 				try {
 					elementScreenshot = await this.browserService.captureElementScreenshot(this.browserViewId, message.selector);
@@ -681,7 +681,7 @@ export class Editor extends EditorPane {
 			// Capture element screenshot using CDP DOM.getBoxModel for accurate bounds
 			// Only capture if the setting is enabled (default: true)
 			let elementScreenshot: string | null = null;
-			const attachScreenshotEnabled = this.configurationService.getValue<boolean>('roopik.inspect.attachElementScreenshot') ?? true;
+			const attachScreenshotEnabled = this.configurationService.getValue<boolean>('roopik.browser.attachElementScreenshot') ?? true;
 			if (message.selector && attachScreenshotEnabled) {
 				try {
 					elementScreenshot = await this.browserService.captureElementScreenshot(this.browserViewId, message.selector);

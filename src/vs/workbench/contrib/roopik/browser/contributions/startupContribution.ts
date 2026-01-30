@@ -15,13 +15,12 @@
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { IWorkbenchContribution } from '../../../../common/contributions.js';
 import { IEditorGroupsService } from '../../../../services/editor/common/editorGroupsService.js';
-import { IStorageService, StorageScope } from '../../../../../platform/storage/common/storage.js';
 import { ILifecycleService, LifecyclePhase, StartupKind } from '../../../../services/lifecycle/common/lifecycle.js';
 import { IWorkbenchLayoutService } from '../../../../services/layout/browser/layoutService.js';
 import { IOutputService } from '../../../../services/output/common/output.js';
 import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
-import { RoopikWelcomeEditor } from '../welcomeEditor.js';
+import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { RoopikWelcomeInput } from '../welcomeInput.js';
 import { ICanvasService } from '../../common/canvas/index.js';
 import { IComponentService } from '../../common/component/componentService.js';
@@ -37,11 +36,11 @@ export class RoopikStartupContribution extends Disposable implements IWorkbenchC
 	constructor(
 		@IEditorService private readonly editorService: IEditorService,
 		@IEditorGroupsService private readonly editorGroupsService: IEditorGroupsService,
-		@IStorageService private readonly storageService: IStorageService,
 		@ILifecycleService private readonly lifecycleService: ILifecycleService,
 		@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,
 		@IOutputService private readonly outputService: IOutputService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
+		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@ICanvasService private readonly canvasService: ICanvasService,
 		@IComponentService private readonly componentService: IComponentService,
 		@IProjectStorageService private readonly projectStorageService: IProjectStorageService,
@@ -151,7 +150,8 @@ export class RoopikStartupContribution extends Disposable implements IWorkbenchC
 	private async openWelcomeOnStartup(): Promise<void> {
 		await this.lifecycleService.when(LifecyclePhase.Restored);
 
-		const showOnStartup = this.storageService.getBoolean(RoopikWelcomeEditor.STORAGE_KEY, StorageScope.PROFILE, true);
+		// Use configuration setting (roopik.general.showWelcomeOnStartup)
+		const showOnStartup = this.configurationService.getValue<boolean>('roopik.general.showWelcomeOnStartup') ?? true;
 
 		if (showOnStartup && this.lifecycleService.startupKind !== StartupKind.ReloadedWindow) {
 			if (!this.editorService.activeEditor || this.layoutService.openedDefaultEditors) {

@@ -27,7 +27,7 @@ import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
-import { IMcpServerService, McpServerStatus } from '../../common/mcp/mcpServerService.js';
+import { IMcpServerService, McpServerStatus, AgentId, AgentStatus, McpIntegrationStatus } from '../../common/mcp/mcpServerService.js';
 import type { DevServerService } from '../projectMode/devServer/devServerService.js';
 import type { BrowserViewService } from '../projectMode/browserViewService.js';
 import type { ComponentService } from '../component/componentService.js';
@@ -60,6 +60,9 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	// Events
 	private readonly _onStatusChanged = this._register(new Emitter<McpServerStatus>());
 	readonly onStatusChanged: Event<McpServerStatus> = this._onStatusChanged.event;
+
+	private readonly _onAgentStatusChanged = this._register(new Emitter<AgentStatus[]>());
+	readonly onAgentStatusChanged: Event<AgentStatus[]> = this._onAgentStatusChanged.event;
 
 	// HTTP Server (StreamableHTTP transport)
 	private httpServer: http.Server | null = null;
@@ -103,50 +106,58 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	}
 
 	async start(): Promise<void> {
-		if (this.httpServer) {
-			this.logger.warn('Server already running');
-			return;
+		// Initialize Tool Executor (unified execution layer) - shared by both transports
+		if (!this.toolExecutor) {
+			this.toolExecutor = new ToolExecutor(
+				this.browserViewService,
+				this.storageService,
+				this.canvasService,
+				this.componentService,
+				this.devServerService
+			);
 		}
 
-		// Initialize Tool Executor (unified execution layer)
-		this.toolExecutor = new ToolExecutor(
-			this.browserViewService,
-			this.storageService,
-			this.canvasService,
-			this.componentService,
-			this.devServerService
-		);
+		// Check STDIO/WebSocket setting (primary transport)
+		const wsEnabled = this.configurationService.getValue<boolean>('roopik.mcp.enabled') ?? true;
+		if (wsEnabled && !this.wsServer) {
+			await this.startWebSocketServer();
+			// Initialize installer and register with external agents (requires WS)
+			await this.initializeInstaller();
+		}
 
-		// Start HTTP server (StreamableHTTP)
-		await this.startHttpServer();
-
-		// Start WebSocket server (for STDIO binaries)
-		await this.startWebSocketServer();
-
-		// Initialize installer and register with external agents
-		await this.initializeInstaller();
+		// Check HTTP setting (advanced transport)
+		const httpEnabled = this.configurationService.getValue<boolean>('roopik.mcp.httpEnabled') ?? false;
+		if (httpEnabled && !this.httpServer) {
+			await this.startHttpServer();
+		}
 
 		// Listen for settings changes
-		this.setupSettingsListener();
+		if (!this.settingsDisposable) {
+			this.setupSettingsListener();
+		}
 
 		this._onStatusChanged.fire(await this.getStatus());
 	}
 
 	async stop(): Promise<void> {
+		await this.stopWsServer();
+		await this.stopHttpServer();
+
+		// Dispose settings listener only if both servers are stopped
+		if (!this.wsServer && !this.httpServer && this.settingsDisposable) {
+			this.settingsDisposable.dispose();
+			this.settingsDisposable = null;
+		}
+
+		this._onStatusChanged.fire(await this.getStatus());
+	}
+
+	private async stopWsServer(): Promise<void> {
 		// Stop WebSocket server
 		if (this.wsServer) {
 			await this.wsServer.stop();
 			this.wsServer = null;
-		}
-
-		// Stop HTTP server
-		if (this.httpServer) {
-			await new Promise<void>((resolve) => {
-				this.httpServer!.close(() => {
-					this.httpServer = null;
-					resolve();
-				});
-			});
+			this.logger.info('WebSocket MCP server stopped');
 		}
 
 		// Cleanup installer (unregister from agents if configured)
@@ -156,14 +167,19 @@ export class McpServerService extends Disposable implements IMcpServerService {
 				await this.installer.removeAllIntegrations();
 			}
 		}
+	}
 
-		// Dispose settings listener
-		if (this.settingsDisposable) {
-			this.settingsDisposable.dispose();
-			this.settingsDisposable = null;
+	private async stopHttpServer(): Promise<void> {
+		// Stop HTTP server
+		if (this.httpServer) {
+			await new Promise<void>((resolve) => {
+				this.httpServer!.close(() => {
+					this.httpServer = null;
+					resolve();
+				});
+			});
+			this.logger.info('HTTP MCP server stopped');
 		}
-
-		this._onStatusChanged.fire(await this.getStatus());
 	}
 
 	// ============================================================================
@@ -171,7 +187,7 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	// ============================================================================
 
 	private async startHttpServer(): Promise<void> {
-		const configuredPort = this.configurationService.getValue<number>('roopik.mcp.port') || McpServerService.DEFAULT_HTTP_PORT;
+		const configuredPort = this.configurationService.getValue<number>('roopik.mcp.httpPort') || McpServerService.DEFAULT_HTTP_PORT;
 
 		// Dynamic imports (bypass VSCode layering restrictions)
 		const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
@@ -282,7 +298,7 @@ export class McpServerService extends Disposable implements IMcpServerService {
 			throw new Error('ToolExecutor not initialized');
 		}
 
-		const configuredPort = this.configurationService.getValue<number>('roopik.mcp.wsPort') || McpServerService.DEFAULT_WS_PORT;
+		const configuredPort = this.configurationService.getValue<number>('roopik.mcp.port') || McpServerService.DEFAULT_WS_PORT;
 
 		this.wsServer = new McpWebSocketServer(this.toolExecutor);
 		const result = await this.wsServer.start({ port: configuredPort });
@@ -357,11 +373,37 @@ export class McpServerService extends Disposable implements IMcpServerService {
 
 	private setupSettingsListener(): void {
 		this.settingsDisposable = this.configurationService.onDidChangeConfiguration(async (e) => {
+			// Handle STDIO/WS switch changes
+			if (e.affectsConfiguration('roopik.mcp.enabled')) {
+				const enabled = this.configurationService.getValue<boolean>('roopik.mcp.enabled') ?? true;
+				if (!enabled && this.wsServer) {
+					this.logger.info('STDIO/WS disabled via settings');
+					await this.setEnabled(false);
+				} else if (enabled && !this.wsServer) {
+					this.logger.info('STDIO/WS enabled via settings');
+					await this.setEnabled(true);
+				}
+			}
+
+			// Handle HTTP switch changes
+			if (e.affectsConfiguration('roopik.mcp.httpEnabled')) {
+				const enabled = this.configurationService.getValue<boolean>('roopik.mcp.httpEnabled') ?? false;
+				if (!enabled && this.httpServer) {
+					this.logger.info('HTTP MCP disabled via settings');
+					await this.setHttpEnabled(false);
+				} else if (enabled && !this.httpServer) {
+					this.logger.info('HTTP MCP enabled via settings');
+					await this.setHttpEnabled(true);
+				}
+			}
+
+			// Handle agent settings changes
 			if (e.affectsConfiguration('roopik.mcp.agents')) {
 				this.logger.info('MCP agent settings changed, syncing registrations');
 				if (this.installer) {
 					const settings = this.getMcpIntegrationSettings();
 					await this.installer.syncRegistrations(settings);
+					this._onAgentStatusChanged.fire(await this.getAgentStatus());
 				}
 			}
 		}) as Disposable;
@@ -373,8 +415,10 @@ export class McpServerService extends Disposable implements IMcpServerService {
 
 	async getStatus(): Promise<McpServerStatus> {
 		return {
-			running: this.httpServer !== null,
+			running: this.wsServer !== null,
+			httpRunning: this.httpServer !== null,
 			port: this.httpPort,
+			wsPort: this.wsPort,
 			url: `http://127.0.0.1:${this.httpPort}/mcp`
 		};
 	}
@@ -383,11 +427,186 @@ export class McpServerService extends Disposable implements IMcpServerService {
 		return this.httpPort;
 	}
 
+	async getWsPort(): Promise<number> {
+		return this.wsPort;
+	}
+
 	getWebSocketPort(): number {
 		return this.wsPort;
 	}
 
 	getInstaller(): McpInstaller | null {
 		return this.installer;
+	}
+
+	// ============================================================================
+	// STDIO/WebSocket Control (Primary)
+	// ============================================================================
+
+	async isEnabled(): Promise<boolean> {
+		return this.configurationService.getValue<boolean>('roopik.mcp.enabled') ?? true;
+	}
+
+	async setEnabled(enabled: boolean): Promise<void> {
+		// Update the setting
+		await this.configurationService.updateValue('roopik.mcp.enabled', enabled);
+
+		if (enabled) {
+			// Start WebSocket if not running
+			if (!this.wsServer) {
+				// Initialize Tool Executor if needed
+				if (!this.toolExecutor) {
+					this.toolExecutor = new ToolExecutor(
+						this.browserViewService,
+						this.storageService,
+						this.canvasService,
+						this.componentService,
+						this.devServerService
+					);
+				}
+				await this.startWebSocketServer();
+				await this.initializeInstaller();
+				if (!this.settingsDisposable) {
+					this.setupSettingsListener();
+				}
+			}
+		} else {
+			// Stop WebSocket and unregister all agents
+			if (this.installer) {
+				this.logger.info('STDIO/WS disabled - unregistering from all agents');
+				await this.installer.removeAllIntegrations();
+				this._onAgentStatusChanged.fire(await this.getAgentStatus());
+			}
+			await this.stopWsServer();
+		}
+
+		this._onStatusChanged.fire(await this.getStatus());
+	}
+
+	// ============================================================================
+	// HTTP Control (Advanced)
+	// ============================================================================
+
+	async isHttpEnabled(): Promise<boolean> {
+		return this.configurationService.getValue<boolean>('roopik.mcp.httpEnabled') ?? false;
+	}
+
+	async setHttpEnabled(enabled: boolean): Promise<void> {
+		// Update the setting
+		await this.configurationService.updateValue('roopik.mcp.httpEnabled', enabled);
+
+		if (enabled) {
+			// Start HTTP if not running
+			if (!this.httpServer) {
+				// Initialize Tool Executor if needed
+				if (!this.toolExecutor) {
+					this.toolExecutor = new ToolExecutor(
+						this.browserViewService,
+						this.storageService,
+						this.canvasService,
+						this.componentService,
+						this.devServerService
+					);
+				}
+				await this.startHttpServer();
+				if (!this.settingsDisposable) {
+					this.setupSettingsListener();
+				}
+			}
+		} else {
+			// Stop HTTP server
+			await this.stopHttpServer();
+		}
+
+		this._onStatusChanged.fire(await this.getStatus());
+	}
+
+	// ============================================================================
+	// Agent Control
+	// ============================================================================
+
+	async getAgentStatus(): Promise<AgentStatus[]> {
+		if (!this.installer) {
+			return [];
+		}
+
+		const status = await this.installer.getAgentStatus();
+		return status.agents.map(agent => ({
+			id: agent.id as AgentId,
+			name: agent.name,
+			installed: agent.installed,
+			registered: agent.registered,
+			registrationMethod: agent.registrationMethod === 'api' ? 'cli-command' : agent.registrationMethod
+		}));
+	}
+
+	async getIntegrationStatus(): Promise<McpIntegrationStatus> {
+		return {
+			server: await this.getStatus(),
+			agents: await this.getAgentStatus(),
+			lastChecked: Date.now()
+		};
+	}
+
+	async enableAgent(agentId: AgentId): Promise<void> {
+		// Update setting
+		const settingKey = this.agentIdToSettingKey(agentId);
+		if (settingKey) {
+			await this.configurationService.updateValue(settingKey, true);
+		}
+
+		// Register if master is enabled
+		const masterEnabled = await this.isEnabled();
+		if (masterEnabled && this.installer) {
+			const result = await this.installer.register(agentId);
+			if (result.success) {
+				this.logger.info(`Enabled agent: ${agentId}`);
+			} else {
+				this.logger.warn(`Failed to enable agent: ${agentId}`, { error: result.error });
+			}
+			this._onAgentStatusChanged.fire(await this.getAgentStatus());
+		}
+	}
+
+	async disableAgent(agentId: AgentId): Promise<void> {
+		// Update setting
+		const settingKey = this.agentIdToSettingKey(agentId);
+		if (settingKey) {
+			await this.configurationService.updateValue(settingKey, false);
+		}
+
+		// Unregister
+		if (this.installer) {
+			const result = await this.installer.unregister(agentId);
+			if (result.success) {
+				this.logger.info(`Disabled agent: ${agentId}`);
+			} else {
+				this.logger.warn(`Failed to disable agent: ${agentId}`, { error: result.error });
+			}
+			this._onAgentStatusChanged.fire(await this.getAgentStatus());
+		}
+	}
+
+	async syncAgentRegistrations(): Promise<void> {
+		if (!this.installer) {
+			return;
+		}
+
+		const settings = this.getMcpIntegrationSettings();
+		await this.installer.syncRegistrations(settings);
+		this._onAgentStatusChanged.fire(await this.getAgentStatus());
+	}
+
+	private agentIdToSettingKey(agentId: AgentId): string | null {
+		const map: Record<AgentId, string> = {
+			'claude-code': 'roopik.mcp.agents.claudeCode',
+			'claude-cli': 'roopik.mcp.agents.claudeCli',
+			'codex': 'roopik.mcp.agents.codex',
+			'codex-cli': 'roopik.mcp.agents.codexCli',
+			'gemini': 'roopik.mcp.agents.gemini',
+			'windsurf': 'roopik.mcp.agents.windsurf',
+			'cursor': 'roopik.mcp.agents.cursor'
+		};
+		return map[agentId] || null;
 	}
 }

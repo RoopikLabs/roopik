@@ -6,7 +6,7 @@
 import { EditorPane } from '../../../browser/parts/editor/editorPane.js';
 import { IThemeService } from '../../../../platform/theme/common/themeService.js';
 import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
-import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
+import { IStorageService } from '../../../../platform/storage/common/storage.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { IEditorOpenContext } from '../../../common/editor.js';
@@ -14,8 +14,6 @@ import { EditorInput } from '../../../common/editor/editorInput.js';
 import { $, append, clearNode, addDisposableListener } from '../../../../base/browser/dom.js';
 import { IEditorGroup } from '../../../services/editor/common/editorGroupsService.js';
 import { FileAccess } from '../../../../base/common/network.js';
-import { IRoopikSettingsService } from '../common/settings/index.js';
-import { RoopikWelcomeInput, WelcomeViewMode } from './welcomeInput.js';
 import { ICanvasService } from '../common/canvas/index.js';
 import { IProjectStorageService } from '../common/projectStorage/index.js';
 import type { CanvasMeta } from '../common/canvas/types.js';
@@ -29,9 +27,6 @@ export class RoopikWelcomeEditor extends EditorPane {
 	static readonly STORAGE_KEY = 'roopik.welcomeScreen.showOnStartup';
 
 	private rootElement: HTMLElement | undefined;
-
-	// Current view mode (welcome screen or settings)
-	private currentView: WelcomeViewMode = 'welcome';
 
 	// Containers for dynamic content
 	private recentCanvasesContainer: HTMLElement | undefined;
@@ -52,9 +47,8 @@ export class RoopikWelcomeEditor extends EditorPane {
 		group: IEditorGroup,
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IThemeService themeService: IThemeService,
-		@IStorageService private readonly storageService: IStorageService,
+		@IStorageService storageService: IStorageService,
 		@ICommandService private readonly commandService: ICommandService,
-		@IRoopikSettingsService private readonly settingsService: IRoopikSettingsService,
 		@ICanvasService private readonly canvasService: ICanvasService,
 		@IProjectStorageService private readonly projectStorageService: IProjectStorageService,
 		@IViewsService private readonly viewsService: IViewsService,
@@ -79,7 +73,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 	protected createEditor(parent: HTMLElement): void {
 		this.rootElement = parent;
 		this.rootElement.classList.add('roopik-welcome');
-		this.renderCurrentView();
+		this.renderWelcomeScreen();
 
 		// Auto-open the Dio agent sidebar after a short delay
 		// This ensures the extension is activated and webview is mounted
@@ -92,14 +86,6 @@ export class RoopikWelcomeEditor extends EditorPane {
 				// Agent not available - ignore silently
 			});
 		}, 1500);
-	}
-
-	private renderCurrentView(): void {
-		if (this.currentView === 'welcome') {
-			this.renderWelcomeScreen();
-		} else {
-			this.renderSettingsView();
-		}
 	}
 
 	private renderWelcomeScreen(): void {
@@ -233,39 +219,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 		// Load projects (check if already initialized)
 		this.checkAndLoadProjects();
 
-		// Footer with checkbox (sticky bar)
-		const footer = append(this.rootElement, $('.welcome-footer'));
-		const checkboxContainer = append(footer, $('.checkbox-container'));
-
-		const toggleWrapper = $('label', { class: 'toggle-pill' });
-		const showOnStartupCheckbox = $('input', {
-			type: 'checkbox',
-			id: 'roopikShowOnStartup',
-			class: 'toggle-pill-input'
-		}) as HTMLInputElement;
-		showOnStartupCheckbox.checked = this.storageService.getBoolean(RoopikWelcomeEditor.STORAGE_KEY, StorageScope.PROFILE, true);
-		append(toggleWrapper, showOnStartupCheckbox);
-		append(toggleWrapper, $('.toggle-pill-slider'));
-		append(checkboxContainer, toggleWrapper);
-
-		const checkboxLabel = $('label.checkbox-label', { for: 'roopikShowOnStartup' }, 'Show on startup');
-		append(checkboxContainer, checkboxLabel);
-
-		// Settings button in footer (right side)
-		const settingsButton = append(checkboxContainer, $('.settings-icon-button'));
-		const settingsIcon = append(settingsButton, $('span.codicon.codicon-settings-gear'));
-		settingsIcon.setAttribute('aria-hidden', 'true');
-		settingsButton.title = 'Settings';
-		this._register(addDisposableListener(settingsButton, 'click', () => this.showSettingsView()));
-
-		this._register(addDisposableListener(showOnStartupCheckbox, 'change', () => {
-			this.storageService.store(
-				RoopikWelcomeEditor.STORAGE_KEY,
-				showOnStartupCheckbox.checked,
-				StorageScope.PROFILE,
-				StorageTarget.USER
-			);
-		}));
+		// Footer removed - "Show on startup" setting now available in VS Code Settings (roopik.general.showWelcomeOnStartup)
 	}
 
 	/**
@@ -305,140 +259,6 @@ export class RoopikWelcomeEditor extends EditorPane {
 		} catch (error) {
 			console.debug('AI agent not available:', error);
 		}
-	}
-
-	// ============================================================================
-	// Inline Settings View
-	// ============================================================================
-
-	private renderSettingsView(): void {
-		if (!this.rootElement) {
-			return;
-		}
-
-		clearNode(this.rootElement);
-
-		const container = append(this.rootElement, $('.settings-view-container'));
-
-		// Back button header (like VSCode walkthrough)
-		const backHeader = append(container, $('.settings-back-header'));
-		const backButton = append(backHeader, $('.settings-back-button'));
-		const backIcon = append(backButton, $('span.codicon.codicon-arrow-left'));
-		backIcon.setAttribute('aria-hidden', 'true');
-		const backText = append(backButton, $('span.settings-back-text'));
-		backText.textContent = 'Back to Welcome';
-		this._register(addDisposableListener(backButton, 'click', () => this.showWelcomeView()));
-
-		// Settings content wrapper
-		const settingsWrapper = append(container, $('.settings-view-content'));
-
-		// Settings header
-		const header = append(settingsWrapper, $('.settings-view-header'));
-		const headerTitle = append(header, $('.settings-view-title'));
-		headerTitle.textContent = 'Roopik Settings';
-		const headerDesc = append(header, $('.settings-view-description'));
-		headerDesc.textContent = 'Configure browser preview, canvas, AI agent, and other preferences.';
-
-		// Settings body with sections
-		const body = append(settingsWrapper, $('.settings-view-body'));
-
-		// Browser Settings Section
-		this.createSettingsSection(body, 'Browser Preview', [
-			{
-				label: 'Default URL',
-				description: 'The URL to load when opening a new browser preview',
-				type: 'text',
-				path: 'browser.defaultUrl',
-				value: this.settingsService.get('browser.defaultUrl')
-			},
-			{
-				label: 'Auto-refresh on Save',
-				description: 'Automatically refresh the browser when files are saved',
-				type: 'toggle',
-				path: 'browser.autoRefreshOnSave',
-				value: this.settingsService.get('browser.autoRefreshOnSave')
-			},
-			{
-				label: 'Keyboard Shortcuts',
-				description: 'Enable keyboard shortcuts in browser view',
-				type: 'toggle',
-				path: 'browser.enableKeyboardShortcuts',
-				value: this.settingsService.get('browser.enableKeyboardShortcuts')
-			}
-		]);
-
-		// Canvas Settings Section
-		this.createSettingsSection(body, 'Canvas', [
-			{
-				label: 'Snap to Grid',
-				description: 'Align components to the grid when moving',
-				type: 'toggle',
-				path: 'canvas.snapToGrid',
-				value: this.settingsService.get('canvas.snapToGrid')
-			},
-			{
-				label: 'Show Grid',
-				description: 'Display grid lines on the canvas',
-				type: 'toggle',
-				path: 'canvas.showGrid',
-				value: this.settingsService.get('canvas.showGrid')
-			},
-			{
-				label: 'Grid Size',
-				description: 'Grid cell size in pixels',
-				type: 'number',
-				path: 'canvas.gridSize',
-				value: this.settingsService.get('canvas.gridSize'),
-				min: 4,
-				max: 64
-			}
-		]);
-
-		// AI Agent Settings Section
-		this.createSettingsSection(body, 'AI Agent', [
-			{
-				label: 'Enable AI Features',
-				description: 'Enable AI-powered suggestions and automation',
-				type: 'toggle',
-				path: 'agent.enabled',
-				value: this.settingsService.get('agent.enabled')
-			},
-			{
-				label: 'Auto-apply Suggestions',
-				description: 'Automatically apply AI suggestions without confirmation',
-				type: 'toggle',
-				path: 'agent.autoApplySuggestions',
-				value: this.settingsService.get('agent.autoApplySuggestions')
-			},
-			{
-				label: 'Show Activity Indicator',
-				description: 'Display indicator when AI is processing',
-				type: 'toggle',
-				path: 'agent.showActivityIndicator',
-				value: this.settingsService.get('agent.showActivityIndicator')
-			}
-		]);
-
-		// Welcome Screen Settings Section
-		this.createSettingsSection(body, 'Welcome Screen', [
-			{
-				label: 'Show Tips',
-				description: 'Display tips and highlights on the welcome screen',
-				type: 'toggle',
-				path: 'welcome.showTips',
-				value: this.settingsService.get('welcome.showTips')
-			}
-		]);
-	}
-
-	private showSettingsView(): void {
-		this.currentView = 'settings';
-		this.renderCurrentView();
-	}
-
-	private showWelcomeView(): void {
-		this.currentView = 'welcome';
-		this.renderCurrentView();
 	}
 
 	private createHeroButton(parent: HTMLElement, iconClass: string, label: string, commandId: string, primary = false): void {
@@ -709,13 +529,8 @@ export class RoopikWelcomeEditor extends EditorPane {
 	override async setInput(input: EditorInput, options: undefined, context: IEditorOpenContext, token: CancellationToken): Promise<void> {
 		await super.setInput(input, options, context, token);
 
-		// Read view mode from input
-		if (input instanceof RoopikWelcomeInput) {
-			this.currentView = input.viewMode;
-		}
-
 		if (this.rootElement) {
-			this.renderCurrentView();
+			this.renderWelcomeScreen();
 		}
 	}
 
@@ -728,131 +543,5 @@ export class RoopikWelcomeEditor extends EditorPane {
 
 	override layout(): void {
 		// Responsive layout handled by CSS
-	}
-
-	// ============================================================================
-	// Settings Controls
-	// ============================================================================
-
-	/**
-	 * Create a settings section with items
-	 */
-	private createSettingsSection(
-		parent: HTMLElement,
-		title: string,
-		items: Array<{
-			label: string;
-			description: string;
-			type: 'toggle' | 'text' | 'number' | 'select';
-			path: string;
-			value: unknown;
-			options?: Array<{ value: string; label: string }>;
-			min?: number;
-			max?: number;
-		}>
-	): void {
-		const section = append(parent, $('.settings-section'));
-
-		const sectionTitle = append(section, $('.settings-section-title'));
-		sectionTitle.textContent = title;
-
-		for (const item of items) {
-			const settingItem = append(section, $('.settings-item'));
-
-			const labelContainer = append(settingItem, $('.settings-item-label'));
-			const labelEl = append(labelContainer, $('.settings-item-name'));
-			labelEl.textContent = item.label;
-			const descEl = append(labelContainer, $('.settings-item-desc'));
-			descEl.textContent = item.description;
-
-			const controlContainer = append(settingItem, $('.settings-item-control'));
-
-			switch (item.type) {
-				case 'toggle':
-					this.createToggleControl(controlContainer, item.path, item.value as boolean);
-					break;
-				case 'text':
-					this.createTextControl(controlContainer, item.path, item.value as string);
-					break;
-				case 'number':
-					this.createNumberControl(controlContainer, item.path, item.value as number, item.min, item.max);
-					break;
-				case 'select':
-					this.createSelectControl(controlContainer, item.path, item.value as string, item.options || []);
-					break;
-			}
-		}
-	}
-
-	/**
-	 * Create a toggle switch control
-	 */
-	private createToggleControl(parent: HTMLElement, path: string, value: boolean): void {
-		const toggle = append(parent, $(`.settings-toggle${value ? '.active' : ''}`));
-		// Add slider element for the toggle animation
-		append(toggle, $('.settings-toggle-slider'));
-
-		this._register(addDisposableListener(toggle, 'click', () => {
-			const newValue = !toggle.classList.contains('active');
-			toggle.classList.toggle('active', newValue);
-			// Update setting using the settings service
-			// Cast path to the correct type for type-safe access
-			this.settingsService.set(path as 'browser.autoRefreshOnSave', newValue as never);
-		}));
-	}
-
-	/**
-	 * Create a text input control
-	 */
-	private createTextControl(parent: HTMLElement, path: string, value: string): void {
-		const input = $('input.settings-text-input', {
-			type: 'text',
-			value: value
-		}) as HTMLInputElement;
-		append(parent, input);
-
-		this._register(addDisposableListener(input, 'change', () => {
-			this.settingsService.set(path as 'browser.defaultUrl', input.value as never);
-		}));
-	}
-
-	/**
-	 * Create a number input control
-	 */
-	private createNumberControl(parent: HTMLElement, path: string, value: number, min?: number, max?: number): void {
-		const input = $('input.settings-number-input', {
-			type: 'number',
-			value: String(value),
-			min: min !== undefined ? String(min) : undefined,
-			max: max !== undefined ? String(max) : undefined
-		}) as HTMLInputElement;
-		append(parent, input);
-
-		this._register(addDisposableListener(input, 'change', () => {
-			const numValue = parseInt(input.value, 10);
-			if (!isNaN(numValue)) {
-				this.settingsService.set(path as 'canvas.gridSize', numValue as never);
-			}
-		}));
-	}
-
-	/**
-	 * Create a select dropdown control
-	 */
-	private createSelectControl(parent: HTMLElement, path: string, value: string, options: Array<{ value: string; label: string }>): void {
-		const select = $('select.settings-select') as HTMLSelectElement;
-		for (const option of options) {
-			const optionEl = $('option', { value: option.value }) as HTMLOptionElement;
-			optionEl.textContent = option.label;
-			if (option.value === value) {
-				optionEl.selected = true;
-			}
-			append(select, optionEl);
-		}
-		append(parent, select);
-
-		this._register(addDisposableListener(select, 'change', () => {
-			this.settingsService.set(path as 'browser.devToolsMode', select.value as never);
-		}));
 	}
 }
