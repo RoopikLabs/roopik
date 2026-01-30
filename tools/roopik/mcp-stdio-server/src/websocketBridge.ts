@@ -7,9 +7,17 @@
  * Flow:
  * 1. AI Agent → STDIN → MCP SDK → WebSocketBridge → Roopik WebSocket Server
  * 2. Roopik WebSocket Server → WebSocketBridge → MCP SDK → STDOUT → AI Agent
+ *
+ * Authentication:
+ * - Reads ROOPIK_MCP_TOKEN from environment (set by Roopik IDE main process)
+ * - Sends auth message immediately on connect
+ * - External IDEs won't have this token, so connections are rejected
  */
 
 import WebSocket from 'ws';
+
+// Authentication token from environment (only exists in Roopik's process tree)
+const AUTH_TOKEN = process.env.ROOPIK_MCP_TOKEN || '';
 
 // ============================================================================
 // Types
@@ -58,6 +66,7 @@ export class WebSocketBridge {
 	private reconnectAttempts = 0;
 	private isConnecting = false;
 	private isClosed = false;
+	private isAuthenticated = false;
 
 	private readonly options: Required<BridgeOptions>;
 
@@ -73,9 +82,19 @@ export class WebSocketBridge {
 
 	/**
 	 * Connect to the Roopik WebSocket server
+	 * Includes authentication handshake using ROOPIK_MCP_TOKEN env var
 	 */
 	async connect(): Promise<void> {
-		if (this.ws?.readyState === WebSocket.OPEN) {
+		// Check for auth token BEFORE attempting to connect
+		if (!AUTH_TOKEN) {
+			console.error('[STDIO Bridge] ERROR: ROOPIK_MCP_TOKEN not found in environment');
+			console.error('[STDIO Bridge] This MCP server only works within Roopik IDE');
+			console.error('[STDIO Bridge] If you are seeing this in VS Code, Cursor, or another IDE,');
+			console.error('[STDIO Bridge] please use Roopik IDE to access Roopik MCP tools.');
+			throw new Error('ROOPIK_MCP_TOKEN not found - not running in Roopik IDE');
+		}
+
+		if (this.ws?.readyState === WebSocket.OPEN && this.isAuthenticated) {
 			return;
 		}
 
@@ -83,7 +102,7 @@ export class WebSocketBridge {
 			// Wait for existing connection attempt
 			return new Promise((resolve, reject) => {
 				const checkConnection = setInterval(() => {
-					if (this.ws?.readyState === WebSocket.OPEN) {
+					if (this.ws?.readyState === WebSocket.OPEN && this.isAuthenticated) {
 						clearInterval(checkConnection);
 						resolve();
 					} else if (!this.isConnecting) {
@@ -96,6 +115,7 @@ export class WebSocketBridge {
 
 		this.isConnecting = true;
 		this.isClosed = false;
+		this.isAuthenticated = false;
 
 		return new Promise((resolve, reject) => {
 			const timeoutId = setTimeout(() => {
@@ -107,20 +127,63 @@ export class WebSocketBridge {
 				this.ws = new WebSocket(this.options.serverUrl);
 
 				this.ws.on('open', () => {
-					clearTimeout(timeoutId);
-					this.isConnecting = false;
-					this.reconnectAttempts = 0;
-					console.error('[STDIO Bridge] Connected to Roopik');
-					resolve();
+					console.error('[STDIO Bridge] Connected to Roopik, authenticating...');
+					// Send auth message immediately
+					this.ws!.send(JSON.stringify({
+						type: 'auth',
+						token: AUTH_TOKEN
+					}));
 				});
 
 				this.ws.on('message', (data) => {
+					// Check for auth response first
+					if (!this.isAuthenticated) {
+						try {
+							const message = JSON.parse(data.toString());
+							if (message.result?.type === 'auth_success') {
+								this.isAuthenticated = true;
+								this.isConnecting = false;
+								this.reconnectAttempts = 0;
+								clearTimeout(timeoutId);
+								console.error('[STDIO Bridge] Authenticated with Roopik');
+								resolve();
+								return;
+							}
+						} catch {
+							// Not an auth response, ignore
+						}
+					}
+
+					// Normal message handling
 					this.handleMessage(data);
 				});
 
 				this.ws.on('close', (code, reason) => {
-					console.error(`[STDIO Bridge] Disconnected (code: ${code})`);
+					const reasonStr = reason?.toString() || '';
+
+					// Handle auth rejection codes
+					if (code === 4001) {
+						console.error('[STDIO Bridge] Authentication timeout - Roopik rejected connection');
+					} else if (code === 4002) {
+						console.error('[STDIO Bridge] Authentication required - must send auth first');
+					} else if (code === 4003) {
+						console.error('[STDIO Bridge] Invalid token - not running in Roopik IDE');
+						console.error('[STDIO Bridge] This MCP server only works within Roopik IDE');
+					} else {
+						console.error(`[STDIO Bridge] Disconnected (code: ${code}, reason: ${reasonStr})`);
+					}
+
 					this.ws = null;
+					this.isAuthenticated = false;
+
+					// If auth failed, don't reconnect - exit cleanly
+					if (code === 4001 || code === 4002 || code === 4003) {
+						clearTimeout(timeoutId);
+						this.isConnecting = false;
+						reject(new Error(`Authentication failed (code: ${code})`));
+						return;
+					}
+
 					this.handleDisconnect();
 				});
 
@@ -176,6 +239,7 @@ export class WebSocketBridge {
 	 */
 	close(): void {
 		this.isClosed = true;
+		this.isAuthenticated = false;
 		if (this.ws) {
 			this.ws.close(1000, 'Client closing');
 			this.ws = null;
@@ -193,10 +257,10 @@ export class WebSocketBridge {
 	}
 
 	/**
-	 * Check if connected
+	 * Check if connected and authenticated
 	 */
 	isConnected(): boolean {
-		return this.ws?.readyState === WebSocket.OPEN;
+		return this.ws?.readyState === WebSocket.OPEN && this.isAuthenticated;
 	}
 
 	// ==========================================================================
@@ -220,13 +284,18 @@ export class WebSocketBridge {
 	}
 
 	private handleDisconnect(): void {
+		this.isAuthenticated = false;
+
 		if (this.isClosed || !this.options.autoReconnect) {
-			return;
+			// Graceful close - exit the process
+			console.error('[STDIO Bridge] Connection closed, exiting...');
+			process.exit(0);
 		}
 
 		if (this.options.maxReconnectAttempts > 0 &&
 			this.reconnectAttempts >= this.options.maxReconnectAttempts) {
-			console.error('[STDIO Bridge] Max reconnect attempts reached');
+			console.error('[STDIO Bridge] Max reconnect attempts reached, exiting...');
+			console.error('[STDIO Bridge] Roopik IDE may have been closed.');
 			// Reject all pending requests
 			for (const [id, callback] of this.pendingRequests) {
 				callback({
@@ -236,7 +305,8 @@ export class WebSocketBridge {
 				});
 			}
 			this.pendingRequests.clear();
-			return;
+			// EXIT THE PROCESS - don't hang around!
+			process.exit(1);
 		}
 
 		this.reconnectAttempts++;

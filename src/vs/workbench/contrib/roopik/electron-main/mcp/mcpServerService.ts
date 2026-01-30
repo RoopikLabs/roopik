@@ -22,6 +22,7 @@
  */
 
 import * as http from 'http';
+import * as crypto from 'crypto';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
@@ -82,6 +83,9 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	// Settings change listener
 	private settingsDisposable: Disposable | null = null;
 
+	// Session token for authentication (only processes in Roopik's tree have this)
+	private readonly sessionToken: string;
+
 	constructor(
 		@ILoggerService loggerService: ILoggerService,
 		private readonly devServerService: DevServerService,
@@ -93,6 +97,13 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	) {
 		super();
 		this.logger = getRoopikLogger(loggerService, 'MCP');
+
+		// Generate unique session token for MCP authentication
+		// This token is set in the environment and inherited by all child processes
+		// External IDEs (VS Code, Cursor) won't have this token, so their connections are rejected
+		this.sessionToken = crypto.randomUUID();
+		process.env.ROOPIK_MCP_TOKEN = this.sessionToken;
+		this.logger.info('MCP session token generated and set in environment');
 	}
 
 	// ============================================================================
@@ -300,7 +311,8 @@ export class McpServerService extends Disposable implements IMcpServerService {
 
 		const configuredPort = this.configurationService.getValue<number>('roopik.mcp.stdioMCPPort') || McpServerService.DEFAULT_WS_PORT;
 
-		this.wsServer = new McpWebSocketServer(this.toolExecutor);
+		// Pass the session token to WebSocket server for authentication
+		this.wsServer = new McpWebSocketServer(this.toolExecutor, this.sessionToken);
 		const result = await this.wsServer.start({ port: configuredPort });
 		this.wsPort = result.port;
 

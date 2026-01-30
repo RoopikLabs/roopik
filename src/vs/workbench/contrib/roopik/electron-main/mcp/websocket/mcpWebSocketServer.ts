@@ -38,6 +38,7 @@ export interface McpWebSocketServerOptions {
 export interface McpConnectionInfo {
 	id: string;
 	connectedAt: number;
+	authenticated: boolean;
 	clientInfo?: {
 		name?: string;
 		version?: string;
@@ -69,6 +70,14 @@ interface WsWebSocketServer {
 // WebSocket ready states
 const WS_OPEN = 1;
 
+// Authentication timeout (5 seconds)
+const AUTH_TIMEOUT_MS = 5000;
+
+// Custom close codes for authentication
+const WS_CLOSE_AUTH_TIMEOUT = 4001;
+const WS_CLOSE_AUTH_REQUIRED = 4002;
+const WS_CLOSE_AUTH_INVALID = 4003;
+
 // ============================================================================
 // MCP WebSocket Server
 // ============================================================================
@@ -77,11 +86,14 @@ export class McpWebSocketServer extends Disposable {
 	private httpServer: HttpServer | null = null;
 	private wss: WsWebSocketServer | null = null;
 	private readonly router: McpRequestRouter;
-	private readonly connections = new Map<string, { ws: WsWebSocket; info: McpConnectionInfo }>();
+	private readonly connections = new Map<string, { ws: WsWebSocket; info: McpConnectionInfo; authTimeout?: ReturnType<typeof setTimeout> }>();
 	private connectionCounter = 0;
 
 	private _port: number | undefined;
 	private _host: string = 'localhost';
+
+	// Authentication token (only processes in Roopik's tree have this via env var)
+	private readonly authToken: string;
 
 	// Events
 	private readonly _onServerStarted = this._register(new Emitter<{ port: number; host: string }>());
@@ -96,9 +108,10 @@ export class McpWebSocketServer extends Disposable {
 	private readonly _onClientDisconnected = this._register(new Emitter<string>());
 	readonly onClientDisconnected: Event<string> = this._onClientDisconnected.event;
 
-	constructor(toolExecutor: ToolExecutor) {
+	constructor(toolExecutor: ToolExecutor, authToken: string) {
 		super();
 		this.router = new McpRequestRouter(toolExecutor);
+		this.authToken = authToken;
 	}
 
 	/**
@@ -221,12 +234,21 @@ export class McpWebSocketServer extends Disposable {
 
 		const connectionInfo: McpConnectionInfo = {
 			id: connectionId,
-			connectedAt: Date.now()
+			connectedAt: Date.now(),
+			authenticated: false
 		};
 
-		this.connections.set(connectionId, { ws, info: connectionInfo });
-		console.log(`[MCP WebSocket] Client connected: ${connectionId}`);
-		this._onClientConnected.fire(connectionInfo);
+		// Set authentication timeout - client must auth within 5 seconds
+		const authTimeout = setTimeout(() => {
+			const conn = this.connections.get(connectionId);
+			if (conn && !conn.info.authenticated) {
+				console.log(`[MCP WebSocket] Auth timeout for ${connectionId}, closing`);
+				ws.close(WS_CLOSE_AUTH_TIMEOUT, 'Authentication timeout');
+			}
+		}, AUTH_TIMEOUT_MS);
+
+		this.connections.set(connectionId, { ws, info: connectionInfo, authTimeout });
+		console.log(`[MCP WebSocket] Client connected: ${connectionId} (awaiting auth)`);
 
 		// Handle incoming messages
 		ws.on('message', async (data: unknown) => {
@@ -236,6 +258,10 @@ export class McpWebSocketServer extends Disposable {
 		// Handle close
 		ws.on('close', (code: number, _reason: Buffer) => {
 			console.log(`[MCP WebSocket] Client disconnected: ${connectionId} (code: ${code})`);
+			const conn = this.connections.get(connectionId);
+			if (conn?.authTimeout) {
+				clearTimeout(conn.authTimeout);
+			}
 			this.connections.delete(connectionId);
 			this._onClientDisconnected.fire(connectionId);
 		});
@@ -247,20 +273,63 @@ export class McpWebSocketServer extends Disposable {
 	}
 
 	private async handleMessage(connectionId: string, ws: WsWebSocket, data: unknown): Promise<void> {
-		let request: McpRequest;
+		const conn = this.connections.get(connectionId);
+		if (!conn) {
+			return;
+		}
+
+		let message: { type?: string; token?: string; jsonrpc?: string; method?: string; id?: string | number; params?: unknown };
 
 		try {
 			// Parse message
 			const messageStr = data instanceof Buffer ? data.toString('utf-8') : String(data);
-			request = JSON.parse(messageStr) as McpRequest;
-
-			// Validate JSON-RPC format
-			if (request.jsonrpc !== '2.0' || !request.method) {
-				this.sendError(ws, request?.id ?? null, MCP_ERROR_CODES.INVALID_REQUEST, 'Invalid JSON-RPC request');
-				return;
-			}
+			message = JSON.parse(messageStr);
 		} catch {
 			this.sendError(ws, null, MCP_ERROR_CODES.PARSE_ERROR, 'Failed to parse JSON');
+			return;
+		}
+
+		// ============================================================
+		// Authentication Flow
+		// ============================================================
+
+		// If not authenticated, first message MUST be auth
+		if (!conn.info.authenticated) {
+			if (message.type === 'auth') {
+				// Validate token
+				if (message.token === this.authToken) {
+					conn.info.authenticated = true;
+					// Clear auth timeout
+					if (conn.authTimeout) {
+						clearTimeout(conn.authTimeout);
+						conn.authTimeout = undefined;
+					}
+					console.log(`[MCP WebSocket] Client authenticated: ${connectionId}`);
+					this._onClientConnected.fire(conn.info);
+					// Send success response
+					this.send(ws, { jsonrpc: '2.0', id: 0, result: { type: 'auth_success' } });
+				} else {
+					console.log(`[MCP WebSocket] Invalid token from ${connectionId}, rejecting`);
+					ws.close(WS_CLOSE_AUTH_INVALID, 'Invalid token');
+				}
+				return;
+			} else {
+				// Non-auth message before authentication
+				console.log(`[MCP WebSocket] Non-auth message from unauthenticated client ${connectionId}`);
+				ws.close(WS_CLOSE_AUTH_REQUIRED, 'Authentication required');
+				return;
+			}
+		}
+
+		// ============================================================
+		// Normal MCP Request Processing (authenticated clients only)
+		// ============================================================
+
+		const request = message as McpRequest;
+
+		// Validate JSON-RPC format
+		if (request.jsonrpc !== '2.0' || !request.method) {
+			this.sendError(ws, request?.id ?? null, MCP_ERROR_CODES.INVALID_REQUEST, 'Invalid JSON-RPC request');
 			return;
 		}
 
@@ -269,13 +338,10 @@ export class McpWebSocketServer extends Disposable {
 
 		// Update client info if this was an initialize request
 		if (request.method === 'initialize' && request.params) {
-			const conn = this.connections.get(connectionId);
-			if (conn) {
-				conn.info.clientInfo = {
-					name: (request.params as { clientInfo?: { name?: string } }).clientInfo?.name,
-					version: (request.params as { clientInfo?: { version?: string } }).clientInfo?.version
-				};
-			}
+			conn.info.clientInfo = {
+				name: (request.params as { clientInfo?: { name?: string } }).clientInfo?.name,
+				version: (request.params as { clientInfo?: { version?: string } }).clientInfo?.version
+			};
 		}
 
 		// Send response
