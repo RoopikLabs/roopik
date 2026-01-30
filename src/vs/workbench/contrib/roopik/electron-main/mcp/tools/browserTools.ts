@@ -1322,21 +1322,22 @@ For external sites without source maps, source locations will be empty but you c
 	// --------------------------------------------------------------
 	server.tool(
 		'browser_set_viewport',
-		`[Roopik IDE] Set the browser viewport size for responsive design testing. Uses CDP Emulation.setDeviceMetricsOverride.
+		`[Roopik IDE] Set or clear browser viewport override for responsive design testing. Uses CDP Emulation.
+
+Provide width/height to set a specific size (e.g., mobile 375x812).
+Call with NO parameters to clear override and restore natural browser size.
 
 Common viewport sizes:
 - Mobile: 375x667 (iPhone SE), 390x844 (iPhone 12/13/14)
 - Tablet: 768x1024 (iPad), 820x1180 (iPad Air)
-- Desktop: 1280x720, 1920x1080
-
-Use this before taking screenshots to test responsive layouts.`,
+- Desktop: 1280x720, 1920x1080`,
 		{
-			width: z.number().describe('Viewport width in pixels (e.g., 375 for mobile, 1280 for desktop)'),
-			height: z.number().describe('Viewport height in pixels (e.g., 667 for mobile, 720 for desktop)'),
-			deviceScaleFactor: z.number().optional().describe('Device scale factor for high DPI displays (default: 1, use 2 for Retina)'),
+			width: z.number().optional().describe('Viewport width in pixels. Omit to clear override.'),
+			height: z.number().optional().describe('Viewport height in pixels. Omit to clear override.'),
+			deviceScaleFactor: z.number().optional().describe('Device scale factor (default: 1)'),
 			mobile: z.boolean().optional().describe('Emulate mobile device (default: false)')
 		},
-		async ({ width, height, deviceScaleFactor, mobile }: { width: number; height: number; deviceScaleFactor?: number; mobile?: boolean }) => {
+		async ({ width, height, deviceScaleFactor, mobile }: { width?: number; height?: number; deviceScaleFactor?: number; mobile?: boolean }) => {
 			try {
 				const browserViewId = browserViewService.getActiveBrowserViewId();
 				if (browserViewId === undefined) {
@@ -1355,6 +1356,20 @@ Use this before taking screenshots to test responsive layouts.`,
 
 				// Ensure CDP is attached
 				await browserViewService.attachDebugger(browserViewId);
+
+				// If width/height not provided, clear the viewport override
+				if (width === undefined || height === undefined) {
+					await browserViewService.sendCDPCommand(browserViewId, 'Emulation.clearDeviceMetricsOverride');
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: true,
+								message: 'Viewport override cleared - restored to natural browser size'
+							})
+						}]
+					};
+				}
 
 				// Set viewport using CDP Emulation
 				await browserViewService.sendCDPCommand(browserViewId, 'Emulation.setDeviceMetricsOverride', {
@@ -1401,7 +1416,7 @@ Use this before taking screenshots to test responsive layouts.`,
 	// --------------------------------------------------------------
 	server.tool(
 		'browser_get_network_requests',
-		`[Roopik IDE] Get network requests made by the browser. Shows API calls, resource loads, and their responses.
+		`[Roopik IDE] Get captured network requests and responses. Requires CDP monitoring.
 
 Useful for:
 - Debugging API calls (see request/response details)
@@ -1411,17 +1426,19 @@ Useful for:
 
 For errors only, use browser_get_errors which includes failed network requests.`,
 		{
-			limit: z.number().optional().describe('Maximum requests to return (default: 50)'),
-			filter: z.enum(['all', 'xhr', 'fetch', 'document', 'script', 'stylesheet', 'image', 'failed']).optional()
-				.describe('Filter by request type or status (default: all)')
+			urlFilter: z.string().optional().describe('Filter requests by URL substring'),
+			method: z.string().optional().describe('Filter by HTTP method (GET, POST, etc.)'),
+			statusFilter: z.enum(['success', 'error', 'all']).optional()
+				.describe('Filter by status: success (2xx-3xx), error (4xx-5xx or failed), all'),
+			limit: z.number().optional().describe('Maximum number of requests to return (default: 100, max: 500)')
 		},
-		async ({ limit, filter }: { limit?: number; filter?: string }) => {
+		async ({ urlFilter, method, statusFilter, limit }: { urlFilter?: string; method?: string; statusFilter?: 'success' | 'error' | 'all'; limit?: number }) => {
 			try {
 				const browserViewId = browserViewService.getActiveBrowserViewId();
 				await ensureCDPMonitoring(browserViewId!, browserViewService);
 
 				const monitor = getMonitorOrThrow(browserViewId);
-				const maxItems = Math.min(limit || 50, 200);
+				const maxItems = Math.min(limit || 100, 500);
 
 				// Build request/response pairs
 				let results = monitor.networkRequests.map(req => {
@@ -1438,20 +1455,23 @@ For errors only, use browser_get_errors which includes failed network requests.`
 					};
 				});
 
-				// Apply filters
-				if (filter === 'failed') {
-					results = results.filter(r => r.status === undefined || r.status >= 400 || r.status === 0);
-				} else if (filter === 'xhr' || filter === 'fetch') {
-					results = results.filter(r => r.mimeType?.includes('json') || r.url.includes('/api/'));
-				} else if (filter === 'document') {
-					results = results.filter(r => r.mimeType?.includes('html'));
-				} else if (filter === 'script') {
-					results = results.filter(r => r.mimeType?.includes('javascript') || r.url.endsWith('.js'));
-				} else if (filter === 'stylesheet') {
-					results = results.filter(r => r.mimeType?.includes('css') || r.url.endsWith('.css'));
-				} else if (filter === 'image') {
-					results = results.filter(r => r.mimeType?.includes('image'));
+				// Apply URL filter
+				if (urlFilter) {
+					results = results.filter(r => r.url.includes(urlFilter));
 				}
+
+				// Apply method filter
+				if (method) {
+					results = results.filter(r => r.method.toUpperCase() === method.toUpperCase());
+				}
+
+				// Apply status filter
+				if (statusFilter === 'success') {
+					results = results.filter(r => r.status !== undefined && r.status >= 200 && r.status < 400);
+				} else if (statusFilter === 'error') {
+					results = results.filter(r => r.status === undefined || r.status >= 400 || r.status === 0);
+				}
+				// 'all' or undefined = no filter
 
 				// Get most recent
 				results = results.slice(-maxItems).reverse();
@@ -1463,7 +1483,7 @@ For errors only, use browser_get_errors which includes failed network requests.`
 							success: true,
 							count: results.length,
 							totalTracked: monitor.networkRequests.length,
-							filter: filter || 'all',
+							filters: { urlFilter, method, statusFilter: statusFilter || 'all' },
 							requests: results
 						}, null, 2)
 					}]
@@ -1486,41 +1506,26 @@ For errors only, use browser_get_errors which includes failed network requests.`
 	);
 
 	// --------------------------------------------------------------
-	// TOOL: Get CDP Info
+	// TOOL: Get Browser State
 	// --------------------------------------------------------------
 	server.tool(
-		'browser_get_cdp_info',
-		'[Roopik IDE] Get information about browser state and available Roopik tools for browser automation. Returns current URL, dev server status, and list of available browser tools.',
+		'browser_get_state',
+		'[Roopik IDE] Get browser state information (open/closed, current URL, title).',
 		{},
 		async () => {
 			try {
 				const browserViewId = browserViewService.getActiveBrowserViewId();
 
-				// Get current URL if browser is open
+				// Get current URL and title if browser is open
 				let currentUrl: string | undefined;
+				let title: string | undefined;
 				let devServerRunning = false;
 
 				if (browserViewId !== undefined) {
 					currentUrl = await browserViewService.executeScript(browserViewId, 'window.location.href') as string;
+					title = await browserViewService.executeScript(browserViewId, 'document.title') as string;
 					devServerRunning = true;
 				}
-
-				const availableTools = [
-					'browser_open',
-					'browser_close',
-					'browser_action_input',
-					'browser_navigate',
-					'browser_reload',
-					'browser_screenshot',
-					'browser_execute_script',
-					'browser_inspect_element',
-					'browser_get_errors',
-					'browser_get_console_logs',
-					'browser_get_performance',
-					'browser_set_viewport',
-					'browser_get_network_requests',
-					'browser_get_cdp_info'
-				];
 
 				return {
 					content: [{
@@ -1530,8 +1535,8 @@ For errors only, use browser_get_errors which includes failed network requests.`
 							browserOpen: browserViewId !== undefined,
 							browserViewId,
 							currentUrl,
+							title,
 							devServerRunning,
-							availableTools,
 							message: browserViewId !== undefined
 								? `Browser is open at ${currentUrl}`
 								: 'No browser is currently open. Use browser_open or project_start to open one.'
@@ -1554,6 +1559,4 @@ For errors only, use browser_get_errors which includes failed network requests.`
 			}
 		}
 	);
-
-	// console.log('[MCP] Registered 14 browser tools: browser_open, browser_screenshot, browser_close, browser_action_input, browser_navigate, browser_reload, browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs, browser_get_performance, browser_set_viewport, browser_get_network_requests, browser_get_cdp_info');
 }

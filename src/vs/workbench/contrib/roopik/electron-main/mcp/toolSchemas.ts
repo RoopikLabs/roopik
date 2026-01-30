@@ -1,11 +1,7 @@
-/**
- * Tool Definitions
- *
- * AUTO-GENERATED from toolSchemas.ts - DO NOT EDIT DIRECTLY!
- * Run 'npm run sync-schemas' to update from source.
- *
- * Source: src/vs/workbench/contrib/roopik/electron-main/mcp/toolSchemas.ts
- */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
 
 /**
  * Tool Schemas - Single Source of Truth
@@ -304,183 +300,20 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 ];
 
 // ============================================================================
-// Prompt Definitions (copied from Roopik for STDIO binary)
+// Helper: Convert to JSON Schema format for MCP protocol
+// Uses Zod v4 native .toJSONSchema() method
 // ============================================================================
 
-export interface PromptDefinition {
+export function getToolDefinitionsAsJsonSchema(): Array<{
 	name: string;
 	description: string;
-	content: string;
+	inputSchema: Record<string, unknown>;
+}> {
+	return TOOL_DEFINITIONS.map(tool => ({
+		name: tool.name,
+		description: tool.description,
+		inputSchema: tool.schema.toJSONSchema() as Record<string, unknown>
+	}));
 }
 
-export const PROMPT_DEFINITIONS: PromptDefinition[] = [
-	{
-		name: 'how-to-start-project',
-		description: 'Step-by-step guide for starting a development server for an existing project',
-		content: `# How to Start a Project in Roopik
-
-This workflow teaches you how to start a development server for an existing project.
-
-## Step-by-Step Process:
-
-### 1. Check for Running Project
-First, call **project_get_active** to see if a project is already running:
-- If hasActiveProject is true, you can skip starting
-- Returns: url, projectPath, framework, status
-
-### 2. Start the Development Server
-Call **project_start** with the project path:
-- Provide projectPath (absolute or relative to workspace)
-- Optionally specify a port
-- The dev server will start and browser will open automatically
-- Returns: url, projectRoot, framework
-
-### 3. Verify the Server is Running
-The browser should automatically open. You can verify with:
-- Call **browser_get_state** to check browser state
-- Call **browser_screenshot** to see the rendered page
-
-## Example Tool Chain:
-project_get_active → project_start → browser_screenshot`
-	},
-	{
-		name: 'how-to-create-component',
-		description: 'Step-by-step guide for adding components to a canvas for live preview',
-		content: `# How to Add Components in Roopik (Canvas Mode)
-
-This workflow teaches you how to add components to a canvas for live preview.
-
-## Step-by-Step Process:
-
-### 1. Get or Create a Canvas
-Call **canvas_get_active** to find the current canvas:
-- If no active canvas, call **canvas_create** with a name
-- Returns canvasId which you'll need for adding components
-
-### 2. Add a Component
-Call **component_add** with:
-- canvasId: from step 1 (optional, uses active canvas if not provided)
-- folderPath: path to component folder (absolute or relative to workspace)
-- name: component name (optional, auto-detected)
-- framework: react/vue/svelte/solid/preact/html (optional, auto-detected)
-
-### 3. Check Build Status
-Call **component_get_info** with the componentId:
-- Wait until buildState is 'ready' (not 'building')
-- If buildState is 'error', check the error details
-
-## Example Tool Chain:
-canvas_get_active → canvas_create (if needed) → component_add → component_get_info → browser_screenshot`
-	},
-	{
-		name: 'how-to-inspect-css',
-		description: 'Step-by-step guide for inspecting CSS and finding source files to edit',
-		content: `# How to Inspect & Fix CSS in Roopik
-
-This workflow teaches you THE MOAT capability - CSS inspection with source resolution.
-
-## Step-by-Step Process:
-
-### 1. Take a Screenshot First
-Call **browser_screenshot** to see the visual state.
-
-### 2. Inspect the Element's CSS
-Call **browser_inspect_element** with:
-- selector: CSS selector (e.g., ".btn-primary", "#header")
-- includeInherited: true (to see inherited styles)
-
-### 3. Analyze the CSS Data
-The response gives you precise source information:
-
-**matchedRules**: CSS rules that apply to this element
-- selector: the CSS selector
-- file: absolute path to source file
-- location: { line, column } in the source file
-- properties: CSS properties defined
-
-### 4. Find the Source File to Edit
-Look at matchedRules to find where to make changes:
-- Use the **file** path to know which file to edit
-- Use **location.line** for exact position
-
-## Why This Is THE MOAT:
-- Traditional: "This element has color: red" (but where from?)
-- Roopik: "color: red is in button.scss at line 45:3"
-
-## Example Tool Chain:
-browser_screenshot → browser_inspect_element → (edit file) → browser_reload → browser_screenshot`
-	},
-	{
-		name: 'how-to-debug-errors',
-		description: 'Step-by-step guide for finding and fixing browser errors',
-		content: `# How to Debug Browser Errors in Roopik
-
-This workflow teaches you how to find and fix JavaScript and network errors.
-
-## Step-by-Step Process:
-
-### 1. Get All Errors
-Call **browser_get_errors** to see combined errors:
-- Returns both console errors AND network failures
-- Sorted by timestamp (most recent first)
-
-### 2. Analyze Error Types
-**Console Errors** (source: 'console'):
-- JavaScript exceptions
-- React/Vue rendering errors
-- Location shows file:line:column
-
-**Network Errors** (source: 'network'):
-- HTTP 4xx/5xx responses
-- Network failures
-
-### 3. Get More Context
-For JavaScript errors, call **browser_get_console_logs**:
-- Shows all console output
-- Includes stack traces for errors
-
-### 4. Fix and Verify
-After fixing the code:
-- Call **browser_reload** with ignoreCache: true
-- Call **browser_get_errors** again to verify fix
-
-## Example Tool Chain:
-browser_get_errors → browser_get_console_logs → (fix code) → browser_reload → browser_get_errors`
-	},
-	{
-		name: 'full-dev-workflow',
-		description: 'Complete workflow from starting a project to debugging and fixing issues',
-		content: `# Full Development Workflow in Roopik
-
-## Phase 1: Start Project
-1. **Check existing project**: project_get_active
-2. **Start dev server**: project_start with projectPath
-3. **Verify browser**: browser_screenshot
-
-## Phase 2: Navigate and Explore
-4. **Go to specific page**: browser_navigate with URL
-5. **Take screenshot**: browser_screenshot
-6. **Check for errors**: browser_get_errors
-
-## Phase 3: Inspect and Edit CSS
-7. **Inspect element**: browser_inspect_element with selector
-8. **Find source file**: Look at matchedRules[].file and location
-9. **Edit the file**: Use your file editing capabilities
-10. **Reload**: browser_reload with ignoreCache: true
-
-## Phase 4: Debug Issues
-11. **Get errors**: browser_get_errors
-12. **Get console logs**: browser_get_console_logs
-13. **Check performance**: browser_get_performance
-
-## Tool Categories:
-- **Project Tools** (3): project_get_active, project_start, project_stop
-- **Browser Core** (6): browser_open, browser_close, browser_screenshot, browser_navigate, browser_reload, browser_action_input
-- **Browser Debug** (4): browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs
-- **Browser Info** (4): browser_get_performance, browser_get_state, browser_set_viewport, browser_get_network_requests
-- **Canvas Tools** (3): canvas_list, canvas_get_active, canvas_create
-- **Component Tools** (6): component_add, component_add_batch, component_remove, component_get_info, component_list, component_rebuild
-
-## Total: 26 Tools`
-	}
-];
+// Total: 26 Tools

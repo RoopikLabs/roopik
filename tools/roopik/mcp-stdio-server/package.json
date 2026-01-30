@@ -7,11 +7,12 @@
   "scripts": {
     "build": "tsc",
     "bundle": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/bundle.cjs",
-    "build:binary:win": "npm run bundle && pkg dist/bundle.cjs -t node18-win-x64 -o ../../../resources/mcp-binaries/roopik-mcp-win-x64.exe",
-    "build:binary:mac-x64": "npm run bundle && pkg dist/bundle.cjs -t node18-macos-x64 -o ../../../resources/mcp-binaries/roopik-mcp-macos-x64",
-    "build:binary:mac-arm64": "npm run bundle && pkg dist/bundle.cjs -t node18-macos-arm64 -o ../../../resources/mcp-binaries/roopik-mcp-macos-arm64",
-    "build:binary:linux": "npm run bundle && pkg dist/bundle.cjs -t node18-linux-x64 -o ../../../resources/mcp-binaries/roopik-mcp-linux-x64",
-    "build:binaries": "npm run bundle && npm run build:binary:win && npm run build:binary:mac-x64 && npm run build:binary:mac-arm64 && npm run build:binary:linux",
+    "sync-schemas": "node scripts/sync-schemas.js",
+    "build:binary:win": "npm run sync-schemas && npm run bundle && pkg dist/bundle.cjs -t node18-win-x64 -o ../../../resources/mcp-binaries/roopik-mcp-win-x64.exe",
+    "build:binary:mac-x64": "npm run sync-schemas && npm run bundle && pkg dist/bundle.cjs -t node18-macos-x64 -o ../../../resources/mcp-binaries/roopik-mcp-macos-x64",
+    "build:binary:mac-arm64": "npm run sync-schemas && npm run bundle && pkg dist/bundle.cjs -t node18-macos-arm64 -o ../../../resources/mcp-binaries/roopik-mcp-macos-arm64",
+    "build:binary:linux": "npm run sync-schemas && npm run bundle && pkg dist/bundle.cjs -t node18-linux-x64 -o ../../../resources/mcp-binaries/roopik-mcp-linux-x64",
+    "build:binaries": "npm run sync-schemas && npm run bundle && npm run build:binary:win && npm run build:binary:mac-x64 && npm run build:binary:mac-arm64 && npm run build:binary:linux",
     "dev": "tsx src/index.ts",
     "clean": "rimraf dist"
   },
