@@ -59,7 +59,7 @@ export const MCP_ERROR_CODES = {
 export class McpRequestRouter {
 	constructor(
 		private readonly toolExecutor: ToolExecutor
-	) {}
+	) { }
 
 	/**
 	 * Route an incoming MCP request and return a response
@@ -271,7 +271,7 @@ export class McpRequestRouter {
 	}> {
 		return [
 			// ================================================================
-			// Browser Tools (12)
+			// Browser Tools (14)
 			// ================================================================
 			{
 				name: 'browser_open',
@@ -395,9 +395,39 @@ export class McpRequestRouter {
 				inputSchema: { type: 'object', properties: {} }
 			},
 			{
-				name: 'browser_get_cdp_info',
-				description: 'Get browser state information.',
+				name: 'browser_get_state',
+				description: 'Get browser state information (open/closed, current URL, title).',
 				inputSchema: { type: 'object', properties: {} }
+			},
+			{
+				name: 'browser_set_viewport',
+				description: 'Set or clear browser viewport override. Provide width/height to set a specific size (e.g., mobile 375x812). Call with NO parameters to clear override and restore natural browser size.',
+				inputSchema: {
+					type: 'object',
+					properties: {
+						width: { type: 'number', description: 'Viewport width in pixels. Omit to clear override.' },
+						height: { type: 'number', description: 'Viewport height in pixels. Omit to clear override.' },
+						deviceScaleFactor: { type: 'number', description: 'Device scale factor (default: 1)' },
+						mobile: { type: 'boolean', description: 'Emulate mobile device (default: false)' }
+					}
+				}
+			},
+			{
+				name: 'browser_get_network_requests',
+				description: 'Get captured network requests and responses. Requires CDP monitoring.',
+				inputSchema: {
+					type: 'object',
+					properties: {
+						urlFilter: { type: 'string', description: 'Filter requests by URL substring' },
+						method: { type: 'string', description: 'Filter by HTTP method (GET, POST, etc.)' },
+						statusFilter: {
+							type: 'string',
+							enum: ['success', 'error', 'all'],
+							description: 'Filter by status: success (2xx-3xx), error (4xx-5xx or failed), all'
+						},
+						limit: { type: 'number', description: 'Maximum number of requests to return (default: 100, max: 500)' }
+					}
+				}
 			},
 
 			// ================================================================

@@ -167,6 +167,12 @@ function handleException(monitor: CDPMonitor, params: {
 		columnNumber?: number;
 		url?: string;
 		stackTrace?: { callFrames: Array<{ url: string; lineNumber: number; columnNumber: number; functionName: string }> };
+		exception?: {
+			type?: string;
+			value?: unknown;
+			description?: string;
+			className?: string;
+		};
 	};
 }): void {
 	const { timestamp, exceptionDetails } = params;
@@ -175,11 +181,30 @@ function handleException(monitor: CDPMonitor, params: {
 		? `${exceptionDetails.url}:${exceptionDetails.lineNumber}:${exceptionDetails.columnNumber}`
 		: undefined;
 
+	// Build full error message:
+	// 1. Start with exception.description (full error like "TypeError: Cannot read property 'foo' of null")
+	// 2. Fall back to exception.className + exception.value
+	// 3. Fall back to exceptionDetails.text (usually just "Uncaught")
+	let message = exceptionDetails.text || 'Unknown error';
+
+	if (exceptionDetails.exception) {
+		const exc = exceptionDetails.exception;
+		if (exc.description) {
+			// description contains full error message with stack trace
+			message = exc.description;
+		} else if (exc.className && exc.value !== undefined) {
+			// Construct message from class name and value
+			message = `${exc.className}: ${exc.value}`;
+		} else if (exc.value !== undefined) {
+			message = String(exc.value);
+		}
+	}
+
 	const log: ConsoleLog = {
 		id: `exception-${Date.now()}-${Math.random()}`,
 		timestamp: timestamp * 1000,
 		type: 'error',
-		message: exceptionDetails.text,
+		message,
 		location,
 		stackTrace: exceptionDetails.stackTrace
 	};
@@ -517,13 +542,16 @@ export function registerBrowserTools(
 		'browser_action_input',
 		`[Roopik IDE] Perform native input events in the browser. Supports click, right_click, double_click, hover, drag, type, press, scroll.
 
+TIP: To get element coordinates for clicking, use browser_execute_script first:
+\`(function(){ var r = document.querySelector('button.submit').getBoundingClientRect(); return JSON.stringify({x:Math.round(r.x+r.width/2), y:Math.round(r.y+r.height/2)}); })()\`
+
 Coordinate format: 'x,y@WIDTHxHEIGHT' where WIDTH/HEIGHT are from browser_screenshot viewport.
 Example: '450,203@900x600' means click at (450,203) on a 900x600 viewport.
 
 Actions:
 - click/right_click/double_click/hover: requires 'coordinate'
 - drag: requires 'coordinate' (start) + 'deltaX'/'deltaY' (offset to end)
-- type: requires 'text'
+- type: requires 'text' (types into focused element)
 - press: requires 'key' (e.g., 'Enter', 'Escape', 'Tab'), optional 'modifiers' (['ctrl', 'shift'])
 - scroll: requires 'deltaX' and/or 'deltaY' (negative = up/left)`,
 		{
@@ -862,9 +890,27 @@ Actions:
 	// --------------------------------------------------------------
 	server.tool(
 		'browser_execute_script',
-		'[Roopik IDE] Execute JavaScript in the browser context. Use for DOM queries, checking state, clicking elements, or any browser-side logic. Returns the result.',
+		`[Roopik IDE] Execute JavaScript in the browser context. Returns the result of the last expression.
+
+IMPORTANT: For multi-statement scripts, use IIFE pattern with explicit return:
+\`\`\`javascript
+(function() {
+  var el = document.querySelector('.my-element');
+  if (!el) return JSON.stringify({ error: 'Not found' });
+  var rect = el.getBoundingClientRect();
+  return JSON.stringify({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+})()
+\`\`\`
+
+Common patterns:
+- Get element bounds: \`(function(){ var r = document.querySelector('SEL').getBoundingClientRect(); return JSON.stringify({x:r.x,y:r.y,w:r.width,h:r.height}); })()\`
+- Click element: \`document.querySelector('SEL').click()\`
+- Type in input: \`(function(){ var i=document.querySelector('SEL'); i.value='text'; i.dispatchEvent(new Event('input',{bubbles:true})); return true; })()\`
+- Get page info: \`JSON.stringify({url:location.href,title:document.title})\`
+
+Single expressions work directly: \`document.title\`, \`document.querySelectorAll('a').length\``,
 		{
-			script: z.string().describe('JavaScript code to execute (e.g., "document.querySelector(\'.btn\').click()")')
+			script: z.string().describe('JavaScript code to execute. Use IIFE pattern for multi-statement scripts.')
 		},
 		async ({ script }: { script: string }) => {
 			try {
@@ -916,7 +962,13 @@ Actions:
 	// --------------------------------------------------------------
 	server.tool(
 		'browser_inspect_element',
-		'[Roopik IDE] Deep CSS inspection for an element. Returns matched CSS rules with source file locations (file:line:column), computed styles, and specificity. This is THE MOAT - precise CSS context with source maps for accurate edits.',
+		`[Roopik IDE] Deep CSS inspection for an element. Returns matched CSS rules with source file locations (file:line:column), computed styles, and specificity.
+
+Best for LOCAL projects with source maps - returns exact source file locations for CSS edits.
+For external sites without source maps, source locations will be empty but you can still get:
+- Computed styles (what the browser actually applies)
+- Matched selectors (what CSS rules match)
+- Use browser_execute_script for computed styles: \`getComputedStyle(document.querySelector('SEL')).color\``,
 		{
 			selector: z.string().describe('CSS selector to find element (e.g., ".btn-primary", "#header")'),
 			includeInherited: z.boolean().optional().describe('Include inherited styles from parents (default: true)')
@@ -1266,6 +1318,174 @@ Actions:
 	);
 
 	// --------------------------------------------------------------
+	// TOOL: Set Viewport Size
+	// --------------------------------------------------------------
+	server.tool(
+		'browser_set_viewport',
+		`[Roopik IDE] Set the browser viewport size for responsive design testing. Uses CDP Emulation.setDeviceMetricsOverride.
+
+Common viewport sizes:
+- Mobile: 375x667 (iPhone SE), 390x844 (iPhone 12/13/14)
+- Tablet: 768x1024 (iPad), 820x1180 (iPad Air)
+- Desktop: 1280x720, 1920x1080
+
+Use this before taking screenshots to test responsive layouts.`,
+		{
+			width: z.number().describe('Viewport width in pixels (e.g., 375 for mobile, 1280 for desktop)'),
+			height: z.number().describe('Viewport height in pixels (e.g., 667 for mobile, 720 for desktop)'),
+			deviceScaleFactor: z.number().optional().describe('Device scale factor for high DPI displays (default: 1, use 2 for Retina)'),
+			mobile: z.boolean().optional().describe('Emulate mobile device (default: false)')
+		},
+		async ({ width, height, deviceScaleFactor, mobile }: { width: number; height: number; deviceScaleFactor?: number; mobile?: boolean }) => {
+			try {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				if (browserViewId === undefined) {
+					return {
+						content: [{
+							type: 'text' as const,
+							text: JSON.stringify({
+								success: false,
+								isError: true,
+								error: 'No browser is open. Start a project first with project_start.'
+							})
+						}],
+						isError: true
+					};
+				}
+
+				// Ensure CDP is attached
+				await browserViewService.attachDebugger(browserViewId);
+
+				// Set viewport using CDP Emulation
+				await browserViewService.sendCDPCommand(browserViewId, 'Emulation.setDeviceMetricsOverride', {
+					width,
+					height,
+					deviceScaleFactor: deviceScaleFactor ?? 1,
+					mobile: mobile ?? false
+				});
+
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: true,
+							viewport: {
+								width,
+								height,
+								deviceScaleFactor: deviceScaleFactor ?? 1,
+								mobile: mobile ?? false
+							},
+							message: `Viewport set to ${width}x${height}${mobile ? ' (mobile)' : ''}`
+						})
+					}]
+				};
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: false,
+							isError: true,
+							error: errorMessage
+						})
+					}],
+					isError: true
+				};
+			}
+		}
+	);
+
+	// --------------------------------------------------------------
+	// TOOL: Get Network Requests
+	// --------------------------------------------------------------
+	server.tool(
+		'browser_get_network_requests',
+		`[Roopik IDE] Get network requests made by the browser. Shows API calls, resource loads, and their responses.
+
+Useful for:
+- Debugging API calls (see request/response details)
+- Finding failed requests (status 4xx, 5xx)
+- Checking what resources are being loaded
+- Verifying API endpoints are correct
+
+For errors only, use browser_get_errors which includes failed network requests.`,
+		{
+			limit: z.number().optional().describe('Maximum requests to return (default: 50)'),
+			filter: z.enum(['all', 'xhr', 'fetch', 'document', 'script', 'stylesheet', 'image', 'failed']).optional()
+				.describe('Filter by request type or status (default: all)')
+		},
+		async ({ limit, filter }: { limit?: number; filter?: string }) => {
+			try {
+				const browserViewId = browserViewService.getActiveBrowserViewId();
+				await ensureCDPMonitoring(browserViewId!, browserViewService);
+
+				const monitor = getMonitorOrThrow(browserViewId);
+				const maxItems = Math.min(limit || 50, 200);
+
+				// Build request/response pairs
+				let results = monitor.networkRequests.map(req => {
+					const response = monitor.networkResponses.find(res => res.requestId === req.requestId);
+					return {
+						method: req.method,
+						url: req.url,
+						status: response?.status,
+						statusText: response?.statusText,
+						mimeType: response?.mimeType,
+						duration: response?.duration,
+						timestamp: req.timestamp,
+						hasResponse: !!response
+					};
+				});
+
+				// Apply filters
+				if (filter === 'failed') {
+					results = results.filter(r => r.status === undefined || r.status >= 400 || r.status === 0);
+				} else if (filter === 'xhr' || filter === 'fetch') {
+					results = results.filter(r => r.mimeType?.includes('json') || r.url.includes('/api/'));
+				} else if (filter === 'document') {
+					results = results.filter(r => r.mimeType?.includes('html'));
+				} else if (filter === 'script') {
+					results = results.filter(r => r.mimeType?.includes('javascript') || r.url.endsWith('.js'));
+				} else if (filter === 'stylesheet') {
+					results = results.filter(r => r.mimeType?.includes('css') || r.url.endsWith('.css'));
+				} else if (filter === 'image') {
+					results = results.filter(r => r.mimeType?.includes('image'));
+				}
+
+				// Get most recent
+				results = results.slice(-maxItems).reverse();
+
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: true,
+							count: results.length,
+							totalTracked: monitor.networkRequests.length,
+							filter: filter || 'all',
+							requests: results
+						}, null, 2)
+					}]
+				};
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+				return {
+					content: [{
+						type: 'text' as const,
+						text: JSON.stringify({
+							success: false,
+							isError: true,
+							error: errorMessage
+						})
+					}],
+					isError: true
+				};
+			}
+		}
+	);
+
+	// --------------------------------------------------------------
 	// TOOL: Get CDP Info
 	// --------------------------------------------------------------
 	server.tool(
@@ -1297,6 +1517,8 @@ Actions:
 					'browser_get_errors',
 					'browser_get_console_logs',
 					'browser_get_performance',
+					'browser_set_viewport',
+					'browser_get_network_requests',
 					'browser_get_cdp_info'
 				];
 
@@ -1333,5 +1555,5 @@ Actions:
 		}
 	);
 
-	// console.log('[MCP] Registered 12 browser tools: browser_open, browser_screenshot, browser_close, browser_action_input, browser_navigate, browser_reload, browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs, browser_get_performance, browser_get_cdp_info');
+	// console.log('[MCP] Registered 14 browser tools: browser_open, browser_screenshot, browser_close, browser_action_input, browser_navigate, browser_reload, browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs, browser_get_performance, browser_set_viewport, browser_get_network_requests, browser_get_cdp_info');
 }

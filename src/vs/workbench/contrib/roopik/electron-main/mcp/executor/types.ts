@@ -135,14 +135,16 @@ export interface BrowserPerformanceResult {
 }
 
 /**
- * Browser CDP info result
+ * Browser state result - returns current browser status
+ * Note: Use tools/list for available tools, not this result
  */
-export interface BrowserCdpInfoResult {
+export interface BrowserStateResult {
 	browserOpen: boolean;
 	browserViewId?: number;
 	currentUrl?: string;
+	title?: string;
+	isLoading?: boolean;
 	devServerRunning: boolean;
-	availableTools: string[];
 	message: string;
 }
 
@@ -179,6 +181,41 @@ export interface ElementInspectionResult {
 export interface ScriptExecutionResult {
 	result: unknown;
 	type: string;
+}
+
+/**
+ * Browser viewport result
+ */
+export interface BrowserViewportResult {
+	width: number;
+	height: number;
+	deviceScaleFactor: number;
+	mobile: boolean;
+	message: string;
+}
+
+/**
+ * Network request entry for browser_get_network_requests
+ */
+export interface NetworkRequestEntry {
+	id: string;
+	method: string;
+	url: string;
+	status?: number;
+	statusText?: string;
+	mimeType?: string;
+	duration?: number;
+	timestamp: number;
+	requestHeaders?: Record<string, string>;
+	responseHeaders?: Record<string, string>;
+}
+
+/**
+ * Browser network requests result
+ */
+export interface BrowserNetworkRequestsResult {
+	requests: NetworkRequestEntry[];
+	count: number;
 }
 
 // ============================================================================

@@ -17,9 +17,10 @@
  * Tool Naming Convention: category_action (e.g., browser_navigate, component_add)
  *
  * Tool Categories:
- * - Browser Tools (10): browser_open, browser_navigate, browser_reload, browser_screenshot,
- *                       browser_execute_script, browser_inspect_element, browser_get_errors,
- *                       browser_get_console_logs, browser_get_performance, browser_get_cdp_info
+ * - Browser Tools (14): browser_open, browser_close, browser_navigate, browser_reload, browser_screenshot,
+ *                       browser_action_input, browser_execute_script, browser_inspect_element, browser_get_errors,
+ *                       browser_get_console_logs, browser_get_performance, browser_get_state,
+ *                       browser_set_viewport, browser_get_network_requests
  * - Project Tools (3): project_get_active, project_start, project_stop
  * - Canvas Tools (3): canvas_list, canvas_get_active, canvas_create
  * - Component Tools (6): component_add, component_add_batch, component_remove,
@@ -116,8 +117,14 @@ export class RoopikToolsChannel implements IServerChannel {
 				case 'browser_get_performance':
 					return this.handleBrowserGetPerformance();
 
-				case 'browser_get_cdp_info':
-					return this.handleBrowserGetCdpInfo();
+				case 'browser_get_state':
+					return this.handleBrowserGetState();
+
+				case 'browser_set_viewport':
+					return this.handleSetViewport(arg as { width?: number; height?: number; deviceScaleFactor?: number; mobile?: boolean } | undefined);
+
+				case 'browser_get_network_requests':
+					return this.handleGetNetworkRequests(arg as { urlFilter?: string; method?: string; statusFilter?: string; limit?: number });
 
 				// ============================================================
 				// Project Tools (3)
@@ -363,69 +370,32 @@ export class RoopikToolsChannel implements IServerChannel {
 	}
 
 	/**
-	 * Get CDP connection info for external agents to connect to the browser.
+	 * Get browser state information.
 	 *
-	 * Returns information about the current browser state and how external
-	 * agents (Claude Code, Copilot, etc.) can interact with it.
+	 * Returns the current browser status including URL, title, loading state,
+	 * and dev server info if running.
 	 *
-	 * Note: Electron's BrowserView doesn't expose a WebSocket server by default.
-	 * External agents should use Roopik's IPC tools instead of direct CDP connection.
-	 * This tool provides context about what's available.
+	 * Note: Use tools/list for available tools, not this method.
 	 */
-	private async handleBrowserGetCdpInfo(): Promise<RoopikToolResult> {
+	private async handleBrowserGetState(): Promise<RoopikToolResult> {
 		const browserViewId = this.browserViewService.getActiveBrowserViewId();
 
 		// Get dev server info if running
 		const runningServer = await this.devServerService.getRunningServer();
-
-		const availableTools = [
-			// Browser tools
-			'browser_open',
-			'browser_navigate',
-			'browser_reload',
-			'browser_screenshot',
-			'browser_execute_script',
-			'browser_inspect_element',
-			'browser_get_errors',
-			'browser_get_console_logs',
-			'browser_get_performance',
-			'browser_get_cdp_info',
-			// Project tools
-			'project_get_active',
-			'project_start',
-			'project_stop',
-			// Canvas tools
-			'canvas_list',
-			'canvas_get_active',
-			'canvas_create',
-			// Component tools
-			'component_add',
-			'component_add_batch',
-			'component_remove',
-			'component_get_info',
-			'component_list',
-			'component_rebuild'
-		];
 
 		if (browserViewId === undefined) {
 			return {
 				success: true,
 				data: {
 					browserOpen: false,
+					devServerRunning: !!runningServer,
 					devServer: runningServer ? {
-						running: true,
 						url: runningServer.url,
 						projectRoot: runningServer.projectRoot,
 						port: runningServer.port,
 						framework: runningServer.framework
 					} : null,
-					cdpAccess: {
-						// Electron BrowserView uses in-process debugger, not WebSocket
-						type: 'internal',
-						note: 'Roopik uses Electron in-process CDP. External agents should use Roopik IPC tools.',
-						availableTools
-					},
-					message: 'No browser open. Use browser_open to open a browser.'
+					message: 'No browser open. Use browser_open or project_start to open a browser.'
 				}
 			};
 		}
@@ -441,27 +411,14 @@ export class RoopikToolsChannel implements IServerChannel {
 				currentUrl: navState.url,
 				title: navState.title,
 				isLoading: navState.isLoading,
+				devServerRunning: !!runningServer,
 				devServer: runningServer ? {
-					running: true,
 					url: runningServer.url,
 					projectRoot: runningServer.projectRoot,
 					port: runningServer.port,
 					framework: runningServer.framework
 				} : null,
-				cdpAccess: {
-					// Electron BrowserView uses in-process debugger
-					type: 'internal',
-					note: 'Roopik uses Electron in-process CDP. External agents should use Roopik IPC tools instead of WebSocket CDP.',
-					availableTools,
-					// For future: If we want to expose remote debugging, we'd need to:
-					// 1. Start Chromium with --remote-debugging-port
-					// 2. Or use a CDP proxy that exposes WebSocket
-					remoteDebugging: {
-						enabled: false,
-						reason: 'Electron BrowserView does not expose WebSocket CDP by default. Use Roopik IPC tools for full CDP access.'
-					}
-				},
-				message: `Browser open at ${navState.url}. Use Roopik tools for CDP operations.`
+				message: `Browser open at ${navState.url}`
 			}
 		};
 	}
@@ -766,6 +723,93 @@ export class RoopikToolsChannel implements IServerChannel {
 		return {
 			success: false,
 			error: 'CDP tools require browser to be open with monitoring enabled. Use project_start first.'
+		};
+	}
+
+	/**
+	 * Set or clear browser viewport override.
+	 * Provide width/height to set a specific size. Call with no args to clear and restore natural size.
+	 * Uses CDP Emulation.setDeviceMetricsOverride / clearDeviceMetricsOverride.
+	 */
+	private async handleSetViewport(args?: {
+		width?: number;
+		height?: number;
+		deviceScaleFactor?: number;
+		mobile?: boolean;
+	}): Promise<RoopikToolResult> {
+		const browserViewId = this.browserViewService.getActiveBrowserViewId();
+		if (browserViewId === undefined) {
+			return {
+				success: false,
+				error: 'No browser is open. Use browser_open or project_start first.'
+			};
+		}
+
+		try {
+			// Attach debugger if not already attached
+			await this.browserViewService.attachDebugger(browserViewId);
+
+			// If width/height not provided, clear the viewport override
+			if (!args?.width || !args?.height) {
+				await this.browserViewService.sendCDPCommand(browserViewId, 'Emulation.clearDeviceMetricsOverride');
+
+				return {
+					success: true,
+					data: {
+						width: 0,
+						height: 0,
+						deviceScaleFactor: 1,
+						mobile: false,
+						message: 'Viewport override cleared - restored to natural browser size'
+					}
+				};
+			}
+
+			const { width, height, deviceScaleFactor = 1, mobile = false } = args;
+
+			// Set viewport via CDP Emulation
+			await this.browserViewService.sendCDPCommand(browserViewId, 'Emulation.setDeviceMetricsOverride', {
+				width,
+				height,
+				deviceScaleFactor,
+				mobile
+			});
+
+			return {
+				success: true,
+				data: {
+					width,
+					height,
+					deviceScaleFactor,
+					mobile,
+					message: `Viewport set to ${width}x${height} (scale: ${deviceScaleFactor}, mobile: ${mobile})`
+				}
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: `Failed to set viewport: ${error instanceof Error ? error.message : String(error)}`
+			};
+		}
+	}
+
+	/**
+	 * Get network requests captured by CDP.
+	 * Note: This requires CDP Network domain to be enabled and monitoring active.
+	 * For IPC channel, this delegates to the MCP infrastructure which handles CDP monitoring.
+	 */
+	private async handleGetNetworkRequests(_args: {
+		urlFilter?: string;
+		method?: string;
+		statusFilter?: string;
+		limit?: number;
+	}): Promise<RoopikToolResult> {
+		// Network request monitoring requires persistent CDP event listeners
+		// which are currently managed by the MCP browserExecutor's cdpMonitors.
+		// For native IPC, we would need to centralize CDP monitoring in BrowserViewService.
+		return {
+			success: false,
+			error: 'Network request monitoring requires CDP monitoring enabled. This feature is available via MCP tools. For native IPC, use browser_execute_script to query performance.getEntries() for network timing.'
 		};
 	}
 

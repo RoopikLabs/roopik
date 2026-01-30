@@ -21,9 +21,11 @@ import type {
 	BrowserConsoleLogsResult,
 	BrowserErrorsResult,
 	BrowserPerformanceResult,
-	BrowserCdpInfoResult,
+	BrowserStateResult,
 	ElementInspectionResult,
 	ScriptExecutionResult,
+	BrowserViewportResult,
+	BrowserNetworkRequestsResult,
 } from './types.js';
 
 // ============================================================================
@@ -727,36 +729,180 @@ export class BrowserExecutor {
 	}
 
 	// ==========================================================================
-	// Browser Get CDP Info
+	// Browser Set Viewport (requires CDP)
+	// Smart design: omit width/height to clear/reset viewport override
 	// ==========================================================================
 
-	async getCdpInfo(): Promise<ToolResult<BrowserCdpInfoResult>> {
+	async setViewport(params?: {
+		width?: number;
+		height?: number;
+		deviceScaleFactor?: number;
+		mobile?: boolean;
+	}): Promise<ToolResult<BrowserViewportResult>> {
+		try {
+			const browserViewId = this.browserViewService.getActiveBrowserViewId();
+			if (browserViewId === undefined) {
+				return {
+					success: false,
+					error: 'No browser is open.'
+				};
+			}
+
+			// Ensure CDP is attached
+			await this.browserViewService.attachDebugger(browserViewId);
+
+			// If width/height not provided, clear the viewport override (restore to natural size)
+			if (!params?.width || !params?.height) {
+				await this.browserViewService.sendCDPCommand(browserViewId, 'Emulation.clearDeviceMetricsOverride');
+
+				return {
+					success: true,
+					data: {
+						width: 0,
+						height: 0,
+						deviceScaleFactor: 1,
+						mobile: false,
+						message: 'Viewport override cleared - restored to natural browser size'
+					}
+				};
+			}
+
+			const { width, height, deviceScaleFactor = 1, mobile = false } = params;
+
+			// Set viewport via CDP Emulation
+			await this.browserViewService.sendCDPCommand(browserViewId, 'Emulation.setDeviceMetricsOverride', {
+				width,
+				height,
+				deviceScaleFactor,
+				mobile
+			});
+
+			return {
+				success: true,
+				data: {
+					width,
+					height,
+					deviceScaleFactor,
+					mobile,
+					message: `Viewport set to ${width}x${height} (scale: ${deviceScaleFactor}, mobile: ${mobile})`
+				}
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			};
+		}
+	}
+
+	// ==========================================================================
+	// Browser Get Network Requests (requires CDP)
+	// ==========================================================================
+
+	async getNetworkRequests(options?: {
+		urlFilter?: string;
+		method?: string;
+		statusFilter?: 'success' | 'error' | 'all';
+		limit?: number;
+	}): Promise<ToolResult<BrowserNetworkRequestsResult>> {
+		try {
+			const browserViewId = this.browserViewService.getActiveBrowserViewId();
+			if (browserViewId === undefined) {
+				return {
+					success: false,
+					error: 'No browser is open.'
+				};
+			}
+
+			await this.ensureCDPMonitoring(browserViewId);
+			const monitor = cdpMonitors.get(browserViewId);
+
+			if (!monitor) {
+				return {
+					success: false,
+					error: 'CDP monitoring not initialized.'
+				};
+			}
+
+			// Combine requests and responses
+			let requests = monitor.networkRequests.map(req => {
+				const response = monitor.networkResponses.find(res => res.requestId === req.requestId);
+				return {
+					id: req.id,
+					method: req.method,
+					url: req.url,
+					status: response?.status,
+					statusText: response?.statusText,
+					mimeType: response?.mimeType,
+					duration: response?.duration,
+					timestamp: req.timestamp,
+					requestHeaders: req.headers,
+					responseHeaders: response?.headers
+				};
+			});
+
+			// Apply URL filter
+			if (options?.urlFilter) {
+				const filter = options.urlFilter.toLowerCase();
+				requests = requests.filter(r => r.url.toLowerCase().includes(filter));
+			}
+
+			// Apply method filter
+			if (options?.method) {
+				const method = options.method.toUpperCase();
+				requests = requests.filter(r => r.method.toUpperCase() === method);
+			}
+
+			// Apply status filter
+			if (options?.statusFilter && options.statusFilter !== 'all') {
+				if (options.statusFilter === 'success') {
+					requests = requests.filter(r => r.status && r.status >= 200 && r.status < 400);
+				} else if (options.statusFilter === 'error') {
+					requests = requests.filter(r => !r.status || r.status >= 400 || r.status === 0);
+				}
+			}
+
+			// Apply limit
+			const limit = Math.min(options?.limit || 100, 500);
+			requests = requests.slice(-limit);
+
+			return {
+				success: true,
+				data: {
+					requests,
+					count: requests.length
+				}
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Unknown error'
+			};
+		}
+	}
+
+	// ==========================================================================
+	// Browser Get State
+	// ==========================================================================
+
+	async getState(): Promise<ToolResult<BrowserStateResult>> {
 		try {
 			const browserViewId = this.browserViewService.getActiveBrowserViewId();
 
-			// Get current URL if browser is open
+			// Get browser state if open
 			let currentUrl: string | undefined;
+			let title: string | undefined;
+			let isLoading = false;
 			let devServerRunning = false;
 
 			if (browserViewId !== undefined) {
-				currentUrl = await this.browserViewService.executeScript(browserViewId, 'window.location.href') as string;
+				// Get URL and title via script execution
+				const stateScript = `({ url: window.location.href, title: document.title })`;
+				const state = await this.browserViewService.executeScript(browserViewId, stateScript) as { url: string; title: string };
+				currentUrl = state?.url;
+				title = state?.title;
 				devServerRunning = true;
 			}
-
-			const availableTools = [
-				'browser_open',
-				'browser_close',
-				'browser_action_input',
-				'browser_navigate',
-				'browser_reload',
-				'browser_screenshot',
-				'browser_execute_script',
-				'browser_inspect_element',
-				'browser_get_errors',
-				'browser_get_console_logs',
-				'browser_get_performance',
-				'browser_get_cdp_info'
-			];
 
 			return {
 				success: true,
@@ -764,8 +910,9 @@ export class BrowserExecutor {
 					browserOpen: browserViewId !== undefined,
 					browserViewId,
 					currentUrl,
+					title,
+					isLoading,
 					devServerRunning,
-					availableTools,
 					message: browserViewId !== undefined
 						? `Browser is open at ${currentUrl}`
 						: 'No browser is currently open. Use browser_open or project_start to open one.'

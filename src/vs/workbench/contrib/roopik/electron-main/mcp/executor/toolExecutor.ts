@@ -98,7 +98,7 @@ export class ToolExecutor {
 	 */
 	getAvailableTools(): string[] {
 		return [
-			// Browser tools (12)
+			// Browser tools (14)
 			'browser_open',
 			'browser_close',
 			'browser_screenshot',
@@ -110,7 +110,9 @@ export class ToolExecutor {
 			'browser_get_errors',
 			'browser_get_console_logs',
 			'browser_get_performance',
-			'browser_get_cdp_info',
+			'browser_get_state',
+			'browser_set_viewport',
+			'browser_get_network_requests',
 			// Canvas tools (3)
 			'canvas_list',
 			'canvas_get_active',
@@ -130,7 +132,7 @@ export class ToolExecutor {
 	}
 
 	// ==========================================================================
-	// Browser Tool Routing (12 tools)
+	// Browser Tool Routing (14 tools)
 	// ==========================================================================
 
 	private async executeBrowserTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
@@ -184,8 +186,27 @@ export class ToolExecutor {
 			case 'browser_get_performance':
 				return this.browserExecutor.getPerformance();
 
-			case 'browser_get_cdp_info':
-				return this.browserExecutor.getCdpInfo();
+			case 'browser_get_state':
+				return this.browserExecutor.getState();
+
+			case 'browser_set_viewport':
+				// If no params or no width/height, pass undefined to clear viewport
+				return this.browserExecutor.setViewport(
+					Object.keys(params).length === 0 ? undefined : {
+						width: params.width as number | undefined,
+						height: params.height as number | undefined,
+						deviceScaleFactor: params.deviceScaleFactor as number | undefined,
+						mobile: params.mobile as boolean | undefined,
+					}
+				);
+
+			case 'browser_get_network_requests':
+				return this.browserExecutor.getNetworkRequests({
+					urlFilter: params.urlFilter as string | undefined,
+					method: params.method as string | undefined,
+					statusFilter: params.statusFilter as 'success' | 'error' | 'all' | undefined,
+					limit: params.limit as number | undefined,
+				});
 
 			default:
 				return {

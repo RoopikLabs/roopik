@@ -122,7 +122,7 @@ export interface ToolDefinition {
 }
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
-	// ========== Browser Tools (12) ==========
+	// ========== Browser Tools (14) ==========
 	{
 		name: 'browser_open',
 		description: 'Open the browser view. Optionally navigate to a URL.',
@@ -179,9 +179,30 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		schema: z.object({})
 	},
 	{
-		name: 'browser_get_cdp_info',
-		description: 'Get browser state information (open, URL, dev server status).',
+		name: 'browser_get_state',
+		description: 'Get browser state information (open/closed, current URL, title).',
 		schema: z.object({})
+	},
+	{
+		name: 'browser_set_viewport',
+		description: 'Set or clear browser viewport override. Provide width/height to set a specific size (e.g., mobile 375x812). Call with NO parameters to clear override and restore natural browser size.',
+		schema: z.object({
+			width: z.number().optional().describe('Viewport width in pixels. Omit to clear override.'),
+			height: z.number().optional().describe('Viewport height in pixels. Omit to clear override.'),
+			deviceScaleFactor: z.number().optional().describe('Device scale factor (default: 1)'),
+			mobile: z.boolean().optional().describe('Emulate mobile device (default: false)')
+		})
+	},
+	{
+		name: 'browser_get_network_requests',
+		description: 'Get captured network requests and responses. Requires CDP monitoring.',
+		schema: z.object({
+			urlFilter: z.string().optional().describe('Filter requests by URL substring'),
+			method: z.string().optional().describe('Filter by HTTP method (GET, POST, etc.)'),
+			statusFilter: z.enum(['success', 'error', 'all']).optional()
+				.describe('Filter by status: success (2xx-3xx), error (4xx-5xx or failed), all'),
+			limit: z.number().optional().describe('Maximum number of requests to return (default: 100, max: 500)')
+		})
 	},
 
 	// ========== Canvas Tools (3) ==========
@@ -285,7 +306,7 @@ Call **project_start** with the project path:
 
 ### 3. Verify the Server is Running
 The browser should automatically open. You can verify with:
-- Call **browser_get_cdp_info** to check browser state
+- Call **browser_get_state** to check browser state
 - Call **browser_screenshot** to see the rendered page
 
 ## Example Tool Chain:
@@ -425,10 +446,10 @@ browser_get_errors → browser_get_console_logs → (fix code) → browser_reloa
 - **Project Tools** (3): project_get_active, project_start, project_stop
 - **Browser Core** (6): browser_open, browser_close, browser_screenshot, browser_navigate, browser_reload, browser_action_input
 - **Browser Debug** (4): browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs
-- **Browser Info** (2): browser_get_performance, browser_get_cdp_info
+- **Browser Info** (4): browser_get_performance, browser_get_state, browser_set_viewport, browser_get_network_requests
 - **Canvas Tools** (3): canvas_list, canvas_get_active, canvas_create
 - **Component Tools** (6): component_add, component_add_batch, component_remove, component_get_info, component_list, component_rebuild
 
-## Total: 24 Tools`
+## Total: 26 Tools`
 	}
 ];
