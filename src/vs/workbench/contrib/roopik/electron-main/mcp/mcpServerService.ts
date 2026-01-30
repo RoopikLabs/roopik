@@ -6,13 +6,12 @@
 /**
  * MCP Server Service
  *
- * Main process service that hosts MCP (Model Context Protocol) servers.
+ * Main process service that hosts the MCP (Model Context Protocol) server.
  *
  * Architecture:
- * - HTTP Server (port 3333): StreamableHTTP for direct agent connections
  * - WebSocket Server (port 9876): For STDIO binary connections from external agents
  * - Installer: Auto-registers with Claude Code, Codex, Gemini, Windsurf, Cursor
- * - Unified ToolExecutor: Both transports use same tool execution layer
+ * - Unified ToolExecutor: All transports use same tool execution layer
  *
  * External Agent Flow:
  * 1. On startup, Installer registers Roopik STDIO binary with external agents
@@ -21,7 +20,6 @@
  * 4. Tool calls flow: Agent -> STDIO -> WebSocket -> ToolExecutor -> IDE Services
  */
 
-import * as http from 'http';
 import * as crypto from 'crypto';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
@@ -34,12 +32,8 @@ import type { BrowserViewService } from '../projectMode/browserViewService.js';
 import type { ComponentService } from '../component/componentService.js';
 import type { ICanvasService } from '../../common/canvas/canvasService.js';
 import type { IRoopikStorageService } from '../../common/storage/storageService.js';
-import { registerProjectTools } from './tools/projectTools.js';
-import { registerBrowserTools } from './tools/browserTools.js';
-import { registerCanvasTools } from './tools/canvasTools.js';
-import { registerContextPrompts } from './tools/contextPrompts.js';
 
-// Phase 5: Integration imports
+// MCP Server Components
 import { ToolExecutor } from './executor/index.js';
 import { McpWebSocketServer } from './websocket/index.js';
 import { McpInstaller, type McpPlatformAdapter, type McpIntegrationSettings } from './installer/index.js';
@@ -52,9 +46,7 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	readonly _serviceBrand: undefined;
 
 	// Port configuration
-	private static readonly DEFAULT_HTTP_PORT = 3333;
 	private static readonly DEFAULT_WS_PORT = 9876;
-	private static readonly MAX_PORT_ATTEMPTS = 10;
 
 	private readonly logger;
 
@@ -64,11 +56,6 @@ export class McpServerService extends Disposable implements IMcpServerService {
 
 	private readonly _onAgentStatusChanged = this._register(new Emitter<AgentStatus[]>());
 	readonly onAgentStatusChanged: Event<AgentStatus[]> = this._onAgentStatusChanged.event;
-
-	// HTTP Server (StreamableHTTP transport)
-	private httpServer: http.Server | null = null;
-	private httpPort: number = McpServerService.DEFAULT_HTTP_PORT;
-	private mcpServer: any = null;
 
 	// WebSocket Server (for STDIO binaries)
 	private wsServer: McpWebSocketServer | null = null;
@@ -117,7 +104,7 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	}
 
 	async start(): Promise<void> {
-		// Initialize Tool Executor (unified execution layer) - shared by both transports
+		// Initialize Tool Executor (unified execution layer)
 		if (!this.toolExecutor) {
 			this.toolExecutor = new ToolExecutor(
 				this.browserViewService,
@@ -128,18 +115,12 @@ export class McpServerService extends Disposable implements IMcpServerService {
 			);
 		}
 
-		// Check STDIO/WebSocket setting (primary transport)
+		// Check STDIO/WebSocket setting
 		const wsEnabled = this.configurationService.getValue<boolean>('roopik.mcp.stdioMCP') ?? true;
 		if (wsEnabled && !this.wsServer) {
 			await this.startWebSocketServer();
 			// Initialize installer and register with external agents (requires WS)
 			await this.initializeInstaller();
-		}
-
-		// Check HTTP setting (advanced transport)
-		const httpEnabled = this.configurationService.getValue<boolean>('roopik.mcp.httpMCP') ?? false;
-		if (httpEnabled && !this.httpServer) {
-			await this.startHttpServer();
 		}
 
 		// Listen for settings changes
@@ -152,10 +133,9 @@ export class McpServerService extends Disposable implements IMcpServerService {
 
 	async stop(): Promise<void> {
 		await this.stopWsServer();
-		await this.stopHttpServer();
 
-		// Dispose settings listener only if both servers are stopped
-		if (!this.wsServer && !this.httpServer && this.settingsDisposable) {
+		// Dispose settings listener
+		if (!this.wsServer && this.settingsDisposable) {
 			this.settingsDisposable.dispose();
 			this.settingsDisposable = null;
 		}
@@ -178,126 +158,6 @@ export class McpServerService extends Disposable implements IMcpServerService {
 				await this.installer.removeAllIntegrations();
 			}
 		}
-	}
-
-	private async stopHttpServer(): Promise<void> {
-		// Stop HTTP server
-		if (this.httpServer) {
-			await new Promise<void>((resolve) => {
-				this.httpServer!.close(() => {
-					this.httpServer = null;
-					resolve();
-				});
-			});
-			this.logger.info('HTTP MCP server stopped');
-		}
-	}
-
-	// ============================================================================
-	// HTTP Server (StreamableHTTP Transport)
-	// ============================================================================
-
-	private async startHttpServer(): Promise<void> {
-		const configuredPort = this.configurationService.getValue<number>('roopik.mcp.httpMCPPort') || McpServerService.DEFAULT_HTTP_PORT;
-
-		// Dynamic imports (bypass VSCode layering restrictions)
-		const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
-		const { StreamableHTTPServerTransport } = await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
-		const { z } = await import('zod');
-
-		// Initialize MCP Server
-		this.mcpServer = new McpServer({
-			name: 'roopik-ide',
-			version: '1.0.0',
-		});
-
-		// Register tools
-		registerProjectTools(this.mcpServer, z, this.devServerService, this.browserViewService, this.storageService);
-		registerBrowserTools(this.mcpServer, z, this.browserViewService, this.storageService);
-		registerCanvasTools(this.mcpServer, z, this.canvasService, this.componentService);
-		registerContextPrompts(this.mcpServer);
-
-		// Start with retry logic
-		this.httpPort = await this.listenWithRetry(configuredPort, StreamableHTTPServerTransport);
-		this.logger.info('HTTP MCP server started', { port: this.httpPort });
-	}
-
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	private async listenWithRetry(startPort: number, StreamableHTTPServerTransport: any, attempt: number = 0): Promise<number> {
-		const currentPort = startPort + attempt;
-
-		if (attempt >= McpServerService.MAX_PORT_ATTEMPTS) {
-			throw new Error(`Could not find open port after ${McpServerService.MAX_PORT_ATTEMPTS} attempts`);
-		}
-
-		return new Promise((resolve, reject) => {
-			this.httpServer = http.createServer(async (req, res) => {
-				const sessionId = req.headers['mcp-session-id'] || 'new';
-
-				// CORS headers
-				res.setHeader('Access-Control-Allow-Origin', '*');
-				res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-				res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Session-Id');
-				res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
-
-				if (req.method === 'OPTIONS') {
-					res.writeHead(204);
-					res.end();
-					return;
-				}
-
-				const url = new URL(req.url || '/', `http://localhost:${currentPort}`);
-
-				if (url.pathname === '/mcp') {
-					try {
-						const transport = new StreamableHTTPServerTransport({});
-						await this.mcpServer.connect(transport);
-						await transport.handleRequest(req, res);
-						if (!res.headersSent) {
-							res.writeHead(500, { 'Content-Type': 'application/json' });
-							res.end(JSON.stringify({ error: 'Internal Server Error' }));
-						}
-					} catch (error) {
-						this.logger.error('Error handling MCP request', { sessionId, error });
-						if (!res.headersSent) {
-							res.writeHead(500, { 'Content-Type': 'application/json' });
-							res.end(JSON.stringify({ error: 'Internal Server Error' }));
-						}
-					}
-					return;
-				}
-
-				if (url.pathname === '/health' && req.method === 'GET') {
-					res.writeHead(200, { 'Content-Type': 'application/json' });
-					res.end(JSON.stringify({
-						status: 'ok',
-						server: 'roopik-mcp',
-						version: '1.0.0',
-						httpPort: this.httpPort,
-						wsPort: this.wsPort
-					}));
-					return;
-				}
-
-				res.writeHead(404, { 'Content-Type': 'application/json' });
-				res.end(JSON.stringify({ error: 'Not found' }));
-			});
-
-			this.httpServer.on('error', (error: NodeJS.ErrnoException) => {
-				if (error.code === 'EADDRINUSE') {
-					this.logger.warn('HTTP port busy, trying next', { port: currentPort });
-					this.httpServer?.close();
-					this.httpServer = null;
-					this.listenWithRetry(startPort, StreamableHTTPServerTransport, attempt + 1)
-						.then(resolve)
-						.catch(reject);
-				} else {
-					reject(error);
-				}
-			});
-
-			this.httpServer.listen(currentPort, '127.0.0.1', () => resolve(currentPort));
-		});
 	}
 
 	// ============================================================================
@@ -397,18 +257,6 @@ export class McpServerService extends Disposable implements IMcpServerService {
 				}
 			}
 
-			// Handle HTTP switch changes
-			if (e.affectsConfiguration('roopik.mcp.httpMCP')) {
-				const enabled = this.configurationService.getValue<boolean>('roopik.mcp.httpMCP') ?? false;
-				if (!enabled && this.httpServer) {
-					this.logger.info('HTTP MCP disabled via settings');
-					await this.setHttpEnabled(false);
-				} else if (enabled && !this.httpServer) {
-					this.logger.info('HTTP MCP enabled via settings');
-					await this.setHttpEnabled(true);
-				}
-			}
-
 			// Handle agent settings changes
 			if (e.affectsConfiguration('roopik.mcp.agents')) {
 				this.logger.info('MCP agent settings changed, syncing registrations');
@@ -428,15 +276,8 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	async getStatus(): Promise<McpServerStatus> {
 		return {
 			running: this.wsServer !== null,
-			httpRunning: this.httpServer !== null,
-			port: this.httpPort,
-			wsPort: this.wsPort,
-			url: `http://127.0.0.1:${this.httpPort}/mcp`
+			wsPort: this.wsPort
 		};
-	}
-
-	async getPort(): Promise<number> {
-		return this.httpPort;
 	}
 
 	async getWsPort(): Promise<number> {
@@ -490,44 +331,6 @@ export class McpServerService extends Disposable implements IMcpServerService {
 				this._onAgentStatusChanged.fire(await this.getAgentStatus());
 			}
 			await this.stopWsServer();
-		}
-
-		this._onStatusChanged.fire(await this.getStatus());
-	}
-
-	// ============================================================================
-	// HTTP Control (Advanced)
-	// ============================================================================
-
-	async isHttpEnabled(): Promise<boolean> {
-		return this.configurationService.getValue<boolean>('roopik.mcp.httpMCP') ?? false;
-	}
-
-	async setHttpEnabled(enabled: boolean): Promise<void> {
-		// Update the setting
-		await this.configurationService.updateValue('roopik.mcp.httpMCP', enabled);
-
-		if (enabled) {
-			// Start HTTP if not running
-			if (!this.httpServer) {
-				// Initialize Tool Executor if needed
-				if (!this.toolExecutor) {
-					this.toolExecutor = new ToolExecutor(
-						this.browserViewService,
-						this.storageService,
-						this.canvasService,
-						this.componentService,
-						this.devServerService
-					);
-				}
-				await this.startHttpServer();
-				if (!this.settingsDisposable) {
-					this.setupSettingsListener();
-				}
-			}
-		} else {
-			// Stop HTTP server
-			await this.stopHttpServer();
 		}
 
 		this._onStatusChanged.fire(await this.getStatus());

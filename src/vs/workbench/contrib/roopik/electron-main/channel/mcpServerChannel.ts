@@ -52,22 +52,14 @@ export class McpServerChannel implements IServerChannel {
 				return this.service.restart();
 			case 'getStatus':
 				return this.service.getStatus();
-			case 'getPort':
-				return this.service.getPort();
 			case 'getWsPort':
 				return this.service.getWsPort();
 
-			// STDIO/WebSocket control
+			// Server control
 			case 'isEnabled':
 				return this.service.isEnabled();
 			case 'setEnabled':
 				return this.service.setEnabled(args?.[0] ?? true);
-
-			// HTTP control
-			case 'isHttpEnabled':
-				return this.service.isHttpEnabled();
-			case 'setHttpEnabled':
-				return this.service.setHttpEnabled(args?.[0] ?? false);
 
 			// Agent control
 			case 'getAgentStatus':

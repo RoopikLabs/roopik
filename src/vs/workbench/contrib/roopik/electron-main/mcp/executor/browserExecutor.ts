@@ -75,6 +75,24 @@ interface CDPMonitor {
 
 const cdpMonitors = new Map<number, CDPMonitor>();
 
+/**
+ * Cleanup CDP monitoring for a specific browser view.
+ * Exported for use by BrowserViewService when closing views.
+ */
+export function cleanupCDPMonitoring(browserViewId: number): void {
+	const monitor = cdpMonitors.get(browserViewId);
+	if (monitor) {
+		for (const cleanup of monitor.cleanupFunctions) {
+			try {
+				cleanup();
+			} catch {
+				// Ignore cleanup errors
+			}
+		}
+		cdpMonitors.delete(browserViewId);
+	}
+}
+
 // ============================================================================
 // Browser Executor Class
 // ============================================================================

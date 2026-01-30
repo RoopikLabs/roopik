@@ -59,16 +59,12 @@ export class McpServerServiceClient implements IMcpServerService {
 		return this.channel.call('getStatus');
 	}
 
-	async getPort(): Promise<number> {
-		return this.channel.call('getPort');
-	}
-
 	async getWsPort(): Promise<number> {
 		return this.channel.call('getWsPort');
 	}
 
 	// ========================================
-	// STDIO/WebSocket Control
+	// STDIO/Websocket Server Control
 	// ========================================
 
 	async isEnabled(): Promise<boolean> {
@@ -77,18 +73,6 @@ export class McpServerServiceClient implements IMcpServerService {
 
 	async setEnabled(enabled: boolean): Promise<void> {
 		return this.channel.call('setEnabled', [enabled]);
-	}
-
-	// ========================================
-	// HTTP Control
-	// ========================================
-
-	async isHttpEnabled(): Promise<boolean> {
-		return this.channel.call('isHttpEnabled');
-	}
-
-	async setHttpEnabled(enabled: boolean): Promise<void> {
-		return this.channel.call('setHttpEnabled', [enabled]);
 	}
 
 	// ========================================
