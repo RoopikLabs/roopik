@@ -6,9 +6,8 @@
 /**
  * Welcome Commands
  *
- * Commands for opening welcome screen and settings.
+ * Commands for opening welcome screen.
  * - roopik.openWelcome: Open the welcome screen
- * - roopik.openSettings: Open the settings page
  */
 
 import { localize2 } from '../../../../../nls.js';
@@ -36,24 +35,6 @@ export function registerWelcomeCommands(): void {
 			const editorGroupsService = accessor.get(IEditorGroupsService);
 			const welcomeInput = RoopikWelcomeInput.getInstance('welcome');
 			await editorGroupsService.activeGroup.openEditor(welcomeInput, { pinned: true });
-		}
-	});
-
-	// Open Settings (Preferences)
-	registerAction2(class extends Action2 {
-		constructor() {
-			super({
-				id: 'roopik.openSettings',
-				title: localize2('roopik.openSettings', 'Settings'),
-				category: localize2('roopik.category', 'Roopik'),
-				f1: true
-			});
-		}
-
-		async run(accessor: ServicesAccessor): Promise<void> {
-			const editorGroupsService = accessor.get(IEditorGroupsService);
-			const settingsInput = RoopikWelcomeInput.getInstance('settings');
-			await editorGroupsService.activeGroup.openEditor(settingsInput, { pinned: true });
 		}
 	});
 }

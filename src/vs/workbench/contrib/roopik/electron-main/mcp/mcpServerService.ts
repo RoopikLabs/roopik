@@ -118,7 +118,7 @@ export class McpServerService extends Disposable implements IMcpServerService {
 		}
 
 		// Check STDIO/WebSocket setting (primary transport)
-		const wsEnabled = this.configurationService.getValue<boolean>('roopik.mcp.enabled') ?? true;
+		const wsEnabled = this.configurationService.getValue<boolean>('roopik.mcp.stdioMCP') ?? true;
 		if (wsEnabled && !this.wsServer) {
 			await this.startWebSocketServer();
 			// Initialize installer and register with external agents (requires WS)
@@ -126,7 +126,7 @@ export class McpServerService extends Disposable implements IMcpServerService {
 		}
 
 		// Check HTTP setting (advanced transport)
-		const httpEnabled = this.configurationService.getValue<boolean>('roopik.mcp.httpEnabled') ?? false;
+		const httpEnabled = this.configurationService.getValue<boolean>('roopik.mcp.httpMCP') ?? false;
 		if (httpEnabled && !this.httpServer) {
 			await this.startHttpServer();
 		}
@@ -157,7 +157,7 @@ export class McpServerService extends Disposable implements IMcpServerService {
 		if (this.wsServer) {
 			await this.wsServer.stop();
 			this.wsServer = null;
-			this.logger.info('WebSocket MCP server stopped');
+			this.logger.info('STDIO WebSocket MCP server stopped');
 		}
 
 		// Cleanup installer (unregister from agents if configured)
@@ -187,7 +187,7 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	// ============================================================================
 
 	private async startHttpServer(): Promise<void> {
-		const configuredPort = this.configurationService.getValue<number>('roopik.mcp.httpPort') || McpServerService.DEFAULT_HTTP_PORT;
+		const configuredPort = this.configurationService.getValue<number>('roopik.mcp.httpMCPPort') || McpServerService.DEFAULT_HTTP_PORT;
 
 		// Dynamic imports (bypass VSCode layering restrictions)
 		const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
@@ -298,13 +298,13 @@ export class McpServerService extends Disposable implements IMcpServerService {
 			throw new Error('ToolExecutor not initialized');
 		}
 
-		const configuredPort = this.configurationService.getValue<number>('roopik.mcp.port') || McpServerService.DEFAULT_WS_PORT;
+		const configuredPort = this.configurationService.getValue<number>('roopik.mcp.stdioMCPPort') || McpServerService.DEFAULT_WS_PORT;
 
 		this.wsServer = new McpWebSocketServer(this.toolExecutor);
 		const result = await this.wsServer.start({ port: configuredPort });
 		this.wsPort = result.port;
 
-		this.logger.info('WebSocket MCP server started', { port: this.wsPort });
+		this.logger.info('STDIO WebSocket MCP server started', { port: this.wsPort });
 	}
 
 	// ============================================================================
@@ -374,8 +374,8 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	private setupSettingsListener(): void {
 		this.settingsDisposable = this.configurationService.onDidChangeConfiguration(async (e) => {
 			// Handle STDIO/WS switch changes
-			if (e.affectsConfiguration('roopik.mcp.enabled')) {
-				const enabled = this.configurationService.getValue<boolean>('roopik.mcp.enabled') ?? true;
+			if (e.affectsConfiguration('roopik.mcp.stdioMCP')) {
+				const enabled = this.configurationService.getValue<boolean>('roopik.mcp.stdioMCP') ?? true;
 				if (!enabled && this.wsServer) {
 					this.logger.info('STDIO/WS disabled via settings');
 					await this.setEnabled(false);
@@ -386,8 +386,8 @@ export class McpServerService extends Disposable implements IMcpServerService {
 			}
 
 			// Handle HTTP switch changes
-			if (e.affectsConfiguration('roopik.mcp.httpEnabled')) {
-				const enabled = this.configurationService.getValue<boolean>('roopik.mcp.httpEnabled') ?? false;
+			if (e.affectsConfiguration('roopik.mcp.httpMCP')) {
+				const enabled = this.configurationService.getValue<boolean>('roopik.mcp.httpMCP') ?? false;
 				if (!enabled && this.httpServer) {
 					this.logger.info('HTTP MCP disabled via settings');
 					await this.setHttpEnabled(false);
@@ -444,12 +444,12 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	// ============================================================================
 
 	async isEnabled(): Promise<boolean> {
-		return this.configurationService.getValue<boolean>('roopik.mcp.enabled') ?? true;
+		return this.configurationService.getValue<boolean>('roopik.mcp.stdioMCP') ?? true;
 	}
 
 	async setEnabled(enabled: boolean): Promise<void> {
 		// Update the setting
-		await this.configurationService.updateValue('roopik.mcp.enabled', enabled);
+		await this.configurationService.updateValue('roopik.mcp.stdioMCP', enabled);
 
 		if (enabled) {
 			// Start WebSocket if not running
@@ -488,12 +488,12 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	// ============================================================================
 
 	async isHttpEnabled(): Promise<boolean> {
-		return this.configurationService.getValue<boolean>('roopik.mcp.httpEnabled') ?? false;
+		return this.configurationService.getValue<boolean>('roopik.mcp.httpMCP') ?? false;
 	}
 
 	async setHttpEnabled(enabled: boolean): Promise<void> {
 		// Update the setting
-		await this.configurationService.updateValue('roopik.mcp.httpEnabled', enabled);
+		await this.configurationService.updateValue('roopik.mcp.httpMCP', enabled);
 
 		if (enabled) {
 			// Start HTTP if not running

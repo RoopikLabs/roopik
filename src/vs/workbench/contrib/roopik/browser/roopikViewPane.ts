@@ -57,6 +57,8 @@ export class RoopikDashboardView extends ViewPane {
 	private canvasesContainer: HTMLElement | undefined;
 	private projectsContainer: HTMLElement | undefined;
 	private mcpButton: HTMLButtonElement | undefined;
+	private mcpDetailsPanel: HTMLElement | undefined;
+	private mcpPanelAutoCloseTimeout: ReturnType<typeof setTimeout> | undefined;
 	private static animationsInjected = false;
 
 	/** Timeout handle for canvas loading state */
@@ -252,6 +254,11 @@ export class RoopikDashboardView extends ViewPane {
 		}
 	}
 
+	/** Max items visible before scrolling */
+	private static readonly MAX_VISIBLE_ITEMS = 5;
+	/** Item height in pixels for calculating max-height */
+	private static readonly ITEM_HEIGHT = 44;
+
 	protected override renderBody(container: HTMLElement): void {
 		super.renderBody(container);
 
@@ -263,94 +270,116 @@ export class RoopikDashboardView extends ViewPane {
 			container.removeChild(container.firstChild);
 		}
 
-		container.style.padding = '8px';
+		container.style.padding = '12px';
 		container.style.display = 'flex';
 		container.style.flexDirection = 'column';
-		container.style.gap = '8px';
+		container.style.gap = '16px';
+		container.style.height = '100%';
+		container.style.boxSizing = 'border-box';
 
-		// Top action bar container
+		// ============================================================================
+		// Action Bar - Grouped layout for better UX
+		// ============================================================================
 		const actionsContainer = document.createElement('div');
 		actionsContainer.style.display = 'flex';
 		actionsContainer.style.flexDirection = 'column';
-		actionsContainer.style.gap = '6px';
-		actionsContainer.style.marginBottom = '8px';
+		actionsContainer.style.gap = '10px';
 
-		// First row: Mode buttons (Canvas and Project) - larger icons
-		const modeButtonsRow = document.createElement('div');
-		modeButtonsRow.style.display = 'flex';
-		modeButtonsRow.style.alignItems = 'center';
-		modeButtonsRow.style.gap = '4px';
-		modeButtonsRow.style.flexWrap = 'wrap'; // Allow wrapping when space is limited
-		modeButtonsRow.style.minWidth = '0'; // Ensure flex children respect min-width
+		// Row 1: Canvas Group + Project Group
+		const groupsRow = document.createElement('div');
+		groupsRow.style.display = 'flex';
+		groupsRow.style.alignItems = 'stretch';
+		groupsRow.style.gap = '8px';
+		groupsRow.style.flexWrap = 'wrap';
 
-		const newCanvasBtn = this.createPrimaryActionButton('Canvas', 'codicon-new-file', 'roopik.openCanvas', true, true);
-		// Project button opens file explorer directly (folder icon)
-		const projectModeBtn = this.createSecondaryActionButton('Project', 'codicon-folder', 'roopik.openProjectPicker', true, true);
+		// Canvas Group (Canvas + Import)
+		const canvasGroup = document.createElement('div');
+		canvasGroup.style.display = 'flex';
+		canvasGroup.style.alignItems = 'center';
+		canvasGroup.style.gap = '8px';
+		canvasGroup.style.padding = '6px 8px';
+		canvasGroup.style.borderRadius = '6px';
+		canvasGroup.style.border = '1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4))';
+		canvasGroup.style.flex = '1'; // Equal width
 
-		modeButtonsRow.appendChild(newCanvasBtn);
-		modeButtonsRow.appendChild(projectModeBtn);
+		const newCanvasBtn = this.createActionButton('Canvas', 'codicon-paintcan', 'roopik.openCanvas', true);
+		const importBtn = this.createActionButton('Import', 'codicon-cloud-download', 'roopik.import.showPicker', false);
+		importBtn.title = 'Import Component';
 
-		// Separator line between mode buttons and import
-		const separator = document.createElement('div');
-		separator.style.width = '100%';
-		separator.style.height = '1px';
-		separator.style.background = 'var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
-		separator.style.margin = '4px 0';
+		canvasGroup.appendChild(newCanvasBtn);
+		canvasGroup.appendChild(importBtn);
 
-		// Second row: Import and Browse
-		const importButtonsRow = document.createElement('div');
-		importButtonsRow.style.display = 'flex';
-		importButtonsRow.style.alignItems = 'center';
-		importButtonsRow.style.gap = '4px';
-		importButtonsRow.style.flexWrap = 'wrap'; // Allow buttons to wrap down on narrow screens
-		importButtonsRow.style.minWidth = '0'; // Ensure flex children respect min-width
+		// Project Group (Project + Browser)
+		const projectGroup = document.createElement('div');
+		projectGroup.style.display = 'flex';
+		projectGroup.style.alignItems = 'center';
+		projectGroup.style.gap = '8px';
+		projectGroup.style.padding = '6px 8px';
+		projectGroup.style.borderRadius = '6px';
+		projectGroup.style.border = '1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4))';
+		projectGroup.style.flex = '1'; // Equal width
 
-		const importBtn = this.createSecondaryActionButton('Import', 'codicon-cloud-download', 'roopik.import.showPicker', true, false);
-		// Browse button opens browser preview with default welcome screen (globe icon)
-		const browseBtn = this.createSecondaryActionButton('Browse', 'codicon-globe', 'roopik.openProjectPreview', true, false);
+		const projectModeBtn = this.createActionButton('Project', 'codicon-folder-opened', 'roopik.openProjectPicker', false);
+		const browserBtn = this.createActionButton('Browser', 'codicon-globe', 'roopik.openProjectPreview', false);
+		browserBtn.title = 'Open in Browser';
 
-		importButtonsRow.appendChild(importBtn);
-		importButtonsRow.appendChild(browseBtn);
+		projectGroup.appendChild(projectModeBtn);
+		projectGroup.appendChild(browserBtn);
 
-		// Third row: MCP toggle button
+		groupsRow.appendChild(canvasGroup);
+		groupsRow.appendChild(projectGroup);
+
+		// Row 2: MCP (standalone)
 		const mcpRow = document.createElement('div');
 		mcpRow.style.display = 'flex';
 		mcpRow.style.alignItems = 'center';
-		mcpRow.style.gap = '6px';
-		mcpRow.style.marginTop = '4px';
 
 		this.mcpButton = this.createMcpButton();
 		mcpRow.appendChild(this.mcpButton);
 
-		actionsContainer.appendChild(modeButtonsRow);
-		actionsContainer.appendChild(separator);
-		actionsContainer.appendChild(importButtonsRow);
-		actionsContainer.appendChild(mcpRow);
+		// MCP Details Panel (inline, shown when MCP is running)
+		this.mcpDetailsPanel = document.createElement('div');
+		this.mcpDetailsPanel.style.display = 'none'; // Hidden by default
 
+		actionsContainer.appendChild(groupsRow);
+		actionsContainer.appendChild(mcpRow);
+		actionsContainer.appendChild(this.mcpDetailsPanel);
 		container.appendChild(actionsContainer);
 
-		// Canvases Section (will be populated dynamically)
-		this.canvasesContainer = document.createElement('div');
-		container.appendChild(this.canvasesContainer);
+		// ============================================================================
+		// Content area - scrollable sections
+		// ============================================================================
+		const contentArea = document.createElement('div');
+		contentArea.style.flex = '1';
+		contentArea.style.display = 'flex';
+		contentArea.style.flexDirection = 'column';
+		contentArea.style.gap = '16px';
+		contentArea.style.minHeight = '0'; // Allow shrinking
+		contentArea.style.overflow = 'hidden';
 
-		// Projects Section (separate container for future dynamic loading)
+		// Canvases Section
+		this.canvasesContainer = document.createElement('div');
+		contentArea.appendChild(this.canvasesContainer);
+
+		// Projects Section
 		this.projectsContainer = document.createElement('div');
-		container.appendChild(this.projectsContainer);
+		contentArea.appendChild(this.projectsContainer);
+
+		container.appendChild(contentArea);
 
 		// Show loading state initially
 		this.showLoadingState();
 
 		// Check if service is already initialized (handles IDE reload case)
-		// If already initialized, load immediately; otherwise wait for event
 		this.checkAndLoadCanvases();
 
-		// Load projects (static for now)
+		// Load projects
 		this.loadProjects();
 
 		// Update MCP button states
 		this.updateMcpButtonStates();
 
-		// Watch canvases.json for changes (auto-refresh on create/delete)
+		// Setup event subscriptions
 		this.setupFileWatcher();
 	}
 
@@ -638,37 +667,88 @@ export class RoopikDashboardView extends ViewPane {
 	// ============================================================================
 
 	/**
-	 * Create the MCP toggle button
-	 * Controls enabling/disabling MCP server for AI agent connections
-	 * Styled like Import/Browse buttons but turns blue when active
+	 * Create a primary or secondary action button (Canvas, Project)
+	 */
+	private createActionButton(label: string, codiconClass: string, commandId: string, primary: boolean): HTMLButtonElement {
+		const btn = document.createElement('button');
+		btn.style.display = 'inline-flex';
+		btn.style.alignItems = 'center';
+		btn.style.justifyContent = 'center';
+		btn.style.padding = '7px 14px';
+		btn.style.borderRadius = '6px';
+		btn.style.border = 'none';
+		btn.style.cursor = 'pointer';
+		btn.style.fontSize = '12px';
+		btn.style.fontWeight = '500';
+		btn.style.fontFamily = 'inherit';
+		btn.style.transition = 'all 0.12s ease';
+		btn.title = label;
+
+		if (primary) {
+			btn.style.background = 'var(--vscode-button-background)';
+			btn.style.color = 'var(--vscode-button-foreground)';
+			btn.onmouseenter = () => {
+				btn.style.background = 'var(--vscode-button-hoverBackground)';
+			};
+			btn.onmouseleave = () => {
+				btn.style.background = 'var(--vscode-button-background)';
+			};
+		} else {
+			btn.style.background = 'var(--vscode-button-secondaryBackground)';
+			btn.style.color = 'var(--vscode-button-secondaryForeground)';
+			btn.onmouseenter = () => {
+				btn.style.background = 'var(--vscode-button-secondaryHoverBackground)';
+			};
+			btn.onmouseleave = () => {
+				btn.style.background = 'var(--vscode-button-secondaryBackground)';
+			};
+		}
+
+		const icon = document.createElement('span');
+		icon.classList.add('codicon', codiconClass);
+		icon.style.fontSize = '14px';
+		icon.style.color = 'inherit'; // Inherit button foreground color
+		btn.appendChild(icon);
+
+		const text = document.createElement('span');
+		text.textContent = label;
+		text.style.marginLeft = '6px';
+		text.style.color = 'inherit'; // Inherit button foreground color
+		btn.appendChild(text);
+
+		btn.onclick = () => this.commandService.executeCommand(commandId);
+
+		return btn;
+	}
+
+	/**
+	 * Create the MCP toggle button with status indicator
 	 */
 	private createMcpButton(): HTMLButtonElement {
 		const btn = document.createElement('button');
 		btn.style.display = 'inline-flex';
 		btn.style.alignItems = 'center';
 		btn.style.justifyContent = 'center';
-		btn.style.padding = '6px 14px';
-		btn.style.borderRadius = '999px';
-		btn.style.border = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
-		btn.style.boxShadow = '0 0 0 1px var(--vscode-button-border, rgba(96, 165, 250, 0.3))';
+		btn.style.padding = '4px 10px';
+		btn.style.borderRadius = '4px';
+		btn.style.border = '1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.3))';
 		btn.style.cursor = 'pointer';
-		btn.style.fontSize = '12px';
-		btn.style.fontWeight = '500';
+		btn.style.fontSize = '11px';
+		btn.style.fontWeight = '400';
 		btn.style.fontFamily = 'inherit';
 		btn.style.background = 'transparent';
 		btn.style.color = 'var(--vscode-foreground)';
-		btn.style.transition = 'background 0.15s ease';
+		btn.style.transition = 'all 0.12s ease';
+		btn.style.opacity = '0.8';
 
-		// Icon
 		const icon = document.createElement('span');
 		icon.classList.add('codicon', 'codicon-plug');
-		icon.style.fontSize = '16px';
+		icon.style.fontSize = '12px';
 		btn.appendChild(icon);
 
-		// Text
 		const text = document.createElement('span');
-		text.style.marginLeft = '6px';
 		text.textContent = 'MCP';
+		text.style.marginLeft = '4px';
 		btn.appendChild(text);
 
 		// Store references for updates
@@ -682,8 +762,8 @@ export class RoopikDashboardView extends ViewPane {
 
 	/**
 	 * Update MCP button state based on server status
-	 * When running: blue background (like primary button)
-	 * When stopped: transparent with border (like Import/Browse)
+	 * Running: green background, plug icon, show details panel
+	 * Stopped: muted, disconnected icon, hide details panel
 	 */
 	private async updateMcpButtonStates(): Promise<void> {
 		if (!this.mcpButton) {
@@ -692,31 +772,62 @@ export class RoopikDashboardView extends ViewPane {
 
 		try {
 			const status = await this.mcpServerService.getStatus();
+			this.logger.debug('MCP status update', { running: status.running, wsPort: status.wsPort });
 			const icon = (this.mcpButton as any)._mcpIcon as HTMLSpanElement;
 
 			if (status.running) {
-				// Active state: blue background
-				this.mcpButton.style.background = 'var(--vscode-button-background)';
-				this.mcpButton.style.color = 'var(--vscode-button-foreground)';
-				this.mcpButton.style.border = '1px solid var(--vscode-button-background)';
+				// Active state: vibrant green - clearly visible in both light and dark themes
+				this.mcpButton.style.background = 'rgba(34, 197, 94, 0.4)';
+				this.mcpButton.style.borderColor = 'rgba(34, 197, 94, 0.8)';
+				// Bold black/white text based on theme
+				this.mcpButton.style.color = 'var(--vscode-editor-foreground)'; // Strong foreground color
+				this.mcpButton.style.opacity = '1';
+				this.mcpButton.style.fontWeight = '700'; // Bold
+				icon.style.color = '#16a34a'; // Darker green icon for visibility
 				icon.classList.remove('codicon-debug-disconnect');
 				icon.classList.add('codicon-plug');
-				this.mcpButton.title = `MCP Server Running (Port: ${status.wsPort}) - Click to stop`;
+				this.mcpButton.title = `MCP Running (Port ${status.wsPort}) - Click to stop`;
+
+				this.mcpButton.onmouseenter = () => {
+					this.mcpButton!.style.background = 'rgba(34, 197, 94, 0.5)';
+				};
+				this.mcpButton.onmouseleave = () => {
+					this.mcpButton!.style.background = 'rgba(34, 197, 94, 0.35)';
+				};
+
+				// Show connection details panel
+				this.showMcpConnectionPopup(status.wsPort);
 			} else {
-				// Inactive state: transparent with border (like Import/Browse)
+				// Inactive state: muted like Import/Browse
 				this.mcpButton.style.background = 'transparent';
+				this.mcpButton.style.borderColor = 'var(--vscode-input-border, rgba(128, 128, 128, 0.3))';
 				this.mcpButton.style.color = 'var(--vscode-foreground)';
-				this.mcpButton.style.border = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
+				this.mcpButton.style.opacity = '0.8';
+				this.mcpButton.style.fontWeight = '400';
+				icon.style.color = 'inherit'; // Reset icon color
 				icon.classList.remove('codicon-plug');
 				icon.classList.add('codicon-debug-disconnect');
-				this.mcpButton.title = 'MCP Server Stopped - Click to start';
+				this.mcpButton.title = 'MCP Stopped - Click to start';
+
+				this.mcpButton.onmouseenter = () => {
+					this.mcpButton!.style.background = 'var(--vscode-list-hoverBackground)';
+					this.mcpButton!.style.opacity = '1';
+				};
+				this.mcpButton.onmouseleave = () => {
+					this.mcpButton!.style.background = 'transparent';
+					this.mcpButton!.style.opacity = '0.8';
+				};
+
+				// Hide connection details panel
+				this.hideMcpConnectionPopup();
 			}
 		} catch {
-			// Error state: transparent with border
+			// Error state
 			this.mcpButton.style.background = 'transparent';
-			this.mcpButton.style.color = 'var(--vscode-foreground)';
-			this.mcpButton.style.border = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
-			this.mcpButton.title = 'MCP Server (status unknown)';
+			this.mcpButton.style.color = 'var(--vscode-disabledForeground)';
+			this.mcpButton.style.opacity = '0.5';
+			this.mcpButton.title = 'MCP (status unknown)';
+			this.hideMcpConnectionPopup();
 		}
 	}
 
@@ -728,14 +839,223 @@ export class RoopikDashboardView extends ViewPane {
 			const isEnabled = await this.mcpServerService.isEnabled();
 			await this.mcpServerService.setEnabled(!isEnabled);
 
-			if (!isEnabled) {
-				this.notificationService.info('MCP Server enabled - AI agents can now connect');
-			} else {
-				this.notificationService.info('MCP Server disabled - Agent connections closed');
+			// Update button state (will also show/hide connection details panel)
+			await this.updateMcpButtonStates();
+
+			if (isEnabled) {
+				this.notificationService.info('MCP Server disabled');
 			}
 		} catch (err) {
 			const errorMsg = err instanceof Error ? err.message : String(err);
 			this.notificationService.error(`Failed to toggle MCP Server: ${errorMsg}`);
+		}
+	}
+
+	/**
+	 * Show MCP connection details panel inline below the MCP button
+	 * Displays MCP server info - agents are auto-registered via Settings
+	 * Auto-closes after 10 seconds
+	 */
+	private showMcpConnectionPopup(port: number): void {
+		this.logger.debug('showMcpConnectionPopup called', { port, hasPanelElement: !!this.mcpDetailsPanel });
+		if (!this.mcpDetailsPanel) {
+			this.logger.warn('mcpDetailsPanel is null, cannot show popup');
+			return;
+		}
+
+		// Clear any existing auto-close timeout
+		if (this.mcpPanelAutoCloseTimeout) {
+			clearTimeout(this.mcpPanelAutoCloseTimeout);
+		}
+
+		// Clear existing content
+		while (this.mcpDetailsPanel.firstChild) {
+			this.mcpDetailsPanel.removeChild(this.mcpDetailsPanel.firstChild);
+		}
+
+		// Style the panel container - compact and visible
+		this.mcpDetailsPanel.style.display = 'block';
+		this.mcpDetailsPanel.style.marginTop = '10px';
+		this.mcpDetailsPanel.style.padding = '10px 12px';
+		this.mcpDetailsPanel.style.background = 'var(--vscode-editor-background)';
+		this.mcpDetailsPanel.style.border = '2px solid #22c55e';
+		this.mcpDetailsPanel.style.borderRadius = '8px';
+		this.mcpDetailsPanel.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)';
+
+		// Header row with status dot, title and close button
+		const header = document.createElement('div');
+		header.style.display = 'flex';
+		header.style.alignItems = 'center';
+		header.style.justifyContent = 'space-between';
+		header.style.marginBottom = '8px';
+
+		const titleWrapper = document.createElement('div');
+		titleWrapper.style.display = 'flex';
+		titleWrapper.style.alignItems = 'center';
+		titleWrapper.style.gap = '6px';
+
+		const statusDot = document.createElement('span');
+		statusDot.style.width = '8px';
+		statusDot.style.height = '8px';
+		statusDot.style.borderRadius = '50%';
+		statusDot.style.background = '#22c55e';
+		statusDot.style.boxShadow = '0 0 6px rgba(34, 197, 94, 0.6)';
+		titleWrapper.appendChild(statusDot);
+
+		const subtitle = document.createElement('div');
+		subtitle.textContent = 'MCP Server Running';
+		subtitle.style.fontSize = '12px';
+		subtitle.style.fontWeight = '600';
+		subtitle.style.color = 'var(--vscode-foreground)';
+		titleWrapper.appendChild(subtitle);
+
+		header.appendChild(titleWrapper);
+
+		// Close button
+		const closeBtn = document.createElement('button');
+		closeBtn.style.background = 'transparent';
+		closeBtn.style.border = 'none';
+		closeBtn.style.cursor = 'pointer';
+		closeBtn.style.padding = '4px';
+		closeBtn.style.borderRadius = '4px';
+		closeBtn.style.display = 'flex';
+		closeBtn.style.alignItems = 'center';
+		closeBtn.style.color = 'var(--vscode-descriptionForeground)';
+		closeBtn.style.transition = 'all 0.12s ease';
+		closeBtn.title = 'Close';
+
+		const closeIcon = document.createElement('span');
+		closeIcon.classList.add('codicon', 'codicon-close');
+		closeIcon.style.fontSize = '14px';
+		closeBtn.appendChild(closeIcon);
+
+		closeBtn.onmouseenter = () => {
+			closeBtn.style.background = 'var(--vscode-toolbar-hoverBackground)';
+			closeBtn.style.color = 'var(--vscode-foreground)';
+		};
+		closeBtn.onmouseleave = () => {
+			closeBtn.style.background = 'transparent';
+			closeBtn.style.color = 'var(--vscode-descriptionForeground)';
+		};
+		closeBtn.onclick = () => this.hideMcpConnectionPopup();
+		header.appendChild(closeBtn);
+
+		this.mcpDetailsPanel.appendChild(header);
+
+		// Simple info box with Server and Transport
+		const infoBox = document.createElement('div');
+		infoBox.style.padding = '8px 10px';
+		infoBox.style.background = 'var(--vscode-input-background)';
+		infoBox.style.borderRadius = '6px';
+		infoBox.style.border = '1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.2))';
+		infoBox.style.fontSize = '11px';
+		infoBox.style.lineHeight = '1.6';
+
+		const serverLine = document.createElement('div');
+		serverLine.style.display = 'flex';
+		serverLine.style.justifyContent = 'space-between';
+		const serverLabel = document.createElement('span');
+		serverLabel.textContent = 'MCP Server';
+		serverLabel.style.color = 'var(--vscode-descriptionForeground)';
+		const serverValue = document.createElement('code');
+		serverValue.textContent = 'roopik';
+		serverValue.style.color = 'var(--vscode-foreground)';
+		serverValue.style.fontFamily = 'var(--vscode-editor-font-family, monospace)';
+		serverLine.appendChild(serverLabel);
+		serverLine.appendChild(serverValue);
+		infoBox.appendChild(serverLine);
+
+		const transportLine = document.createElement('div');
+		transportLine.style.display = 'flex';
+		transportLine.style.justifyContent = 'space-between';
+		transportLine.style.marginTop = '4px';
+		const transportLabel = document.createElement('span');
+		transportLabel.textContent = 'Transport';
+		transportLabel.style.color = 'var(--vscode-descriptionForeground)';
+		const transportValue = document.createElement('code');
+		transportValue.textContent = 'STDIO';
+		transportValue.style.color = 'var(--vscode-foreground)';
+		transportValue.style.fontFamily = 'var(--vscode-editor-font-family, monospace)';
+		transportLine.appendChild(transportLabel);
+		transportLine.appendChild(transportValue);
+		infoBox.appendChild(transportLine);
+
+		this.mcpDetailsPanel.appendChild(infoBox);
+
+		// Info text about auto-registration
+		const infoText = document.createElement('div');
+		infoText.style.marginTop = '8px';
+		infoText.style.fontSize = '10px';
+		infoText.style.color = 'var(--vscode-descriptionForeground)';
+		infoText.style.lineHeight = '1.4';
+		infoText.textContent = '💡 AI agents are auto-registered when enabled in Settings.';
+		this.mcpDetailsPanel.appendChild(infoText);
+
+		// Open Settings button
+		const settingsBtn = document.createElement('button');
+		settingsBtn.style.width = '100%';
+		settingsBtn.style.marginTop = '8px';
+		settingsBtn.style.padding = '6px 10px';
+		settingsBtn.style.borderRadius = '6px';
+		settingsBtn.style.border = '1px solid rgba(34, 197, 94, 0.4)';
+		settingsBtn.style.background = 'rgba(34, 197, 94, 0.15)';
+		settingsBtn.style.color = 'var(--vscode-foreground)';
+		settingsBtn.style.cursor = 'pointer';
+		settingsBtn.style.fontSize = '11px';
+		settingsBtn.style.fontWeight = '500';
+		settingsBtn.style.transition = 'all 0.12s ease';
+		settingsBtn.style.display = 'flex';
+		settingsBtn.style.alignItems = 'center';
+		settingsBtn.style.justifyContent = 'center';
+		settingsBtn.style.gap = '5px';
+
+		const settingsIcon = document.createElement('span');
+		settingsIcon.classList.add('codicon', 'codicon-settings-gear');
+		settingsIcon.style.fontSize = '12px';
+		settingsBtn.appendChild(settingsIcon);
+
+		const settingsText = document.createElement('span');
+		settingsText.textContent = 'Open MCP Settings';
+		settingsBtn.appendChild(settingsText);
+
+		settingsBtn.onmouseenter = () => {
+			settingsBtn.style.background = 'rgba(34, 197, 94, 0.25)';
+			settingsBtn.style.borderColor = 'rgba(34, 197, 94, 0.6)';
+		};
+		settingsBtn.onmouseleave = () => {
+			settingsBtn.style.background = 'rgba(34, 197, 94, 0.15)';
+			settingsBtn.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+		};
+
+		settingsBtn.onclick = () => {
+			this.commandService.executeCommand('workbench.action.openSettings', 'roopik.mcp');
+		};
+
+		this.mcpDetailsPanel.appendChild(settingsBtn);
+
+		// Auto-close after 10 seconds
+		this.mcpPanelAutoCloseTimeout = setTimeout(() => {
+			this.hideMcpConnectionPopup();
+		}, 10000);
+
+		this.logger.debug('MCP details panel rendered');
+	}
+
+	/**
+	 * Hide MCP connection details panel
+	 */
+	private hideMcpConnectionPopup(): void {
+		// Clear auto-close timeout
+		if (this.mcpPanelAutoCloseTimeout) {
+			clearTimeout(this.mcpPanelAutoCloseTimeout);
+			this.mcpPanelAutoCloseTimeout = undefined;
+		}
+
+		if (this.mcpDetailsPanel) {
+			this.mcpDetailsPanel.style.display = 'none';
+			while (this.mcpDetailsPanel.firstChild) {
+				this.mcpDetailsPanel.removeChild(this.mcpDetailsPanel.firstChild);
+			}
 		}
 	}
 
@@ -749,30 +1069,71 @@ export class RoopikDashboardView extends ViewPane {
 
 	private createSection(container: HTMLElement, title: string, items: Array<{ label: string; description: string; onClick?: () => void; onDelete?: () => void; onRename?: () => void }>): HTMLElement {
 		const section = document.createElement('div');
-		section.style.marginBottom = '16px';
+		section.style.display = 'flex';
+		section.style.flexDirection = 'column';
+		section.style.minHeight = '0'; // Allow shrinking
 
-		// Section header
+		// Section header with count badge
 		const header = document.createElement('div');
-		header.textContent = title;
-		header.style.fontWeight = '600';
-		header.style.fontSize = '13px';
-		header.style.color = 'var(--vscode-foreground)';
+		header.style.display = 'flex';
+		header.style.alignItems = 'center';
+		header.style.justifyContent = 'space-between';
 		header.style.marginBottom = '8px';
-		header.style.textTransform = 'uppercase';
-		header.style.letterSpacing = '0.5px';
+		header.style.paddingBottom = '6px';
+		header.style.borderBottom = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(128, 128, 128, 0.2))';
+
+		const titleEl = document.createElement('span');
+		titleEl.textContent = title;
+		titleEl.style.fontWeight = '500';
+		titleEl.style.fontSize = '11px';
+		titleEl.style.color = 'var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground))';
+		titleEl.style.textTransform = 'uppercase';
+		titleEl.style.letterSpacing = '0.8px';
+		header.appendChild(titleEl);
+
+		// Count badge (only show if items > 0 and not loading)
+		const hasRealItems = items.length > 0 && !items[0].label.includes('Loading') && !items[0].label.includes('No ');
+		if (hasRealItems) {
+			const countBadge = document.createElement('span');
+			countBadge.textContent = String(items.length);
+			countBadge.style.fontSize = '10px';
+			countBadge.style.color = 'var(--vscode-descriptionForeground)';
+			countBadge.style.background = 'var(--vscode-badge-background, rgba(128, 128, 128, 0.2))';
+			countBadge.style.padding = '1px 6px';
+			countBadge.style.borderRadius = '10px';
+			header.appendChild(countBadge);
+		}
+
 		section.appendChild(header);
+
+		// Items container with scroll
+		const itemsContainer = document.createElement('div');
+		itemsContainer.style.display = 'flex';
+		itemsContainer.style.flexDirection = 'column';
+		itemsContainer.style.gap = '2px';
+
+		// Apply max-height and scroll only if more than MAX_VISIBLE_ITEMS
+		if (items.length > RoopikDashboardView.MAX_VISIBLE_ITEMS) {
+			const maxHeight = RoopikDashboardView.MAX_VISIBLE_ITEMS * RoopikDashboardView.ITEM_HEIGHT;
+			itemsContainer.style.maxHeight = `${maxHeight}px`;
+			itemsContainer.style.overflowY = 'auto';
+			itemsContainer.style.overflowX = 'hidden';
+			// Custom scrollbar styling
+			itemsContainer.style.scrollbarWidth = 'thin';
+			itemsContainer.style.scrollbarColor = 'var(--vscode-scrollbarSlider-background) transparent';
+		}
 
 		// Items
 		items.forEach(item => {
 			const itemEl = document.createElement('div');
-			itemEl.style.padding = '6px 8px';
+			itemEl.style.padding = '8px 10px';
 			itemEl.style.cursor = item.onClick ? 'pointer' : 'default';
-			itemEl.style.borderRadius = '4px';
-			itemEl.style.marginBottom = '2px';
+			itemEl.style.borderRadius = '6px';
 			itemEl.style.display = 'flex';
 			itemEl.style.alignItems = 'center';
 			itemEl.style.position = 'relative';
-			itemEl.style.overflow = 'hidden';
+			itemEl.style.minHeight = '36px';
+			itemEl.style.boxSizing = 'border-box';
 
 			// Left side: label and description
 			const contentEl = document.createElement('div');
@@ -783,9 +1144,11 @@ export class RoopikDashboardView extends ViewPane {
 			labelEl.textContent = item.label;
 			labelEl.style.color = 'var(--vscode-foreground)';
 			labelEl.style.fontSize = '13px';
+			labelEl.style.fontWeight = '400';
 			labelEl.style.overflow = 'hidden';
 			labelEl.style.textOverflow = 'ellipsis';
 			labelEl.style.whiteSpace = 'nowrap';
+			labelEl.style.lineHeight = '1.3';
 			contentEl.appendChild(labelEl);
 
 			const descEl = document.createElement('div');
@@ -793,6 +1156,10 @@ export class RoopikDashboardView extends ViewPane {
 			descEl.style.color = 'var(--vscode-descriptionForeground)';
 			descEl.style.fontSize = '11px';
 			descEl.style.marginTop = '2px';
+			descEl.style.lineHeight = '1.2';
+			descEl.style.overflow = 'hidden';
+			descEl.style.textOverflow = 'ellipsis';
+			descEl.style.whiteSpace = 'nowrap';
 			contentEl.appendChild(descEl);
 
 			itemEl.appendChild(contentEl);
@@ -805,7 +1172,6 @@ export class RoopikDashboardView extends ViewPane {
 
 					const actions: Action[] = [];
 
-					// Rename action
 					if (item.onRename) {
 						actions.push(new Action(
 							'roopik.renameCanvas',
@@ -816,7 +1182,6 @@ export class RoopikDashboardView extends ViewPane {
 						));
 					}
 
-					// Delete action
 					if (item.onDelete) {
 						actions.push(new Action(
 							'roopik.deleteCanvas',
@@ -834,124 +1199,32 @@ export class RoopikDashboardView extends ViewPane {
 				});
 			}
 
-			// Enhanced hover effect (only if clickable)
+			// Hover effect (only if clickable)
 			if (item.onClick) {
-				itemEl.style.transition = 'background-color 0.15s ease, transform 0.15s ease';
+				itemEl.style.transition = 'background-color 0.12s ease';
 
 				itemEl.addEventListener('mouseenter', () => {
 					itemEl.style.backgroundColor = 'var(--vscode-list-hoverBackground)';
-					itemEl.style.transform = 'translateX(2px)';
 				});
 				itemEl.addEventListener('mouseleave', () => {
 					itemEl.style.backgroundColor = 'transparent';
-					itemEl.style.transform = 'translateX(0)';
 				});
 
-				// Click handler
 				itemEl.addEventListener('click', () => {
 					item.onClick!();
 				});
 			}
 
-			section.appendChild(itemEl);
+			itemsContainer.appendChild(itemEl);
 		});
 
+		section.appendChild(itemsContainer);
 		container.appendChild(section);
 		return section;
 	}
 
-	private createPrimaryActionButton(label: string, codiconClass: string, commandId: string, largeButton: boolean = false, extraLarge: boolean = false): HTMLElement {
-		const btn = document.createElement('button');
-		btn.style.display = 'inline-flex';
-		btn.style.alignItems = 'center';
-		btn.style.justifyContent = 'center';
-		// Extra large for mode buttons, large for import, small for others
-		btn.style.padding = extraLarge ? '8px 18px' : (largeButton ? '6px 14px' : '3px 10px');
-		btn.style.borderRadius = '999px';
-		btn.style.border = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
-		// Subtle outline for better visibility
-		btn.style.boxShadow = '0 0 0 1px var(--vscode-button-border, rgba(96, 165, 250, 0.3))';
-		btn.style.cursor = 'pointer';
-		// Extra large font for mode buttons, large for import, small for others
-		btn.style.fontSize = extraLarge ? '13px' : (largeButton ? '12px' : '11px');
-		btn.style.fontWeight = '500';
-		btn.style.fontFamily = 'inherit';
-		btn.style.background = 'var(--vscode-sideBarSectionHeader-background, rgba(15, 23, 42, 0.8))';
-		btn.style.color = 'var(--vscode-foreground)';
-		btn.title = label;
-
-		btn.onmouseenter = () => {
-			btn.style.background = 'var(--vscode-list-hoverBackground)';
-		};
-		btn.onmouseleave = () => {
-			btn.style.background = 'var(--vscode-sideBarSectionHeader-background, rgba(15, 23, 42, 0.8))';
-		};
-
-		const icon = document.createElement('span');
-		icon.classList.add('codicon', codiconClass);
-		// Extra large icon for mode buttons, large for import, small for others
-		icon.style.fontSize = extraLarge ? '18px' : (largeButton ? '16px' : '12px');
-		btn.appendChild(icon);
-
-		const text = document.createElement('span');
-		text.textContent = label;
-		text.style.marginLeft = extraLarge ? '8px' : (largeButton ? '6px' : '4px');
-		btn.appendChild(text);
-
-		btn.onclick = () => {
-			this.commandService.executeCommand(commandId);
-		};
-
-		return btn;
-	}
-
-	private createSecondaryActionButton(label: string, codiconClass: string, commandId: string, largeButton: boolean = false, extraLarge: boolean = false): HTMLElement {
-		const btn = document.createElement('button');
-		btn.style.display = 'inline-flex';
-		btn.style.alignItems = 'center';
-		btn.style.justifyContent = 'center';
-		// Extra large for mode buttons, large for import, small for others
-		btn.style.padding = extraLarge ? '8px 18px' : (largeButton ? '6px 14px' : '3px 10px');
-		btn.style.borderRadius = '999px';
-		btn.style.border = '1px solid var(--vscode-sideBarSectionHeader-border, rgba(148, 163, 184, 0.35))';
-		// Subtle outline for better visibility
-		btn.style.boxShadow = '0 0 0 1px var(--vscode-button-border, rgba(96, 165, 250, 0.3))';
-		btn.style.cursor = 'pointer';
-		// Extra large font for mode buttons, large for import, small for others
-		btn.style.fontSize = extraLarge ? '13px' : (largeButton ? '12px' : '11px');
-		btn.style.fontWeight = '500';
-		btn.style.fontFamily = 'inherit';
-		btn.style.background = 'transparent';
-		btn.style.color = 'var(--vscode-foreground)';
-		btn.title = label;
-
-		btn.onmouseenter = () => {
-			btn.style.background = 'var(--vscode-list-hoverBackground)';
-		};
-		btn.onmouseleave = () => {
-			btn.style.background = 'transparent';
-		};
-
-		const icon = document.createElement('span');
-		icon.classList.add('codicon', codiconClass);
-		// Extra large icon for mode buttons, large for import, small for others
-		icon.style.fontSize = extraLarge ? '18px' : (largeButton ? '16px' : '12px');
-		btn.appendChild(icon);
-
-		const text = document.createElement('span');
-		text.textContent = label;
-		text.style.marginLeft = extraLarge ? '8px' : (largeButton ? '6px' : '4px');
-		btn.appendChild(text);
-
-		btn.onclick = () => {
-			this.commandService.executeCommand(commandId);
-		};
-
-		return btn;
-	}
-
 	/**
-	 * Inject CSS animations for professional delete interactions
+	 * Inject CSS animations for professional interactions
 	 */
 	private injectDeleteAnimations(): void {
 		if (RoopikDashboardView.animationsInjected) {

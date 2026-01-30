@@ -168,7 +168,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 			}
 		}));
 
-		// Quick start section with two columns
+		// Quick start section - two column layout with hover panel
 		const quickStartSection = append(container, $('.welcome-section'));
 		const quickStartTitle = append(quickStartSection, $('.section-title'));
 		quickStartTitle.textContent = 'Quick start';
@@ -177,13 +177,11 @@ export class RoopikWelcomeEditor extends EditorPane {
 
 		// Left column: Start actions
 		const startColumn = append(quickStartContainer, $('.quick-start-column'));
-		const startTitle = append(startColumn, $('.quick-start-column-title'));
-		startTitle.textContent = 'Start';
 
 		const startActions = [
 			{ icon: 'codicon-new-file', label: 'New Canvas', commandId: 'roopik.openCanvas' },
 			{ icon: 'codicon-folder-opened', label: 'Open Canvas', commandId: 'roopik.openCanvas' },
-			{ icon: 'codicon-file-symlink-directory', label: 'Import Canvas', commandId: 'roopik.openCanvas' },
+			{ icon: 'codicon-file-symlink-directory', label: 'Import Canvas', commandId: 'roopik.import.showPicker' },
 			{ icon: 'codicon-folder', label: 'Open Project', commandId: 'roopik.openProjectPicker' },
 			{ icon: 'codicon-globe', label: 'Browse Web', commandId: 'roopik.openProjectPreview' },
 			{ icon: 'codicon-keyboard', label: 'Run Command...', commandId: 'workbench.action.showCommands' }
@@ -193,30 +191,26 @@ export class RoopikWelcomeEditor extends EditorPane {
 			this.createQuickStartAction(startColumn, action.icon, action.label, action.commandId);
 		}
 
-		// Right column: Recent canvases (dynamic)
-		const recentCanvasColumn = append(quickStartContainer, $('.quick-start-column'));
-		const recentCanvasTitle = append(recentCanvasColumn, $('.quick-start-column-title'));
-		recentCanvasTitle.textContent = 'Recent Canvases';
+		// Divider before recent items
+		const divider = append(startColumn, $('.quick-start-divider'));
+		divider.setAttribute('aria-hidden', 'true');
 
-		// Container for dynamic canvas list
-		this.recentCanvasesContainer = append(recentCanvasColumn, $('.recent-items-container'));
-		const canvasLoadingText = append(this.recentCanvasesContainer, $('.quick-start-empty'));
-		canvasLoadingText.textContent = 'Loading...';
+		// Right column: Hover panel for recent items (hidden by default)
+		const hoverPanel = append(quickStartContainer, $('.quick-start-hover-panel'));
+		hoverPanel.style.display = 'none';
 
-		// Load canvases (check if already initialized)
+		// Container for dynamic content inside hover panel
+		this.recentCanvasesContainer = append(hoverPanel, $('.recent-items-container'));
+		this.recentProjectsContainer = append(hoverPanel, $('.recent-items-container'));
+
+		// Recent Canvases action with arrow (hover/click to show panel)
+		this.createRecentItemTrigger(startColumn, 'codicon-layers', 'Recent Canvases', hoverPanel, 'canvases');
+
+		// Recent Projects action with arrow (hover/click to show panel)
+		this.createRecentItemTrigger(startColumn, 'codicon-folder-library', 'Recent Projects', hoverPanel, 'projects');
+
+		// Preload data (check if already initialized)
 		this.checkAndLoadCanvases();
-
-		// Third column: Recent projects (dynamic)
-		const recentProjectColumn = append(quickStartContainer, $('.quick-start-column'));
-		const recentProjectTitle = append(recentProjectColumn, $('.quick-start-column-title'));
-		recentProjectTitle.textContent = 'Recent Projects';
-
-		// Container for dynamic project list
-		this.recentProjectsContainer = append(recentProjectColumn, $('.recent-items-container'));
-		const projectLoadingText = append(this.recentProjectsContainer, $('.quick-start-empty'));
-		projectLoadingText.textContent = 'Loading...';
-
-		// Load projects (check if already initialized)
 		this.checkAndLoadProjects();
 
 		// Footer removed - "Show on startup" setting now available in VS Code Settings (roopik.general.showWelcomeOnStartup)
@@ -290,6 +284,54 @@ export class RoopikWelcomeEditor extends EditorPane {
 		action.onclick = () => {
 			this.commandService.executeCommand(commandId);
 		};
+	}
+
+	/**
+	 * Create a recent item trigger (hover/click to show panel)
+	 */
+	private createRecentItemTrigger(parent: HTMLElement, iconClass: string, label: string, hoverPanel: HTMLElement, type: 'canvases' | 'projects'): void {
+		const action = append(parent, $('.quick-start-action.with-arrow'));
+
+		const icon = append(action, $('span.codicon'));
+		icon.classList.add(iconClass);
+		icon.setAttribute('aria-hidden', 'true');
+
+		const labelEl = append(action, $('.quick-start-action-label'));
+		labelEl.textContent = label;
+
+		const arrow = append(action, $('span.codicon.codicon-chevron-right.action-arrow'));
+		arrow.setAttribute('aria-hidden', 'true');
+
+		// Show panel on hover
+		this._register(addDisposableListener(action, 'mouseenter', () => {
+			this.showHoverPanel(hoverPanel, type);
+		}));
+
+		// Also handle click for accessibility
+		action.onclick = () => {
+			this.showHoverPanel(hoverPanel, type);
+		};
+
+		// Hide panel when mouse leaves the entire quick-start area
+		const quickStartContainer = hoverPanel.parentElement;
+		if (quickStartContainer) {
+			this._register(addDisposableListener(quickStartContainer, 'mouseleave', () => {
+				hoverPanel.style.display = 'none';
+			}));
+		}
+	}
+
+	/**
+	 * Show hover panel with recent items
+	 */
+	private showHoverPanel(hoverPanel: HTMLElement, type: 'canvases' | 'projects'): void {
+		hoverPanel.style.display = 'block';
+
+		// Show the appropriate container, hide the other
+		if (this.recentCanvasesContainer && this.recentProjectsContainer) {
+			this.recentCanvasesContainer.style.display = type === 'canvases' ? 'block' : 'none';
+			this.recentProjectsContainer.style.display = type === 'projects' ? 'block' : 'none';
+		}
 	}
 
 	/**
@@ -407,6 +449,9 @@ export class RoopikWelcomeEditor extends EditorPane {
 			return;
 		}
 		clearNode(this.recentProjectsContainer);
+		// Add title
+		const title = append(this.recentProjectsContainer, $('.hover-panel-title'));
+		title.textContent = 'Recent Projects';
 		const errorState = append(this.recentProjectsContainer, $('.quick-start-empty'));
 		errorState.textContent = 'Open a workspace first';
 	}
@@ -430,6 +475,10 @@ export class RoopikWelcomeEditor extends EditorPane {
 			while (this.recentCanvasesContainer.firstChild) {
 				this.recentCanvasesContainer.removeChild(this.recentCanvasesContainer.firstChild);
 			}
+
+			// Add title
+			const title = append(this.recentCanvasesContainer, $('.hover-panel-title'));
+			title.textContent = 'Recent Canvases';
 
 			const canvases = await this.canvasService.listCanvasesAsync();
 
@@ -477,6 +526,10 @@ export class RoopikWelcomeEditor extends EditorPane {
 			while (this.recentProjectsContainer.firstChild) {
 				this.recentProjectsContainer.removeChild(this.recentProjectsContainer.firstChild);
 			}
+
+			// Add title
+			const title = append(this.recentProjectsContainer, $('.hover-panel-title'));
+			title.textContent = 'Recent Projects';
 
 			const projects = await this.projectStorageService.getRecentProjects(5);
 

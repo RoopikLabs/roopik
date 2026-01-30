@@ -129,25 +129,25 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 		// ========================================
 		// MCP Server - Core Settings (logical order)
 		// ========================================
-		'roopik.mcp.enabled': {
+		'roopik.mcp.stdioMCP': {
 			type: 'boolean',
 			default: true,
 			order: 10,
-			markdownDescription: '**Enable MCP Server** - Allow AI agents (Claude, Codex, etc.) to control Roopik IDE via MCP protocol.'
+			markdownDescription: '**Enable STDIO MCP** [Recommended] - Allow AI agents (Claude, Codex, etc.) to control Roopik IDE via the standard STDIO-based MCP protocol.'
 		},
-		'roopik.mcp.autoRegister': {
-			type: 'boolean',
-			default: true,
-			order: 11,
-			description: 'Automatically register Roopik with enabled AI agents on startup.'
-		},
-		'roopik.mcp.port': {
+		'roopik.mcp.stdioMCPPort': {
 			type: 'number',
 			default: 9876,
 			minimum: 1024,
 			maximum: 65535,
+			order: 11,
+			description: 'AI agents connect to this port for STDIO-based communication.'
+		},
+		'roopik.mcp.autoRegister': {
+			type: 'boolean',
+			default: true,
 			order: 12,
-			description: 'MCP server port. AI agents connect to this port.'
+			description: 'Automatically register Roopik with enabled AI agents on startup.'
 		},
 		'roopik.mcp.cleanupOnExit': {
 			type: 'boolean',
@@ -155,19 +155,19 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 			order: 13,
 			description: 'Unregister from all AI agents when Roopik exits. If false, registrations persist for quick reconnection.'
 		},
-		'roopik.mcp.httpEnabled': {
+		'roopik.mcp.httpMCP': {
 			type: 'boolean',
 			default: false,
 			order: 14,
-			markdownDescription: '**Enable HTTP MCP** (Advanced) - Enable HTTP-based MCP transport. Only needed for HTTP clients.'
+			markdownDescription: '**Enable HTTP/SSE MCP** (Experimental) - Enable HTTP-based MCP transport with Server-Sent Events.'
 		},
-		'roopik.mcp.httpPort': {
+		'roopik.mcp.httpMCPPort': {
 			type: 'number',
 			default: 3333,
 			minimum: 1024,
 			maximum: 65535,
 			order: 15,
-			description: 'HTTP MCP server port. Only used when HTTP MCP is enabled.'
+			description: 'Only used when HTTP/SSE MCP is enabled.'
 		},
 
 		// ========================================
