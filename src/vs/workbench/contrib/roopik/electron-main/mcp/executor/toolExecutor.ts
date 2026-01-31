@@ -55,14 +55,17 @@ export class ToolExecutor {
 	private readonly canvasToolService: CanvasToolService;
 	private readonly componentToolService: ComponentToolService;
 	private readonly projectToolService: ProjectToolService;
+	private readonly storageService: IRoopikStorageService;
 
 	constructor(
 		browserViewService: BrowserViewService,
-		_storageService: IRoopikStorageService, // Kept for backward compatibility, no longer used
+		storageService: IRoopikStorageService,
 		canvasService: ICanvasService,
 		componentService: ComponentService,
 		devServerService: DevServerService
 	) {
+		this.storageService = storageService;
+
 		// Create CDPMonitorService first (used by BrowserToolService)
 		this.cdpMonitorService = new CDPMonitorService(browserViewService);
 
@@ -185,7 +188,8 @@ export class ToolExecutor {
 			case 'browser_inspect_element':
 				return this.browserToolService.inspectElement(
 					params.selector as string,
-					params.includeInherited as boolean | undefined
+					params.includeInherited as boolean | undefined,
+					this.storageService.getWorkspacePath()
 				);
 
 			case 'browser_get_errors':

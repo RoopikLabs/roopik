@@ -10,9 +10,22 @@
  * Single source of truth for console logs, errors, and network requests.
  *
  * Used by both WebSocket MCP (external agents) and Native IPC (Dio agent).
+ *
+ * IMPORTANT: Uses module-level state so ALL instances share the same data.
+ * This ensures both Claude Code and Dio agent see the same console logs/errors.
  */
 
 import type { BrowserViewService } from '../projectMode/browserViewService.js';
+
+// ============================================================================
+// Module-Level Shared State
+// ============================================================================
+
+/**
+ * Shared monitors map - all CDPMonitorService instances operate on this.
+ * This ensures console logs captured by one agent are visible to all agents.
+ */
+const sharedMonitors = new Map<number, CDPMonitor>();
 
 // ============================================================================
 // CDP Monitor Types
@@ -60,12 +73,35 @@ interface CDPMonitor {
 }
 
 // ============================================================================
+// Exported Cleanup Function
+// ============================================================================
+
+/**
+ * Cleanup CDP monitoring for a specific browser view.
+ * Exported for use by BrowserViewService when destroying browser views.
+ *
+ * This is a module-level function that operates on the shared state,
+ * so it works regardless of which CDPMonitorService instance was used.
+ */
+export function cleanupCDPMonitoring(browserViewId: number): void {
+	const monitor = sharedMonitors.get(browserViewId);
+	if (monitor) {
+		for (const cleanup of monitor.cleanupFunctions) {
+			try {
+				cleanup();
+			} catch {
+				// Ignore cleanup errors
+			}
+		}
+		sharedMonitors.delete(browserViewId);
+	}
+}
+
+// ============================================================================
 // CDP Monitor Service
 // ============================================================================
 
 export class CDPMonitorService {
-	private readonly monitors = new Map<number, CDPMonitor>();
-
 	constructor(
 		private readonly browserViewService: BrowserViewService
 	) {}
@@ -80,13 +116,13 @@ export class CDPMonitorService {
 	 */
 	async ensureMonitoring(browserViewId: number): Promise<void> {
 		// Cleanup stale monitors from other browser views
-		for (const [monitoredId] of this.monitors) {
+		for (const [monitoredId] of sharedMonitors) {
 			if (monitoredId !== browserViewId) {
 				this.cleanup(monitoredId);
 			}
 		}
 
-		if (this.monitors.has(browserViewId)) {
+		if (sharedMonitors.has(browserViewId)) {
 			return;
 		}
 
@@ -131,7 +167,7 @@ export class CDPMonitorService {
 		// Enable Network domain for requests
 		await this.browserViewService.sendCDPCommand(browserViewId, 'Network.enable', {});
 
-		this.monitors.set(browserViewId, monitor);
+		sharedMonitors.set(browserViewId, monitor);
 	}
 
 	/**
@@ -143,7 +179,7 @@ export class CDPMonitorService {
 		limit?: number;
 		clear?: boolean;
 	}): ConsoleLog[] {
-		const monitor = this.monitors.get(browserViewId);
+		const monitor = sharedMonitors.get(browserViewId);
 		if (!monitor) {
 			return [];
 		}
@@ -186,7 +222,7 @@ export class CDPMonitorService {
 		url?: string;
 		method?: string;
 	}> {
-		const monitor = this.monitors.get(browserViewId);
+		const monitor = sharedMonitors.get(browserViewId);
 		if (!monitor) {
 			return [];
 		}
@@ -263,7 +299,7 @@ export class CDPMonitorService {
 		requestHeaders?: Record<string, string>;
 		responseHeaders?: Record<string, string>;
 	}> {
-		const monitor = this.monitors.get(browserViewId);
+		const monitor = sharedMonitors.get(browserViewId);
 		if (!monitor) {
 			return [];
 		}
@@ -313,26 +349,17 @@ export class CDPMonitorService {
 
 	/**
 	 * Cleanup CDP monitoring for a browser view.
+	 * Delegates to the module-level function for consistency.
 	 */
 	cleanup(browserViewId: number): void {
-		const monitor = this.monitors.get(browserViewId);
-		if (monitor) {
-			for (const cleanup of monitor.cleanupFunctions) {
-				try {
-					cleanup();
-				} catch {
-					// Ignore cleanup errors
-				}
-			}
-			this.monitors.delete(browserViewId);
-		}
+		cleanupCDPMonitoring(browserViewId);
 	}
 
 	/**
 	 * Check if monitoring is active for a browser view.
 	 */
 	isMonitoring(browserViewId: number): boolean {
-		return this.monitors.has(browserViewId);
+		return sharedMonitors.has(browserViewId);
 	}
 
 	// ==========================================================================

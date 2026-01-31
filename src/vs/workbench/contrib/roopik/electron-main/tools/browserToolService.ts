@@ -67,7 +67,6 @@ export class BrowserToolService {
 				return {
 					success: true,
 					data: {
-						browserViewId,
 						url,
 						message: `Navigated to ${url}`
 					}
@@ -77,7 +76,6 @@ export class BrowserToolService {
 			return {
 				success: true,
 				data: {
-					browserViewId,
 					message: 'Browser is already open'
 				}
 			};
@@ -176,7 +174,6 @@ export class BrowserToolService {
 			return {
 				success: true,
 				data: {
-					browserViewId,
 					url,
 					message: `Navigated to ${url}`
 				}
@@ -209,7 +206,6 @@ export class BrowserToolService {
 			return {
 				success: true,
 				data: {
-					browserViewId,
 					url: currentUrl,
 					message: `Reloaded page${ignoreCache ? ' (cache ignored)' : ''}`
 				}
@@ -294,9 +290,7 @@ export class BrowserToolService {
 			return {
 				success: true,
 				data: {
-					browserViewId,
 					action,
-					success: true,
 					message: `Executed ${action} action`
 				}
 			};
@@ -341,7 +335,7 @@ export class BrowserToolService {
 	// Element Inspection
 	// ==========================================================================
 
-	async inspectElement(selector: string, includeInherited?: boolean): Promise<ToolResult<ElementInspectionResult>> {
+	async inspectElement(selector: string, includeInherited?: boolean, projectRoot?: string): Promise<ToolResult<ElementInspectionResult>> {
 		try {
 			const browserViewId = this.browserViewService.getActiveBrowserViewId();
 
@@ -349,14 +343,10 @@ export class BrowserToolService {
 				return { success: false, error: 'No browser is open. Use browser_open first.' };
 			}
 
-			// Get project root - for now use empty string (CSS source resolution still works)
-			// TODO: Add DevServerService dependency to get actual project root
-			const projectRoot = '';
-
 			const result = await this.browserViewService.getElementStyles({
 				browserViewId,
 				target: selector,
-				projectRoot,
+				projectRoot: projectRoot ?? '',
 				includeInherited: includeInherited ?? false,
 				includeUserAgent: false
 			});
@@ -603,7 +593,6 @@ export class BrowserToolService {
 				success: true,
 				data: {
 					browserOpen: true,
-					browserViewId,
 					currentUrl: navState.url,
 					title: navState.title,
 					isLoading: navState.isLoading,

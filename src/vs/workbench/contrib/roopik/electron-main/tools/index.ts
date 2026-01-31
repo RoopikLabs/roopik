@@ -17,7 +17,7 @@
  * - ComponentToolService: Component management tools (6 tools)
  */
 
-export { CDPMonitorService } from './cdpMonitorService.js';
+export { CDPMonitorService, cleanupCDPMonitoring } from './cdpMonitorService.js';
 export type { ConsoleLog, NetworkRequest, NetworkResponse } from './cdpMonitorService.js';
 
 export { BrowserToolService } from './browserToolService.js';

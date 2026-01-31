@@ -67,7 +67,9 @@ export class CanvasToolService {
 				id: c.id,
 				name: c.name,
 				description: c.description,
-				componentCount: c.componentCount || 0
+				componentCount: c.componentCount || 0,
+				createdAt: c.createdAt,
+				updatedAt: c.updatedAt
 			}));
 
 			return {
@@ -117,7 +119,9 @@ export class CanvasToolService {
 					id: canvas.id,
 					name: canvas.name,
 					description: canvas.description,
-					componentCount: canvas.componentCount || 0
+					componentCount: canvas.componentCount || 0,
+					createdAt: canvas.createdAt,
+					updatedAt: canvas.updatedAt
 				}
 			};
 		} catch (error) {
@@ -145,7 +149,9 @@ export class CanvasToolService {
 						id: result.canvas.id,
 						name: result.canvas.name,
 						description: result.canvas.description,
-						componentCount: result.canvas.componentCount || 0
+						componentCount: result.canvas.componentCount || 0,
+						createdAt: result.canvas.createdAt,
+						updatedAt: result.canvas.updatedAt
 					}
 				};
 			}
@@ -159,7 +165,9 @@ export class CanvasToolService {
 					id: result.canvasId,
 					name: canvas?.name || name,
 					description: canvas?.description,
-					componentCount: 0
+					componentCount: 0,
+					createdAt: canvas?.createdAt,
+					updatedAt: canvas?.updatedAt
 				}
 			};
 		} catch (error) {

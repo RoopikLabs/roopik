@@ -15,7 +15,7 @@ import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { CDPCssService } from './cssResolvers/cdpCssService.js';
 import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.js';
 import contextMenu from 'electron-context-menu';
-import { cleanupCDPMonitoring } from '../mcp/executor/browserExecutor.js';
+import { cleanupCDPMonitoring } from '../tools/cdpMonitorService.js';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
 

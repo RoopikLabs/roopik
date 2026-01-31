@@ -53,6 +53,7 @@ export class ProjectToolService {
 					url: serverInfo.url,
 					projectRoot: serverInfo.projectRoot,
 					framework: serverInfo.framework,
+					port: serverInfo.port,
 					status
 				}
 			};
