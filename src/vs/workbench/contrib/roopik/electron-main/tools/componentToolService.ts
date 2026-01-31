@@ -57,7 +57,7 @@ export class ComponentToolService {
 	constructor(
 		private readonly componentService: ComponentService,
 		private readonly canvasService: ICanvasService
-	) {}
+	) { }
 
 	// ==========================================================================
 	// Add Component
@@ -160,7 +160,11 @@ export class ComponentToolService {
 	// Get Component Info
 	// ==========================================================================
 
-	async getInfo(componentId: string): Promise<ToolResult<ComponentInfo & { buildStatus?: string; buildErrors?: string[] }>> {
+	async getInfo(componentId: string): Promise<ToolResult<ComponentInfo & {
+		buildStatus?: string;
+		buildErrors?: string[];
+		runtimeError?: { message: string; type: string; stack?: string };
+	}>> {
 		try {
 			// getComponent is sync - returns Component | undefined
 			const component = this.componentService.getComponent(componentId);
@@ -175,11 +179,20 @@ export class ComponentToolService {
 			// Get comprehensive info via async getComponentInfo for build state
 			const componentInfo = await this.componentService.getComponentInfo(componentId);
 
-			// Map buildStatus from ComponentInfo to the status field expected by MCP
-			// ComponentInfo.buildStatus is 'building' | 'ready' | 'error', MCP adds 'pending'
-			const status = componentInfo.buildStatus === 'building' ? 'building' :
-				componentInfo.buildStatus === 'ready' ? 'ready' :
-				componentInfo.buildStatus === 'error' ? 'error' : 'pending';
+			// Determine status: runtime error takes precedence over build success
+			// A component can build successfully but crash at runtime
+			let status: 'pending' | 'building' | 'ready' | 'error';
+			if (componentInfo.runtimeError) {
+				status = 'error';  // Runtime error = error state
+			} else if (componentInfo.buildStatus === 'building') {
+				status = 'building';
+			} else if (componentInfo.buildStatus === 'ready') {
+				status = 'ready';
+			} else if (componentInfo.buildStatus === 'error') {
+				status = 'error';
+			} else {
+				status = 'pending';
+			}
 
 			return {
 				success: true,
@@ -190,7 +203,13 @@ export class ComponentToolService {
 					canvasId: component.canvasId,
 					status,
 					buildStatus: componentInfo.buildStatus,
-					buildErrors: componentInfo.buildErrorInfo?.message ? [componentInfo.buildErrorInfo.message] : undefined
+					buildErrors: componentInfo.buildErrorInfo?.message ? [componentInfo.buildErrorInfo.message] : undefined,
+					// Include runtime error so agents can see crashes that happened after build
+					runtimeError: componentInfo.runtimeError ? {
+						message: componentInfo.runtimeError.message,
+						type: componentInfo.runtimeError.type,
+						stack: componentInfo.runtimeError.stack
+					} : undefined
 				}
 			};
 		} catch (error) {
@@ -210,13 +229,24 @@ export class ComponentToolService {
 			// getComponentsForCanvas is sync
 			const components = this.componentService.getComponentsForCanvas(canvasId);
 
-			const result: ComponentInfo[] = components.map(c => ({
-				id: c.id,
-				name: c.componentName,
-				path: c.folderPath,
-				canvasId: c.canvasId,
-				status: c.buildState.status
-			}));
+			// Map components, accounting for runtime errors in status
+			const result: ComponentInfo[] = components.map(c => {
+				// Runtime error takes precedence over build status
+				let status: 'pending' | 'building' | 'ready' | 'error';
+				if (c.runtimeError) {
+					status = 'error';  // Component crashed at runtime
+				} else {
+					status = c.buildState.status;
+				}
+
+				return {
+					id: c.id,
+					name: c.componentName,
+					path: c.folderPath,
+					canvasId: c.canvasId,
+					status
+				};
+			});
 
 			return {
 				success: true,

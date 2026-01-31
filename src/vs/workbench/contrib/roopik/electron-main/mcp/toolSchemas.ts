@@ -72,6 +72,7 @@ export const browserSetViewportSchema = z.object({
 });
 
 export const browserGetNetworkRequestsSchema = z.object({
+	includeStaticAssets: z.boolean().optional().describe('Include static assets (JS/CSS/images). Default: false (only API calls shown)'),
 	urlFilter: z.string().optional().describe('Filter requests by URL substring'),
 	method: z.string().optional().describe('Filter by HTTP method (GET, POST, etc.)'),
 	statusFilter: z.enum(['success', 'error', 'all']).optional()
@@ -203,7 +204,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_get_errors',
-		description: 'Get combined console errors and network failures.',
+		description: 'Get console errors and network failures. Auto-clears on page reload.',
 		schema: browserGetErrorsSchema
 	},
 	{
@@ -228,7 +229,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_get_network_requests',
-		description: 'Get captured network requests and responses. Requires CDP monitoring.',
+		description: 'Get network requests. Use includeStaticAssets parameter to show all assets.',
 		schema: browserGetNetworkRequestsSchema
 	},
 

@@ -13,9 +13,40 @@
  *
  * IMPORTANT: Uses module-level state so ALL instances share the same data.
  * This ensures both Claude Code and Dio agent see the same console logs/errors.
+ *
+ * SELF-HEALING ARCHITECTURE:
+ * - Auto-clears on Page.loadEventFired (page reload/HMR) to prevent "ghost" errors
+ * - Filters HMR/Vite/WDS noise at capture time to save tokens
+ * - Classifies network requests as 'static' vs 'api' for compression
  */
 
 import type { BrowserViewService } from '../projectMode/browserViewService.js';
+
+// ============================================================================
+// Noise Filtering Patterns
+// ============================================================================
+
+/**
+ * Console messages matching these patterns are dev-tool noise with no debugging value.
+ * Filtering at capture time saves tokens and prevents agent confusion.
+ */
+const NOISE_PATTERNS = [
+	/^\[HMR\]/,              // Webpack Hot Module Replacement
+	/^\[WDS\]/,              // Webpack Dev Server
+	/^\[vite\]/,             // Vite dev server
+	/React DevTools/,        // React DevTools promotion
+	/Download the React/,    // React DevTools banner
+	/Fast Refresh/,          // React Fast Refresh
+	/hot updated/i,          // Generic HMR messages
+	/Compiled successfully/, // CRA/Next.js compile messages
+	/webpack.*compiled/i,    // Webpack compiled messages
+];
+
+/**
+ * Static asset file extensions - these requests are noise for debugging.
+ * API calls and failures are signal; static assets are noise.
+ */
+const STATIC_ASSET_REGEX = /\.(js|mjs|cjs|jsx|ts|tsx|css|scss|sass|less|png|jpg|jpeg|gif|webp|ico|svg|woff|woff2|ttf|eot|otf|map|json)(\?.*)?$/i;
 
 // ============================================================================
 // Module-Level Shared State
@@ -49,6 +80,8 @@ export interface NetworkRequest {
 	url: string;
 	headers: Record<string, string>;
 	postData?: string;
+	/** Classification: 'static' for JS/CSS/images, 'api' for API calls */
+	type: 'static' | 'api';
 }
 
 export interface NetworkResponse {
@@ -104,7 +137,7 @@ export function cleanupCDPMonitoring(browserViewId: number): void {
 export class CDPMonitorService {
 	constructor(
 		private readonly browserViewService: BrowserViewService
-	) {}
+	) { }
 
 	// ==========================================================================
 	// Public API
@@ -142,8 +175,12 @@ export class CDPMonitorService {
 			return;
 		}
 
-		// Enable Runtime domain for console
-		await this.browserViewService.sendCDPCommand(browserViewId, 'Runtime.enable', {});
+		// Enable CDP domains in parallel for efficiency
+		await Promise.all([
+			this.browserViewService.sendCDPCommand(browserViewId, 'Runtime.enable', {}),
+			this.browserViewService.sendCDPCommand(browserViewId, 'Network.enable', {}),
+			this.browserViewService.sendCDPCommand(browserViewId, 'Page.enable', {}),  // NEW: Lifecycle events
+		]);
 
 		// Register CDP event listener - single listener handles all events
 		const cdpCleanup = this.browserViewService.onCDPEvent(browserViewId, (method, params) => {
@@ -160,12 +197,14 @@ export class CDPMonitorService {
 				case 'Network.loadingFailed':
 					this.handleNetworkFailed(monitor, params as Parameters<CDPMonitorService['handleNetworkFailed']>[1]);
 					break;
+				case 'Page.loadEventFired':
+					// AUTO-CLEAR: Page reloaded (manual refresh or HMR)
+					// Previous errors are now stale - clear for fresh state
+					this.clearMonitorData(monitor);
+					break;
 			}
 		});
 		monitor.cleanupFunctions.push(cdpCleanup);
-
-		// Enable Network domain for requests
-		await this.browserViewService.sendCDPCommand(browserViewId, 'Network.enable', {});
 
 		sharedMonitors.set(browserViewId, monitor);
 	}
@@ -261,7 +300,7 @@ export class CDPMonitorService {
 					timestamp: response.timestamp,
 					source: 'network',
 					type: response.status === 0 ? 'failed' : `${response.status}`,
-					message: response.status === 0 ? 'Request failed' : response.statusText,
+					message: response.status === 0 ? 'Request failed' : (response.statusText || `HTTP ${response.status}`),
 					url: response.url,
 					method: request?.method
 				});
@@ -283,6 +322,7 @@ export class CDPMonitorService {
 	 * Get network requests for a browser view.
 	 */
 	getNetworkRequests(browserViewId: number, options?: {
+		includeStaticAssets?: boolean;
 		urlFilter?: string;
 		method?: string;
 		statusFilter?: 'success' | 'error' | 'all';
@@ -304,7 +344,7 @@ export class CDPMonitorService {
 			return [];
 		}
 
-		// Join requests with responses
+		// Join requests with responses, including request type for filtering
 		let requests = monitor.networkRequests.map(req => {
 			const response = monitor.networkResponses.find(r => r.requestId === req.requestId);
 			return {
@@ -317,9 +357,26 @@ export class CDPMonitorService {
 				duration: response?.duration,
 				timestamp: req.timestamp,
 				requestHeaders: req.headers,
-				responseHeaders: response?.headers
+				responseHeaders: response?.headers,
+				_type: req.type  // Internal: used for filtering
 			};
 		});
+
+		// Filter static assets unless includeStaticAssets is true
+		if (!options?.includeStaticAssets) {
+			requests = requests.filter(r => {
+				// Always show API requests
+				if (r._type === 'api') {
+					return true;
+				}
+				// Always show localhost/127.0.0.1 (project assets)
+				if (this.isLocalhost(r.url)) {
+					return true;
+				}
+				// Hide external static assets
+				return false;
+			});
+		}
 
 		// Filter by URL
 		if (options?.urlFilter) {
@@ -344,7 +401,10 @@ export class CDPMonitorService {
 
 		// Apply limit (max 500)
 		const limit = Math.min(options?.limit || 100, 500);
-		return requests.slice(-limit);
+		const limitedRequests = requests.slice(-limit);
+
+		// Remove internal _type field before returning
+		return limitedRequests.map(({ _type, ...rest }) => rest);
 	}
 
 	/**
@@ -360,6 +420,124 @@ export class CDPMonitorService {
 	 */
 	isMonitoring(browserViewId: number): boolean {
 		return sharedMonitors.has(browserViewId);
+	}
+
+	/**
+	 * Manually clear all CDP data for a browser view.
+	 * Useful for agent to reset state before specific actions.
+	 */
+	clearAllData(browserViewId: number): void {
+		const monitor = sharedMonitors.get(browserViewId);
+		if (monitor) {
+			this.clearMonitorData(monitor);
+		}
+	}
+
+	/**
+	 * Get compressed network summary optimized for self-healing agents.
+	 * API requests shown individually, static assets summarized.
+	 */
+	getNetworkSummary(browserViewId: number): {
+		apiRequests: Array<{ method: string; url: string; status?: number; statusText?: string; duration?: number }>;
+		failures: Array<{ method: string; url: string; status: number; statusText: string; error?: string }>;
+		staticAssetsSummary: { loaded: number; failed: number };
+	} {
+		const monitor = sharedMonitors.get(browserViewId);
+		if (!monitor) {
+			return { apiRequests: [], failures: [], staticAssetsSummary: { loaded: 0, failed: 0 } };
+		}
+
+		const apiRequests: Array<{ method: string; url: string; status?: number; statusText?: string; duration?: number }> = [];
+		const failures: Array<{ method: string; url: string; status: number; statusText: string; error?: string }> = [];
+		let staticLoaded = 0;
+		let staticFailed = 0;
+
+		for (const req of monitor.networkRequests) {
+			const response = monitor.networkResponses.find(r => r.requestId === req.requestId);
+			const status = response?.status ?? 0;
+
+			if (req.type === 'static') {
+				// Static assets: just count them
+				if (status >= 200 && status < 400) {
+					staticLoaded++;
+				} else if (status >= 400 || status === 0) {
+					staticFailed++;
+				}
+			} else {
+				// API request: include full details
+				if (status >= 400 || status === 0) {
+					failures.push({
+						method: req.method,
+						url: req.url,
+						status,
+						statusText: response?.statusText || 'Failed',
+						error: status === 0 ? 'Request failed' : undefined
+					});
+				} else if (response) {
+					apiRequests.push({
+						method: req.method,
+						url: req.url,
+						status: response.status,
+						statusText: response.statusText,
+						duration: response.duration
+					});
+				}
+			}
+		}
+
+		return {
+			apiRequests,
+			failures,
+			staticAssetsSummary: { loaded: staticLoaded, failed: staticFailed }
+		};
+	}
+
+	// ==========================================================================
+	// Internal Helpers
+	// ==========================================================================
+
+	/**
+	 * Clear all data for a monitor (called on Page.loadEventFired).
+	 * Gives agents a fresh state after page reload/HMR.
+	 */
+	private clearMonitorData(monitor: CDPMonitor): void {
+		monitor.consoleLogs = [];
+		monitor.networkRequests = [];
+		monitor.networkResponses = [];
+		monitor.requestStartTimes.clear();
+	}
+
+	/**
+	 * Check if a console message is HMR/dev-tool noise.
+	 */
+	private isNoisyLog(message: string): boolean {
+		return NOISE_PATTERNS.some(pattern => pattern.test(message));
+	}
+
+	/**
+	 * Check if a URL is for a static asset.
+	 */
+	private isStaticAsset(url: string): boolean {
+		try {
+			const pathname = new URL(url).pathname;
+			return STATIC_ASSET_REGEX.test(pathname);
+		} catch {
+			return STATIC_ASSET_REGEX.test(url);
+		}
+	}
+
+	/**
+	 * Check if a URL is from localhost/127.0.0.1 (project assets).
+	 * Project assets should always be visible for debugging.
+	 */
+	private isLocalhost(url: string): boolean {
+		try {
+			const urlObj = new URL(url);
+			const hostname = urlObj.hostname.toLowerCase();
+			return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+		} catch {
+			return false;
+		}
 	}
 
 	// ==========================================================================
@@ -387,11 +565,19 @@ export class CDPMonitorService {
 			return '[object]';
 		});
 
+		const fullMessage = messages.join(' ');
+
+		// NOISE FILTER: Drop HMR/Vite/WDS messages at capture time
+		// These waste tokens and have no debugging value for agents
+		if (this.isNoisyLog(fullMessage)) {
+			return;
+		}
+
 		const log: ConsoleLog = {
 			id: `console-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
 			timestamp: timestamp * 1000,
 			type: type as ConsoleLog['type'],
-			message: messages.join(' '),
+			message: fullMessage,
 			args: args.map(a => a.value),
 			stackTrace
 		};
@@ -418,6 +604,10 @@ export class CDPMonitorService {
 
 		monitor.requestStartTimes.set(requestId, timestamp);
 
+		// CLASSIFY: static assets vs API calls
+		// Static assets will be summarized, API calls shown in full
+		const requestType = this.isStaticAsset(request.url) ? 'static' : 'api';
+
 		const networkRequest: NetworkRequest = {
 			id: `req-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
 			requestId,
@@ -425,7 +615,8 @@ export class CDPMonitorService {
 			method: request.method,
 			url: request.url,
 			headers: request.headers || {},
-			postData: request.postData
+			postData: request.postData,
+			type: requestType
 		};
 
 		monitor.networkRequests.push(networkRequest);

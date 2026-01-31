@@ -600,8 +600,7 @@ export class RoopikToolsChannel implements IServerChannel {
 				url: result.data.url,
 				port: result.data.port,
 				state: result.data.status,
-				framework: result.data.framework,
-				frameworkDisplayName: result.data.frameworkDisplayName
+				framework: result.data.framework
 			}
 		};
 	}

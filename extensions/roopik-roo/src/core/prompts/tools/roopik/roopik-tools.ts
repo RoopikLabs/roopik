@@ -5,8 +5,8 @@
  * used for tool validation and routing.
  *
  * Tool Categories:
- * - Browser (12): open, close, action, navigate, reload, screenshot, execute_script, inspect_element,
- *                 get_errors, get_console_logs, get_performance, get_cdp_info
+ * - Browser (14): open, close, action, navigate, reload, screenshot, execute_script, inspect_element,
+ *                 get_errors, get_console_logs, get_performance, get_state, set_viewport, get_network_requests
  * - Project (3): get_active, start, stop
  * - Canvas (3): list, get_active, create
  * - Component (6): add, add_batch, remove, get_info, list, rebuild
@@ -451,7 +451,7 @@ ${descriptions.join("\n\n")}`
  * Used for tool validation and routing.
  */
 export const ROOPIK_TOOL_NAMES = [
-	// Browser (12 tools)
+	// Browser (14 tools)
 	"browser_open",
 	"browser_close",
 	"browser_action_input",
@@ -463,7 +463,9 @@ export const ROOPIK_TOOL_NAMES = [
 	"browser_get_errors",
 	"browser_get_console_logs",
 	"browser_get_performance",
-	"browser_get_cdp_info",
+	"browser_get_state",
+	"browser_set_viewport",
+	"browser_get_network_requests",
 	// Project (3 tools)
 	"project_get_active",
 	"project_start",
