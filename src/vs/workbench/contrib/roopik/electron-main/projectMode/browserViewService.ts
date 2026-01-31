@@ -60,6 +60,13 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	private readonly _onMcpBrowserCloseRequest = new Emitter<McpBrowserCloseRequestEvent>();
 	readonly onMcpBrowserCloseRequest: Event<McpBrowserCloseRequestEvent> = this._onMcpBrowserCloseRequest.event;
 
+	// CDP Monitoring Lifecycle Events
+	private readonly _onBrowserViewCreated = new Emitter<{ browserViewId: number }>();
+	readonly onBrowserViewCreated: Event<{ browserViewId: number }> = this._onBrowserViewCreated.event;
+
+	private readonly _onBrowserViewDestroyed = new Emitter<{ browserViewId: number }>();
+	readonly onBrowserViewDestroyed: Event<{ browserViewId: number }> = this._onBrowserViewDestroyed.event;
+
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
 	private static managedWebContentsIds = new Set<number>();
@@ -233,23 +240,24 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				allowRunningInsecureContent: true,
 				session: browserSession // CRITICAL: Use our configured session for localhost support
 			}
-		});
+	});
 
-		// Add to window
-		window.contentView.addChildView(browserView);
+	// CRITICAL: Get ID and register BEFORE adding to window
+	// Adding to window can trigger immediate navigation attempts!
+	const browserViewId = browserView.webContents.id;
+	const debuggingPort = this.debuggingPortCounter++;
+	BrowserViewService.managedWebContentsIds.add(browserViewId);
 
-		const browserViewId = browserView.webContents.id;
-		const debuggingPort = this.debuggingPortCounter++;
+	// Now safe to add to window - ID is already whitelisted
+	window.contentView.addChildView(browserView);
+
+
 
 		this.logger.info('Browser view created', { browserViewId, windowId, debuggingPort, webContentsId: browserView.webContents.id });
 
 		// Store references
 		this.browserViews.set(browserViewId, browserView);
 		this.browserWindows.set(browserViewId, window);
-
-		// Add to static set for navigation whitelist
-		BrowserViewService.managedWebContentsIds.add(browserViewId);
-
 		// Setup zoom handlers (keyboard + touchpad pinch)
 		this.setupZoomHandlers(browserView);
 
@@ -263,11 +271,17 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		// =========================================================================
 		this.attachSafetyLeash(window, browserViewId);
 
+		// Fire event for CDP monitoring to auto-initialize
+		this._onBrowserViewCreated.fire({ browserViewId });
+
 		return { browserViewId, debuggingPort };
 	}
 
 	async destroyBrowserView(browserViewId: number): Promise<void> {
 		this.logger.info('destroyBrowserView called', { browserViewId });
+
+		// Fire event for CDP monitoring cleanup
+		this._onBrowserViewDestroyed.fire({ browserViewId });
 
 		// Cleanup CDP monitoring if active (from MCP CDP tools)
 		cleanupCDPMonitoring(browserViewId);

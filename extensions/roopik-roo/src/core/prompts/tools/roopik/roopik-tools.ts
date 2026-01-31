@@ -9,7 +9,7 @@
  *                 get_errors, get_console_logs, get_performance, get_state, set_viewport, get_network_requests
  * - Project (3): get_active, start, stop
  * - Canvas (3): list, get_active, create
- * - Component (6): add, add_batch, remove, get_info, list, rebuild
+ * - Component (8): add, add_batch, remove, get_info, list, rebuild, validate_components, screenshot
  */
 
 // =============================================================================
@@ -470,10 +470,11 @@ export const ROOPIK_TOOL_NAMES = [
 	"project_get_active",
 	"project_start",
 	"project_stop",
-	// Canvas (3 tools)
+	// Canvas (4 tools)
 	"canvas_list",
 	"canvas_get_active",
 	"canvas_create",
+	"canvas_validate_components",
 	// Component (6 tools)
 	"component_add",
 	"component_add_batch",

@@ -96,6 +96,16 @@ export const toolParamNames = [
 	"componentId", // component_remove, component_get_info, component_rebuild
 	"deleteSourceCode", // component_remove
 	"components", // component_add_batch
+	// browser_set_viewport parameters
+	"width", // browser_set_viewport
+	"height", // browser_set_viewport
+	"deviceScaleFactor", // browser_set_viewport
+	"mobile", // browser_set_viewport
+	// browser_get_network_requests parameters
+	"includeStaticAssets", // browser_get_network_requests
+	"urlFilter", // browser_get_network_requests
+	"method", // browser_get_network_requests
+	"statusFilter", // browser_get_network_requests
 	// browser_action parameters
 	"key", // browser_action (press)
 	"modifiers", // browser_action (press)
@@ -269,7 +279,7 @@ export type ToolGroupConfig = {
 	customTools?: readonly string[] // Opt-in only tools - only available when explicitly included via model's includedTools
 }
 
-export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
+export const TOOL_DISPLAY_NAMES: Record<string, string> = {
 	execute_command: "run commands",
 	read_file: "read files",
 	read_command_output: "read command output",
@@ -294,7 +304,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	run_slash_command: "run slash command",
 	generate_image: "generate images",
 	custom_tool: "use custom tools",
-	// Roopik IDE Tools - Browser
+	// Roopik IDE Tools - Browser (14 tools)
 	browser_open: "open browser",
 	browser_close: "close browser",
 	browser_action_input: "perform browser input action",
@@ -306,16 +316,19 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	browser_get_errors: "get browser errors",
 	browser_get_console_logs: "get console logs",
 	browser_get_performance: "get browser performance metrics",
-	browser_get_cdp_info: "get browser CDP info",
-	// Roopik IDE Tools - Project
+	browser_get_state: "get browser state",
+	browser_set_viewport: "set browser viewport",
+	browser_get_network_requests: "get network requests",
+	// Roopik IDE Tools - Project (3 tools)
 	project_get_active: "get active project",
 	project_start: "start project",
 	project_stop: "stop project",
-	// Roopik IDE Tools - Canvas
+	// Roopik IDE Tools - Canvas (4 tools)
 	canvas_list: "list canvases",
 	canvas_get_active: "get active canvas",
 	canvas_create: "create canvas",
-	// Roopik IDE Tools - Component
+	canvas_validate_components: "validate canvas components",
+	// Roopik IDE Tools - Component (7 tools)
 	component_add: "add component",
 	component_add_batch: "add multiple components",
 	component_remove: "remove component",
@@ -348,7 +361,7 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 	},
 	roopik: {
 		tools: [
-			// Browser (12 tools)
+			// Browser (14 tools)
 			"browser_open",
 			"browser_close",
 			"browser_action_input",
@@ -361,14 +374,18 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 			"browser_get_console_logs",
 			"browser_get_performance",
 			"browser_get_cdp_info",
+			"browser_get_state",
+			"browser_set_viewport",
+			"browser_get_network_requests",
 			// Project (3 tools)
 			"project_get_active",
 			"project_start",
 			"project_stop",
-			// Canvas (3 tools)
+			// Canvas (4 tools)
 			"canvas_list",
 			"canvas_get_active",
 			"canvas_create",
+			"canvas_validate_components",
 			// Component (6 tools)
 			"component_add",
 			"component_add_batch",

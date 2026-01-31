@@ -1151,6 +1151,39 @@ export const ChatRowContent = ({
 						</span>
 					</div>
 				)
+			case "browser_get_state":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("info")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetState")
+								: t("chat:roopik.browser.didGetState")}
+						</span>
+					</div>
+				)
+			case "browser_set_viewport":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("device-mobile")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToSetViewport")
+								: t("chat:roopik.browser.didSetViewport")}
+						</span>
+					</div>
+				)
+			case "browser_get_network_requests":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("globe")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetNetworkRequests")
+								: t("chat:roopik.browser.didGetNetworkRequests")}
+						</span>
+					</div>
+				)
 
 			// Project Tools (3)
 			case "project_get_active":
@@ -1231,8 +1264,19 @@ export const ChatRowContent = ({
 						)}
 					</div>
 				)
+			case "canvas_validate_components":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("checklist")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.canvas.wantsToValidateComponents")
+								: t("chat:roopik.canvas.didValidateComponents")}
+						</span>
+					</div>
+				)
 
-			// Component Tools (6)
+			// Component Tools (8)
 			case "component_add":
 				return (
 					<div style={headerStyle}>

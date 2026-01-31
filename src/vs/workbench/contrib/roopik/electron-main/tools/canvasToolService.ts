@@ -11,10 +11,12 @@
  */
 
 import type { ICanvasService } from '../../common/canvas/canvasService.js';
+import type { ComponentService } from '../component/componentService.js';
 import type {
 	ToolResult,
 	CanvasListResult,
 	CanvasInfo,
+	ComponentInfo,
 } from '../mcp/executor/types.js';
 
 // ============================================================================
@@ -23,7 +25,8 @@ import type {
 
 export class CanvasToolService {
 	constructor(
-		private readonly canvasService: ICanvasService
+		private readonly canvasService: ICanvasService,
+		private readonly componentService?: ComponentService
 	) {}
 
 	// ==========================================================================
@@ -174,6 +177,91 @@ export class CanvasToolService {
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to create canvas'
+			};
+		}
+	}
+
+	// ==========================================================================
+	// Open Canvas
+	// ==========================================================================
+
+	async open(params: { canvasId?: string; name?: string }): Promise<ToolResult<CanvasInfo & { components?: ComponentInfo[] }>> {
+		try {
+			// Need either canvasId or name
+			if (!params.canvasId && !params.name) {
+				return {
+					success: false,
+					error: 'Must provide either canvasId or name'
+				};
+			}
+
+			let canvas;
+
+			// If canvasId provided, look up by ID
+			if (params.canvasId) {
+				canvas = await this.canvasService.getCanvasAsync(params.canvasId);
+				if (!canvas) {
+					return {
+						success: false,
+						error: `Canvas not found: ${params.canvasId}`
+					};
+				}
+			}
+			// If name provided, look up by name in the list
+			else if (params.name) {
+				const canvases = await this.canvasService.listCanvasesAsync();
+				canvas = canvases.find(c => c.name.toLowerCase() === params.name!.toLowerCase());
+				if (!canvas) {
+					return {
+						success: false,
+						error: `Canvas not found: ${params.name}`
+					};
+				}
+			}
+
+			// Trigger the canvas to open by calling createCanvas with the existing name
+			// This will fire the onCanvasCreated event which opens the UI panel
+			const result = await this.canvasService.createCanvas(canvas!.name);
+
+			// Get components list if componentService is available
+			let components: ComponentInfo[] | undefined;
+			if (this.componentService) {
+				const componentsInCanvas = this.componentService.getComponentsForCanvas(result.canvasId);
+				components = componentsInCanvas.map(c => {
+					// Runtime error takes precedence over build status
+					let status: 'pending' | 'building' | 'ready' | 'error';
+					if (c.runtimeError) {
+						status = 'error';  // Component crashed at runtime
+					} else {
+						status = c.buildState.status;
+					}
+
+					return {
+						id: c.id,
+						name: c.componentName,
+						path: c.folderPath,
+						canvasId: c.canvasId,
+						status
+					};
+				});
+			}
+
+			return {
+				success: true,
+				data: {
+					id: result.canvasId,
+					name: result.canvas.name,
+					description: result.canvas.description,
+					componentCount: result.canvas.componentCount || 0,
+					createdAt: result.canvas.createdAt,
+					updatedAt: result.canvas.updatedAt,
+					components
+				}
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to open canvas'
 			};
 		}
 	}

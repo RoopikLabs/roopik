@@ -22,7 +22,8 @@ import {
 	ComponentCreatedEvent,
 	ComponentBuildEvent,
 	ComponentDeletedEvent,
-	ComponentUpdatedEvent
+	ComponentUpdatedEvent,
+	ComponentScreenshotRequestEvent
 } from '../common/component/componentService.js';
 import {
 	Component,
@@ -49,6 +50,7 @@ export class ComponentServiceClient implements IComponentService {
 	readonly onComponentBuilt: Event<ComponentBuildEvent>;
 	readonly onComponentDeleted: Event<ComponentDeletedEvent>;
 	readonly onComponentUpdated: Event<ComponentUpdatedEvent>;
+	readonly onScreenshotRequested: Event<ComponentScreenshotRequestEvent>;
 
 	// ========================================================================
 	// Constructor
@@ -65,6 +67,7 @@ export class ComponentServiceClient implements IComponentService {
 		this.onComponentBuilt = this.channel.listen<ComponentBuildEvent>('onComponentBuilt');
 		this.onComponentDeleted = this.channel.listen<ComponentDeletedEvent>('onComponentDeleted');
 		this.onComponentUpdated = this.channel.listen<ComponentUpdatedEvent>('onComponentUpdated');
+		this.onScreenshotRequested = this.channel.listen<ComponentScreenshotRequestEvent>('onScreenshotRequested');
 	}
 
 	// ========================================================================
@@ -255,5 +258,26 @@ export class ComponentServiceClient implements IComponentService {
 	 */
 	clearRuntimeError(componentId: string): void {
 		this.channel.call('clearRuntimeError', componentId);
+	}
+
+	// ========================================================================
+	// Screenshot (Bidirectional IPC)
+	// ========================================================================
+
+	/**
+	 * Request a component screenshot (bidirectional IPC)
+	 * This is called by tools in main process.
+	 * The browser contribution will listen to onScreenshotRequested and handle it.
+	 */
+	async requestComponentScreenshot(componentId: string): Promise<string> {
+		return this.channel.call('requestComponentScreenshot', componentId);
+	}
+
+	/**
+	 * Deliver screenshot result (called by browser contribution)
+	 * This sends the screenshot back to main process to resolve the pending promise.
+	 */
+	deliverComponentScreenshot(requestId: string, screenshot: string | null, error?: string): void {
+		this.channel.call('deliverComponentScreenshot', { requestId, screenshot, error });
 	}
 }

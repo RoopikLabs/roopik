@@ -71,9 +71,9 @@ export class ToolExecutor {
 
 		// Create unified tool services
 		this.browserToolService = new BrowserToolService(browserViewService, this.cdpMonitorService);
-		this.canvasToolService = new CanvasToolService(canvasService);
+		this.canvasToolService = new CanvasToolService(canvasService, componentService);
 		this.componentToolService = new ComponentToolService(componentService, canvasService);
-		this.projectToolService = new ProjectToolService(devServerService, storageService);
+		this.projectToolService = new ProjectToolService(devServerService, storageService, browserViewService);
 	}
 
 	/**
@@ -132,17 +132,19 @@ export class ToolExecutor {
 			'browser_get_state',
 			'browser_set_viewport',
 			'browser_get_network_requests',
-			// Canvas tools (3)
+			// Canvas tools (4)
 			'canvas_list',
 			'canvas_get_active',
 			'canvas_create',
-			// Component tools (6)
+			'canvas_validate_components',
+			// Component tools (8)
 			'component_add',
 			'component_add_batch',
 			'component_remove',
 			'component_get_info',
 			'component_list',
 			'component_rebuild',
+			// 'component_screenshot', // TODO: Disabled - race condition with webview init
 			// Project tools (3)
 			'project_get_active',
 			'project_start',
@@ -237,7 +239,7 @@ export class ToolExecutor {
 	}
 
 	// ==========================================================================
-	// Canvas Tool Routing (3 tools) - Delegates to CanvasToolService
+	// Canvas Tool Routing (4 tools) - Delegates to CanvasToolService
 	// ==========================================================================
 
 	private async executeCanvasTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
@@ -255,6 +257,17 @@ export class ToolExecutor {
 			case 'canvas_create':
 				return this.canvasToolService.create(params.name as string);
 
+			case 'canvas_open':
+				return this.canvasToolService.open({
+					canvasId: params.canvasId as string | undefined,
+					name: params.name as string | undefined,
+				});
+
+			case 'canvas_validate_components':
+				// Note: Despite the 'canvas_' prefix, this is implemented in ComponentToolService
+				// because it operates on components within a canvas
+				return this.componentToolService.validateComponents(params.canvasId as string | undefined);
+
 			default:
 				return {
 					success: false,
@@ -264,7 +277,7 @@ export class ToolExecutor {
 	}
 
 	// ==========================================================================
-	// Component Tool Routing (6 tools) - Delegates to ComponentToolService
+	// Component Tool Routing (8 tools) - Delegates to ComponentToolService
 	// ==========================================================================
 
 	private async executeComponentTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
@@ -301,6 +314,13 @@ export class ToolExecutor {
 
 			case 'component_rebuild':
 				return this.componentToolService.rebuild(params.componentId as string);
+
+			// TODO: Disabled - race condition with webview initialization
+			// case 'component_screenshot':
+			// 	return this.componentToolService.screenshot(
+			// 		params.componentId as string,
+			// 		params.canvasId as string
+			// 	);
 
 			default:
 				return {

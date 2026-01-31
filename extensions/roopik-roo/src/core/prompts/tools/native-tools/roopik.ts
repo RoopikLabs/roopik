@@ -650,6 +650,27 @@ export const component_rebuild: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
+export const canvas_validate_components: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "canvas_validate_components",
+		description:
+			"[Roopik IDE] Validate all components in a canvas in a single efficient call. **IMPORTANT: Use this tool immediately after calling `component_add_batch` or when adding multiple components sequentially to verify their build and runtime health.** Returns a summary (total, success, failed, building counts) plus detailed error information for any failed components, including syntax errors and runtime failures. This is significantly more efficient than polling individual `component_get_info` calls. Use this to catch errors early and ensure users see a working UI.",
+		strict: true,
+		parameters: {
+			type: "object",
+			properties: {
+				canvasId: {
+					type: "string",
+					description: "Canvas ID to validate. Omit to use the currently active canvas.",
+				},
+			},
+			required: [],
+			additionalProperties: false,
+		},
+	},
+}
+
 // ============================================================================
 // Export all Roopik tools
 // ============================================================================
@@ -674,10 +695,11 @@ export const roopikNativeTools: OpenAI.Chat.ChatCompletionTool[] = [
 	project_get_active,
 	project_start,
 	project_stop,
-	// Canvas (3 tools)
+	// Canvas (4 tools)
 	canvas_list,
 	canvas_get_active,
 	canvas_create,
+	canvas_validate_components,
 	// Component (6 tools)
 	component_add,
 	component_add_batch,

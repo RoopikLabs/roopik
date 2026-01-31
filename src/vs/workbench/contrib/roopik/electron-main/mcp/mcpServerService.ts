@@ -310,12 +310,12 @@ export class McpServerService extends Disposable implements IMcpServerService {
 				// Initialize Tool Executor if needed
 				if (!this.toolExecutor) {
 					this.toolExecutor = new ToolExecutor(
-						this.browserViewService,
-						this.storageService,
-						this.canvasService,
-						this.componentService,
-						this.devServerService
-					);
+					this.browserViewService,
+					this.storageService,
+					this.canvasService,
+					this.componentService,
+					this.devServerService
+				);
 				}
 				await this.startWebSocketServer();
 				await this.initializeInstaller();

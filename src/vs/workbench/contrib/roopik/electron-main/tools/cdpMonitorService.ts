@@ -137,7 +137,21 @@ export function cleanupCDPMonitoring(browserViewId: number): void {
 export class CDPMonitorService {
 	constructor(
 		private readonly browserViewService: BrowserViewService
-	) { }
+	) {
+		// Auto-initialize CDP monitoring for ALL browser views
+		// This ensures monitoring works regardless of how browser was opened (tool, manual, etc.)
+		this.browserViewService.onBrowserViewCreated(({ browserViewId }) => {
+			// Initialize asynchronously, don't block browser creation
+			this.ensureMonitoring(browserViewId).catch(err => {
+				console.error('[CDP] Failed to initialize monitoring for browserViewId:', browserViewId, err);
+			});
+		});
+
+		// Optional: Explicit cleanup on destroy (though cleanup already happens in destroyBrowserView)
+		this.browserViewService.onBrowserViewDestroyed(({ browserViewId }) => {
+			this.cleanup(browserViewId);
+		});
+	}
 
 	// ==========================================================================
 	// Public API
@@ -171,7 +185,10 @@ export class CDPMonitorService {
 		// Attach debugger (throws on failure)
 		try {
 			await this.browserViewService.attachDebugger(browserViewId);
-		} catch {
+		} catch (err) {
+			// Log the actual error instead of silently failing
+			console.error('[CDP] Failed to attach debugger to browserViewId:', browserViewId, err);
+			// Don't throw - CDP monitoring is optional, browser should still work
 			return;
 		}
 
@@ -497,14 +514,15 @@ export class CDPMonitorService {
 	// ==========================================================================
 
 	/**
-	 * Clear all data for a monitor (called on Page.loadEventFired).
-	 * Gives agents a fresh state after page reload/HMR.
+	 * Clear console logs only (called on Page.loadEventFired).
+	 * Console logs are cleared to remove HMR noise after page reload.
+	 * Network requests are KEPT so agents can analyze them after page load completes.
 	 */
 	private clearMonitorData(monitor: CDPMonitor): void {
+		// Only clear console logs - they're noisy with HMR/Vite spam
 		monitor.consoleLogs = [];
-		monitor.networkRequests = [];
-		monitor.networkResponses = [];
-		monitor.requestStartTimes.clear();
+		// Keep network requests - agents need these after page loads!
+		// Network requests will accumulate until browser is closed or manually cleared
 	}
 
 	/**

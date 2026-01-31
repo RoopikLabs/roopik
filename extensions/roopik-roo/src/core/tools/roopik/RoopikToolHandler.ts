@@ -136,7 +136,7 @@ export async function handleRoopikTool(
 				result = await handleCreateCanvas(task, block, callbacks)
 				break
 
-			// Component Tools (6)
+			// Component Tools (8)
 			case "component_add":
 				result = await handleAddComponent(task, block, callbacks)
 				break
@@ -154,6 +154,9 @@ export async function handleRoopikTool(
 				break
 			case "component_rebuild":
 				result = await handleRebuildComponent(task, block, callbacks)
+				break
+			case "canvas_validate_components":
+				result = await handleValidateComponents(task, block, callbacks)
 				break
 
 			default:
@@ -455,6 +458,11 @@ async function handleRebuildComponent(task: Task, block: ToolUse, callbacks: Too
 		return { success: false, error: "Missing required parameter: componentId" }
 	}
 	return roopikClient.rebuildComponent(componentId)
+}
+
+async function handleValidateComponents(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const canvasId = block.params.canvasId
+	return roopikClient.validateComponents(canvasId)
 }
 
 // ============================================================================

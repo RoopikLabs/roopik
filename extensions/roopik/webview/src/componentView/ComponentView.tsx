@@ -498,6 +498,27 @@ function App() {
 					}
 					break;
 				}
+
+				case "captureComponentScreenshot": {
+					const { requestId, componentId } = msg.payload;
+					(async () => {
+						try {
+							const screenshot = await captureComponentScreenshot(componentId);
+							vscode.postMessage({
+								type: "screenshotResponse",
+								requestId,
+								screenshot
+							});
+						} catch (error) {
+							vscode.postMessage({
+								type: "screenshotResponse",
+								requestId,
+								screenshot: null
+							});
+						}
+					})();
+					break;
+				}
 			}
 		};
 
@@ -625,10 +646,15 @@ function App() {
 		const iframe = document.querySelector(
 			`iframe[data-sandbox-id="${componentId}"]`,
 		) as HTMLIFrameElement | null;
+
+		if (!iframe) {
+			return null;
+		}
+
 		const doc = iframe?.contentDocument;
 		const target = doc?.documentElement;
 
-		if (!iframe || !doc || !target) {
+		if (!doc || !target) {
 			return null;
 		}
 
@@ -636,6 +662,7 @@ function App() {
 			const scrollWidth = Math.max(target.scrollWidth, target.clientWidth);
 			const scrollHeight = Math.max(target.scrollHeight, target.clientHeight);
 			const iframeWindow = iframe.contentWindow;
+
 			const canvas = await html2canvas(target, {
 				backgroundColor: null,
 				logging: false,
@@ -650,7 +677,6 @@ function App() {
 
 			return canvas.toDataURL("image/png");
 		} catch (error) {
-			logger.warn("[Canvas] Screenshot capture failed", { componentId, error });
 			return null;
 		}
 	}, []);

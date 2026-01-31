@@ -24,8 +24,8 @@
  *                       browser_set_viewport, browser_get_network_requests
  * - Project Tools (3): project_get_active, project_start, project_stop
  * - Canvas Tools (3): canvas_list, canvas_get_active, canvas_create
- * - Component Tools (6): component_add, component_add_batch, component_remove,
- *                        component_get_info, component_list, component_rebuild
+ * - Component Tools (7): component_add, component_add_batch, component_remove,
+ *                        component_get_info, component_list, component_rebuild, canvas_validate_components
  */
 
 import { Event } from '../../../../../base/common/event.js';
@@ -81,9 +81,9 @@ export class RoopikToolsChannel implements IServerChannel {
 
 		// Create unified tool services
 		this.browserToolService = new BrowserToolService(browserViewService, this.cdpMonitorService);
-		this.canvasToolService = new CanvasToolService(canvasService);
+		this.canvasToolService = new CanvasToolService(canvasService, componentService);
 		this.componentToolService = new ComponentToolService(componentService, canvasService);
-		this.projectToolService = new ProjectToolService(devServerService, storageService);
+		this.projectToolService = new ProjectToolService(devServerService, storageService, browserViewService);
 	}
 
 	/**
@@ -213,6 +213,13 @@ export class RoopikToolsChannel implements IServerChannel {
 
 				case 'component_rebuild':
 					return this.handleRebuildComponent(arg as { componentId: string });
+
+				case 'canvas_validate_components':
+					return this.handleValidateComponents(arg as { canvasId?: string });
+
+				// TODO: Feature pending - race condition with webview init
+				// case 'component_screenshot':
+				// 	return this.handleComponentScreenshot(arg as { componentId: string; canvasId: string });
 
 				default:
 					return {
@@ -807,4 +814,14 @@ export class RoopikToolsChannel implements IServerChannel {
 		// Delegate to unified ComponentToolService
 		return this.componentToolService.rebuild(args.componentId);
 	}
+
+	private async handleValidateComponents(args: { canvasId?: string }): Promise<RoopikToolResult> {
+		// Delegate to unified ComponentToolService
+		return this.componentToolService.validateComponents(args.canvasId);
+	}
+
+	// TODO: Feature pending - race condition with webview init
+	// private async handleComponentScreenshot(args: { componentId: string; canvasId: string }): Promise<RoopikToolResult> {
+	// 	return this.componentToolService.screenshot(args.componentId, args.canvasId);
+	// }
 }

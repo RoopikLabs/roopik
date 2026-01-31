@@ -11,12 +11,15 @@
  */
 
 import type { DevServerService } from '../projectMode/devServer/devServerService.js';
+import type { IRoopikStorageService } from '../../common/storage/storageService.js';
+import type { BrowserViewService } from '../projectMode/browserViewService.js';
 import type {
 	ToolResult,
 	ProjectServerInfo,
 	ProjectStartResult,
 	ProjectStopResult,
 } from '../mcp/executor/types.js';
+import { resolve, normalize } from '../../../../../base/common/path.js';
 
 // ============================================================================
 // Project Tool Service
@@ -24,7 +27,9 @@ import type {
 
 export class ProjectToolService {
 	constructor(
-		private readonly devServerService: DevServerService
+		private readonly devServerService: DevServerService,
+		private readonly storageService: IRoopikStorageService,
+		private readonly browserViewService: BrowserViewService
 	) {}
 
 	// ==========================================================================
@@ -80,22 +85,47 @@ export class ProjectToolService {
 				};
 			}
 
+			// Resolve relative paths against workspace (handles both relative and absolute)
+			let inputPath = projectPath;
+
+			// On non-Windows platforms, convert backslashes to forward slashes
+			if (process.platform !== 'win32') {
+				inputPath = inputPath.replace(/\\/g, '/');
+			}
+
+			const workspacePath = this.storageService.getWorkspaceRootPath();
+			const resolvedPath = resolve(workspacePath, normalize(inputPath));
+
 			// Start the dev server - returns URL on success, throws on failure
 			const url = await this.devServerService.startServer({
-				projectRoot: projectPath,
+				projectRoot: resolvedPath,
 				port
 			});
 
 			// Get server info to retrieve framework
 			const serverInfo = await this.devServerService.getRunningServer();
 
+			// Wait for server to be actually ready before navigating
+			await this.waitForServerReady(url);
+
+			// Auto-open and navigate browser to the dev server URL
+			// This ensures browser shows the project immediately after starting
+			const browserViewId = this.browserViewService.getActiveBrowserViewId();
+			if (browserViewId !== undefined) {
+				// Browser already open - navigate to URL
+				await this.browserViewService.navigate(browserViewId, url);
+			} else {
+				// Browser not open - request to open with URL
+				this.browserViewService.requestBrowserOpen(url);
+			}
+
 			return {
 				success: true,
 				data: {
 					url,
-					projectRoot: projectPath,
+					projectRoot: resolvedPath,
 					framework: serverInfo?.framework,
-					message: `Dev server starting for ${projectPath}`
+					message: `Dev server starting for ${resolvedPath}`
 				}
 			};
 		} catch (error) {
@@ -141,4 +171,38 @@ export class ProjectToolService {
 			};
 		}
 	}
+
+	/**
+	 * Wait for server to be actually ready to accept connections
+	 * Retries with exponential backoff up to ~5 seconds
+	 */
+	private async waitForServerReady(url: string): Promise<void> {
+		const maxAttempts = 10;
+		const baseDelay = 100; // Start with 100ms
+
+		for (let attempt = 0; attempt < maxAttempts; attempt++) {
+			try {
+				// Try to fetch the URL with GET to ensure HTML is actually compiled
+				const response = await fetch(url, { method: 'GET' });
+				if (response.ok || response.status === 304) {
+					// Verify we got HTML content, not an error page
+					const contentType = response.headers.get('content-type') || '';
+					if (contentType.includes('text/html')) {
+						// Add a small grace period for Vite to fully initialize
+						await new Promise(resolve => setTimeout(resolve, 200));
+						return;
+					}
+				}
+			} catch {
+				// Server not ready yet, wait and retry
+				if (attempt < maxAttempts - 1) {
+					const delay = baseDelay * Math.pow(1.5, attempt); // Exponential backoff
+					await new Promise(resolve => setTimeout(resolve, delay));
+				}
+			}
+		}
+		// If we get here, server didn't respond in time, but continue anyway
+		// The navigation might still work, or it will show a proper error
+	}
+
 }

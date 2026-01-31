@@ -39,7 +39,7 @@ export const toolNames = [
 	"run_slash_command",
 	"generate_image",
 	"custom_tool",
-	// Roopik IDE Tools - Browser (12)
+	// Roopik IDE Tools - Browser (14)
 	"browser_open",
 	"browser_close",
 	"browser_action_input",
@@ -51,16 +51,19 @@ export const toolNames = [
 	"browser_get_errors",
 	"browser_get_console_logs",
 	"browser_get_performance",
-	"browser_get_cdp_info",
+	"browser_get_state",
+	"browser_set_viewport",
+	"browser_get_network_requests",
 	// Roopik IDE Tools - Project (3)
 	"project_get_active",
 	"project_start",
 	"project_stop",
-	// Roopik IDE Tools - Canvas (3)
+	// Roopik IDE Tools - Canvas (4)
 	"canvas_list",
 	"canvas_get_active",
 	"canvas_create",
-	// Roopik IDE Tools - Component (6)
+	"canvas_validate_components",
+	// Roopik IDE Tools - Component (7)
 	"component_add",
 	"component_add_batch",
 	"component_remove",

@@ -630,6 +630,29 @@ export class NativeToolCallParser {
 			case "browser_get_cdp_info":
 				nativeArgs = {}
 				break
+			// @ts-expect-error - Roopik-specific tool not in base ToolName type
+			case "browser_get_state":
+				nativeArgs = {}
+				break
+			// @ts-expect-error - Roopik-specific tool not in base ToolName type
+			case "browser_set_viewport":
+				nativeArgs = {
+					width: partialArgs.width,
+					height: partialArgs.height,
+					deviceScaleFactor: partialArgs.deviceScaleFactor,
+					mobile: partialArgs.mobile,
+				}
+				break
+			// @ts-expect-error - Roopik-specific tool not in base ToolName type
+			case "browser_get_network_requests":
+				nativeArgs = {
+					includeStaticAssets: partialArgs.includeStaticAssets,
+					urlFilter: partialArgs.urlFilter,
+					method: partialArgs.method,
+					statusFilter: partialArgs.statusFilter,
+					limit: partialArgs.limit,
+				}
+				break
 
 			// Project Tools (3)
 			case "project_get_active":
@@ -659,8 +682,12 @@ export class NativeToolCallParser {
 			case "canvas_create":
 				nativeArgs = { name: partialArgs.name }
 				break
+			// @ts-expect-error - Roopik-specific tool not in base ToolName type
+			case "canvas_validate_components":
+				nativeArgs = { canvasId: partialArgs.canvasId }
+				break
 
-			// Component Tools (6)
+			// Component Tools (8)
 			case "component_add":
 				nativeArgs = {
 					folderPath: partialArgs.folderPath,
@@ -1057,6 +1084,29 @@ export class NativeToolCallParser {
 				case "browser_get_cdp_info":
 					nativeArgs = {} as NativeArgsFor<TName>
 					break
+				// @ts-expect-error - Roopik-specific tool not in base ToolName type
+				case "browser_get_state":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+				// @ts-expect-error - Roopik-specific tool not in base ToolName type
+				case "browser_set_viewport":
+					nativeArgs = {
+						width: args.width,
+						height: args.height,
+						deviceScaleFactor: args.deviceScaleFactor,
+						mobile: args.mobile,
+					} as unknown as NativeArgsFor<TName>
+					break
+				// @ts-expect-error - Roopik-specific tool not in base ToolName type
+				case "browser_get_network_requests":
+					nativeArgs = {
+						includeStaticAssets: args.includeStaticAssets,
+						urlFilter: args.urlFilter,
+						method: args.method,
+						statusFilter: args.statusFilter,
+						limit: args.limit,
+					} as unknown as NativeArgsFor<TName>
+					break
 
 				// Project Tools (3)
 				case "project_get_active":
@@ -1090,8 +1140,12 @@ export class NativeToolCallParser {
 						nativeArgs = { name: args.name } as NativeArgsFor<TName>
 					}
 					break
+				// @ts-expect-error - Roopik-specific tool not in base ToolName type
+				case "canvas_validate_components":
+					nativeArgs = { canvasId: args.canvasId } as unknown as NativeArgsFor<TName>
+					break
 
-				// Component Tools (6)
+				// Component Tools (8)
 				case "component_add":
 					if (args.folderPath !== undefined) {
 						nativeArgs = {

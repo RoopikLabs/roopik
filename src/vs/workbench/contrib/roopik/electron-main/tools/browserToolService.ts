@@ -61,9 +61,9 @@ export class BrowserToolService {
 
 			// Browser is already open - navigate if URL provided
 			if (url) {
-				await this.browserViewService.navigate(browserViewId, url);
-				// Enable CDP monitoring proactively
-				await this.cdpMonitorService.ensureMonitoring(browserViewId);
+			// Enable CDP monitoring BEFORE navigating to capture all network events
+			await this.cdpMonitorService.ensureMonitoring(browserViewId);
+			await this.browserViewService.navigate(browserViewId, url);
 				return {
 					success: true,
 					data: {
@@ -166,10 +166,10 @@ export class BrowserToolService {
 				return { success: false, error: 'No browser is open. Use browser_open first.' };
 			}
 
+			// Enable CDP monitoring BEFORE navigating to capture all network events
+			await this.cdpMonitorService.ensureMonitoring(browserViewId);
 			await this.browserViewService.navigate(browserViewId, url);
 
-			// Enable CDP monitoring proactively
-			await this.cdpMonitorService.ensureMonitoring(browserViewId);
 
 			return {
 				success: true,
@@ -194,10 +194,10 @@ export class BrowserToolService {
 				return { success: false, error: 'No browser is open. Use browser_open first.' };
 			}
 
+			// Enable CDP monitoring BEFORE reloading to capture all network events
+			await this.cdpMonitorService.ensureMonitoring(browserViewId);
 			await this.browserViewService.reload(browserViewId, ignoreCache);
 
-			// Enable CDP monitoring proactively
-			await this.cdpMonitorService.ensureMonitoring(browserViewId);
 
 			// Get current URL from navigation state
 			const navState = await this.browserViewService.getNavigationState(browserViewId);

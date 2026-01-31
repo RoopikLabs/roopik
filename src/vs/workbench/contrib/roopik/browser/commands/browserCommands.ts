@@ -278,7 +278,7 @@ export function registerBrowserCommands(): void {
 			try {
 				// Get status before restart
 				const statusBefore = await mcpServerService.getStatus();
-				const portBefore = statusBefore.port;
+				const portBefore = statusBefore.wsPort;
 
 				// Show notification that restart is in progress
 				notificationService.info('Restarting MCP Server...');
@@ -288,7 +288,7 @@ export function registerBrowserCommands(): void {
 
 				// Get status after restart
 				const statusAfter = await mcpServerService.getStatus();
-				const portAfter = statusAfter.port;
+				const portAfter = statusAfter.wsPort;
 
 				// Show success message
 				if (portBefore === portAfter) {

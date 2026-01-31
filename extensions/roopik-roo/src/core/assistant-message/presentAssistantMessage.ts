@@ -445,6 +445,12 @@ export async function presentAssistantMessage(cline: Task) {
 						return `[browser_get_performance]`
 					case "browser_get_cdp_info":
 						return `[browser_get_cdp_info]`
+					case "browser_get_state":
+						return `[browser_get_state]`
+					case "browser_set_viewport":
+						return `[browser_set_viewport${block.params.width && block.params.height ? ` ${block.params.width}x${block.params.height}` : ""}]`
+					case "browser_get_network_requests":
+						return `[browser_get_network_requests]`
 					// Roopik IDE Tools - Project (3)
 					case "project_get_active":
 						return `[project_get_active]`
@@ -459,7 +465,9 @@ export async function presentAssistantMessage(cline: Task) {
 						return `[canvas_get_active]`
 					case "canvas_create":
 						return `[canvas_create '${block.params.name}']`
-					// Roopik IDE Tools - Component (6)
+					case "canvas_validate_components":
+						return `[canvas_validate_components${block.params.canvasId ? ` '${block.params.canvasId}'` : ""}]`
+					// Roopik IDE Tools - Component (8)
 					case "component_add":
 						return `[component_add '${block.params.folderPath || block.params.path}']`
 					case "component_add_batch":
@@ -976,8 +984,8 @@ export async function presentAssistantMessage(cline: Task) {
 						pushToolResult,
 					})
 					break
-				// Roopik IDE Tools (24 tools)
-				// Browser (12)-// Project (3)-// Canvas (3)-// Component (6)
+				// Roopik IDE Tools (28 tools)
+				// Browser (14)-// Project (3)-// Canvas (4)-// Component (8)
 				case "browser_open":
 				case "browser_close":
 				case "browser_action_input":
@@ -990,12 +998,16 @@ export async function presentAssistantMessage(cline: Task) {
 				case "browser_get_console_logs":
 				case "browser_get_performance":
 				case "browser_get_cdp_info":
+				case "browser_get_state":
+				case "browser_set_viewport":
+				case "browser_get_network_requests":
 				case "project_get_active":
 				case "project_start":
 				case "project_stop":
 				case "canvas_list":
 				case "canvas_get_active":
 				case "canvas_create":
+				case "canvas_validate_components":
 				case "component_add":
 				case "component_add_batch":
 				case "component_remove":

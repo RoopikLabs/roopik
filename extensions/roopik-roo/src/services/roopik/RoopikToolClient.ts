@@ -626,6 +626,16 @@ export class RoopikToolClient {
 		})
 	}
 
+	/**
+	 * Validate all components in a canvas
+	 * Returns summary (total, success, failed, building) + detailed errors for failed components
+	 */
+	async validateComponents(canvasId?: string): Promise<RoopikToolResult<unknown>> {
+		return this.executeCommand<unknown>("roopik.tools.validateComponents", {
+			canvasId,
+		})
+	}
+
 	// ========================================================================
 	// Internal Helpers
 	// ========================================================================

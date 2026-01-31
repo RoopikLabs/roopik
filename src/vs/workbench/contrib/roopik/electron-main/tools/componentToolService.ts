@@ -285,4 +285,177 @@ export class ComponentToolService {
 			};
 		}
 	}
+
+	// ==========================================================================
+	// Validate Components (Batch Status Check)
+	// ==========================================================================
+
+	async validateComponents(canvasId?: string): Promise<ToolResult<{
+		summary: {
+			total: number;
+			success: number;
+			failed: number;
+			building: number;
+			hasErrors: boolean;
+		};
+		components: Array<{
+			id: string;
+			name: string;
+			buildState: string;
+			folderPath?: string;
+			error?: string;
+			errorStack?: string;
+			runtimeError?: { message: string; type: string; stack?: string };
+			timestamp?: number;
+		}>;
+	}>> {
+		try {
+			// Get canvas ID (use active if not provided)
+			let targetCanvasId = canvasId;
+			if (!targetCanvasId) {
+				const activeCanvasId = await this.canvasService.getFocusedCanvasIdAsync();
+				if (!activeCanvasId) {
+					return {
+						success: false,
+						error: 'No active canvas. Specify canvasId or open a canvas first.'
+					};
+				}
+				targetCanvasId = activeCanvasId;
+			}
+
+			// Get all components for canvas
+			const components = this.componentService.getComponentsForCanvas(targetCanvasId);
+
+			// Gather detailed info for each component
+			const componentDetails = await Promise.all(
+				components.map(async (c) => {
+					const info = await this.componentService.getComponentInfo(c.id);
+
+					// Determine final status (runtime error overrides build status)
+					let buildState: string;
+					if (info.runtimeError) {
+						buildState = 'error';
+					} else {
+						buildState = info.buildStatus;
+					}
+
+					// Create base result object (always include these fields)
+					const result: {
+						id: string;
+						name: string;
+						buildState: string;
+						folderPath?: string;
+						error?: string;
+						errorStack?: string;
+						runtimeError?: { message: string; type: string; stack?: string };
+						timestamp?: number;
+					} = {
+						id: c.id,
+						name: c.componentName || 'Unknown',
+						buildState
+					};
+
+					// For success/ready, return minimal data
+					if (buildState === 'ready' && !info.runtimeError) {
+						return result;
+					}
+
+					// For errors/building, add detailed data
+					result.folderPath = c.folderPath;
+
+					// Add build error details
+					if (info.buildStatus === 'error' && info.buildErrorInfo) {
+						result.error = info.buildErrorInfo.message;
+						result.timestamp = Date.now();
+					}
+
+					// Add runtime error details (takes precedence)
+					if (info.runtimeError) {
+						result.runtimeError = {
+							message: info.runtimeError.message,
+							type: info.runtimeError.type,
+							stack: info.runtimeError.stack
+						};
+					}
+
+					return result;
+				})
+			);
+
+			// Calculate summary
+			let success = 0;
+			let failed = 0;
+			let building = 0;
+
+			for (const comp of componentDetails) {
+				if (comp.buildState === 'ready' && !comp.runtimeError) {
+					success++;
+				} else if (comp.buildState === 'building') {
+					building++;
+				} else if (comp.buildState === 'error' || comp.runtimeError) {
+					failed++;
+				}
+			}
+
+			return {
+				success: true,
+				data: {
+					summary: {
+						total: components.length,
+						success,
+						failed,
+						building,
+						hasErrors: failed > 0
+					},
+					components: componentDetails
+				}
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to validate components'
+			};
+		}
+	}
+
+	// ==========================================================================
+	// Component Screenshot
+	// ==========================================================================
+
+	// TODO: Feature pending - race condition with webview initialization needs proper fix
+	async screenshot(componentId: string, canvasId: string): Promise<ToolResult<{ image: string; format: string; viewport?: { width: number; height: number; devicePixelRatio: number } }>> {
+		try {
+			const component = this.componentService.getComponent(componentId);
+			if (!component) {
+				return {
+					success: false,
+					error: `Component not found: ${componentId}`
+				};
+			}
+
+			if (component.canvasId !== canvasId) {
+				return {
+					success: false,
+					error: `Component ${componentId} is not in canvas ${canvasId}. Component belongs to canvas: ${component.canvasId}`
+				};
+			}
+
+			await this.canvasService.createCanvas(canvasId);
+			await new Promise(resolve => setTimeout(resolve, 1000));
+			const screenshot = await this.componentService.requestComponentScreenshot(componentId);
+
+			return {
+				success: true,
+				data: {
+					image: screenshot,
+					format: 'data-url'
+				}
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to capture component screenshot'
+			};
+		}
+	}
 }
