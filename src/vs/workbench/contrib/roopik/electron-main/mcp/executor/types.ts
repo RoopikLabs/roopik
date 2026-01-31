@@ -35,9 +35,10 @@ export interface ImageResult {
 
 /**
  * Browser open result
+ * Note: browserViewId deliberately excluded - internal implementation detail
+ * that agents never use (they call tools by name, not by ID)
  */
 export interface BrowserOpenResult {
-	browserViewId?: number;
 	url?: string;
 	message: string;
 }
@@ -57,7 +58,6 @@ export interface BrowserScreenshotResult extends ImageResult {
  * Browser navigation result
  */
 export interface BrowserNavigateResult {
-	browserViewId: number;
 	url: string;
 	message: string;
 }
@@ -66,9 +66,7 @@ export interface BrowserNavigateResult {
  * Browser action result
  */
 export interface BrowserActionResult {
-	browserViewId: number;
 	action: string;
-	success: boolean;
 	message: string;
 }
 
@@ -136,11 +134,9 @@ export interface BrowserPerformanceResult {
 
 /**
  * Browser state result - returns current browser status
- * Note: Use tools/list for available tools, not this result
  */
 export interface BrowserStateResult {
 	browserOpen: boolean;
-	browserViewId?: number;
 	currentUrl?: string;
 	title?: string;
 	isLoading?: boolean;
@@ -224,12 +220,16 @@ export interface BrowserNetworkRequestsResult {
 
 /**
  * Canvas info
+ * Note: icon/color deliberately excluded - they're UI-only fields
+ * that provide no value to AI agents (context pollution)
  */
 export interface CanvasInfo {
 	id: string;
 	name: string;
 	description?: string;
 	componentCount: number;
+	createdAt?: number;
+	updatedAt?: number;
 }
 
 /**
@@ -265,11 +265,14 @@ export interface ComponentListResult {
 
 /**
  * Project server info
+ * Note: frameworkDisplayName deliberately excluded - it's just
+ * UI-friendly text (e.g., "Next.js" vs "next") that agents don't need
  */
 export interface ProjectServerInfo {
 	url?: string;  // May be undefined during 'starting' state
 	projectRoot: string;
 	framework?: string;
+	port?: number;
 	status: 'starting' | 'running' | 'stopping' | 'stopped';
 }
 

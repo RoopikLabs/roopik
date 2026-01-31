@@ -166,7 +166,6 @@ export interface ActiveProjectData {
 	port?: number
 	state?: string
 	framework?: string
-	frameworkDisplayName?: string
 	message?: string
 }
 
@@ -195,8 +194,6 @@ export interface CanvasSummary {
 	name: string
 	componentCount: number
 	description?: string
-	icon?: string
-	color?: string
 	createdAt?: string
 	updatedAt?: string
 }
@@ -359,8 +356,8 @@ export class RoopikToolClient {
 	 * Open the browser preview
 	 * Optionally navigate to a URL after opening
 	 */
-	async browserOpen(url?: string): Promise<RoopikToolResult<{ browserViewId: number; url?: string; message: string }>> {
-		return this.executeCommand<{ browserViewId: number; url?: string; message: string }>("roopik.tools.browserOpen", { url })
+	async browserOpen(url?: string): Promise<RoopikToolResult<{ url?: string; message: string }>> {
+		return this.executeCommand<{ url?: string; message: string }>("roopik.tools.browserOpen", { url })
 	}
 
 	/**
@@ -402,10 +399,45 @@ export class RoopikToolClient {
 	}
 
 	/**
-	 * Get CDP connection info for external agents
+	 * Get browser state information (open/closed, current URL, title)
 	 */
-	async browserGetCdpInfo(): Promise<RoopikToolResult<unknown>> {
-		return this.executeCommand<unknown>("roopik.tools.browserGetCdpInfo")
+	async browserGetState(): Promise<RoopikToolResult<unknown>> {
+		return this.executeCommand<unknown>("roopik.tools.browserGetState")
+	}
+
+	/**
+	 * Set or clear browser viewport override
+	 * @param width Viewport width in pixels (omit to clear override)
+	 * @param height Viewport height in pixels (omit to clear override)
+	 * @param deviceScaleFactor Device scale factor (default: 1)
+	 * @param mobile Emulate mobile device (default: false)
+	 */
+	async browserSetViewport(
+		width?: number,
+		height?: number,
+		deviceScaleFactor?: number,
+		mobile?: boolean
+	): Promise<RoopikToolResult<unknown>> {
+		return this.executeCommand<unknown>("roopik.tools.browserSetViewport", {
+			width,
+			height,
+			deviceScaleFactor,
+			mobile,
+		})
+	}
+
+	/**
+	 * Get network requests
+	 * @param options Filter options for network requests
+	 */
+	async browserGetNetworkRequests(options?: {
+		includeStaticAssets?: boolean
+		urlFilter?: string
+		method?: string
+		statusFilter?: "success" | "error" | "all"
+		limit?: number
+	}): Promise<RoopikToolResult<unknown>> {
+		return this.executeCommand<unknown>("roopik.tools.browserGetNetworkRequests", options)
 	}
 
 	/**
@@ -591,6 +623,16 @@ export class RoopikToolClient {
 	async rebuildComponent(componentId: string): Promise<RoopikToolResult<RebuildComponentData>> {
 		return this.executeCommand<RebuildComponentData>("roopik.tools.rebuildComponent", {
 			componentId,
+		})
+	}
+
+	/**
+	 * Validate all components in a canvas
+	 * Returns summary (total, success, failed, building) + detailed errors for failed components
+	 */
+	async validateComponents(canvasId?: string): Promise<RoopikToolResult<unknown>> {
+		return this.executeCommand<unknown>("roopik.tools.validateComponents", {
+			canvasId,
 		})
 	}
 

@@ -72,6 +72,7 @@ export const browserSetViewportSchema = z.object({
 });
 
 export const browserGetNetworkRequestsSchema = z.object({
+	includeStaticAssets: z.boolean().optional().describe('Include static assets (JS/CSS/images). Default: false (only API calls shown)'),
 	urlFilter: z.string().optional().describe('Filter requests by URL substring'),
 	method: z.string().optional().describe('Filter by HTTP method (GET, POST, etc.)'),
 	statusFilter: z.enum(['success', 'error', 'all']).optional()
@@ -83,7 +84,7 @@ export const browserGetNetworkRequestsSchema = z.object({
 export const emptySchema = z.object({});
 
 // ============================================================================
-// Canvas Tool Schemas (3)
+// Canvas Tool Schemas (4)
 // ============================================================================
 
 export const canvasListSchema = z.object({
@@ -94,6 +95,11 @@ export const canvasListSchema = z.object({
 
 export const canvasCreateSchema = z.object({
 	name: z.string().describe('Canvas name')
+});
+
+export const canvasOpenSchema = z.object({
+	canvasId: z.string().optional().describe('Canvas ID to open'),
+	name: z.string().optional().describe('Canvas name to open (will look up by name)')
 });
 
 // ============================================================================
@@ -136,6 +142,16 @@ export const componentRebuildSchema = z.object({
 	componentId: z.string().describe('Component ID')
 });
 
+export const componentValidateSchema = z.object({
+	canvasId: z.string().optional().describe('Canvas ID (uses active canvas if not provided)')
+});
+
+// TODO: Feature pending - has race condition with webview initialization
+// export const componentScreenshotSchema = z.object({
+// 	componentId: z.string().describe('Component ID to screenshot'),
+// 	canvasId: z.string().describe('Canvas ID where the component is located')
+// });
+
 // ============================================================================
 // Project Tool Schemas (3)
 // ============================================================================
@@ -163,7 +179,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	// ========== Browser Tools (14) ==========
 	{
 		name: 'browser_open',
-		description: 'Open the browser view. Optionally navigate to a URL.',
+		description: 'Open the browser view. Optionally navigate to a URL. For local project files: file:// URLs are not supported. Use project_start for Vite-based projects, or manually start a server (e.g., npx serve) and use browser_navigate with the http://localhost address.',
 		schema: browserOpenSchema
 	},
 	{
@@ -178,7 +194,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_navigate',
-		description: 'Navigate to a URL in the browser.',
+		description: 'Navigate to a URL in the browser. For local project files: file:// URLs are not supported. Use project_start for Vite-based projects, or manually start a server (e.g., npx serve) and use the http://localhost address.',
 		schema: browserNavigateSchema
 	},
 	{
@@ -203,7 +219,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_get_errors',
-		description: 'Get combined console errors and network failures.',
+		description: 'Get console errors and network failures. Auto-clears on page reload.',
 		schema: browserGetErrorsSchema
 	},
 	{
@@ -228,11 +244,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_get_network_requests',
-		description: 'Get captured network requests and responses. Requires CDP monitoring.',
+		description: 'Get network requests. Use includeStaticAssets parameter to show all assets.',
 		schema: browserGetNetworkRequestsSchema
 	},
 
-	// ========== Canvas Tools (3) ==========
+	// ========== Canvas Tools (4) ==========
 	{
 		name: 'canvas_list',
 		description: 'List all canvases.',
@@ -245,8 +261,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'canvas_create',
-		description: 'Create a new canvas or get existing one with same name.',
+		description: 'Create a new canvas or get existing one with same name. Use canvas mode for design exploration and component iteration before committing to a full project. If user asks for any design/creative/UI work (e.g., "design a landing page", "show me some ideas", "create a dashboard", "build a login form") and intent is unclear, ask if they want canvas mode (component designs side-by-side to iterate) or project mode (full running app).',
 		schema: canvasCreateSchema
+	},
+	{
+		name: 'canvas_open',
+		description: 'Open an existing canvas by ID or name. Opens the canvas panel in the UI and returns canvas info with all components (id, name, path, status).',
+		schema: canvasOpenSchema
 	},
 
 	// ========== Component Tools (6) ==========
@@ -280,6 +301,17 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		description: 'Trigger rebuild of a component.',
 		schema: componentRebuildSchema
 	},
+	{
+		name: 'canvas_validate_components',
+		description: 'Validate all components in a canvas. Returns summary (total, success, failed, building counts) plus detailed error info for failed components. Efficient way to check component health without individual calls.',
+		schema: componentValidateSchema
+	},
+	// TODO: Feature pending - has race condition with webview initialization
+	// {
+	// 	name: 'component_screenshot',
+	// 	description: 'Capture a screenshot of a specific component rendered in the canvas. Requires both componentId and canvasId. The canvas will be opened/focused if not already visible. Returns base64 data URL of the component\'s visual appearance.',
+	// 	schema: componentScreenshotSchema
+	// },
 
 	// ========== Project Tools (3) ==========
 	{
@@ -289,7 +321,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'project_start',
-		description: 'Start a development server for a project.',
+		description: 'Start a development server for a Vite-based project (React, Vue, Svelte, etc. with Vite). Use project mode when user explicitly wants a full running app (e.g., "build me a Vite React app", "create a full running project"). If user asks for design/creative/UI work and intent is unclear, ask if they want canvas mode (component iteration) or project mode (full running app) first.',
 		schema: projectStartSchema
 	},
 	{
@@ -316,4 +348,4 @@ export function getToolDefinitionsAsJsonSchema(): Array<{
 	}));
 }
 
-// Total: 26 Tools
+// Total: 29 Tools (14 Browser + 4 Canvas + 8 Component + 3 Project)

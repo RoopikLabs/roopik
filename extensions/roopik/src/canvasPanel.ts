@@ -1256,6 +1256,42 @@ export class CanvasPanel implements vscode.Disposable {
 		this.logger.debug('Panel disposed');
 	}
 
+	// ========================================================================
+	// Screenshot
+	// ========================================================================
+
+	/**
+	 * Capture a screenshot of a component (bidirectional IPC)
+	 * Called when Core requests a screenshot via MCP tools
+	 */
+	public async captureComponentScreenshot(componentId: string): Promise<string | null> {
+		return new Promise((resolve, reject) => {
+			const requestId = `screenshot-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+			const timeout = setTimeout(() => {
+				reject(new Error(`Webview did not respond within 10 seconds for component ${componentId}`));
+			}, 10000);
+
+			const messageHandler = this.panel.webview.onDidReceiveMessage((message: any) => {
+				if (message.type === 'screenshotResponse' && message.requestId === requestId) {
+					clearTimeout(timeout);
+					messageHandler.dispose();
+
+					if (message.screenshot) {
+						resolve(message.screenshot);
+					} else {
+						reject(new Error(`Webview returned null - component may not be rendered`));
+					}
+				}
+			});
+
+			this.postToWebview('captureComponentScreenshot', {
+				requestId,
+				componentId
+			});
+		});
+	}
+
 	/**
 	 * Dispose the panel
 	 */

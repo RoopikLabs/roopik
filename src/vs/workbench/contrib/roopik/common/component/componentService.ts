@@ -58,6 +58,15 @@ export interface ComponentUpdatedEvent {
 	changes: ('componentName' | 'source')[];
 }
 
+/**
+ * Event fired when a component screenshot is requested (bidirectional IPC)
+ * Browser process should listen to this event, call extension command, and deliver result via deliverScreenshot()
+ */
+export interface ComponentScreenshotRequestEvent {
+	requestId: string;
+	componentId: string;
+}
+
 // ============================================================================
 // Service Interface
 // ============================================================================
@@ -344,4 +353,33 @@ export interface IComponentService {
 	 * Fired when component metadata changes (name, etc.)
 	 */
 	readonly onComponentUpdated: Event<ComponentUpdatedEvent>;
+
+	/**
+	 * Fired when a screenshot is requested (bidirectional IPC pattern)
+	 * Browser process should listen and deliver result via deliverScreenshot()
+	 */
+	readonly onScreenshotRequested: Event<ComponentScreenshotRequestEvent>;
+
+	// ========================================================================
+	// Screenshot (Bidirectional IPC)
+	// ========================================================================
+
+	/**
+	 * Request a component screenshot (used by tools)
+	 * Returns a promise that resolves when browser delivers the screenshot via deliverScreenshot()
+	 *
+	 * @param componentId - Component to screenshot
+	 * @returns Promise<string> - Base64 data URL of screenshot
+	 */
+	requestComponentScreenshot(componentId: string): Promise<string>;
+
+	/**
+	 * Deliver screenshot result (called by browser process after extension captures it)
+	 * Resolves the pending promise created by requestComponentScreenshot()
+	 *
+	 * @param requestId - Request ID from ComponentScreenshotRequestEvent
+	 * @param screenshot - Base64 data URL or null if failed
+	 * @param error - Error message if screenshot failed
+	 */
+	deliverComponentScreenshot(requestId: string, screenshot: string | null, error?: string): void;
 }

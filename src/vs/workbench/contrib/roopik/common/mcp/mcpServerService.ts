@@ -29,14 +29,8 @@ export const IMcpServerService = createDecorator<IMcpServerService>('mcpServerSe
 export interface McpServerStatus {
 	/** Whether the STDIO/WebSocket MCP server is running */
 	running: boolean;
-	/** Whether the HTTP MCP server is running */
-	httpRunning: boolean;
-	/** HTTP port for StreamableHTTP transport */
-	port: number;
 	/** WebSocket port for STDIO binary connections */
 	wsPort: number;
-	/** MCP HTTP endpoint URL */
-	url: string;
 	/** Error message if server failed to start */
 	error?: string;
 }
@@ -108,9 +102,6 @@ export interface IMcpServerService {
 	/** Get current server status */
 	getStatus(): Promise<McpServerStatus>;
 
-	/** Get the HTTP port the server is running on */
-	getPort(): Promise<number>;
-
 	/** Get the WebSocket port for STDIO connections */
 	getWsPort(): Promise<number>;
 
@@ -118,21 +109,12 @@ export interface IMcpServerService {
 	// STDIO/WebSocket Control (Primary)
 	// ========================================
 
-	/** Check if STDIO/WebSocket MCP is enabled */
+	/** Check if STDIO/WebSocket MCP Server is enabled */
 	isEnabled(): Promise<boolean>;
 
-	/** Enable or disable STDIO/WebSocket MCP server */
+	/** Enable or disable MCP server */
 	setEnabled(enabled: boolean): Promise<void>;
 
-	// ========================================
-	// HTTP Control (Advanced)
-	// ========================================
-
-	/** Check if HTTP MCP is enabled */
-	isHttpEnabled(): Promise<boolean>;
-
-	/** Enable or disable HTTP MCP server */
-	setHttpEnabled(enabled: boolean): Promise<void>;
 
 	// ========================================
 	// Agent Control

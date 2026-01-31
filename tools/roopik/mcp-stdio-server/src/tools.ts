@@ -76,6 +76,7 @@ export const browserSetViewportSchema = z.object({
 });
 
 export const browserGetNetworkRequestsSchema = z.object({
+	includeStaticAssets: z.boolean().optional().describe('Include static assets (JS/CSS/images). Default: false (only API calls shown)'),
 	urlFilter: z.string().optional().describe('Filter requests by URL substring'),
 	method: z.string().optional().describe('Filter by HTTP method (GET, POST, etc.)'),
 	statusFilter: z.enum(['success', 'error', 'all']).optional()
@@ -87,7 +88,7 @@ export const browserGetNetworkRequestsSchema = z.object({
 export const emptySchema = z.object({});
 
 // ============================================================================
-// Canvas Tool Schemas (3)
+// Canvas Tool Schemas (4)
 // ============================================================================
 
 export const canvasListSchema = z.object({
@@ -98,6 +99,11 @@ export const canvasListSchema = z.object({
 
 export const canvasCreateSchema = z.object({
 	name: z.string().describe('Canvas name')
+});
+
+export const canvasOpenSchema = z.object({
+	canvasId: z.string().optional().describe('Canvas ID to open'),
+	name: z.string().optional().describe('Canvas name to open (will look up by name)')
 });
 
 // ============================================================================
@@ -140,6 +146,16 @@ export const componentRebuildSchema = z.object({
 	componentId: z.string().describe('Component ID')
 });
 
+export const componentValidateSchema = z.object({
+	canvasId: z.string().optional().describe('Canvas ID (uses active canvas if not provided)')
+});
+
+// TODO: Feature pending - has race condition with webview initialization
+// export const componentScreenshotSchema = z.object({
+// 	componentId: z.string().describe('Component ID to screenshot'),
+// 	canvasId: z.string().describe('Canvas ID where the component is located')
+// });
+
 // ============================================================================
 // Project Tool Schemas (3)
 // ============================================================================
@@ -167,7 +183,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	// ========== Browser Tools (14) ==========
 	{
 		name: 'browser_open',
-		description: 'Open the browser view. Optionally navigate to a URL.',
+		description: 'Open the browser view. Optionally navigate to a URL. For local project files: file:// URLs are not supported. Use project_start for Vite-based projects, or manually start a server (e.g., npx serve) and use browser_navigate with the http://localhost address.',
 		schema: browserOpenSchema
 	},
 	{
@@ -182,7 +198,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_navigate',
-		description: 'Navigate to a URL in the browser.',
+		description: 'Navigate to a URL in the browser. For local project files: file:// URLs are not supported. Use project_start for Vite-based projects, or manually start a server (e.g., npx serve) and use the http://localhost address.',
 		schema: browserNavigateSchema
 	},
 	{
@@ -207,7 +223,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_get_errors',
-		description: 'Get combined console errors and network failures.',
+		description: 'Get console errors and network failures. Auto-clears on page reload.',
 		schema: browserGetErrorsSchema
 	},
 	{
@@ -232,11 +248,11 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_get_network_requests',
-		description: 'Get captured network requests and responses. Requires CDP monitoring.',
+		description: 'Get network requests. Use includeStaticAssets parameter to show all assets.',
 		schema: browserGetNetworkRequestsSchema
 	},
 
-	// ========== Canvas Tools (3) ==========
+	// ========== Canvas Tools (4) ==========
 	{
 		name: 'canvas_list',
 		description: 'List all canvases.',
@@ -249,8 +265,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'canvas_create',
-		description: 'Create a new canvas or get existing one with same name.',
+		description: 'Create a new canvas or get existing one with same name. Use canvas mode for design exploration and component iteration before committing to a full project. If user asks for any design/creative/UI work (e.g., "design a landing page", "show me some ideas", "create a dashboard", "build a login form") and intent is unclear, ask if they want canvas mode (component designs side-by-side to iterate) or project mode (full running app).',
 		schema: canvasCreateSchema
+	},
+	{
+		name: 'canvas_open',
+		description: 'Open an existing canvas by ID or name. Opens the canvas panel in the UI and returns canvas info with all components (id, name, path, status).',
+		schema: canvasOpenSchema
 	},
 
 	// ========== Component Tools (6) ==========
@@ -284,6 +305,17 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		description: 'Trigger rebuild of a component.',
 		schema: componentRebuildSchema
 	},
+	{
+		name: 'canvas_validate_components',
+		description: 'Validate all components in a canvas. Returns summary (total, success, failed, building counts) plus detailed error info for failed components. Efficient way to check component health without individual calls.',
+		schema: componentValidateSchema
+	},
+	// TODO: Feature pending - has race condition with webview initialization
+	// {
+	// 	name: 'component_screenshot',
+	// 	description: 'Capture a screenshot of a specific component rendered in the canvas. Requires both componentId and canvasId. The canvas will be opened/focused if not already visible. Returns base64 data URL of the component\'s visual appearance.',
+	// 	schema: componentScreenshotSchema
+	// },
 
 	// ========== Project Tools (3) ==========
 	{
@@ -293,7 +325,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'project_start',
-		description: 'Start a development server for a project.',
+		description: 'Start a development server for a Vite-based project (React, Vue, Svelte, etc. with Vite). Use project mode when user explicitly wants a full running app (e.g., "build me a Vite React app", "create a full running project"). If user asks for design/creative/UI work and intent is unclear, ask if they want canvas mode (component iteration) or project mode (full running app) first.',
 		schema: projectStartSchema
 	},
 	{
@@ -314,6 +346,44 @@ export interface PromptDefinition {
 }
 
 export const PROMPT_DEFINITIONS: PromptDefinition[] = [
+	{
+		name: 'canvas-vs-project-workflow',
+		description: 'When to use canvas mode for component iteration vs full project mode',
+		content: `# Canvas vs Project: Which Workflow to Use?
+
+When a user asks for design/creative work (e.g., "design a landing page", "show me some UI ideas", "build a dashboard"), you must determine the right workflow.
+
+## Decision Rule
+
+**ASK the user** if their intent is unclear. Do NOT assume they want a full project.
+
+### When to ASK:
+- User says: "design a landing page" → unclear if they want iteration or full project
+- User says: "show me some ideas for a dashboard" → sounds like exploration
+- User says: "help me build a login form" → could be either
+
+**Prompt the user with:**
+"Would you like to:
+1. **Canvas mode** - See a few component designs side-by-side to refine ideas first, or
+2. **Project mode** - Build a full running [framework] project in the browser?"
+
+### When to go STRAIGHT to full project:
+- User explicitly says: "build me a React website"
+- User explicitly says: "create a full running project"
+- User explicitly says: "scaffold a Next.js app"
+
+### When to use Canvas mode directly:
+- User says: "show me some design variations"
+- User says: "I want to experiment with different styles"
+- User says: "let me see a few options first"
+
+## Why This Matters
+
+- **Canvas mode** = Fast iteration, multiple components side-by-side, quick to tweak
+- **Project mode** = Full running app, routing, state management, production-like
+
+Canvas mode is ideal for design exploration before committing to a full project structure.`
+	},
 	{
 		name: 'how-to-start-project',
 		description: 'Step-by-step guide for starting a development server for an existing project',
@@ -478,9 +548,152 @@ browser_get_errors → browser_get_console_logs → (fix code) → browser_reloa
 - **Browser Core** (6): browser_open, browser_close, browser_screenshot, browser_navigate, browser_reload, browser_action_input
 - **Browser Debug** (4): browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs
 - **Browser Info** (4): browser_get_performance, browser_get_state, browser_set_viewport, browser_get_network_requests
-- **Canvas Tools** (3): canvas_list, canvas_get_active, canvas_create
-- **Component Tools** (6): component_add, component_add_batch, component_remove, component_get_info, component_list, component_rebuild
+- **Canvas Tools** (4): canvas_list, canvas_get_active, canvas_create, canvas_open
+- **Component Tools** (7): component_add, component_add_batch, component_remove, component_get_info, component_list, component_rebuild, canvas_validate_components
 
-## Total: 26 Tools`
+## Total: 27 Tools`
+	},
+	{
+		name: 'how-to-test-responsive',
+		description: 'Step-by-step guide for testing responsive designs across different viewport sizes',
+		content: `# How to Test Responsive Design in Roopik
+
+This workflow teaches you how to test components/pages at different screen sizes.
+
+## Step-by-Step Process:
+
+### 1. Set Mobile Viewport
+Call **browser_set_viewport** with mobile dimensions:
+- width: 375, height: 812 (iPhone X)
+- width: 390, height: 844 (iPhone 12/13/14)
+- width: 360, height: 800 (Android common)
+- mobile: true (enables touch emulation)
+
+### 2. Take Screenshot
+Call **browser_screenshot** to capture mobile view.
+
+### 3. Test Tablet
+Call **browser_set_viewport** with tablet dimensions:
+- width: 768, height: 1024 (iPad)
+- width: 820, height: 1180 (iPad Air)
+
+### 4. Test Desktop
+Call **browser_set_viewport** with desktop dimensions:
+- width: 1280, height: 800 (laptop)
+- width: 1920, height: 1080 (full HD)
+
+### 5. Clear Viewport Override
+Call **browser_set_viewport** with NO parameters to restore natural browser size.
+
+## Common Breakpoints to Test:
+- 320px - Small mobile
+- 375px - iPhone
+- 768px - Tablet
+- 1024px - Small desktop/landscape tablet
+- 1280px - Laptop
+- 1920px - Full HD desktop
+
+## Example Tool Chain:
+browser_set_viewport (mobile) → browser_screenshot → browser_set_viewport (tablet) → browser_screenshot → browser_set_viewport (clear)`
+	},
+	{
+		name: 'how-to-debug-network',
+		description: 'Step-by-step guide for inspecting API calls and network requests',
+		content: `# How to Debug Network Requests in Roopik
+
+This workflow teaches you how to inspect API calls and network activity.
+
+## Step-by-Step Process:
+
+### 1. Get API Requests Only
+Call **browser_get_network_requests** with defaults:
+- By default, static assets (JS/CSS/images) are hidden
+- Shows only API calls (fetch, XHR)
+
+### 2. Filter by Status
+Use statusFilter parameter:
+- statusFilter: 'error' → Only failed requests (4xx, 5xx, network errors)
+- statusFilter: 'success' → Only successful requests (2xx, 3xx)
+- statusFilter: 'all' → Everything
+
+### 3. Filter by URL
+Use urlFilter parameter:
+- urlFilter: '/api/' → Only requests containing '/api/'
+- urlFilter: 'users' → Only requests containing 'users'
+
+### 4. Filter by Method
+Use method parameter:
+- method: 'POST' → Only POST requests
+- method: 'GET' → Only GET requests
+
+### 5. Include Static Assets
+Set includeStaticAssets: true to see everything:
+- JavaScript files
+- CSS files
+- Images
+- Fonts
+
+## Response Data Includes:
+- url: Full request URL
+- method: HTTP method
+- status: HTTP status code (or 'failed' for network errors)
+- timing: Request duration in ms
+- size: Response size in bytes
+
+## Example Tool Chain:
+browser_get_network_requests (errors only) → browser_get_network_requests (filter by URL) → (fix API issue) → browser_reload`
+	},
+	{
+		name: 'component-design-guidelines',
+		description: 'Professional design principles for creating high-quality UI components',
+		content: `# Component Design Guidelines
+
+When creating UI components, follow these professional design principles to avoid generic AI aesthetics.
+
+## Typography (CRITICAL)
+**NEVER use these fonts**: Inter, Roboto, Open Sans, Lato, Montserrat, Arial, Helvetica
+**USE distinctive fonts instead**:
+- Headers: Clash Display, Cabinet Grotesk, Satoshi, General Sans, Switzer
+- Body: Geist, Plus Jakarta Sans, DM Sans, Outfit, Manrope
+- Accent: Space Grotesk, Syne, Unbounded
+
+Import from: https://api.fontshare.com or Google Fonts (less common ones)
+
+## Color & Theme
+- Use CSS custom properties (--color-primary, --bg-surface, etc.)
+- Pick a dominant color and use 60-30-10 rule
+- Avoid pure black (#000) - use dark grays (#0a0a0a, #111)
+- Add subtle color tints to grays for cohesion
+
+## Motion & Animation
+- Use framer-motion for React, Vue Transition for Vue
+- Stagger children animations (0.05-0.1s delays)
+- Micro-interactions on hover/focus (scale, glow, color shift)
+- Keep durations short: 150-300ms for UI, 300-500ms for reveals
+
+## Spatial Composition
+- Break the grid intentionally - overlap elements, use negative margins
+- Vary spacing rhythm - not everything needs equal padding
+- Use asymmetry for visual interest
+- Layer elements with z-index for depth
+
+## Visual Details
+- Subtle gradients over flat colors
+- Noise textures for depth (opacity 0.02-0.05)
+- Glassmorphism: backdrop-blur + semi-transparent backgrounds
+- Soft shadows with color tints, not pure black
+
+## Component Structure
+- Mobile-first responsive design
+- Single File Component (SFC) format
+- Self-contained with scoped styles
+- No external dependencies beyond the framework
+
+## Anti-Patterns to Avoid
+- Generic card layouts with uniform spacing
+- Blue primary buttons with white text
+- Perfect symmetry everywhere
+- Stock icon libraries without customization
+- Cookie-cutter hero sections`
 	}
 ];

@@ -155,20 +155,6 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 			order: 13,
 			description: 'Unregister from all AI agents when Roopik exits. If false, registrations persist for quick reconnection.'
 		},
-		'roopik.mcp.httpMCP': {
-			type: 'boolean',
-			default: false,
-			order: 14,
-			markdownDescription: '**Enable HTTP/SSE MCP** (Experimental) - Enable HTTP-based MCP transport with Server-Sent Events.'
-		},
-		'roopik.mcp.httpMCPPort': {
-			type: 'number',
-			default: 3333,
-			minimum: 1024,
-			maximum: 65535,
-			order: 15,
-			description: 'Only used when HTTP/SSE MCP is enabled.'
-		},
 
 		// ========================================
 		// MCP Agent Integrations (individual toggles)

@@ -6,8 +6,11 @@
 /**
  * Tool Executor Module
  *
- * Unified tool execution layer for all MCP transports.
- * Both HTTP MCP and WebSocket MCP call these executors.
+ * Central dispatcher for MCP tool execution.
+ * Routes tool calls to unified tool services.
+ *
+ * NOTE: Old executor classes (BrowserExecutor, CanvasExecutor, ProjectExecutor)
+ * have been removed. Tool implementation now lives in electron-main/tools/*.
  */
 
 // Types
@@ -36,9 +39,6 @@ export type {
 	ProjectStopResult,
 } from './types.js';
 
-// Executors
+// Main Executor
 export { ToolExecutor } from './toolExecutor.js';
 export type { ToolCall, ToolCallResult } from './toolExecutor.js';
-export { BrowserExecutor } from './browserExecutor.js';
-export { CanvasExecutor } from './canvasExecutor.js';
-export { ProjectExecutor } from './projectExecutor.js';

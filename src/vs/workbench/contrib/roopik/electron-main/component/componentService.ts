@@ -25,7 +25,8 @@ import {
 	ComponentCreatedEvent,
 	ComponentBuildEvent,
 	ComponentDeletedEvent,
-	ComponentUpdatedEvent
+	ComponentUpdatedEvent,
+	ComponentScreenshotRequestEvent
 } from '../../common/component/componentService.js';
 import {
 	Component,
@@ -149,6 +150,16 @@ export class ComponentService extends Disposable implements IComponentService {
 
 	private readonly _onComponentUpdated = this._register(new Emitter<ComponentUpdatedEvent>());
 	readonly onComponentUpdated: Event<ComponentUpdatedEvent> = this._onComponentUpdated.event;
+
+	private readonly _onScreenshotRequested = this._register(new Emitter<ComponentScreenshotRequestEvent>());
+	readonly onScreenshotRequested: Event<ComponentScreenshotRequestEvent> = this._onScreenshotRequested.event;
+
+	// Screenshot request tracking (bidirectional IPC)
+	private screenshotRequests = new Map<string, {
+		resolve: (screenshot: string) => void;
+		reject: (error: Error) => void;
+		timeout: ReturnType<typeof setTimeout>;
+	}>();
 
 	// ========================================================================
 	// Constructor
@@ -1197,6 +1208,53 @@ export class ComponentService extends Disposable implements IComponentService {
 			component.runtimeError = undefined;
 			component.updatedAt = Date.now();
 			this.logger.debug('Runtime error cleared for component', { componentId });
+		}
+	}
+
+	// ========================================================================
+	// Screenshot (Bidirectional IPC)
+	// ========================================================================
+
+	/**
+	 * Request a component screenshot (bidirectional IPC pattern)
+	 *
+	 * Flow:
+	 * 1. Fire onScreenshotRequested event with requestId + componentId
+	 * 2. Browser listens to event and calls extension command
+	 * 3. Extension captures screenshot from webview
+	 * 4. Browser calls deliverComponentScreenshot() with result
+	 * 5. Promise resolves with screenshot data
+	 *
+	 * @param componentId - Component to screenshot
+	 * @returns Promise<string> - Base64 data URL of screenshot
+	 */
+	requestComponentScreenshot(componentId: string): Promise<string> {
+		const requestId = `screenshot-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+		return new Promise((resolve, reject) => {
+			const timeout = setTimeout(() => {
+				this.screenshotRequests.delete(requestId);
+				reject(new Error('Screenshot request timed out after 30 seconds'));
+			}, 30000);
+
+			this.screenshotRequests.set(requestId, { resolve, reject, timeout });
+			this._onScreenshotRequested.fire({ requestId, componentId });
+		});
+	}
+
+	deliverComponentScreenshot(requestId: string, screenshot: string | null, error?: string): void {
+		const request = this.screenshotRequests.get(requestId);
+		if (!request) {
+			return;
+		}
+
+		clearTimeout(request.timeout);
+		this.screenshotRequests.delete(requestId);
+
+		if (screenshot) {
+			request.resolve(screenshot);
+		} else {
+			request.reject(new Error(error || 'Screenshot capture failed'));
 		}
 	}
 }

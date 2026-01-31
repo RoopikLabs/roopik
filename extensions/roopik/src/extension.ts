@@ -229,6 +229,35 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	);
 
+	// Handle screenshot request from Core (bidirectional IPC)
+	const captureComponentScreenshotCommand = vscode.commands.registerCommand(
+		'roopik.canvas.captureComponentScreenshot',
+		async (componentId: string): Promise<string | null> => {
+			try {
+				logger.debug('Extension', `📸 Screenshot requested for component: ${componentId}`);
+
+				// Get the canvas panel for this component
+				const screenshot = await manager!.captureComponentScreenshot(componentId);
+
+				if (screenshot) {
+					const preview = screenshot.substring(0, 100);
+					logger.debug('Extension', `✅ Screenshot captured, returning to Core`, {
+						componentId,
+						dataUrlLength: screenshot.length,
+						preview
+					});
+					return screenshot;
+				} else {
+					logger.warn('Extension', `❌ Failed to capture screenshot (null returned) for ${componentId}`);
+					return null;
+				}
+			} catch (error) {
+				logger.error('Extension', `❌ Error capturing screenshot for ${componentId}`, error);
+				return null;
+			}
+		}
+	);
+
 	// Register commands
 	context.subscriptions.push(
 		openCanvasCommand,
@@ -238,7 +267,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		componentCreatedCommand,
 		componentBuiltCommand,
 		componentDeletedCommand,
-		componentUpdatedCommand
+		componentUpdatedCommand,
+		captureComponentScreenshotCommand
 	);
 
 	// logger.info('Extension', 'Roopik Canvas extension activated');

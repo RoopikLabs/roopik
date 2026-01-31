@@ -70,7 +70,7 @@ export async function handleRoopikTool(
 		let result: RoopikToolResult
 
 		switch (toolName) {
-			// Browser Tools (12)
+			// Browser Tools (14)
 			case "browser_open":
 				result = await handleBrowserOpen(task, block, callbacks)
 				break
@@ -104,8 +104,14 @@ export async function handleRoopikTool(
 			case "browser_get_performance":
 				result = await handleBrowserGetPerformance(task, block, callbacks)
 				break
-			case "browser_get_cdp_info":
-				result = await handleBrowserGetCdpInfo(task, block, callbacks)
+			case "browser_get_state":
+				result = await handleBrowserGetState(task, block, callbacks)
+				break
+			case "browser_set_viewport":
+				result = await handleBrowserSetViewport(task, block, callbacks)
+				break
+			case "browser_get_network_requests":
+				result = await handleBrowserGetNetworkRequests(task, block, callbacks)
 				break
 
 			// Project Tools (3)
@@ -130,7 +136,7 @@ export async function handleRoopikTool(
 				result = await handleCreateCanvas(task, block, callbacks)
 				break
 
-			// Component Tools (6)
+			// Component Tools (8)
 			case "component_add":
 				result = await handleAddComponent(task, block, callbacks)
 				break
@@ -148,6 +154,9 @@ export async function handleRoopikTool(
 				break
 			case "component_rebuild":
 				result = await handleRebuildComponent(task, block, callbacks)
+				break
+			case "canvas_validate_components":
+				result = await handleValidateComponents(task, block, callbacks)
 				break
 
 			default:
@@ -230,8 +239,25 @@ async function handleBrowserGetPerformance(task: Task, block: ToolUse, callbacks
 	return roopikClient.browserGetPerformance()
 }
 
-async function handleBrowserGetCdpInfo(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	return roopikClient.browserGetCdpInfo()
+async function handleBrowserGetState(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	return roopikClient.browserGetState()
+}
+
+async function handleBrowserSetViewport(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const width = block.params.width ? parseInt(block.params.width, 10) : undefined
+	const height = block.params.height ? parseInt(block.params.height, 10) : undefined
+	const deviceScaleFactor = block.params.deviceScaleFactor ? parseFloat(block.params.deviceScaleFactor) : undefined
+	const mobile = block.params.mobile === "true" || block.params.mobile === true
+	return roopikClient.browserSetViewport(width, height, deviceScaleFactor, mobile)
+}
+
+async function handleBrowserGetNetworkRequests(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const includeStaticAssets = block.params.includeStaticAssets === "true" || block.params.includeStaticAssets === true
+	const urlFilter = block.params.urlFilter
+	const method = block.params.method
+	const statusFilter = block.params.statusFilter as "success" | "error" | "all" | undefined
+	const limit = block.params.limit ? parseInt(block.params.limit, 10) : undefined
+	return roopikClient.browserGetNetworkRequests({ includeStaticAssets, urlFilter, method, statusFilter, limit })
 }
 
 async function handleNavigate(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
@@ -432,6 +458,11 @@ async function handleRebuildComponent(task: Task, block: ToolUse, callbacks: Too
 		return { success: false, error: "Missing required parameter: componentId" }
 	}
 	return roopikClient.rebuildComponent(componentId)
+}
+
+async function handleValidateComponents(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const canvasId = block.params.canvasId
+	return roopikClient.validateComponents(canvasId)
 }
 
 // ============================================================================

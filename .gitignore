@@ -35,10 +35,8 @@ test-output.json
 .github/CODENOTIFY
 .github/commands/
 .github/commands.json
-/extensions/roopik-roo
-/docs
-/docs
 
 # Roopik IDE metadata
+/docs
 .roopik/
-/TESTING-LAB
+/resources/mcp-binaries

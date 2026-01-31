@@ -88,7 +88,7 @@ export function registerMcpCommands(): void {
 
 				let message = `MCP Server: ${serverStatus}`;
 				if (server.running) {
-					message += ` (HTTP: ${server.port}, WebSocket: ${server.wsPort})`;
+					message += ` (WebSocket: ${server.wsPort})`;
 				}
 				message += `\n\nAgents: ${registeredAgents.length} registered, ${installedAgents.length} installed`;
 

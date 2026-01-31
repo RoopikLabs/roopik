@@ -671,5 +671,49 @@ export function registerRoopikToolsCommands(): void {
 		}
 	});
 
-	// console.log('[Roopik] Registered 24 tool bridge commands for agent roopik-dio');
+	// ========================================================================
+	// Validate Components Command
+	// ========================================================================
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.validateComponents',
+				title: { value: 'Validate Components', original: 'Validate Components' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: { canvasId?: string }): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('canvas_validate_components', args);
+		}
+	});
+
+	// ========================================================================
+	// Component Screenshot Command
+	// TODO: Feature pending - race condition with webview init
+	// ========================================================================
+
+	// registerAction2(class extends Action2 {
+	// 	constructor() {
+	// 		super({
+	// 			id: 'roopik.tools.componentScreenshot',
+	// 			title: { value: 'Component Screenshot', original: 'Component Screenshot' },
+	// 			category: { value: 'Roopik', original: 'Roopik' },
+	// 			f1: false
+	// 		});
+	// 	}
+	//
+	// 	async run(accessor: ServicesAccessor, args?: { componentId: string }): Promise<RoopikToolResult> {
+	// 		if (!args?.componentId) {
+	// 			return { success: false, error: 'Component ID is required' };
+	// 		}
+	// 		const mainProcessService = accessor.get(IMainProcessService);
+	// 		const channel = getToolsChannel(mainProcessService);
+	// 		return channel.call('component_screenshot', args);
+	// 	}
+	// });
 }

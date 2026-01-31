@@ -521,7 +521,13 @@
 			"wantsToGetPerformance": "Dio wants to get performance metrics",
 			"didGetPerformance": "Dio retrieved performance metrics",
 			"wantsToGetCdpInfo": "Dio wants to get browser info",
-			"didGetCdpInfo": "Dio retrieved browser info"
+			"didGetCdpInfo": "Dio retrieved browser info",
+			"wantsToGetState": "Dio wants to get browser state",
+			"didGetState": "Dio retrieved browser state",
+			"wantsToSetViewport": "Dio wants to set viewport size",
+			"didSetViewport": "Dio set viewport size",
+			"wantsToGetNetworkRequests": "Dio wants to get network requests",
+			"didGetNetworkRequests": "Dio retrieved network requests"
 		},
 		"project": {
 			"wantsToGetActive": "Dio wants to get the active project",
@@ -537,7 +543,9 @@
 			"wantsToGetActive": "Dio wants to get the active canvas",
 			"didGetActive": "Dio retrieved the active canvas",
 			"wantsToCreate": "Dio wants to create a canvas",
-			"didCreate": "Dio created a canvas"
+			"didCreate": "Dio created a canvas",
+			"wantsToValidateComponents": "Dio wants to validate components",
+			"didValidateComponents": "Dio validated components"
 		},
 		"component": {
 			"wantsToAdd": "Dio wants to add a component to the canvas",
