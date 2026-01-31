@@ -83,7 +83,7 @@ export class RoopikToolsChannel implements IServerChannel {
 		this.browserToolService = new BrowserToolService(browserViewService, this.cdpMonitorService);
 		this.canvasToolService = new CanvasToolService(canvasService);
 		this.componentToolService = new ComponentToolService(componentService, canvasService);
-		this.projectToolService = new ProjectToolService(devServerService);
+		this.projectToolService = new ProjectToolService(devServerService, storageService);
 	}
 
 	/**
