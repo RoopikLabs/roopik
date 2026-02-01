@@ -226,8 +226,25 @@
 }
 
 .ai-input-wrapper:focus-within {
-	box-shadow: 0 0 25px rgba(102, 126, 234, 0.5),
-		0 0 50px rgba(118, 75, 162, 0.25);
+	box-shadow: 0 0 40px rgba(102, 126, 234, 0.7),
+		0 0 80px rgba(118, 75, 162, 0.4);
+	transform: scale(1.06);
+	animation: popIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popIn {
+	0% {
+		transform: scale(1);
+	}
+	40% {
+		transform: scale(1.12);
+	}
+	70% {
+		transform: scale(1.04);
+	}
+	100% {
+		transform: scale(1.06);
+	}
 }
 
 @keyframes gradient-shift {
@@ -306,7 +323,9 @@
 }
 
 .ai-submit-button .codicon {
-	font-size: 16px;
+	font-size: 18px;
+	color: white !important;
+	font-weight: bold;
 }
 
 /* Responsive */
@@ -406,17 +425,60 @@
 	margin: 0;
 }
 
-/* Quick Start Container - Three Column Layout */
+/* Quick Start Container - Two Column Layout with Hover Panel */
 .quick-start-container {
 	display: grid;
-	grid-template-columns: 1fr 1fr 1fr;
+	grid-template-columns: minmax(200px, 280px) 1fr;
 	gap: 32px;
+	position: relative;
 }
 
 .quick-start-column {
 	display: flex;
 	flex-direction: column;
-	gap: 8px;
+	gap: 4px;
+}
+
+/* Hover Panel for Recent Items */
+.quick-start-hover-panel {
+	display: none;
+	padding: 16px 20px;
+	background-color: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border);
+	border-radius: 8px;
+	min-height: 200px;
+	animation: fadeIn 0.15s ease;
+}
+
+/* Title inside hover panel */
+.hover-panel-title {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--vscode-textLink-activeForeground);
+	margin-bottom: 12px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+		transform: translateX(-8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
+	}
+}
+
+/* Divider before recent items */
+.quick-start-divider {
+	height: 1px;
+	background-color: var(--vscode-widget-border);
+	margin: 8px 0;
+	opacity: 0.5;
 }
 
 .quick-start-column-title {
@@ -455,6 +517,26 @@
 	font-size: 13px;
 	font-weight: 400;
 	color: var(--vscode-foreground);
+	flex: 1;
+}
+
+/* Arrow for recent item triggers */
+.quick-start-action.with-arrow {
+	justify-content: flex-start;
+}
+
+.quick-start-action .action-arrow {
+	font-size: 14px;
+	color: var(--vscode-descriptionForeground);
+	opacity: 0.6;
+	transition: all 0.15s ease;
+	margin-left: auto;
+}
+
+.quick-start-action.with-arrow:hover .action-arrow {
+	opacity: 1;
+	transform: translateX(2px);
+	color: var(--vscode-textLink-activeForeground);
 }
 
 /* Recent Canvas Items */
@@ -644,7 +726,61 @@
 
 	.quick-start-container {
 		grid-template-columns: 1fr;
-		gap: 24px;
+		gap: 16px;
+	}
+
+	/* On small screens, show START items in horizontal grid */
+	.quick-start-column {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 8px;
+	}
+
+	/* Column title spans full width */
+	.quick-start-column-title {
+		grid-column: 1 / -1;
+	}
+
+	/* Divider spans full width */
+	.quick-start-divider {
+		grid-column: 1 / -1;
+	}
+
+	/* Compact action items for grid */
+	.quick-start-action {
+		flex-direction: column;
+		gap: 6px;
+		padding: 12px 8px;
+		text-align: center;
+		border-radius: 8px;
+		border: 1px solid var(--vscode-widget-border);
+		background-color: var(--vscode-editorWidget-background);
+	}
+
+	.quick-start-action .codicon {
+		font-size: 20px;
+	}
+
+	.quick-start-action-label {
+		font-size: 11px;
+		line-height: 1.3;
+	}
+
+	/* Arrow hidden in compact mode - full text is visible */
+	.quick-start-action .action-arrow {
+		display: none;
+	}
+
+	.quick-start-action:hover {
+		border-color: var(--vscode-focusBorder);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+	}
+
+	.quick-start-hover-panel {
+		position: relative;
+		min-height: auto;
+		grid-column: 1 / -1;
 	}
 
 	.checkbox-container {
@@ -659,7 +795,7 @@
 	}
 
 	.quick-start-container {
-		grid-template-columns: 1fr 1fr;
+		grid-template-columns: minmax(180px, 240px) 1fr;
 		gap: 24px;
 	}
 }
@@ -678,6 +814,23 @@
 
 	.hero-button-label {
 		font-size: 12px;
+	}
+
+	/* 2 columns on very small screens */
+	.quick-start-column {
+		grid-template-columns: repeat(2, 1fr);
+	}
+
+	.quick-start-action {
+		padding: 10px 6px;
+	}
+
+	.quick-start-action .codicon {
+		font-size: 18px;
+	}
+
+	.quick-start-action-label {
+		font-size: 10px;
 	}
 }
 

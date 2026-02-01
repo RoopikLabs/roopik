@@ -17,6 +17,7 @@ export type ToolGroup = z.infer<typeof toolGroupsSchema>
 export const toolNames = [
 	"execute_command",
 	"read_file",
+	"read_command_output",
 	"write_to_file",
 	"apply_diff",
 	"search_and_replace",
@@ -38,7 +39,7 @@ export const toolNames = [
 	"run_slash_command",
 	"generate_image",
 	"custom_tool",
-	// Roopik IDE Tools - Browser (12)
+	// Roopik IDE Tools - Browser (14)
 	"browser_open",
 	"browser_close",
 	"browser_action_input",
@@ -50,22 +51,26 @@ export const toolNames = [
 	"browser_get_errors",
 	"browser_get_console_logs",
 	"browser_get_performance",
-	"browser_get_cdp_info",
+	"browser_get_state",
+	"browser_set_viewport",
+	"browser_get_network_requests",
 	// Roopik IDE Tools - Project (3)
 	"project_get_active",
 	"project_start",
 	"project_stop",
-	// Roopik IDE Tools - Canvas (3)
+	// Roopik IDE Tools - Canvas (4)
 	"canvas_list",
 	"canvas_get_active",
 	"canvas_create",
-	// Roopik IDE Tools - Component (6)
+	"canvas_open",
+	// Roopik IDE Tools - Component (7)
 	"component_add",
 	"component_add_batch",
 	"component_remove",
 	"component_get_info",
 	"component_list",
 	"component_rebuild",
+	"canvas_validate_components",
 ] as const
 
 export const toolNamesSchema = z.enum(toolNames)
@@ -85,48 +90,3 @@ export const toolUsageSchema = z.record(
 )
 
 export type ToolUsage = z.infer<typeof toolUsageSchema>
-
-/**
- * Tool protocol constants
- */
-export const TOOL_PROTOCOL = {
-	XML: "xml",
-	NATIVE: "native",
-} as const
-
-/**
- * Tool protocol type for system prompt generation
- * Derived from TOOL_PROTOCOL constants to ensure type safety
- */
-export type ToolProtocol = (typeof TOOL_PROTOCOL)[keyof typeof TOOL_PROTOCOL]
-
-/**
- * Default model info properties for native tool support.
- * Used to merge with cached model info that may lack these fields.
- * Router providers (Requesty, Unbound, LiteLLM) assume all models support native tools.
- */
-export const NATIVE_TOOL_DEFAULTS = {
-	supportsNativeTools: true,
-	defaultToolProtocol: TOOL_PROTOCOL.NATIVE,
-} as const
-
-/**
- * Checks if the protocol is native (non-XML).
- *
- * @param protocol - The tool protocol to check
- * @returns True if protocol is native
- */
-export function isNativeProtocol(protocol: ToolProtocol): boolean {
-	return protocol === TOOL_PROTOCOL.NATIVE
-}
-
-/**
- * Gets the effective protocol from settings or falls back to the default XML.
- * This function is safe to use in webview-accessible code as it doesn't depend on vscode module.
- *
- * @param toolProtocol - Optional tool protocol from settings
- * @returns The effective tool protocol (defaults to "xml")
- */
-export function getEffectiveProtocol(toolProtocol?: ToolProtocol): ToolProtocol {
-	return toolProtocol || TOOL_PROTOCOL.XML
-}

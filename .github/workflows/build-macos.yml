@@ -51,6 +51,9 @@ jobs:
       - name: Rebuild native modules
         run: npm rebuild
 
+      - name: Generate DOM whitelist from MDN
+        run: node build/scripts/generateDOMWhitelist.mjs
+
       - name: Install roopik-roo extension dependencies
         working-directory: extensions/roopik-roo
         run: |
@@ -105,7 +108,16 @@ jobs:
         working-directory: extensions/roopik
         run: npm run build
 
+      - name: Build MCP STDIO binary (macOS ARM64)
+        working-directory: tools/roopik/mcp-stdio-server
+        run: |
+          npm ci
+          mkdir -p ../../../resources/mcp-binaries
+          npm run build:binary:mac-arm64
+
       - name: Build macOS application (arm64)
+        env:
+          BUILD_SOURCEVERSION: ${{ github.sha }}
         run: npm run gulp vscode-darwin-arm64
 
       - name: Import Apple signing certificate
@@ -317,17 +329,30 @@ jobs:
             exit 0
           fi
 
-          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
-          if [ -z "$version" ]; then
-            version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+          # Re-find APP_PATH since environment variables don't persist between steps
+          # Look in .notarize folder where we zipped it from earlier
+          APP_PATH="$(find .notarize -maxdepth 3 -name "*.app" -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+             echo "Could not find .app to read version from!"
+             # Fallback to package.json version if APP_PATH fails
+             version="$(node -p "require('./package.json').version")"
+          else
+             version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+             if [ -z "$version" ]; then
+               version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+             fi
           fi
+
           if [ -z "$version" ]; then
             version="0.0.0"
           fi
+
+          commit="${{ github.sha }}"
           hash="$(shasum -a 256 "Roopik-macos-notarized.zip" | awk '{print tolower($1)}')"
           pub_date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           base="${R2_PUBLIC_BASE_URL%/}"
           url="${base}/macos/roopik-macos-latest.zip"
-          json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$version" "$version" "$url" "$hash" "$pub_date")"
+          json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$commit" "$version" "$url" "$hash" "$pub_date")"
           printf '%s' "$json" > latest.json
           aws s3 cp latest.json "s3://${R2_BUCKET}/macos/stable/latest.json" --endpoint-url "$endpoint" --no-progress
+

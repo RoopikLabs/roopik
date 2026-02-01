@@ -514,6 +514,28 @@ export class RoopikExtensionManager implements vscode.Disposable {
 	}
 
 	// ============================================================================
+	// Screenshot
+	// ============================================================================
+
+	/**
+	 * Capture a screenshot of a component (bidirectional IPC)
+	 * Called by Core when screenshot is requested via MCP/tools
+	 */
+	public async captureComponentScreenshot(componentId: string): Promise<string | null> {
+		for (const [, panel] of this.canvasPanels.entries()) {
+			try {
+				const screenshot = await panel.captureComponentScreenshot(componentId);
+				if (screenshot) {
+					return screenshot;
+				}
+			} catch (error) {
+				// Try next panel
+			}
+		}
+		return null;
+	}
+
+	// ============================================================================
 	// Dispose
 	// ============================================================================
 

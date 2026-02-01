@@ -431,6 +431,8 @@ export class CanvasPanel implements vscode.Disposable {
 						filePath: string;
 						line?: number;
 						column?: number;
+						endLine?: number;
+						endColumn?: number;
 					});
 					break;
 
@@ -734,13 +736,15 @@ export class CanvasPanel implements vscode.Disposable {
 
 	/**
 	 * Handle open file request from webview (View Code button)
+	 * Supports both cursor positioning and selection highlighting
 	 */
 	private async handleOpenFile(payload: {
 		filePath: string;
 		line?: number;
 		column?: number;
+		endLine?: number;
+		endColumn?: number;
 	}): Promise<void> {
-		this.logger.info(`Opening file: ${payload.filePath}`);
 
 		try {
 			// Resolve the file path relative to workspace
@@ -766,16 +770,32 @@ export class CanvasPanel implements vscode.Disposable {
 				viewColumn: vscode.ViewColumn.One
 			});
 
-			// Move cursor to specified line/column if provided
+			// Move cursor or create selection if line is provided
 			if (payload.line !== undefined) {
-				const line = Math.max(0, payload.line - 1); // Convert to 0-based
-				const column = Math.max(0, (payload.column || 1) - 1); // Convert to 0-based
-				const position = new vscode.Position(line, column);
-				editor.selection = new vscode.Selection(position, position);
-				editor.revealRange(
-					new vscode.Range(position, position),
-					vscode.TextEditorRevealType.InCenter
-				);
+				const startLine = Math.max(0, payload.line - 1); // Convert to 0-based
+				const startColumn = Math.max(0, (payload.column || 1) - 1); // Convert to 0-based
+				const startPos = new vscode.Position(startLine, startColumn);
+
+				// Check if we have end position for selection highlighting
+				if (payload.endLine !== undefined && payload.endColumn !== undefined) {
+					const endLine = Math.max(0, payload.endLine - 1);
+					const endColumn = Math.max(0, payload.endColumn - 1);
+					const endPos = new vscode.Position(endLine, endColumn);
+
+					// Create selection range (highlighted)
+					editor.selection = new vscode.Selection(startPos, endPos);
+					editor.revealRange(
+						new vscode.Range(startPos, endPos),
+						vscode.TextEditorRevealType.InCenter
+					);
+				} else {
+					// Just position cursor (no selection)
+					editor.selection = new vscode.Selection(startPos, startPos);
+					editor.revealRange(
+						new vscode.Range(startPos, startPos),
+						vscode.TextEditorRevealType.InCenter
+					);
+				}
 			}
 
 			// this.logger.info(`File opened successfully: ${absolutePath}`);
@@ -1156,14 +1176,14 @@ export class CanvasPanel implements vscode.Disposable {
 			vscode.Uri.joinPath(this.extensionUri, 'webview', 'build', 'assets', 'componentView.css')
 		);
 
-		// CSP: Allow esm.sh for CDN imports in sandbox iframes
+		// CSP: Allow CDNs for imports in sandbox iframes (esm.sh, skypack, jsdelivr, tailwindcss)
 		const csp = `
 			default-src 'none';
 			style-src ${webview.cspSource} 'unsafe-inline';
-			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https://esm.sh https://cdn.skypack.dev;
+			script-src ${webview.cspSource} 'unsafe-inline' 'unsafe-eval' https://esm.sh https://cdn.skypack.dev https://cdn.jsdelivr.net https://cdn.tailwindcss.com;
 			font-src ${webview.cspSource} data:;
 			img-src ${webview.cspSource} data: https:;
-			connect-src https://esm.sh https://cdn.skypack.dev;
+			connect-src https://esm.sh https://cdn.skypack.dev https://cdn.jsdelivr.net https://cdn.tailwindcss.com;
 			frame-src blob: data: https:;
 		`;
 
@@ -1234,6 +1254,42 @@ export class CanvasPanel implements vscode.Disposable {
 		}
 
 		this.logger.debug('Panel disposed');
+	}
+
+	// ========================================================================
+	// Screenshot
+	// ========================================================================
+
+	/**
+	 * Capture a screenshot of a component (bidirectional IPC)
+	 * Called when Core requests a screenshot via MCP tools
+	 */
+	public async captureComponentScreenshot(componentId: string): Promise<string | null> {
+		return new Promise((resolve, reject) => {
+			const requestId = `screenshot-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+			const timeout = setTimeout(() => {
+				reject(new Error(`Webview did not respond within 10 seconds for component ${componentId}`));
+			}, 10000);
+
+			const messageHandler = this.panel.webview.onDidReceiveMessage((message: any) => {
+				if (message.type === 'screenshotResponse' && message.requestId === requestId) {
+					clearTimeout(timeout);
+					messageHandler.dispose();
+
+					if (message.screenshot) {
+						resolve(message.screenshot);
+					} else {
+						reject(new Error(`Webview returned null - component may not be rendered`));
+					}
+				}
+			});
+
+			this.postToWebview('captureComponentScreenshot', {
+				requestId,
+				componentId
+			});
+		});
 	}
 
 	/**

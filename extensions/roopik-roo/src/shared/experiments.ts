@@ -1,8 +1,6 @@
 import type { AssertEqual, Equals, Keys, Values, ExperimentId, Experiments } from "@roo-code/types"
 
 export const EXPERIMENT_IDS = {
-	MULTI_FILE_APPLY_DIFF: "multiFileApplyDiff",
-	POWER_STEERING: "powerSteering",
 	PREVENT_FOCUS_DISRUPTION: "preventFocusDisruption",
 	IMAGE_GENERATION: "imageGeneration",
 	RUN_SLASH_COMMAND: "runSlashCommand",
@@ -19,9 +17,7 @@ interface ExperimentConfig {
 }
 
 export const experimentConfigsMap: Record<ExperimentKey, ExperimentConfig> = {
-	MULTI_FILE_APPLY_DIFF: { enabled: false },
-	POWER_STEERING: { enabled: false },
-	PREVENT_FOCUS_DISRUPTION: { enabled: false },
+	PREVENT_FOCUS_DISRUPTION: { enabled: true }, // Enabled by default - prevents editor focus disruption during AI edits
 	IMAGE_GENERATION: { enabled: false },
 	RUN_SLASH_COMMAND: { enabled: false },
 	MULTIPLE_NATIVE_TOOL_CALLS: { enabled: false },

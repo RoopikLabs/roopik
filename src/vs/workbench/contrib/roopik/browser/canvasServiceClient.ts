@@ -94,6 +94,23 @@ export class CanvasServiceClient implements ICanvasService {
 		// No-op on client side - main process owns the service lifecycle
 	}
 
+	/**
+	 * Clear all canvas data (called when workspace is closed)
+	 * Proxies to main process
+	 */
+	async clear(): Promise<void> {
+		return this.channel.call('clear');
+	}
+
+	/**
+	 * Get the workspace path
+	 * Note: This is sync in interface but not available over IPC from browser process.
+	 * MCP tools run in main process and use the main CanvasService directly.
+	 */
+	getWorkspacePath(): string {
+		throw new Error('CanvasServiceClient: getWorkspacePath() is not supported over IPC.');
+	}
+
 	// ========================================================================
 	// Canvas CRUD
 	// ========================================================================

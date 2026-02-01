@@ -1,8 +1,11 @@
 import { render, screen, act } from "@/utils/test-utils"
 
-import { ProviderSettings, ExperimentId, DEFAULT_CHECKPOINT_TIMEOUT_SECONDS } from "@roo-code/types"
-
-import { ExtensionState } from "@roo/ExtensionMessage"
+import {
+	type ProviderSettings,
+	type ExperimentId,
+	type ExtensionState,
+	DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
+} from "@roo-code/types"
 
 import { ExtensionStateContextProvider, useExtensionState, mergeExtensionState } from "../ExtensionStateContext"
 
@@ -230,16 +233,9 @@ describe("mergeExtensionState", () => {
 			...baseState,
 			apiConfiguration: { modelMaxThinkingTokens: 456, modelTemperature: 0.3 },
 			experiments: {
-				powerSteering: true,
-				marketplace: false,
-				disableCompletionCommand: false,
-				concurrentFileReads: true,
-				multiFileApplyDiff: true,
 				preventFocusDisruption: false,
-				newTaskRequireTodos: false,
 				imageGeneration: false,
 				runSlashCommand: false,
-				nativeToolCalling: false,
 				multipleNativeToolCalls: false,
 				customTools: false,
 			} as Record<ExperimentId, boolean>,
@@ -254,16 +250,9 @@ describe("mergeExtensionState", () => {
 		})
 
 		expect(result.experiments).toEqual({
-			powerSteering: true,
-			marketplace: false,
-			disableCompletionCommand: false,
-			concurrentFileReads: true,
-			multiFileApplyDiff: true,
 			preventFocusDisruption: false,
-			newTaskRequireTodos: false,
 			imageGeneration: false,
 			runSlashCommand: false,
-			nativeToolCalling: false,
 			multipleNativeToolCalls: false,
 			customTools: false,
 		})

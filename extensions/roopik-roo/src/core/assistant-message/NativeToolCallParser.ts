@@ -16,7 +16,7 @@ import type {
 	ApiStreamToolCallDeltaChunk,
 	ApiStreamToolCallEndChunk,
 } from "../../api/transform/stream"
-import { MCP_TOOL_PREFIX, MCP_TOOL_SEPARATOR, parseMcpToolName } from "../../utils/mcp-name"
+import { MCP_TOOL_PREFIX, MCP_TOOL_SEPARATOR, parseMcpToolName, normalizeMcpToolName } from "../../utils/mcp-name"
 
 /**
  * Helper type to extract properly typed native arguments for a given tool.
@@ -52,7 +52,7 @@ export type ToolCallStreamEvent = ApiStreamToolCallStartChunk | ApiStreamToolCal
  */
 export class NativeToolCallParser {
 	// Streaming state management for argument accumulation (keyed by tool call id)
-	// Note: name is string to accommodate dynamic MCP tools (mcp_serverName_toolName)
+	// Note: name is string to accommodate dynamic MCP tools (mcp--serverName--toolName)
 	private static streamingToolCalls = new Map<
 		string,
 		{
@@ -72,6 +72,22 @@ export class NativeToolCallParser {
 			deltaBuffer: string[]
 		}
 	>()
+
+	private static coerceOptionalBoolean(value: unknown): boolean | undefined {
+		if (typeof value === "boolean") {
+			return value
+		}
+		if (typeof value === "string") {
+			const lower = value.trim().toLowerCase()
+			if (lower === "true") {
+				return true
+			}
+			if (lower === "false") {
+				return false
+			}
+		}
+		return undefined
+	}
 
 	/**
 	 * Process a raw tool call chunk from the API stream.
@@ -199,7 +215,7 @@ export class NativeToolCallParser {
 	/**
 	 * Start streaming a new tool call.
 	 * Initializes tracking for incremental argument parsing.
-	 * Accepts string to support both ToolName and dynamic MCP tools (mcp_serverName_toolName).
+	 * Accepts string to support both ToolName and dynamic MCP tools (mcp--serverName--toolName).
 	 */
 	public static startStreamingToolCall(id: string, name: string): void {
 		this.streamingToolCalls.set(id, {
@@ -348,9 +364,9 @@ export class NativeToolCallParser {
 		partial: boolean,
 		originalName?: string,
 	): ToolUse | null {
-		// Build legacy params for display
+		// Build stringified params for display/partial-progress UI.
 		// NOTE: For streaming partial updates, we MUST populate params even for complex types
-		// because tool.handlePartial() methods rely on params to show UI updates
+		// because tool.handlePartial() methods rely on params to show UI updates.
 		const params: Partial<Record<ToolParamName, string>> = {}
 
 		for (const [key, value] of Object.entries(partialArgs)) {
@@ -543,6 +559,159 @@ export class NativeToolCallParser {
 				}
 				break
 
+			case "list_files":
+				if (partialArgs.path !== undefined) {
+					nativeArgs = {
+						path: partialArgs.path,
+						recursive: this.coerceOptionalBoolean(partialArgs.recursive),
+					}
+				}
+				break
+
+			case "new_task":
+				if (partialArgs.mode !== undefined || partialArgs.message !== undefined) {
+					nativeArgs = {
+						mode: partialArgs.mode,
+						message: partialArgs.message,
+						todos: partialArgs.todos,
+					}
+				}
+				break
+
+			// ============================================================================
+			// Roopik IDE Tools - Partial args for streaming
+			// ============================================================================
+
+			// Browser Tools (12)
+			case "browser_open":
+				nativeArgs = { url: partialArgs.url }
+				break
+			case "browser_close":
+				nativeArgs = {}
+				break
+			case "browser_action_input":
+				nativeArgs = {
+					action: partialArgs.action,
+					coordinate: partialArgs.coordinate,
+					text: partialArgs.text,
+					key: partialArgs.key,
+					modifiers: partialArgs.modifiers,
+					deltaX: partialArgs.deltaX,
+					deltaY: partialArgs.deltaY,
+				}
+				break
+			case "browser_navigate":
+				nativeArgs = { url: partialArgs.url }
+				break
+			case "browser_reload":
+				nativeArgs = { ignoreCache: partialArgs.ignoreCache }
+				break
+			case "browser_screenshot":
+				nativeArgs = {}
+				break
+			case "browser_execute_script":
+				nativeArgs = { script: partialArgs.script }
+				break
+			case "browser_inspect_element":
+				nativeArgs = {
+					selector: partialArgs.selector,
+					includeInherited: partialArgs.includeInherited,
+				}
+				break
+			case "browser_get_errors":
+				nativeArgs = { limit: partialArgs.limit }
+				break
+			case "browser_get_console_logs":
+				nativeArgs = { limit: partialArgs.limit, type: partialArgs.type }
+				break
+			case "browser_get_performance":
+				nativeArgs = {}
+				break
+			case "browser_get_state":
+				nativeArgs = {}
+				break
+			case "browser_set_viewport":
+				nativeArgs = {
+					width: partialArgs.width,
+					height: partialArgs.height,
+					deviceScaleFactor: partialArgs.deviceScaleFactor,
+					mobile: partialArgs.mobile,
+				}
+				break
+			case "browser_get_network_requests":
+				nativeArgs = {
+					includeStaticAssets: partialArgs.includeStaticAssets,
+					urlFilter: partialArgs.urlFilter,
+					method: partialArgs.method,
+					statusFilter: partialArgs.statusFilter,
+					limit: partialArgs.limit,
+				}
+				break
+
+			// Project Tools (3)
+			case "project_get_active":
+				nativeArgs = {}
+				break
+			case "project_start":
+				nativeArgs = {
+					projectPath: partialArgs.projectPath,
+					port: partialArgs.port,
+				}
+				break
+			case "project_stop":
+				nativeArgs = {}
+				break
+
+			// Canvas Tools (3)
+			case "canvas_list":
+				nativeArgs = {
+					nameFilter: partialArgs.nameFilter,
+					sortBy: partialArgs.sortBy,
+					sortDirection: partialArgs.sortDirection,
+				}
+				break
+			case "canvas_get_active":
+				nativeArgs = {}
+				break
+			case "canvas_create":
+				nativeArgs = { name: partialArgs.name }
+				break
+			case "canvas_open":
+				nativeArgs = { canvasId: partialArgs.canvasId, name: partialArgs.name }
+				break
+			case "canvas_validate_components":
+				nativeArgs = { canvasId: partialArgs.canvasId }
+				break
+
+			// Component Tools (7)
+			case "component_add":
+				nativeArgs = {
+					folderPath: partialArgs.folderPath,
+					canvasId: partialArgs.canvasId,
+					name: partialArgs.name,
+					entryFile: partialArgs.entryFile,
+					framework: partialArgs.framework,
+				}
+				break
+			case "component_add_batch":
+				nativeArgs = { components: partialArgs.components }
+				break
+			case "component_remove":
+				nativeArgs = {
+					componentId: partialArgs.componentId,
+					deleteSourceCode: partialArgs.deleteSourceCode,
+				}
+				break
+			case "component_get_info":
+				nativeArgs = { componentId: partialArgs.componentId }
+				break
+			case "component_list":
+				nativeArgs = { canvasId: partialArgs.canvasId }
+				break
+			case "component_rebuild":
+				nativeArgs = { componentId: partialArgs.componentId }
+				break
+
 			default:
 				break
 		}
@@ -575,10 +744,16 @@ export class NativeToolCallParser {
 		arguments: string
 	}): ToolUse<TName> | McpToolUse | null {
 		// Check if this is a dynamic MCP tool (mcp--serverName--toolName)
+		// Also handle models that output underscores instead of hyphens (mcp__serverName__toolName)
 		const mcpPrefix = MCP_TOOL_PREFIX + MCP_TOOL_SEPARATOR
 
-		if (typeof toolCall.name === "string" && toolCall.name.startsWith(mcpPrefix)) {
-			return this.parseDynamicMcpTool(toolCall)
+		if (typeof toolCall.name === "string") {
+			// Normalize the tool name to handle models that output underscores instead of hyphens
+			const normalizedName = normalizeMcpToolName(toolCall.name)
+			if (normalizedName.startsWith(mcpPrefix)) {
+				// Pass the original tool call but with normalized name for parsing
+				return this.parseDynamicMcpTool({ ...toolCall, name: normalizedName })
+			}
 		}
 
 		// Resolve tool alias to canonical name
@@ -595,8 +770,8 @@ export class NativeToolCallParser {
 			// Parse the arguments JSON string
 			const args = toolCall.arguments === "" ? {} : JSON.parse(toolCall.arguments)
 
-			// Build legacy params object for backward compatibility with XML protocol and UI.
-			// Native execution path uses nativeArgs instead, which has proper typing.
+			// Build stringified params for display/logging.
+			// Tool execution MUST use nativeArgs (typed) and does not support legacy fallbacks.
 			const params: Partial<Record<ToolParamName, string>> = {}
 
 			for (const [key, value] of Object.entries(args)) {
@@ -619,14 +794,9 @@ export class NativeToolCallParser {
 				params[key as ToolParamName] = stringValue
 			}
 
-			// Build typed nativeArgs for tools that support it.
-			// This switch statement serves two purposes:
-			// 1. Validation: Ensures required parameters are present before constructing nativeArgs
-			// 2. Transformation: Converts raw JSON to properly typed structures
-			//
+			// Build typed nativeArgs for tool execution.
 			// Each case validates the minimum required parameters and constructs a properly typed
-			// nativeArgs object. If validation fails, nativeArgs remains undefined and the tool
-			// will fall back to legacy parameter parsing if supported.
+			// nativeArgs object. If validation fails, we treat the tool call as invalid and fail fast.
 			let nativeArgs: NativeArgsFor<TName> | undefined = undefined
 
 			switch (resolvedName) {
@@ -754,6 +924,17 @@ export class NativeToolCallParser {
 					}
 					break
 
+				case "read_command_output":
+					if (args.artifact_id !== undefined) {
+						nativeArgs = {
+							artifact_id: args.artifact_id,
+							search: args.search,
+							offset: args.offset,
+							limit: args.limit,
+						} as NativeArgsFor<TName>
+					}
+					break
+
 				case "write_to_file":
 					if (args.path !== undefined && args.content !== undefined) {
 						nativeArgs = {
@@ -819,14 +1000,200 @@ export class NativeToolCallParser {
 					}
 					break
 
+				case "list_files":
+					if (args.path !== undefined) {
+						nativeArgs = {
+							path: args.path,
+							recursive: this.coerceOptionalBoolean(args.recursive),
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				case "new_task":
+					if (args.mode !== undefined && args.message !== undefined) {
+						nativeArgs = {
+							mode: args.mode,
+							message: args.message,
+							todos: args.todos,
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				// ============================================================================
+				// Roopik IDE Tools
+				// ============================================================================
+
+				// Browser Tools (12)
+				case "browser_open":
+					// url is optional
+					nativeArgs = { url: args.url } as NativeArgsFor<TName>
+					break
+				case "browser_close":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+				case "browser_action_input":
+					if (args.action !== undefined) {
+						nativeArgs = {
+							action: args.action,
+							coordinate: args.coordinate,
+							text: args.text,
+							key: args.key,
+							modifiers: args.modifiers,
+							deltaX: args.deltaX,
+							deltaY: args.deltaY,
+						} as NativeArgsFor<TName>
+					}
+					break
+				case "browser_navigate":
+					if (args.url !== undefined) {
+						nativeArgs = { url: args.url } as NativeArgsFor<TName>
+					}
+					break
+				case "browser_reload":
+					nativeArgs = { ignoreCache: args.ignoreCache } as NativeArgsFor<TName>
+					break
+				case "browser_screenshot":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+				case "browser_execute_script":
+					if (args.script !== undefined) {
+						nativeArgs = { script: args.script } as NativeArgsFor<TName>
+					}
+					break
+				case "browser_inspect_element":
+					if (args.selector !== undefined) {
+						nativeArgs = {
+							selector: args.selector,
+							includeInherited: args.includeInherited,
+						} as NativeArgsFor<TName>
+					}
+					break
+				case "browser_get_errors":
+					nativeArgs = { limit: args.limit } as NativeArgsFor<TName>
+					break
+				case "browser_get_console_logs":
+					nativeArgs = { limit: args.limit, type: args.type } as NativeArgsFor<TName>
+					break
+				case "browser_get_performance":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+				case "browser_get_state":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+				case "browser_set_viewport":
+					nativeArgs = {
+						width: args.width,
+						height: args.height,
+						deviceScaleFactor: args.deviceScaleFactor,
+						mobile: args.mobile,
+					} as NativeArgsFor<TName>
+					break
+				case "browser_get_network_requests":
+					nativeArgs = {
+						includeStaticAssets: args.includeStaticAssets,
+						urlFilter: args.urlFilter,
+						method: args.method,
+						statusFilter: args.statusFilter,
+						limit: args.limit,
+					} as NativeArgsFor<TName>
+					break
+
+				// Project Tools (3)
+				case "project_get_active":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+				case "project_start":
+					if (args.projectPath !== undefined) {
+						nativeArgs = {
+							projectPath: args.projectPath,
+							port: args.port,
+						} as NativeArgsFor<TName>
+					}
+					break
+				case "project_stop":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+
+				// Canvas Tools (3)
+				case "canvas_list":
+					nativeArgs = {
+						nameFilter: args.nameFilter,
+						sortBy: args.sortBy,
+						sortDirection: args.sortDirection,
+					} as NativeArgsFor<TName>
+					break
+				case "canvas_get_active":
+					nativeArgs = {} as NativeArgsFor<TName>
+					break
+				case "canvas_create":
+					if (args.name !== undefined) {
+						nativeArgs = { name: args.name } as NativeArgsFor<TName>
+					}
+					break
+				case "canvas_open":
+					nativeArgs = { canvasId: args.canvasId, name: args.name } as NativeArgsFor<TName>
+					break
+				case "canvas_validate_components":
+					nativeArgs = { canvasId: args.canvasId } as NativeArgsFor<TName>
+					break
+
+				// Component Tools (7)
+				case "component_add":
+					if (args.folderPath !== undefined) {
+						nativeArgs = {
+							folderPath: args.folderPath,
+							canvasId: args.canvasId,
+							name: args.name,
+							entryFile: args.entryFile,
+							framework: args.framework,
+						} as NativeArgsFor<TName>
+					}
+					break
+				case "component_add_batch":
+					if (args.components !== undefined) {
+						nativeArgs = { components: args.components } as NativeArgsFor<TName>
+					}
+					break
+				case "component_remove":
+					if (args.componentId !== undefined) {
+						nativeArgs = {
+							componentId: args.componentId,
+							deleteSourceCode: args.deleteSourceCode,
+						} as NativeArgsFor<TName>
+					}
+					break
+				case "component_get_info":
+					if (args.componentId !== undefined) {
+						nativeArgs = { componentId: args.componentId } as NativeArgsFor<TName>
+					}
+					break
+				case "component_list":
+					if (args.canvasId !== undefined) {
+						nativeArgs = { canvasId: args.canvasId } as NativeArgsFor<TName>
+					}
+					break
+				case "component_rebuild":
+					if (args.componentId !== undefined) {
+						nativeArgs = { componentId: args.componentId } as NativeArgsFor<TName>
+					}
+					break
+
 				default:
 					if (customToolRegistry.has(resolvedName)) {
 						nativeArgs = args as NativeArgsFor<TName>
-					} else {
-						console.error(`Unhandled tool: ${resolvedName}`)
 					}
 
 					break
+			}
+
+			// Native-only: core tools must always have typed nativeArgs.
+			// If we couldn't construct it, the model produced an invalid tool call payload.
+			if (!nativeArgs && !customToolRegistry.has(resolvedName)) {
+				throw new Error(
+					`[NativeToolCallParser] Invalid arguments for tool '${resolvedName}'. ` +
+						`Native tool calls require a valid JSON payload matching the tool schema. ` +
+						`Received: ${JSON.stringify(args)}`,
+				)
 			}
 
 			const result: ToolUse<TName> = {
@@ -857,21 +1224,21 @@ export class NativeToolCallParser {
 	 * Parse dynamic MCP tools (named mcp--serverName--toolName).
 	 * These are generated dynamically by getMcpServerTools() and are returned
 	 * as McpToolUse objects that preserve the original tool name.
-	 *
-	 * In native mode, MCP tools are NOT converted to use_mcp_tool - they keep
-	 * their original name so it appears correctly in API conversation history.
-	 * The use_mcp_tool wrapper is only used in XML mode.
 	 */
 	public static parseDynamicMcpTool(toolCall: { id: string; name: string; arguments: string }): McpToolUse | null {
 		try {
 			// Parse the arguments - these are the actual tool arguments passed directly
 			const args = JSON.parse(toolCall.arguments || "{}")
 
+			// Normalize the tool name to handle models that output underscores instead of hyphens
+			// e.g., mcp__serverName__toolName -> mcp--serverName--toolName
+			const normalizedName = normalizeMcpToolName(toolCall.name)
+
 			// Extract server_name and tool_name from the tool name itself
 			// Format: mcp--serverName--toolName (using -- separator)
-			const parsed = parseMcpToolName(toolCall.name)
+			const parsed = parseMcpToolName(normalizedName)
 			if (!parsed) {
-				console.error(`Invalid dynamic MCP tool name format: ${toolCall.name}`)
+				console.error(`Invalid dynamic MCP tool name format: ${toolCall.name} (normalized: ${normalizedName})`)
 				return null
 			}
 

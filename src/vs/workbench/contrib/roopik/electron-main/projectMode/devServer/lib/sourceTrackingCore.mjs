@@ -19,9 +19,14 @@
  * - Component name tracking (data-roopik-component)
  * - String literal safety (skip tags inside strings/template literals)
  * - Configurable skip tags for HTML
+ * - DOM element whitelist (only injects into real DOM elements)
  */
 
 import { basename, extname } from 'path';
+import { isDOMElement, DOM_ELEMENTS } from './domElements.mjs';
+
+// Re-export for use by plugins
+export { isDOMElement, DOM_ELEMENTS };
 
 // ============================================
 // Configuration
@@ -32,6 +37,19 @@ export const MAX_PARENT_DEPTH = 3;
 
 /** Enable/disable parent metadata collection (DISABLED - using CSS selectors instead) */
 export const ENABLE_PARENT_METADATA = false;
+
+// ============================================
+// DOM Element Detection (Whitelist Approach)
+// ============================================
+
+// Note: isDOMElement is imported from domElements.mjs (auto-generated)
+// It uses a whitelist approach:
+// - INCLUDE: HTML, SVG, MathML elements from MDN BCD
+// - INCLUDE: Custom elements / Web Components (names with hyphens)
+// - SKIP: React components, R3F/Three.js, react-konva, react-pixi, etc.
+//
+// This is the inverse of the old blocklist approach - instead of listing
+// infinite unknown elements to skip, we list finite known DOM elements to include.
 
 // ============================================
 // Regex Patterns (Shared by all frameworks)
@@ -68,6 +86,21 @@ export const CLOSING_TAG_REGEX = /<\/([a-zA-Z][a-zA-Z0-9.-]*)>/g;
 export function isInsideTypeScriptTypeContext(code, position) {
 	// Look backwards from position to find context
 	const beforeMatch = code.substring(Math.max(0, position - 100), position);
+
+	// CRITICAL Pattern: Generic function/method calls - "useState<", "React.useState<", "useRef<T>"
+	// This is the MOST COMMON case that causes bugs!
+	// If an identifier immediately precedes '<', it's almost always a TypeScript generic, NOT JSX
+	// The ONLY exception is: "return <Component>" (the 'return' keyword)
+	// Note: "=> <Component>" doesn't match because '=>' isn't an identifier
+	const identifierBeforeAngleBracket = /[A-Za-z_$][A-Za-z0-9_$.]*\s*$/.exec(beforeMatch);
+	if (identifierBeforeAngleBracket) {
+		const matchedIdentifier = identifierBeforeAngleBracket[0].trim();
+		// If the identifier is 'return', it's JSX (e.g., "return <div>")
+		// Otherwise, it's a TypeScript generic (e.g., "useState<T>", "Array<string>")
+		if (matchedIdentifier !== 'return') {
+			return true; // Skip - it's a generic
+		}
+	}
 
 	// Pattern 1: Type annotation - "event: React.MouseEvent<" or "value: Array<"
 	// Look for ": TypeName<" pattern (colon followed by identifier then our position)
@@ -368,6 +401,12 @@ export function parseElements(code, options) {
 
 			// Skip configured tags (case-insensitive)
 			if (skipTags.length > 0 && skipTags.includes(tagName.toLowerCase())) {
+				continue;
+			}
+
+			// WHITELIST: Only inject into real DOM elements
+			// Skip React components, R3F/Three.js, react-konva, react-pixi, etc.
+			if (!isDOMElement(tagName)) {
 				continue;
 			}
 

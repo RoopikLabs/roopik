@@ -37,8 +37,13 @@ interface OpenProjectPreviewArgs {
 	projectName?: string;
 }
 
+// Flag to control browser editor behavior:
+// - true: Open in split view with locked group (original behavior)
+// - false: Open as regular tab in active group
+const BROWSER_OPEN_IN_SPLIT_VIEW = false;
+
 /**
- * Helper function to open/focus the browser editor and lock its group
+ * Helper function to open/focus the browser editor.
  * This centralizes the logic since the browser is a singleton.
  *
  * @returns The opened browser editor pane, or undefined if failed
@@ -57,29 +62,32 @@ export async function openBrowserEditor(
 	);
 
 	if (existingPane && existingPane instanceof ProjectModeEditor) {
-		// Browser already open -> focus it and lock the group
+		// Browser already open -> focus it
 		await existingPane.group.openEditor(input, { pinned: true });
 
-		// Lock the group to prevent new editors from opening here
-		// Only lock if there are multiple groups (locking requires >1 group)
-		if (editorGroupsService.groups.length > 1) {
+		if (BROWSER_OPEN_IN_SPLIT_VIEW && editorGroupsService.groups.length > 1) {
 			existingPane.group.lock(true);
 		}
 
 		return existingPane;
 	}
 
-	// Browser not open -> open it in a side group, then lock
-	const direction = preferredSideBySideGroupDirection(configurationService);
-	let targetGroup = editorGroupsService.findGroup({ direction });
-	if (!targetGroup) {
-		targetGroup = editorGroupsService.addGroup(editorGroupsService.activeGroup, direction);
+	let targetGroup;
+	if (BROWSER_OPEN_IN_SPLIT_VIEW) {
+		// Open in a side group (split view)
+		const direction = preferredSideBySideGroupDirection(configurationService);
+		targetGroup = editorGroupsService.findGroup({ direction });
+		if (!targetGroup) {
+			targetGroup = editorGroupsService.addGroup(editorGroupsService.activeGroup, direction);
+		}
+	} else {
+		// Open in active group as regular tab
+		targetGroup = editorGroupsService.activeGroup;
 	}
+
 	await targetGroup.openEditor(input, { pinned: true });
 
-	// Lock the group to prevent new editors from opening here
-	// Only lock if there are multiple groups (locking requires >1 group)
-	if (editorGroupsService.groups.length > 1) {
+	if (BROWSER_OPEN_IN_SPLIT_VIEW && editorGroupsService.groups.length > 1) {
 		targetGroup.lock(true);
 	}
 
@@ -270,7 +278,7 @@ export function registerBrowserCommands(): void {
 			try {
 				// Get status before restart
 				const statusBefore = await mcpServerService.getStatus();
-				const portBefore = statusBefore.port;
+				const portBefore = statusBefore.wsPort;
 
 				// Show notification that restart is in progress
 				notificationService.info('Restarting MCP Server...');
@@ -280,7 +288,7 @@ export function registerBrowserCommands(): void {
 
 				// Get status after restart
 				const statusAfter = await mcpServerService.getStatus();
-				const portAfter = statusAfter.port;
+				const portAfter = statusAfter.wsPort;
 
 				// Show success message
 				if (portBefore === portAfter) {

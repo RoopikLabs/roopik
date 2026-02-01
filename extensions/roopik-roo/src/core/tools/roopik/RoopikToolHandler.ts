@@ -2,14 +2,14 @@
  * RoopikToolHandler
  *
  * Handles Roopik IDE tool calls from the LLM.
- * Dispatches XML-parsed parameters to RoopikToolClient and formats responses.
+ * Dispatches native tool parameters to RoopikToolClient and formats responses.
  *
  * Architecture:
- * LLM → XML Tool Call → RoopikToolHandler → RoopikToolClient → VSCode Commands → IPC → Core
+ * LLM → Native Tool Call → RoopikToolHandler → RoopikToolClient → VSCode Commands → IPC → Core
  */
 
 import { Task } from "../../task/Task"
-import type { ToolUse, ToolResponse, HandleError, PushToolResult, RemoveClosingTag, AskApproval } from "../../../shared/tools"
+import type { ToolUse, ToolResponse, HandleError, PushToolResult, AskApproval } from "../../../shared/tools"
 import { formatResponse } from "../../prompts/responses"
 import { roopikClient, RoopikToolResult } from "../../../services/roopik"
 import { isRoopikTool, type RoopikToolName } from "../../prompts/tools/roopik/roopik-tools"
@@ -22,7 +22,6 @@ interface ToolCallbacks {
 	askApproval: AskApproval
 	handleError: HandleError
 	pushToolResult: PushToolResult
-	removeClosingTag: RemoveClosingTag
 }
 
 /**
@@ -37,7 +36,7 @@ export async function handleRoopikTool(
 	block: ToolUse,
 	callbacks: ToolCallbacks
 ): Promise<void> {
-	const { askApproval, handleError, pushToolResult, removeClosingTag } = callbacks
+	const { askApproval, handleError, pushToolResult } = callbacks
 	const toolName = block.name as RoopikToolName
 
 	// Handle partial streaming (show pending state in UI)
@@ -71,7 +70,7 @@ export async function handleRoopikTool(
 		let result: RoopikToolResult
 
 		switch (toolName) {
-			// Browser Tools (12)
+			// Browser Tools (14)
 			case "browser_open":
 				result = await handleBrowserOpen(task, block, callbacks)
 				break
@@ -105,8 +104,14 @@ export async function handleRoopikTool(
 			case "browser_get_performance":
 				result = await handleBrowserGetPerformance(task, block, callbacks)
 				break
-			case "browser_get_cdp_info":
-				result = await handleBrowserGetCdpInfo(task, block, callbacks)
+			case "browser_get_state":
+				result = await handleBrowserGetState(task, block, callbacks)
+				break
+			case "browser_set_viewport":
+				result = await handleBrowserSetViewport(task, block, callbacks)
+				break
+			case "browser_get_network_requests":
+				result = await handleBrowserGetNetworkRequests(task, block, callbacks)
 				break
 
 			// Project Tools (3)
@@ -120,7 +125,7 @@ export async function handleRoopikTool(
 				result = await handleStopProject(task, block, callbacks)
 				break
 
-			// Canvas Tools (3)
+			// Canvas Tools (4)
 			case "canvas_list":
 				result = await handleListCanvases(task, block, callbacks)
 				break
@@ -130,8 +135,11 @@ export async function handleRoopikTool(
 			case "canvas_create":
 				result = await handleCreateCanvas(task, block, callbacks)
 				break
+			case "canvas_open":
+				result = await handleOpenCanvas(task, block, callbacks)
+				break
 
-			// Component Tools (6)
+			// Component Tools (7)
 			case "component_add":
 				result = await handleAddComponent(task, block, callbacks)
 				break
@@ -149,6 +157,9 @@ export async function handleRoopikTool(
 				break
 			case "component_rebuild":
 				result = await handleRebuildComponent(task, block, callbacks)
+				break
+			case "canvas_validate_components":
+				result = await handleValidateComponents(task, block, callbacks)
 				break
 
 			default:
@@ -174,53 +185,10 @@ export async function handleRoopikTool(
 async function handleRoopikToolPartial(
 	task: Task,
 	block: ToolUse,
-	callbacks: ToolCallbacks
+	_callbacks: ToolCallbacks
 ): Promise<void> {
-	const { removeClosingTag } = callbacks
 	const toolName = block.name
-
-	// Show tool in progress in UI
-	// For most Roopik tools, we just show that we're calling the tool
 	const params = block.params
-	let displayMessage = ""
-
-	switch (toolName) {
-		case "browser_open":
-			displayMessage = `Opening browser${params.url ? `: ${removeClosingTag("url", params.url)}` : "..."}`
-			break
-		case "browser_close":
-			displayMessage = `Closing browser...`
-			break
-		case "browser_action_input":
-			displayMessage = `Browser action: ${removeClosingTag("action", params.action)}${params.coordinate ? ` at ${removeClosingTag("coordinate", params.coordinate)}` : ""}`
-			break
-		case "browser_navigate":
-			displayMessage = `Navigating to: ${removeClosingTag("url", params.url)}`
-			break
-		case "browser_execute_script":
-			displayMessage = `Executing script...`
-			break
-		case "browser_inspect_element":
-			displayMessage = `Inspecting: ${removeClosingTag("selector", params.args || params.path)}`
-			break
-		case "browser_get_performance":
-			displayMessage = `Getting performance metrics...`
-			break
-		case "browser_get_cdp_info":
-			displayMessage = `Getting CDP info...`
-			break
-		case "project_start":
-			displayMessage = `Starting project: ${removeClosingTag("projectPath", params.path || params.args)}`
-			break
-		case "canvas_create":
-			displayMessage = `Creating canvas: ${removeClosingTag("name", params.args)}`
-			break
-		case "component_add":
-			displayMessage = `Adding component: ${removeClosingTag("folderPath", params.path || params.args)}`
-			break
-		default:
-			displayMessage = `Running ${toolName}...`
-	}
 
 	// Use task.ask to show the partial message (for approval UI)
 	await task.ask("tool", JSON.stringify({ tool: toolName, ...params }), block.partial).catch(() => { })
@@ -274,8 +242,25 @@ async function handleBrowserGetPerformance(task: Task, block: ToolUse, callbacks
 	return roopikClient.browserGetPerformance()
 }
 
-async function handleBrowserGetCdpInfo(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	return roopikClient.browserGetCdpInfo()
+async function handleBrowserGetState(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	return roopikClient.browserGetState()
+}
+
+async function handleBrowserSetViewport(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const width = block.params.width ? parseInt(block.params.width, 10) : undefined
+	const height = block.params.height ? parseInt(block.params.height, 10) : undefined
+	const deviceScaleFactor = block.params.deviceScaleFactor ? parseFloat(block.params.deviceScaleFactor) : undefined
+	const mobile = block.params.mobile === "true"
+	return roopikClient.browserSetViewport(width, height, deviceScaleFactor, mobile)
+}
+
+async function handleBrowserGetNetworkRequests(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const includeStaticAssets = block.params.includeStaticAssets === "true"
+	const urlFilter = block.params.urlFilter
+	const method = block.params.method
+	const statusFilter = block.params.statusFilter as "success" | "error" | "all" | undefined
+	const limit = block.params.limit ? parseInt(block.params.limit, 10) : undefined
+	return roopikClient.browserGetNetworkRequests({ includeStaticAssets, urlFilter, method, statusFilter, limit })
 }
 
 async function handleNavigate(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
@@ -368,6 +353,15 @@ async function handleCreateCanvas(task: Task, block: ToolUse, callbacks: ToolCal
 	return roopikClient.createCanvas(name)
 }
 
+async function handleOpenCanvas(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const canvasId = block.params.canvasId
+	const name = block.params.name
+	if (!canvasId && !name) {
+		return { success: false, error: "Missing required parameter: canvasId or name" }
+	}
+	return roopikClient.openCanvas(canvasId, name)
+}
+
 // ============================================================================
 // Component Tool Handlers
 // ============================================================================
@@ -397,7 +391,49 @@ async function handleAddComponents(task: Task, block: ToolUse, callbacks: ToolCa
 		if (!Array.isArray(components)) {
 			return { success: false, error: "components must be an array" }
 		}
-		return roopikClient.addComponents(components)
+
+		// return roopikClient.addComponents(components)
+
+		// ------------------------------------------
+		// PROCESS SEQUENTIALLY to avoid race conditions in the backend file writing
+		const addedComponents: any[] = []
+		let successCount = 0
+
+		for (const component of components) {
+			try {
+				const result = await roopikClient.addComponent({
+					folderPath: component.folderPath,
+					canvasId: component.canvasId,
+					name: component.name,
+					entryFile: component.entryFile,
+					framework: component.framework,
+				})
+
+				if (result.success && result.data?.component) {
+					addedComponents.push(result.data.component)
+					successCount++
+				} else {
+					// Log error but continue with others?
+					// For now, let's include error info in case we want to return partial success
+					console.error(`Failed to add component ${component.name}: ${result.error}`)
+				}
+
+				// Small delay to ensure file system operations settle
+				await new Promise(resolve => setTimeout(resolve, 100))
+			} catch (err) {
+				console.error(`Exception adding component ${component.name}:`, err)
+			}
+		}
+
+		return {
+			success: true,
+			data: {
+				count: successCount,
+				components: addedComponents
+			}
+		}
+		// ------------------------------------------
+
 	} catch (e) {
 		return { success: false, error: `Invalid JSON in components: ${e}` }
 	}
@@ -408,7 +444,7 @@ async function handleRemoveComponent(task: Task, block: ToolUse, callbacks: Tool
 	if (!componentId) {
 		return { success: false, error: "Missing required parameter: componentId" }
 	}
-	const deleteSourceCode = block.params.deleteSourceCode === true || block.params.deleteSourceCode === "true"
+	const deleteSourceCode = block.params.deleteSourceCode === "true"
 	return roopikClient.removeComponent(componentId, deleteSourceCode)
 }
 
@@ -434,6 +470,11 @@ async function handleRebuildComponent(task: Task, block: ToolUse, callbacks: Too
 		return { success: false, error: "Missing required parameter: componentId" }
 	}
 	return roopikClient.rebuildComponent(componentId)
+}
+
+async function handleValidateComponents(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const canvasId = block.params.canvasId
+	return roopikClient.validateComponents(canvasId)
 }
 
 // ============================================================================

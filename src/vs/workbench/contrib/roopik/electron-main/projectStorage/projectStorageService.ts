@@ -25,6 +25,7 @@ export class ProjectStorageService implements IProjectStorageService {
 	private readonly logger;
 	private initialized: boolean = false;
 	private storage: WorkspaceStorage | null = null;
+	private _workspacePath: string | null = null;
 
 	// ========================================================================
 	// Events
@@ -53,10 +54,23 @@ export class ProjectStorageService implements IProjectStorageService {
 	 * Called from browser process when workspace is ready
 	 */
 	async initialize(workspacePath: string): Promise<void> {
+		// Handle workspace change - reset state
+		if (this.initialized && this._workspacePath !== workspacePath) {
+			// this.logger.info('Workspace changed, re-initializing', {
+			// 	oldPath: this._workspacePath,
+			// 	newPath: workspacePath
+			// });
+
+			this.storage = null;
+			this.initialized = false;
+		}
+
 		if (this.initialized) {
-			this.logger.warn('Already initialized');
+			this.logger.debug('Already initialized for this workspace');
 			return;
 		}
+
+		this._workspacePath = workspacePath;
 
 		this.storage = new WorkspaceStorage();
 		await this.storage.initialize(workspacePath);
@@ -78,6 +92,26 @@ export class ProjectStorageService implements IProjectStorageService {
 		return this.initialized;
 	}
 
+	/**
+	 * Clear all project data (called when workspace is closed)
+	 * Resets to uninitialized state
+	 */
+	async clear(): Promise<void> {
+		// this.logger.info('Clearing project storage service (workspace closed)');
+
+		this.storage = null;
+		this._workspacePath = null;
+		this.initialized = false;
+
+		// Fire event so UI clears project list
+		this._onProjectsChanged.fire();
+
+		// Fire onDidInitialize to signal UI that service state changed (now uninitialized)
+		this._onDidInitialize.fire();
+
+		// this.logger.info('Project storage service cleared');
+	}
+
 	// ========================================================================
 	// Project Operations
 	// ========================================================================
@@ -87,7 +121,7 @@ export class ProjectStorageService implements IProjectStorageService {
 	 */
 	async getRecentProjects(limit: number = 5): Promise<ProjectInfo[]> {
 		if (!this.storage || !this.initialized) {
-			this.logger.warn('Not initialized, returning empty list');
+			// this.logger.warn('Not initialized, returning empty list');
 			return [];
 		}
 

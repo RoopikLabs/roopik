@@ -4,12 +4,19 @@ import { useTranslation, Trans } from "react-i18next"
 import deepEqual from "fast-deep-equal"
 import { VSCodeBadge } from "@vscode/webview-ui-toolkit/react"
 
-import type { ClineMessage, FollowUpData, SuggestionItem } from "@roo-code/types"
+import type {
+	ClineMessage,
+	FollowUpData,
+	SuggestionItem,
+	ClineApiReqInfo,
+	ClineAskUseMcpServer,
+	ClineSayTool,
+} from "@roo-code/types"
+
 import { Mode } from "@roo/modes"
 
-import { ClineApiReqInfo, ClineAskUseMcpServer, ClineSayTool } from "@roo/ExtensionMessage"
 import { COMMAND_OUTPUT_STRING } from "@roo/combineCommandSequences"
-import { safeJsonParse } from "@roo/safeJsonParse"
+import { safeJsonParse } from "@roo/core"
 
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import { findMatchingResourceOrTemplate } from "@src/utils/mcp"
@@ -25,6 +32,7 @@ import { ReasoningBlock } from "./ReasoningBlock"
 import Thumbnails from "../common/Thumbnails"
 import ImageBlock from "../common/ImageBlock"
 import ErrorRow from "./ErrorRow"
+import WarningRow from "./WarningRow"
 
 import McpResourceRow from "../mcp/McpResourceRow"
 
@@ -60,9 +68,13 @@ import {
 	TerminalSquare,
 	MessageCircle,
 	Repeat2,
+	Split,
+	ArrowRight,
+	Check,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PathTooltip } from "../ui/PathTooltip"
+import { OpenMarkdownPreviewButton } from "./OpenMarkdownPreviewButton"
 
 // Helper function to get previous todos before a specific message
 function getPreviousTodos(messages: ClineMessage[], currentMessageTs: number): any[] {
@@ -167,7 +179,8 @@ export const ChatRowContent = ({
 }: ChatRowContentProps) => {
 	const { t, i18n } = useTranslation()
 
-	const { mcpServers, alwaysAllowMcp, currentCheckpoint, mode, apiConfiguration, clineMessages } = useExtensionState()
+	const { mcpServers, alwaysAllowMcp, currentCheckpoint, mode, apiConfiguration, clineMessages, currentTaskItem } =
+		useExtensionState()
 	const { info: model } = useSelectedModel(apiConfiguration)
 	const [isEditing, setIsEditing] = useState(false)
 	const [editedContent, setEditedContent] = useState("")
@@ -298,6 +311,8 @@ export const ChatRowContent = ({
 						style={{ color: successColor, marginBottom: "-1.5px" }}></span>,
 					<span style={{ color: successColor, fontWeight: "bold" }}>{t("chat:taskCompleted")}</span>,
 				]
+			case "api_req_rate_limit_wait":
+				return []
 			case "api_req_retry_delayed":
 				return []
 			case "api_req_started":
@@ -327,8 +342,10 @@ export const ChatRowContent = ({
 						getIconSpan("arrow-swap", normalColor)
 					) : apiRequestFailedMessage ? (
 						getIconSpan("error", errorColor)
-					) : (
+					) : isLast ? (
 						<ProgressIndicator />
+					) : (
+						getIconSpan("arrow-swap", normalColor)
 					),
 					apiReqCancelReason !== null && apiReqCancelReason !== undefined ? (
 						apiReqCancelReason === "user_cancelled" ? (
@@ -356,12 +373,23 @@ export const ChatRowContent = ({
 			default:
 				return [null, null]
 		}
-	}, [type, isCommandExecuting, message, isMcpServerResponding, apiReqCancelReason, cost, apiRequestFailedMessage, t])
+	}, [
+		type,
+		isCommandExecuting,
+		message,
+		isMcpServerResponding,
+		apiReqCancelReason,
+		cost,
+		apiRequestFailedMessage,
+		t,
+		isLast,
+	])
 
 	const headerStyle: React.CSSProperties = {
 		display: "flex",
 		alignItems: "center",
 		gap: "10px",
+		cursor: "default",
 		marginBottom: "10px",
 		wordBreak: "break-word",
 	}
@@ -792,10 +820,34 @@ export const ChatRowContent = ({
 					</>
 				)
 			case "newTask":
+				// Find all newTask messages to determine which child task ID corresponds to this message
+				const newTaskMessages = clineMessages.filter((msg) => {
+					if (msg.type === "ask" && msg.ask === "tool") {
+						const t = safeJsonParse<ClineSayTool>(msg.text)
+						return t?.tool === "newTask"
+					}
+					return false
+				})
+				const thisNewTaskIndex = newTaskMessages.findIndex((msg) => msg.ts === message.ts)
+				const childIds = currentTaskItem?.childIds || []
+
+				// Only get the child task ID if this newTask has been approved (has a corresponding entry in childIds)
+				// This prevents showing a link to a previous task when the current newTask is still awaiting approval
+				// Note: We don't use delegatedToId here because it persists after child tasks complete and would
+				// incorrectly point to the previous task when a new newTask is awaiting approval
+				const childTaskId =
+					thisNewTaskIndex >= 0 && thisNewTaskIndex < childIds.length ? childIds[thisNewTaskIndex] : undefined
+
+				// Check if the next message is a subtask_result - if so, don't show the button
+				// since the result is displayed right after this message
+				const currentMessageIndex = clineMessages.findIndex((msg) => msg.ts === message.ts)
+				const nextMessage = currentMessageIndex >= 0 ? clineMessages[currentMessageIndex + 1] : undefined
+				const isFollowedBySubtaskResult = nextMessage?.type === "say" && nextMessage?.say === "subtask_result"
+
 				return (
 					<>
 						<div style={headerStyle}>
-							{toolIcon("tasklist")}
+							<Split className="size-4" />
 							<span style={{ fontWeight: "bold" }}>
 								<Trans
 									i18nKey="chat:subtasks.wantsToCreate"
@@ -804,32 +856,19 @@ export const ChatRowContent = ({
 								/>
 							</span>
 						</div>
-						<div
-							style={{
-								marginTop: "4px",
-								backgroundColor: "var(--vscode-badge-background)",
-								border: "1px solid var(--vscode-badge-background)",
-								borderRadius: "4px 4px 0 0",
-								overflow: "hidden",
-								marginBottom: "2px",
-							}}>
-							<div
-								style={{
-									padding: "9px 10px 9px 14px",
-									backgroundColor: "var(--vscode-badge-background)",
-									borderBottom: "1px solid var(--vscode-editorGroup-border)",
-									fontWeight: "bold",
-									fontSize: "var(--vscode-font-size)",
-									color: "var(--vscode-badge-foreground)",
-									display: "flex",
-									alignItems: "center",
-									gap: "6px",
-								}}>
-								<span className="codicon codicon-arrow-right"></span>
-								{t("chat:subtasks.newTaskContent")}
-							</div>
-							<div style={{ padding: "12px 16px", backgroundColor: "var(--vscode-editor-background)" }}>
-								<MarkdownBlock markdown={tool.content} />
+						<div className="border-l border-muted-foreground/80 ml-2 pl-4 pb-1">
+							<MarkdownBlock markdown={tool.content} />
+							<div>
+								{childTaskId && !isFollowedBySubtaskResult && (
+									<button
+										className="cursor-pointer flex gap-1 items-center mt-2 text-vscode-descriptionForeground hover:text-vscode-descriptionForeground hover:underline font-normal"
+										onClick={() =>
+											vscode.postMessage({ type: "showTaskWithId", text: childTaskId })
+										}>
+										{t("chat:subtasks.goToSubtask")}
+										<ArrowRight className="size-3" />
+									</button>
+								)}
 							</div>
 						</div>
 					</>
@@ -841,33 +880,8 @@ export const ChatRowContent = ({
 							{toolIcon("check-all")}
 							<span style={{ fontWeight: "bold" }}>{t("chat:subtasks.wantsToFinish")}</span>
 						</div>
-						<div
-							style={{
-								marginTop: "4px",
-								backgroundColor: "var(--vscode-editor-background)",
-								border: "1px solid var(--vscode-badge-background)",
-								borderRadius: "4px",
-								overflow: "hidden",
-								marginBottom: "8px",
-							}}>
-							<div
-								style={{
-									padding: "9px 10px 9px 14px",
-									backgroundColor: "var(--vscode-badge-background)",
-									borderBottom: "1px solid var(--vscode-editorGroup-border)",
-									fontWeight: "bold",
-									fontSize: "var(--vscode-font-size)",
-									color: "var(--vscode-badge-foreground)",
-									display: "flex",
-									alignItems: "center",
-									gap: "6px",
-								}}>
-								<span className="codicon codicon-check"></span>
-								{t("chat:subtasks.completionContent")}
-							</div>
-							<div style={{ padding: "12px 16px", backgroundColor: "var(--vscode-editor-background)" }}>
-								<MarkdownBlock markdown={t("chat:subtasks.completionInstructions")} />
-							</div>
+						<div className="text-muted-foreground pl-6">
+							<MarkdownBlock markdown={t("chat:subtasks.completionInstructions")} />
 						</div>
 					</>
 				)
@@ -978,6 +992,399 @@ export const ChatRowContent = ({
 						)}
 					</>
 				)
+			// ============================================================================
+			// Roopik IDE Tools
+			// ============================================================================
+
+			// Browser Tools (12)
+			case "browser_open":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("globe")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToOpen")
+								: t("chat:roopik.browser.didOpen")}
+						</span>
+						{tool.url && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.url})
+							</span>
+						)}
+					</div>
+				)
+			case "browser_close":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("close")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToClose")
+								: t("chat:roopik.browser.didClose")}
+						</span>
+					</div>
+				)
+			case "browser_action_input":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("target")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToInteract")
+								: t("chat:roopik.browser.didInteract")}
+						</span>
+						{tool.action && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.action}
+								{tool.coordinate ? ` at ${tool.coordinate}` : ""}
+								{tool.text ? `: "${tool.text}"` : ""})
+							</span>
+						)}
+					</div>
+				)
+			case "browser_navigate":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("link-external")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToNavigate")
+								: t("chat:roopik.browser.didNavigate")}
+						</span>
+						{tool.url && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.url})
+							</span>
+						)}
+					</div>
+				)
+			case "browser_reload":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("refresh")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToReload")
+								: t("chat:roopik.browser.didReload")}
+						</span>
+					</div>
+				)
+			case "browser_screenshot":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("device-camera")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToScreenshot")
+								: t("chat:roopik.browser.didScreenshot")}
+						</span>
+					</div>
+				)
+			case "browser_execute_script":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("code")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToExecuteScript")
+								: t("chat:roopik.browser.didExecuteScript")}
+						</span>
+					</div>
+				)
+			case "browser_inspect_element":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("inspect")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToInspect")
+								: t("chat:roopik.browser.didInspect")}
+						</span>
+						{tool.selector && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.selector})
+							</span>
+						)}
+					</div>
+				)
+			case "browser_get_errors":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("error")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetErrors")
+								: t("chat:roopik.browser.didGetErrors")}
+						</span>
+					</div>
+				)
+			case "browser_get_console_logs":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("output")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetLogs")
+								: t("chat:roopik.browser.didGetLogs")}
+						</span>
+					</div>
+				)
+			case "browser_get_performance":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("dashboard")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetPerformance")
+								: t("chat:roopik.browser.didGetPerformance")}
+						</span>
+					</div>
+				)
+			case "browser_get_cdp_info":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("info")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetCdpInfo")
+								: t("chat:roopik.browser.didGetCdpInfo")}
+						</span>
+					</div>
+				)
+			case "browser_get_state":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("info")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetState")
+								: t("chat:roopik.browser.didGetState")}
+						</span>
+					</div>
+				)
+			case "browser_set_viewport":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("device-mobile")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToSetViewport")
+								: t("chat:roopik.browser.didSetViewport")}
+						</span>
+					</div>
+				)
+			case "browser_get_network_requests":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("globe")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToGetNetworkRequests")
+								: t("chat:roopik.browser.didGetNetworkRequests")}
+						</span>
+					</div>
+				)
+
+			// Project Tools (3)
+			case "project_get_active":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("folder-active")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.project.wantsToGetActive")
+								: t("chat:roopik.project.didGetActive")}
+						</span>
+					</div>
+				)
+			case "project_start":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("play")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.project.wantsToStart")
+								: t("chat:roopik.project.didStart")}
+						</span>
+						{tool.projectPath && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.projectPath})
+							</span>
+						)}
+					</div>
+				)
+			case "project_stop":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("debug-stop")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.project.wantsToStop")
+								: t("chat:roopik.project.didStop")}
+						</span>
+					</div>
+				)
+
+			// Canvas Tools (3)
+			case "canvas_list":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("list-flat")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.canvas.wantsToList")
+								: t("chat:roopik.canvas.didList")}
+						</span>
+					</div>
+				)
+			case "canvas_get_active":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("layout")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.canvas.wantsToGetActive")
+								: t("chat:roopik.canvas.didGetActive")}
+						</span>
+					</div>
+				)
+			case "canvas_create":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("add")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.canvas.wantsToCreate")
+								: t("chat:roopik.canvas.didCreate")}
+						</span>
+						{tool.name && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.name})
+							</span>
+						)}
+					</div>
+				)
+			case "canvas_open":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("go-to-file")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.canvas.wantsToOpen")
+								: t("chat:roopik.canvas.didOpen")}
+						</span>
+						{(tool.canvasId || tool.name) && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.canvasId || tool.name})
+							</span>
+						)}
+					</div>
+				)
+			case "canvas_validate_components":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("checklist")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.canvas.wantsToValidateComponents")
+								: t("chat:roopik.canvas.didValidateComponents")}
+						</span>
+					</div>
+				)
+
+			// Component Tools (8)
+			case "component_add":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("extensions")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToAdd")
+								: t("chat:roopik.component.didAdd")}
+						</span>
+						{tool.name && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.name})
+							</span>
+						)}
+					</div>
+				)
+			case "component_add_batch":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("files")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToAddBatch")
+								: t("chat:roopik.component.didAddBatch")}
+						</span>
+					</div>
+				)
+			case "component_remove":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("trash")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToRemove")
+								: t("chat:roopik.component.didRemove")}
+						</span>
+						{tool.componentId && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.componentId})
+							</span>
+						)}
+					</div>
+				)
+			case "component_get_info":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("info")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToGetInfo")
+								: t("chat:roopik.component.didGetInfo")}
+						</span>
+						{tool.componentId && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.componentId})
+							</span>
+						)}
+					</div>
+				)
+			case "component_list":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("list-tree")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToList")
+								: t("chat:roopik.component.didList")}
+						</span>
+						{tool.canvasId && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.canvasId})
+							</span>
+						)}
+					</div>
+				)
+			case "component_rebuild":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("sync")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.component.wantsToRebuild")
+								: t("chat:roopik.component.didRebuild")}
+						</span>
+						{tool.componentId && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.componentId})
+							</span>
+						)}
+					</div>
+				)
+
 			default:
 				return null
 		}
@@ -996,40 +1403,25 @@ export const ChatRowContent = ({
 						/>
 					)
 				case "subtask_result":
+					// Get the child task ID that produced this result
+					const completedChildTaskId = currentTaskItem?.completedByChildId
 					return (
-						<div>
-							<div
-								style={{
-									marginTop: "0px",
-									backgroundColor: "var(--vscode-badge-background)",
-									border: "1px solid var(--vscode-badge-background)",
-									borderRadius: "0 0 4px 4px",
-									overflow: "hidden",
-									marginBottom: "8px",
-								}}>
-								<div
-									style={{
-										padding: "9px 10px 9px 14px",
-										backgroundColor: "var(--vscode-badge-background)",
-										borderBottom: "1px solid var(--vscode-editorGroup-border)",
-										fontWeight: "bold",
-										fontSize: "var(--vscode-font-size)",
-										color: "var(--vscode-badge-foreground)",
-										display: "flex",
-										alignItems: "center",
-										gap: "6px",
-									}}>
-									<span className="codicon codicon-arrow-left"></span>
-									{t("chat:subtasks.resultContent")}
-								</div>
-								<div
-									style={{
-										padding: "12px 16px",
-										backgroundColor: "var(--vscode-editor-background)",
-									}}>
-									<MarkdownBlock markdown={message.text} />
-								</div>
+						<div className="border-l border-muted-foreground/80 ml-2 pl-4 pt-2 pb-1 -mt-5">
+							<div style={headerStyle}>
+								<span style={{ fontWeight: "bold" }}>{t("chat:subtasks.resultContent")}</span>
+								<Check className="size-3" />
 							</div>
+							<MarkdownBlock markdown={message.text} />
+							{completedChildTaskId && (
+								<button
+									className="cursor-pointer flex gap-1 items-center mt-2 text-vscode-descriptionForeground hover:text-vscode-descriptionForeground hover:underline font-normal"
+									onClick={() =>
+										vscode.postMessage({ type: "showTaskWithId", text: completedChildTaskId })
+									}>
+									{t("chat:subtasks.goToSubtask")}
+									<ArrowRight className="size-3" />
+								</button>
+							)}
 						</div>
 					)
 				case "reasoning":
@@ -1090,35 +1482,25 @@ export const ChatRowContent = ({
 					let body = t(`chat:apiRequest.failed`)
 					let retryInfo, rawError, code, docsURL
 					if (message.text !== undefined) {
-						// Check for Claude Code authentication error first
-						if (message.text.includes("Not authenticated with Claude Code")) {
-							body = t("chat:apiRequest.errorMessage.claudeCodeNotAuthenticated")
-							docsURL = "roocode://settings?provider=claude-code"
-						} else {
-							// Try to show richer error message for that code, if available
-							const potentialCode = parseInt(message.text.substring(0, 3))
-							if (!isNaN(potentialCode) && potentialCode >= 400) {
-								code = potentialCode
-								const stringForError = `chat:apiRequest.errorMessage.${code}`
-								if (i18n.exists(stringForError)) {
-									body = t(stringForError)
-									// Fill this out in upcoming PRs
-									// Do not remove this
-									// switch(code) {
-									// 	case ERROR_CODE:
-									// 		docsURL = ???
-									// 		break;
-									// }
-								} else {
-									body = t("chat:apiRequest.errorMessage.unknown")
-									docsURL = "mailto:support@roocode.com?subject=Unknown API Error"
-								}
-							} else if (message.text.indexOf("Connection error") === 0) {
-								body = t("chat:apiRequest.errorMessage.connection")
+						// Try to show richer error message for that code, if available
+						const potentialCode = parseInt(message.text.substring(0, 3))
+						if (!isNaN(potentialCode) && potentialCode >= 400) {
+							code = potentialCode
+							const stringForError = `chat:apiRequest.errorMessage.${code}`
+							if (i18n.exists(stringForError)) {
+								body = t(stringForError)
+								// Fill this out in upcoming PRs
+								// Do not remove this
+								// switch(code) {
+								// 	case ERROR_CODE:
+								// 		docsURL = ???
+								// 		break;
+								// }
 							} else {
 								// Non-HTTP-status-code error message - store full text as errorDetails
 								body = t("chat:apiRequest.errorMessage.unknown")
-								docsURL = "mailto:support@roocode.com?subject=Unknown API Error"
+								docsURL =
+									"mailto:support@roopik.com?subject=Unknown API Error&body=[Please include full error details]"
 							}
 						}
 
@@ -1149,14 +1531,45 @@ export const ChatRowContent = ({
 							errorDetails={rawError}
 						/>
 					)
+				case "api_req_rate_limit_wait": {
+					const isWaiting = message.partial === true
+
+					const waitSeconds = (() => {
+						if (!message.text) return undefined
+						try {
+							const data = JSON.parse(message.text)
+							return typeof data.seconds === "number" ? data.seconds : undefined
+						} catch {
+							return undefined
+						}
+					})()
+
+					return isWaiting && waitSeconds !== undefined ? (
+						<div
+							className={`group text-sm transition-opacity opacity-100`}
+							style={{
+								...headerStyle,
+								marginBottom: 0,
+								justifyContent: "space-between",
+							}}>
+							<div style={{ display: "flex", alignItems: "center", gap: "10px", flexGrow: 1 }}>
+								<ProgressIndicator />
+								<span style={{ color: normalColor }}>{t("chat:apiRequest.rateLimitWait")}</span>
+							</div>
+							<span className="text-xs font-light text-vscode-descriptionForeground">{waitSeconds}s</span>
+						</div>
+					) : null
+				}
 				case "api_req_finished":
 					return null // we should never see this message type
 				case "text":
 					return (
-						<div>
+						<div className="group">
 							<div style={headerStyle}>
 								<MessageCircle className="w-4 shrink-0" aria-label="Speech bubble icon" />
 								<span style={{ fontWeight: "bold" }}>{t("chat:text.rooSaid")}</span>
+								<div style={{ flexGrow: 1 }} />
+								<OpenMarkdownPreviewButton markdown={message.text} />
 							</div>
 							<div className="pl-6">
 								<Markdown markdown={message.text} partial={message.partial} />
@@ -1286,18 +1699,22 @@ export const ChatRowContent = ({
 					}
 
 					// Fallback for generic errors
-					return <ErrorRow type="error" message={message.text || t("chat:error")} />
+					return (
+						<ErrorRow type="error" message={message.text || t("chat:error")} errorDetails={message.text} />
+					)
 				case "completion_result":
 					return (
-						<>
+						<div className="group">
 							<div style={headerStyle}>
 								{icon}
 								{title}
+								<div style={{ flexGrow: 1 }} />
+								<OpenMarkdownPreviewButton markdown={message.text} />
 							</div>
 							<div className="border-l border-green-600/30 ml-2 pl-4 pb-1">
 								<Markdown markdown={message.text} />
 							</div>
-						</>
+						</div>
 					)
 				case "shell_integration_warning":
 					return <CommandExecutionError />
@@ -1440,6 +1857,51 @@ export const ChatRowContent = ({
 								</>
 							)
 						}
+						case "readCommandOutput": {
+							const formatBytes = (bytes: number) => {
+								if (bytes < 1024) return `${bytes} B`
+								if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+								return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+							}
+
+							// Determine if this is a search operation
+							const isSearch = sayTool.searchPattern !== undefined
+
+							let infoText = ""
+							if (isSearch) {
+								// Search mode: show pattern and match count
+								const matchText =
+									sayTool.matchCount !== undefined
+										? sayTool.matchCount === 1
+											? "1 match"
+											: `${sayTool.matchCount} matches`
+										: ""
+								infoText = `search: "${sayTool.searchPattern}"${matchText ? ` • ${matchText}` : ""}`
+							} else if (
+								sayTool.readStart !== undefined &&
+								sayTool.readEnd !== undefined &&
+								sayTool.totalBytes !== undefined
+							) {
+								// Read mode: show byte range
+								infoText = `${formatBytes(sayTool.readStart)} - ${formatBytes(sayTool.readEnd)} of ${formatBytes(sayTool.totalBytes)}`
+							} else if (sayTool.totalBytes !== undefined) {
+								infoText = formatBytes(sayTool.totalBytes)
+							}
+
+							return (
+								<div style={headerStyle}>
+									<FileCode2 className="w-4 shrink-0" aria-label="Read command output icon" />
+									<span style={{ fontWeight: "bold" }}>{t("chat:readCommandOutput.title")}</span>
+									{infoText && (
+										<span
+											className="text-xs ml-1"
+											style={{ color: "var(--vscode-descriptionForeground)" }}>
+											({infoText})
+										</span>
+									)}
+								</div>
+							)
+						}
 						default:
 							return null
 					}
@@ -1458,6 +1920,33 @@ export const ChatRowContent = ({
 				case "browser_action_result":
 					// Handled by BrowserSessionRow; prevent raw JSON (action/result) from rendering here
 					return null
+				case "too_many_tools_warning": {
+					const warningData = safeJsonParse<{
+						toolCount: number
+						serverCount: number
+						threshold: number
+					}>(message.text || "{}")
+					if (!warningData) return null
+					const toolsPart = t("chat:tooManyTools.toolsPart", { count: warningData.toolCount })
+					const serversPart = t("chat:tooManyTools.serversPart", { count: warningData.serverCount })
+					return (
+						<WarningRow
+							title={t("chat:tooManyTools.title")}
+							message={t("chat:tooManyTools.messageTemplate", {
+								tools: toolsPart,
+								servers: serversPart,
+								threshold: warningData.threshold,
+							})}
+							actionText={t("chat:tooManyTools.openMcpSettings")}
+							onAction={() =>
+								window.postMessage(
+									{ type: "action", action: "settingsButtonClicked", values: { section: "mcp" } },
+									"*",
+								)
+							}
+						/>
+					)
+				}
 				default:
 					return (
 						<>
@@ -1476,7 +1965,7 @@ export const ChatRowContent = ({
 		case "ask":
 			switch (message.ask) {
 				case "mistake_limit_reached":
-					return <ErrorRow type="mistake_limit" message={message.text || ""} />
+					return <ErrorRow type="mistake_limit" message={message.text || ""} errorDetails={message.text} />
 				case "command":
 					return (
 						<CommandExecution
@@ -1548,10 +2037,12 @@ export const ChatRowContent = ({
 				case "completion_result":
 					if (message.text) {
 						return (
-							<div>
+							<div className="group">
 								<div style={headerStyle}>
 									{icon}
 									{title}
+									<div style={{ flexGrow: 1 }} />
+									<OpenMarkdownPreviewButton markdown={message.text} />
 								</div>
 								<div style={{ color: "var(--vscode-charts-green)", paddingTop: 10 }}>
 									<Markdown markdown={message.text} partial={message.partial} />

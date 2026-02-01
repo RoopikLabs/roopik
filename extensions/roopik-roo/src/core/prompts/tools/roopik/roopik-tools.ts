@@ -1,22 +1,34 @@
 /**
- * Roopik IDE Tool Descriptions
+ * Roopik Tool Names and Types
  *
- * XML-style tool descriptions for LLM system prompts.
- * These tools integrate with Roopik IDE's browser preview, canvas, and component features.
+ * This file contains the Roopik tool name constants and type definitions
+ * used for tool validation and routing.
  *
  * Tool Categories:
- * - Browser (12): open, close, action, navigate, reload, screenshot, execute_script, inspect_element,
- *                 get_errors, get_console_logs, get_performance, get_cdp_info
+ * - Browser (14): open, close, action, navigate, reload, screenshot, execute_script, inspect_element,
+ *                 get_errors, get_console_logs, get_performance, get_state, set_viewport, get_network_requests
  * - Project (3): get_active, start, stop
  * - Canvas (3): list, get_active, create
- * - Component (6): add, add_batch, remove, get_info, list, rebuild
+ * - Component (8): add, add_batch, remove, get_info, list, rebuild, validate_components, screenshot
  */
 
-import { ToolArgs } from "../types"
+// =============================================================================
+// DEPRECATED XML TOOL DESCRIPTIONS - COMMENTED OUT
+// =============================================================================
+// The XML-style tool descriptions below are no longer used.
+// Roo Code upstream removed XML tool support in favor of native JSON schema tools.
+// Native tool definitions are now in: src/core/prompts/tools/native-tools/roopik.ts
+//
+// The import from "../types" (ToolArgs) was also removed by upstream.
+// Keeping this code commented for reference during transition.
+// =============================================================================
 
-// ============================================================================
-// Browser Tool Descriptions
-// ============================================================================
+/*
+// DEPRECATED: XML tool description functions
+// These were used to generate XML-style tool descriptions for the LLM system prompt.
+// Now replaced by native tool definitions in native-tools/roopik.ts
+
+import { ToolArgs } from "../types"  // File deleted by Roo Code upstream
 
 export function getBrowserOpenDescription(): string {
 	return `## browser_open
@@ -213,10 +225,6 @@ Usage:
 </browser_get_cdp_info>`
 }
 
-// ============================================================================
-// Project Tool Descriptions
-// ============================================================================
-
 export function getProjectGetActiveDescription(): string {
 	return `## project_get_active
 Description: [Roopik IDE] Get information about the currently running project. Returns project path, URL, port, framework detection, and server state. Use this to understand the current context.
@@ -230,7 +238,7 @@ export function getProjectStartDescription(args: ToolArgs): string {
 	return `## project_start
 Description: [Roopik IDE - Projects Only] Start a FULL APPLICATION's dev server and preview in the integrated Browser (NOT used for Canvas components). Use for complete runnable vite based projects with routing/navigation (e.g., todo app with multiple pages). The browser shows the running app at localhost. For ISOLATED UI components/screens, use component_add instead.
 Parameters:
-- projectPath: (required) Path to the project directory (Use absolute path to workspace)
+- projectPath: (required) Path to the project directory. Supports both absolute paths and relative paths from workspace root
 - port: (optional) Port to run the dev server on. Default is auto-detected or 5173.
 Usage:
 <project_start>
@@ -247,10 +255,6 @@ Usage:
 <project_stop>
 </project_stop>`
 }
-
-// ============================================================================
-// Canvas Tool Descriptions
-// ============================================================================
 
 export function getCanvasListDescription(): string {
 	return `## canvas_list
@@ -287,15 +291,11 @@ Usage:
 </canvas_create>`
 }
 
-// ============================================================================
-// Component Tool Descriptions
-// ============================================================================
-
 export function getComponentAddDescription(): string {
 	return `## component_add
 Description: [Roopik IDE - Canvas Only] Add an ISOLATED UI component to the Canvas for preview in the IDE's Canvas UI. Use for individual screens/sections (login, onboarding, card, hero, etc.). The Canvas automatically shows the preview - this is a sandbox environment for previewing isolated components.
 Parameters:
-- folderPath: (required) The absolute system path to the component folder. Do not use relative paths.(contains the component files)
+- folderPath: (required) Path to the component folder. Supports both absolute paths and relative paths from workspace root
 - canvasId: (optional) Canvas to add the component to. Uses active canvas if not specified.
 - name: (optional) Display name for the component.  Always try to pass logical short name (one word or max 2-3 words) for the component.
 - entryFile: (optional) Entry file name (e.g., index.tsx). Auto-detected in IDE if not specified.
@@ -314,7 +314,7 @@ export function getComponentAddBatchDescription(): string {
 	return `## component_add_batch
 Description: [Roopik IDE - Canvas Only] Batch add multiple ISOLATED UI components to Canvas (NOT for projects). Use when creating variations (e.g., 3 login screens). Each component appears in the Canvas UI automatically.
 Parameters:
-- components: (required) Array of component objects, each with: absolute folderPath (required), canvasId, name, entryFile, framework (all optional)
+- components: (required) Array of component objects, each with: folderPath (required, absolute or relative to workspace), canvasId, name, entryFile, framework (all optional)
 Usage:
 <component_add_batch>
 <components>[{"folderPath": "path/to/comp1"}, {"folderPath": "path/to/comp2", "name": "MyComponent"}]</components>
@@ -367,14 +367,6 @@ Usage:
 </component_rebuild>`
 }
 
-// ============================================================================
-// Combined Export
-// ============================================================================
-
-/**
- * Get all Roopik tool descriptions for the LLM system prompt.
- * Call this to include Roopik IDE tools in the agent's available tools.
- */
 export function getRoopikToolDescriptions(args: ToolArgs): string {
 	const descriptions = [
 		// Browser (12 tools)
@@ -439,7 +431,7 @@ These tools integrate with Roopik IDE's browser preview, canvas, and component f
 
 **Component Canvas Workflow:**
 1. \`canvas_create\` or \`canvas_get_active\` - Get/create canvas (first try to get active canvas, if not found create a new one, use your judgment to determine better canvas short generic name)
-2. \`component_add\` - Add component folder to canvas (Once you write a component code, you have to pass the absolute path of the component file to the canvas add tool which shows the live preview of the component in the canvas UI).
+2. \`component_add\` - Add component folder to canvas (Once you write a component code, pass the path to the component folder - can be absolute or relative to workspace root - to show live preview in the canvas UI).
 3. \`component_list\` - See all components on canvas (this will show the list of all components added to the canvas to you if you need to see the list of components added to the canvas or get info about a specific component use \`component_get_info\`)
 4. \`component_rebuild\` - Force rebuild after changes (use this tool if you make changes to the component code and want to rebuild the component)
 5. \`component_remove\` - Remove component (set deleteSourceCode=true to delete files automatically - never use terminal commands to delete files)
@@ -448,13 +440,18 @@ These tools integrate with Roopik IDE's browser preview, canvas, and component f
 
 ${descriptions.join("\n\n")}`
 }
+*/
+
+// =============================================================================
+// ACTIVE EXPORTS - Used for tool validation and routing
+// =============================================================================
 
 /**
  * List of all Roopik tool names.
  * Used for tool validation and routing.
  */
 export const ROOPIK_TOOL_NAMES = [
-	// Browser (12 tools)
+	// Browser (14 tools)
 	"browser_open",
 	"browser_close",
 	"browser_action_input",
@@ -466,15 +463,19 @@ export const ROOPIK_TOOL_NAMES = [
 	"browser_get_errors",
 	"browser_get_console_logs",
 	"browser_get_performance",
-	"browser_get_cdp_info",
+	"browser_get_state",
+	"browser_set_viewport",
+	"browser_get_network_requests",
 	// Project (3 tools)
 	"project_get_active",
 	"project_start",
 	"project_stop",
-	// Canvas (3 tools)
+	// Canvas (5 tools)
 	"canvas_list",
 	"canvas_get_active",
 	"canvas_create",
+	"canvas_open",
+	"canvas_validate_components",
 	// Component (6 tools)
 	"component_add",
 	"component_add_batch",

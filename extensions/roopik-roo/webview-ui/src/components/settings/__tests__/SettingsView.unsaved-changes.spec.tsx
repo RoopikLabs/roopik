@@ -29,6 +29,11 @@ vi.mock("@src/i18n/TranslationContext", () => ({
 
 // Mock UI components
 vi.mock("@src/components/ui", () => ({
+	ToggleSwitch: ({ checked, onChange, "aria-label": ariaLabel, "data-testid": dataTestId }: any) => (
+		<button role="switch" aria-checked={checked} aria-label={ariaLabel} data-testid={dataTestId} onClick={onChange}>
+			Toggle
+		</button>
+	),
 	AlertDialog: ({ children }: any) => <div>{children}</div>,
 	AlertDialogContent: ({ children }: any) => <div>{children}</div>,
 	AlertDialogTitle: ({ children }: any) => <div>{children}</div>,
@@ -47,6 +52,18 @@ vi.mock("@src/components/ui", () => ({
 	TooltipProvider: ({ children }: any) => <>{children}</>,
 	TooltipTrigger: ({ children }: any) => <>{children}</>,
 	StandardTooltip: ({ children, content }: any) => <div title={content}>{children}</div>,
+	Popover: ({ children }: any) => <>{children}</>,
+	PopoverTrigger: ({ children }: any) => <>{children}</>,
+	PopoverContent: ({ children }: any) => <div>{children}</div>,
+}))
+
+// Mock ModesView and McpView since they're rendered during indexing
+vi.mock("@src/components/modes/ModesView", () => ({
+	default: () => null,
+}))
+
+vi.mock("@src/components/mcp/McpView", () => ({
+	default: () => null,
 }))
 
 // Mock Tab components
@@ -115,6 +132,9 @@ vi.mock("../SectionHeader", () => ({
 vi.mock("../Section", () => ({
 	Section: ({ children }: any) => <div>{children}</div>,
 }))
+vi.mock("../SettingsSearch", () => ({
+	SettingsSearch: () => null,
+}))
 
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import ApiOptions from "../ApiOptions"
@@ -151,9 +171,7 @@ describe("SettingsView - Unsaved Changes Detection", () => {
 		browserToolEnabled: false,
 		browserViewportSize: "1280x720",
 		enableCheckpoints: false,
-		diffEnabled: true,
 		experiments: {},
-		fuzzyMatchThreshold: 1.0,
 		maxOpenTabsContext: 10,
 		maxWorkspaceFiles: 200,
 		mcpEnabled: false,
@@ -180,9 +198,7 @@ describe("SettingsView - Unsaved Changes Detection", () => {
 		maxReadFileLine: -1,
 		maxImageFileSize: 5,
 		maxTotalImageSize: 20,
-		terminalCompressProgressBar: false,
 		maxConcurrentFileReads: 5,
-		condensingApiConfigId: "",
 		customCondensingPrompt: "",
 		customSupportPrompts: {},
 		profileThresholds: {},

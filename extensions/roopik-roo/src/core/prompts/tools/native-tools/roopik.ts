@@ -1,7 +1,7 @@
 import type OpenAI from "openai"
 
 // ============================================================================
-// Browser Tools (12)
+// Browser Tools (14)
 // ============================================================================
 
 export const browser_open: OpenAI.Chat.ChatCompletionTool = {
@@ -266,16 +266,87 @@ export const browser_get_performance: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
-export const browser_get_cdp_info: OpenAI.Chat.ChatCompletionTool = {
+export const browser_get_state: OpenAI.Chat.ChatCompletionTool = {
 	type: "function",
 	function: {
-		name: "browser_get_cdp_info",
+		name: "browser_get_state",
 		description:
-			"[Roopik IDE] Get information about browser state and available Roopik tools for browser automation. Returns current URL, dev server status, and list of available browser tools.",
+			"[Roopik IDE] Get browser state information (open/closed, current URL, title).",
 		strict: true,
 		parameters: {
 			type: "object",
 			properties: {},
+			required: [],
+			additionalProperties: false,
+		},
+	},
+}
+
+export const browser_set_viewport: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "browser_set_viewport",
+		description:
+			"[Roopik IDE] Set or clear browser viewport override. Provide width/height to set a specific size (e.g., mobile 375x812). Call with NO parameters to clear override and restore natural browser size.",
+		strict: true,
+		parameters: {
+			type: "object",
+			properties: {
+				width: {
+					type: "number",
+					description: "Viewport width in pixels. Omit to clear override.",
+				},
+				height: {
+					type: "number",
+					description: "Viewport height in pixels. Omit to clear override.",
+				},
+				deviceScaleFactor: {
+					type: "number",
+					description: "Device scale factor (default: 1)",
+				},
+				mobile: {
+					type: "boolean",
+					description: "Emulate mobile device (default: false)",
+				},
+			},
+			required: [],
+			additionalProperties: false,
+		},
+	},
+}
+
+export const browser_get_network_requests: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "browser_get_network_requests",
+		description:
+			"[Roopik IDE] Get network requests. Use includeStaticAssets parameter to show all assets.",
+		strict: false,
+		parameters: {
+			type: "object",
+			properties: {
+				includeStaticAssets: {
+					type: "boolean",
+					description: "Include static assets (JS/CSS/images). Default: false (only API calls shown)",
+				},
+				urlFilter: {
+					type: "string",
+					description: "Filter requests by URL substring",
+				},
+				method: {
+					type: "string",
+					description: "Filter by HTTP method (GET, POST, etc.)",
+				},
+				statusFilter: {
+					type: "string",
+					description: "Filter by status: success (2xx-3xx), error (4xx-5xx or failed), all",
+					enum: ["success", "error", "all"],
+				},
+				limit: {
+					type: "number",
+					description: "Maximum number of requests to return (default: 100, max: 500)",
+				},
+			},
 			required: [],
 			additionalProperties: false,
 		},
@@ -314,7 +385,7 @@ export const project_start: OpenAI.Chat.ChatCompletionTool = {
 			properties: {
 				projectPath: {
 					type: "string",
-					description: "Path to the project directory (Use absolute path to workspace)",
+					description: "Path to the project directory. Supports both absolute paths and relative paths from workspace root",
 				},
 				port: {
 					type: "number",
@@ -344,7 +415,7 @@ export const project_stop: OpenAI.Chat.ChatCompletionTool = {
 }
 
 // ============================================================================
-// Canvas Tools (3)
+// Canvas Tools (4)
 // ============================================================================
 
 export const canvas_list: OpenAI.Chat.ChatCompletionTool = {
@@ -415,6 +486,31 @@ export const canvas_create: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
+export const canvas_open: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "canvas_open",
+		description:
+			"[Roopik IDE] Open an existing canvas by ID or name. Opens the canvas panel in the UI and returns canvas info with all components (id, name, path, status).",
+		strict: true,
+		parameters: {
+			type: "object",
+			properties: {
+				canvasId: {
+					type: "string",
+					description: "Canvas ID to open",
+				},
+				name: {
+					type: "string",
+					description: "Canvas name to open (will look up by name)",
+				},
+			},
+			required: [],
+			additionalProperties: false,
+		},
+	},
+}
+
 // ============================================================================
 // Component Tools (6)
 // ============================================================================
@@ -431,7 +527,7 @@ export const component_add: OpenAI.Chat.ChatCompletionTool = {
 			properties: {
 				folderPath: {
 					type: "string",
-					description: "The absolute system path to the component folder. Do not use relative paths. (contains the component files)",
+					description: "Path to the component folder. Supports both absolute paths and relative paths from workspace root",
 				},
 				canvasId: {
 					type: "string",
@@ -471,7 +567,7 @@ export const component_add_batch: OpenAI.Chat.ChatCompletionTool = {
 				components: {
 					type: "array",
 					description:
-						"Array of component objects, each with: absolute folderPath (required), canvasId, name, entryFile, framework (all optional)",
+						"Array of component objects, each with: folderPath (required, absolute or relative to workspace), canvasId, name, entryFile, framework (all optional)",
 					items: {
 						type: "object",
 						properties: {
@@ -579,12 +675,33 @@ export const component_rebuild: OpenAI.Chat.ChatCompletionTool = {
 	},
 }
 
+export const canvas_validate_components: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "canvas_validate_components",
+		description:
+			"[Roopik IDE] Validate all components in a canvas in a single efficient call. **IMPORTANT: Use this tool immediately after calling `component_add_batch` or when adding multiple components sequentially to verify their build and runtime health.** Returns a summary (total, success, failed, building counts) plus detailed error information for any failed components, including syntax errors and runtime failures. This is significantly more efficient than polling individual `component_get_info` calls. Use this to catch errors early and ensure users see a working UI.",
+		strict: true,
+		parameters: {
+			type: "object",
+			properties: {
+				canvasId: {
+					type: "string",
+					description: "Canvas ID to validate. Omit to use the currently active canvas.",
+				},
+			},
+			required: [],
+			additionalProperties: false,
+		},
+	},
+}
+
 // ============================================================================
 // Export all Roopik tools
 // ============================================================================
 
 export const roopikNativeTools: OpenAI.Chat.ChatCompletionTool[] = [
-	// Browser (12 tools)
+	// Browser (14 tools)
 	browser_open,
 	browser_close,
 	browser_action_input,
@@ -596,15 +713,19 @@ export const roopikNativeTools: OpenAI.Chat.ChatCompletionTool[] = [
 	browser_get_errors,
 	browser_get_console_logs,
 	browser_get_performance,
-	browser_get_cdp_info,
+	browser_get_state,
+	browser_set_viewport,
+	browser_get_network_requests,
 	// Project (3 tools)
 	project_get_active,
 	project_start,
 	project_stop,
-	// Canvas (3 tools)
+	// Canvas (5 tools)
 	canvas_list,
 	canvas_get_active,
 	canvas_create,
+	canvas_open,
+	canvas_validate_components,
 	// Component (6 tools)
 	component_add,
 	component_add_batch,

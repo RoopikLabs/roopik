@@ -72,7 +72,7 @@ export function DeviceSelector({
 	onDeviceModeChange,
 	className = ''
 }: DeviceSelectorProps) {
-	const presets: DevicePreset[] = ['auto', 'desktop', 'tablet', 'mobile'];
+	const presets: DevicePreset[] = ['auto', 'desktop', 'tablet', 'mobile', 'mobile-landscape'];
 
 	return (
 		<div className={`device-selector ${className}`}>

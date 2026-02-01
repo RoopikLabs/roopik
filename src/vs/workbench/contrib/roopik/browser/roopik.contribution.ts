@@ -116,12 +116,153 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 	title: 'Roopik IDE',
 	type: 'object',
 	properties: {
-		'roopik.mcp.port': {
+		// ========================================
+		// General Settings
+		// ========================================
+		'roopik.general.showWelcomeOnStartup': {
+			type: 'boolean',
+			default: true,
+			order: 1,
+			description: 'Show the Roopik welcome screen on startup.'
+		},
+
+		// ========================================
+		// MCP Server - Core Settings (logical order)
+		// ========================================
+		'roopik.mcp.stdioMCP': {
+			type: 'boolean',
+			default: true,
+			order: 10,
+			markdownDescription: '**Enable STDIO MCP** [Recommended] - Allow AI agents (Claude, Codex, etc.) to control Roopik IDE via the standard STDIO-based MCP protocol.\n\nFor external IDEs (Cursor, Windsurf, VS Code): Run command [Show MCP Connection Info](command:roopik.mcp.showConnectionInfo) to get token and setup instructions.'
+		},
+		'roopik.mcp.stdioMCPPort': {
 			type: 'number',
-			default: 3333,
+			default: 9876,
 			minimum: 1024,
 			maximum: 65535,
-			description: 'Port for the internal Roopik MCP Server. If the port is already in use, Roopik will automatically try the next available port.'
+			order: 11,
+			description: 'AI agents connect to this port for STDIO-based communication.'
+		},
+		'roopik.mcp.autoRegister': {
+			type: 'boolean',
+			default: true,
+			order: 12,
+			description: 'Automatically register Roopik with enabled AI agents on startup.'
+		},
+		'roopik.mcp.cleanupOnExit': {
+			type: 'boolean',
+			default: false,
+			order: 13,
+			description: 'Unregister from all AI agents when Roopik exits. If false, registrations persist for quick reconnection.'
+		},
+
+		// ========================================
+		// MCP Agent Integrations (individual toggles)
+		// ========================================
+		'roopik.mcp.agents.claudeCli': {
+			type: 'boolean',
+			default: true,
+			order: 20,
+			description: 'Register with Claude CLI (global command). Allows Claude CLI to control Roopik IDE.'
+		},
+		'roopik.mcp.agents.claudeCode': {
+			type: 'boolean',
+			default: true,
+			order: 21,
+			description: 'Register with Claude Code VS Code extension. Allows Claude Code to control Roopik IDE.'
+		},
+		'roopik.mcp.agents.codex': {
+			type: 'boolean',
+			default: false,
+			order: 22,
+			description: 'Register with Codex VS Code extension. Allows Codex to control Roopik IDE.'
+		},
+		'roopik.mcp.agents.codexCli': {
+			type: 'boolean',
+			default: false,
+			order: 23,
+			description: 'Register with Codex CLI (global command). Allows Codex CLI to control Roopik IDE.'
+		},
+		'roopik.mcp.agents.cursor': {
+			type: 'boolean',
+			default: false,
+			order: 24,
+			description: 'Register with Cursor IDE. Allows Cursor AI to control Roopik IDE.'
+		},
+		'roopik.mcp.agents.gemini': {
+			type: 'boolean',
+			default: false,
+			order: 25,
+			description: 'Register with Google Gemini. Allows Gemini to control Roopik IDE.'
+		},
+		'roopik.mcp.agents.windsurf': {
+			type: 'boolean',
+			default: false,
+			order: 26,
+			description: 'Register with Windsurf IDE. Allows Windsurf AI to control Roopik IDE.'
+		},
+
+		// ========================================
+		// MCP Connection Info (for external IDEs)
+		// ========================================
+		'roopik.mcp.connectionInfo': {
+			type: 'object',
+			default: {},
+			order: 27,
+			markdownDescription: '**Connect External IDEs** - Use Roopik MCP tools from Cursor, Windsurf, or VS Code.\n\n[Show Connection Info](command:roopik.mcp.showConnectionInfo) - Get token and command to configure external IDEs.\n\n*Note: Token changes when Roopik restarts. Re-register agents after restart.*',
+			ignoreSync: true
+		},
+
+		// ========================================
+		// Browser Settings
+		// ========================================
+		'roopik.browser.attachElementScreenshot': {
+			type: 'boolean',
+			default: true,
+			order: 30,
+			markdownDescription: '**Include Screenshot in Inspect Mode** - When attaching an element to AI chat, also capture a screenshot of the element along with its HTML context.'
+		},
+
+		// ========================================
+		// Canvas Settings
+		// ========================================
+		'roopik.canvas.snapToGrid': {
+			type: 'boolean',
+			default: true,
+			order: 35,
+			description: 'Align components to the grid when moving.'
+		},
+		'roopik.canvas.showGrid': {
+			type: 'boolean',
+			default: true,
+			order: 36,
+			description: 'Display grid lines on the canvas.'
+		},
+		'roopik.canvas.gridSize': {
+			type: 'number',
+			default: 8,
+			minimum: 4,
+			maximum: 64,
+			order: 37,
+			description: 'Grid cell size in pixels.'
+		},
+
+		// ========================================
+		// Project Settings
+		// ========================================
+		'roopik.project.rememberRecent': {
+			type: 'boolean',
+			default: true,
+			order: 40,
+			description: 'Remember recently opened projects.'
+		},
+		'roopik.project.maxRecentProjects': {
+			type: 'number',
+			default: 10,
+			minimum: 1,
+			maximum: 50,
+			order: 41,
+			description: 'Maximum number of recent projects to remember.'
 		}
 	}
 });

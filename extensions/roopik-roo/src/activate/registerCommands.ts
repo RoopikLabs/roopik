@@ -71,7 +71,7 @@ export const registerCommands = (options: RegisterCommandOptions) => {
 }
 
 const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOptions): Record<CommandId, any> => ({
-	activationCompleted: () => { },
+	activationCompleted: () => {},
 	cloudButtonClicked: () => {
 		const visibleProvider = getVisibleProviderOrLog(outputChannel)
 
@@ -135,36 +135,6 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 		visibleProvider.postMessageToWebview({ type: "action", action: "marketplaceButtonClicked" })
 	},
 	newTask: handleNewTask,
-	externalContext: async (payload?: { promptText?: string; images?: string[]; autoSend?: boolean }) => {
-		const promptText = payload?.promptText?.trim() || '';
-
-		// Allow empty prompt if images are provided
-		if (!promptText && (!payload?.images || payload.images.length === 0)) {
-			return;
-		}
-
-		const provider = await ClineProvider.getInstance();
-		if (!provider) {
-			return;
-		}
-
-		if (payload?.autoSend) {
-			await provider.postMessageToWebview({
-				type: "invoke",
-				invoke: "sendMessage",
-				text: `${promptText}\n\n`,
-				images: payload?.images,
-			});
-		} else {
-			await provider.postMessageToWebview({
-				type: "invoke",
-				invoke: "setChatBoxMessage",
-				text: `${promptText}\n\n`,
-				images: payload?.images,
-			});
-			await provider.postMessageToWebview({ type: "action", action: "focusInput" });
-		}
-	},
 	setCustomStoragePath: async () => {
 		const { promptForCustomStoragePath } = await import("../utils/storage")
 		await promptForCustomStoragePath()
@@ -224,6 +194,49 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 			type: "action",
 			action: "toggleAutoApprove",
 		})
+	},
+	externalContext: async (options?: { promptText?: string; autoSend?: boolean; images?: string[] }) => {
+		const promptText = options?.promptText?.trim() || ""
+
+		// Allow empty prompt if images are provided
+		if (!promptText && (!options?.images || options.images.length === 0)) {
+			return
+		}
+
+		const visibleProvider = getVisibleProviderOrLog(outputChannel)
+
+		if (!visibleProvider) {
+			return
+		}
+
+		// Focus the chat panel first
+		await vscode.commands.executeCommand("roodio.ChatPanel.focus")
+
+		// Small delay to ensure the webview is ready
+		await delay(100)
+
+		// Add spacing after context for better readability
+		const formattedText = promptText ? `${promptText}\n\n` : ""
+
+		if (options?.autoSend) {
+			// Send message immediately (user already typed message in inspect mode)
+			await visibleProvider.postMessageToWebview({
+				type: "invoke",
+				invoke: "sendMessage",
+				text: formattedText,
+				images: options?.images ?? [],
+			})
+		} else {
+			// Just set the chat box content (silent attachment - user types message)
+			await visibleProvider.postMessageToWebview({
+				type: "invoke",
+				invoke: "setChatBoxMessage",
+				text: formattedText,
+				images: options?.images ?? [],
+			})
+			// Focus input so user can immediately type
+			await visibleProvider.postMessageToWebview({ type: "action", action: "focusInput" })
+		}
 	},
 })
 

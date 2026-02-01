@@ -76,6 +76,9 @@ jobs:
       - name: Rebuild native modules
         run: npm rebuild
 
+      - name: Generate DOM whitelist from MDN
+        run: node build/scripts/generateDOMWhitelist.mjs
+
       - name: Install roopik-roo extension dependencies
         working-directory: extensions/roopik-roo
         run: |
@@ -130,15 +133,24 @@ jobs:
         working-directory: extensions/roopik
         run: npm run build
 
+      - name: Build MCP STDIO binary (Linux)
+        working-directory: tools/roopik/mcp-stdio-server
+        run: |
+          npm ci
+          mkdir -p ../../../resources/mcp-binaries
+          npm run build:binary:linux
+
       - name: Build Linux application (x64)
         env:
           NODE_OPTIONS: --max-old-space-size=4096
+          BUILD_SOURCEVERSION: ${{ github.sha }}
         run: npm run gulp vscode-linux-x64
 
       - name: Build DEB package (custom)
         env:
           APP_NAME: roopik
           VSCODE_ARCH: x64
+          BUILD_SOURCEVERSION: ${{ github.sha }}
         run: bash .github/build/linux/package_roopik_deb.sh
         continue-on-error: true
 
@@ -207,10 +219,14 @@ jobs:
           fi
 
           version="$(node -p "require('./package.json').version")"
+          commit="${{ github.sha }}"
           hash="$(sha256sum "$deb_file" | awk '{print tolower($1)}')"
           pub_date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           base="${R2_PUBLIC_BASE_URL%/}"
           url="${base}/linux/roopik-linux-latest.deb"
-          json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$version" "$version" "$url" "$hash" "$pub_date")"
+          # CRITICAL: 'version' must be the commit hash for update comparison
+          # 'productVersion' is the human-readable version (e.g., "1.109.0")
+          json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$commit" "$version" "$url" "$hash" "$pub_date")"
           printf '%s' "$json" > latest.json
           aws s3 cp latest.json "s3://${R2_BUCKET}/linux/stable/latest.json" --endpoint-url "$endpoint" --no-progress
+

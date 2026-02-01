@@ -28,7 +28,8 @@
 		"openInCloud": "Open task in Code Cloud",
 		"openInCloudIntro": "Keep monitoring or interacting with Dio from anywhere. Scan, click or copy to open.",
 		"openApiHistory": "Open API History",
-		"openUiHistory": "Open UI History"
+		"openUiHistory": "Open UI History",
+		"backToParentTask": "Parent task"
 	},
 	"unpin": "Unpin",
 	"pin": "Pin",
@@ -51,16 +52,19 @@
 	"tokenProgress": {
 		"availableSpace": "Available space: {{amount}} tokens",
 		"tokensUsed": "Tokens used: {{used}} of {{total}}",
-		"reservedForResponse": "Reserved for model response: {{amount}} tokens"
+		"reservedForResponse": "Reserved for model response: {{amount}} tokens",
+		"tokensUsedLabel": "Tokens used",
+		"reservedForResponseLabel": "Reserved for response",
+		"availableSpaceLabel": "Available space"
 	},
 	"reject": {
-		"title": "Reject",
-		"tooltip": "Reject this action"
+		"title": "Deny",
+		"tooltip": "Prevent this action from occurring"
 	},
-	"completeSubtaskAndReturn": "Complete Subtask and Return",
+	"completeSubtaskAndReturn": "Complete subtask and keep going",
 	"approve": {
 		"title": "Approve",
-		"tooltip": "Approve this action"
+		"tooltip": "Allow this action to happen"
 	},
 	"read-batch": {
 		"approve": {
@@ -75,31 +79,36 @@
 		"tooltip": "Execute this command"
 	},
 	"proceedWhileRunning": {
-		"title": "Proceed While Running",
-		"tooltip": "Continue despite warnings"
+		"title": "Continue While Running",
+		"tooltip": "Keep going despite warnings"
 	},
 	"killCommand": {
 		"title": "Kill Command",
 		"tooltip": "Kill the current command"
 	},
 	"resumeTask": {
-		"title": "Resume Task",
-		"tooltip": "Continue the current task"
+		"title": "Continue",
+		"tooltip": "Resume the current task"
 	},
 	"terminate": {
-		"title": "Terminate",
-		"tooltip": "End the current task"
+		"title": "New task",
+		"tooltip": "Start a new task"
 	},
 	"cancel": {
 		"title": "Cancel",
 		"tooltip": "Cancel the current operation"
 	},
+	"stop": {
+		"title": "Stop",
+		"tooltip": "Stop the current task"
+	},
+	"enqueueMessage": "Add message to queue (will be sent after current task completes)",
 	"editMessage": {
 		"placeholder": "Edit your message..."
 	},
 	"scrollToBottom": "Scroll to bottom of chat",
 	"about": "Dio is your agent co-pilot!",
-	"docs": "Check our <DocsLink>Docs</DocsLink> to get started",
+	"docs": "Check our <DocsLink>docs</DocsLink> to get started",
 	"onboarding": "What would you like to do?",
 	"rooTips": {
 		"customizableModes": {
@@ -274,12 +283,12 @@
 	},
 	"subtasks": {
 		"wantsToCreate": "Dio wants to create a new subtask in {{mode}} mode",
-		"wantsToFinish": "Dio wants to finish this subtask",
+		"wantsToFinish": "Dio wants to mark this as completed",
 		"newTaskContent": "Subtask Instructions",
-		"completionContent": "Subtask Completed",
-		"resultContent": "Subtask Results",
+		"resultContent": "Subtask completed",
 		"defaultResult": "Please continue to the next task.",
-		"completionInstructions": "Subtask completed! You can review the results and suggest any corrections or next steps. If everything looks good, confirm to return the result to the parent task."
+		"completionInstructions": "You can review the results and suggest any corrections or next steps. If everything looks good, confirm to return the result to the parent task.",
+		"goToSubtask": "View task"
 	},
 	"questions": {
 		"hasQuestion": "Dio has a question"
@@ -298,7 +307,8 @@
 		"title": "Error Details",
 		"copyToClipboard": "Copy basic error info",
 		"copied": "Copied!",
-		"diagnostics": "Get detailed error info"
+		"diagnostics": "Get detailed error info",
+		"proxyProvider": "You seem to be using a proxy-based provider. Make sure to check its logs and to ensure it's not rewriting Dio's requests."
 	},
 	"diffError": {
 		"title": "Edit Unsuccessful"
@@ -322,22 +332,21 @@
 		"triggerLabel_zero": "0 auto-approve",
 		"triggerLabel_one": "1 auto-approved",
 		"triggerLabel_other": "{{count}} auto-approved",
-		"triggerLabelAll": "YOLO"
+		"triggerLabelAll": "BRRR"
 	},
 	"announcement": {
 		"title": "Dio Code {{version}} Released",
-		"support": "Please support Roo Code by starring us on <githubLink>GitHub</githubLink>.",
+		"support": "Please support Dio Code by starring us on <githubLink>GitHub</githubLink>.",
 		"stealthModel": {
 			"feature": "<bold>Limited-time FREE stealth model</bold> - Code Supernova: Now upgraded with a <bold>1M token context window</bold>! A versatile agentic coding model that supports image inputs, accessible through Code Cloud.",
 			"note": "(Note: prompts and completions are logged by the model creator and used to improve the model)",
 			"connectButton": "Connect to Code Cloud",
-			"selectModel": "Select <code>Dio/code-supernova</code> from the Code Cloud provider in Settings to get started.",
+			"selectModel": "Select <code>roo/code-supernova</code> from the Code Cloud provider in Settings to get started.",
 			"goToSettingsButton": "Go to Settings"
 		},
 		"release": {
 			"heading": "What's New:",
-			"skills": "Dio now supports <skillsLink>Agent Skills</skillsLink> - reusable packages of prompts, tools, and resources to extend Dio's capabilities.",
-			"nativeToolCalling": "Native tool calling is now required for all new tasks. <blogLink>Read more</blogLink> about the motivation and what to do if you're encountering issues."
+			"smartCodeFolding": "Smart Code Folding: Context condensation now preserves a lightweight map of your files: function signatures, class declarations, and type definitions. This provides better continuity after condensing and smarter edits when referencing previous work."
 		},
 		"cloudAgents": {
 			"heading": "New in the Cloud:",
@@ -355,8 +364,14 @@
 		"copyToInput": "Copy to input (same as shift + click)",
 		"timerPrefix": "Auto-approve enabled. Selecting in {{seconds}}s…"
 	},
+	"costs": {
+		"totalWithSubtasks": "Total Cost (including subtasks): ${{cost}}",
+		"total": "Total Cost: ${{cost}}",
+		"includesSubtasks": "Includes subtask costs"
+	},
 	"browser": {
 		"session": "Browser Session",
+		"active": "Active",
 		"rooWantsToUse": "Dio wants to use the browser",
 		"consoleLogs": "Console Logs",
 		"noNewLogs": "(No new logs)",
@@ -471,5 +486,85 @@
 		"updated": "Updated the to-do list",
 		"completed": "Completed",
 		"started": "Started"
+	},
+	"tooManyTools": {
+		"title": "Too many tools enabled",
+		"toolsPart_one": "{{count}} tool",
+		"toolsPart_other": "{{count}} tools",
+		"serversPart_one": "{{count}} MCP server",
+		"serversPart_other": "{{count}} MCP servers",
+		"messageTemplate": "You have {{tools}} enabled via {{servers}}. Such a high number can confuse the model and lead to errors. Try to keep it below {{threshold}}.",
+		"openMcpSettings": "Open MCP Settings"
+	},
+	"roopik": {
+		"browser": {
+			"wantsToOpen": "Dio wants to open the browser",
+			"didOpen": "Dio opened the browser",
+			"wantsToClose": "Dio wants to close the browser",
+			"didClose": "Dio closed the browser",
+			"wantsToInteract": "Dio wants to interact with the browser",
+			"didInteract": "Dio interacted with the browser",
+			"wantsToNavigate": "Dio wants to navigate the browser",
+			"didNavigate": "Dio navigated the browser",
+			"wantsToReload": "Dio wants to reload the page",
+			"didReload": "Dio reloaded the page",
+			"wantsToScreenshot": "Dio wants to take a screenshot",
+			"didScreenshot": "Dio took a screenshot",
+			"wantsToExecuteScript": "Dio wants to execute JavaScript",
+			"didExecuteScript": "Dio executed JavaScript",
+			"wantsToInspect": "Dio wants to inspect an element",
+			"didInspect": "Dio inspected an element",
+			"wantsToGetErrors": "Dio wants to get browser errors",
+			"didGetErrors": "Dio retrieved browser errors",
+			"wantsToGetLogs": "Dio wants to get console logs",
+			"didGetLogs": "Dio retrieved console logs",
+			"wantsToGetPerformance": "Dio wants to get performance metrics",
+			"didGetPerformance": "Dio retrieved performance metrics",
+			"wantsToGetCdpInfo": "Dio wants to get browser info",
+			"didGetCdpInfo": "Dio retrieved browser info",
+			"wantsToGetState": "Dio wants to get browser state",
+			"didGetState": "Dio retrieved browser state",
+			"wantsToSetViewport": "Dio wants to set viewport size",
+			"didSetViewport": "Dio set viewport size",
+			"wantsToGetNetworkRequests": "Dio wants to get network requests",
+			"didGetNetworkRequests": "Dio retrieved network requests"
+		},
+		"project": {
+			"wantsToGetActive": "Dio wants to get the active project",
+			"didGetActive": "Dio retrieved the active project",
+			"wantsToStart": "Dio wants to start the dev server",
+			"didStart": "Dio started the dev server",
+			"wantsToStop": "Dio wants to stop the dev server",
+			"didStop": "Dio stopped the dev server"
+		},
+		"canvas": {
+			"wantsToList": "Dio wants to list canvases",
+			"didList": "Dio listed canvases",
+			"wantsToGetActive": "Dio wants to get the active canvas",
+			"didGetActive": "Dio retrieved the active canvas",
+			"wantsToCreate": "Dio wants to create a canvas",
+			"didCreate": "Dio created a canvas",
+			"wantsToOpen": "Dio wants to open a canvas",
+			"didOpen": "Dio opened a canvas",
+			"wantsToValidateComponents": "Dio wants to validate components",
+			"didValidateComponents": "Dio validated components"
+		},
+		"component": {
+			"wantsToAdd": "Dio wants to add a component to the canvas",
+			"didAdd": "Dio added a component to the canvas",
+			"wantsToAddBatch": "Dio wants to add multiple components",
+			"didAddBatch": "Dio added multiple components",
+			"wantsToRemove": "Dio wants to remove a component",
+			"didRemove": "Dio removed a component",
+			"wantsToGetInfo": "Dio wants to get component info",
+			"didGetInfo": "Dio retrieved component info",
+			"wantsToList": "Dio wants to list components",
+			"didList": "Dio listed components",
+			"wantsToRebuild": "Dio wants to rebuild a component",
+			"didRebuild": "Dio rebuilt a component"
+		}
+	},
+	"readCommandOutput": {
+		"title": "Dio read command output"
 	}
 }

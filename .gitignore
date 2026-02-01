@@ -6,6 +6,7 @@ node_modules/
 .build/
 .vscode/extensions/**/out/
 extensions/**/dist/
+src/vs/base/browser/ui/codicons/codicon/codicon.ttf
 /out*/
 /extensions/**/out/
 build/node_modules
@@ -22,27 +23,10 @@ vscode.db
 *.tsbuildinfo
 .vscode-test
 vscode-telemetry-docs/
-
-# AI Context Documentation
-CLAUDE.md
-/Self-Learning
-COPILOT-INSTRUCTIONS.md
-.cursorrules
-.claude/*
-
-# Roopik Canvas State (user-specific, not committed)
-.roopik/canvas-*.json
-.roopik/ai-contexts/*.json
-.roopik/session.json
-
-# DevTools Extensions (extracted CRX files - not committed due to licensing)
-# Keep manifest.json and README.md, ignore the actual extension folders
-# resources/devtools-extensions/react-devtools/
-# resources/devtools-extensions/vue-devtools/
-# resources/devtools-extensions/redux-devtools/
-# resources/devtools-extensions/*/
+test-output.json
 
 # Microsoft-specific CI/CD and automation (not needed for Roopik fork)
+# .github/workflows/
 .github/endgame/
 .github/CODEOWNERS
 .github/dependabot.yml
@@ -51,4 +35,8 @@ COPILOT-INSTRUCTIONS.md
 .github/CODENOTIFY
 .github/commands/
 .github/commands.json
+
+# Roopik IDE metadata
 /docs
+.roopik/
+/resources/mcp-binaries

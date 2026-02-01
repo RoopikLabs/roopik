@@ -28,14 +28,18 @@
 		"openInCloud": "Apri attività in Roo Code Cloud",
 		"openInCloudIntro": "Continua a monitorare o interagire con Roo da qualsiasi luogo. Scansiona, clicca o copia per aprire.",
 		"openApiHistory": "Apri cronologia API",
-		"openUiHistory": "Apri cronologia UI"
+		"openUiHistory": "Apri cronologia UI",
+		"backToParentTask": "Attività principale"
 	},
 	"unpin": "Rilascia",
 	"pin": "Fissa",
 	"tokenProgress": {
 		"availableSpace": "Spazio disponibile: {{amount}} tokens",
 		"tokensUsed": "Tokens utilizzati: {{used}} di {{total}}",
-		"reservedForResponse": "Riservato per risposta del modello: {{amount}} tokens"
+		"reservedForResponse": "Riservato per risposta del modello: {{amount}} tokens",
+		"tokensUsedLabel": "Tokens utilizzati",
+		"reservedForResponseLabel": "Riservato per risposta",
+		"availableSpaceLabel": "Spazio disponibile"
 	},
 	"retry": {
 		"title": "Riprova",
@@ -82,10 +86,15 @@
 		"title": "Termina",
 		"tooltip": "Termina l'attività corrente"
 	},
+	"stop": {
+		"title": "Ferma",
+		"tooltip": "Ferma l'attività corrente"
+	},
 	"cancel": {
 		"title": "Annulla",
 		"tooltip": "Annulla l'operazione corrente"
 	},
+	"enqueueMessage": "Aggiungi il messaggio alla coda (sarà inviato dopo che l'attività corrente sarà terminata)",
 	"scrollToBottom": "Scorri fino alla fine della chat",
 	"about": "Roo Code è un intero team di sviluppo AI nel tuo editor.",
 	"docs": "Consulta la nostra <DocsLink>documentazione</DocsLink> per saperne di più.",
@@ -144,14 +153,14 @@
 		"rateLimitWait": "Limitazione della frequenza",
 		"errorTitle": "Errore del fornitore {{code}}",
 		"errorMessage": {
-			"docs": "Documentazione",
-			"goToSettings": "Impostazioni",
 			"400": "Il provider non ha potuto elaborare la richiesta come presentata. Interrompi l'attività e prova un approccio diverso.",
 			"401": "Impossibile autenticare con il provider. Verifica la configurazione della tua chiave API.",
 			"402": "Sembra che tu abbia esaurito i fondi/crediti nel tuo account. Vai al tuo provider e aggiungi altro per continuare.",
 			"403": "Non autorizzato. La tua chiave API è valida, ma il provider ha rifiutato di completare questa richiesta.",
 			"429": "Troppe richieste. Sei limitato dal provider. Attendi un po' prima della tua prossima chiamata API.",
 			"500": "Errore del server del provider. C'è qualcosa di sbagliato dal lato del provider, non c'è nulla di sbagliato nella tua richiesta.",
+			"docs": "Documentazione",
+			"goToSettings": "Impostazioni",
 			"unknown": "Errore API sconosciuto. Contatta il supporto di Roo Code.",
 			"connection": "Errore di connessione. Assicurati di avere una connessione Internet funzionante.",
 			"claudeCodeNotAuthenticated": "Devi accedere per utilizzare Claude Code. Vai su Impostazioni e clicca su \"Accedi a Claude Code\" per autenticarti."
@@ -253,7 +262,8 @@
 		"completionContent": "Sottoattività completata",
 		"resultContent": "Risultati sottoattività",
 		"defaultResult": "Per favore continua con la prossima attività.",
-		"completionInstructions": "Sottoattività completata! Puoi rivedere i risultati e suggerire correzioni o prossimi passi. Se tutto sembra a posto, conferma per restituire il risultato all'attività principale."
+		"completionInstructions": "Sottoattività completata! Puoi rivedere i risultati e suggerire correzioni o prossimi passi. Se tutto sembra a posto, conferma per restituire il risultato all'attività principale.",
+		"goToSubtask": "Visualizza attività"
 	},
 	"questions": {
 		"hasQuestion": "Roo ha una domanda"
@@ -271,7 +281,8 @@
 		"title": "Dettagli errore",
 		"copyToClipboard": "Copia negli appunti",
 		"copied": "Copiato!",
-		"diagnostics": "Ottieni informazioni errore dettagliate"
+		"diagnostics": "Ottieni informazioni errore dettagliate",
+		"proxyProvider": "Sembra che tu stia utilizzando un provider basato su proxy. Assicurati di controllarne i log e di verificare che non stia riscrivendo le richieste di Roo."
 	},
 	"powershell": {
 		"issues": "Sembra che tu stia avendo problemi con Windows PowerShell, consulta questa"
@@ -292,7 +303,7 @@
 		"triggerLabel_zero": "0 approvati automaticamente",
 		"triggerLabel_one": "1 approvato automaticamente",
 		"triggerLabel_other": "{{count}} approvati automaticamente",
-		"triggerLabelAll": "YOLO"
+		"triggerLabelAll": "BRRR"
 	},
 	"reasoning": {
 		"thinking": "Sto pensando",
@@ -329,8 +340,7 @@
 		},
 		"release": {
 			"heading": "Novità:",
-			"skills": "Roo ora supporta <skillsLink>Agent Skills</skillsLink> - pacchetti riutilizzabili di prompt, strumenti e risorse per estendere le capacità di Roo.",
-			"nativeToolCalling": "La chiamata nativa degli strumenti è ora obbligatoria per tutte le nuove attività. <blogLink>Scopri di più</blogLink> sulla motivazione e cosa fare se riscontri problemi."
+			"smartCodeFolding": "Smart Code Folding: La condensazione del contesto mantiene ora una mappa leggera dei tuoi file—firme di funzione, dichiarazioni di classe e definizioni di tipo. Questo fornisce una migliore continuità dopo la condensazione e modifiche più intelligenti quando si fa riferimento al lavoro precedente."
 		},
 		"cloudAgents": {
 			"heading": "Novità nel Cloud:",
@@ -340,8 +350,14 @@
 		},
 		"careers": "Inoltre, <careersLink>stiamo assumendo!</careersLink>"
 	},
+	"costs": {
+		"totalWithSubtasks": "Costo totale (sottoattività incluse): ${{cost}}",
+		"total": "Costo totale: ${{cost}}",
+		"includesSubtasks": "Include i costi delle sottoattività"
+	},
 	"browser": {
 		"session": "Sessione del browser",
+		"active": "Attivo",
 		"rooWantsToUse": "Roo vuole utilizzare il browser",
 		"consoleLogs": "Log della console",
 		"noNewLogs": "(Nessun nuovo log)",
@@ -479,5 +495,17 @@
 		"updated": "Aggiornata la lista delle cose da fare",
 		"completed": "Completato",
 		"started": "Iniziato"
+	},
+	"tooManyTools": {
+		"title": "Troppi strumenti abilitati",
+		"toolsPart_one": "{{count}} strumento",
+		"toolsPart_other": "{{count}} strumenti",
+		"serversPart_one": "{{count}} server MCP",
+		"serversPart_other": "{{count}} server MCP",
+		"messageTemplate": "Hai {{tools}} abilitate via {{servers}}. Un numero così alto può confondere il modello e portare a errori. Prova a mantenerlo sotto {{threshold}}.",
+		"openMcpSettings": "Apri impostazioni MCP"
+	},
+	"readCommandOutput": {
+		"title": "Roo read command output"
 	}
 }

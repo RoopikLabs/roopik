@@ -1,4 +1,5 @@
 {
+	"back": "Back to tasks view",
 	"common": {
 		"save": "Save",
 		"done": "Done",
@@ -12,7 +13,11 @@
 		"title": "Settings",
 		"saveButtonTooltip": "Save changes",
 		"nothingChangedTooltip": "Nothing changed",
-		"doneButtonTooltip": "Discard unsaved changes and close settings panel"
+		"doneButtonTooltip": "Discard unsaved changes and go back to tasks view"
+	},
+	"search": {
+		"placeholder": "Search settings...",
+		"noResults": "No settings found"
 	},
 	"unsavedChangesDialog": {
 		"title": "Unsaved Changes",
@@ -24,6 +29,7 @@
 		"providers": "Providers",
 		"modes": "Modes",
 		"mcp": "MCP Servers",
+		"worktrees": "Worktrees",
 		"autoApprove": "Auto-Approve",
 		"browser": "Browser",
 		"checkpoints": "Checkpoints",
@@ -38,7 +44,7 @@
 		"about": "About Dio Code"
 	},
 	"about": {
-		"integrationNote": "This is the Roo Code extension integrated into <strong>Roopik IDE</strong> (named <strong>Dio</strong>). All Roo Code features and settings are fully compatible. FOr any bugs/issues, please report to us (support@roopik.com), as Roo code team is not responsible for any issues here.",
+		"integrationNote": "This extension is forked from Roo-Code and rebuilt with Roopik IDE's browser preview, canvas, and component toolchain.",
 		"bugReport": {
 			"label": "Found a bug?",
 			"link": "Report on GitHub"
@@ -52,12 +58,15 @@
 			"link": "Follow our disclosure process"
 		},
 		"contact": {
-			"label": "Need to talk to us? Write",
-			"link": "support@roopik.com"
+			"label": "Need to talk to us? Write"
 		},
-		"community": "Want tips or to just hang out with other Dio Code users? Join <redditLink>reddit.com/r/DioCode</redditLink> or <discordLink>discord.gg/Diocode</discordLink>",
+		"community": "Want tips or to just hang out with other Dio Code users? Join <redditLink>reddit.com/r/roopik</redditLink> or <discordLink>https://discord.gg/YGRzEmQU</discordLink>",
 		"contactAndCommunity": "Contact & Community",
-		"manageSettings": "Manage Settings"
+		"manageSettings": "Manage Settings",
+		"debugMode": {
+			"label": "Enable debug mode",
+			"description": "Enable debug mode to show additional buttons in the task header for viewing API conversation history and UI messages as prettified JSON in temporary files."
+		}
 	},
 	"slashCommands": {
 		"description": "Manage your slash commands to quickly execute custom workflows and actions. <DocsLink>Learn more</DocsLink>"
@@ -205,7 +214,7 @@
 			},
 			"protected": {
 				"label": "Include protected files",
-				"description": "Allow Dio to create and edit protected files (like .rooignore and .dio/ configuration files) without requiring approval."
+				"description": "Allow Dio to create and edit protected files (like .rooignore and .roo/ configuration files) without requiring approval."
 			}
 		},
 		"browser": {
@@ -290,10 +299,40 @@
 		"vercelAiGatewayApiKey": "Vercel AI Gateway API Key",
 		"getVercelAiGatewayApiKey": "Get Vercel AI Gateway API Key",
 		"apiKeyStorageNotice": "API keys are stored securely in VSCode's Secret Storage",
+		"openAiCodexRateLimits": {
+			"title": "Usage Limits for Codex{{planLabel}}",
+			"loading": "Loading usage limits...",
+			"loadError": "Failed to load usage limits",
+			"retry": "Retry",
+			"usedPercent": "{{percent}}% used",
+			"resetsIn": "Resets in {{time}}",
+			"plan": {
+				"default": "",
+				"withType": " ({{planType}})"
+			},
+			"time": {
+				"now": "Now",
+				"notAvailable": "N/A"
+			},
+			"duration": {
+				"daysHours": "{{days}}d {{hours}}h",
+				"hoursMinutes": "{{hours}}h {{minutes}}m",
+				"minutes": "{{minutes}}m"
+			},
+			"window": {
+				"usage": "Usage",
+				"fiveHour": "5h limit",
+				"oneHour": "1h limit",
+				"daily": "Daily limit",
+				"weekly": "Weekly limit",
+				"days": "{{days}}d limit",
+				"hours": "{{hours}}h limit",
+				"minutes": "{{minutes}}m limit"
+			}
+		},
 		"useCustomBaseUrl": "Use custom base URL",
 		"useReasoning": "Enable reasoning",
 		"useHostHeader": "Use custom Host header",
-		"useLegacyFormat": "Use legacy OpenAI API format",
 		"customHeaders": "Custom Headers",
 		"headerName": "Header name",
 		"headerValue": "Header value",
@@ -448,7 +487,7 @@
 		"getUnboundApiKey": "Get Unbound API Key",
 		"unboundRefreshModelsSuccess": "Models list updated! You can now select from the latest models.",
 		"unboundInvalidApiKey": "Invalid API key. Please check your API key and try again.",
-		"Dio": {
+		"roo": {
 			"authenticatedMessage": "Securely authenticated through your Code Cloud account.",
 			"connectButton": "Connect to Code Cloud"
 		},
@@ -699,6 +738,15 @@
 			"label": "Terminal character limit",
 			"description": "Overrides the line limit to prevent memory issues by enforcing a hard cap on output size. If exceeded, keeps the beginning and end and shows a placeholder to Dio where content is skipped. <0>Learn more</0>"
 		},
+		"outputPreviewSize": {
+			"label": "Command output preview size",
+			"description": "Controls how much command output Dio sees directly. Full output is always saved and accessible when needed.",
+			"options": {
+				"small": "Small (5KB)",
+				"medium": "Medium (10KB)",
+				"large": "Large (20KB)"
+			}
+		},
 		"shellIntegrationTimeout": {
 			"label": "Terminal shell integration timeout",
 			"description": "How long to wait for VS Code shell integration before running commands. Raise if your shell starts slowly or you see 'Shell Integration Unavailable' errors. <0>Learn more</0>"
@@ -710,10 +758,6 @@
 		"commandDelay": {
 			"label": "Terminal command delay",
 			"description": "Adds a short pause after each command so the VS Code terminal can flush all output (bash/zsh: PROMPT_COMMAND sleep; PowerShell: start-sleep). Use only if you see missing tail output; otherwise leave at 0. <0>Learn more</0>"
-		},
-		"compressProgressBar": {
-			"label": "Compress progress bar output",
-			"description": "Collapses progress bars/spinners so only the final state is kept (saves tokens). <0>Learn more</0>"
 		},
 		"powershellCounter": {
 			"label": "Enable PowerShell counter workaround",
@@ -743,14 +787,6 @@
 	"advancedSettings": {
 		"title": "Advanced settings"
 	},
-	"toolProtocol": {
-		"label": "Tool Call Protocol",
-		"description": "Choose how Dio communicates with the API. Native uses the provider's function calling API, while XML uses XML-formatted tool definitions.",
-		"default": "Default",
-		"xml": "XML",
-		"native": "Native",
-		"currentDefault": "Default: {{protocol}}"
-	},
 	"advanced": {
 		"diff": {
 			"label": "Enable editing through diffs",
@@ -767,10 +803,6 @@
 					"unified": "Unified diff strategy takes multiple approaches to applying diffs and chooses the best approach.",
 					"multiBlock": "Multi-block diff strategy allows updating multiple code blocks in a file in one request."
 				}
-			},
-			"matchPrecision": {
-				"label": "Match precision",
-				"description": "This slider controls how precisely code sections must match when applying diffs. Lower values allow more flexible matching but increase the risk of incorrect replacements. Use values below 100% with extreme caution."
 			}
 		},
 		"todoList": {
@@ -779,10 +811,6 @@
 		}
 	},
 	"experimental": {
-		"AGENT_SKILLS": {
-			"name": "Agent Skills Support",
-			"description": "We supports the Agent Skills standard. Put the skills under .dio/skills for all modes or .dio/skills-[mode] if you want to limit to a specific mode."
-		},
 		"DIFF_STRATEGY_UNIFIED": {
 			"name": "Use experimental unified diff strategy",
 			"description": "Enable the experimental unified diff strategy. This strategy might reduce the number of retries caused by model errors but may cause unexpected behavior or incorrect edits. Only enable if you understand the risks and are willing to carefully review all changes."
@@ -790,10 +818,6 @@
 		"INSERT_BLOCK": {
 			"name": "Use experimental insert content tool",
 			"description": "Enable the experimental insert content tool, allowing Dio to insert content at specific line numbers without needing to create a diff."
-		},
-		"POWER_STEERING": {
-			"name": "Use experimental \"power steering\" mode",
-			"description": "When enabled, Dio will remind the model about the details of its current mode definition more frequently. This will lead to stronger adherence to role definitions and custom instructions, but will use more tokens per message."
 		},
 		"CONCURRENT_FILE_READS": {
 			"name": "Enable concurrent file reads",
@@ -806,10 +830,6 @@
 		"MARKETPLACE": {
 			"name": "Enable Marketplace",
 			"description": "When enabled, you can install MCPs and custom modes from the Marketplace."
-		},
-		"MULTI_FILE_APPLY_DIFF": {
-			"name": "Enable concurrent file edits",
-			"description": "When enabled, Dio can edit multiple files in a single request. When disabled, Dio must edit files one at a time. Disabling this can help when working with less capable models or when you want more control over file modifications."
 		},
 		"PREVENT_FOCUS_DISRUPTION": {
 			"name": "Background editing",
@@ -846,9 +866,9 @@
 		},
 		"CUSTOM_TOOLS": {
 			"name": "Enable custom tools",
-			"description": "When enabled, Dio can load and use custom TypeScript/JavaScript tools from your project's .Dio/tools directory or ~/.Dio/tools for global tools. Note: these tools will automatically be auto-approved.",
+			"description": "When enabled, Dio can load and use custom TypeScript/JavaScript tools from your project's .roo/tools directory or ~/.roo/tools for global tools. Note: these tools will automatically be auto-approved.",
 			"toolsHeader": "Available Custom Tools",
-			"noTools": "No custom tools loaded. Add .ts or .js files to your project's .Dio/tools directory or ~/.Dio/tools for global tools.",
+			"noTools": "No custom tools loaded. Add .ts or .js files to your project's .roo/tools directory or ~/.roo/tools for global tools.",
 			"refreshButton": "Refresh",
 			"refreshing": "Refreshing...",
 			"refreshSuccess": "Tools refreshed successfully",
@@ -898,7 +918,7 @@
 	"footer": {
 		"telemetry": {
 			"label": "Allow anonymous error and usage reporting",
-			"description": "To help improve the service, anonymous usage data and error reports are sent. This telemetry does not collect code, prompts or personal information. See Roo Code's <privacyLink>privacy policy</privacyLink> for more details."
+			"description": "Help improve Dio Code by sending anonymous usage data and error reports. This telemetry does not collect code, prompts or personal information. See our <privacyLink>privacy policy</privacyLink> for more details."
 		},
 		"settings": {
 			"import": "Import",

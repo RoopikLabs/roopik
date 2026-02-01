@@ -51,6 +51,9 @@ jobs:
       - name: Rebuild native modules
         run: npm rebuild
 
+      - name: Generate DOM whitelist from MDN
+        run: node build/scripts/generateDOMWhitelist.mjs
+
       - name: Install roopik-roo extension dependencies
         working-directory: extensions/roopik-roo
         shell: bash
@@ -107,6 +110,14 @@ jobs:
         working-directory: extensions/roopik
         run: npm run build
 
+      - name: Build MCP STDIO binary (Windows)
+        working-directory: tools/roopik/mcp-stdio-server
+        shell: bash
+        run: |
+          npm ci
+          mkdir -p ../../../resources/mcp-binaries
+          npm run build:binary:win
+
       - name: Clean non-Windows prebuilds from node_modules
         shell: bash
         run: |
@@ -120,12 +131,18 @@ jobs:
           ' sh {} \;
 
       - name: Build Windows application
+        env:
+          BUILD_SOURCEVERSION: ${{ github.sha }}
         run: npm run gulp vscode-win32-x64
 
       - name: Prepare Inno Setup tools
+        env:
+          BUILD_SOURCEVERSION: ${{ github.sha }}
         run: npm run gulp vscode-win32-x64-inno-updater
 
       - name: Build Windows installer (User)
+        env:
+          BUILD_SOURCEVERSION: ${{ github.sha }}
         run: npm run gulp vscode-win32-x64-user-setup
 
       # System installer commented out - use User installer for most cases
@@ -179,12 +196,13 @@ jobs:
           }
 
           $version = node -p "require('./package.json').version"
+          $commit = "${{ github.sha }}"
           $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash.ToLower()
           $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
           $base = $env:R2_PUBLIC_BASE_URL.TrimEnd('/')
           $url = "$base/windows/roopik-windows-latest.exe"
           $json = @{
-            version = $version
+            version = $commit
             productVersion = $version
             url = $url
             sha256hash = $hash
@@ -193,3 +211,4 @@ jobs:
           $tmp = Join-Path $env:TEMP "latest.json"
           $json | Out-File -Encoding utf8 $tmp
           aws s3 cp $tmp "s3://$env:R2_BUCKET/windows/stable/latest.json" --endpoint-url $endpoint --no-progress
+

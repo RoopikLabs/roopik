@@ -310,88 +310,111 @@ export const INSPECT_MODE_SCRIPT = `
 	].join(';');
 	document.body.appendChild(actionButtonsContainer);
 
-	// Attach button (left) - paperclip icon
+	// Attach button (left) - code element icon - light style for visibility
 	const attachButton = document.createElement('div');
 	attachButton.id = '__roopik_inspect_attach';
 	attachButton.style.cssText = [
-		'width: 28px',
-		'height: 28px',
-		'background-color: #059669',
-		'border-radius: 6px',
+		'width: 32px',
+		'height: 32px',
+		'background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+		'border: 1px solid rgba(0, 0, 0, 0.3)',
+		'border-radius: 8px',
 		'cursor: pointer',
-		'box-shadow: 0 2px 8px rgba(5, 150, 105, 0.4)',
-		'transition: background-color 0.15s, transform 0.1s',
+		'box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15)',
+		'transition: all 0.2s ease',
 		'display: flex',
 		'align-items: center',
 		'justify-content: center'
 	].join(';');
-	attachButton.title = 'Attach element HTML to AI context';
+	attachButton.title = 'Attach element to AI context';
 
-	// Paperclip icon SVG
+	// Code brackets icon </> (represents HTML element)
 	var attachSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 	attachSvg.setAttribute('width', '16');
 	attachSvg.setAttribute('height', '16');
 	attachSvg.setAttribute('viewBox', '0 0 24 24');
 	attachSvg.setAttribute('fill', 'none');
-	attachSvg.setAttribute('stroke', 'white');
-	attachSvg.setAttribute('stroke-width', '2');
+	attachSvg.setAttribute('stroke', '#475569');
+	attachSvg.setAttribute('stroke-width', '2.5');
 	attachSvg.setAttribute('stroke-linecap', 'round');
 	attachSvg.setAttribute('stroke-linejoin', 'round');
-	var attachPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-	attachPath.setAttribute('d', 'M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48');
-	attachSvg.appendChild(attachPath);
+	// < bracket
+	var path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+	path1.setAttribute('d', 'M8 6L3 12L8 18');
+	attachSvg.appendChild(path1);
+	// > bracket
+	var path2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+	path2.setAttribute('d', 'M16 6L21 12L16 18');
+	attachSvg.appendChild(path2);
+	// / slash
+	var path3 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+	path3.setAttribute('d', 'M14 4L10 20');
+	attachSvg.appendChild(path3);
 	attachButton.appendChild(attachSvg);
 
 	// Attach button hover
 	attachButton.addEventListener('mouseenter', function() {
-		attachButton.style.backgroundColor = '#047857';
-		attachButton.style.transform = 'scale(1.1)';
+		attachButton.style.background = 'linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%)';
+		attachButton.style.borderColor = 'rgba(0, 0, 0, 0.4)';
+		attachButton.style.transform = 'translateY(-2px)';
+		attachButton.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.2)';
+		attachSvg.setAttribute('stroke', '#1e293b');
 	});
 	attachButton.addEventListener('mouseleave', function() {
-		attachButton.style.backgroundColor = '#059669';
-		attachButton.style.transform = 'scale(1)';
+		attachButton.style.background = 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)';
+		attachButton.style.borderColor = 'rgba(0, 0, 0, 0.3)';
+		attachButton.style.transform = 'translateY(0)';
+		attachButton.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+		attachSvg.setAttribute('stroke', '#475569');
 	});
 
-	// Chat button (right) - message icon
+	// Chat button (right) - message icon - matching sleek style
 	const chatButton = document.createElement('div');
 	chatButton.id = '__roopik_inspect_chat';
 	chatButton.style.cssText = [
-		'width: 28px',
-		'height: 28px',
-		'background-color: #7c3aed',
-		'border-radius: 6px',
+		'width: 32px',
+		'height: 32px',
+		'background: linear-gradient(135deg, #4c1d95 0%, #6d28d9 100%)',
+		'border: 1px solid rgba(255, 255, 255, 0.15)',
+		'border-radius: 8px',
 		'cursor: pointer',
-		'box-shadow: 0 2px 8px rgba(124, 58, 237, 0.4)',
-		'transition: background-color 0.15s, transform 0.1s',
+		'box-shadow: 0 4px 12px rgba(109, 40, 217, 0.4)',
+		'transition: all 0.2s ease',
 		'display: flex',
 		'align-items: center',
 		'justify-content: center'
 	].join(';');
 	chatButton.title = 'Chat about this element';
 
-	// Message icon SVG
+	// Send/chat icon SVG (paper plane - more modern)
 	var chatSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
 	chatSvg.setAttribute('width', '16');
 	chatSvg.setAttribute('height', '16');
 	chatSvg.setAttribute('viewBox', '0 0 24 24');
 	chatSvg.setAttribute('fill', 'none');
-	chatSvg.setAttribute('stroke', 'white');
+	chatSvg.setAttribute('stroke', '#e9d5ff');
 	chatSvg.setAttribute('stroke-width', '2');
 	chatSvg.setAttribute('stroke-linecap', 'round');
 	chatSvg.setAttribute('stroke-linejoin', 'round');
 	var chatPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-	chatPath.setAttribute('d', 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z');
+	chatPath.setAttribute('d', 'M22 2L11 13M22 2L15 22L11 13L2 9L22 2Z');
 	chatSvg.appendChild(chatPath);
 	chatButton.appendChild(chatSvg);
 
 	// Chat button hover
 	chatButton.addEventListener('mouseenter', function() {
-		chatButton.style.backgroundColor = '#6d28d9';
-		chatButton.style.transform = 'scale(1.1)';
+		chatButton.style.background = 'linear-gradient(135deg, #5b21b6 0%, #7c3aed 100%)';
+		chatButton.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+		chatButton.style.transform = 'translateY(-2px)';
+		chatButton.style.boxShadow = '0 6px 16px rgba(109, 40, 217, 0.5)';
+		chatSvg.setAttribute('stroke', '#ffffff');
 	});
 	chatButton.addEventListener('mouseleave', function() {
-		chatButton.style.backgroundColor = '#7c3aed';
-		chatButton.style.transform = 'scale(1)';
+		chatButton.style.background = 'linear-gradient(135deg, #4c1d95 0%, #6d28d9 100%)';
+		chatButton.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+		chatButton.style.transform = 'translateY(0)';
+		chatButton.style.boxShadow = '0 4px 12px rgba(109, 40, 217, 0.4)';
+		chatSvg.setAttribute('stroke', '#e9d5ff');
 	});
 
 	// Add buttons to container (attach on left, chat on right)
@@ -405,31 +428,35 @@ export const INSPECT_MODE_SCRIPT = `
 		'position: fixed',
 		'z-index: 2147483647',
 		'display: none',
-		'background: #1e1e1e',
-		'border: 1px solid #3c3c3c',
-		'border-radius: 8px',
-		'padding: 10px',
-		'box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4)',
-		'width: 500px'
+		'background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+		'border: 1px solid rgba(255, 255, 255, 0.15)',
+		'border-radius: 12px',
+		'padding: 12px 14px',
+		'box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1) inset',
+		'max-width: 520px',
+		'width: calc(100vw - 32px)',
+		'backdrop-filter: blur(10px)',
+		'box-sizing: border-box'
 	].join(';');
 
 	// Chat input container (input + send button)
 	const chatInputContainer = document.createElement('div');
-	chatInputContainer.style.cssText = 'display: flex; gap: 8px; align-items: center;';
+	chatInputContainer.style.cssText = 'display: flex; gap: 10px; align-items: center;';
 
 	const chatInput = document.createElement('input');
 	chatInput.type = 'text';
 	chatInput.placeholder = 'Describe changes...';
 	chatInput.style.cssText = [
 		'flex: 1',
-		'background: #2d2d2d',
-		'border: 1px solid #3c3c3c',
-		'border-radius: 4px',
-		'padding: 10px 12px',
-		'color: #cccccc',
-		'font-size: 13px',
+		'background: rgba(255, 255, 255, 0.05)',
+		'border: 1px solid rgba(255, 255, 255, 0.2)',
+		'border-radius: 8px',
+		'padding: 12px 16px',
+		'color: #e0e0e0',
+		'font-size: 14px',
 		'font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
-		'outline: none'
+		'outline: none',
+		'transition: border-color 0.2s ease, box-shadow 0.2s ease'
 	].join(';');
 
 	const chatSendBtn = document.createElement('button');
@@ -446,16 +473,17 @@ export const INSPECT_MODE_SCRIPT = `
 	sendSvg.appendChild(sendPath);
 	chatSendBtn.appendChild(sendSvg);
 	chatSendBtn.style.cssText = [
-		'background: #7c3aed',
+		'background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%)',
 		'border: none',
-		'border-radius: 4px',
-		'padding: 8px',
+		'border-radius: 8px',
+		'padding: 10px 12px',
 		'cursor: pointer',
 		'color: white',
 		'display: flex',
 		'align-items: center',
 		'justify-content: center',
-		'transition: opacity 0.2s ease'
+		'transition: all 0.2s ease',
+		'box-shadow: 0 2px 8px rgba(124, 58, 237, 0.4)'
 	].join(';');
 
 	// Enable/disable send button based on input
@@ -467,6 +495,14 @@ export const INSPECT_MODE_SCRIPT = `
 	}
 
 	chatInput.addEventListener('input', updateSendButtonState);
+	chatInput.addEventListener('focus', function() {
+		chatInput.style.borderColor = 'rgba(124, 58, 237, 0.6)';
+		chatInput.style.boxShadow = '0 0 0 2px rgba(124, 58, 237, 0.2)';
+	});
+	chatInput.addEventListener('blur', function() {
+		chatInput.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+		chatInput.style.boxShadow = 'none';
+	});
 	chatInput.addEventListener('keypress', function(e) {
 		if (e.key === 'Enter' && chatInput.value.trim()) {
 			sendChatMessage(chatInput.value.trim());
@@ -610,8 +646,8 @@ export const INSPECT_MODE_SCRIPT = `
 		isChatOpen = true;
 
 		var rect = selectedElement.getBoundingClientRect();
-		var barHeight = 60; // Clean input bar height
-		var barWidth = 500;
+		var barHeight = 60;
+		var barWidth = 520; // Match CSS width
 
 		// Determine position: prefer below element, fallback to above
 		var top, left;
@@ -627,9 +663,14 @@ export const INSPECT_MODE_SCRIPT = `
 			top = window.innerHeight - barHeight - 20;
 		}
 
-		// Horizontal: center under element, but keep in viewport
-		left = rect.left + (rect.width / 2) - (barWidth / 2);
-		left = Math.max(10, Math.min(left, window.innerWidth - barWidth - 10));
+		// Horizontal positioning - CSS handles responsive width via max-width + calc
+		var viewportWidth = window.innerWidth;
+		var margin = 16;
+		var actualBarWidth = Math.min(barWidth, viewportWidth - margin * 2);
+
+		// Center under element, but keep in viewport with margin
+		left = rect.left + (rect.width / 2) - (actualBarWidth / 2);
+		left = Math.max(margin, Math.min(left, viewportWidth - actualBarWidth - margin));
 
 		chatBar.style.top = top + 'px';
 		chatBar.style.left = left + 'px';
@@ -668,7 +709,7 @@ export const INSPECT_MODE_SCRIPT = `
 
 	// Close chat bar when clicking outside
 	document.addEventListener('click', function(e) {
-		if (isChatOpen && !chatBar.contains(e.target) && e.target !== chatIcon) {
+		if (isChatOpen && !chatBar.contains(e.target) && e.target !== chatButton && !chatButton.contains(e.target)) {
 			closeChatBar();
 		}
 	}, true);

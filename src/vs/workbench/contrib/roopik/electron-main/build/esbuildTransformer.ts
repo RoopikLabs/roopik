@@ -1003,7 +1003,7 @@ render(h(Component), root);
 		framework: Framework,
 		componentId: string
 	): Record<string, string> {
-		const transform = createSourceTrackingTransform(framework);
+		const transform = createSourceTrackingTransform(framework, this.logger);
 		const trackedFiles: Record<string, string> = {};
 
 		for (const [filename, content] of Object.entries(files)) {
@@ -1011,14 +1011,9 @@ render(h(Component), root);
 				// Apply source tracking transformation
 				const transformedContent = transform(content, filename, componentId);
 				trackedFiles[filename] = transformedContent;
-
-				// Log if transformation happened
-				if (transformedContent !== content) {
-					this.logger.debug('Source tracking applied', { filename });
-				}
 			} catch (error) {
 				// Gracefully handle errors - use original content
-				this.logger.warn('Source tracking transformation failed', { filename, error });
+				this.logger.warn('[SOURCE_TRACKING] Transformation error', { filename, error });
 				trackedFiles[filename] = content;
 			}
 		}

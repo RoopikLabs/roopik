@@ -324,6 +324,38 @@ export const tocData: ITOCEntry<string> = {
 					settings: ['security.workspace.*']
 				}
 			]
+		},
+		{
+			id: 'roopik',
+			label: localize('roopik', "Roopik"),
+			settings: ['roopik.*'],
+			children: [
+				{
+					id: 'roopik/general',
+					label: localize('roopikGeneral', "General"),
+					settings: ['roopik.general.*']
+				},
+				{
+					id: 'roopik/mcp',
+					label: localize('roopikMcp', "MCP Integrations"),
+					settings: ['roopik.mcp.*']
+				},
+				{
+					id: 'roopik/project',
+					label: localize('roopikProject', "Project"),
+					settings: ['roopik.project.*']
+				},
+				{
+					id: 'roopik/browser',
+					label: localize('roopikBrowser', "Browser"),
+					settings: ['roopik.browser.*']
+				},
+				{
+					id: 'roopik/canvas',
+					label: localize('roopikCanvas', "Canvas"),
+					settings: ['roopik.canvas.*']
+				}
+			]
 		}
 	]
 };

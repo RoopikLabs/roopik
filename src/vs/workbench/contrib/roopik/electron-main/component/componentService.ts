@@ -25,7 +25,8 @@ import {
 	ComponentCreatedEvent,
 	ComponentBuildEvent,
 	ComponentDeletedEvent,
-	ComponentUpdatedEvent
+	ComponentUpdatedEvent,
+	ComponentScreenshotRequestEvent
 } from '../../common/component/componentService.js';
 import {
 	Component,
@@ -150,6 +151,16 @@ export class ComponentService extends Disposable implements IComponentService {
 	private readonly _onComponentUpdated = this._register(new Emitter<ComponentUpdatedEvent>());
 	readonly onComponentUpdated: Event<ComponentUpdatedEvent> = this._onComponentUpdated.event;
 
+	private readonly _onScreenshotRequested = this._register(new Emitter<ComponentScreenshotRequestEvent>());
+	readonly onScreenshotRequested: Event<ComponentScreenshotRequestEvent> = this._onScreenshotRequested.event;
+
+	// Screenshot request tracking (bidirectional IPC)
+	private screenshotRequests = new Map<string, {
+		resolve: (screenshot: string) => void;
+		reject: (error: Error) => void;
+		timeout: ReturnType<typeof setTimeout>;
+	}>();
+
 	// ========================================================================
 	// Constructor
 	// ========================================================================
@@ -191,14 +202,28 @@ export class ComponentService extends Disposable implements IComponentService {
 	// ========================================================================
 
 	async initialize(workspacePath: string): Promise<void> {
+		// Handle workspace change - reset state
+		if (this.initialized && this._workspacePath !== workspacePath) {
+			// this.logger.info('Workspace changed, re-initializing', {
+			// 	oldPath: this._workspacePath,
+			// 	newPath: workspacePath
+			// });
+
+			// Stop file watcher for old workspace
+			this.fileWatcher.stop();
+			// Clear old components
+			this.components.clear();
+			this.initialized = false;
+		}
+
 		if (this.initialized) {
-			this.logger.warn('Already initialized');
+			this.logger.debug('Already initialized for this workspace');
 			return;
 		}
 
 		this._workspacePath = workspacePath;
 
-		if (!this.storageService.isInitialized()) {
+		if (!this.storageService.isInitialized() || this.storageService.getWorkspacePath() !== workspacePath) {
 			await this.storageService.initialize(workspacePath);
 		}
 
@@ -215,6 +240,21 @@ export class ComponentService extends Disposable implements IComponentService {
 		return this.initialized;
 	}
 
+	/**
+	 * Clear all component data (called when workspace is closed)
+	 * Resets to uninitialized state
+	 */
+	async clear(): Promise<void> {
+		this.logger.info('Clearing component service (workspace closed)');
+
+		this.fileWatcher.stop();
+		this.components.clear();
+		this._workspacePath = '';
+		this.initialized = false;
+
+		this.logger.info('Component service cleared');
+	}
+
 	override dispose(): void {
 		this.fileWatcher.stop();
 		this.components.clear();
@@ -229,6 +269,34 @@ export class ComponentService extends Disposable implements IComponentService {
 		this.ensureInitialized();
 
 		// ====================================================================
+		// PIPELINE STEP 0: Resolve Relative Paths
+		// ====================================================================
+		// AI agents may pass relative paths (e.g., "src/Button", "./components/Card")
+		// Resolve them against the workspace path before any validation.
+		// Supports: absolute paths, relative paths, mixed separators, ./ and ../
+		let inputPath = request.folderPath;
+
+		// On non-Windows platforms, convert backslashes to forward slashes
+		// because backslash is a valid filename character on Unix systems
+		// but AI agents often send Windows-style paths regardless of platform
+		if (process.platform !== 'win32') {
+			inputPath = inputPath.replace(/\\/g, '/');
+		}
+
+		// Normalize to handle ./.. segments and platform-specific separators
+		const normalizedPath = path.normalize(inputPath);
+
+		// Resolve: if relative, resolves against workspace; if absolute, returns as-is
+		const resolvedPath = path.resolve(this._workspacePath, normalizedPath);
+
+		this.logger.debug('Path resolution', {
+			input: request.folderPath,
+			workspace: this._workspacePath,
+			resolved: resolvedPath,
+			isAbsolute: path.isAbsolute(normalizedPath)
+		});
+
+		// ====================================================================
 		// PIPELINE STEP 1: Smart Path Parsing
 		// ====================================================================
 		// Handles both file paths and folder paths flexibly:
@@ -239,7 +307,7 @@ export class ComponentService extends Disposable implements IComponentService {
 		// - UI file picker (user selects a file)
 		// - AI agents passing folder paths
 		// - AI agents passing file paths (if they know the entry file)
-		let folderPath = request.folderPath;
+		let folderPath = resolvedPath;
 		let entryFile = request.entryFile;
 
 		// Check if folderPath actually contains a file (has extension)
@@ -738,13 +806,22 @@ export class ComponentService extends Disposable implements IComponentService {
 	}
 
 	/**
+	 * Check if error is an ESBuild error (type discriminator)
+	 */
+	private isESBuildError(error: unknown): error is { errors: Array<{ text: string; location?: { file: string; line: number; column: number; length?: number; lineText?: string }; notes?: Array<{ text: string }> }> } {
+		return error !== null
+			&& typeof error === 'object'
+			&& Array.isArray((error as Record<string, unknown>).errors);
+	}
+
+	/**
 	 * Parse error into structured BuildErrorInfo
 	 */
 	private parseError(error: unknown, buildTime: number): NonNullable<QueueBuildResult['errorInfo']> {
 		const message = error instanceof Error ? error.message : String(error);
 
 		// Check if this is an ESBuild error (has errors array)
-		if (error && typeof error === 'object' && 'errors' in error && Array.isArray((error as { errors: unknown[] }).errors)) {
+		if (this.isESBuildError(error)) {
 			const esbuildError = error as { errors: Array<{ text: string; location?: { file: string; line: number; column: number; length?: number; lineText?: string }; notes?: Array<{ text: string }> }> };
 
 			return {
@@ -1131,6 +1208,53 @@ export class ComponentService extends Disposable implements IComponentService {
 			component.runtimeError = undefined;
 			component.updatedAt = Date.now();
 			this.logger.debug('Runtime error cleared for component', { componentId });
+		}
+	}
+
+	// ========================================================================
+	// Screenshot (Bidirectional IPC)
+	// ========================================================================
+
+	/**
+	 * Request a component screenshot (bidirectional IPC pattern)
+	 *
+	 * Flow:
+	 * 1. Fire onScreenshotRequested event with requestId + componentId
+	 * 2. Browser listens to event and calls extension command
+	 * 3. Extension captures screenshot from webview
+	 * 4. Browser calls deliverComponentScreenshot() with result
+	 * 5. Promise resolves with screenshot data
+	 *
+	 * @param componentId - Component to screenshot
+	 * @returns Promise<string> - Base64 data URL of screenshot
+	 */
+	requestComponentScreenshot(componentId: string): Promise<string> {
+		const requestId = `screenshot-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+		return new Promise((resolve, reject) => {
+			const timeout = setTimeout(() => {
+				this.screenshotRequests.delete(requestId);
+				reject(new Error('Screenshot request timed out after 30 seconds'));
+			}, 30000);
+
+			this.screenshotRequests.set(requestId, { resolve, reject, timeout });
+			this._onScreenshotRequested.fire({ requestId, componentId });
+		});
+	}
+
+	deliverComponentScreenshot(requestId: string, screenshot: string | null, error?: string): void {
+		const request = this.screenshotRequests.get(requestId);
+		if (!request) {
+			return;
+		}
+
+		clearTimeout(request.timeout);
+		this.screenshotRequests.delete(requestId);
+
+		if (screenshot) {
+			request.resolve(screenshot);
+		} else {
+			request.reject(new Error(error || 'Screenshot capture failed'));
 		}
 	}
 }

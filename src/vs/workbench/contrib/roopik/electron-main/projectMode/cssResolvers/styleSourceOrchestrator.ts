@@ -16,7 +16,8 @@ import type {
 	InheritedStyleInfo,
 	CDPMatchedStylesResponse,
 	CDPCSSRule,
-	CDPCSSProperty
+	CDPCSSProperty,
+	ComputedStyleValues
 } from '../../../common/cssResolvers/types.js';
 import type { CDPCssService } from './cdpCssService.js';
 import { SourceMapResolver } from './sourceMapResolver.js';
@@ -167,13 +168,16 @@ export class StyleSourceOrchestrator {
 				inheritedStyles
 			);
 
-			// 8. Detect CSS-in-JS
+			// 8. Get actual browser-computed styles (resolves clamp(), calc(), rem, etc.)
+			const computedStyles = await this.getComputedStylesFromCDP(browserViewId, nodeId);
+
+			// 9. Detect CSS-in-JS
 			const cssInJsResult = this.cssInJsDetector.detectFromClassName(
 				classes.join(' '),
 				htmlSource?.file
 			);
 
-			// 9. Build final result
+			// 10. Build final result
 			const result: ElementStyleInfo = {
 				tagName: nodeAttrs.tagName,
 				id: nodeAttrs.id,
@@ -184,7 +188,8 @@ export class StyleSourceOrchestrator {
 				matchedRules,
 				inlineStyles,
 				cssInJs: cssInJsResult.detected ? cssInJsResult : undefined,
-				inheritedStyles: inheritedStyles.length > 0 ? inheritedStyles : undefined
+				inheritedStyles: inheritedStyles.length > 0 ? inheritedStyles : undefined,
+				computedStyles
 			};
 
 			const duration = Date.now() - startTime;
@@ -218,6 +223,96 @@ export class StyleSourceOrchestrator {
 	// ============================================
 	// Processing Methods
 	// ============================================
+
+	/**
+	 * Get actual computed pixel values from CDP.
+	 * These are the final resolved values after CSS calculations (clamp, calc, rem, etc.)
+	 */
+	private async getComputedStylesFromCDP(
+		browserViewId: number,
+		nodeId: number
+	): Promise<ComputedStyleValues | undefined> {
+		try {
+			const computedStyle = await this.cdpService.getComputedStyle(browserViewId, nodeId);
+			if (!computedStyle || computedStyle.length === 0) {
+				return undefined;
+			}
+
+			// Convert CDP array to our ComputedStyleValues object
+			const styleMap = new Map<string, string>();
+			for (const { name, value } of computedStyle) {
+				styleMap.set(name, value);
+			}
+
+			// Helper to get a value
+			const get = (prop: string) => styleMap.get(prop);
+
+			// Build ComputedStyleValues object with all the properties we need
+			const result: ComputedStyleValues = {
+				// Layout
+				display: get('display'),
+				position: get('position'),
+				flexDirection: get('flex-direction'),
+				justifyContent: get('justify-content'),
+				alignItems: get('align-items'),
+				gap: get('gap'),
+
+				// Box Model
+				width: get('width'),
+				height: get('height'),
+				minWidth: get('min-width'),
+				maxWidth: get('max-width'),
+				minHeight: get('min-height'),
+				maxHeight: get('max-height'),
+
+				// Spacing
+				marginTop: get('margin-top'),
+				marginRight: get('margin-right'),
+				marginBottom: get('margin-bottom'),
+				marginLeft: get('margin-left'),
+				paddingTop: get('padding-top'),
+				paddingRight: get('padding-right'),
+				paddingBottom: get('padding-bottom'),
+				paddingLeft: get('padding-left'),
+
+				// Border
+				borderWidth: get('border-width'),
+				borderStyle: get('border-style'),
+				borderColor: get('border-color'),
+				borderRadius: get('border-radius'),
+
+				// Typography
+				fontFamily: get('font-family'),
+				fontSize: get('font-size'),
+				fontWeight: get('font-weight'),
+				lineHeight: get('line-height'),
+				letterSpacing: get('letter-spacing'),
+				textAlign: get('text-align'),
+
+				// Colors
+				color: get('color'),
+				backgroundColor: get('background-color'),
+
+				// Effects
+				opacity: get('opacity'),
+				boxShadow: get('box-shadow'),
+				overflow: get('overflow'),
+				transform: get('transform'),
+				zIndex: get('z-index'),
+
+				// Position values
+				top: get('top'),
+				right: get('right'),
+				bottom: get('bottom'),
+				left: get('left'),
+			};
+
+			return result;
+		} catch (error) {
+			console.error('[StyleSourceOrchestrator] Failed to get computed styles:', error);
+			return undefined;
+		}
+	}
 
 	/**
 	 * Process CDP matched rules into our format

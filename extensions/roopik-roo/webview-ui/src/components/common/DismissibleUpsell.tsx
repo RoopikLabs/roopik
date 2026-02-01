@@ -45,6 +45,9 @@ const DismissibleUpsell = memo(
 		onClick,
 		dismissOnClick = false,
 	}: DismissibleUpsellProps) => {
+		// Roopik: Permanently disable Code Cloud upsells
+		return null
+
 		const { t } = useAppTranslation()
 		const [isVisible, setIsVisible] = useState(false)
 		const isMountedRef = useRef(true)

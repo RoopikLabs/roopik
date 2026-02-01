@@ -9,7 +9,11 @@
 
 export {
 	IMcpServerService,
-	McpServerStatus
+	McpServerStatus,
+	McpConnectionInfo,
+	AgentId,
+	AgentStatus,
+	McpIntegrationStatus
 } from './mcpServerService.js';
 
 export const MCP_SERVER_CHANNEL = 'roopik:mcpServer';

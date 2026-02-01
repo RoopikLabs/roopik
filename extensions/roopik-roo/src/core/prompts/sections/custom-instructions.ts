@@ -6,7 +6,6 @@ import { Dirent } from "fs"
 import { isLanguage } from "@roo-code/types"
 
 import type { SystemPromptSettings } from "../types"
-import { getEffectiveProtocol, isNativeProtocol } from "@roo-code/types"
 
 import { LANGUAGES } from "../../../shared/language"
 import {
@@ -209,7 +208,7 @@ export async function loadRuleFiles(cwd: string, enableSubfolderRules: boolean =
 	// Use recursive discovery only if enableSubfolderRules is true
 	const rooDirectories = enableSubfolderRules ? await getAllRooDirectoriesForCwd(cwd) : getRooDirectoriesForCwd(cwd)
 
-	// Check for .dio/rules/ directories in order (global, project-local, and optionally subfolders)
+	// Check for .roo/rules/ directories in order (global, project-local, and optionally subfolders)
 	for (const rooDir of rooDirectories) {
 		const rulesDir = path.join(rooDir, "rules")
 		if (await directoryExists(rulesDir)) {
@@ -221,9 +220,9 @@ export async function loadRuleFiles(cwd: string, enableSubfolderRules: boolean =
 		}
 	}
 
-	// If we found rules in .dio/rules/ directories, return them
+	// If we found rules in .roo/rules/ directories, return them
 	if (rules.length > 0) {
-		return "\n# Rules from .dio directories:\n\n" + rules.join("\n\n")
+		return "\n# Rules from .roo directories:\n\n" + rules.join("\n\n")
 	}
 
 	// Fall back to existing behavior for legacy .roorules/.clinerules files
@@ -311,7 +310,7 @@ async function loadAgentRulesFile(cwd: string): Promise<string> {
 }
 
 /**
- * Load all AGENTS.md files from project root and optionally subdirectories with .dio folders
+ * Load all AGENTS.md files from project root and optionally subdirectories with .roo folders
  * Returns combined content with clear path headers for each file
  *
  * @param cwd - Current working directory (project root)
@@ -330,7 +329,7 @@ async function loadAllAgentRulesFiles(cwd: string, enableSubfolderRules: boolean
 		return agentRules.join("\n\n")
 	}
 
-	// When enabled, load from root and all subdirectories with .dio folders
+	// When enabled, load from root and all subdirectories with .roo folders
 	const directories = await getAgentsDirectoriesForCwd(cwd)
 
 	for (const directory of directories) {
@@ -372,7 +371,7 @@ export async function addCustomInstructions(
 			? await getAllRooDirectoriesForCwd(cwd)
 			: getRooDirectoriesForCwd(cwd)
 
-		// Check for .dio/rules-${mode}/ directories in order (global, project-local, and optionally subfolders)
+		// Check for .roo/rules-${mode}/ directories in order (global, project-local, and optionally subfolders)
 		for (const rooDir of rooDirectories) {
 			const modeRulesDir = path.join(rooDir, `rules-${mode}`)
 			if (await directoryExists(modeRulesDir)) {
@@ -384,7 +383,7 @@ export async function addCustomInstructions(
 			}
 		}
 
-		// If we found mode-specific rules in .dio/rules-${mode}/ directories, use them
+		// If we found mode-specific rules in .roo/rules-${mode}/ directories, use them
 		if (modeRules.length > 0) {
 			modeRuleContent = "\n" + modeRules.join("\n\n")
 			usedRuleFile = `rules-${mode} directories`
@@ -427,7 +426,7 @@ export async function addCustomInstructions(
 
 	// Add mode-specific rules first if they exist
 	if (modeRuleContent && modeRuleContent.trim()) {
-		if (usedRuleFile.includes(path.join(".dio", `rules-${mode}`))) {
+		if (usedRuleFile.includes(path.join(".roo", `rules-${mode}`))) {
 			rules.push(modeRuleContent.trim())
 		} else {
 			rules.push(`# Rules from ${usedRuleFile}:\n${modeRuleContent}`)
@@ -439,7 +438,7 @@ export async function addCustomInstructions(
 	}
 
 	// Add AGENTS.md content if enabled (default: true)
-	// Load from root and optionally subdirectories with .dio folders based on enableSubfolderRules setting
+	// Load from root and optionally subdirectories with .roo folders based on enableSubfolderRules setting
 	if (options.settings?.useAgentRules !== false) {
 		const agentRulesContent = await loadAllAgentRulesFiles(cwd, enableSubfolderRules)
 		if (agentRulesContent && agentRulesContent.trim()) {
@@ -459,16 +458,13 @@ export async function addCustomInstructions(
 
 	const joinedSections = sections.join("\n\n")
 
-	const effectiveProtocol = getEffectiveProtocol(options.settings?.toolProtocol)
-
 	return joinedSections
 		? `
 ====
 
 USER'S CUSTOM INSTRUCTIONS
 
-The following additional instructions are provided by the user, and should be followed to the best of your ability${isNativeProtocol(effectiveProtocol) ? "." : " without interfering with the TOOL USE guidelines."
-		}
+The following additional instructions are provided by the user, and should be followed to the best of your ability.
 
 ${joinedSections}
 `

@@ -180,6 +180,10 @@ export class ServiceBridge implements IProjectModeService {
 		return this.channel.call('takeScreenshotClip', { browserViewId, x, y, width, height });
 	}
 
+	async captureElementScreenshot(browserViewId: number, selector: string): Promise<string | null> {
+		return this.channel.call('captureElementScreenshot', { browserViewId, selector });
+	}
+
 	async focusBrowserView(browserViewId: number): Promise<void> {
 		return this.channel.call('focusBrowserView', browserViewId);
 	}

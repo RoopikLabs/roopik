@@ -21,7 +21,15 @@
  */
 
 import { join } from 'path';
-import { transformCode, MAX_PARENT_DEPTH, ENABLE_PARENT_METADATA } from './sourceTrackingCore.mjs';
+import { transformCode, MAX_PARENT_DEPTH, ENABLE_PARENT_METADATA, isDOMElement } from './sourceTrackingCore.mjs';
+
+// Note: isDOMElement is imported from sourceTrackingCore.mjs (via domElements.mjs)
+// It uses a whitelist approach - only injects into real DOM elements:
+// - HTML elements (div, span, button, etc.)
+// - SVG elements (svg, path, circle, etc.)
+// - MathML elements (math, mfrac, etc.)
+// - Web Components / Custom Elements (names with hyphens like <my-component>)
+// This automatically SKIPS: React components, R3F, react-konva, react-pixi, etc.
 
 /**
  * Create React source plugin for Vite
@@ -230,6 +238,12 @@ function createRoopikBabelPlugin(filename) {
 						currentElementName = `${name.object.name}.${name.property.name}`;
 					} else {
 						currentElementName = 'Unknown';
+					}
+
+					// WHITELIST: Only inject into real DOM elements
+					// Skip React components, R3F, react-konva, react-pixi, etc.
+					if (!isDOMElement(currentElementName)) {
+						return;
 					}
 
 					const relPath = (state.filename || filename).replace(/\\/g, '/');

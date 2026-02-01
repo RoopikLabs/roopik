@@ -205,6 +205,10 @@ export class RoopikStorageService implements IRoopikStorageService {
 	// Paths
 	// ========================================================================
 
+	getWorkspaceRootPath(): string {
+		return this.workspacePath;
+	}
+
 	getWorkspacePath(): string {
 		return getWorkspaceRoopikPath(this.workspacePath);
 	}

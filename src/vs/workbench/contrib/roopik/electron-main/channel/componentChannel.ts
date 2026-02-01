@@ -35,6 +35,8 @@ export class ComponentChannel implements IServerChannel {
 				return this.service.onComponentDeleted;
 			case 'onComponentUpdated':
 				return this.service.onComponentUpdated;
+			case 'onScreenshotRequested':
+				return this.service.onScreenshotRequested;
 			default:
 				throw new Error(`[ComponentChannel] Unknown event: ${event}`);
 		}
@@ -52,6 +54,8 @@ export class ComponentChannel implements IServerChannel {
 				return this.service.initialize(arg as string);
 			case 'isInitialized':
 				return Promise.resolve(this.service.isInitialized());
+			case 'clear':
+				return this.service.clear();
 
 			// ================================================================
 			// Create
@@ -140,6 +144,17 @@ export class ComponentChannel implements IServerChannel {
 			case 'clearRuntimeError':
 				this.service.clearRuntimeError(arg as string);
 				return Promise.resolve();
+
+			// ================================================================
+			// Screenshot (Bidirectional IPC)
+			// ================================================================
+			case 'requestComponentScreenshot':
+				return this.service.requestComponentScreenshot(arg as string);
+			case 'deliverComponentScreenshot': {
+				const { requestId, screenshot, error } = arg as { requestId: string; screenshot: string | null; error?: string };
+				this.service.deliverComponentScreenshot(requestId, screenshot, error);
+				return Promise.resolve();
+			}
 
 			default:
 				throw new Error(`[ComponentChannel] Unknown command: ${command}`);

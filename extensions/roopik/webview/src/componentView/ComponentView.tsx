@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import html2canvas from "html2canvas";
+import html2canvas from "html2canvas-pro";
 import type {
 	Sandbox,
 	Transform,
@@ -625,10 +625,15 @@ function App() {
 		const iframe = document.querySelector(
 			`iframe[data-sandbox-id="${componentId}"]`,
 		) as HTMLIFrameElement | null;
+
+		if (!iframe) {
+			return null;
+		}
+
 		const doc = iframe?.contentDocument;
 		const target = doc?.documentElement;
 
-		if (!iframe || !doc || !target) {
+		if (!doc || !target) {
 			return null;
 		}
 
@@ -636,6 +641,7 @@ function App() {
 			const scrollWidth = Math.max(target.scrollWidth, target.clientWidth);
 			const scrollHeight = Math.max(target.scrollHeight, target.clientHeight);
 			const iframeWindow = iframe.contentWindow;
+
 			const canvas = await html2canvas(target, {
 				backgroundColor: null,
 				logging: false,
@@ -650,7 +656,6 @@ function App() {
 
 			return canvas.toDataURL("image/png");
 		} catch (error) {
-			logger.warn("[Canvas] Screenshot capture failed", { componentId, error });
 			return null;
 		}
 	}, []);
@@ -762,6 +767,59 @@ function App() {
 						}
 					}
 				});
+			}
+
+			// Handle select mode: open source file in editor with selection
+			if (data.type === "roopik-select-open-source") {
+				const { sourceLocation, componentId } = data;
+				if (sourceLocation?.file) {
+					// Source file is relative (e.g., "index.tsx"), need to resolve to absolute
+					// using the component's folderPath
+					let absoluteFilePath = sourceLocation.file;
+					const sandbox = sandboxes.find(s => s.id === componentId);
+					if (sandbox?.componentInput?.folderPath && !sourceLocation.file.includes('/') && !sourceLocation.file.includes('\\')) {
+						// Relative path - combine with folderPath
+						absoluteFilePath = `${sandbox.componentInput.folderPath}/${sourceLocation.file}`;
+					}
+
+					vscode.postMessage({
+						type: 'openFile',
+						payload: {
+							filePath: absoluteFilePath,
+							line: sourceLocation.startLine || 1,
+							column: sourceLocation.startCol || 1,
+							endLine: sourceLocation.endLine,
+							endColumn: sourceLocation.endCol
+						}
+					});
+				}
+			}
+
+			// Handle select mode: open component in editor
+			if (data.type === "roopik-select-open-component") {
+				const { componentId } = data;
+				const sandbox = sandboxes.find(s => s.id === componentId);
+				if (sandbox?.componentInput?.folderPath && sandbox.componentInput.entryFile) {
+					const filePath = `${sandbox.componentInput.folderPath}/${sandbox.componentInput.entryFile}`;
+					vscode.postMessage({
+						type: 'openFile',
+						payload: {
+							filePath,
+							line: 1,
+							column: 1
+						}
+					});
+				}
+			}
+
+			// Handle select mode: ESC pressed, deselect
+			if (data.type === "roopik-select-escape") {
+				setIsSelectMode(false);
+			}
+
+			// Handle select mode: selection cleared (click outside elements)
+			if (data.type === "roopik-select-cleared") {
+				// Selection was cleared in the sandbox
 			}
 		};
 
@@ -997,6 +1055,31 @@ function App() {
 		return () => clearTimeout(timer);
 	}, [sandboxCount, sandboxes, focusedSandboxId, fitAllSandboxes]);
 
+	// Helper to calculate focused sandbox dimensions based on device mode
+	const getFocusedDimensionsForSandbox = useCallback(
+		(sandbox: Sandbox) => {
+			const effectiveDeviceMode = sandbox.deviceMode ?? globalDeviceMode;
+			const preset = DEVICE_PRESETS[effectiveDeviceMode];
+			const isDeviceMode = preset.width !== 'auto';
+
+			if (isDeviceMode) {
+				// Device mode: use exact device dimensions
+				return {
+					width: preset.width as number,
+					height: preset.height as number,
+				};
+			} else {
+				// Auto mode: expand to fill viewport
+				return getFocusedSandboxDimensions(
+					window.innerWidth,
+					window.innerHeight,
+					DEFAULT_CONFIG
+				);
+			}
+		},
+		[globalDeviceMode]
+	);
+
 	// Focus on a single sandbox (double-click)
 	// When focused, sandbox expands dynamically to fill most of the viewport
 	// Double-click toggles: focus if not focused, unfocus if already focused
@@ -1017,17 +1100,13 @@ function App() {
 			setFocusedSandboxId(sandboxId);
 			setSelectedSandboxId(sandboxId);
 
-			const viewport = { width: window.innerWidth, height: window.innerHeight };
-			// Calculate dynamic focused dimensions based on viewport
-			const focusedDimensions = getFocusedSandboxDimensions(
-				viewport.width,
-				viewport.height,
-				DEFAULT_CONFIG
-			);
-			// Use expanded dimensions for focus transform calculation
+			const viewportSize = { width: window.innerWidth, height: window.innerHeight };
+			// Calculate focused dimensions based on device mode
+			const focusedDimensions = getFocusedDimensionsForSandbox(sandbox);
+			// Use appropriate dimensions for focus transform calculation
 			const newTransform = calculateFocusTransform(
 				sandbox,
-				viewport,
+				viewportSize,
 				DEFAULT_CONFIG,
 				{
 					sandboxWidth: focusedDimensions.width,
@@ -1036,8 +1115,29 @@ function App() {
 			);
 			setTransform(newTransform);
 		},
-		[focusedSandboxId, sandboxes, fitAllSandboxes]
+		[focusedSandboxId, sandboxes, fitAllSandboxes, getFocusedDimensionsForSandbox]
 	);
+
+	// Recenter focused sandbox when device mode changes
+	useEffect(() => {
+		if (!focusedSandboxId) return;
+
+		const sandbox = sandboxes.find((s) => s.id === focusedSandboxId);
+		if (!sandbox) return;
+
+		const viewportSize = { width: window.innerWidth, height: window.innerHeight };
+		const focusedDimensions = getFocusedDimensionsForSandbox(sandbox);
+		const newTransform = calculateFocusTransform(
+			sandbox,
+			viewportSize,
+			DEFAULT_CONFIG,
+			{
+				sandboxWidth: focusedDimensions.width,
+				sandboxHeight: focusedDimensions.height,
+			}
+		);
+		setTransform(newTransform);
+	}, [focusedSandboxId, sandboxes, globalDeviceMode, getFocusedDimensionsForSandbox]);
 
 	// Reorganize all sandboxes to grid
 	const reorganizeToGrid = useCallback(
@@ -1513,6 +1613,7 @@ function App() {
 					globalDeviceMode={globalDeviceMode}
 					snapMode={snapMode}
 					viewport={viewport}
+					isSelectMode={isSelectMode}
 					isInspectMode={isInspectMode}
 					captureOnInspectSelect={AUTO_ATTACH_SCREENSHOT_ON_INSPECT}
 					onTransformChange={setTransform}

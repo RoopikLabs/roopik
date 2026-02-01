@@ -43,6 +43,7 @@ import { DefaultBrowserScreen } from './components/defaultBrowserScreen.js';
 import { ISourceNavigationService } from '../../common/navigation/index.js';
 import { IMenubarStateService } from '../services/menubarStateService.js';
 import { IProjectStorageService } from '../../common/projectStorage/index.js';
+import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 
 /**
  * Project Mode Editor
@@ -117,7 +118,8 @@ export class Editor extends EditorPane {
 		@IMenubarStateService private readonly menubarStateService: IMenubarStateService,
 		@IProjectStorageService private readonly projectStorageService: IProjectStorageService,
 		@IViewsService private readonly viewsService: IViewsService,
-		@ICommandService private readonly commandService: ICommandService
+		@ICommandService private readonly commandService: ICommandService,
+		@IConfigurationService private readonly configurationService: IConfigurationService
 	) {
 		super(Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = getRoopikLogger(loggerService, '[EDITOR]');
@@ -399,10 +401,10 @@ export class Editor extends EditorPane {
 	/**
 	 * Handle element selection from inspect mode
 	 * - Copy HTML to clipboard
-	 * - Open style panel with CSS info
+	 * - Open style panel with CSS info (if auto-open is enabled OR panel already open)
 	 */
 	private async handleElementSelected(message: import('../../common/projectMode/types.js').ElementSelectedMessage): Promise<void> {
-		// Copy HTML to clipboard
+		// Copy HTML to clipboard (always, regardless of auto-open setting)
 		if (message.html) {
 			try {
 				await this.clipboardService.writeText(message.html);
@@ -413,8 +415,17 @@ export class Editor extends EditorPane {
 
 		// Open style panel with element CSS info
 		if (this.browserViewId && message.selector) {
-			// Ensure style panel is initialized
-			if (this.contentContainer && !this.styleInspect.isPanelVisible()) {
+			const panelAlreadyVisible = this.styleInspect.isPanelVisible();
+
+			// If auto-open is disabled AND panel is not already open, skip opening
+			// But if panel is already open, always load the new element's styles
+			if (!this.styleInspect.isAutoOpenEnabled() && !panelAlreadyVisible) {
+				this.logger.info('[InspectMode] Auto-open disabled and panel closed, not opening');
+				return;
+			}
+
+			// Ensure style panel is initialized (only if not already visible)
+			if (this.contentContainer && !panelAlreadyVisible) {
 				this.styleInspect.initialize(this.contentContainer);
 			}
 
@@ -606,6 +617,21 @@ export class Editor extends EditorPane {
 			// Get current URL (helps agent determine if element is from local project or external site)
 			const currentUrl = this.lastKnownUrl || await this.browserService.getNavigationState(this.browserViewId).then(state => state.url).catch(() => 'unknown');
 
+			// Capture element screenshot if setting is enabled (default: true)
+			let elementScreenshot: string | null = null;
+			const attachScreenshotEnabled = this.configurationService.getValue<boolean>('roopik.browser.attachElementScreenshot') ?? true;
+			if (message.selector && attachScreenshotEnabled) {
+				try {
+					elementScreenshot = await this.browserService.captureElementScreenshot(this.browserViewId, message.selector);
+					if (elementScreenshot) {
+						this.logger.info('[InspectMode] Chat: Element screenshot captured successfully');
+					}
+				} catch (screenshotError) {
+					this.logger.warn('[InspectMode] Chat: Failed to capture element screenshot:', screenshotError);
+					// Continue without screenshot - HTML context is still valuable
+				}
+			}
+
 			// Build context with user message and element HTML + metadata (user message + element context)
 			let contextText = `${message.text}\n\n`;
 			contextText += `ELEMENT_CONTEXT\n`;
@@ -620,13 +646,14 @@ export class Editor extends EditorPane {
 			}
 			contextText += `\nHTML:\n\`\`\`html\n${message.html}\n\`\`\``;
 
-			// Send to AI agent (autoSend = true - send immediately since user typed a message)
+			// Send to AI agent with optional screenshot (autoSend = true - send immediately since user typed a message)
 			await this.commandService.executeCommand('roodio.externalContext', {
 				promptText: contextText,
+				images: elementScreenshot ? [elementScreenshot] : undefined,
 				autoSend: true
 			});
 
-			this.logger.info('[InspectMode] Chat message with element context auto-sent to AI agent');
+			this.logger.info('[InspectMode] Chat message with element context auto-sent to AI agent', { hasScreenshot: !!elementScreenshot });
 		} catch (error) {
 			this.logger.error('[InspectMode] Failed to send chat message:', error);
 		}
@@ -634,7 +661,7 @@ export class Editor extends EditorPane {
 
 	/**
 	 * Handle attach element request (silent attachment)
-	 * Sends element HTML to AI agent without message
+	 * Sends element HTML + screenshot to AI agent without message
 	 */
 	private async handleAttachElement(message: import('../../common/projectMode/types.js').AttachElementMessage): Promise<void> {
 		if (!this.browserViewId) {
@@ -651,6 +678,24 @@ export class Editor extends EditorPane {
 			// Get current URL (helps agent determine if element is from local project or external site)
 			const currentUrl = this.lastKnownUrl || await this.browserService.getNavigationState(this.browserViewId).then(state => state.url).catch(() => 'unknown');
 
+			// Capture element screenshot using CDP DOM.getBoxModel for accurate bounds
+			// Only capture if the setting is enabled (default: true)
+			let elementScreenshot: string | null = null;
+			const attachScreenshotEnabled = this.configurationService.getValue<boolean>('roopik.browser.attachElementScreenshot') ?? true;
+			if (message.selector && attachScreenshotEnabled) {
+				try {
+					elementScreenshot = await this.browserService.captureElementScreenshot(this.browserViewId, message.selector);
+					if (elementScreenshot) {
+						this.logger.info('[InspectMode] Element screenshot captured successfully');
+					} else {
+						this.logger.warn('[InspectMode] Element screenshot capture returned null');
+					}
+				} catch (screenshotError) {
+					this.logger.warn('[InspectMode] Failed to capture element screenshot:', screenshotError);
+					// Continue without screenshot - HTML context is still valuable
+				}
+			}
+
 			// Build context with element HTML + metadata (silent attachment - no user message)
 			let contextText = `ELEMENT_CONTEXT\n`;
 			contextText += `URL: ${currentUrl}\n`;
@@ -664,13 +709,15 @@ export class Editor extends EditorPane {
 			}
 			contextText += `\nHTML:\n\`\`\`html\n${message.html}\n\`\`\``;
 
-			// Send to AI agent as context (no auto-send, user types message in panel)
+			// Send to AI agent as context with optional screenshot
+			// The command accepts images as an array of data URLs
 			await this.commandService.executeCommand('roodio.externalContext', {
 				promptText: contextText,
+				images: elementScreenshot ? [elementScreenshot] : undefined,
 				autoSend: false
 			});
 
-			this.logger.info('[InspectMode] Element context attached to AI agent');
+			this.logger.info('[InspectMode] Element context attached to AI agent', { hasScreenshot: !!elementScreenshot });
 		} catch (error) {
 			this.logger.error('[InspectMode] Failed to attach element:', error);
 		}

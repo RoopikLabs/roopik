@@ -9,10 +9,4 @@ ThirdPartyNotices.txt eol=crlf
 *.sh eol=lf
 *.rtf -text
 **/*.json linguist-language=jsonc
-
-# Standardize all text files to LF in the repo history
-* text=auto eol=lf
-
-# Force specific Windows files to stay CRLF if required (e.g., Visual Studio solutions)
-*.sln text eol=crlf
-*.bat text eol=crlf
+*.patch eol=lf

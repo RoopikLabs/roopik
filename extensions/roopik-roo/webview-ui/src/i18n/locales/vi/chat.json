@@ -28,14 +28,18 @@
 		"openInCloud": "Mở tác vụ trong Roo Code Cloud",
 		"openInCloudIntro": "Tiếp tục theo dõi hoặc tương tác với Roo từ bất cứ đâu. Quét, nhấp hoặc sao chép để mở.",
 		"openApiHistory": "Mở lịch sử API",
-		"openUiHistory": "Mở lịch sử UI"
+		"openUiHistory": "Mở lịch sử UI",
+		"backToParentTask": "Nhiệm vụ cha"
 	},
 	"unpin": "Bỏ ghim khỏi đầu",
 	"pin": "Ghim lên đầu",
 	"tokenProgress": {
 		"availableSpace": "Không gian khả dụng: {{amount}} tokens",
 		"tokensUsed": "Tokens đã sử dụng: {{used}} trong {{total}}",
-		"reservedForResponse": "Dành riêng cho phản hồi mô hình: {{amount}} tokens"
+		"reservedForResponse": "Dành riêng cho phản hồi mô hình: {{amount}} tokens",
+		"tokensUsedLabel": "Tokens đã sử dụng",
+		"reservedForResponseLabel": "Dành riêng cho phản hồi",
+		"availableSpaceLabel": "Không gian khả dụng"
 	},
 	"retry": {
 		"title": "Thử lại",
@@ -82,10 +86,15 @@
 		"title": "Kết thúc",
 		"tooltip": "Kết thúc nhiệm vụ hiện tại"
 	},
+	"stop": {
+		"title": "Dừng",
+		"tooltip": "Dừng nhiệm vụ hiện tại"
+	},
 	"cancel": {
 		"title": "Hủy",
 		"tooltip": "Hủy thao tác hiện tại"
 	},
+	"enqueueMessage": "Thêm tin nhắn vào hàng đợi (sẽ gửi sau khi nhiệm vụ hiện tại hoàn tất)",
 	"scrollToBottom": "Cuộn xuống cuối cuộc trò chuyện",
 	"about": "Roo Code là một đội ngũ phát triển AI đầy đủ trong trình chỉnh sửa của bạn.",
 	"docs": "Kiểm tra <DocsLink>tài liệu</DocsLink> của chúng tôi để tìm hiểu thêm.",
@@ -141,14 +150,14 @@
 		"rateLimitWait": "Giới hạn tốc độ",
 		"errorTitle": "Lỗi nhà cung cấp {{code}}",
 		"errorMessage": {
-			"docs": "Tài liệu",
-			"goToSettings": "Cài đặt",
 			"400": "Nhà cung cấp không thể xử lý yêu cầu theo cách này. Hãy dừng nhiệm vụ và thử một cách tiếp cận khác.",
 			"401": "Không thể xác thực với nhà cung cấp. Vui lòng kiểm tra cấu hình khóa API của bạn.",
 			"402": "Có vẻ như bạn đã hết tiền/tín dụng trong tài khoản. Hãy truy cập nhà cung cấp và thêm tiền để tiếp tục.",
 			"403": "Truy cập bị từ chối. Khóa API của bạn hợp lệ, nhưng nhà cung cấp từ chối hoàn thành yêu cầu này.",
 			"429": "Quá nhiều yêu cầu. Nhà cung cấp đang giới hạn tốc độ yêu cầu của bạn. Vui lòng chờ một chút trước khi gọi API tiếp theo.",
 			"500": "Lỗi máy chủ của nhà cung cấp. Có sự cố ở phía nhà cung cấp, không có gì sai với yêu cầu của bạn.",
+			"docs": "Tài liệu",
+			"goToSettings": "Cài đặt",
 			"unknown": "Lỗi API không xác định. Vui lòng liên hệ hỗ trợ Roo Code.",
 			"connection": "Lỗi kết nối. Đảm bảo rằng bạn có kết nối Internet hoạt động.",
 			"claudeCodeNotAuthenticated": "Bạn cần đăng nhập để sử dụng Claude Code. Vào Cài đặt và nhấp vào \"Đăng nhập vào Claude Code\" để xác thực."
@@ -254,7 +263,8 @@
 		"completionContent": "Nhiệm vụ phụ đã hoàn thành",
 		"resultContent": "Kết quả nhiệm vụ phụ",
 		"defaultResult": "Vui lòng tiếp tục với nhiệm vụ tiếp theo.",
-		"completionInstructions": "Nhiệm vụ phụ đã hoàn thành! Bạn có thể xem lại kết quả và đề xuất các sửa đổi hoặc bước tiếp theo. Nếu mọi thứ có vẻ tốt, hãy xác nhận để trả kết quả về nhiệm vụ chính."
+		"completionInstructions": "Nhiệm vụ phụ đã hoàn thành! Bạn có thể xem lại kết quả và đề xuất các sửa đổi hoặc bước tiếp theo. Nếu mọi thứ có vẻ tốt, hãy xác nhận để trả kết quả về nhiệm vụ chính.",
+		"goToSubtask": "Xem nhiệm vụ"
 	},
 	"questions": {
 		"hasQuestion": "Roo có một câu hỏi"
@@ -272,7 +282,8 @@
 		"title": "Chi tiết lỗi",
 		"copyToClipboard": "Sao chép vào clipboard",
 		"copied": "Đã sao chép!",
-		"diagnostics": "Nhận thông tin lỗi chi tiết"
+		"diagnostics": "Nhận thông tin lỗi chi tiết",
+		"proxyProvider": "Có vẻ bạn đang sử dụng nhà cung cấp dựa trên proxy. Hãy chắc chắn kiểm tra các nhật ký của nó và đảm bảo nó không viết lại các yêu cầu của Roo."
 	},
 	"powershell": {
 		"issues": "Có vẻ như bạn đang gặp vấn đề với Windows PowerShell, vui lòng xem"
@@ -293,7 +304,7 @@
 		"triggerLabel_zero": "0 được tự động phê duyệt",
 		"triggerLabel_one": "1 được tự động phê duyệt",
 		"triggerLabel_other": "{{count}} được tự động phê duyệt",
-		"triggerLabelAll": "YOLO"
+		"triggerLabelAll": "BRRR"
 	},
 	"reasoning": {
 		"thinking": "Đang suy nghĩ",
@@ -330,8 +341,7 @@
 		},
 		"release": {
 			"heading": "Tính năng mới:",
-			"skills": "Roo hiện hỗ trợ <skillsLink>Agent Skills</skillsLink> - các gói có thể tái sử dụng gồm các lời nhắc, công cụ và tài nguyên để mở rộng khả năng của Roo.",
-			"nativeToolCalling": "Gọi công cụ gốc hiện được yêu cầu cho tất cả các tác vụ mới. <blogLink>Tìm hiểu thêm</blogLink> về động lực và những gì cần làm nếu bạn gặp sự cố."
+			"smartCodeFolding": "Smart Code Folding: Nén ngữ cảnh giờ đây bảo tồn một bản đồ nhẹ của các tệp của bạn—chữ ký hàm, khai báo lớp và định nghĩa kiểu. Điều này cung cấp tính liên tục tốt hơn sau nén và chỉnh sửa thông minh hơn khi tham chiếu công việc trước đó."
 		},
 		"cloudAgents": {
 			"heading": "Mới trên Cloud:",
@@ -341,8 +351,14 @@
 		},
 		"careers": "Ngoài ra, <careersLink>chúng tôi đang tuyển dụng!</careersLink>"
 	},
+	"costs": {
+		"totalWithSubtasks": "Tổng chi phí (bao gồm các tác vụ phụ): ${{cost}}",
+		"total": "Tổng chi phí: ${{cost}}",
+		"includesSubtasks": "Bao gồm chi phí của các tác vụ phụ"
+	},
 	"browser": {
 		"session": "Phiên trình duyệt",
+		"active": "Đang hoạt động",
 		"rooWantsToUse": "Roo muốn sử dụng trình duyệt",
 		"consoleLogs": "Nhật ký bảng điều khiển",
 		"noNewLogs": "(Không có nhật ký mới)",
@@ -480,5 +496,17 @@
 		"updated": "Đã cập nhật danh sách công việc",
 		"completed": "Đã hoàn thành",
 		"started": "Đã bắt đầu"
+	},
+	"tooManyTools": {
+		"title": "Đã bật quá nhiều công cụ",
+		"toolsPart_one": "{{count}} công cụ",
+		"toolsPart_other": "{{count}} công cụ",
+		"serversPart_one": "{{count}} máy chủ MCP",
+		"serversPart_other": "{{count}} máy chủ MCP",
+		"messageTemplate": "Bạn đã bật {{tools}} qua {{servers}}. Số lượng lớn như vậy có thể khiến mô hình bối rối và dẫn đến lỗi. Cố gắng giữ nó dưới {{threshold}}.",
+		"openMcpSettings": "Mở cài đặt MCP"
+	},
+	"readCommandOutput": {
+		"title": "Roo read command output"
 	}
 }

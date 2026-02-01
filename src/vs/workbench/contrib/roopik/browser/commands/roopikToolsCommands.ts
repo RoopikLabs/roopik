@@ -89,7 +89,7 @@ export function registerRoopikToolsCommands(): void {
 	// ============================================================================
 
 	// --------------------------------------------------------------------------
-	// Browser Tools (12)
+	// Browser Tools (14)
 	// --------------------------------------------------------------------------
 
 	registerAction2(class extends Action2 {
@@ -359,8 +359,8 @@ export function registerRoopikToolsCommands(): void {
 	registerAction2(class extends Action2 {
 		constructor() {
 			super({
-				id: 'roopik.tools.browserGetCdpInfo',
-				title: { value: 'Get Browser CDP Info', original: 'Get Browser CDP Info' },
+				id: 'roopik.tools.browserGetState',
+				title: { value: 'Get Browser State', original: 'Get Browser State' },
 				category: { value: 'Roopik', original: 'Roopik' },
 				f1: false
 			});
@@ -369,7 +369,51 @@ export function registerRoopikToolsCommands(): void {
 		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('browser_get_cdp_info');
+			return channel.call('browser_get_state');
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserSetViewport',
+				title: { value: 'Set Browser Viewport', original: 'Set Browser Viewport' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: {
+			width?: number;
+			height?: number;
+			deviceScaleFactor?: number;
+			mobile?: boolean;
+		}): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('browser_set_viewport', args || {});
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserGetNetworkRequests',
+				title: { value: 'Get Network Requests', original: 'Get Network Requests' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: {
+			urlFilter?: string;
+			method?: string;
+			statusFilter?: string;
+			limit?: number;
+		}): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('browser_get_network_requests', args || {});
 		}
 	});
 
@@ -432,7 +476,7 @@ export function registerRoopikToolsCommands(): void {
 	});
 
 	// --------------------------------------------------------------------------
-	// Canvas Tools (3)
+	// Canvas Tools (4)
 	// --------------------------------------------------------------------------
 
 	registerAction2(class extends Action2 {
@@ -486,6 +530,26 @@ export function registerRoopikToolsCommands(): void {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
 			return channel.call('canvas_create', args);
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.openCanvas',
+				title: { value: 'Open Canvas', original: 'Open Canvas' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: { canvasId?: string; name?: string }): Promise<RoopikToolResult> {
+			if (!args?.canvasId && !args?.name) {
+				return { success: false, error: 'Canvas ID or name is required' };
+			}
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('canvas_open', args);
 		}
 	});
 
@@ -627,5 +691,49 @@ export function registerRoopikToolsCommands(): void {
 		}
 	});
 
-	// console.log('[Roopik] Registered 24 tool bridge commands for agent roopik-dio');
+	// ========================================================================
+	// Validate Components Command
+	// ========================================================================
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.validateComponents',
+				title: { value: 'Validate Components', original: 'Validate Components' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: { canvasId?: string }): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('canvas_validate_components', args);
+		}
+	});
+
+	// ========================================================================
+	// Component Screenshot Command
+	// TODO: Feature pending - race condition with webview init
+	// ========================================================================
+
+	// registerAction2(class extends Action2 {
+	// 	constructor() {
+	// 		super({
+	// 			id: 'roopik.tools.componentScreenshot',
+	// 			title: { value: 'Component Screenshot', original: 'Component Screenshot' },
+	// 			category: { value: 'Roopik', original: 'Roopik' },
+	// 			f1: false
+	// 		});
+	// 	}
+	//
+	// 	async run(accessor: ServicesAccessor, args?: { componentId: string }): Promise<RoopikToolResult> {
+	// 		if (!args?.componentId) {
+	// 			return { success: false, error: 'Component ID is required' };
+	// 		}
+	// 		const mainProcessService = accessor.get(IMainProcessService);
+	// 		const channel = getToolsChannel(mainProcessService);
+	// 		return channel.call('component_screenshot', args);
+	// 	}
+	// });
 }

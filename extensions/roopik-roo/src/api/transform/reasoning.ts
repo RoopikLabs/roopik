@@ -155,5 +155,6 @@ export const getGeminiReasoning = ({
 		return undefined
 	}
 
-	return { thinkingLevel: selectedEffort, includeThoughts: true }
+	// Cast through unknown since GeminiThinkingLevel (with "minimal") doesn't overlap with SDK's ThinkingLevel
+	return { thinkingLevel: selectedEffort, includeThoughts: true } as unknown as GeminiReasoningParams
 }

@@ -25,6 +25,8 @@ interface SandboxCardProps {
 	viewport?: { width: number; height: number };
 	/** Position of the focused sandbox (for calculating push-away offset) */
 	focusedSandboxPosition?: { x: number; y: number } | null;
+	/** Whether select mode is enabled globally */
+	isSelectMode?: boolean;
 	/** Whether inspect mode is enabled globally */
 	isInspectMode?: boolean;
 	/** Whether inspect mode should auto-capture screenshots */
@@ -61,6 +63,9 @@ function generateSandboxHTML(bundledCode: string, componentId: string): string {
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Roopik Component Sandbox</title>
+	<!-- Tailwind CSS v3 Play CDN - enables Tailwind utility classes in all components -->
+	<!-- Using v3 because it has JIT mode that watches for DOM changes (React renders after page load) -->
+	<script src="https://cdn.tailwindcss.com"></script>
 	<style>
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body {
@@ -490,6 +495,7 @@ export function SandboxCard({
 	globalDeviceMode,
 	viewport,
 	focusedSandboxPosition,
+	isSelectMode = false,
 	isInspectMode = false,
 	captureOnInspectSelect = false,
 	onMouseDown,
@@ -507,6 +513,16 @@ export function SandboxCard({
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 	// Track if component is "activated" for interaction (click-to-activate for better zoom UX)
 	const [isActivated, setIsActivated] = useState(false);
+
+	// Send select mode toggle to iframe when isSelectMode changes
+	useEffect(() => {
+		if (iframeRef.current?.contentWindow) {
+			iframeRef.current.contentWindow.postMessage({
+				type: 'roopik-toggle-select',
+				enabled: isSelectMode
+			}, '*');
+		}
+	}, [isSelectMode, sandbox.id]);
 
 	// Send inspect mode toggle to iframe when isInspectMode changes
 	useEffect(() => {
@@ -658,15 +674,42 @@ export function SandboxCard({
 		}
 	};
 
-	// Get sandbox dimensions based on focus state
-	// When focused, sandbox expands dynamically to fill most of the viewport
-	const focusedDimensions = useMemo(() => {
-		if (!isFocused || !viewport) return null;
-		return getFocusedSandboxDimensions(viewport.width, viewport.height, DEFAULT_CONFIG);
-	}, [isFocused, viewport]);
+	// Get sandbox dimensions based on focus state and device mode
+	// When focused + device mode: use exact device dimensions (no scaling, true size preview)
+	// When focused + auto mode: expand to fill viewport
+	// When not focused: use default fixed size
+	const { sandboxWidth, sandboxHeight } = useMemo(() => {
+		if (!isFocused) {
+			// Not focused: use default fixed size
+			return {
+				sandboxWidth: DEFAULT_CONFIG.sandboxWidth,
+				sandboxHeight: DEFAULT_CONFIG.sandboxHeight
+			};
+		}
 
-	const sandboxWidth = focusedDimensions?.width ?? DEFAULT_CONFIG.sandboxWidth;
-	const sandboxHeight = focusedDimensions?.height ?? DEFAULT_CONFIG.sandboxHeight;
+		// Focused mode
+		if (isDeviceMode) {
+			// Focused + Device mode: use exact device dimensions (true size preview)
+			return {
+				sandboxWidth: preset.width as number,
+				sandboxHeight: preset.height as number
+			};
+		}
+
+		// Focused + Auto mode: expand to fill viewport
+		if (viewport) {
+			const dims = getFocusedSandboxDimensions(viewport.width, viewport.height, DEFAULT_CONFIG);
+			return {
+				sandboxWidth: dims.width,
+				sandboxHeight: dims.height
+			};
+		}
+
+		return {
+			sandboxWidth: DEFAULT_CONFIG.sandboxWidth,
+			sandboxHeight: DEFAULT_CONFIG.sandboxHeight
+		};
+	}, [isFocused, isDeviceMode, preset, viewport]);
 
 	// Calculate push-away offset for non-focused sandboxes when another is focused
 	// This creates a smooth "making room" effect without changing actual positions
@@ -700,6 +743,7 @@ export function SandboxCard({
 
 	// Calculate iframe container style for device mode
 	// Device mode: set container to device dimensions, scale to fit available space
+	// Exception: When focused + device mode, render at 1:1 (true size preview)
 	const iframeContainerStyle = useMemo((): React.CSSProperties => {
 		if (!isDeviceMode) {
 			// Auto mode: fill available space (100% of parent)
@@ -709,12 +753,20 @@ export function SandboxCard({
 			};
 		}
 
-		// Device mode: fixed device size, scaled to fit
+		// Device mode: fixed device size
 		const deviceWidth = preset.width as number;
 		const deviceHeight = preset.height as number;
 
-		// Available space is the CONTENT area of sandbox card
-		// Use focus-aware dimensions
+		// When focused + device mode: render at true size (1:1, no scaling)
+		// The card already matches device size, so iframe fills it completely
+		if (isFocused) {
+			return {
+				width: deviceWidth,
+				height: deviceHeight,
+			};
+		}
+
+		// Not focused: scale device to fit in fixed card size
 		const availableWidth = sandboxWidth;
 		const availableHeight = sandboxHeight;
 
@@ -739,7 +791,7 @@ export function SandboxCard({
 			transformOrigin: 'center center',
 			margin: `-${marginY}px -${marginX}px`,
 		};
-	}, [isDeviceMode, preset, sandboxWidth, sandboxHeight]);
+	}, [isDeviceMode, isFocused, preset, sandboxWidth, sandboxHeight]);
 
 	// Check if this sandbox is being pushed away (another sandbox is focused)
 	const isPushedAway = !isFocused && focusedSandboxPosition !== null;
