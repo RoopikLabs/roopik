@@ -158,12 +158,14 @@ export function getAgentConfigPath(agent: AiAgent): string {
 			return path.join(home, '.gemini', 'settings.json');
 
 		case 'codex':
-			// Codex extension uses CLI commands, no config file
-			return path.join(home, '.codex', 'mcp.json');
+			// Codex extension (uses binary from VS Code extension folder)
+			// Both extension and CLI share the same config: ~/.codex/config.toml
+			return path.join(home, '.codex', 'config.toml');
 
 		case 'codex-cli':
-			// Codex CLI uses CLI commands, no config file
-			return path.join(home, '.codex', 'mcp.json');
+			// Codex global CLI (uses `codex` command in PATH)
+			// Both extension and CLI share the same config: ~/.codex/config.toml
+			return path.join(home, '.codex', 'config.toml');
 
 		default:
 			throw new Error(`Unknown agent: ${agent}`);

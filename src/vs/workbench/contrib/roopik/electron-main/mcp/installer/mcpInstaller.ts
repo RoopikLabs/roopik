@@ -169,7 +169,7 @@ export class McpInstaller extends Disposable {
 		} else if (agent === 'codex') {
 			// Codex extension - check extension binary
 			const extPath = this._platformAdapter?.getExternalExtensionPath(CODEX_EXTENSION_ID);
-			installed = !!getCodexBinaryPath(extPath);
+			installed = !!getCodexBinaryPath(extPath) || installed;
 			registrationMethod = 'cli-command';
 		} else if (agent === 'codex-cli') {
 			// Codex CLI - check global command
@@ -177,7 +177,9 @@ export class McpInstaller extends Disposable {
 			registrationMethod = 'cli-command';
 		}
 
-		if (installed) {
+		// For CLI-based agents, we can't reliably check registration from config files
+		// because they manage their own storage locations
+		if (installed && registrationMethod !== 'cli-command') {
 			const config = readJsonConfig<{ mcpServers?: Record<string, unknown> }>(configPath);
 			registered = isRoopikRegistered(config);
 		}
