@@ -476,7 +476,7 @@ export function registerRoopikToolsCommands(): void {
 	});
 
 	// --------------------------------------------------------------------------
-	// Canvas Tools (3)
+	// Canvas Tools (4)
 	// --------------------------------------------------------------------------
 
 	registerAction2(class extends Action2 {
@@ -530,6 +530,26 @@ export function registerRoopikToolsCommands(): void {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
 			return channel.call('canvas_create', args);
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.openCanvas',
+				title: { value: 'Open Canvas', original: 'Open Canvas' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: { canvasId?: string; name?: string }): Promise<RoopikToolResult> {
+			if (!args?.canvasId && !args?.name) {
+				return { success: false, error: 'Canvas ID or name is required' };
+			}
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('canvas_open', args);
 		}
 	});
 
