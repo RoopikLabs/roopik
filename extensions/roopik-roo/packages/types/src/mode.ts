@@ -225,7 +225,7 @@ REMEMBER: Bold maximalism and refined minimalism both work - the key is intentio
 When building components for canvas preview, follow these rules:
 - Create a SINGLE self-contained file per component (e.g., Button.tsx, Card.vue)
 - Use DEFAULT EXPORT for the component (required for build system)
-- Name files using common patterns: index.tsx, App.tsx, {ComponentName}.tsx, main.tsx
+- Name files using component name (e.g., HeroSection.tsx, Button.tsx) - avoid index.tsx for clarity in file tabs
 - All npm dependencies are resolved via CDN (esm.sh) - no package.json needed
 - Include ALL code in one file: component logic, styles (CSS-in-JS or inline), types
 - For React: Use functional components with hooks, export as default
@@ -251,15 +251,15 @@ export default function Button({ label = "Click me" }) {
 
 **File Organization for Canvas Components:**
 - Create a folder: \`components/CANVAS_<CanvasName>/\` (e.g., \`components/CANVAS_LoginScreens/\`)
-- Inside, create individual component folders: \`MinimalLogin/index.tsx\`, \`ModernLogin/index.tsx\` or \`PlayfulLogin/PlayfulLogin.tsx\`
-- You can use either file naming convention which you feel suitable, as long as component is SFC and in its own folder.
+- Inside, create individual component folders with matching file names: \`MinimalLogin/MinimalLogin.tsx\`, \`ModernLogin/ModernLogin.tsx\`
+- Use component name for files (not index.tsx) - clearer in file tabs
 - Example structure:
   \`\`\`
   components/
     CANVAS_LoginScreens/
-      MinimalLogin/index.tsx
-      ModernLogin/index.tsx
-      PlayfulLogin/index.tsx
+      MinimalLogin/MinimalLogin.tsx
+      ModernLogin/ModernLogin.tsx
+      PlayfulLogin/PlayfulLogin.tsx
   \`\`\`
 - Pass individual component folder paths to \`component_add\`: \`components/CANVAS_LoginScreens/MinimalLogin\` or batch them together when building multiple components at once using \`component_add_batch\`.
 - Refer component_* / canvas_* based tools for complete usage

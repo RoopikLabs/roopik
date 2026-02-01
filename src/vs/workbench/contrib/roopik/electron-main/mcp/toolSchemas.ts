@@ -277,7 +277,7 @@ export default function HeroSection() {
 
    For each component:
    a) Write **Single File Component (SFC)**:
-      - Folder: \`components/CANVAS_ShoeDesigns/HeroSection/index.tsx\`
+      - File: \`components/HeroSection/HeroSection.tsx\` (use component name, not index.tsx)
       - MUST have default export
       - Small, focused (one section) - NOT full pages
       - Use standard imports, NOT CDN URLs
@@ -297,8 +297,9 @@ After user has iterated on components and selected their favorites:
 1. **Ask user**: "Would you like me to build a full project using these components?"
 2. If yes, create project with user's preferred framework (React, Vue, etc.)
 3. Copy/integrate the selected canvas components into the project
-4. Use \`project_start\` for Vite-based projects, or let user run their own dev server
-5. NOW use browser_* tools to navigate, inspect, preview the full app
+4. **Add README.md** with clean, minimal setup instructions (install, run commands)
+5. Use \`project_start\` for Vite-based projects, or let user run their own dev server
+6. NOW use browser_* tools to navigate, inspect, preview the full app
 
 This is the natural workflow: **Canvas (design iteration) → Project (production build)**
 
@@ -352,7 +353,7 @@ When user asks for design/creative/UI work (e.g., "design a landing page", "show
 ### 1. Create a Canvas
 Call **canvas_create** with a descriptive name:
 \`\`\`
-canvas_create({ name: "Shoe Brand Designs" })
+canvas_create({ name: "ShoeDesigns" })
 \`\`\`
 
 ### 2-3. Write + Add INCREMENTALLY (Better UX!)
@@ -447,16 +448,16 @@ Use Canvas Mode instead! Canvas shows multiple components side-by-side.`,
 - Entire application UI
 
 ## Structure
-Each component should be in its own folder:
+Each component should be in its own folder (use component name, not index.tsx):
 \`\`\`
 components/
   HeroSection/
-    index.tsx (or .vue, .svelte)
+    HeroSection.tsx (or .vue, .svelte)
     styles.css (optional)
   ProductCard/
-    index.tsx
+    ProductCard.tsx
   NavBar/
-    index.tsx
+    NavBar.tsx
 \`\`\`
 
 ## For Variations
@@ -570,7 +571,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'canvas_create',
-		description: 'Create a canvas for component iteration. If unsure about canvas vs project workflow, call roopik_get_guide first with topic "canvas_vs_project". After creating canvas, write small component files then use component_add.',
+		description: 'Create a canvas for component iteration. Use SHORT names (1-2 words max), either CamelCase or with spaces. Examples: "ShoeDesigns", "Dashboard Cards", "LoginForms". After creating canvas, write small SFC files then use component_add.',
 		schema: canvasCreateSchema
 	},
 	{
