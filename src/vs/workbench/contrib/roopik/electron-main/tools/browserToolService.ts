@@ -36,7 +36,7 @@ export class BrowserToolService {
 	constructor(
 		private readonly browserViewService: BrowserViewService,
 		private readonly cdpMonitorService: CDPMonitorService
-	) {}
+	) { }
 
 	// ==========================================================================
 	// Browser Open/Close
@@ -61,9 +61,12 @@ export class BrowserToolService {
 
 			// Browser is already open - navigate if URL provided
 			if (url) {
-			// Enable CDP monitoring BEFORE navigating to capture all network events
-			await this.cdpMonitorService.ensureMonitoring(browserViewId);
-			await this.browserViewService.navigate(browserViewId, url);
+				// Navigate first, then enable CDP (CDP before navigation can hang)
+				await this.browserViewService.navigate(browserViewId, url);
+
+				// Enable CDP monitoring non-blocking
+				this.cdpMonitorService.ensureMonitoring(browserViewId).catch(() => { });
+
 				return {
 					success: true,
 					data: {
@@ -166,10 +169,14 @@ export class BrowserToolService {
 				return { success: false, error: 'No browser is open. Use browser_open first.' };
 			}
 
-			// Enable CDP monitoring BEFORE navigating to capture all network events
-			await this.cdpMonitorService.ensureMonitoring(browserViewId);
+			// Navigate first, then enable CDP monitoring
+			// (CDP monitoring before navigation can hang if browser view isn't fully ready)
 			await this.browserViewService.navigate(browserViewId, url);
 
+			// Enable CDP monitoring for console/network capture (non-blocking)
+			this.cdpMonitorService.ensureMonitoring(browserViewId).catch(() => {
+				// Ignore CDP errors - navigation already succeeded
+			});
 
 			return {
 				success: true,
@@ -194,10 +201,11 @@ export class BrowserToolService {
 				return { success: false, error: 'No browser is open. Use browser_open first.' };
 			}
 
-			// Enable CDP monitoring BEFORE reloading to capture all network events
-			await this.cdpMonitorService.ensureMonitoring(browserViewId);
+			// Reload first, then enable CDP (CDP before reload can hang)
 			await this.browserViewService.reload(browserViewId, ignoreCache);
 
+			// Enable CDP monitoring non-blocking
+			this.cdpMonitorService.ensureMonitoring(browserViewId).catch(() => { });
 
 			// Get current URL from navigation state
 			const navState = await this.browserViewService.getNavigationState(browserViewId);
@@ -520,7 +528,7 @@ export class BrowserToolService {
 			`) as Record<string, number | undefined>;
 
 			// Get runtime metrics via CDP
-			let runtimeMetrics: Record<string, number> = {};
+			const runtimeMetrics: Record<string, number> = {};
 
 			try {
 				await this.browserViewService.attachDebugger(browserViewId);
