@@ -133,7 +133,7 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 			type: 'boolean',
 			default: true,
 			order: 10,
-			markdownDescription: '**Enable STDIO MCP** [Recommended] - Allow AI agents (Claude, Codex, etc.) to control Roopik IDE via the standard STDIO-based MCP protocol.'
+			markdownDescription: '**Enable STDIO MCP** [Recommended] - Allow AI agents (Claude, Codex, etc.) to control Roopik IDE via the standard STDIO-based MCP protocol.\n\nFor external IDEs (Cursor, Windsurf, VS Code): Run command [Show MCP Connection Info](command:roopik.mcp.showConnectionInfo) to get token and setup instructions.'
 		},
 		'roopik.mcp.stdioMCPPort': {
 			type: 'number',
@@ -200,6 +200,17 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 			default: false,
 			order: 26,
 			description: 'Register with Windsurf IDE. Allows Windsurf AI to control Roopik IDE.'
+		},
+
+		// ========================================
+		// MCP Connection Info (for external IDEs)
+		// ========================================
+		'roopik.mcp.connectionInfo': {
+			type: 'object',
+			default: {},
+			order: 27,
+			markdownDescription: '**Connect External IDEs** - Use Roopik MCP tools from Cursor, Windsurf, or VS Code.\n\n[Show Connection Info](command:roopik.mcp.showConnectionInfo) - Get token and command to configure external IDEs.\n\n*Note: Token changes when Roopik restarts. Re-register agents after restart.*',
+			ignoreSync: true
 		},
 
 		// ========================================

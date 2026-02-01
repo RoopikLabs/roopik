@@ -16,9 +16,6 @@
 
 import WebSocket from 'ws';
 
-// Authentication token from environment (only exists in Roopik's process tree)
-const AUTH_TOKEN = process.env.ROOPIK_MCP_TOKEN || '';
-
 // ============================================================================
 // Types
 // ============================================================================
@@ -26,6 +23,8 @@ const AUTH_TOKEN = process.env.ROOPIK_MCP_TOKEN || '';
 export interface BridgeOptions {
 	/** WebSocket server URL (e.g., ws://localhost:9876/mcp) */
 	serverUrl: string;
+	/** Authentication token (CLI arg for external IDEs, falls back to env var for internal) */
+	token?: string;
 	/** Connection timeout in ms */
 	timeout?: number;
 	/** Auto-reconnect on disconnect */
@@ -68,7 +67,8 @@ export class WebSocketBridge {
 	private isClosed = false;
 	private isAuthenticated = false;
 
-	private readonly options: Required<BridgeOptions>;
+	private readonly options: Required<Omit<BridgeOptions, 'token'>>;
+	private readonly authToken: string;
 
 	constructor(options: BridgeOptions) {
 		this.options = {
@@ -78,20 +78,22 @@ export class WebSocketBridge {
 			reconnectDelay: options.reconnectDelay ?? 1000,
 			maxReconnectAttempts: options.maxReconnectAttempts ?? 10,
 		};
+		// Token priority: CLI arg (for external IDEs) > env var (for internal agents)
+		this.authToken = options.token || process.env.ROOPIK_MCP_TOKEN || '';
 	}
 
 	/**
 	 * Connect to the Roopik WebSocket server
-	 * Includes authentication handshake using ROOPIK_MCP_TOKEN env var
+	 * Authentication: CLI --token arg (external IDEs) or ROOPIK_MCP_TOKEN env var (internal agents)
 	 */
 	async connect(): Promise<void> {
 		// Check for auth token BEFORE attempting to connect
-		if (!AUTH_TOKEN) {
-			console.error('[STDIO Bridge] ERROR: ROOPIK_MCP_TOKEN not found in environment');
-			console.error('[STDIO Bridge] This MCP server only works within Roopik IDE');
-			console.error('[STDIO Bridge] If you are seeing this in VS Code, Cursor, or another IDE,');
-			console.error('[STDIO Bridge] please use Roopik IDE to access Roopik MCP tools.');
-			throw new Error('ROOPIK_MCP_TOKEN not found - not running in Roopik IDE');
+		if (!this.authToken) {
+			console.error('[STDIO Bridge] ERROR: No authentication token found');
+			console.error('[STDIO Bridge] External IDEs need --token argument');
+			console.error('[STDIO Bridge] Internal agents use ROOPIK_MCP_TOKEN env var');
+			console.error('[STDIO Bridge] Get your token from Roopik IDE: Settings > MCP > Show Connection Info');
+			throw new Error('No authentication token - use --token argument or run from Roopik IDE');
 		}
 
 		if (this.ws?.readyState === WebSocket.OPEN && this.isAuthenticated) {
@@ -131,7 +133,7 @@ export class WebSocketBridge {
 					// Send auth message immediately
 					this.ws!.send(JSON.stringify({
 						type: 'auth',
-						token: AUTH_TOKEN
+						token: this.authToken
 					}));
 				});
 

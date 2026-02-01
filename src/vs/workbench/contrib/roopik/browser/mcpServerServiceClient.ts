@@ -20,6 +20,7 @@ import { IMainProcessService } from '../../../../platform/ipc/common/mainProcess
 import {
 	IMcpServerService,
 	McpServerStatus,
+	McpConnectionInfo,
 	AgentId,
 	AgentStatus,
 	McpIntegrationStatus,
@@ -97,5 +98,13 @@ export class McpServerServiceClient implements IMcpServerService {
 
 	async syncAgentRegistrations(): Promise<void> {
 		return this.channel.call('syncAgentRegistrations');
+	}
+
+	// ========================================
+	// Connection Info (for external IDEs)
+	// ========================================
+
+	async getConnectionInfo(): Promise<McpConnectionInfo> {
+		return this.channel.call('getConnectionInfo');
 	}
 }

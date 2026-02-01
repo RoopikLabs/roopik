@@ -90,6 +90,7 @@ const CODEX_EXTENSION_ID = 'openai.chatgpt';
 export class McpInstaller extends Disposable {
 	private _wsPort: number = 9876;
 	private _binaryPath: string;
+	private _authToken: string = '';
 	private _platformAdapter: McpPlatformAdapter | null = null;
 
 	// Events
@@ -123,6 +124,14 @@ export class McpInstaller extends Disposable {
 	 */
 	setBinaryPath(path: string): void {
 		this._binaryPath = path;
+	}
+
+	/**
+	 * Set the authentication token for external agent configs
+	 * External IDEs (Cursor, Windsurf) need this passed via --token arg
+	 */
+	setAuthToken(token: string): void {
+		this._authToken = token;
 	}
 
 	// ==========================================================================
@@ -462,10 +471,11 @@ export class McpInstaller extends Disposable {
 			// Read existing config
 			const existingConfig = readJsonConfig<{ mcpServers?: Record<string, unknown> }>(configPath);
 
-			// Generate server entry
+			// Generate server entry with token for external IDEs
 			const serverEntry = generateMcpServerEntry({
 				binaryPath: this._binaryPath,
-				wsPort: this._wsPort
+				wsPort: this._wsPort,
+				token: this._authToken
 			});
 
 			// Add Roopik to config

@@ -75,6 +75,20 @@ export interface McpIntegrationStatus {
 	lastChecked: number;
 }
 
+/**
+ * Connection info for external IDEs
+ */
+export interface McpConnectionInfo {
+	/** WebSocket port */
+	wsPort: number;
+	/** Authentication token (for external IDEs) */
+	token: string;
+	/** Path to MCP binary */
+	binaryPath: string;
+	/** Whether the server is running */
+	isRunning: boolean;
+}
+
 // ============================================================================
 // Service Interface
 // ============================================================================
@@ -134,4 +148,7 @@ export interface IMcpServerService {
 
 	/** Sync all agent registrations with current settings */
 	syncAgentRegistrations(): Promise<void>;
+
+	/** Get connection info for external IDEs */
+	getConnectionInfo(): Promise<McpConnectionInfo>;
 }

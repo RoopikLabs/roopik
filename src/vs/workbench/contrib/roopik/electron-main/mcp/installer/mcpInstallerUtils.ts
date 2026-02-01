@@ -583,16 +583,18 @@ export function backupConfig(filePath: string): string | null {
 
 /**
  * Generate the MCP server entry for registration
+ * @param token - Required for external IDEs (Cursor, Windsurf), they don't inherit env var
  */
 export function generateMcpServerEntry(options: {
 	binaryPath: string;
 	wsPort: number;
+	token: string;
 }): McpServerEntry {
 	return {
 		name: ROOPIK_MCP_NAME,
 		transport: 'stdio',
 		command: options.binaryPath,
-		args: ['--ws-port', options.wsPort.toString()],
+		args: ['--ws-port', options.wsPort.toString(), '--token', options.token],
 		env: {}
 	};
 }
