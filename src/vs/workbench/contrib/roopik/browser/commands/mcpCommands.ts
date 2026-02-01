@@ -18,6 +18,7 @@ import { registerAction2, Action2 } from '../../../../../platform/actions/common
 import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../../platform/quickinput/common/quickInput.js';
+import { IClipboardService } from '../../../../../platform/clipboard/common/clipboardService.js';
 import { IMcpServerService, AgentId, AgentStatus } from '../../common/mcp/index.js';
 
 /**
@@ -233,6 +234,77 @@ export function registerMcpCommands(): void {
 				notificationService.info(`Agent sync complete: ${registered.length} agents registered`);
 			} catch (error) {
 				notificationService.error(`Failed to sync agents: ${error}`);
+			}
+		}
+	});
+
+	// Show MCP Connection Info (for external IDEs)
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.mcp.showConnectionInfo',
+				title: localize2('roopik.mcp.showConnectionInfo', 'Show MCP Connection Info'),
+				category: localize2('roopik.category', 'Roopik'),
+				f1: true
+			});
+		}
+
+		async run(accessor: ServicesAccessor): Promise<void> {
+			const notificationService = accessor.get(INotificationService);
+			const mcpServerService = accessor.get(IMcpServerService);
+			const quickInputService = accessor.get(IQuickInputService);
+			const clipboardService = accessor.get(IClipboardService);
+
+			try {
+				const connectionInfo = await mcpServerService.getConnectionInfo();
+
+				if (!connectionInfo.isRunning) {
+					notificationService.warn('MCP Server is not running. Enable it in Settings > Roopik > MCP.');
+					return;
+				}
+
+				// Build the MCP config JSON that users can copy
+				const mcpConfig = JSON.stringify({
+					roopik: {
+						command: connectionInfo.binaryPath,
+						args: ['--ws-port', connectionInfo.wsPort.toString(), '--token', connectionInfo.token]
+					}
+				}, null, 2);
+
+				const items: IQuickPickItem[] = [
+					{
+						label: '$(key) Copy Token',
+						description: connectionInfo.token,
+						detail: 'Copy authentication token to clipboard'
+					},
+					{
+						label: '$(terminal) Copy MCP Config',
+						description: 'JSON config for mcp_servers',
+						detail: 'Copy complete MCP server config for external IDEs'
+					},
+					{
+						label: '$(info) Connection Details',
+						description: `Port: ${connectionInfo.wsPort}`,
+						detail: `Binary: ${connectionInfo.binaryPath}`
+					}
+				];
+
+				const selected = await quickInputService.pick(items, {
+					title: 'Roopik MCP Connection Info',
+					placeHolder: 'Select what to copy (token changes on IDE restart)'
+				});
+
+				if (selected) {
+					if (selected.label.includes('Copy Token')) {
+						await clipboardService.writeText(connectionInfo.token);
+						notificationService.info('Token copied to clipboard');
+					} else if (selected.label.includes('Copy MCP Config')) {
+						await clipboardService.writeText(mcpConfig);
+						notificationService.info('MCP config copied to clipboard');
+					}
+				}
+			} catch (error) {
+				notificationService.error(`Failed to get connection info: ${error}`);
 			}
 		}
 	});

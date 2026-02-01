@@ -10,6 +10,7 @@
 export {
 	IMcpServerService,
 	McpServerStatus,
+	McpConnectionInfo,
 	AgentId,
 	AgentStatus,
 	McpIntegrationStatus

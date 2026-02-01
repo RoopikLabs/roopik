@@ -26,7 +26,7 @@ import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
-import { IMcpServerService, McpServerStatus, AgentId, AgentStatus, McpIntegrationStatus } from '../../common/mcp/mcpServerService.js';
+import { IMcpServerService, McpServerStatus, McpConnectionInfo, AgentId, AgentStatus, McpIntegrationStatus } from '../../common/mcp/mcpServerService.js';
 import type { DevServerService } from '../projectMode/devServer/devServerService.js';
 import type { BrowserViewService } from '../projectMode/browserViewService.js';
 import type { ComponentService } from '../component/componentService.js';
@@ -37,6 +37,7 @@ import type { IRoopikStorageService } from '../../common/storage/storageService.
 import { ToolExecutor } from './executor/index.js';
 import { McpWebSocketServer } from './websocket/index.js';
 import { McpInstaller, type McpPlatformAdapter, type McpIntegrationSettings } from './installer/index.js';
+import { getMcpBinaryPath } from './installer/mcpInstallerUtils.js';
 
 // ============================================================================
 // MCP Server Service Implementation
@@ -186,6 +187,8 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	private async initializeInstaller(): Promise<void> {
 		this.installer = new McpInstaller();
 		this.installer.setWsPort(this.wsPort);
+		// Pass token for external IDEs (Cursor, Windsurf) - they need it via --token arg
+		this.installer.setAuthToken(this.sessionToken);
 
 		// Create platform adapter for VS Code extension access
 		const platformAdapter: McpPlatformAdapter = {
@@ -310,12 +313,12 @@ export class McpServerService extends Disposable implements IMcpServerService {
 				// Initialize Tool Executor if needed
 				if (!this.toolExecutor) {
 					this.toolExecutor = new ToolExecutor(
-					this.browserViewService,
-					this.storageService,
-					this.canvasService,
-					this.componentService,
-					this.devServerService
-				);
+						this.browserViewService,
+						this.storageService,
+						this.canvasService,
+						this.componentService,
+						this.devServerService
+					);
 				}
 				await this.startWebSocketServer();
 				await this.initializeInstaller();
@@ -410,6 +413,15 @@ export class McpServerService extends Disposable implements IMcpServerService {
 		const settings = this.getMcpIntegrationSettings();
 		await this.installer.syncRegistrations(settings);
 		this._onAgentStatusChanged.fire(await this.getAgentStatus());
+	}
+
+	async getConnectionInfo(): Promise<McpConnectionInfo> {
+		return {
+			wsPort: this.wsPort,
+			token: this.sessionToken,
+			binaryPath: getMcpBinaryPath(),
+			isRunning: this.wsServer !== null
+		};
 	}
 
 	private agentIdToSettingKey(agentId: AgentId): string | null {

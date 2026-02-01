@@ -73,6 +73,10 @@ export class McpServerChannel implements IServerChannel {
 			case 'syncAgentRegistrations':
 				return this.service.syncAgentRegistrations();
 
+			// Connection info (for external IDEs)
+			case 'getConnectionInfo':
+				return this.service.getConnectionInfo();
+
 			default:
 				throw new Error(`[McpServerChannel] Unknown command: ${command}`);
 		}

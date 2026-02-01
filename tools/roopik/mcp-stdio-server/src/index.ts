@@ -38,6 +38,7 @@ import { TOOL_DEFINITIONS, PROMPT_DEFINITIONS, MCP_INSTRUCTIONS } from './tools.
 interface CliArgs {
 	wsPort?: number;
 	wsUrl?: string;
+	token?: string;
 }
 
 function parseArgs(): CliArgs {
@@ -50,6 +51,9 @@ function parseArgs(): CliArgs {
 			i++;
 		} else if (args[i] === '--ws-url' && args[i + 1]) {
 			result.wsUrl = args[i + 1];
+			i++;
+		} else if (args[i] === '--token' && args[i + 1]) {
+			result.token = args[i + 1];
 			i++;
 		}
 	}
@@ -88,7 +92,7 @@ async function main(): Promise<void> {
 			console.error(`[Roopik MCP] Auto-discovered Roopik at ${serverUrl}`);
 		}
 
-		bridge = new WebSocketBridge({ serverUrl });
+		bridge = new WebSocketBridge({ serverUrl, token: cliArgs.token });
 		await bridge.connect();
 		console.error('[Roopik MCP] Connected to Roopik IDE');
 
