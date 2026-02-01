@@ -62,7 +62,7 @@ export const toolNames = [
 	"canvas_list",
 	"canvas_get_active",
 	"canvas_create",
-	"canvas_validate_components",
+	"canvas_open",
 	// Roopik IDE Tools - Component (7)
 	"component_add",
 	"component_add_batch",
@@ -70,6 +70,7 @@ export const toolNames = [
 	"component_get_info",
 	"component_list",
 	"component_rebuild",
+	"canvas_validate_components",
 ] as const
 
 export const toolNamesSchema = z.enum(toolNames)

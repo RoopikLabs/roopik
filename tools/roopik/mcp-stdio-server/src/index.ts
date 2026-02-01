@@ -29,7 +29,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { WebSocketBridge, discoverRoopikServer } from './websocketBridge.js';
-import { TOOL_DEFINITIONS, PROMPT_DEFINITIONS } from './tools.js';
+import { TOOL_DEFINITIONS, PROMPT_DEFINITIONS, MCP_INSTRUCTIONS } from './tools.js';
 
 // ============================================================================
 // CLI Argument Parsing
@@ -92,11 +92,11 @@ async function main(): Promise<void> {
 		await bridge.connect();
 		console.error('[Roopik MCP] Connected to Roopik IDE');
 
-		// 2. Initialize MCP STDIO server
-		const server = new McpServer({
-			name: 'roopik-mcp',
-			version: '1.0.0',
-		});
+		// 2. Initialize MCP STDIO server with instructions (sent once during initialization)
+		const server = new McpServer(
+			{ name: 'roopik-mcp', version: '1.0.0' },
+			{ instructions: MCP_INSTRUCTIONS }
+		);
 
 		// 3. Register all tools
 		for (const tool of TOOL_DEFINITIONS) {

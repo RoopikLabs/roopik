@@ -115,7 +115,7 @@ export const componentAddSchema = z.object({
 	folderPath: z.string().describe('Path to component folder'),
 	name: z.string().optional().describe('Component name (auto-detected if not provided)'),
 	entryFile: z.string().optional().describe('Entry file (auto-detected if not provided)'),
-	framework: z.enum(['react', 'vue', 'svelte', 'solid', 'preact', 'html']).optional()
+	framework: z.enum(['react', 'vue', 'svelte', 'solid', 'preact',]).optional()
 		.describe('Framework (auto-detected if not provided)')
 });
 
@@ -125,7 +125,7 @@ export const componentAddBatchSchema = z.object({
 		folderPath: z.string(),
 		name: z.string().optional(),
 		entryFile: z.string().optional(),
-		framework: z.enum(['react', 'vue', 'svelte', 'solid', 'preact', 'html']).optional()
+		framework: z.enum(['react', 'vue', 'svelte', 'solid', 'preact']).optional()
 	})).describe('Array of components to add')
 });
 
@@ -164,6 +164,315 @@ export const projectStartSchema = z.object({
 	projectPath: z.string().describe('Path to project (relative or absolute)'),
 	port: z.number().optional().describe('Optional port number')
 });
+
+// ============================================================================
+// Guide Tool Schema (1)
+// ============================================================================
+
+export const roopikGetGuideSchema = z.object({
+	topic: z.enum(['canvas_vs_project', 'canvas_workflow', 'project_workflow', 'component_design'])
+		.describe('Guide topic to fetch')
+});
+
+// ============================================================================
+// Guide Content - Detailed instructions for each topic
+// ============================================================================
+
+// MCP Instructions - Sent once during initialization (MCP spec feature)
+export const MCP_INSTRUCTIONS = `
+# Roopik IDE - MCP Tools Guide
+
+## You Are a Designer and Developer
+
+You have powerful design and development tools at your disposal. **Behave like a designer and developer** - collaborate with the user!
+
+**ASK when in doubt about:**
+- Design direction: "Would you prefer a minimalist or bold style?"
+- Framework choice: "Which framework? React (default), Vue, Svelte, Solid, or Preact?"
+- Mode transition: "You've created some nice components. Ready to build a full project with these?"
+- Color/typography: "Any brand colors or font preferences?"
+- Variations: "Should I show you a few different approaches?"
+
+**Don't assume - engage the user** in design decisions. You're collaborating, not just executing.
+
+---
+
+Roopik has two INDEPENDENT modes. Understanding the difference is CRITICAL.
+
+## What is Canvas?
+
+Canvas is an infinite design surface in the IDE where each component renders in its own **isolated sandbox**. The user sees multiple components displayed side-by-side, each in a separate sandboxed environment. This allows comparing different designs simultaneously.
+
+Key characteristics:
+- Each component = its own isolated sandbox (not a shared page)
+- Components are **Single File Components (SFC)** - one file, one component
+- User sees all added components side-by-side in the IDE canvas panel
+- Canvas is NOT a browser - it's a built-in IDE panel with sandboxed previews
+
+## Canvas Mode vs Project Mode
+
+| Aspect | Canvas Mode | Project Mode |
+|--------|-------------|--------------|
+| What it is | Sandboxed component previews | Full Vite dev server |
+| Tools | canvas_* + component_* | project_* + browser_* |
+| Preview | AUTOMATIC in IDE sandboxes | Browser at localhost |
+| Comparison | Multiple side-by-side | ONE project at a time |
+
+## CRITICAL: Browser Tools vs Canvas
+
+**Canvas Mode** - Preview is AUTOMATIC in IDE:
+- After \`component_add\`, component appears in its own sandbox in IDE
+- [NO] Do NOT use browser_screenshot - canvas is not in browser
+- [NO] Do NOT use browser_navigate - canvas has no URL
+- [NO] Do NOT use any browser_* tools for canvas
+- User sees isolated component previews directly in IDE
+
+**Project Mode** - Uses embedded browser:
+- After \`project_start\`, dev server runs at localhost
+- [YES] Use browser_screenshot to capture the running app
+- [YES] Use browser_navigate to change pages
+- [YES] Use browser_* tools to interact
+
+## Component Requirements (CRITICAL)
+
+Components MUST be **Single File Components (SFC)**:
+- One file per component with DEFAULT EXPORT
+- Supported frameworks: React (.tsx/.jsx), Vue (.vue), Svelte (.svelte), Solid, Preact
+- **Default to React** if user doesn't specify a framework
+- [NO] Do NOT use CDN URLs for imports (esm.sh, unpkg, etc.)
+- [YES] Use standard bare imports: \`import { motion } from 'framer-motion'\`
+- The build system resolves all npm dependencies internally
+
+Example React SFC:
+\`\`\`tsx
+import { useState } from 'react';
+import { motion } from 'framer-motion';
+
+export default function HeroSection() {
+  const [count, setCount] = useState(0);
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <h1>Hero Section</h1>
+    </motion.div>
+  );
+}
+\`\`\`
+
+## When to Use Each Mode
+
+**Canvas Mode** (default for design work):
+- "try different designs", "explore ideas", "show variations"
+- Iterating on UI components (hero, card, nav bar)
+- Comparing multiple designs side-by-side in isolated sandboxes
+
+**Project Mode** (only when explicitly requested):
+- "build a full app", "create a complete project"
+- Needs routing, multiple pages, backend integration
+- User says "Vite", "React app", "full project"
+
+## Canvas Mode Workflow
+
+1. \`canvas_create({ name: "Shoe Designs" })\`
+
+2-3. **Write + Add INCREMENTALLY** (critical for good UX!):
+
+   [OK] Write Hero -> Add Hero -> Write Card -> Add Card -> Write Nav -> Add Nav
+   [BAD] Write Hero -> Write Card -> Write Nav -> Add all at end
+
+   For each component:
+   a) Write **Single File Component (SFC)**:
+      - Folder: \`components/CANVAS_ShoeDesigns/HeroSection/index.tsx\`
+      - MUST have default export
+      - Small, focused (one section) - NOT full pages
+      - Use standard imports, NOT CDN URLs
+   b) IMMEDIATELY call: \`component_add({ folderPath: "./components/HeroSection" })\`
+   c) User sees it appear in canvas instantly - move to next component
+
+   This gives users live feedback as each component becomes available!
+
+4. Verify all at end: \`canvas_validate_components()\` - check build status
+
+5. User sees each component in its own sandbox - NO browser tools!
+
+## Canvas to Project Transition
+
+After user has iterated on components and selected their favorites:
+
+1. **Ask user**: "Would you like me to build a full project using these components?"
+2. If yes, create project with user's preferred framework (React, Vue, etc.)
+3. Copy/integrate the selected canvas components into the project
+4. Use \`project_start\` for Vite-based projects, or let user run their own dev server
+5. NOW use browser_* tools to navigate, inspect, preview the full app
+
+This is the natural workflow: **Canvas (design iteration) → Project (production build)**
+
+## Project Mode Workflow
+
+1. \`project_get_active()\` - check if one is running
+2. \`project_start({ projectPath: "./my-app" })\` - Vite projects only
+3. For non-Vite projects: user runs their own server, use \`browser_navigate\` to localhost
+4. NOW use browser_* tools (screenshot, navigate, inspect, etc.)
+5. \`project_stop()\` when done
+
+## Common Mistakes
+- [X] browser_screenshot for canvas (it's automatic in IDE!)
+- [X] Full pages instead of focused SFC components
+- [X] Missing default export
+- [X] Using CDN URLs (use standard imports)
+- [X] Multiple projects (only one allowed)
+`;
+
+export const GUIDE_CONTENT: Record<string, string> = {
+	canvas_vs_project: `# Canvas Mode vs Project Mode - When to Use Each
+
+## Decision Rule
+When user asks for design/creative/UI work (e.g., "design a landing page", "show me some ideas", "create a dashboard"), ASK which mode they want:
+
+**Canvas Mode** - For iterating on individual components:
+- Creates small, focused UI pieces (hero section, product card, nav bar)
+- Shows multiple components side-by-side for comparison
+- Best for: exploring design variations, testing different approaches
+
+**Project Mode** - For full running applications:
+- Starts a complete Vite dev server
+- Only ONE project can run at a time
+- Best for: when user explicitly wants a full app
+
+## When to Use Canvas Mode
+- User wants to "try different designs"
+- User wants to "explore ideas" or "show variations"
+- User is iterating on UI components
+- User hasn't specified they need a full app
+
+## When to Use Project Mode
+- User explicitly says "build me a full app"
+- User says "create a Vite/React/Vue project"
+- User needs routing, multiple pages, full functionality`,
+
+	canvas_workflow: `# Canvas Mode Workflow
+
+## Step-by-Step Process
+
+### 1. Create a Canvas
+Call **canvas_create** with a descriptive name:
+\`\`\`
+canvas_create({ name: "Shoe Brand Designs" })
+\`\`\`
+
+### 2-3. Write + Add INCREMENTALLY (Better UX!)
+
+**IMPORTANT**: Add each component RIGHT AFTER writing it, not at the end.
+This lets users see live progress as you work.
+
+[OK] Write Hero -> Add Hero -> Write Card -> Add Card
+[BAD] Write Hero -> Write Card -> Add all at end
+
+For each component:
+1. Write **Single File Component (SFC)**:
+   - [OK] HeroSection.tsx (just the hero)
+   - [OK] ProductCard.tsx (single card)
+   - [OK] NavBar.tsx (navigation only)
+   - [BAD] FullPage.tsx (too big!)
+   - [BAD] CompleteSite.html (not a component!)
+   - MUST have default export
+   - Use standard imports, NOT CDN URLs
+
+Each component folder should contain ONE UI element.
+
+2. IMMEDIATELY call **component_add**:
+\`\`\`
+component_add({ folderPath: "./components/HeroSection" })
+\`\`\`
+
+3. User sees it appear in canvas - move to next component
+
+### 4. Validate All at End
+After all components are added, verify everything built correctly:
+\`\`\`
+canvas_validate_components()
+\`\`\`
+
+### 5. View Side-by-Side
+The canvas displays all components together for easy comparison and iteration.
+
+## Key Rules
+- Components = small, focused pieces (one section, one card, one element)
+- Canvas = container that shows all components side-by-side
+- You MUST call canvas_create then component_add - don't just write HTML files
+- Add components incrementally as you write them - don't batch at the end!`,
+
+	project_workflow: `# Project Mode Workflow
+
+## When to Use
+- User explicitly wants a full running application
+- User mentions "Vite", "React app", "full project"
+- User needs routing, state management, multiple pages
+
+## Step-by-Step Process
+
+### 1. Check for Running Project
+Call **project_get_active** first - only one project can run at a time.
+
+### 2. Start the Project
+Call **project_start** with the project path:
+\`\`\`
+project_start({ projectPath: "./my-vite-app" })
+\`\`\`
+
+### 3. View in Browser
+The browser opens automatically. Use browser_screenshot to see the result.
+
+## Limitations
+- Only Vite-based projects supported (React, Vue, Svelte with Vite)
+- Only ONE project can run at a time
+- Cannot compare multiple projects simultaneously
+
+## If User Wants to Compare Designs
+Use Canvas Mode instead! Canvas shows multiple components side-by-side.`,
+
+	component_design: `# Component Design Guidelines
+
+## What Makes a Good Component for Canvas
+- **Focused**: One UI element (a card, a header, a form)
+- **Self-contained**: Works independently
+- **Iterable**: Easy to modify and compare variations
+
+## Examples of Good Components
+- Hero section with headline and CTA
+- Product card with image, title, price
+- Navigation bar
+- Footer
+- Pricing table (single)
+- Testimonial card
+
+## Examples of BAD Components (Too Big)
+- Complete landing page (800+ lines)
+- Full website with multiple sections
+- Entire application UI
+
+## Structure
+Each component should be in its own folder:
+\`\`\`
+components/
+  HeroSection/
+    index.tsx (or .vue, .svelte)
+    styles.css (optional)
+  ProductCard/
+    index.tsx
+  NavBar/
+    index.tsx
+\`\`\`
+
+## For Variations
+Create separate component folders:
+\`\`\`
+components/
+  HeroSection-v1/
+  HeroSection-v2/
+  HeroSection-v3/
+\`\`\`
+Then add all three to the canvas to compare side-by-side.`
+};
 
 // ============================================================================
 // Tool Definitions Interface
@@ -265,7 +574,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'canvas_create',
-		description: 'Create a new canvas or get existing one with same name. Use canvas mode for design exploration and component iteration before committing to a full project. If user asks for any design/creative/UI work (e.g., "design a landing page", "show me some ideas", "create a dashboard", "build a login form") and intent is unclear, ask if they want canvas mode (component designs side-by-side to iterate) or project mode (full running app).',
+		description: 'Create a canvas for component iteration. If unsure about canvas vs project workflow, call roopik_get_guide first with topic "canvas_vs_project". After creating canvas, write small component files then use component_add.',
 		schema: canvasCreateSchema
 	},
 	{
@@ -277,7 +586,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	// ========== Component Tools (6) ==========
 	{
 		name: 'component_add',
-		description: 'Add a component to a canvas for live preview.',
+		description: 'Add a component to a canvas for live preview. Components should be small, focused pieces (e.g., a hero section, a product card, a navigation bar) - NOT full pages. Each component folder should contain a single UI element that can be iterated on independently. The canvas displays all added components side-by-side for easy comparison and iteration.',
 		schema: componentAddSchema
 	},
 	{
@@ -325,13 +634,20 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'project_start',
-		description: 'Start a development server for a Vite-based project (React, Vue, Svelte, etc. with Vite). Use project mode when user explicitly wants a full running app (e.g., "build me a Vite React app", "create a full running project"). If user asks for design/creative/UI work and intent is unclear, ask if they want canvas mode (component iteration) or project mode (full running app) first.',
+		description: 'Start a Vite dev server. Only ONE project can run at a time. If unsure about canvas vs project workflow, call roopik_get_guide first with topic "canvas_vs_project". For design iteration/variations, use canvas mode instead.',
 		schema: projectStartSchema
 	},
 	{
 		name: 'project_stop',
 		description: 'Stop the running development server.',
 		schema: emptySchema
+	},
+
+	// ========== Guide Tool (1) ==========
+	{
+		name: 'roopik_get_guide',
+		description: 'Fetch workflow instructions for Roopik tools. IMPORTANT: Call this FIRST if you are unsure when to use canvas mode vs project mode, or how to structure components. Returns detailed step-by-step guidance.',
+		schema: roopikGetGuideSchema
 	}
 ];
 

@@ -1264,6 +1264,22 @@ export const ChatRowContent = ({
 						)}
 					</div>
 				)
+			case "canvas_open":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("go-to-file")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.canvas.wantsToOpen")
+								: t("chat:roopik.canvas.didOpen")}
+						</span>
+						{(tool.canvasId || tool.name) && (
+							<span className="text-xs ml-1" style={{ color: "var(--vscode-descriptionForeground)" }}>
+								({tool.canvasId || tool.name})
+							</span>
+						)}
+					</div>
+				)
 			case "canvas_validate_components":
 				return (
 					<div style={headerStyle}>

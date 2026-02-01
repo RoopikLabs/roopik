@@ -11,9 +11,8 @@
  */
 
 import type { ToolExecutor, ToolCallResult } from '../executor/index.js';
-import type { McpPrompt } from '../prompts/index.js';
-import { MCP_PROMPTS } from '../prompts/index.js';
-import { getToolDefinitionsAsJsonSchema } from '../toolSchemas.js';
+import { type McpPrompt, MCP_PROMPTS } from '../prompts/index.js';
+import { getToolDefinitionsAsJsonSchema, MCP_INSTRUCTIONS } from '../toolSchemas.js';
 
 // ============================================================================
 // Message Types (JSON-RPC style for MCP)
@@ -124,7 +123,7 @@ export class McpRequestRouter {
 	// ==========================================================================
 
 	private handleInitialize(id: string | number, params?: Record<string, unknown>): McpResponse {
-		// Return server capabilities
+		// Return server capabilities with instructions (MCP spec feature)
 		return this.createSuccessResponse(id, {
 			protocolVersion: '2024-11-05',
 			capabilities: {
@@ -135,7 +134,9 @@ export class McpRequestRouter {
 				name: 'roopik-mcp',
 				version: '1.0.0',
 				description: 'Roopik IDE MCP Server - Frontend development tools with live browser control'
-			}
+			},
+			// Instructions are sent ONCE during initialization - agents receive this automatically
+			instructions: MCP_INSTRUCTIONS
 		});
 	}
 
@@ -255,7 +256,7 @@ export class McpRequestRouter {
 
 	private getContentType(data: unknown): 'text' | 'image' {
 		// Check if this is an image result (screenshot)
-		if (data && typeof data === 'object' && 'image' in data) {
+		if (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'image')) {
 			return 'image';
 		}
 		return 'text';

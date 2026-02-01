@@ -557,6 +557,13 @@ export class RoopikToolClient {
 		return this.executeCommand<CreateCanvasData>("roopik.tools.createCanvas", { name })
 	}
 
+	/**
+	 * Open an existing canvas by ID or name
+	 */
+	async openCanvas(canvasId?: string, name?: string): Promise<RoopikToolResult<unknown>> {
+		return this.executeCommand<unknown>("roopik.tools.openCanvas", { canvasId, name })
+	}
+
 	// ========================================================================
 	// Component Tools
 	// ========================================================================

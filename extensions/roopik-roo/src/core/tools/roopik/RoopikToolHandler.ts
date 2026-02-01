@@ -125,7 +125,7 @@ export async function handleRoopikTool(
 				result = await handleStopProject(task, block, callbacks)
 				break
 
-			// Canvas Tools (3)
+			// Canvas Tools (4)
 			case "canvas_list":
 				result = await handleListCanvases(task, block, callbacks)
 				break
@@ -135,8 +135,11 @@ export async function handleRoopikTool(
 			case "canvas_create":
 				result = await handleCreateCanvas(task, block, callbacks)
 				break
+			case "canvas_open":
+				result = await handleOpenCanvas(task, block, callbacks)
+				break
 
-			// Component Tools (8)
+			// Component Tools (7)
 			case "component_add":
 				result = await handleAddComponent(task, block, callbacks)
 				break
@@ -247,12 +250,12 @@ async function handleBrowserSetViewport(task: Task, block: ToolUse, callbacks: T
 	const width = block.params.width ? parseInt(block.params.width, 10) : undefined
 	const height = block.params.height ? parseInt(block.params.height, 10) : undefined
 	const deviceScaleFactor = block.params.deviceScaleFactor ? parseFloat(block.params.deviceScaleFactor) : undefined
-	const mobile = block.params.mobile === "true" || block.params.mobile === true
+	const mobile = block.params.mobile === "true"
 	return roopikClient.browserSetViewport(width, height, deviceScaleFactor, mobile)
 }
 
 async function handleBrowserGetNetworkRequests(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const includeStaticAssets = block.params.includeStaticAssets === "true" || block.params.includeStaticAssets === true
+	const includeStaticAssets = block.params.includeStaticAssets === "true"
 	const urlFilter = block.params.urlFilter
 	const method = block.params.method
 	const statusFilter = block.params.statusFilter as "success" | "error" | "all" | undefined
@@ -348,6 +351,15 @@ async function handleCreateCanvas(task: Task, block: ToolUse, callbacks: ToolCal
 		return { success: false, error: "Missing required parameter: name" }
 	}
 	return roopikClient.createCanvas(name)
+}
+
+async function handleOpenCanvas(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const canvasId = block.params.canvasId
+	const name = block.params.name
+	if (!canvasId && !name) {
+		return { success: false, error: "Missing required parameter: canvasId or name" }
+	}
+	return roopikClient.openCanvas(canvasId, name)
 }
 
 // ============================================================================

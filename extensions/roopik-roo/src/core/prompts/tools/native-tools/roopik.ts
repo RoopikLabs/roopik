@@ -415,7 +415,7 @@ export const project_stop: OpenAI.Chat.ChatCompletionTool = {
 }
 
 // ============================================================================
-// Canvas Tools (3)
+// Canvas Tools (4)
 // ============================================================================
 
 export const canvas_list: OpenAI.Chat.ChatCompletionTool = {
@@ -481,6 +481,31 @@ export const canvas_create: OpenAI.Chat.ChatCompletionTool = {
 				},
 			},
 			required: ["name"],
+			additionalProperties: false,
+		},
+	},
+}
+
+export const canvas_open: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "canvas_open",
+		description:
+			"[Roopik IDE] Open an existing canvas by ID or name. Opens the canvas panel in the UI and returns canvas info with all components (id, name, path, status).",
+		strict: true,
+		parameters: {
+			type: "object",
+			properties: {
+				canvasId: {
+					type: "string",
+					description: "Canvas ID to open",
+				},
+				name: {
+					type: "string",
+					description: "Canvas name to open (will look up by name)",
+				},
+			},
+			required: [],
 			additionalProperties: false,
 		},
 	},
@@ -695,10 +720,11 @@ export const roopikNativeTools: OpenAI.Chat.ChatCompletionTool[] = [
 	project_get_active,
 	project_start,
 	project_stop,
-	// Canvas (4 tools)
+	// Canvas (5 tools)
 	canvas_list,
 	canvas_get_active,
 	canvas_create,
+	canvas_open,
 	canvas_validate_components,
 	// Component (6 tools)
 	component_add,

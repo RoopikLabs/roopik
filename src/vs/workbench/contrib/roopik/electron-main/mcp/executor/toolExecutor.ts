@@ -21,6 +21,7 @@ import type { ICanvasService } from '../../../common/canvas/canvasService.js';
 import type { ComponentService } from '../../component/componentService.js';
 import type { DevServerService } from '../../projectMode/devServer/devServerService.js';
 import type { ToolResult } from './types.js';
+import { GUIDE_CONTENT } from '../toolSchemas.js';
 
 // Import unified tool services
 import { CDPMonitorService } from '../../tools/cdpMonitorService.js';
@@ -100,6 +101,10 @@ export class ToolExecutor {
 				return await this.executeProjectTool(tool, params);
 			}
 
+			if (tool.startsWith('roopik_')) {
+				return this.executeRoopikTool(tool, params);
+			}
+
 			return {
 				success: false,
 				error: `Unknown tool: ${tool}`
@@ -149,6 +154,8 @@ export class ToolExecutor {
 			'project_get_active',
 			'project_start',
 			'project_stop',
+			// Roopik tools (1)
+			'roopik_get_guide',
 		];
 	}
 
@@ -352,6 +359,43 @@ export class ToolExecutor {
 				return {
 					success: false,
 					error: `Unknown project tool: ${tool}`
+				};
+		}
+	}
+
+	// ==========================================================================
+	// Roopik Tool Routing (1 tool) - Guide/Instructions
+	// ==========================================================================
+
+	private executeRoopikTool(tool: string, params: Record<string, unknown>): ToolResult<unknown> {
+		switch (tool) {
+			case 'roopik_get_guide': {
+				const topic = params.topic as string;
+				if (!topic) {
+					return {
+						success: false,
+						error: 'Missing required parameter: topic'
+					};
+				}
+
+				const content = GUIDE_CONTENT[topic];
+				if (!content) {
+					return {
+						success: false,
+						error: `Unknown guide topic: ${topic}. Available: ${Object.keys(GUIDE_CONTENT).join(', ')}`
+					};
+				}
+
+				return {
+					success: true,
+					data: { guide: content }
+				};
+			}
+
+			default:
+				return {
+					success: false,
+					error: `Unknown roopik tool: ${tool}`
 				};
 		}
 	}

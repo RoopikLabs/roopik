@@ -125,6 +125,13 @@ export type McpToolCallResponse = {
 					blob?: string
 				}
 		  }
+		| {
+				type: "resource_link"
+				uri: string
+				name: string
+				description?: string
+				mimeType?: string
+		  }
 	>
 	isError?: boolean
 }

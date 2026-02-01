@@ -498,27 +498,6 @@ function App() {
 					}
 					break;
 				}
-
-				case "captureComponentScreenshot": {
-					const { requestId, componentId } = msg.payload;
-					(async () => {
-						try {
-							const screenshot = await captureComponentScreenshot(componentId);
-							vscode.postMessage({
-								type: "screenshotResponse",
-								requestId,
-								screenshot
-							});
-						} catch (error) {
-							vscode.postMessage({
-								type: "screenshotResponse",
-								requestId,
-								screenshot: null
-							});
-						}
-					})();
-					break;
-				}
 			}
 		};
 

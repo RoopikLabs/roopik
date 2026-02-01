@@ -470,10 +470,11 @@ export const ROOPIK_TOOL_NAMES = [
 	"project_get_active",
 	"project_start",
 	"project_stop",
-	// Canvas (4 tools)
+	// Canvas (5 tools)
 	"canvas_list",
 	"canvas_get_active",
 	"canvas_create",
+	"canvas_open",
 	"canvas_validate_components",
 	// Component (6 tools)
 	"component_add",

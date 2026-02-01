@@ -544,6 +544,8 @@
 			"didGetActive": "Dio retrieved the active canvas",
 			"wantsToCreate": "Dio wants to create a canvas",
 			"didCreate": "Dio created a canvas",
+			"wantsToOpen": "Dio wants to open a canvas",
+			"didOpen": "Dio opened a canvas",
 			"wantsToValidateComponents": "Dio wants to validate components",
 			"didValidateComponents": "Dio validated components"
 		},

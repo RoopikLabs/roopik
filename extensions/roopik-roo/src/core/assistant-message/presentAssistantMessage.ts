@@ -458,16 +458,18 @@ export async function presentAssistantMessage(cline: Task) {
 						return `[project_start for '${block.params.projectPath || block.params.path}']`
 					case "project_stop":
 						return `[project_stop]`
-					// Roopik IDE Tools - Canvas (3)
+					// Roopik IDE Tools - Canvas (4)
 					case "canvas_list":
 						return `[canvas_list]`
 					case "canvas_get_active":
 						return `[canvas_get_active]`
 					case "canvas_create":
 						return `[canvas_create '${block.params.name}']`
+					case "canvas_open":
+						return `[canvas_open${block.params.canvasId ? ` '${block.params.canvasId}'` : ""}${block.params.name ? ` name='${block.params.name}'` : ""}]`
 					case "canvas_validate_components":
 						return `[canvas_validate_components${block.params.canvasId ? ` '${block.params.canvasId}'` : ""}]`
-					// Roopik IDE Tools - Component (8)
+					// Roopik IDE Tools - Component (7)
 					case "component_add":
 						return `[component_add '${block.params.folderPath || block.params.path}']`
 					case "component_add_batch":
@@ -997,7 +999,6 @@ export async function presentAssistantMessage(cline: Task) {
 				case "browser_get_errors":
 				case "browser_get_console_logs":
 				case "browser_get_performance":
-				case "browser_get_cdp_info":
 				case "browser_get_state":
 				case "browser_set_viewport":
 				case "browser_get_network_requests":
@@ -1007,6 +1008,7 @@ export async function presentAssistantMessage(cline: Task) {
 				case "canvas_list":
 				case "canvas_get_active":
 				case "canvas_create":
+				case "canvas_open":
 				case "canvas_validate_components":
 				case "component_add":
 				case "component_add_batch":
