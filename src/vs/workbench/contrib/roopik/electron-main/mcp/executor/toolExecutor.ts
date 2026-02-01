@@ -137,10 +137,11 @@ export class ToolExecutor {
 			'browser_get_state',
 			'browser_set_viewport',
 			'browser_get_network_requests',
-			// Canvas tools (4)
+			// Canvas tools (5)
 			'canvas_list',
 			'canvas_get_active',
 			'canvas_create',
+			'canvas_open',
 			'canvas_validate_components',
 			// Component tools (8)
 			'component_add',

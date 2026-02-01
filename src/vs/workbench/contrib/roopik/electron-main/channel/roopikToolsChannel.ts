@@ -23,7 +23,7 @@
  *                       browser_get_console_logs, browser_get_performance, browser_get_state,
  *                       browser_set_viewport, browser_get_network_requests
  * - Project Tools (3): project_get_active, project_start, project_stop
- * - Canvas Tools (3): canvas_list, canvas_get_active, canvas_create
+ * - Canvas Tools (4): canvas_list, canvas_get_active, canvas_create, canvas_open
  * - Component Tools (7): component_add, component_add_batch, component_remove,
  *                        component_get_info, component_list, component_rebuild, canvas_validate_components
  */
@@ -168,7 +168,7 @@ export class RoopikToolsChannel implements IServerChannel {
 					return this.handleStopProject();
 
 				// ============================================================
-				// Canvas Tools (3)
+				// Canvas Tools (4)
 				// ============================================================
 				case 'canvas_list':
 					return this.handleListCanvases(arg as { nameFilter?: string; sortBy?: string; sortDirection?: string });
@@ -178,6 +178,9 @@ export class RoopikToolsChannel implements IServerChannel {
 
 				case 'canvas_create':
 					return this.handleCreateCanvas(arg as { name: string });
+
+				case 'canvas_open':
+					return this.handleOpenCanvas(arg as { canvasId?: string; name?: string });
 
 				// ============================================================
 				// Component Tools (6)
@@ -716,6 +719,11 @@ export class RoopikToolsChannel implements IServerChannel {
 				message: result.isNew ? 'Canvas created successfully' : 'Canvas already exists with this name'
 			}
 		};
+	}
+
+	private async handleOpenCanvas(args: { canvasId?: string; name?: string }): Promise<RoopikToolResult> {
+		// Delegate to CanvasToolService which handles lookup by ID or name
+		return this.canvasToolService.open(args);
 	}
 
 	// ========================================================================
