@@ -103,6 +103,21 @@ Need help? Reach out to us:
 
 ---
 
+## Credits & Attribution
+
+**Roopik Agent Dio** is built on top of the amazing open-source project **[Roo-Code](https://github.com/RooCodeInc/Roo-Code)** by the RooCode team. We are deeply grateful to their incredible work in creating a robust, extensible AI coding assistant.
+
+This project extends Roo-Code with custom tool chains and enhancements specifically designed for the Roopik canvas-first development experience. We maintain the same commitment to quality and open-source principles that Roo-Code embodies.
+
+**Special thanks to:**
+- The [Roo-Code team](https://github.com/RooCodeInc) for their pioneering work and open-source contribution
+- All contributors who have made Roo-Code what it is today
+- The broader AI and developer community for continuous inspiration
+
+For more information about Roo-Code, visit: [https://github.com/RooCodeInc/Roo-Code](https://github.com/RooCodeInc/Roo-Code)
+
+---
+
 ## License
 
 [Apache 2.0 © 2025 Roopik Labs](./LICENSE)
