@@ -84,6 +84,10 @@ export class DebugIPCHandler {
 					result = await this.debugService.removeBreakpoint(args as string);
 					break;
 
+				case 'LIST_BREAKPOINTS':
+					result = await this.debugService.listBreakpoints();
+					break;
+
 				case 'STEP_SMART':
 					result = await this.debugService.stepSmart(args as IStepArgs);
 					break;
@@ -184,6 +188,16 @@ export class DebugIPCHandler {
 				'roopik.debug.removeBreakpoint',
 				async (id: string): Promise<{ success: boolean }> => {
 					return this.debugService.removeBreakpoint(id);
+				}
+			)
+		);
+
+		// List breakpoints
+		this.disposables.push(
+			vscode.commands.registerCommand(
+				'roopik.debug.listBreakpoints',
+				async () => {
+					return this.debugService.listBreakpoints();
 				}
 			)
 		);

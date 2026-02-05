@@ -60,7 +60,18 @@ export class AgentDebugService {
 		const security = getSecurityValidator();
 		security.validateStartArgs(args);
 
-		const { file, line, timeout = 30000, stopOnEntry = true, debugType, launchConfig = {} } = args;
+		// Default stopOnEntry to false when a specific breakpoint line is provided,
+		// so execution runs to the requested line instead of pausing at the first statement.
+		const { file, line, timeout = 30000, stopOnEntry = false, debugType, launchConfig = {} } = args;
+
+		// Auto-stop any existing debug session so agents don't need to call stop first.
+		// This is a common pattern: agent calls start_and_wait multiple times in a row.
+		if (vscode.debug.activeDebugSession) {
+			await vscode.debug.stopDebugging();
+			this.cleanup();
+			// Brief delay to let the debug adapter fully tear down
+			await new Promise(resolve => setTimeout(resolve, 500));
+		}
 
 		// Clear previous output buffer
 		this.capturedOutput = [];
@@ -152,16 +163,70 @@ export class AgentDebugService {
 	}
 
 	/**
-	 * Remove a breakpoint by ID
+	 * Remove a breakpoint by ID, or remove ALL breakpoints (including user-set) if id is "all"
 	 */
-	async removeBreakpoint(id: string): Promise<{ success: boolean }> {
+	async removeBreakpoint(id: string): Promise<{ success: boolean; removed?: number }> {
+		// Special case: remove ALL breakpoints in the IDE (agent-set + user-set)
+		if (id === 'all') {
+			const allInIde = vscode.debug.breakpoints;
+			const count = allInIde.length;
+			if (count > 0) {
+				vscode.debug.removeBreakpoints(allInIde);
+				this.trackedBreakpoints.clear();
+			}
+			return { success: true, removed: count };
+		}
+
+		// Try tracked first (agent-set)
 		const bp = this.trackedBreakpoints.get(id);
 		if (bp) {
 			vscode.debug.removeBreakpoints([bp]);
 			this.trackedBreakpoints.delete(id);
-			return { success: true };
+			return { success: true, removed: 1 };
 		}
-		return { success: false };
+
+		// Try to find by id "filePath:line" in IDE breakpoints (user-set or from other source)
+		const allBps = vscode.debug.breakpoints;
+		for (const b of allBps) {
+			if (b instanceof vscode.SourceBreakpoint) {
+				const loc = b.location;
+				const bpId = `${loc.uri.fsPath}:${loc.range.start.line + 1}`;
+				if (bpId === id) {
+					vscode.debug.removeBreakpoints([b]);
+					this.trackedBreakpoints.delete(bpId);
+					return { success: true, removed: 1 };
+				}
+			}
+		}
+		return { success: false, removed: 0 };
+	}
+
+	/**
+	 * List ALL breakpoints in the IDE (agent-set and user-set).
+	 * ID format: "filePath:line" (1-indexed line). Use this id in remove_breakpoint to clear one, or "all" to clear all.
+	 */
+	async listBreakpoints(): Promise<IBreakpointInfo[]> {
+		const result: IBreakpointInfo[] = [];
+		const allBps = vscode.debug.breakpoints;
+		for (const bp of allBps) {
+			if (bp instanceof vscode.SourceBreakpoint) {
+				const loc = bp.location;
+				const line1 = loc.range.start.line + 1;
+				const id = `${loc.uri.fsPath}:${line1}`;
+				result.push({
+					id,
+					verified: true,
+					location: {
+						file: loc.uri.fsPath,
+						line: line1
+					},
+					condition: bp.condition,
+					hitCondition: bp.hitCondition,
+					logMessage: bp.logMessage
+				});
+			}
+		}
+		return result;
 	}
 
 	// ============================================================================
@@ -245,15 +310,24 @@ export class AgentDebugService {
 			return this.createErrorContext('No active debug session');
 		}
 
-		// Get current file if not specified
-		let targetFile = file;
-		if (!targetFile) {
-			const context = await this.captureContext(session);
-			targetFile = context.file;
-		}
+		// Get current context to determine file and check line position
+		const currentContext = await this.captureContext(session);
+		let targetFile = file || currentContext.file;
 
 		if (!targetFile) {
 			return this.createErrorContext('Could not determine target file');
+		}
+
+		// If target line is behind or equal to current line in the same file,
+		// return immediately with a helpful error instead of timing out
+		const isSameFile = !file || (currentContext.file &&
+			targetFile.toLowerCase() === currentContext.file.toLowerCase());
+		if (isSameFile && currentContext.line && line <= currentContext.line) {
+			return {
+				...currentContext,
+				error: `Target line ${line} is at or before current line ${currentContext.line}. ` +
+					`Execution only moves forward. Use debug_start_and_wait to restart from the beginning.`
+			};
 		}
 
 		// Create TEMPORARY breakpoint at target line
@@ -332,7 +406,8 @@ export class AgentDebugService {
 	}
 
 	/**
-	 * Evaluate expression in current debug context
+	 * Evaluate expression in current debug context.
+	 * Fetches a fresh frame ID from the current stack so the adapter doesn't return "Stack frame not found".
 	 */
 	async evaluate(args: IEvaluateArgs): Promise<IEvaluateResult> {
 		// Security validation - block dangerous expressions
@@ -346,31 +421,58 @@ export class AgentDebugService {
 			throw new Error('No active debug session');
 		}
 
-		// Get frame ID if not specified
-		let targetFrameId = frameId;
-		if (targetFrameId === undefined) {
-			const threadId = await this.getActiveThreadId(session);
-			const stackReply = await session.customRequest('stackTrace', {
+		const runEvaluate = async (frameIdToUse: number) => {
+			return session!.customRequest('evaluate', {
+				expression,
+				frameId: frameIdToUse,
+				context
+			});
+		};
+
+		const getTopFrameId = async (): Promise<number> => {
+			const threadId = await this.getActiveThreadId(session!);
+			const stackReply = await session!.customRequest('stackTrace', {
 				threadId,
 				startFrame: 0,
 				levels: 1
 			});
-			targetFrameId = stackReply.stackFrames[0].id;
+			if (!stackReply.stackFrames || stackReply.stackFrames.length === 0) {
+				throw new Error('No stack frames available. Session may not be paused.');
+			}
+			return stackReply.stackFrames[0].id;
+		};
+
+		// Prefer fresh frame ID so we don't use a stale one after step/continue
+		let targetFrameId = frameId;
+		if (targetFrameId === undefined) {
+			targetFrameId = await getTopFrameId();
 		}
 
-		// Execute evaluation
-		const reply = await session.customRequest('evaluate', {
-			expression,
-			frameId: targetFrameId,
-			context
-		});
-
-		return {
-			expression,
-			result: reply.result,
-			type: reply.type,
-			variablesReference: reply.variablesReference
-		};
+		try {
+			const reply = await runEvaluate(targetFrameId);
+			return {
+				expression,
+				result: reply.result,
+				type: reply.type,
+				variablesReference: reply.variablesReference
+			};
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			// Adapter can return "Stack frame not found" when frameId is stale (e.g. after step/continue)
+			const isFrameError = /stack frame|frame not found|frameId|Invalid frame/i.test(msg);
+			if (isFrameError) {
+				// Retry once with a freshly resolved frame ID
+				targetFrameId = await getTopFrameId();
+				const reply = await runEvaluate(targetFrameId);
+				return {
+					expression,
+					result: reply.result,
+					type: reply.type,
+					variablesReference: reply.variablesReference
+				};
+			}
+			throw err;
+		}
 	}
 
 	// ============================================================================
@@ -436,7 +538,7 @@ export class AgentDebugService {
 							}
 						}
 
-						// Handle session termination
+						// Handle session termination (e.g. uncaught exception, process exit)
 						if (message.type === 'event' && message.event === 'terminated') {
 							if (!resolved) {
 								resolved = true;
@@ -444,10 +546,10 @@ export class AgentDebugService {
 								this.cleanupTracker();
 								resolve({
 									status: 'stopped',
-									reason: 'entry',
+									reason: 'exception', // Most common cause of unexpected termination
 									variables: {},
 									consoleLogs: [...this.capturedOutput],
-									error: 'Debug session terminated'
+									error: 'Debug session terminated (process may have exited due to uncaught exception)'
 								});
 							}
 						}

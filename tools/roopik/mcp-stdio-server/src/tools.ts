@@ -189,8 +189,10 @@ export const debugSetBreakpointSchema = z.object({
 });
 
 export const debugRemoveBreakpointSchema = z.object({
-	id: z.string().describe('Breakpoint ID (returned from debug_set_breakpoint)')
+	id: z.string().describe('Breakpoint ID (returned from debug_set_breakpoint or debug_list_breakpoints), or "all" to clear ALL breakpoints')
 });
+
+export const debugListBreakpointsSchema = z.object({});
 
 export const debugStepSmartSchema = z.object({
 	count: z.number().optional().describe('Number of steps to execute (default: 1). Stops early if breakpoint/exception hit.')
@@ -715,8 +717,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'debug_remove_breakpoint',
-		description: 'Remove a breakpoint by its ID.',
+		description: 'Remove a breakpoint by its ID, or pass id="all" to clear ALL breakpoints (including manually set in the IDE).',
 		schema: debugRemoveBreakpointSchema
+	},
+	{
+		name: 'debug_list_breakpoints',
+		description: 'List ALL breakpoints currently in the IDE (agent-set and manually set). Returns id, file, line, condition for each. Use these ids with debug_remove_breakpoint, or clear all with remove id="all".',
+		schema: debugListBreakpointsSchema
 	},
 	{
 		name: 'debug_step_smart',

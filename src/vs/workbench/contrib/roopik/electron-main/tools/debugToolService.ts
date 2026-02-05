@@ -85,10 +85,16 @@ export class DebugToolService {
 
 	/**
 	 * Execute a debug command via Extension Host
+	 *
+	 * @param commandId - VS Code command to execute
+	 * @param args - Arguments to pass to the command
+	 * @param timeout - Bridge timeout in ms (default: 30000). Debug operations that
+	 *                  wait for breakpoints/conditions should pass a higher timeout
+	 *                  to prevent the bridge from timing out before the debug operation.
 	 */
-	private async executeCommand<T = any>(commandId: string, ...args: any[]): Promise<ToolResult<T>> {
+	private async executeCommand<T = any>(commandId: string, args: any[] = [], timeout?: number): Promise<ToolResult<T>> {
 		try {
-			const result = await this.rendererBridge.executeCommand<T>(commandId, args);
+			const result = await this.rendererBridge.executeCommand<T>(commandId, args, timeout);
 			return {
 				success: true,
 				data: result
@@ -109,14 +115,16 @@ export class DebugToolService {
 	 * Start a debug session and wait for breakpoint hit
 	 */
 	async startAndWait(args: IStartDebugArgs): Promise<ToolResult<any>> {
-		return this.executeCommand('roopik.debug.startAndWait', args);
+		// Bridge timeout = debug timeout + buffer for IPC overhead
+		const bridgeTimeout = (args.timeout || 30000) + 10000;
+		return this.executeCommand('roopik.debug.startAndWait', [args], bridgeTimeout);
 	}
 
 	/**
 	 * Stop the active debug session
 	 */
 	async stop(): Promise<ToolResult<any>> {
-		return this.executeCommand('roopik.debug.stop');
+		return this.executeCommand('roopik.debug.stop', []);
 	}
 
 	// ============================================================================
@@ -127,14 +135,21 @@ export class DebugToolService {
 	 * Set a breakpoint
 	 */
 	async setBreakpoint(args: ISetBreakpointArgs): Promise<ToolResult<any>> {
-		return this.executeCommand('roopik.debug.setBreakpoint', args);
+		return this.executeCommand('roopik.debug.setBreakpoint', [args]);
 	}
 
 	/**
-	 * Remove a breakpoint
+	 * Remove a breakpoint by ID, or pass "all" to clear all breakpoints
 	 */
 	async removeBreakpoint(id: string): Promise<ToolResult<any>> {
-		return this.executeCommand('roopik.debug.removeBreakpoint', id);
+		return this.executeCommand('roopik.debug.removeBreakpoint', [id]);
+	}
+
+	/**
+	 * List all currently set breakpoints
+	 */
+	async listBreakpoints(): Promise<ToolResult<any>> {
+		return this.executeCommand('roopik.debug.listBreakpoints', []);
 	}
 
 	// ============================================================================
@@ -145,35 +160,40 @@ export class DebugToolService {
 	 * Step over N times (macro operation)
 	 */
 	async stepSmart(args: IStepArgs = {}): Promise<ToolResult<any>> {
-		return this.executeCommand('roopik.debug.stepSmart', args);
+		// Each step waits up to 5s internally; budget for count * 5s + overhead
+		const count = args.count || 1;
+		const bridgeTimeout = (count * 5000) + 10000;
+		return this.executeCommand('roopik.debug.stepSmart', [args], bridgeTimeout);
 	}
 
 	/**
 	 * Step into function
 	 */
 	async stepInto(): Promise<ToolResult<any>> {
-		return this.executeCommand('roopik.debug.stepInto');
+		return this.executeCommand('roopik.debug.stepInto', []);
 	}
 
 	/**
 	 * Step out of function
 	 */
 	async stepOut(): Promise<ToolResult<any>> {
-		return this.executeCommand('roopik.debug.stepOut');
+		return this.executeCommand('roopik.debug.stepOut', [], 15000);
 	}
 
 	/**
 	 * Run until specified line (uses temporary breakpoint - O(1))
 	 */
 	async runUntilLine(args: IRunUntilArgs): Promise<ToolResult<any>> {
-		return this.executeCommand('roopik.debug.runUntilLine', args);
+		const bridgeTimeout = (args.timeout || 30000) + 10000;
+		return this.executeCommand('roopik.debug.runUntilLine', [args], bridgeTimeout);
 	}
 
 	/**
 	 * Continue execution until next breakpoint
 	 */
 	async continue(timeout?: number): Promise<ToolResult<any>> {
-		return this.executeCommand('roopik.debug.continue', timeout);
+		const bridgeTimeout = (timeout || 30000) + 10000;
+		return this.executeCommand('roopik.debug.continue', [timeout], bridgeTimeout);
 	}
 
 	// ============================================================================
@@ -184,13 +204,13 @@ export class DebugToolService {
 	 * Get current debug context
 	 */
 	async getContext(): Promise<ToolResult<any>> {
-		return this.executeCommand('roopik.debug.getContext');
+		return this.executeCommand('roopik.debug.getContext', []);
 	}
 
 	/**
 	 * Evaluate expression in debug context
 	 */
 	async evaluate(args: IEvaluateArgs): Promise<ToolResult<any>> {
-		return this.executeCommand('roopik.debug.evaluate', args);
+		return this.executeCommand('roopik.debug.evaluate', [args]);
 	}
 }

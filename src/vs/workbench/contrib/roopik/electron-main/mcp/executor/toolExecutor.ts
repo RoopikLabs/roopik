@@ -168,11 +168,12 @@ export class ToolExecutor {
 			'project_get_active',
 			'project_start',
 			'project_stop',
-			// Debug tools (11) - Autonomous Debugging
+			// Debug tools (12) - Autonomous Debugging
 			'debug_start_and_wait',
 			'debug_stop',
 			'debug_set_breakpoint',
 			'debug_remove_breakpoint',
+			'debug_list_breakpoints',
 			'debug_step_smart',
 			'debug_step_into',
 			'debug_step_out',
@@ -427,6 +428,9 @@ export class ToolExecutor {
 
 			case 'debug_remove_breakpoint':
 				return this.debugToolService.removeBreakpoint(params.id as string);
+
+			case 'debug_list_breakpoints':
+				return this.debugToolService.listBreakpoints();
 
 			case 'debug_step_smart':
 				return this.debugToolService.stepSmart({

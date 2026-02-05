@@ -182,6 +182,20 @@ export class VariableParser {
 	}
 
 	/**
+	 * Variable names to exclude from local scope output.
+	 * These are typically the global `this` object or Node.js module wrappers
+	 * that produce massive noise (100+ properties) without value for debugging.
+	 */
+	private static readonly EXCLUDED_LOCAL_VARS = new Set([
+		'this',       // Global object in Node.js (Buffer, crypto, fetch, etc.)
+		'exports',    // CJS module wrapper
+		'module',     // CJS module wrapper
+		'require',    // CJS module wrapper
+		'__dirname',  // CJS module wrapper
+		'__filename', // CJS module wrapper
+	]);
+
+	/**
 	 * Parse scopes from a frame and return local variables
 	 *
 	 * @param session - Active debug session
@@ -219,7 +233,13 @@ export class VariableParser {
 				variablesReference: localScope.variablesReference
 			});
 
-			return await this.parseVariables(session, varsReply.variables);
+			// Filter out noisy module-wrapper and global variables
+			// These bloat the response with 100+ Node.js global properties
+			const filteredVars = (varsReply.variables || []).filter(
+				(v: any) => !VariableParser.EXCLUDED_LOCAL_VARS.has(v.name)
+			);
+
+			return await this.parseVariables(session, filteredVars);
 		} catch (err) {
 			return { __error: err instanceof Error ? err.message : String(err) };
 		}

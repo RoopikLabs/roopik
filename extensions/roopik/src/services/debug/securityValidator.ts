@@ -73,8 +73,15 @@ export function isFileInWorkspace(filePath: string): boolean {
 
 	try {
 		// Normalize both paths for comparison
-		const normalizedFile = path.normalize(path.resolve(filePath));
-		const normalizedRoot = path.normalize(path.resolve(workspaceRoot));
+		let normalizedFile = path.normalize(path.resolve(filePath));
+		let normalizedRoot = path.normalize(path.resolve(workspaceRoot));
+
+		// On Windows, drive letter casing varies (C:\ vs c:\).
+		// Normalize to lowercase for comparison to avoid false security rejections.
+		if (process.platform === 'win32') {
+			normalizedFile = normalizedFile.toLowerCase();
+			normalizedRoot = normalizedRoot.toLowerCase();
+		}
 
 		// Check if file path starts with workspace root
 		// Also check for directory traversal attempts

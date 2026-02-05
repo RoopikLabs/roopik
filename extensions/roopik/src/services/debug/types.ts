@@ -227,6 +227,7 @@ export type DebugCommand =
 	| 'STOP'
 	| 'SET_BREAKPOINT'
 	| 'REMOVE_BREAKPOINT'
+	| 'LIST_BREAKPOINTS'
 	| 'STEP_SMART'
 	| 'STEP_INTO'
 	| 'STEP_OUT'
