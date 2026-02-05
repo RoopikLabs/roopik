@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { VariableParser } from './variableParser';
+import { getSecurityValidator } from './securityValidator';
 import type {
 	IDebugContext,
 	IBreakpointInfo,
@@ -55,6 +56,10 @@ export class AgentDebugService {
 	 * This is the primary "entry point" for agent debugging
 	 */
 	async startAndWaitForBreakpoint(args: IStartDebugArgs): Promise<IDebugContext> {
+		// Security validation
+		const security = getSecurityValidator();
+		security.validateStartArgs(args);
+
 		const { file, line, timeout = 30000, stopOnEntry = true, debugType, launchConfig = {} } = args;
 
 		// Clear previous output buffer
@@ -108,6 +113,10 @@ export class AgentDebugService {
 	 * Set a breakpoint at specified location
 	 */
 	async setBreakpoint(args: ISetBreakpointArgs): Promise<IBreakpointInfo> {
+		// Security validation
+		const security = getSecurityValidator();
+		security.validateBreakpointArgs(args);
+
 		const { file, line, enabled = true, condition, hitCondition, logMessage } = args;
 
 		const location = new vscode.Location(
@@ -225,6 +234,10 @@ export class AgentDebugService {
 	 * CRITICAL FIX: Uses temp breakpoint instead of stepping loop
 	 */
 	async runUntilLine(args: IRunUntilArgs): Promise<IDebugContext> {
+		// Security validation
+		const security = getSecurityValidator();
+		security.validateRunUntilArgs(args);
+
 		const { line, file, timeout = 30000 } = args;
 		const session = vscode.debug.activeDebugSession;
 
@@ -272,6 +285,10 @@ export class AgentDebugService {
 	 * Continue execution until next breakpoint
 	 */
 	async continue(timeout: number = 30000): Promise<IDebugContext> {
+		// Validate and clamp timeout
+		const security = getSecurityValidator();
+		timeout = security.validateAndClampTimeout(timeout);
+
 		const session = vscode.debug.activeDebugSession;
 		if (!session) {
 			return this.createErrorContext('No active debug session');
@@ -318,6 +335,10 @@ export class AgentDebugService {
 	 * Evaluate expression in current debug context
 	 */
 	async evaluate(args: IEvaluateArgs): Promise<IEvaluateResult> {
+		// Security validation - block dangerous expressions
+		const security = getSecurityValidator();
+		security.validateEvaluateArgs(args);
+
 		const { expression, frameId, context = 'repl' } = args;
 		const session = vscode.debug.activeDebugSession;
 

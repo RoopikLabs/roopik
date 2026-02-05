@@ -13,7 +13,10 @@ export * from './types';
 export * from './agentDebugService';
 export * from './variableParser';
 export * from './debugIPCHandler';
+export * from './securityValidator';
 
 export { AgentDebugService, getAgentDebugService } from './agentDebugService';
 export { VariableParser, getVariableParser } from './variableParser';
 export { DebugIPCHandler, initializeDebugIPCHandler, getDebugIPCHandler } from './debugIPCHandler';
+export { SecurityValidator, getSecurityValidator, resetSecurityValidator } from './securityValidator';
+
