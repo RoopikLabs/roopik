@@ -152,6 +152,8 @@ import { PROJECT_STORAGE_CHANNEL } from '../../workbench/contrib/roopik/common/p
 import { McpServerService } from '../../workbench/contrib/roopik/electron-main/mcp/mcpServerService.js';
 import { McpServerChannel } from '../../workbench/contrib/roopik/electron-main/channel/mcpServerChannel.js';
 import { MCP_SERVER_CHANNEL } from '../../workbench/contrib/roopik/common/mcp/index.js';
+// ROOPIK: RendererBridge - Main→Renderer→ExtHost communication for debug tools
+import { RendererBridge } from '../../workbench/contrib/roopik/electron-main/bridge/rendererBridge.js';
 // ROOPIK: Tools Channel - Direct IPC for agent-roo (faster than MCP HTTP)
 import { RoopikToolsChannel, ROOPIK_TOOLS_CHANNEL_NAME } from '../../workbench/contrib/roopik/electron-main/channel/roopikToolsChannel.js';
 
@@ -1346,6 +1348,12 @@ export class CodeApplication extends Disposable {
 
 		// ROOPIK: MCP Server - AI Agent integration via Model Context Protocol
 		// Allows Claude Code, Copilot, and other AI agents to control Roopik IDE
+
+		// Create RendererBridge for Main→Renderer→ExtHost communication (debug tools)
+		// The bridge enables Main process to execute commands in Extension Host
+		const windowsMainService = accessor.get(IWindowsMainService);
+		const rendererBridge = new RendererBridge(windowsMainService, this.logService);
+
 		const mcpServerService = new McpServerService(
 			accessor.get(ILoggerService),
 			devServerService,
@@ -1353,7 +1361,8 @@ export class CodeApplication extends Disposable {
 			componentService,
 			canvasService,
 			roopikStorageService,
-			this.configurationService
+			this.configurationService,
+			rendererBridge  // Enable debug tools via Main→Renderer→ExtHost bridge
 		);
 		const mcpServerChannel = new McpServerChannel(mcpServerService);
 		mainProcessElectronServer.registerChannel(MCP_SERVER_CHANNEL, mcpServerChannel);

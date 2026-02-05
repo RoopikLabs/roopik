@@ -166,6 +166,59 @@ export const projectStartSchema = z.object({
 });
 
 // ============================================================================
+// Debug Tool Schemas (11) - Autonomous Debugging for AI Agents
+// ============================================================================
+
+export const debugStartAndWaitSchema = z.object({
+	file: z.string().describe('Absolute path to the file to debug (entry point)'),
+	line: z.number().describe('Line number to set initial breakpoint (1-indexed)'),
+	timeout: z.number().optional().describe('Timeout in ms (default: 30000)'),
+	stopOnEntry: z.boolean().optional().describe('Pause immediately on start (default: true)'),
+	debugType: z.enum(['node', 'python', 'chrome']).optional().describe('Debug adapter type (auto-detected if not specified)')
+});
+
+export const debugStopSchema = z.object({});
+
+export const debugSetBreakpointSchema = z.object({
+	file: z.string().describe('Absolute path to source file'),
+	line: z.number().describe('Line number (1-indexed)'),
+	enabled: z.boolean().optional().describe('Whether breakpoint is enabled (default: true)'),
+	condition: z.string().optional().describe('Condition expression (e.g., "x > 5")'),
+	hitCondition: z.string().optional().describe('Hit condition (e.g., ">=5" for 5th hit)'),
+	logMessage: z.string().optional().describe('Log message (converts to logpoint, does not pause)')
+});
+
+export const debugRemoveBreakpointSchema = z.object({
+	id: z.string().describe('Breakpoint ID (returned from debug_set_breakpoint)')
+});
+
+export const debugStepSmartSchema = z.object({
+	count: z.number().optional().describe('Number of steps to execute (default: 1). Stops early if breakpoint/exception hit.')
+});
+
+export const debugStepIntoSchema = z.object({});
+
+export const debugStepOutSchema = z.object({});
+
+export const debugRunUntilLineSchema = z.object({
+	line: z.number().describe('Target line number to run to (1-indexed)'),
+	file: z.string().optional().describe('Target file (uses current file if not specified)'),
+	timeout: z.number().optional().describe('Timeout in ms (default: 30000)')
+});
+
+export const debugContinueSchema = z.object({
+	timeout: z.number().optional().describe('Timeout in ms to wait for next stop (default: 30000)')
+});
+
+export const debugGetContextSchema = z.object({});
+
+export const debugEvaluateSchema = z.object({
+	expression: z.string().describe('Expression to evaluate (e.g., "user.name", "calculateTotal(items)")'),
+	frameId: z.number().optional().describe('Stack frame ID (uses top frame if not specified)'),
+	context: z.enum(['watch', 'repl', 'hover']).optional().describe('Evaluation context (default: repl)')
+});
+
+// ============================================================================
 // Guide Tool Schema (1)
 // ============================================================================
 
@@ -642,6 +695,63 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		name: 'project_stop',
 		description: 'Stop the running development server.',
 		schema: emptySchema
+	},
+
+	// ========== Debug Tools (11) - Autonomous Debugging ==========
+	{
+		name: 'debug_start_and_wait',
+		description: 'Start a debug session, set a breakpoint, and WAIT until the breakpoint is hit. Returns full debug context (file, line, variables, stack, console logs). This is the primary entry point for agent debugging.',
+		schema: debugStartAndWaitSchema
+	},
+	{
+		name: 'debug_stop',
+		description: 'Stop the active debug session.',
+		schema: debugStopSchema
+	},
+	{
+		name: 'debug_set_breakpoint',
+		description: 'Set a breakpoint at a specific line. Supports conditions, hit counts, and logpoints. Returns breakpoint ID for removal.',
+		schema: debugSetBreakpointSchema
+	},
+	{
+		name: 'debug_remove_breakpoint',
+		description: 'Remove a breakpoint by its ID.',
+		schema: debugRemoveBreakpointSchema
+	},
+	{
+		name: 'debug_step_smart',
+		description: 'Step over N times in a single call (macro operation). Reduces LLM round-trips. Stops early if breakpoint or exception is hit. Returns context after final step.',
+		schema: debugStepSmartSchema
+	},
+	{
+		name: 'debug_step_into',
+		description: 'Step into a function call.',
+		schema: debugStepIntoSchema
+	},
+	{
+		name: 'debug_step_out',
+		description: 'Step out of the current function to its caller. Useful for escaping framework/library code.',
+		schema: debugStepOutSchema
+	},
+	{
+		name: 'debug_run_until_line',
+		description: 'Run execution until reaching a specific line. Uses temporary breakpoint for O(1) performance (instant teleport, not stepping). Returns context when stopped.',
+		schema: debugRunUntilLineSchema
+	},
+	{
+		name: 'debug_continue',
+		description: 'Continue execution until the next breakpoint is hit or timeout. Returns context when stopped.',
+		schema: debugContinueSchema
+	},
+	{
+		name: 'debug_get_context',
+		description: 'Get current debug context without moving execution. Returns file, line, variables, stack, console logs, and exception info if applicable.',
+		schema: debugGetContextSchema
+	},
+	{
+		name: 'debug_evaluate',
+		description: 'Evaluate an expression in the current debug context (like Debug Console). Can access local variables and call functions.',
+		schema: debugEvaluateSchema
 	},
 
 	// ========== Guide Tool (1) ==========

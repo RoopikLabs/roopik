@@ -51,6 +51,7 @@ import {
 	RoopikProjectModeContribution
 } from './contributions/index.js';
 import { RoopikViewsContribution } from './roopikViewPane.js';
+import { RoopikMainProcessBridge } from './bridge/mainProcessBridge.js';
 
 // ============================================================================
 // Service Imports
@@ -311,6 +312,14 @@ registerWorkbenchContribution2(
 	RoopikViewsContribution.ID,
 	RoopikViewsContribution,
 	WorkbenchPhase.BlockStartup
+);
+
+// Main Process Bridge: Routes commands from Main Process to Extension Host
+// This enables MCP server (in Main) to call extension commands
+registerWorkbenchContribution2(
+	RoopikMainProcessBridge.ID,
+	RoopikMainProcessBridge,
+	WorkbenchPhase.AfterRestored
 );
 
 // ============================================================================

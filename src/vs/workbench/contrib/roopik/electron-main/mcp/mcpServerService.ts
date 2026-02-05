@@ -38,6 +38,7 @@ import { ToolExecutor } from './executor/index.js';
 import { McpWebSocketServer } from './websocket/index.js';
 import { McpInstaller, type McpPlatformAdapter, type McpIntegrationSettings } from './installer/index.js';
 import { getMcpBinaryPath } from './installer/mcpInstallerUtils.js';
+import type { RendererBridge } from '../bridge/rendererBridge.js';
 
 // ============================================================================
 // MCP Server Service Implementation
@@ -74,6 +75,9 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	// Session token for authentication (only processes in Roopik's tree have this)
 	private readonly sessionToken: string;
 
+	// Renderer Bridge for Main→Renderer→ExtHost communication (debug tools)
+	private readonly rendererBridge: RendererBridge | null;
+
 	constructor(
 		@ILoggerService loggerService: ILoggerService,
 		private readonly devServerService: DevServerService,
@@ -81,10 +85,12 @@ export class McpServerService extends Disposable implements IMcpServerService {
 		private readonly componentService: ComponentService,
 		private readonly canvasService: ICanvasService,
 		private readonly storageService: IRoopikStorageService,
-		private readonly configurationService: IConfigurationService
+		private readonly configurationService: IConfigurationService,
+		rendererBridge?: RendererBridge  // Optional: for debug tools (Main→Renderer→ExtHost)
 	) {
 		super();
 		this.logger = getRoopikLogger(loggerService, 'MCP');
+		this.rendererBridge = rendererBridge ?? null;
 
 		// Generate unique session token for MCP authentication
 		// This token is set in the environment and inherited by all child processes
@@ -112,7 +118,8 @@ export class McpServerService extends Disposable implements IMcpServerService {
 				this.storageService,
 				this.canvasService,
 				this.componentService,
-				this.devServerService
+				this.devServerService,
+				this.rendererBridge ?? undefined  // Enable debug tools if bridge available
 			);
 		}
 

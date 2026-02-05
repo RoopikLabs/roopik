@@ -21,6 +21,7 @@ import type { ICanvasService } from '../../../common/canvas/canvasService.js';
 import type { ComponentService } from '../../component/componentService.js';
 import type { DevServerService } from '../../projectMode/devServer/devServerService.js';
 import type { ToolResult } from './types.js';
+import type { RendererBridge } from '../../bridge/rendererBridge.js';
 import { GUIDE_CONTENT } from '../toolSchemas.js';
 
 // Import unified tool services
@@ -29,7 +30,7 @@ import { BrowserToolService } from '../../tools/browserToolService.js';
 import { CanvasToolService } from '../../tools/canvasToolService.js';
 import { ComponentToolService } from '../../tools/componentToolService.js';
 import { ProjectToolService } from '../../tools/projectToolService.js';
-import { DebugToolService, type ICommandExecutor } from '../../tools/debugToolService.js';
+import { DebugToolService } from '../../tools/debugToolService.js';
 
 // ============================================================================
 // Tool Call Types
@@ -66,7 +67,7 @@ export class ToolExecutor {
 		canvasService: ICanvasService,
 		componentService: ComponentService,
 		devServerService: DevServerService,
-		commandExecutor?: ICommandExecutor  // Optional: for debug tools
+		rendererBridge?: RendererBridge  // Optional: for debug tools (Main→Renderer→ExtHost bridge)
 	) {
 		this.storageService = storageService;
 
@@ -79,9 +80,11 @@ export class ToolExecutor {
 		this.componentToolService = new ComponentToolService(componentService, canvasService);
 		this.projectToolService = new ProjectToolService(devServerService, storageService, browserViewService);
 
-		// Create debug tool service if command executor is provided
-		this.debugToolService = commandExecutor ? new DebugToolService(commandExecutor) : null;
+		// Create debug tool service if renderer bridge is provided
+		// The bridge enables Main→Renderer→ExtensionHost communication
+		this.debugToolService = rendererBridge ? new DebugToolService(rendererBridge) : null;
 	}
+
 
 	/**
 	 * Execute a tool call and return the result

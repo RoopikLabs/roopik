@@ -6,33 +6,19 @@
 /**
  * Debug Tool Service - Electron Main Process
  *
- * Routes MCP debug tool calls to the Extension Host via VS Code commands.
+ * Routes MCP debug tool calls to the Extension Host via the Renderer Bridge.
  * The actual debugging logic lives in the roopik extension's AgentDebugService.
  *
  * Architecture:
- *   MCP Tool Call → This Service → vscode.commands.executeCommand() → Extension Host
+ *   MCP Tool Call → This Service → RendererBridge → Renderer → Extension Host
  */
 
 import type { ToolResult } from '../mcp/executor/types.js';
+import type { RendererBridge } from '../bridge/rendererBridge.js';
 
-/**
- * Interface for debug command payloads
- */
-interface IDebugCommandPayload {
-	id: string;
-	command: string;
-	args: any;
-}
-
-/**
- * Interface for debug command responses
- */
-interface IDebugCommandResponse {
-	id: string;
-	success: boolean;
-	result?: any;
-	error?: string;
-}
+// ============================================================================
+// Debug Command Types (must match extension's DebugIPCHandler expectations)
+// ============================================================================
 
 /**
  * Arguments for starting a debug session
@@ -82,61 +68,31 @@ export interface IEvaluateArgs {
 	context?: 'watch' | 'repl' | 'hover';
 }
 
-/**
- * CommandService interface for executing VS Code commands
- * This is injected from the main process's command service
- */
-export interface ICommandExecutor {
-	executeCommand<T>(commandId: string, ...args: any[]): Promise<T>;
-}
+// ============================================================================
+// Debug Tool Service
+// ============================================================================
 
 /**
  * DebugToolService
  *
- * Routes debug tool calls to the Extension Host via VS Code commands.
+ * Routes debug tool calls to the Extension Host via the Renderer Bridge.
+ * All methods return a standardized ToolResult<any> for MCP compatibility.
  */
 export class DebugToolService {
-	private requestCounter = 0;
-
 	constructor(
-		private readonly commandExecutor: ICommandExecutor
+		private readonly rendererBridge: RendererBridge
 	) { }
-
-	/**
-	 * Generate a unique request ID
-	 */
-	private generateRequestId(): string {
-		return `debug-req-${Date.now()}-${++this.requestCounter}`;
-	}
 
 	/**
 	 * Execute a debug command via Extension Host
 	 */
-	private async executeDebugCommand(command: string, args: any = {}): Promise<ToolResult<any>> {
+	private async executeCommand<T = any>(commandId: string, ...args: any[]): Promise<ToolResult<T>> {
 		try {
-			const payload: IDebugCommandPayload = {
-				id: this.generateRequestId(),
-				command,
-				args
+			const result = await this.rendererBridge.executeCommand<T>(commandId, args);
+			return {
+				success: true,
+				data: result
 			};
-
-			// Execute command in Extension Host
-			const response = await this.commandExecutor.executeCommand<IDebugCommandResponse>(
-				'roopik.debug.execute',
-				payload
-			);
-
-			if (response.success) {
-				return {
-					success: true,
-					data: response.result
-				};
-			} else {
-				return {
-					success: false,
-					error: response.error || 'Debug command failed'
-				};
-			}
 		} catch (error) {
 			return {
 				success: false,
@@ -153,14 +109,14 @@ export class DebugToolService {
 	 * Start a debug session and wait for breakpoint hit
 	 */
 	async startAndWait(args: IStartDebugArgs): Promise<ToolResult<any>> {
-		return this.executeDebugCommand('START_AND_WAIT', args);
+		return this.executeCommand('roopik.debug.startAndWait', args);
 	}
 
 	/**
 	 * Stop the active debug session
 	 */
 	async stop(): Promise<ToolResult<any>> {
-		return this.executeDebugCommand('STOP');
+		return this.executeCommand('roopik.debug.stop');
 	}
 
 	// ============================================================================
@@ -171,14 +127,14 @@ export class DebugToolService {
 	 * Set a breakpoint
 	 */
 	async setBreakpoint(args: ISetBreakpointArgs): Promise<ToolResult<any>> {
-		return this.executeDebugCommand('SET_BREAKPOINT', args);
+		return this.executeCommand('roopik.debug.setBreakpoint', args);
 	}
 
 	/**
 	 * Remove a breakpoint
 	 */
 	async removeBreakpoint(id: string): Promise<ToolResult<any>> {
-		return this.executeDebugCommand('REMOVE_BREAKPOINT', id);
+		return this.executeCommand('roopik.debug.removeBreakpoint', id);
 	}
 
 	// ============================================================================
@@ -189,35 +145,35 @@ export class DebugToolService {
 	 * Step over N times (macro operation)
 	 */
 	async stepSmart(args: IStepArgs = {}): Promise<ToolResult<any>> {
-		return this.executeDebugCommand('STEP_SMART', args);
+		return this.executeCommand('roopik.debug.stepSmart', args);
 	}
 
 	/**
 	 * Step into function
 	 */
 	async stepInto(): Promise<ToolResult<any>> {
-		return this.executeDebugCommand('STEP_INTO');
+		return this.executeCommand('roopik.debug.stepInto');
 	}
 
 	/**
 	 * Step out of function
 	 */
 	async stepOut(): Promise<ToolResult<any>> {
-		return this.executeDebugCommand('STEP_OUT');
+		return this.executeCommand('roopik.debug.stepOut');
 	}
 
 	/**
 	 * Run until specified line (uses temporary breakpoint - O(1))
 	 */
 	async runUntilLine(args: IRunUntilArgs): Promise<ToolResult<any>> {
-		return this.executeDebugCommand('RUN_UNTIL_LINE', args);
+		return this.executeCommand('roopik.debug.runUntilLine', args);
 	}
 
 	/**
 	 * Continue execution until next breakpoint
 	 */
 	async continue(timeout?: number): Promise<ToolResult<any>> {
-		return this.executeDebugCommand('CONTINUE', { timeout });
+		return this.executeCommand('roopik.debug.continue', timeout);
 	}
 
 	// ============================================================================
@@ -228,13 +184,13 @@ export class DebugToolService {
 	 * Get current debug context
 	 */
 	async getContext(): Promise<ToolResult<any>> {
-		return this.executeDebugCommand('GET_CONTEXT');
+		return this.executeCommand('roopik.debug.getContext');
 	}
 
 	/**
 	 * Evaluate expression in debug context
 	 */
 	async evaluate(args: IEvaluateArgs): Promise<ToolResult<any>> {
-		return this.executeDebugCommand('EVALUATE', args);
+		return this.executeCommand('roopik.debug.evaluate', args);
 	}
 }
