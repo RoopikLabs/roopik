@@ -8,6 +8,7 @@ import * as path from 'path';
 import { RoopikExtensionManager } from './roopikExtensionManager';
 import { Logger, LogLevel } from './logger';
 import type { Component, BuildResult, BuildErrorInfo } from './types/component';
+import { initializeDebugIPCHandler } from './services/debug/debugIPCHandler';
 
 /**
  * Roopik Canvas Extension
@@ -22,6 +23,10 @@ import type { Component, BuildResult, BuildErrorInfo } from './types/component';
  * - Core handles: Component/Canvas CRUD, build pipeline, storage
  * - Extension handles: Canvas webview rendering, event routing
  * - Manager: Single point of contact between Core and panels
+ *
+ * NEW: Agent Debug Service
+ * - Provides autonomous debugging capabilities for AI agents
+ * - Registered commands: roopik.debug.* (execute, startAndWait, stepSmart, etc.)
  */
 
 let manager: RoopikExtensionManager | null = null;
@@ -64,10 +69,18 @@ export async function activate(context: vscode.ExtensionContext) {
 		return;
 	}
 
+	// ============================================================================
+	// Initialize Agent Debug Service
+	// ============================================================================
+	const debugIPCHandler = initializeDebugIPCHandler();
+	context.subscriptions.push(...debugIPCHandler.getDisposables());
+	logger.info('Extension', 'Agent Debug Service initialized (roopik.debug.* commands registered)');
+
 	// Dispose manager and logger on deactivation
 	context.subscriptions.push({
 		dispose: () => {
 			manager?.dispose();
+			debugIPCHandler.dispose();
 			logger.dispose();
 		}
 	});

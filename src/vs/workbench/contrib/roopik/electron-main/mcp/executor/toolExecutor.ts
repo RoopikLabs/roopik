@@ -29,6 +29,7 @@ import { BrowserToolService } from '../../tools/browserToolService.js';
 import { CanvasToolService } from '../../tools/canvasToolService.js';
 import { ComponentToolService } from '../../tools/componentToolService.js';
 import { ProjectToolService } from '../../tools/projectToolService.js';
+import { DebugToolService, type ICommandExecutor } from '../../tools/debugToolService.js';
 
 // ============================================================================
 // Tool Call Types
@@ -56,6 +57,7 @@ export class ToolExecutor {
 	private readonly canvasToolService: CanvasToolService;
 	private readonly componentToolService: ComponentToolService;
 	private readonly projectToolService: ProjectToolService;
+	private readonly debugToolService: DebugToolService | null;
 	private readonly storageService: IRoopikStorageService;
 
 	constructor(
@@ -63,7 +65,8 @@ export class ToolExecutor {
 		storageService: IRoopikStorageService,
 		canvasService: ICanvasService,
 		componentService: ComponentService,
-		devServerService: DevServerService
+		devServerService: DevServerService,
+		commandExecutor?: ICommandExecutor  // Optional: for debug tools
 	) {
 		this.storageService = storageService;
 
@@ -75,6 +78,9 @@ export class ToolExecutor {
 		this.canvasToolService = new CanvasToolService(canvasService, componentService);
 		this.componentToolService = new ComponentToolService(componentService, canvasService);
 		this.projectToolService = new ProjectToolService(devServerService, storageService, browserViewService);
+
+		// Create debug tool service if command executor is provided
+		this.debugToolService = commandExecutor ? new DebugToolService(commandExecutor) : null;
 	}
 
 	/**
@@ -99,6 +105,10 @@ export class ToolExecutor {
 
 			if (tool.startsWith('project_')) {
 				return await this.executeProjectTool(tool, params);
+			}
+
+			if (tool.startsWith('debug_')) {
+				return await this.executeDebugTool(tool, params);
 			}
 
 			if (tool.startsWith('roopik_')) {
@@ -155,6 +165,18 @@ export class ToolExecutor {
 			'project_get_active',
 			'project_start',
 			'project_stop',
+			// Debug tools (11) - Autonomous Debugging
+			'debug_start_and_wait',
+			'debug_stop',
+			'debug_set_breakpoint',
+			'debug_remove_breakpoint',
+			'debug_step_smart',
+			'debug_step_into',
+			'debug_step_out',
+			'debug_run_until_line',
+			'debug_continue',
+			'debug_get_context',
+			'debug_evaluate',
 			// Roopik tools (1)
 			'roopik_get_guide',
 		];
@@ -360,6 +382,84 @@ export class ToolExecutor {
 				return {
 					success: false,
 					error: `Unknown project tool: ${tool}`
+				};
+		}
+	}
+
+	// ==========================================================================
+	// Debug Tool Routing (11 tools) - Delegates to DebugToolService
+	// ==========================================================================
+
+	private async executeDebugTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
+		// Check if debug service is available
+		if (!this.debugToolService) {
+			return {
+				success: false,
+				error: 'Debug tools not available (command executor not configured)'
+			};
+		}
+
+		switch (tool) {
+			case 'debug_start_and_wait':
+				return this.debugToolService.startAndWait({
+					file: params.file as string,
+					line: params.line as number,
+					timeout: params.timeout as number | undefined,
+					stopOnEntry: params.stopOnEntry as boolean | undefined,
+					debugType: params.debugType as 'node' | 'python' | 'chrome' | undefined
+				});
+
+			case 'debug_stop':
+				return this.debugToolService.stop();
+
+			case 'debug_set_breakpoint':
+				return this.debugToolService.setBreakpoint({
+					file: params.file as string,
+					line: params.line as number,
+					enabled: params.enabled as boolean | undefined,
+					condition: params.condition as string | undefined,
+					hitCondition: params.hitCondition as string | undefined,
+					logMessage: params.logMessage as string | undefined
+				});
+
+			case 'debug_remove_breakpoint':
+				return this.debugToolService.removeBreakpoint(params.id as string);
+
+			case 'debug_step_smart':
+				return this.debugToolService.stepSmart({
+					count: params.count as number | undefined
+				});
+
+			case 'debug_step_into':
+				return this.debugToolService.stepInto();
+
+			case 'debug_step_out':
+				return this.debugToolService.stepOut();
+
+			case 'debug_run_until_line':
+				return this.debugToolService.runUntilLine({
+					line: params.line as number,
+					file: params.file as string | undefined,
+					timeout: params.timeout as number | undefined
+				});
+
+			case 'debug_continue':
+				return this.debugToolService.continue(params.timeout as number | undefined);
+
+			case 'debug_get_context':
+				return this.debugToolService.getContext();
+
+			case 'debug_evaluate':
+				return this.debugToolService.evaluate({
+					expression: params.expression as string,
+					frameId: params.frameId as number | undefined,
+					context: params.context as 'watch' | 'repl' | 'hover' | undefined
+				});
+
+			default:
+				return {
+					success: false,
+					error: `Unknown debug tool: ${tool}`
 				};
 		}
 	}
