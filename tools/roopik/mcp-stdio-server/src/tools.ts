@@ -174,7 +174,7 @@ export const debugStartAndWaitSchema = z.object({
 	line: z.number().describe('Line number to set initial breakpoint (1-indexed)'),
 	timeout: z.number().optional().describe('Timeout in ms (default: 30000)'),
 	stopOnEntry: z.boolean().optional().describe('Pause immediately on start (default: true)'),
-	debugType: z.enum(['node', 'python', 'chrome']).optional().describe('Debug adapter type (auto-detected if not specified)')
+	debugType: z.enum(['node', 'python', 'go', 'cppdbg', 'lldb', 'rust', 'chrome']).optional().describe('Debug adapter type (auto-detected from file extension if not specified). Supported: node (JS/TS), python, go, cppdbg (C/C++), rust (CodeLLDB). Chrome = attach to browser tab for frontend JS. Requires the corresponding debug extension installed.')
 });
 
 export const debugStopSchema = z.object({});
@@ -702,7 +702,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	// ========== Debug Tools (11) - Autonomous Debugging ==========
 	{
 		name: 'debug_start_and_wait',
-		description: 'Start a debug session, set a breakpoint, and WAIT until the breakpoint is hit. Returns full debug context (file, line, variables, stack, console logs). This is the primary entry point for agent debugging.',
+		description: 'Start a debug session, set a breakpoint, and WAIT until the breakpoint is hit. Returns full debug context (file, line, variables, stack, console logs). This is the primary entry point for agent debugging. Supported languages (fast start, no long warmup): JavaScript/TypeScript (Node), Python, Go, C/C++ (cppdbg), Rust (CodeLLDB). Chrome = attach to browser for frontend JS. For Rust: pass the SOURCE file (e.g. main.rs) and line; the extension resolves the binary from the Cargo project and sets the breakpoint in source so execution pauses there (run "cargo build" first). Requires the corresponding VS Code debug extension installed.',
 		schema: debugStartAndWaitSchema
 	},
 	{

@@ -3,6 +3,9 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { VariableParser } from './variableParser';
 import { getSecurityValidator } from './securityValidator';
@@ -88,23 +91,126 @@ export class AgentDebugService {
 
 		// 2. Prepare launch configuration
 		const type = debugType || this.detectDebugType(file);
-		const config: vscode.DebugConfiguration = {
-			type,
-			request: 'launch',
-			name: 'Roopik Agent Debug',
-			program: file,
-			stopOnEntry,
-			...launchConfig
-		};
+		let config: vscode.DebugConfiguration;
+		if (type === 'go') {
+			// Go: program is the directory containing the main package
+			const dir = path.resolve(path.dirname(file));
+			config = {
+				type: 'go',
+				request: 'launch',
+				name: 'Roopik Agent Debug',
+				program: dir,
+				stopOnEntry,
+				...launchConfig
+			};
+		} else if (type === 'python') {
+			// Python: program is the .py file
+			config = {
+				type: 'debugpy',
+				request: 'launch',
+				name: 'Roopik Agent Debug',
+				program: file,
+				console: 'integratedTerminal',
+				justMyCode: true,
+				stopOnEntry,
+				...launchConfig
+			};
+		} else if (type === 'cppdbg' || type === 'lldb') {
+			// C/C++: program is the compiled binary; agent should compile first
+			config = {
+				type,
+				request: 'launch',
+				name: 'Roopik Agent Debug',
+				program: file,
+				cwd: path.resolve(path.dirname(file)),
+				stopAtEntry: stopOnEntry,
+				...launchConfig
+			};
+		} else if (type === 'lldb-rust' || type === 'rust') {
+			// Rust (via CodeLLDB): breakpoint is in SOURCE (.rs); we LAUNCH the compiled binary so execution pauses at the breakpoint.
+			const programPath = file.toLowerCase().endsWith('.rs')
+				? this.resolveRustBinaryPath(file)
+				: file;
+			if (!programPath) {
+				return this.createErrorContext('Rust: pass a .rs source file (e.g. main.rs) and run "cargo build" first, or pass the path to target/debug/<name>.exe');
+			}
+			// cwd = Cargo project root (parent of target/) so relative paths in the binary work
+			const cwd = path.resolve(path.dirname(programPath), '..', '..');
+			config = {
+				type: 'lldb',
+				request: 'launch',
+				name: 'Roopik Agent Debug',
+				program: programPath,
+				cwd,
+				stopOnEntry,
+				...launchConfig
+			};
+		} else if (type === 'chrome') {
+			// Chrome: launch browser and open HTML so linked scripts run; breakpoint can be in .js (we open index.html in same dir).
+			const dir = path.resolve(path.dirname(file));
+			const ext = path.extname(file).toLowerCase();
+			let urlPath: string;
+			if (ext === '.js' || ext === '.mjs' || ext === '.cjs') {
+				// Breakpoint is in a JS file: open index.html in same dir so the page loads this script and we hit the breakpoint.
+				const indexHtml = path.join(dir, 'index.html');
+				urlPath = fs.existsSync(indexHtml) ? indexHtml : file;
+			} else {
+				urlPath = path.resolve(file);
+			}
+			const absPath = urlPath.replace(/\\/g, '/');
+			const fileUrl = absPath.startsWith('/') ? 'file://' + absPath : 'file:///' + absPath;
+			// Use a dedicated Chrome profile so the debug session doesn't pollute the user's main profile/history.
+			const chromeProfileDir = path.join(os.tmpdir(), 'roopik-chrome-debug');
+			if (!fs.existsSync(chromeProfileDir)) {
+				fs.mkdirSync(chromeProfileDir, { recursive: true });
+			}
+			// Use pwa-chrome (built-in JS debugger) for reliable attach; runtimeArgs reduce first-run UI so main target is our page.
+			config = {
+				type: 'pwa-chrome',
+				request: 'launch',
+				name: 'Roopik Agent Debug',
+				url: fileUrl,
+				webRoot: dir,
+				userDataDir: chromeProfileDir,
+				runtimeArgs: [
+					'--no-first-run',
+					'--no-default-browser-check',
+					'--disable-fre'
+				],
+				...launchConfig
+			};
+		} else {
+			// Default: Node.js (JS/TS) and anything else
+			config = {
+				type,
+				request: 'launch',
+				name: 'Roopik Agent Debug',
+				program: file,
+				stopOnEntry,
+				...launchConfig
+			};
+		}
 
-		// 3. Start debug session
-		const started = await vscode.debug.startDebugging(undefined, config);
+		// 3. Start debug session (pass workspace folder so extensions can resolve the project)
+		const fileNorm = path.resolve(file);
+		const folder = vscode.workspace.workspaceFolders?.find(f => {
+			const root = path.resolve(f.uri.fsPath);
+			return fileNorm.startsWith(root) || fileNorm.toLowerCase().startsWith(root.toLowerCase());
+		});
+		// 4. Register the stop listener BEFORE starting the session to avoid a race condition.
+		// For fast debuggers (Go, compiled languages), the "stopped" event can fire during startDebugging,
+		// before waitForStopAndCapture would register the tracker. By setting up the tracker first,
+		// we never miss the event.
+		const waitTimeout = timeout;
+		const stopPromise = this.waitForStopAndCapture(waitTimeout);
+
+		const started = await vscode.debug.startDebugging(folder ?? undefined, config);
 		if (!started) {
+			this.cleanupTracker();
 			return this.createErrorContext('Failed to start debug session');
 		}
 
-		// 4. Wait for stopped event using Promise Trap
-		return this.waitForStopAndCapture(timeout);
+		return stopPromise;
 	}
 
 	/**
@@ -276,7 +382,7 @@ export class AgentDebugService {
 		const threadId = await this.getActiveThreadId(session);
 		await session.customRequest('stepIn', { threadId });
 
-		return this.waitForStopAndCapture(5000);
+		return this.waitForStopAndCapture(15000);
 	}
 
 	/**
@@ -529,11 +635,16 @@ export class AgentDebugService {
 								clearTimeout(timeout);
 								this.cleanupTracker();
 
-								// Capture full context
-								this.captureContextWithReason(session, stopReason, stoppedBody)
+								// Capture full context; cap wait so we always send a response (UI already showed; response must reach the agent)
+								const captureTimeoutMs = 10000;
+								const capturePromise = this.captureContextWithReason(session, stopReason, stoppedBody);
+								const timeoutPromise = new Promise<IDebugContext>((res) =>
+									setTimeout(() => res(this.createErrorContext(`Context capture timed out after ${captureTimeoutMs}ms`)), captureTimeoutMs)
+								);
+								Promise.race([capturePromise, timeoutPromise])
 									.then(resolve)
 									.catch((err) => {
-										resolve(this.createErrorContext(err.message));
+										resolve(this.createErrorContext(err?.message || String(err)));
 									});
 							}
 						}
@@ -696,6 +807,40 @@ export class AgentDebugService {
 	}
 
 	/**
+	 * Resolve the compiled Rust binary path from a .rs source file.
+	 * Finds Cargo.toml (same dir or parent), reads package name, returns target/debug/<name>.exe (or no .exe on Unix).
+	 */
+	private resolveRustBinaryPath(rsFilePath: string): string | null {
+		const ext = path.extname(rsFilePath).toLowerCase();
+		if (ext !== '.rs') {
+			return null;
+		}
+		let dir = path.resolve(path.dirname(rsFilePath));
+		const root = path.parse(dir).root;
+		while (dir !== root) {
+			const cargoPath = path.join(dir, 'Cargo.toml');
+			try {
+				if (fs.existsSync(cargoPath)) {
+					const content = fs.readFileSync(cargoPath, 'utf8');
+					const match = content.match(/^\[package\]\s*\n\s*name\s*=\s*["']([^"']+)["']/m)
+						|| content.match(/\bname\s*=\s*["']([^"']+)["']/);
+					if (match) {
+						const name = match[1];
+						const binaryName = process.platform === 'win32' ? `${name}.exe` : name;
+						const binaryPath = path.join(dir, 'target', 'debug', binaryName);
+						return binaryPath;
+					}
+					return null;
+				}
+			} catch {
+				// ignore
+			}
+			dir = path.dirname(dir);
+		}
+		return null;
+	}
+
+	/**
 	 * Detect debug type from file extension
 	 */
 	private detectDebugType(file: string): string {
@@ -710,6 +855,13 @@ export class AgentDebugService {
 				return 'python';
 			case 'go':
 				return 'go';
+			case 'c':
+			case 'cpp':
+			case 'cc':
+			case 'cxx':
+				return 'cppdbg';
+			case 'rs':
+				return 'lldb-rust';
 			default:
 				return 'pwa-node'; // Default to Node.js
 		}

@@ -28,7 +28,7 @@ export interface IStartDebugArgs {
 	line: number;
 	timeout?: number;
 	stopOnEntry?: boolean;
-	debugType?: 'node' | 'python' | 'chrome';
+	debugType?: 'node' | 'python' | 'go' | 'cppdbg' | 'lldb' | 'rust' | 'chrome';
 }
 
 /**
@@ -116,7 +116,8 @@ export class DebugToolService {
 	 */
 	async startAndWait(args: IStartDebugArgs): Promise<ToolResult<any>> {
 		// Bridge timeout = debug timeout + buffer for IPC overhead
-		const bridgeTimeout = (args.timeout || 30000) + 10000;
+		const base = args.timeout || 30000;
+		const bridgeTimeout = base + 15000;
 		return this.executeCommand('roopik.debug.startAndWait', [args], bridgeTimeout);
 	}
 
@@ -170,7 +171,7 @@ export class DebugToolService {
 	 * Step into function
 	 */
 	async stepInto(): Promise<ToolResult<any>> {
-		return this.executeCommand('roopik.debug.stepInto', []);
+		return this.executeCommand('roopik.debug.stepInto', [], 20000);
 	}
 
 	/**
