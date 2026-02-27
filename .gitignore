@@ -40,3 +40,5 @@ test-output.json
 /docs
 .roopik/
 /resources/mcp-binaries
+/extensions/roopik-roo/apps
+/TESTING-FOLDER
