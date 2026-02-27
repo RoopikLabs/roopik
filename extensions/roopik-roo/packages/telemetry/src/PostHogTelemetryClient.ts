@@ -36,8 +36,7 @@ export class PostHogTelemetryClient extends BaseTelemetryClient {
 			debug,
 		)
 
-		const posthogHost = process.env.POSTHOG_HOST || process.env.ROOPIK_POSTHOG_HOST || "https://us.i.posthog.com"
-		this.client = new PostHog(process.env.POSTHOG_API_KEY || process.env.ROOPIK_POSTHOG_KEY || "", { host: posthogHost })
+		this.client = new PostHog(process.env.POSTHOG_API_KEY || "", { host: "https://ph.roocode.com" })
 	}
 
 	/**
