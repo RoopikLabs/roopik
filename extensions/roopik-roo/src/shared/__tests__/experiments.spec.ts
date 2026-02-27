@@ -9,7 +9,7 @@ describe("experiments", () => {
 		it("is configured correctly", () => {
 			expect(EXPERIMENT_IDS.PREVENT_FOCUS_DISRUPTION).toBe("preventFocusDisruption")
 			expect(experimentConfigsMap.PREVENT_FOCUS_DISRUPTION).toMatchObject({
-				enabled: true, // Enabled by default
+				enabled: false,
 			})
 		})
 	})
@@ -20,7 +20,6 @@ describe("experiments", () => {
 				preventFocusDisruption: false,
 				imageGeneration: false,
 				runSlashCommand: false,
-				multipleNativeToolCalls: false,
 				customTools: false,
 			}
 			expect(Experiments.isEnabled(experiments, EXPERIMENT_IDS.PREVENT_FOCUS_DISRUPTION)).toBe(false)
@@ -31,7 +30,6 @@ describe("experiments", () => {
 				preventFocusDisruption: true,
 				imageGeneration: false,
 				runSlashCommand: false,
-				multipleNativeToolCalls: false,
 				customTools: false,
 			}
 			expect(Experiments.isEnabled(experiments, EXPERIMENT_IDS.PREVENT_FOCUS_DISRUPTION)).toBe(true)
@@ -42,7 +40,6 @@ describe("experiments", () => {
 				preventFocusDisruption: false,
 				imageGeneration: false,
 				runSlashCommand: false,
-				multipleNativeToolCalls: false,
 				customTools: false,
 			}
 			expect(Experiments.isEnabled(experiments, EXPERIMENT_IDS.PREVENT_FOCUS_DISRUPTION)).toBe(false)

@@ -11,6 +11,7 @@ vitest.mock("@roo-code/telemetry", () => ({
 }))
 
 import { Anthropic } from "@anthropic-ai/sdk"
+import OpenAI from "openai"
 
 import { ApiProviderError } from "@roo-code/types"
 
@@ -75,6 +76,28 @@ describe("OpenAiNativeHandler", () => {
 				openAiNativeApiKey: "",
 			})
 			expect(handlerWithoutKey).toBeInstanceOf(OpenAiNativeHandler)
+		})
+
+		it("should pass undefined baseURL when openAiNativeBaseUrl is empty string", () => {
+			;(OpenAI as unknown as ReturnType<typeof vitest.fn>).mockClear()
+			new OpenAiNativeHandler({
+				apiModelId: "gpt-4.1",
+				openAiNativeApiKey: "test-key",
+				openAiNativeBaseUrl: "",
+			})
+			expect(OpenAI).toHaveBeenCalledWith(expect.objectContaining({ baseURL: undefined }))
+		})
+
+		it("should pass custom baseURL when openAiNativeBaseUrl is a valid URL", () => {
+			;(OpenAI as unknown as ReturnType<typeof vitest.fn>).mockClear()
+			new OpenAiNativeHandler({
+				apiModelId: "gpt-4.1",
+				openAiNativeApiKey: "test-key",
+				openAiNativeBaseUrl: "https://custom-openai.example.com/v1",
+			})
+			expect(OpenAI).toHaveBeenCalledWith(
+				expect.objectContaining({ baseURL: "https://custom-openai.example.com/v1" }),
+			)
 		})
 	})
 
@@ -211,6 +234,19 @@ describe("OpenAiNativeHandler", () => {
 			expect(modelInfo.info).toBeDefined()
 			expect(modelInfo.info.maxTokens).toBe(32768)
 			expect(modelInfo.info.contextWindow).toBe(1047576)
+		})
+
+		it("should return GPT-5.3 Codex model info when selected", () => {
+			const codexHandler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.3-codex",
+			})
+
+			const modelInfo = codexHandler.getModel()
+			expect(modelInfo.id).toBe("gpt-5.3-codex")
+			expect(modelInfo.info.maxTokens).toBe(128000)
+			expect(modelInfo.info.contextWindow).toBe(400000)
+			expect(modelInfo.info.supportsReasoningEffort).toEqual(["low", "medium", "high", "xhigh"])
 		})
 
 		it("should handle undefined model ID", () => {
