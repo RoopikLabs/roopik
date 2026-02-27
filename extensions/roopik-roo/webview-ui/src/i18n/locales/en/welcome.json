@@ -27,7 +27,7 @@
 		"rooCloudDescription": "The easiest way to start is with the Code Cloud Provider: a curated mix of free and paid models at a low cost.",
 		"learnMore": "Learn more",
 		"useAnotherProvider": "3rd-party Provider",
-		"useAnotherProviderDescription": "Enter an API key, or use a local model (offline).",
+		"useAnotherProviderDescription": "Enter an API key and get going.",
 		"noApiKeys": "Don't want to deal with API keys and separate accounts?",
 		"backToRoo": "Go with the Code Cloud Provider.",
 		"goBack": "Back",

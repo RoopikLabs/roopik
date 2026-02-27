@@ -4,7 +4,6 @@ interface AutoApprovalToggles {
 	alwaysAllowReadOnly?: boolean
 	alwaysAllowWrite?: boolean
 	alwaysAllowExecute?: boolean
-	alwaysAllowBrowser?: boolean
 	alwaysAllowMcp?: boolean
 	alwaysAllowRoopik?: boolean
 	alwaysAllowModeSwitch?: boolean

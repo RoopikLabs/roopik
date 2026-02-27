@@ -32,48 +32,32 @@ export const About = ({ telemetrySetting, setTelemetrySetting, debug, setDebug, 
 
 			{/* Integration Note */}
 			<Section>
-				<div className="p-3 rounded-sm bg-vscode-textBlockQuote-background border-l-2 border-vscode-textLink-foreground">
-					<p className="text-sm text-vscode-descriptionForeground m-0">
+				<p>
+					{Package.sha
+						? `Version: ${Package.version} (${Package.sha.slice(0, 8)})`
+						: `Version: ${Package.version}`}
+				</p>
+				<SearchableSetting
+					settingId="about-telemetry"
+					section="about"
+					label={t("settings:footer.telemetry.label")}>
+					<VSCodeCheckbox
+						checked={telemetrySetting !== "disabled"}
+						onChange={(e: any) => {
+							const checked = e.target.checked === true
+							setTelemetrySetting(checked ? "enabled" : "disabled")
+						}}>
+						{t("settings:footer.telemetry.label")}
+					</VSCodeCheckbox>
+					<p className="text-vscode-descriptionForeground text-sm mt-0">
 						<Trans
 							i18nKey="settings:about.integrationNote"
 							components={{
-								strong: <strong className="font-semibold" />,
+								privacyLink: <VSCodeLink href="https://roocode.com/privacy" />,
 							}}
 						/>
 					</p>
-				</div>
-			</Section>
-
-			<Section>
-				<div>
-
-					<p>
-						{Package.sha
-							? `Version: ${Package.version} (${Package.sha.slice(0, 8)})`
-							: `Version: ${Package.version}`}
-					</p>
-					<SearchableSetting
-						settingId="about-telemetry"
-						section="about"
-						label={t("settings:footer.telemetry.label")}>
-						<VSCodeCheckbox
-							checked={telemetrySetting !== "disabled"}
-							onChange={(e: any) => {
-								const checked = e.target.checked === true
-								setTelemetrySetting(checked ? "enabled" : "disabled")
-							}}>
-							{t("settings:footer.telemetry.label")}
-						</VSCodeCheckbox>
-						<p className="text-vscode-descriptionForeground text-sm mt-0">
-							<Trans
-								i18nKey="settings:footer.telemetry.description"
-								components={{
-									privacyLink: <VSCodeLink href="https://roopik.com/privacy" />,
-								}}
-							/>
-						</p>
-					</SearchableSetting>
-				</div>
+				</SearchableSetting>
 			</Section>
 
 			{/* Disabled Contact & Community Section
