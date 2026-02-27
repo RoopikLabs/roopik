@@ -1237,14 +1237,15 @@ export class ClineProvider
 			"index.css",
 		])
 
-		const codiconsUri = getUri(webview, this.contextProxy.extensionUri, ["assets", "codicons", "codicon.css"])
+		const codiconsUri = getUri(webview, this.contextProxy.extensionUri, ["dist", "assets", "codicons", "codicon.css"])
 		const materialIconsUri = getUri(webview, this.contextProxy.extensionUri, [
+			"dist",
 			"assets",
 			"vscode-material-icons",
 			"icons",
 		])
-		const imagesUri = getUri(webview, this.contextProxy.extensionUri, ["assets", "images"])
-		const audioUri = getUri(webview, this.contextProxy.extensionUri, ["webview-ui", "audio"])
+		const imagesUri = getUri(webview, this.contextProxy.extensionUri, ["dist", "assets", "images"])
+		const audioUri = getUri(webview, this.contextProxy.extensionUri, ["dist", "webview-ui", "audio"])
 
 		const file = "src/index.tsx"
 		const scriptUri = `http://${localServerUrl}/${file}`
@@ -1311,21 +1312,23 @@ export class ClineProvider
 
 		// The CSS file from the React build output
 		const stylesUri = getUri(webview, this.contextProxy.extensionUri, [
+			"dist",
 			"webview-ui",
 			"build",
 			"assets",
 			"index.css",
 		])
 
-		const scriptUri = getUri(webview, this.contextProxy.extensionUri, ["webview-ui", "build", "assets", "index.js"])
-		const codiconsUri = getUri(webview, this.contextProxy.extensionUri, ["assets", "codicons", "codicon.css"])
+		const scriptUri = getUri(webview, this.contextProxy.extensionUri, ["dist", "webview-ui", "build", "assets", "index.js"])
+		const codiconsUri = getUri(webview, this.contextProxy.extensionUri, ["dist", "assets", "codicons", "codicon.css"])
 		const materialIconsUri = getUri(webview, this.contextProxy.extensionUri, [
+			"dist",
 			"assets",
 			"vscode-material-icons",
 			"icons",
 		])
-		const imagesUri = getUri(webview, this.contextProxy.extensionUri, ["assets", "images"])
-		const audioUri = getUri(webview, this.contextProxy.extensionUri, ["webview-ui", "audio"])
+		const imagesUri = getUri(webview, this.contextProxy.extensionUri, ["dist", "assets", "images"])
+		const audioUri = getUri(webview, this.contextProxy.extensionUri, ["dist", "webview-ui", "audio"])
 
 		// Use a nonce to only allow a specific script to be run.
 		/*
