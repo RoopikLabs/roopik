@@ -13,6 +13,7 @@ import { experimentsSchema } from "./experiment.js"
 import { telemetrySettingsSchema } from "./telemetry.js"
 import { modeConfigSchema } from "./mode.js"
 import { customModePromptsSchema, customSupportPromptsSchema } from "./mode.js"
+import { toolNamesSchema } from "./tool.js"
 import { languagesSchema } from "./vscode.js"
 
 /**
@@ -101,7 +102,6 @@ export const globalSettingsSchema = z.object({
 	alwaysAllowWriteOutsideWorkspace: z.boolean().optional(),
 	alwaysAllowWriteProtected: z.boolean().optional(),
 	writeDelayMs: z.number().min(0).optional(),
-	alwaysAllowBrowser: z.boolean().optional(),
 	requestDelaySeconds: z.number().optional(),
 	alwaysAllowMcp: z.boolean().optional(),
 	alwaysAllowRoopik: z.boolean().optional(),
@@ -119,7 +119,6 @@ export const globalSettingsSchema = z.object({
 	allowedMaxCost: z.number().nullish(),
 	autoCondenseContext: z.boolean().optional(),
 	autoCondenseContextPercent: z.number().optional(),
-	maxConcurrentFileReads: z.number().optional(),
 
 	/**
 	 * Whether to include current time in the environment details
@@ -149,13 +148,6 @@ export const globalSettingsSchema = z.object({
 	 */
 	maxDiagnosticMessages: z.number().optional(),
 
-	browserToolEnabled: z.boolean().optional(),
-	browserViewportSize: z.string().optional(),
-	screenshotQuality: z.number().optional(),
-	remoteBrowserEnabled: z.boolean().optional(),
-	remoteBrowserHost: z.string().optional(),
-	cachedChromeHostUrl: z.string().optional(),
-
 	enableCheckpoints: z.boolean().optional(),
 	checkpointTimeout: z
 		.number()
@@ -173,7 +165,6 @@ export const globalSettingsSchema = z.object({
 	maxWorkspaceFiles: z.number().optional(),
 	showRooIgnoredFiles: z.boolean().optional(),
 	enableSubfolderRules: z.boolean().optional(),
-	maxReadFileLine: z.number().optional(),
 	maxImageFileSize: z.number().optional(),
 	maxTotalImageSize: z.number().optional(),
 
@@ -200,7 +191,6 @@ export const globalSettingsSchema = z.object({
 	telemetrySetting: telemetrySettingsSchema.optional(),
 
 	mcpEnabled: z.boolean().optional(),
-	enableMcpServerCreation: z.boolean().optional(),
 
 	mode: z.string().optional(),
 	modeApiConfigs: z.record(z.string(), z.string()).optional(),
@@ -236,6 +226,12 @@ export const globalSettingsSchema = z.object({
 	 * @default true
 	 */
 	showWorktreesInHomeScreen: z.boolean().optional(),
+
+	/**
+	 * List of native tool names to globally disable.
+	 * Tools in this list will be excluded from prompt generation and rejected at execution time.
+	 */
+	disabledTools: z.array(toolNamesSchema).optional(),
 })
 
 export type GlobalSettings = z.infer<typeof globalSettingsSchema>
@@ -264,19 +260,14 @@ export const SECRET_STATE_KEYS = [
 	"ollamaApiKey",
 	"geminiApiKey",
 	"openAiNativeApiKey",
-	"cerebrasApiKey",
 	"deepSeekApiKey",
-	"doubaoApiKey",
 	"moonshotApiKey",
 	"mistralApiKey",
 	"minimaxApiKey",
-	"unboundApiKey",
 	"requestyApiKey",
+	"unboundApiKey",
 	"xaiApiKey",
-	"groqApiKey",
-	"chutesApiKey",
 	"litellmApiKey",
-	"deepInfraApiKey",
 	"codeIndexOpenAiKey",
 	"codeIndexQdrantApiKey",
 	"codebaseIndexOpenAiCompatibleApiKey",
@@ -284,12 +275,9 @@ export const SECRET_STATE_KEYS = [
 	"codebaseIndexMistralApiKey",
 	"codebaseIndexVercelAiGatewayApiKey",
 	"codebaseIndexOpenRouterApiKey",
-	"huggingFaceApiKey",
 	"sambaNovaApiKey",
 	"zaiApiKey",
 	"fireworksApiKey",
-	"featherlessApiKey",
-	"ioIntelligenceApiKey",
 	"vercelAiGatewayApiKey",
 	"basetenApiKey",
 ] as const
@@ -343,7 +331,6 @@ export const EVALS_SETTINGS: RooCodeSettings = {
 	alwaysAllowWriteOutsideWorkspace: false,
 	alwaysAllowWriteProtected: false,
 	writeDelayMs: 1000,
-	alwaysAllowBrowser: true,
 	requestDelaySeconds: 10,
 	alwaysAllowMcp: true,
 	alwaysAllowRoopik: true,
@@ -356,11 +343,6 @@ export const EVALS_SETTINGS: RooCodeSettings = {
 	commandExecutionTimeout: 20,
 	commandTimeoutAllowlist: [],
 	preventCompletionWithOpenTodos: false,
-
-	browserToolEnabled: false,
-	browserViewportSize: "900x600",
-	screenshotQuality: 75,
-	remoteBrowserEnabled: false,
 
 	ttsEnabled: false,
 	ttsSpeed: 1,
@@ -385,7 +367,6 @@ export const EVALS_SETTINGS: RooCodeSettings = {
 	maxWorkspaceFiles: 200,
 	maxGitStatusFiles: 20,
 	showRooIgnoredFiles: true,
-	maxReadFileLine: -1, // -1 to enable full file reading.
 
 	includeDiagnosticMessages: true,
 	maxDiagnosticMessages: 50,
