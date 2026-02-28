@@ -766,7 +766,10 @@ function updateNpmDirs() {
 	}
 
 	let content = fs.readFileSync(filePath, 'utf8');
-	const extensionsToAdd = ['extensions/roopik', 'extensions/roopik-roo'];
+	// NOTE: extensions/roopik is NOT included here because it has a postinstall
+	// hook (npm --prefix webview install && build) that causes EPERM errors on
+	// Windows CI. The CI workflow handles it separately with --ignore-scripts.
+	const extensionsToAdd = ['extensions/roopik-roo'];
 	let modified = false;
 
 	for (const ext of extensionsToAdd) {
