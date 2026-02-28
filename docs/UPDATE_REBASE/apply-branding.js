@@ -756,6 +756,44 @@ function updateEslintConfig() {
 	return { updated: false, errors: 0 };
 }
 
+// Add Roopik extensions to build/npm/dirs.ts so npm install covers them
+function updateNpmDirs() {
+	const filePath = path.join(ROOT_DIR, 'build/npm/dirs.ts');
+
+	if (!fileExists(filePath)) {
+		warning('build/npm/dirs.ts not found (skipping)');
+		return { updated: false, errors: 0 };
+	}
+
+	let content = fs.readFileSync(filePath, 'utf8');
+	const extensionsToAdd = ['extensions/roopik', 'extensions/roopik-roo'];
+	let modified = false;
+
+	for (const ext of extensionsToAdd) {
+		if (content.includes(`'${ext}'`)) {
+			info(`${ext} already in dirs.ts`);
+			continue;
+		}
+
+		// Insert before the closing '];' of the dirs array
+		const closingBracket = /^(\];)/m;
+		if (closingBracket.test(content)) {
+			content = content.replace(closingBracket, `\t'${ext}',\n$1`);
+			modified = true;
+			success(`Added '${ext}' to dirs.ts`);
+		} else {
+			warning(`Could not find closing bracket in dirs.ts for ${ext}`);
+		}
+	}
+
+	if (modified) {
+		writeFile(filePath, content);
+		return { updated: true, errors: 0 };
+	}
+
+	return { updated: false, errors: 0 };
+}
+
 // Apply build/gulpfile.extensions.ts updates
 function updateGulpfileExtensions() {
 	const filePath = path.join(ROOT_DIR, 'build/gulpfile.extensions.ts');
@@ -2819,6 +2857,12 @@ function main() {
 		totalChanges++;
 	}
 	totalErrors += eslintResult.errors;
+
+	const npmDirsResult = updateNpmDirs();
+	if (npmDirsResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += npmDirsResult.errors;
 
 	const gulpfileResult = updateGulpfileExtensions();
 	if (gulpfileResult.updated) {
