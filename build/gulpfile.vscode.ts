@@ -451,6 +451,13 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 				'node_modules/vsda/**' // retain copy of `vsda` in node_modules for internal use
 			], 'node_modules.asar'));
 
+		// MCP STDIO binaries - include all platforms, only existing ones will be bundled
+		const mcpBinaries = gulp.src([
+			'resources/mcp-binaries/roopik-mcp-win-x64.exe',
+			'resources/mcp-binaries/roopik-mcp-linux-x64',
+			'resources/mcp-binaries/roopik-mcp-macos-arm64'
+		], { base: '.', allowEmpty: true });
+
 		const mergeStreams = [
 			packageJsonStream,
 			productJsonStream,
@@ -458,7 +465,8 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 			api,
 			telemetry,
 			sources,
-			deps
+			deps,
+			mcpBinaries
 		];
 		if (packageSubJsonStream) {
 			mergeStreams.push(packageSubJsonStream);

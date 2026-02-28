@@ -954,34 +954,38 @@ function updateGulpfileMcpBinaries() {
 		return { updated: false, errors: 0 };
 	}
 
-	// Find the anchor point: "let all = es.merge("
-	const anchorPattern = /(\t\tlet all = es\.merge\(\n\t\t\tpackageJsonStream,)/;
-	if (!anchorPattern.test(content)) {
-		warning('build/gulpfile.vscode.ts - Could not find "let all = es.merge(" anchor for MCP binaries');
-		return { updated: false, errors: 0 };
-	}
+	// MCP binaries declaration to inject (with proper two-tab indentation)
+	const mcpBinariesDecl =
+		'\t\t// MCP STDIO binaries - include all platforms, only existing ones will be bundled\n' +
+		"\t\tconst mcpBinaries = gulp.src([\n" +
+		"\t\t\t'resources/mcp-binaries/roopik-mcp-win-x64.exe',\n" +
+		"\t\t\t'resources/mcp-binaries/roopik-mcp-linux-x64',\n" +
+		"\t\t\t'resources/mcp-binaries/roopik-mcp-macos-arm64'\n" +
+		"\t\t], { base: '.', allowEmpty: true });\n\n";
 
-	// Build the MCP binaries declaration
-	const mcpBinariesDeclaration = `\t\t// MCP STDIO binaries - include all platforms, only existing ones will be bundled
-		const mcpBinaries = gulp.src([
-			'resources/mcp-binaries/roopik-mcp-win-x64.exe',
-			'resources/mcp-binaries/roopik-mcp-linux-x64',
-			'resources/mcp-binaries/roopik-mcp-macos-arm64'
-		], { base: '.', allowEmpty: true });
+	// Strategy A (new upstream): mergeStreams array pattern
+	//   const mergeStreams = [ ... deps ];  →  add mcpBinaries to array
+	const mergeStreamsPattern = /(\t\tconst mergeStreams = \[[\s\S]*?\tdeps)\n(\t\t\];)/;
+	// Strategy B (old upstream): inline es.merge() pattern
+	const inlineMergePattern = /(\t\tlet all = es\.merge\(\n\t\t\tpackageJsonStream,)/;
 
-		let all = es.merge(
-			packageJsonStream,`;
-
-	// Replace the anchor with the MCP binaries declaration + anchor
-	content = content.replace(anchorPattern, mcpBinariesDeclaration);
-
-	// Now add mcpBinaries to the merge (after deps)
-	// Find "deps\n\t\t);" and replace with "deps,\n\t\t\tmcpBinaries\n\t\t);"
-	const depsPattern = /(\t\t\tdeps)\n(\t\t\);)/;
-	if (depsPattern.test(content)) {
-		content = content.replace(depsPattern, '$1,\n\t\t\tmcpBinaries\n$2');
+	if (mergeStreamsPattern.test(content)) {
+		// New pattern: inject declaration before mergeStreams array, add mcpBinaries to array
+		content = content.replace(mergeStreamsPattern, (match, before, closing) => {
+			return mcpBinariesDecl + before + ',\n\t\t\tmcpBinaries\n' + closing;
+		});
+	} else if (inlineMergePattern.test(content)) {
+		// Old pattern: inject declaration before es.merge, add mcpBinaries to inline merge
+		content = content.replace(inlineMergePattern, mcpBinariesDecl + '$1');
+		const depsPattern = /(\t\t\tdeps)\n(\t\t\);)/;
+		if (depsPattern.test(content)) {
+			content = content.replace(depsPattern, '$1,\n\t\t\tmcpBinaries\n$2');
+		} else {
+			warning('build/gulpfile.vscode.ts - Could not find "deps" in merge to add mcpBinaries');
+			return { updated: false, errors: 0 };
+		}
 	} else {
-		warning('build/gulpfile.vscode.ts - Could not find "deps" in merge to add mcpBinaries');
+		warning('build/gulpfile.vscode.ts - Could not find mergeStreams array or es.merge() anchor for MCP binaries');
 		return { updated: false, errors: 0 };
 	}
 
