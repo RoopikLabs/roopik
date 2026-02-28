@@ -21,8 +21,8 @@ export interface IChatContextUsagePromptTokenDetail {
 }
 
 export interface IChatContextUsageData {
-	promptTokens: number;
-	maxInputTokens: number;
+	usedTokens: number;
+	totalContextWindow: number;
 	percentage: number;
 	promptTokenDetails?: readonly IChatContextUsagePromptTokenDetail[];
 }
@@ -37,6 +37,7 @@ export class ChatContextUsageDetails extends Disposable {
 
 	private readonly quotaItem: HTMLElement;
 	private readonly percentageLabel: HTMLElement;
+	private readonly tokenCountLabel: HTMLElement;
 	private readonly progressFill: HTMLElement;
 	private readonly tokenDetailsContainer: HTMLElement;
 	private readonly warningMessage: HTMLElement;
@@ -50,16 +51,19 @@ export class ChatContextUsageDetails extends Disposable {
 		super();
 
 		this.domNode = $('.chat-context-usage-details');
-		this.domNode.setAttribute('tabindex', '0');
 
 		// Using same structure as ChatUsageWidget quota items
 		this.quotaItem = this.domNode.appendChild($('.quota-item'));
 
-		// Header row with label and percentage
+		// Header row with label
 		const quotaItemHeader = this.quotaItem.appendChild($('.quota-item-header'));
 		const quotaItemLabel = quotaItemHeader.appendChild($('.quota-item-label'));
 		quotaItemLabel.textContent = localize('contextWindow', "Context Window");
-		this.percentageLabel = quotaItemHeader.appendChild($('.quota-item-value'));
+
+		// Token count and percentage row (on same line)
+		const tokenRow = this.quotaItem.appendChild($('.token-row'));
+		this.tokenCountLabel = tokenRow.appendChild($('.token-count-label'));
+		this.percentageLabel = tokenRow.appendChild($('.quota-item-value'));
 
 		// Progress bar - using same structure as chat usage widget
 		const progressBar = this.quotaItem.appendChild($('.quota-bar'));
@@ -98,10 +102,16 @@ export class ChatContextUsageDetails extends Disposable {
 	}
 
 	update(data: IChatContextUsageData): void {
-		const { percentage, promptTokenDetails } = data;
+		const { percentage, usedTokens, totalContextWindow, promptTokenDetails } = data;
 
-		// Update percentage label
-		this.percentageLabel.textContent = `${percentage.toFixed(0)}%`;
+		// Update token count and percentage on same line
+		this.tokenCountLabel.textContent = localize(
+			'tokenCount',
+			"{0} / {1} tokens",
+			this.formatTokenCount(usedTokens, 1),
+			this.formatTokenCount(totalContextWindow, 0)
+		);
+		this.percentageLabel.textContent = `• ${percentage.toFixed(0)}%`;
 
 		// Update progress bar
 		this.progressFill.style.width = `${Math.min(100, percentage)}%`;
@@ -119,6 +129,18 @@ export class ChatContextUsageDetails extends Disposable {
 
 		// Show/hide warning message
 		this.warningMessage.style.display = percentage >= 75 ? '' : 'none';
+	}
+
+	private formatTokenCount(count: number, decimals: number): string {
+		// Use M when count is >= 1M, or when K representation would round to 1000K
+		const mThreshold = 1000000 - 500 * Math.pow(10, -decimals);
+
+		if (count >= mThreshold) {
+			return `${(count / 1000000).toFixed(decimals)}M`;
+		} else if (count >= 1000) {
+			return `${(count / 1000).toFixed(decimals)}K`;
+		}
+		return count.toString();
 	}
 
 	private renderTokenDetails(details: readonly IChatContextUsagePromptTokenDetail[] | undefined, contextWindowPercentage: number): void {
@@ -153,6 +175,16 @@ export class ChatContextUsageDetails extends Disposable {
 
 		// Render each category
 		for (const [category, items] of categoryMap) {
+			// Filter out items with 0% usage
+			const visibleItems = items.filter(item => {
+				const contextRelativePercentage = (item.percentageOfPrompt / 100) * contextWindowPercentage;
+				return contextRelativePercentage >= 0.05; // Show if at least 0.1% when rounded
+			});
+
+			if (visibleItems.length === 0) {
+				continue;
+			}
+
 			const categorySection = this.tokenDetailsContainer.appendChild($('.token-category'));
 
 			// Category header
@@ -160,7 +192,7 @@ export class ChatContextUsageDetails extends Disposable {
 			categoryHeader.textContent = category;
 
 			// Category items
-			for (const item of items) {
+			for (const item of visibleItems) {
 				const itemRow = categorySection.appendChild($('.token-detail-item'));
 
 				const itemLabel = itemRow.appendChild($('.token-detail-label'));

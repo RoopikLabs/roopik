@@ -4,28 +4,38 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as dom from '../../../../../../base/browser/dom.js';
+import { renderAsPlaintext } from '../../../../../../base/browser/markdownRenderer.js';
 import { StandardKeyboardEvent } from '../../../../../../base/browser/keyboardEvent.js';
-import { MarkdownString } from '../../../../../../base/common/htmlContent.js';
 import { Emitter, Event } from '../../../../../../base/common/event.js';
+import { IMarkdownString, MarkdownString, isMarkdownString } from '../../../../../../base/common/htmlContent.js';
 import { KeyCode } from '../../../../../../base/common/keyCodes.js';
 import { Disposable, DisposableStore, MutableDisposable } from '../../../../../../base/common/lifecycle.js';
 import { hasKey } from '../../../../../../base/common/types.js';
 import { localize } from '../../../../../../nls.js';
-import { IInstantiationService } from '../../../../../../platform/instantiation/common/instantiation.js';
+import { IAccessibilityService } from '../../../../../../platform/accessibility/common/accessibility.js';
 import { IMarkdownRendererService } from '../../../../../../platform/markdown/browser/markdownRenderer.js';
-import { defaultButtonStyles, defaultInputBoxStyles } from '../../../../../../platform/theme/browser/defaultStyles.js';
+import { defaultButtonStyles, defaultCheckboxStyles, defaultInputBoxStyles } from '../../../../../../platform/theme/browser/defaultStyles.js';
 import { Button } from '../../../../../../base/browser/ui/button/button.js';
 import { InputBox } from '../../../../../../base/browser/ui/inputbox/inputBox.js';
+import { Checkbox } from '../../../../../../base/browser/ui/toggle/toggle.js';
 import { IChatQuestion, IChatQuestionCarousel } from '../../../common/chatService/chatService.js';
 import { IChatContentPart, IChatContentPartRenderContext } from './chatContentParts.js';
-import { ChatQueryTitlePart } from './chatConfirmationWidget.js';
-import { IChatRendererContent } from '../../../common/model/chatViewModel.js';
+import { IChatRendererContent, isResponseVM } from '../../../common/model/chatViewModel.js';
 import { ChatTreeItem } from '../../chat.js';
 import { Codicon } from '../../../../../../base/common/codicons.js';
+import { HoverPosition } from '../../../../../../base/browser/ui/hover/hoverWidget.js';
+import { IHoverService } from '../../../../../../platform/hover/browser/hover.js';
+import { IContextKey, IContextKeyService } from '../../../../../../platform/contextkey/common/contextkey.js';
+import { IKeybindingService } from '../../../../../../platform/keybinding/common/keybinding.js';
+import { ChatContextKeys } from '../../../common/actions/chatContextKeys.js';
 import './media/chatQuestionCarousel.css';
+
+const PREVIOUS_QUESTION_ACTION_ID = 'workbench.action.chat.previousQuestion';
+const NEXT_QUESTION_ACTION_ID = 'workbench.action.chat.nextQuestion';
 
 export interface IChatQuestionCarouselOptions {
 	onSubmit: (answers: Map<string, unknown> | undefined) => void;
+	shouldAutoFocus?: boolean;
 }
 
 export class ChatQuestionCarouselPart extends Disposable implements IChatContentPart {
@@ -37,38 +47,58 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 	private _currentIndex = 0;
 	private readonly _answers = new Map<string, unknown>();
 
-	private _titlePart: ChatQueryTitlePart | undefined;
-	private _progressElement: HTMLElement | undefined;
 	private _questionContainer: HTMLElement | undefined;
+	private _closeButtonContainer: HTMLElement | undefined;
+	private _footerRow: HTMLElement | undefined;
+	private _stepIndicator: HTMLElement | undefined;
 	private _navigationButtons: HTMLElement | undefined;
 	private _prevButton: Button | undefined;
 	private _nextButton: Button | undefined;
+	private readonly _nextButtonHover: MutableDisposable<{ dispose(): void }> = this._register(new MutableDisposable());
+	private _submitButton: Button | undefined;
+	private readonly _submitButtonHover: MutableDisposable<{ dispose(): void }> = this._register(new MutableDisposable());
 	private _skipAllButton: Button | undefined;
 
 	private _isSkipped = false;
 
 	private readonly _textInputBoxes: Map<string, InputBox> = new Map();
-	private readonly _radioInputs: Map<string, HTMLInputElement[]> = new Map();
-	private readonly _checkboxInputs: Map<string, HTMLInputElement[]> = new Map();
+	private readonly _singleSelectItems: Map<string, { items: HTMLElement[]; selectedIndex: number }> = new Map();
+	private readonly _multiSelectCheckboxes: Map<string, Checkbox[]> = new Map();
 	private readonly _freeformTextareas: Map<string, HTMLTextAreaElement> = new Map();
 	private readonly _inputBoxes: DisposableStore = this._register(new DisposableStore());
+	private readonly _questionRenderStore = this._register(new MutableDisposable<DisposableStore>());
 
 	/**
 	 * Disposable store for interactive UI components (header, nav buttons, etc.)
 	 * that should be disposed when transitioning to summary view.
 	 */
 	private readonly _interactiveUIStore: MutableDisposable<DisposableStore> = this._register(new MutableDisposable());
+	private readonly _inChatQuestionCarouselContextKey: IContextKey<boolean>;
 
 	constructor(
-		private readonly carousel: IChatQuestionCarousel,
-		_context: IChatContentPartRenderContext,
+		public readonly carousel: IChatQuestionCarousel,
+		context: IChatContentPartRenderContext,
 		private readonly _options: IChatQuestionCarouselOptions,
-		@IInstantiationService private readonly instantiationService: IInstantiationService,
-		@IMarkdownRendererService private readonly markdownRendererService: IMarkdownRendererService,
+		@IMarkdownRendererService private readonly _markdownRendererService: IMarkdownRendererService,
+		@IHoverService private readonly _hoverService: IHoverService,
+		@IAccessibilityService private readonly _accessibilityService: IAccessibilityService,
+		@IContextKeyService private readonly _contextKeyService: IContextKeyService,
+		@IKeybindingService private readonly _keybindingService: IKeybindingService,
 	) {
 		super();
 
 		this.domNode = dom.$('.chat-question-carousel-container');
+		this._inChatQuestionCarouselContextKey = ChatContextKeys.inChatQuestionCarousel.bindTo(this._contextKeyService);
+		const focusTracker = this._register(dom.trackFocus(this.domNode));
+		this._register(focusTracker.onDidFocus(() => this._inChatQuestionCarouselContextKey.set(true)));
+		this._register(focusTracker.onDidBlur(() => this._inChatQuestionCarouselContextKey.set(false)));
+		this._register({ dispose: () => this._inChatQuestionCarouselContextKey.reset() });
+
+		// Set up accessibility attributes for the carousel container
+		this.domNode.tabIndex = 0;
+		this.domNode.setAttribute('role', 'region');
+		this.domNode.setAttribute('aria-roledescription', localize('chat.questionCarousel.roleDescription', 'chat question'));
+		this._updateAriaLabel();
 
 		// Restore answers from carousel data if already submitted (e.g., after re-render due to virtualization)
 		if (carousel.data) {
@@ -77,8 +107,10 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 			}
 		}
 
-		// If carousel was already used, show summary of answers
-		if (carousel.isUsed) {
+		// If carousel was already used OR the response is complete, show summary of answers
+		// When response is complete, the carousel can no longer be interacted with
+		const responseIsComplete = isResponseVM(context.element) && context.element.isComplete;
+		if (carousel.isUsed || responseIsComplete) {
 			this._isSkipped = true;
 			this.domNode.classList.add('chat-question-carousel-used');
 			this.renderSummary();
@@ -89,77 +121,89 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 		const interactiveStore = new DisposableStore();
 		this._interactiveUIStore.value = interactiveStore;
 
-		// Header with title and navigation controls
-		const header = dom.$('.chat-question-carousel-header');
-		const titleElement = dom.$('.chat-question-carousel-title');
-		this._titlePart = interactiveStore.add(this.instantiationService.createInstance(
-			ChatQueryTitlePart,
-			titleElement,
-			new MarkdownString(localize('chat.questionCarousel.title', 'Please provide the following information')),
-			undefined
-		));
-		interactiveStore.add(this._titlePart.onDidChangeHeight(() => this._onDidChangeHeight.fire()));
-
-		// Navigation controls in header (< 1 of 4 > X)
-		this._navigationButtons = dom.$('.chat-question-carousel-nav');
-		this._navigationButtons.setAttribute('role', 'navigation');
-		this._navigationButtons.setAttribute('aria-label', localize('chat.questionCarousel.navigation', 'Question navigation'));
-
-		const previousLabel = localize('previous', 'Previous');
-		const prevButton = interactiveStore.add(new Button(this._navigationButtons, { ...defaultButtonStyles, secondary: true, supportIcons: true, title: previousLabel }));
-		prevButton.element.classList.add('chat-question-nav-arrow', 'chat-question-nav-prev');
-		prevButton.label = `$(${Codicon.chevronLeft.id})`;
-		prevButton.element.setAttribute('aria-label', previousLabel);
-		this._prevButton = prevButton;
-
-		const progressElement = dom.$('.chat-question-carousel-progress');
-		this._navigationButtons.appendChild(progressElement);
-		this._progressElement = progressElement;
-
-		const nextLabel = localize('next', 'Next');
-		const nextButton = interactiveStore.add(new Button(this._navigationButtons, { ...defaultButtonStyles, secondary: true, supportIcons: true, title: nextLabel }));
-		nextButton.element.classList.add('chat-question-nav-arrow', 'chat-question-nav-next');
-		nextButton.label = `$(${Codicon.chevronRight.id})`;
-		this._nextButton = nextButton;
-
-		// Close/skip button (X) - only shown when allowSkip is true
-		if (carousel.allowSkip) {
-			const skipAllTitle = localize('chat.questionCarousel.skipAllTitle', 'Skip all questions');
-			const skipAllButton = interactiveStore.add(new Button(this._navigationButtons, { ...defaultButtonStyles, secondary: true, supportIcons: true, title: skipAllTitle }));
-			skipAllButton.label = `$(${Codicon.close.id})`;
-			skipAllButton.element.classList.add('chat-question-nav-arrow', 'chat-question-close');
-			skipAllButton.element.setAttribute('aria-label', skipAllTitle);
-			this._skipAllButton = skipAllButton;
-		}
-
-		header.append(titleElement, this._navigationButtons);
-		this.domNode.append(header);
-
 		// Question container
 		this._questionContainer = dom.$('.chat-question-carousel-content');
 		this.domNode.append(this._questionContainer);
 
+		// Close/skip button (X) - placed in header row, only shown when allowSkip is true
+		if (carousel.allowSkip) {
+			this._closeButtonContainer = dom.$('.chat-question-close-container');
+			const skipAllTitle = localize('chat.questionCarousel.skipAllTitle', 'Skip all questions');
+			const skipAllButton = interactiveStore.add(new Button(this._closeButtonContainer, { ...defaultButtonStyles, secondary: true, supportIcons: true }));
+			skipAllButton.label = `$(${Codicon.close.id})`;
+			skipAllButton.element.classList.add('chat-question-nav-arrow', 'chat-question-close');
+			skipAllButton.element.setAttribute('aria-label', skipAllTitle);
+			interactiveStore.add(this._hoverService.setupDelayedHover(skipAllButton.element, { content: skipAllTitle }));
+			this._skipAllButton = skipAllButton;
+		}
+
+		// Footer row with step indicator and navigation buttons
+		this._footerRow = dom.$('.chat-question-footer-row');
+
+		// Step indicator (e.g., "2/4") on the left
+		this._stepIndicator = dom.$('.chat-question-step-indicator');
+		this._footerRow.appendChild(this._stepIndicator);
+
+		// Navigation controls (< >) - placed in footer row
+		this._navigationButtons = dom.$('.chat-question-carousel-nav');
+		this._navigationButtons.setAttribute('role', 'navigation');
+		this._navigationButtons.setAttribute('aria-label', localize('chat.questionCarousel.navigation', 'Question navigation'));
+
+		// Group prev/next buttons together
+		const arrowsContainer = dom.$('.chat-question-nav-arrows');
+
+		const previousLabel = localize('previous', 'Previous');
+		const previousLabelWithKeybinding = this.getLabelWithKeybinding(previousLabel, PREVIOUS_QUESTION_ACTION_ID);
+		const prevButton = interactiveStore.add(new Button(arrowsContainer, { ...defaultButtonStyles, secondary: true, supportIcons: true }));
+		prevButton.element.classList.add('chat-question-nav-arrow', 'chat-question-nav-prev');
+		prevButton.label = `$(${Codicon.chevronLeft.id})`;
+		prevButton.element.setAttribute('aria-label', previousLabelWithKeybinding);
+		interactiveStore.add(this._hoverService.setupDelayedHover(prevButton.element, { content: previousLabelWithKeybinding }));
+		this._prevButton = prevButton;
+
+		const nextButton = interactiveStore.add(new Button(arrowsContainer, { ...defaultButtonStyles, secondary: true, supportIcons: true }));
+		nextButton.element.classList.add('chat-question-nav-arrow', 'chat-question-nav-next');
+		nextButton.label = `$(${Codicon.chevronRight.id})`;
+		this._nextButton = nextButton;
+
+		const submitButton = interactiveStore.add(new Button(this._navigationButtons, { ...defaultButtonStyles }));
+		submitButton.element.classList.add('chat-question-submit-button');
+		submitButton.label = localize('submit', 'Submit');
+		this._submitButton = submitButton;
+
+		this._navigationButtons.appendChild(arrowsContainer);
+		this._footerRow.appendChild(this._navigationButtons);
+		this.domNode.append(this._footerRow);
+
 
 		// Register event listeners
 		interactiveStore.add(prevButton.onDidClick(() => this.navigate(-1)));
-		interactiveStore.add(nextButton.onDidClick(() => this.handleNext()));
+		interactiveStore.add(nextButton.onDidClick(() => this.navigate(1)));
+		interactiveStore.add(submitButton.onDidClick(() => this.submit()));
 		if (this._skipAllButton) {
-			interactiveStore.add(this._skipAllButton.onDidClick(() => this.skip()));
+			interactiveStore.add(this._skipAllButton.onDidClick(() => this.ignore()));
 		}
 
-		// Register keyboard navigation - only handle Enter on text inputs
+		// Register keyboard navigation - handle Enter on text inputs and freeform textareas
 		interactiveStore.add(dom.addDisposableListener(this.domNode, dom.EventType.KEY_DOWN, (e: KeyboardEvent) => {
 			const event = new StandardKeyboardEvent(e);
-			if (event.keyCode === KeyCode.Enter && !event.shiftKey) {
-				// Only handle Enter key for text inputs, not radio/checkbox or buttons
+			if (event.keyCode === KeyCode.Escape && this.carousel.allowSkip) {
+				e.preventDefault();
+				e.stopPropagation();
+				this.ignore();
+			} else if (event.keyCode === KeyCode.Enter && !event.shiftKey) {
+				// Handle Enter key for text inputs and freeform textareas, not radio/checkbox or buttons
 				// Buttons have their own Enter/Space handling via Button class
 				const target = e.target as HTMLElement;
 				const isTextInput = target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'text';
-				if (isTextInput) {
+				const isFreeformTextarea = target.tagName === 'TEXTAREA' && target.classList.contains('chat-question-freeform-textarea');
+				if (isTextInput || isFreeformTextarea) {
 					e.preventDefault();
 					e.stopPropagation();
-					this.handleNext();
+					this.handleNextOrSubmit();
 				}
+			} else if ((event.ctrlKey || event.metaKey) && (event.keyCode === KeyCode.Backspace || event.keyCode === KeyCode.Delete)) {
+				e.stopPropagation();
 			}
 		}));
 
@@ -187,25 +231,51 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 		if (newIndex >= 0 && newIndex < this.carousel.questions.length) {
 			this.saveCurrentAnswer();
 			this._currentIndex = newIndex;
-			this.renderCurrentQuestion();
+			this.renderCurrentQuestion(true);
 		}
 	}
 
 	/**
-	 * Handles the next/submit button action.
-	 * Either advances to the next question or submits.
+	 * Handles the next/submit behavior for keyboard and option selection flows.
+	 * Either advances to the next question or submits when on the last question.
 	 */
-	private handleNext(): void {
+	private handleNextOrSubmit(): void {
 		this.saveCurrentAnswer();
 
 		if (this._currentIndex < this.carousel.questions.length - 1) {
 			// Move to next question
 			this._currentIndex++;
-			this.renderCurrentQuestion();
+			this.renderCurrentQuestion(true);
 		} else {
 			// Submit
 			this._options.onSubmit(this._answers);
 			this.hideAndShowSummary();
+		}
+	}
+
+	/**
+	 * Handles explicit submit action from the dedicated submit button.
+	 */
+	private submit(): void {
+		this.saveCurrentAnswer();
+		this._options.onSubmit(this._answers);
+		this.hideAndShowSummary();
+	}
+
+	/**
+	 * Focuses the container element and announces the question for screen reader users.
+	 */
+	private _focusContainerAndAnnounce(): void {
+		this.domNode.focus();
+		const question = this.carousel.questions[this._currentIndex];
+		if (question) {
+			const questionText = question.message ?? question.title;
+			const messageContent = this.getQuestionText(questionText);
+			const questionCount = this.carousel.questions.length;
+			const alertMessage = questionCount === 1
+				? messageContent
+				: localize('chat.questionCarousel.questionAlertMulti', 'Question {0} of {1}: {2}', this._currentIndex + 1, questionCount, messageContent);
+			this._accessibilityService.alert(alertMessage);
 		}
 	}
 
@@ -232,20 +302,25 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 	private clearInteractiveResources(): void {
 		// Dispose interactive UI disposables (header, nav buttons, etc.)
 		this._interactiveUIStore.clear();
+		this._questionRenderStore.clear();
 		this._inputBoxes.clear();
 		this._textInputBoxes.clear();
-		this._radioInputs.clear();
-		this._checkboxInputs.clear();
+		this._singleSelectItems.clear();
+		this._multiSelectCheckboxes.clear();
 		this._freeformTextareas.clear();
+		this._nextButtonHover.value = undefined;
+		this._submitButtonHover.value = undefined;
 
 		// Clear references to disposed elements
-		this._titlePart = undefined;
 		this._prevButton = undefined;
 		this._nextButton = undefined;
+		this._submitButton = undefined;
 		this._skipAllButton = undefined;
-		this._progressElement = undefined;
 		this._questionContainer = undefined;
 		this._navigationButtons = undefined;
+		this._closeButtonContainer = undefined;
+		this._footerRow = undefined;
+		this._stepIndicator = undefined;
 	}
 
 	/**
@@ -321,10 +396,8 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 					: undefined;
 				const selectedValue = defaultOption?.value;
 
-				if (question.allowFreeformInput) {
-					return selectedValue !== undefined ? { selectedValue, freeformValue: undefined } : undefined;
-				}
-				return selectedValue;
+				// Always return structured format for single-select (freeform is always shown)
+				return selectedValue !== undefined ? { selectedValue, freeformValue: undefined } : undefined;
 			}
 
 			case 'multiSelect': {
@@ -336,10 +409,8 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 					.map(opt => opt.value)
 					.filter(v => v !== undefined) ?? [];
 
-				if (question.allowFreeformInput) {
-					return selectedValues.length > 0 ? { selectedValues, freeformValue: undefined } : undefined;
-				}
-				return selectedValues;
+				// Always return structured format for multi-select (freeform is always shown)
+				return selectedValues.length > 0 ? { selectedValues, freeformValue: undefined } : undefined;
 			}
 
 			default:
@@ -347,16 +418,84 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 		}
 	}
 
-	private renderCurrentQuestion(): void {
-		if (!this._questionContainer || !this._progressElement || !this._prevButton || !this._nextButton) {
+	/**
+	 * Returns whether auto-focus should be enabled.
+	 * Disabled when screen reader mode is active or when explicitly disabled via options.
+	 */
+	private _shouldAutoFocus(): boolean {
+		if (this._options.shouldAutoFocus === false) {
+			return false;
+		}
+		// Disable auto-focus for screen reader users to allow them to read the question first
+		return !this._accessibilityService.isScreenReaderOptimized();
+	}
+
+	/**
+	 * Updates the aria-label of the carousel container based on the current question.
+	 */
+	private _updateAriaLabel(): void {
+		const question = this.carousel.questions[this._currentIndex];
+		if (!question) {
+			this.domNode.setAttribute('aria-label', localize('chat.questionCarousel.label', 'Chat question'));
 			return;
 		}
+
+		const questionText = question.message ?? question.title;
+		const messageContent = this.getQuestionText(questionText);
+		const questionCount = this.carousel.questions.length;
+
+		if (questionCount === 1) {
+			this.domNode.setAttribute('aria-label', localize('chat.questionCarousel.singleQuestionLabel', 'Chat question: {0}', messageContent));
+		} else {
+			this.domNode.setAttribute('aria-label', localize('chat.questionCarousel.multiQuestionLabel', 'Chat question {0} of {1}: {2}', this._currentIndex + 1, questionCount, messageContent));
+		}
+	}
+
+	/**
+	 * Focuses the carousel container element.
+	 */
+	public focus(): void {
+		this.domNode.focus();
+	}
+
+	/**
+	 * Returns whether the carousel container has focus.
+	 */
+	public hasFocus(): boolean {
+		return dom.isAncestorOfActiveElement(this.domNode);
+	}
+
+	public navigateToPreviousQuestion(): boolean {
+		if (this._currentIndex <= 0) {
+			return false;
+		}
+
+		this.navigate(-1);
+		return true;
+	}
+
+	public navigateToNextQuestion(): boolean {
+		if (this._currentIndex >= this.carousel.questions.length - 1) {
+			return false;
+		}
+
+		this.navigate(1);
+		return true;
+	}
+
+	private renderCurrentQuestion(focusContainerForScreenReader: boolean = false): void {
+		if (!this._questionContainer || !this._prevButton || !this._nextButton || !this._submitButton) {
+			return;
+		}
+
+		const questionRenderStore = new DisposableStore();
+		this._questionRenderStore.value = questionRenderStore;
 
 		// Clear previous input boxes and stale references
 		this._inputBoxes.clear();
 		this._textInputBoxes.clear();
-		this._radioInputs.clear();
-		this._checkboxInputs.clear();
+		this._singleSelectItems.clear();
+		this._multiSelectCheckboxes.clear();
 		this._freeformTextareas.clear();
 
 		// Clear previous content
@@ -367,20 +506,68 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 			return;
 		}
 
-		// Render question title
-		const title = dom.$('.chat-question-title');
-		title.textContent = question.title;
-		this._questionContainer.appendChild(title);
+		// Render question header row with title and close button
+		const headerRow = dom.$('.chat-question-header-row');
+		const titleRow = dom.$('.chat-question-title-row');
 
-		// Render question message if present (with markdown support)
+		// Render question title (short header) in the header bar as plain text
+		if (question.title) {
+			const title = dom.$('.chat-question-title');
+			const questionText = question.title;
+			const messageContent = this.getQuestionText(questionText);
+
+			title.setAttribute('aria-label', messageContent);
+
+			if (question.message !== undefined) {
+				const messageMd = isMarkdownString(questionText) ? MarkdownString.lift(questionText) : new MarkdownString(questionText);
+				const renderedTitle = questionRenderStore.add(this._markdownRendererService.render(messageMd));
+				title.appendChild(renderedTitle.element);
+			} else {
+				// Check for subtitle in parentheses at the end
+				const parenMatch = messageContent.match(/^(.+?)\s*(\([^)]+\))\s*$/);
+				if (parenMatch) {
+					// Main title (bold)
+					const mainTitle = dom.$('span.chat-question-title-main');
+					mainTitle.textContent = parenMatch[1];
+					title.appendChild(mainTitle);
+
+					// Subtitle in parentheses (normal weight)
+					const subtitle = dom.$('span.chat-question-title-subtitle');
+					subtitle.textContent = ' ' + parenMatch[2];
+					title.appendChild(subtitle);
+				} else {
+					title.textContent = messageContent;
+				}
+			}
+			titleRow.appendChild(title);
+		}
+
+		// Add close button to header row (if allowSkip is enabled)
+		if (this._closeButtonContainer) {
+			titleRow.appendChild(this._closeButtonContainer);
+		}
+
+		headerRow.appendChild(titleRow);
+
+		this._questionContainer.appendChild(headerRow);
+
+		// Render full question text below the header row (supports multi-line and markdown)
 		if (question.message) {
-			const messageContainer = dom.$('.chat-question-message');
-			const markdownContent = typeof question.message === 'string'
-				? new MarkdownString(question.message)
-				: question.message;
-			const renderedMessage = this._inputBoxes.add(this.markdownRendererService.render(markdownContent));
-			messageContainer.appendChild(renderedMessage.element);
-			this._questionContainer.appendChild(messageContainer);
+			const messageEl = dom.$('.chat-question-message');
+			if (isMarkdownString(question.message)) {
+				const renderedMessage = questionRenderStore.add(this._markdownRendererService.render(MarkdownString.lift(question.message)));
+				messageEl.appendChild(renderedMessage.element);
+			} else {
+				messageEl.textContent = this.getQuestionText(question.message);
+			}
+			this._questionContainer.appendChild(messageEl);
+		}
+
+		const isSingleQuestion = this.carousel.questions.length === 1;
+		// Update step indicator in footer
+		if (this._stepIndicator) {
+			this._stepIndicator.textContent = `${this._currentIndex + 1}/${this.carousel.questions.length}`;
+			this._stepIndicator.style.display = isSingleQuestion ? 'none' : '';
 		}
 
 		// Render input based on question type
@@ -388,27 +575,44 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 		this.renderInput(inputContainer, question);
 		this._questionContainer.appendChild(inputContainer);
 
-		// Update progress indicator
-		this._progressElement.textContent = localize('chat.questionCarousel.progress', '{0} of {1}', this._currentIndex + 1, this.carousel.questions.length);
-
 		// Update navigation button states (prevButton and nextButton are guaranteed non-null from guard above)
 		this._prevButton!.enabled = this._currentIndex > 0;
+		this._prevButton!.element.style.display = isSingleQuestion ? 'none' : '';
 
-		// Update next button icon/label for last question
+		// Keep navigation arrows stable and disable next on the last question
 		const isLastQuestion = this._currentIndex === this.carousel.questions.length - 1;
 		const submitLabel = localize('submit', 'Submit');
 		const nextLabel = localize('next', 'Next');
-		if (isLastQuestion) {
-			this._nextButton!.label = `$(${Codicon.check.id})`;
-			this._nextButton!.element.title = submitLabel;
-			this._nextButton!.element.setAttribute('aria-label', submitLabel);
-		} else {
-			this._nextButton!.label = `$(${Codicon.chevronRight.id})`;
-			this._nextButton!.element.title = nextLabel;
-			this._nextButton!.element.setAttribute('aria-label', nextLabel);
+		const nextLabelWithKeybinding = this.getLabelWithKeybinding(nextLabel, NEXT_QUESTION_ACTION_ID);
+		this._nextButton!.label = `$(${Codicon.chevronRight.id})`;
+		this._nextButton!.enabled = !isLastQuestion;
+		this._nextButton!.element.setAttribute('aria-label', nextLabelWithKeybinding);
+		this._nextButtonHover.value = this._hoverService.setupDelayedHover(this._nextButton!.element, { content: nextLabelWithKeybinding });
+
+		this._submitButton!.enabled = isLastQuestion;
+		this._submitButton!.element.style.display = isLastQuestion ? '' : 'none';
+		this._submitButton!.element.setAttribute('aria-label', submitLabel);
+		this._submitButtonHover.value = isLastQuestion
+			? this._hoverService.setupDelayedHover(this._submitButton!.element, { content: submitLabel })
+			: undefined;
+
+		// Update aria-label to reflect the current question
+		this._updateAriaLabel();
+
+		// In screen reader mode, focus the container and announce the question
+		// This must happen after all render calls to avoid focus being stolen
+		if (focusContainerForScreenReader && this._accessibilityService.isScreenReaderOptimized()) {
+			this._focusContainerAndAnnounce();
 		}
 
 		this._onDidChangeHeight.fire();
+	}
+
+	private getLabelWithKeybinding(label: string, actionId: string): string {
+		const keybindingLabel = this._keybindingService.lookupKeybinding(actionId, this._contextKeyService)?.getLabel();
+		return keybindingLabel
+			? localize('chat.questionCarousel.labelWithKeybinding', '{0} ({1})', label, keybindingLabel)
+			: label;
 	}
 
 	private renderInput(container: HTMLElement, question: IChatQuestion): void {
@@ -423,6 +627,20 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 				this.renderMultiSelect(container, question);
 				break;
 		}
+	}
+
+	/**
+	 * Sets up auto-resize behavior for a textarea element.
+	 * @returns A function that triggers the resize manually (useful for initial sizing).
+	 */
+	private setupTextareaAutoResize(textarea: HTMLTextAreaElement): () => void {
+		const autoResize = () => {
+			textarea.style.height = 'auto';
+			textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+			this._onDidChangeHeight.fire();
+		};
+		this._inputBoxes.add(dom.addDisposableListener(textarea, dom.EventType.INPUT, autoResize));
+		return autoResize;
 	}
 
 	private renderTextInput(container: HTMLElement, question: IChatQuestion): void {
@@ -442,14 +660,17 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 		this._textInputBoxes.set(question.id, inputBox);
 
 		// Focus on input when rendered using proper DOM scheduling
-		this._inputBoxes.add(dom.runAtThisOrScheduleAtNextAnimationFrame(dom.getWindow(inputBox.element), () => inputBox.focus()));
+		if (this._shouldAutoFocus()) {
+			this._inputBoxes.add(dom.runAtThisOrScheduleAtNextAnimationFrame(dom.getWindow(inputBox.element), () => inputBox.focus()));
+		}
 	}
 
 	private renderSingleSelect(container: HTMLElement, question: IChatQuestion): void {
 		const options = question.options || [];
-		const selectContainer = dom.$('.chat-question-options');
-		selectContainer.setAttribute('role', 'radiogroup');
+		const selectContainer = dom.$('.chat-question-list');
+		selectContainer.setAttribute('role', 'listbox');
 		selectContainer.setAttribute('aria-label', question.title);
+		selectContainer.tabIndex = 0;
 		container.appendChild(selectContainer);
 
 		// Restore previous answer if exists
@@ -464,65 +685,209 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 		// Get default option id (for singleSelect, defaultValue is a single string)
 		const defaultOptionId = typeof question.defaultValue === 'string' ? question.defaultValue : undefined;
 
-		const radioInputs: HTMLInputElement[] = [];
+		// Determine initially selected index
+		let selectedIndex = -1;
 		options.forEach((option, index) => {
-			const optionLabel = dom.$('.chat-question-option');
-			const radioInput = dom.$<HTMLInputElement>('input.chat-question-radio');
-			radioInput.type = 'radio';
-			radioInput.name = `question-${question.id}`;
-			radioInput.value = String(index);
-			radioInput.id = `option-${question.id}-${index}`;
-			radioInput.setAttribute('aria-describedby', `label-${question.id}-${index}`);
-
-			// Check if this was previously selected or is default
-			if (previousSelectedValue !== undefined) {
-				radioInput.checked = option.value === previousSelectedValue;
-			} else if (defaultOptionId !== undefined && option.id === defaultOptionId) {
-				radioInput.checked = true;
+			if (previousSelectedValue !== undefined && option.value === previousSelectedValue) {
+				selectedIndex = index;
+			} else if (selectedIndex === -1 && !previousFreeform && defaultOptionId !== undefined && option.id === defaultOptionId) {
+				selectedIndex = index;
 			}
-
-			const label = dom.$<HTMLLabelElement>('label.chat-question-option-label');
-			label.htmlFor = `option-${question.id}-${index}`;
-			label.id = `label-${question.id}-${index}`;
-			label.textContent = option.label;
-
-			optionLabel.appendChild(radioInput);
-			optionLabel.appendChild(label);
-			selectContainer.appendChild(optionLabel);
-			radioInputs.push(radioInput);
 		});
 
-		this._radioInputs.set(question.id, radioInputs);
+		const listItems: HTMLElement[] = [];
+		const indicators: HTMLElement[] = [];
+		const updateSelection = (newIndex: number) => {
+			// Update visual state
+			listItems.forEach((item, i) => {
+				const isSelected = i === newIndex;
+				item.classList.toggle('selected', isSelected);
+				item.setAttribute('aria-selected', String(isSelected));
+				const indicator = indicators[i];
+				indicator.classList.toggle('codicon', isSelected);
+				indicator.classList.toggle('codicon-check', isSelected);
+			});
+			// Update aria-activedescendant for screen reader announcements
+			if (newIndex >= 0 && newIndex < listItems.length) {
+				selectContainer.setAttribute('aria-activedescendant', listItems[newIndex].id);
+			}
+			// Update tracked state
+			const data = this._singleSelectItems.get(question.id);
+			if (data) {
+				data.selectedIndex = newIndex;
+			}
+		};
 
-		// Add freeform input if allowed
-		if (question.allowFreeformInput) {
-			const freeformContainer = dom.$('.chat-question-freeform');
-			const freeformLabelId = `freeform-label-${question.id}`;
-			const freeformLabel = dom.$('.chat-question-freeform-label');
-			freeformLabel.id = freeformLabelId;
-			freeformLabel.textContent = localize('chat.questionCarousel.orEnterOwn', 'Or enter your own:');
-			freeformContainer.appendChild(freeformLabel);
+		options.forEach((option, index) => {
+			const isSelected = index === selectedIndex;
+			const listItem = dom.$('.chat-question-list-item');
+			listItem.setAttribute('role', 'option');
+			listItem.setAttribute('aria-selected', String(isSelected));
+			listItem.setAttribute('aria-label', localize('chat.questionCarousel.optionLabel', "Option {0}: {1}", index + 1, option.label));
+			listItem.id = `option-${question.id}-${index}`;
+			listItem.tabIndex = -1;
 
-			const freeformTextarea = dom.$<HTMLTextAreaElement>('textarea.chat-question-freeform-textarea');
-			freeformTextarea.placeholder = localize('chat.questionCarousel.enterCustomAnswer', 'Enter custom answer');
-			freeformTextarea.rows = 1;
-			freeformTextarea.setAttribute('aria-labelledby', freeformLabelId);
+			const number = dom.$('.chat-question-list-number');
+			number.textContent = `${index + 1}`;
+			listItem.appendChild(number);
 
-			if (previousFreeform !== undefined) {
-				freeformTextarea.value = previousFreeform;
+			// Selection indicator (checkmark when selected)
+			const indicator = dom.$('.chat-question-list-indicator');
+			if (isSelected) {
+				indicator.classList.add('codicon', 'codicon-check');
+			}
+			indicators.push(indicator);
+
+			// Label with optional description (format: "Title - Description")
+			const label = dom.$('.chat-question-list-label');
+			const separatorIndex = option.label.indexOf(' - ');
+			if (separatorIndex !== -1) {
+				const titleSpan = dom.$('span.chat-question-list-label-title');
+				titleSpan.textContent = option.label.substring(0, separatorIndex);
+				label.appendChild(titleSpan);
+
+				const descSpan = dom.$('span.chat-question-list-label-desc');
+				descSpan.textContent = ': ' + option.label.substring(separatorIndex + 3);
+				label.appendChild(descSpan);
+			} else {
+				label.textContent = option.label;
+			}
+			listItem.appendChild(label);
+			listItem.appendChild(indicator);
+
+			if (isSelected) {
+				listItem.classList.add('selected');
 			}
 
-			freeformContainer.appendChild(freeformTextarea);
-			container.appendChild(freeformContainer);
-			this._freeformTextareas.set(question.id, freeformTextarea);
+			// if we select an option, clear text and go to next question
+			this._inputBoxes.add(dom.addDisposableListener(listItem, dom.EventType.CLICK, (e: MouseEvent) => {
+				e.preventDefault();
+				e.stopPropagation();
+				updateSelection(index);
+				const freeform = this._freeformTextareas.get(question.id);
+				if (freeform) {
+					freeform.value = '';
+				}
+				this.handleNextOrSubmit();
+			}));
+
+			this._inputBoxes.add(this._hoverService.setupDelayedHover(listItem, {
+				content: option.label,
+				position: { hoverPosition: HoverPosition.BELOW },
+				appearance: { showPointer: true }
+			}));
+
+			selectContainer.appendChild(listItem);
+			listItems.push(listItem);
+		});
+
+		this._singleSelectItems.set(question.id, { items: listItems, selectedIndex });
+
+		// Set initial aria-activedescendant if there's a selected item
+		if (selectedIndex >= 0 && selectedIndex < listItems.length) {
+			selectContainer.setAttribute('aria-activedescendant', listItems[selectedIndex].id);
+		}
+
+		// Always show freeform input for single-select questions
+		const freeformContainer = dom.$('.chat-question-freeform');
+
+		const freeformNumber = dom.$('.chat-question-freeform-number');
+		freeformNumber.textContent = `${options.length + 1}`;
+		freeformContainer.appendChild(freeformNumber);
+
+		const freeformTextarea = dom.$<HTMLTextAreaElement>('textarea.chat-question-freeform-textarea');
+		freeformTextarea.placeholder = localize('chat.questionCarousel.enterCustomAnswer', 'Enter custom answer');
+		freeformTextarea.rows = 1;
+
+		if (previousFreeform !== undefined) {
+			freeformTextarea.value = previousFreeform;
+		}
+
+		// Setup auto-resize behavior
+		const autoResize = this.setupTextareaAutoResize(freeformTextarea);
+
+		// clear when we start typing in freeform
+		this._inputBoxes.add(dom.addDisposableListener(freeformTextarea, dom.EventType.INPUT, () => {
+			if (freeformTextarea.value.length > 0) {
+				updateSelection(-1);
+			}
+		}));
+
+		freeformContainer.appendChild(freeformTextarea);
+		container.appendChild(freeformContainer);
+		this._freeformTextareas.set(question.id, freeformTextarea);
+
+		// Keyboard navigation for the list
+		this._inputBoxes.add(dom.addDisposableListener(selectContainer, dom.EventType.KEY_DOWN, (e: KeyboardEvent) => {
+			const event = new StandardKeyboardEvent(e);
+			const data = this._singleSelectItems.get(question.id);
+			if (!data || !listItems.length) {
+				return;
+			}
+			let newIndex = data.selectedIndex;
+
+			if (event.keyCode === KeyCode.DownArrow) {
+				e.preventDefault();
+				newIndex = Math.min(data.selectedIndex + 1, listItems.length - 1);
+			} else if (event.keyCode === KeyCode.UpArrow) {
+				e.preventDefault();
+				newIndex = Math.max(data.selectedIndex - 1, 0);
+			} else if (event.keyCode === KeyCode.Enter || event.keyCode === KeyCode.Space) {
+				// Enter confirms current selection and advances to next question
+				e.preventDefault();
+				e.stopPropagation();
+				this.handleNextOrSubmit();
+				return;
+			} else if (event.keyCode >= KeyCode.Digit1 && event.keyCode <= KeyCode.Digit9) {
+				// Number keys 1-9 select the corresponding option, or focus freeform for next number
+				const numberIndex = event.keyCode - KeyCode.Digit1;
+				if (numberIndex < listItems.length) {
+					e.preventDefault();
+					updateSelection(numberIndex);
+				} else if (numberIndex === listItems.length) {
+					e.preventDefault();
+					updateSelection(-1);
+					freeformTextarea.focus();
+				}
+				return;
+			}
+
+			if (newIndex !== data.selectedIndex && newIndex >= 0) {
+				updateSelection(newIndex);
+			}
+		}));
+
+		// Resize textarea if it has restored content
+		if (previousFreeform !== undefined) {
+			this._inputBoxes.add(dom.runAtThisOrScheduleAtNextAnimationFrame(dom.getWindow(freeformTextarea), () => autoResize()));
+		}
+
+		// focus on the row when first rendered or textarea if it has content
+		if (this._shouldAutoFocus()) {
+			if (previousFreeform) {
+				this._inputBoxes.add(dom.runAtThisOrScheduleAtNextAnimationFrame(dom.getWindow(freeformTextarea), () => {
+					freeformTextarea.focus();
+				}));
+			} else if (listItems.length > 0) {
+				const focusIndex = selectedIndex >= 0 ? selectedIndex : 0;
+				// if no default and no freeform text, select the first answer
+				if (selectedIndex < 0) {
+					updateSelection(0);
+				}
+				this._inputBoxes.add(dom.runAtThisOrScheduleAtNextAnimationFrame(dom.getWindow(selectContainer), () => {
+					listItems[focusIndex]?.focus();
+				}));
+			}
 		}
 	}
 
 	private renderMultiSelect(container: HTMLElement, question: IChatQuestion): void {
 		const options = question.options || [];
-		const selectContainer = dom.$('.chat-question-options');
-		selectContainer.setAttribute('role', 'group');
+		const selectContainer = dom.$('.chat-question-list');
+		selectContainer.setAttribute('role', 'listbox');
+		selectContainer.setAttribute('aria-multiselectable', 'true');
 		selectContainer.setAttribute('aria-label', question.title);
+		selectContainer.tabIndex = 0;
 		container.appendChild(selectContainer);
 
 		// Restore previous answer if exists
@@ -539,56 +904,172 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 			? question.defaultValue
 			: (typeof question.defaultValue === 'string' ? [question.defaultValue] : []);
 
-		const checkboxInputs: HTMLInputElement[] = [];
-		options.forEach((option, index) => {
-			const optionLabel = dom.$('.chat-question-option');
-			const checkboxInput = dom.$<HTMLInputElement>('input.chat-question-checkbox');
-			checkboxInput.type = 'checkbox';
-			checkboxInput.value = String(index);
-			checkboxInput.id = `option-${question.id}-${index}`;
-			checkboxInput.setAttribute('aria-describedby', `label-${question.id}-${index}`);
+		const checkboxes: Checkbox[] = [];
+		const listItems: HTMLElement[] = [];
+		let focusedIndex = 0;
+		let firstCheckedIndex = -1;
 
-			// Check if this was previously selected or is default
+		options.forEach((option, index) => {
+			// Determine initial checked state
+			let isChecked = false;
 			if (previousSelectedValues && previousSelectedValues.length > 0) {
-				checkboxInput.checked = previousSelectedValues.includes(option.value);
-			} else if (defaultOptionIds.includes(option.id)) {
-				checkboxInput.checked = true;
+				isChecked = previousSelectedValues.includes(option.value);
+			} else if (!previousFreeform && defaultOptionIds.includes(option.id)) {
+				isChecked = true;
 			}
 
-			const label = dom.$<HTMLLabelElement>('label.chat-question-option-label');
-			label.htmlFor = `option-${question.id}-${index}`;
-			label.id = `label-${question.id}-${index}`;
-			label.textContent = option.label;
+			const listItem = dom.$('.chat-question-list-item.multi-select');
+			listItem.setAttribute('role', 'option');
+			listItem.setAttribute('aria-selected', String(isChecked));
+			listItem.setAttribute('aria-label', localize('chat.questionCarousel.optionLabel', "Option {0}: {1}", index + 1, option.label));
+			listItem.id = `option-${question.id}-${index}`;
+			listItem.tabIndex = -1;
 
-			optionLabel.appendChild(checkboxInput);
-			optionLabel.appendChild(label);
-			selectContainer.appendChild(optionLabel);
-			checkboxInputs.push(checkboxInput);
+			const number = dom.$('.chat-question-list-number');
+			number.textContent = `${index + 1}`;
+			listItem.appendChild(number);
+
+			// Create checkbox using the VS Code Checkbox component
+			const checkbox = this._inputBoxes.add(new Checkbox(option.label, isChecked, defaultCheckboxStyles));
+			checkbox.domNode.classList.add('chat-question-list-checkbox');
+			// Remove checkbox from tab order since list items are navigable with arrow keys
+			checkbox.domNode.tabIndex = -1;
+			listItem.appendChild(checkbox.domNode);
+
+			// Label with optional description (format: "Title - Description")
+			const label = dom.$('.chat-question-list-label');
+			const separatorIndex = option.label.indexOf(' - ');
+			if (separatorIndex !== -1) {
+				const titleSpan = dom.$('span.chat-question-list-label-title');
+				titleSpan.textContent = option.label.substring(0, separatorIndex);
+				label.appendChild(titleSpan);
+
+				const descSpan = dom.$('span.chat-question-list-label-desc');
+				descSpan.textContent = ': ' + option.label.substring(separatorIndex + 3);
+				label.appendChild(descSpan);
+			} else {
+				label.textContent = option.label;
+			}
+			listItem.appendChild(label);
+
+			if (isChecked) {
+				listItem.classList.add('checked');
+				if (firstCheckedIndex === -1) {
+					firstCheckedIndex = index;
+				}
+			}
+
+			// Sync checkbox state with list item visual state
+			this._inputBoxes.add(checkbox.onChange(() => {
+				listItem.classList.toggle('checked', checkbox.checked);
+				listItem.setAttribute('aria-selected', String(checkbox.checked));
+			}));
+
+			// Click handler for the entire row (toggle checkbox)
+			this._inputBoxes.add(dom.addDisposableListener(listItem, dom.EventType.CLICK, (e: MouseEvent) => {
+				// Update focusedIndex when clicking a row
+				focusedIndex = index;
+				// Don't toggle if the click was on the checkbox itself (it handles itself)
+				if (e.target !== checkbox.domNode && !checkbox.domNode.contains(e.target as Node)) {
+					// Use click() to trigger onChange and sync visual state
+					checkbox.domNode.click();
+				}
+			}));
+
+			this._inputBoxes.add(this._hoverService.setupDelayedHover(listItem, {
+				content: option.label,
+				position: { hoverPosition: HoverPosition.BELOW },
+				appearance: { showPointer: true }
+			}));
+
+			selectContainer.appendChild(listItem);
+			checkboxes.push(checkbox);
+			listItems.push(listItem);
 		});
 
-		this._checkboxInputs.set(question.id, checkboxInputs);
+		this._multiSelectCheckboxes.set(question.id, checkboxes);
 
-		// Add freeform input if allowed
-		if (question.allowFreeformInput) {
-			const freeformContainer = dom.$('.chat-question-freeform');
-			const freeformLabelId = `freeform-label-${question.id}`;
-			const freeformLabel = dom.$('.chat-question-freeform-label');
-			freeformLabel.id = freeformLabelId;
-			freeformLabel.textContent = localize('chat.questionCarousel.orEnterOwn', 'Or enter your own:');
-			freeformContainer.appendChild(freeformLabel);
+		// Always show freeform input for multi-select questions
+		const freeformContainer = dom.$('.chat-question-freeform');
 
-			const freeformTextarea = dom.$<HTMLTextAreaElement>('textarea.chat-question-freeform-textarea');
-			freeformTextarea.placeholder = localize('chat.questionCarousel.enterCustomAnswer', 'Enter custom answer');
-			freeformTextarea.rows = 1;
-			freeformTextarea.setAttribute('aria-labelledby', freeformLabelId);
+		// Number indicator for freeform (comes after all options)
+		const freeformNumber = dom.$('.chat-question-freeform-number');
+		freeformNumber.textContent = `${options.length + 1}`;
+		freeformContainer.appendChild(freeformNumber);
 
-			if (previousFreeform !== undefined) {
-				freeformTextarea.value = previousFreeform;
+		const freeformTextarea = dom.$<HTMLTextAreaElement>('textarea.chat-question-freeform-textarea');
+		freeformTextarea.placeholder = localize('chat.questionCarousel.enterCustomAnswer', 'Enter custom answer');
+		freeformTextarea.rows = 1;
+
+		if (previousFreeform !== undefined) {
+			freeformTextarea.value = previousFreeform;
+		}
+
+		// Setup auto-resize behavior
+		const autoResize = this.setupTextareaAutoResize(freeformTextarea);
+
+		freeformContainer.appendChild(freeformTextarea);
+		container.appendChild(freeformContainer);
+		this._freeformTextareas.set(question.id, freeformTextarea);
+
+		// Keyboard navigation for the list
+		this._inputBoxes.add(dom.addDisposableListener(selectContainer, dom.EventType.KEY_DOWN, (e: KeyboardEvent) => {
+			const event = new StandardKeyboardEvent(e);
+
+			// Guard against empty list
+			if (!listItems.length) {
+				return;
 			}
 
-			freeformContainer.appendChild(freeformTextarea);
-			container.appendChild(freeformContainer);
-			this._freeformTextareas.set(question.id, freeformTextarea);
+			if (event.keyCode === KeyCode.DownArrow) {
+				e.preventDefault();
+				focusedIndex = Math.min(focusedIndex + 1, listItems.length - 1);
+				listItems[focusedIndex].focus();
+			} else if (event.keyCode === KeyCode.UpArrow) {
+				e.preventDefault();
+				focusedIndex = Math.max(focusedIndex - 1, 0);
+				listItems[focusedIndex].focus();
+			} else if (event.keyCode === KeyCode.Enter) {
+				e.preventDefault();
+				e.stopPropagation();
+				this.handleNextOrSubmit();
+			} else if (event.keyCode === KeyCode.Space) {
+				e.preventDefault();
+				// Toggle the currently focused checkbox using click() to trigger onChange
+				if (focusedIndex >= 0 && focusedIndex < checkboxes.length) {
+					checkboxes[focusedIndex].domNode.click();
+				}
+			} else if (event.keyCode >= KeyCode.Digit1 && event.keyCode <= KeyCode.Digit9) {
+				// Number keys 1-9 toggle the corresponding checkbox, or focus freeform for next number
+				const numberIndex = event.keyCode - KeyCode.Digit1;
+				if (numberIndex < checkboxes.length) {
+					e.preventDefault();
+					checkboxes[numberIndex].domNode.click();
+				} else if (numberIndex === checkboxes.length) {
+					e.preventDefault();
+					freeformTextarea.focus();
+				}
+			}
+		}));
+
+		// Resize textarea if it has restored content
+		if (previousFreeform !== undefined) {
+			this._inputBoxes.add(dom.runAtThisOrScheduleAtNextAnimationFrame(dom.getWindow(freeformTextarea), () => autoResize()));
+		}
+
+		// Focus on the appropriate row when rendered or textarea if it has content
+		if (this._shouldAutoFocus()) {
+			if (previousFreeform) {
+				this._inputBoxes.add(dom.runAtThisOrScheduleAtNextAnimationFrame(dom.getWindow(freeformTextarea), () => {
+					freeformTextarea.focus();
+				}));
+			} else if (listItems.length > 0) {
+				const initialFocusIndex = firstCheckedIndex >= 0 ? firstCheckedIndex : 0;
+				focusedIndex = initialFocusIndex;
+				this._inputBoxes.add(dom.runAtThisOrScheduleAtNextAnimationFrame(dom.getWindow(selectContainer), () => {
+					listItems[initialFocusIndex]?.focus();
+				}));
+			}
 		}
 	}
 
@@ -605,16 +1086,10 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 			}
 
 			case 'singleSelect': {
-				const radioInputs = this._radioInputs.get(question.id);
+				const data = this._singleSelectItems.get(question.id);
 				let selectedValue: unknown = undefined;
-				if (radioInputs) {
-					for (const radio of radioInputs) {
-						if (radio.checked) {
-							const index = parseInt(radio.value);
-							selectedValue = question.options?.[index]?.value;
-							break;
-						}
-					}
+				if (data && data.selectedIndex >= 0) {
+					selectedValue = question.options?.[data.selectedIndex]?.value;
 				}
 				// Find default option if nothing selected (defaultValue is the option id)
 				if (selectedValue === undefined && typeof question.defaultValue === 'string') {
@@ -622,56 +1097,43 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 					selectedValue = defaultOption?.value;
 				}
 
-				// Include freeform value if allowed
-				if (question.allowFreeformInput) {
-					const freeformTextarea = this._freeformTextareas.get(question.id);
-					const freeformValue = freeformTextarea?.value !== '' ? freeformTextarea?.value : undefined;
-					if (freeformValue || selectedValue !== undefined) {
-						return { selectedValue, freeformValue };
-					}
-					return undefined;
+				// For single-select: if freeform is provided, use ONLY freeform (ignore selection)
+				const freeformTextarea = this._freeformTextareas.get(question.id);
+				const freeformValue = freeformTextarea?.value !== '' ? freeformTextarea?.value : undefined;
+				if (freeformValue) {
+					// Freeform takes priority - ignore selectedValue
+					return { selectedValue: undefined, freeformValue };
 				}
-
-				return selectedValue;
+				if (selectedValue !== undefined) {
+					return { selectedValue, freeformValue: undefined };
+				}
+				return undefined;
 			}
 
 			case 'multiSelect': {
-				const checkboxInputs = this._checkboxInputs.get(question.id);
+				const checkboxes = this._multiSelectCheckboxes.get(question.id);
 				const selectedValues: unknown[] = [];
-				if (checkboxInputs) {
-					for (const checkbox of checkboxInputs) {
+				if (checkboxes) {
+					checkboxes.forEach((checkbox, index) => {
 						if (checkbox.checked) {
-							const index = parseInt(checkbox.value);
 							const value = question.options?.[index]?.value;
 							if (value !== undefined) {
 								selectedValues.push(value);
 							}
 						}
-					}
-				}
-				// Include defaults if nothing selected (defaultValue is option id or array of ids)
-				let finalSelectedValues = selectedValues;
-				if (selectedValues.length === 0 && question.defaultValue !== undefined) {
-					const defaultIds = Array.isArray(question.defaultValue)
-						? question.defaultValue
-						: [question.defaultValue];
-					const defaultValues = question.options
-						?.filter(opt => defaultIds.includes(opt.id))
-						.map(opt => opt.value);
-					finalSelectedValues = defaultValues?.filter(v => v !== undefined) || [];
+					});
 				}
 
-				// Include freeform value if allowed
-				if (question.allowFreeformInput) {
-					const freeformTextarea = this._freeformTextareas.get(question.id);
-					const freeformValue = freeformTextarea?.value !== '' ? freeformTextarea?.value : undefined;
-					if (freeformValue || finalSelectedValues.length > 0) {
-						return { selectedValues: finalSelectedValues, freeformValue };
-					}
-					return undefined;
-				}
+				// Always include freeform value for multi-select questions
+				const freeformTextarea = this._freeformTextareas.get(question.id);
+				const freeformValue = freeformTextarea?.value !== '' ? freeformTextarea?.value : undefined;
 
-				return finalSelectedValues;
+				// Return whatever was selected - defaults are applied at render time when
+				// checkboxes are initially checked, so empty selection means user unchecked all
+				if (freeformValue || selectedValues.length > 0) {
+					return { selectedValues, freeformValue };
+				}
+				return undefined;
 			}
 
 			default:
@@ -696,7 +1158,9 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 	private renderSummary(): void {
 		// If no answers, show skipped message
 		if (this._answers.size === 0) {
-			this.renderSkippedMessage();
+			if (this.carousel.isUsed) {
+				this.renderSkippedMessage();
+			}
 			return;
 		}
 
@@ -710,13 +1174,35 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 
 			const summaryItem = dom.$('.chat-question-summary-item');
 
-			const questionLabel = dom.$('.chat-question-summary-label');
-			questionLabel.textContent = question.title;
+			// Category label (use same text as shown in question UI: message ?? title)
+			const questionLabel = dom.$('span.chat-question-summary-label');
+			const questionText = question.message ?? question.title;
+			let labelText = typeof questionText === 'string' ? questionText : questionText.value;
+			// Remove trailing colons and whitespace to avoid double colons (CSS adds ': ')
+			labelText = labelText.replace(/[:\s]+$/, '');
+			questionLabel.textContent = labelText;
 			summaryItem.appendChild(questionLabel);
 
-			const answerValue = dom.$('.chat-question-summary-value');
-			answerValue.textContent = this.formatAnswerForSummary(question, answer);
-			summaryItem.appendChild(answerValue);
+			// Format answer with title and description parts
+			const formattedAnswer = this.formatAnswerForSummary(question, answer);
+			const separatorIndex = formattedAnswer.indexOf(' - ');
+
+			if (separatorIndex !== -1) {
+				// Answer title (bold)
+				const answerTitle = dom.$('span.chat-question-summary-answer-title');
+				answerTitle.textContent = formattedAnswer.substring(0, separatorIndex);
+				summaryItem.appendChild(answerTitle);
+
+				// Answer description (normal)
+				const answerDesc = dom.$('span.chat-question-summary-answer-desc');
+				answerDesc.textContent = ' - ' + formattedAnswer.substring(separatorIndex + 3);
+				summaryItem.appendChild(answerDesc);
+			} else {
+				// Just the answer value (bold)
+				const answerValue = dom.$('span.chat-question-summary-answer-title');
+				answerValue.textContent = formattedAnswer;
+				summaryItem.appendChild(answerValue);
+			}
 
 			summaryContainer.appendChild(summaryItem);
 		}
@@ -736,10 +1222,9 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 				if (typeof answer === 'object' && answer !== null && hasKey(answer, { selectedValue: true })) {
 					const { selectedValue, freeformValue } = answer as { selectedValue?: unknown; freeformValue?: string };
 					const selectedLabel = question.options?.find(opt => opt.value === selectedValue)?.label;
+					// For singleSelect, freeform takes priority over selection
 					if (freeformValue) {
-						return selectedLabel
-							? localize('chat.questionCarousel.answerWithFreeform', '{0} ({1})', selectedLabel, freeformValue)
-							: freeformValue;
+						return freeformValue;
 					}
 					return selectedLabel ?? String(selectedValue ?? '');
 				}
@@ -751,14 +1236,12 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 				if (typeof answer === 'object' && answer !== null && hasKey(answer, { selectedValues: true })) {
 					const { selectedValues, freeformValue } = answer as { selectedValues?: unknown[]; freeformValue?: string };
 					const labels = (selectedValues ?? [])
-						.map(v => question.options?.find(opt => opt.value === v)?.label ?? String(v))
-						.join(localize('chat.questionCarousel.listSeparator', ', '));
+						.map(v => question.options?.find(opt => opt.value === v)?.label ?? String(v));
+					// For multiSelect, combine selections and freeform with comma separator
 					if (freeformValue) {
-						return labels
-							? localize('chat.questionCarousel.answerWithFreeform', '{0} ({1})', labels, freeformValue)
-							: freeformValue;
+						labels.push(freeformValue);
 					}
-					return labels;
+					return labels.join(localize('chat.questionCarousel.listSeparator', ', '));
 				}
 				if (Array.isArray(answer)) {
 					return answer
@@ -773,7 +1256,16 @@ export class ChatQuestionCarouselPart extends Disposable implements IChatContent
 		}
 	}
 
-	hasSameContent(other: IChatRendererContent, _followingContent: IChatRendererContent[], _element: ChatTreeItem): boolean {
+	private getQuestionText(questionText: string | IMarkdownString): string {
+		const md = typeof questionText === 'string' ? new MarkdownString(questionText) : questionText;
+		return renderAsPlaintext(md);
+	}
+
+	hasSameContent(other: IChatRendererContent, _followingContent: IChatRendererContent[], element: ChatTreeItem): boolean {
+		// does not have same content when it is not skipped and is active and we stop the response
+		if (!this._isSkipped && !this.carousel.isUsed && isResponseVM(element) && element.isComplete) {
+			return false;
+		}
 		return other.kind === 'questionCarousel' && other === this.carousel;
 	}
 

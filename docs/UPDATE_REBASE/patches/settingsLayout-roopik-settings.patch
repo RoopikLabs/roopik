@@ -1,0 +1,49 @@
+commit 4763aaff0b8598fab109f1753082c022b792d09f
+Author: Dinesh Yadav <13635627+HumbleBee14@users.noreply.github.com>
+Date:   Thu Jan 29 19:11:20 2026 -0500
+
+    Add MCP server controls and settings
+
+diff --git a/src/vs/workbench/contrib/preferences/browser/settingsLayout.ts b/src/vs/workbench/contrib/preferences/browser/settingsLayout.ts
+index 3c72f219..aa31ab2b 100644
+--- a/src/vs/workbench/contrib/preferences/browser/settingsLayout.ts
++++ b/src/vs/workbench/contrib/preferences/browser/settingsLayout.ts
+@@ -324,6 +324,38 @@ export const tocData: ITOCEntry<string> = {
+ 					settings: ['security.workspace.*']
+ 				}
+ 			]
++		},
++		{
++			id: 'roopik',
++			label: localize('roopik', "Roopik"),
++			settings: ['roopik.*'],
++			children: [
++				{
++					id: 'roopik/general',
++					label: localize('roopikGeneral', "General"),
++					settings: ['roopik.general.*']
++				},
++				{
++					id: 'roopik/mcp',
++					label: localize('roopikMcp', "MCP Integrations"),
++					settings: ['roopik.mcp.*']
++				},
++				{
++					id: 'roopik/project',
++					label: localize('roopikProject', "Project"),
++					settings: ['roopik.project.*']
++				},
++				{
++					id: 'roopik/browser',
++					label: localize('roopikBrowser', "Browser"),
++					settings: ['roopik.browser.*']
++				},
++				{
++					id: 'roopik/canvas',
++					label: localize('roopikCanvas', "Canvas"),
++					settings: ['roopik.canvas.*']
++				}
++			]
+ 		}
+ 	]
+ };
