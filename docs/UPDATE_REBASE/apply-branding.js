@@ -2270,12 +2270,16 @@ function copyAndExtractDevtoolsExtensions() {
 		const subDirPath = path.join(TARGET_DIR, subDir);
 		const files = fs.readdirSync(subDirPath);
 		const zipFiles = files.filter(f => f.endsWith('.zip'));
+		const nonZipFiles = files.filter(f => !f.endsWith('.zip') && f !== '.gitkeep');
+
+		// Skip if already extracted (has non-zip files and no zips remaining from a previous run)
+		if (zipFiles.length === 0 && nonZipFiles.length > 1) {
+			success(`${subDir} - Already extracted`);
+			continue;
+		}
 
 		for (const zipFile of zipFiles) {
 			const zipPath = path.join(subDirPath, zipFile);
-
-			// Count files before extraction (excluding zip itself)
-			const filesBefore = fs.readdirSync(subDirPath).filter(f => !f.endsWith('.zip'));
 
 			// Extract zip using unzip (available in Git Bash on Windows)
 			// Note: CRX files (Chrome extensions) have extra header bytes, unzip warns but extracts anyway
@@ -2287,20 +2291,20 @@ function copyAndExtractDevtoolsExtensions() {
 				});
 			} catch (err) {
 				// unzip may return non-zero for warnings but still extract successfully
-				// We'll verify by checking if files were created
+				// We'll verify by checking if files exist after
 			}
 
-			// Verify extraction worked
-			const filesAfter = fs.readdirSync(subDirPath).filter(f => !f.endsWith('.zip'));
-			if (filesAfter.length > filesBefore.length) {
+			// Verify extraction worked - check if there are extracted files (beyond .gitkeep and the zip)
+			const filesAfter = fs.readdirSync(subDirPath).filter(f => !f.endsWith('.zip') && f !== '.gitkeep');
+			if (filesAfter.length > 1) {
 				success(`Extracted: ${subDir}/${zipFile}`);
 				extractedCount++;
 
-				// Delete the zip file
+				// Delete the zip file after successful extraction
 				fs.unlinkSync(zipPath);
 				info(`Deleted: ${subDir}/${zipFile}`);
 			} else {
-				error(`Extraction failed for ${subDir}/${zipFile} - no new files created`);
+				error(`Extraction failed for ${subDir}/${zipFile} - no files found after extraction`);
 				errorCount++;
 			}
 		}
