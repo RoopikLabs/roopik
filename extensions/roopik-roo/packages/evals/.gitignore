@@ -1,0 +1,12 @@
+# .env
+!.env.development
+!.env.test
+
+# docker
+.docker/*
+!.docker/scripts
+!.docker/entrypoints
+
+# Prevent compiled JS in source folder
+src/**/*.js
+src/**/*.js.map

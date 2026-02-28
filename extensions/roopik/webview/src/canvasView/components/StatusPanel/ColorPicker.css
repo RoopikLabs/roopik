@@ -1,0 +1,147 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ============================================================
+   Color Picker Component
+   ============================================================ */
+
+.color-picker {
+	position: relative;
+}
+
+/* Trigger Button */
+.color-picker-trigger {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
+	position: relative;
+}
+
+.color-picker-preview {
+	width: 16px;
+	height: 16px;
+	border-radius: 4px;
+	border: 1px solid rgba(255, 255, 255, 0.3);
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Popup */
+.color-picker-popup {
+	position: absolute;
+	bottom: calc(100% + 8px);
+	right: 0;
+	background: linear-gradient(135deg, rgba(40, 40, 45, 0.98) 0%, rgba(30, 30, 35, 0.98) 100%);
+	backdrop-filter: blur(20px) saturate(180%);
+	-webkit-backdrop-filter: blur(20px) saturate(180%);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 8px;
+	padding: 8px;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+	animation: color-picker-slide-up 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+	z-index: 10000;
+}
+
+.color-picker-grid {
+	display: grid;
+	grid-template-columns: repeat(5, 1fr);
+	gap: 6px;
+}
+
+/* Swatch Button */
+.color-swatch {
+	padding: 0;
+	background: transparent;
+	border: 2px solid transparent;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.color-swatch:hover {
+	border-color: rgba(255, 255, 255, 0.3);
+}
+
+.color-swatch.selected {
+	border-color: #4fc3f7;
+}
+
+.color-swatch-inner {
+	width: 24px;
+	height: 24px;
+	border-radius: 4px;
+	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Divider */
+.color-picker-divider {
+	height: 1px;
+	background: rgba(255, 255, 255, 0.1);
+	margin: 8px 0;
+}
+
+/* Custom Color Section */
+.color-picker-custom {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.custom-color-btn {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 6px;
+	color: rgba(255, 255, 255, 0.9);
+	font-size: 12px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.custom-color-btn:hover {
+	background: rgba(255, 255, 255, 0.15);
+	border-color: rgba(255, 255, 255, 0.25);
+}
+
+.custom-color-btn svg {
+	opacity: 0.8;
+}
+
+/* Native color input - hidden but functional */
+.native-color-input {
+	width: 0;
+	height: 0;
+	padding: 0;
+	border: none;
+	opacity: 0;
+	position: absolute;
+	pointer-events: none;
+}
+
+/* Current color hex display */
+.current-color-hex {
+	font-family: 'SF Mono', Monaco, Consolas, monospace;
+	font-size: 11px;
+	color: rgba(255, 255, 255, 0.6);
+	padding: 4px 8px;
+	background: rgba(0, 0, 0, 0.3);
+	border-radius: 4px;
+	margin-left: auto;
+}
+
+/* Animation */
+@keyframes color-picker-slide-up {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}

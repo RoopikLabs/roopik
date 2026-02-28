@@ -1,0 +1,29 @@
+From 76b0adae6617f46a3f938482e498a79956f476fe Mon Sep 17 00:00:00 2001
+From: Dinesh Yadav <13635627+HumbleBee14@users.noreply.github.com>
+Date: Sat, 24 Jan 2026 12:10:34 -0500
+Subject: [PATCH] fix(macos): bypass keychain prompts & fix strict build errors
+
+---
+ .../encryption/electron-main/encryptionMainService.ts       | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/vs/platform/encryption/electron-main/encryptionMainService.ts b/src/vs/platform/encryption/electron-main/encryptionMainService.ts
+index 1b4b1e05..51fdf7df 100644
+--- a/src/vs/platform/encryption/electron-main/encryptionMainService.ts
++++ b/src/vs/platform/encryption/electron-main/encryptionMainService.ts
+@@ -23,6 +23,12 @@ export class EncryptionMainService implements IEncryptionMainService {
+ 	constructor(
+ 		@ILogService private readonly logService: ILogService
+ 	) {
++		// Roopik: Force basic encryption on macOS to avoid Keychain prompts on unsigned builds
++		if (isMacintosh) {
++			this.logService.trace('[EncryptionMainService] Roopik: Force-enabling basic text encryption on macOS to bypass Keychain prompts.');
++			safeStorage.setUsePlainTextEncryption?.(true);
++		}
++
+ 		// if this commandLine switch is set, the user has opted in to using basic text encryption
+ 		if (app.commandLine.getSwitchValue('password-store') === PasswordStoreCLIOption.basic) {
+ 			this.logService.trace('[EncryptionMainService] setting usePlainTextEncryption to true...');
+-- 
+2.47.1.windows.2
+

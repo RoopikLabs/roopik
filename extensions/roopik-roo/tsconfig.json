@@ -1,0 +1,40 @@
+{
+	"compilerOptions": {
+		"types": ["vitest/globals"],
+		"esModuleInterop": true,
+		"experimentalDecorators": true,
+		"forceConsistentCasingInFileNames": true,
+		"isolatedModules": true,
+		"lib": ["es2022", "esnext.disposable", "DOM"],
+		"module": "esnext",
+		"moduleResolution": "Bundler",
+		"noFallthroughCasesInSwitch": true,
+		"noImplicitOverride": true,
+		"noImplicitReturns": true,
+		"noUnusedLocals": false,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"sourceMap": true,
+		"strict": true,
+		"target": "ES2022",
+		"useDefineForClassFields": true,
+		"useUnknownInCatchVariables": false
+	},
+	// "include": ["."],
+	"include": ["src"],
+	"exclude": [
+		"node_modules",
+		"**/__tests__/**",
+		"webview-ui",
+		"**/*.spec.ts",
+		"**/*.test.ts",
+		"packages/evals/**"
+	],
+	"watchOptions": {
+		"watchFile": "useFsEvents",
+		"watchDirectory": "useFsEvents",
+		"fallbackPolling": "dynamicPriority",
+		"synchronousWatchDirectory": true,
+		"excludeDirectories": ["**/node_modules", "**/dist", "**/.turbo"]
+	}
+}

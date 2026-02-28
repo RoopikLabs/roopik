@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop">
+	<id>@@NAME@@.desktop</id>
+	<metadata_license>@@LICENSE@@</metadata_license>
+	<project_license>@@LICENSE@@</project_license>
+	<name>@@NAME_LONG@@</name>
+	<url type="homepage">https://roopik.com</url>
+	<summary>Roopik. AI-Native Canvas-First IDE.</summary>
+	<description>
+		<p>Roopik is an AI-native, canvas-first IDE built for modern development. See https://roopik.com for installation instructions and FAQ.</p>
+	</description>
+	<screenshots>
+		<screenshot type="default">
+			<image>https://roopik.com/screenshot.png</image>
+			<caption>Roopik IDE interface</caption>
+		</screenshot>
+	</screenshots>
+</component>
