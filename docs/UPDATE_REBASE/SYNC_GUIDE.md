@@ -24,6 +24,14 @@ The orphan approach gives you VS Code's FILES but creates a fresh branch with NO
 
 ---
 
+## Prerequisites
+
+- **Node.js**: Must match version in `.nvmrc` (currently v22.22.0). Use `nvm install && nvm use`.
+- **Python + Pillow**: Required for installer image generation. `pip install Pillow`.
+- **Windows**: Run `git config core.longpaths true` to avoid filename-too-long errors.
+
+---
+
 ## One-time Setup (run once)
 
 ### Step 1 (any branch)
@@ -137,9 +145,14 @@ node docs/UPDATE_REBASE/apply-branding.js
 Log: Applies branding automation including:
 - product.json and package.json updates
 - Icon replacements (Windows, macOS, Linux, PWA)
-- Build configuration (gulpfile, eslint, hygiene)
+- Installer images (BMP files for Inno Setup, requires Python + Pillow)
+- Build configuration (gulpfile, eslint, hygiene, dirs.ts)
 - Core integration (workbench, CSP, titlebar)
 - Dependencies installation
+- Patches (app.ts, AppX disable, macOS keychain, settings layout)
+- Devtools extensions extraction
+- MCP binaries in gulpfile.vscode.ts
+- Adds extensions/roopik and extensions/roopik-roo to build/npm/dirs.ts
 - Build scripts copy (e.g., generateDOMWhitelist.mjs → build/scripts/)
 
 ### Step 9 (on vscode-snapshot)
@@ -149,8 +162,29 @@ git commit --no-verify -m "chore: apply Roopik branding"
 ```
 Log: Commits the branding changes (isolated commit).
 
-### Step 10 (push to origin)
+### Step 10 — Install dependencies (on vscode-snapshot)
+```bash
+npm install
+cd extensions/roopik-roo && npm install && cd ../..
+```
+Log: Installs all VS Code + extension dependencies. The root `npm install` covers dirs.ts entries. roopik-roo needs a separate install for its postinstall (builds packages/types and packages/build).
+
+### Step 11 — Build verification (on vscode-snapshot)
+```bash
+npm run compile
+```
+Log: Compiles VS Code + all extensions. Fix any errors before pushing.
+
+### Step 12 (push to origin for reference)
 ```bash
 git push -u origin vscode-snapshot --force
 ```
-Log: Push to origin. Since we used orphan from the start, there's no VS Code history to worry about.
+Log: Push snapshot to origin (reference/diff repo).
+
+### Step 13 (push to roopik repo for CI)
+```bash
+git remote set-url --push roopik https://github.com/RoopikLabs/roopik.git
+git push roopik vscode-snapshot:rebase/vscode-snapshot
+git remote set-url --push roopik DISABLE
+```
+Log: Pushes rebase branch to the main Roopik repo for GitHub Actions CI verification. Re-disables push after.
