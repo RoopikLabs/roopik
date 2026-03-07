@@ -296,14 +296,11 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// =========================================================================
 		// BROWSER STEALTH: Inject fingerprint patches via CDP
-		// Uses Page.addScriptToEvaluateOnNewDocument to run BEFORE any page JS.
-		// contextIsolation: true means this runs in the PAGE's V8 context,
-		// NOT in Electron's renderer — safe, won't break VSCode internals.
-		// NON-BLOCKING: Don't let stealth injection block browser creation
+		// Phase 1: dom-ready handler injects stealth on first page load
+		// Phase 2: CDP registers stealth for all subsequent navigations
+		// Both phases are non-blocking — won't delay browser creation
 		// =========================================================================
-		injectStealthPatches(browserView, this.debuggerAttached).catch(err => {
-			this.logger.error('Stealth patches failed (non-fatal)', { error: err });
-		});
+		injectStealthPatches(browserView, this.debuggerAttached);
 
 		// =========================================================================
 		// CRITICAL: THE SAFETY LEASH

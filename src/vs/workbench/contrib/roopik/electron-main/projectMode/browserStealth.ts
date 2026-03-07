@@ -197,12 +197,11 @@ const STEALTH_SCRIPT = `
 		});
 	}
 
-	// 9. Patch Notification.permission to return 'default' (not 'denied')
-	//    Some fingerprinters check if notifications are blocked
+	// 9. Patch Notification.permission to return 'granted' (match Cursor)
 	if (typeof Notification !== 'undefined') {
 		const origNotification = Notification;
 		Object.defineProperty(origNotification, 'permission', {
-			get: () => 'default',
+			get: () => 'granted',
 			configurable: true
 		});
 	}
@@ -211,9 +210,9 @@ const STEALTH_SCRIPT = `
 	if (navigator.permissions) {
 		const originalQuery = navigator.permissions.query.bind(navigator.permissions);
 		navigator.permissions.query = function(parameters) {
-			// For 'notifications' permission, return 'prompt' (not 'denied')
+			// For 'notifications' permission, return 'granted' (match Cursor)
 			if (parameters.name === 'notifications') {
-				return Promise.resolve({ state: 'prompt', onchange: null });
+				return Promise.resolve({ state: 'granted', onchange: null });
 			}
 			return originalQuery(parameters);
 		};
@@ -317,19 +316,50 @@ const STEALTH_SCRIPT = `
 /**
  * Inject browser stealth patches into a WebContentsView via CDP.
  *
- * Attaches the CDP debugger (if not already attached), enables required domains,
- * overrides navigator UA properties, and registers a stealth script that runs
- * before any page JavaScript on every navigation.
+ * Two-phase approach:
+ * 1. Immediately registers a dom-ready handler to inject stealth script on the
+ *    FIRST page load via executeJavaScript (since CDP may not be ready yet).
+ * 2. Kicks off CDP setup in the background — once ready, registers the stealth
+ *    script via Page.addScriptToEvaluateOnNewDocument for ALL subsequent navigations.
+ *
+ * This avoids blocking browser view creation while ensuring stealth patches apply.
  *
  * @param browserView The WebContentsView to patch
  * @param debuggerAttached Map tracking debugger attachment state (updated in-place)
  */
-export async function injectStealthPatches(
+export function injectStealthPatches(
 	browserView: WebContentsView,
 	debuggerAttached: Map<number, boolean>
-): Promise<void> {
+): void {
 	const wc = browserView.webContents;
 
+	// Phase 1: Inject stealth script on the FIRST page load via executeJavaScript.
+	// This runs synchronously in the page context after DOM is ready.
+	// Handles the race condition where CDP isn't ready before first navigation.
+	let firstLoadPatched = false;
+	wc.on('dom-ready', () => {
+		if (firstLoadPatched) { return; }
+		firstLoadPatched = true;
+		wc.executeJavaScript(STEALTH_SCRIPT).catch(() => {
+			// Non-fatal: page may have navigated away
+		});
+	});
+
+	// Phase 2: Setup CDP in background for all subsequent navigations.
+	// This registers the script via addScriptToEvaluateOnNewDocument which
+	// runs BEFORE any page JS on every future navigation.
+	setupCDPStealth(wc, debuggerAttached).catch(() => {
+		// Non-fatal: CDP stealth is best-effort, Phase 1 covers first load
+	});
+}
+
+/**
+ * Background CDP setup — attaches debugger, overrides UA, registers stealth script.
+ */
+async function setupCDPStealth(
+	wc: Electron.WebContents,
+	debuggerAttached: Map<number, boolean>
+): Promise<void> {
 	// Attach debugger for CDP access
 	if (!wc.debugger.isAttached()) {
 		wc.debugger.attach('1.3');
@@ -353,7 +383,7 @@ export async function injectStealthPatches(
 		platform: 'Win32'
 	});
 
-	// Inject stealth script that runs BEFORE any page JavaScript on every navigation
+	// Register stealth script for ALL future navigations
 	await wc.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
 		source: STEALTH_SCRIPT
 	});
