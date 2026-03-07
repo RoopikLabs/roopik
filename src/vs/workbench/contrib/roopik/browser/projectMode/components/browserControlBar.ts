@@ -73,6 +73,7 @@ export class BrowserControlBar extends Disposable {
 	private urlInputWrapper: HTMLElement | undefined;
 	private progressBar: HTMLElement;
 	private loadingAnimation?: number;
+	private hideLoadingTimeout?: ReturnType<typeof setTimeout>;
 	private backButton?: HTMLButtonElement;
 	private forwardButton?: HTMLButtonElement;
 	private overflowMenu?: HTMLElement;
@@ -1192,6 +1193,12 @@ export class BrowserControlBar extends Disposable {
 	}
 
 	showLoading(): void {
+		// Cancel any pending hide timeout (prevents flicker from rapid show/hide)
+		if (this.hideLoadingTimeout) {
+			clearTimeout(this.hideLoadingTimeout);
+			this.hideLoadingTimeout = undefined;
+		}
+
 		// Stop any existing animation FIRST to prevent duplicates
 		if (this.loadingAnimation) {
 			cancelAnimationFrame(this.loadingAnimation);
@@ -1208,7 +1215,6 @@ export class BrowserControlBar extends Disposable {
 		let growing = true;
 
 		const animate = () => {
-			// Animate position and width
 			if (growing) {
 				position += 0.5;
 				width = Math.min(50, width + 0.2);
@@ -1235,6 +1241,17 @@ export class BrowserControlBar extends Disposable {
 	}
 
 	hideLoading(): void {
+		// Guard: if already hiding or no animation running, skip
+		if (!this.loadingAnimation && !this.hideLoadingTimeout) {
+			return;
+		}
+
+		// Cancel any pending hide timeout from a previous call
+		if (this.hideLoadingTimeout) {
+			clearTimeout(this.hideLoadingTimeout);
+			this.hideLoadingTimeout = undefined;
+		}
+
 		// Stop animation
 		if (this.loadingAnimation) {
 			cancelAnimationFrame(this.loadingAnimation);
@@ -1246,7 +1263,9 @@ export class BrowserControlBar extends Disposable {
 		this.progressBar.style.transition = 'width 0.3s ease';
 		this.progressBar.style.width = '100%';
 
-		setTimeout(() => {
+		// After transition, clear the bar
+		this.hideLoadingTimeout = setTimeout(() => {
+			this.hideLoadingTimeout = undefined;
 			this.progressBar.style.transition = 'none';
 			this.progressBar.style.width = '0%';
 		}, 300);

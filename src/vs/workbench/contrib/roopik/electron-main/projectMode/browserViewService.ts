@@ -76,6 +76,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 	// Track if session has been configured (only configure ONCE)
 	private static sessionConfigured = false;
+	private static ipcListenerRegistered = false;
 
 	/**
 	 * Check if a webContents ID is managed by ProjectMode
@@ -1610,14 +1611,18 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// =====================================================
 		// IPC messages from preload script (roopikBrowser.send)
+		// Registered ONCE globally (not per-view) to avoid listener stacking
 		// =====================================================
-		ipcMain.on('roopik:browser-view-message', (_event, channel: string, ...args: unknown[]) => {
-			if (channel === 'passkey-not-supported') {
-				this.logger.info('WebAuthn/Passkey not supported notification', { browserViewId });
-			} else {
-				this.logger.info('Browser view IPC message', { browserViewId, channel, args });
-			}
-		});
+		if (!BrowserViewService.ipcListenerRegistered) {
+			BrowserViewService.ipcListenerRegistered = true;
+			ipcMain.on('roopik:browser-view-message', (_event, channel: string, ...args: unknown[]) => {
+				if (channel === 'passkey-not-supported') {
+					this.logger.info('WebAuthn/Passkey not supported notification');
+				} else {
+					this.logger.info('Browser view IPC message', { channel, args });
+				}
+			});
+		}
 
 		// Error codes that are expected/normal and should NOT be logged as errors:
 		// -3: ERR_ABORTED - Normal navigation cancellation (user navigated away, pressed stop, or new navigation started)
@@ -1749,25 +1754,19 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			});
 		});
 
-		webContents.on('did-finish-load', () => {
+		// did-stop-loading is the single source of truth for "loading done"
+		// Using ONLY this event (not did-finish-load) prevents double loading bar animations.
+		// did-finish-load fires slightly before did-stop-loading, causing a race where
+		// hideLoading() gets called twice — producing two overlapping progress bar animations.
+		webContents.on('did-stop-loading', () => {
 			if (!this.browserViews.has(browserViewId)) {
 				return;
 			}
 
 			// Clear any previous error on successful load
 			this.clearNavigationError(browserViewId);
-			// Fire event with EXPLICIT isLoading = false
-			this.fireNavigationStateChanged(browserViewId, false);
-		});
-
-		// did-stop-loading is more reliable than did-finish-load for complex pages
-		webContents.on('did-stop-loading', () => {
-			if (!this.browserViews.has(browserViewId)) {
-				return;
-			}
 
 			// If no favicon was received during this page load, clear the old one
-			// This handles sites that have no favicon
 			if (!this.faviconReceivedForCurrentLoad.get(browserViewId)) {
 				this.favicons.delete(browserViewId);
 			}
@@ -1775,8 +1774,6 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			this.fireNavigationStateChanged(browserViewId, false);
 
 			// CRITICAL: Set visual zoom limits AFTER page loads (per Electron docs)
-			// This enables pinch-to-zoom on touchpads
-			// Must be called after content is loaded for visual zoom to work properly
 			webContents.setVisualZoomLevelLimits(1, 5);
 		});
 
