@@ -17,20 +17,9 @@
 import { Event } from '../../../../base/common/event.js';
 import { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
-import {
-	IComponentService,
-	ComponentCreatedEvent,
-	ComponentBuildEvent,
-	ComponentDeletedEvent,
-	ComponentUpdatedEvent,
-	ComponentScreenshotRequestEvent
-} from '../common/component/componentService.js';
-import {
-	Component,
-	AddComponentRequest,
-	ComponentInfo,
-	RuntimeError
-} from '../common/component/types.js';
+import { IComponentService } from '../common/component/componentService.js';
+import type { ComponentCreatedEvent, ComponentBuildEvent, ComponentDeletedEvent, ComponentUpdatedEvent, ComponentScreenshotRequestEvent } from '../common/component/componentService.js';
+import type { Component, AddComponentRequest, ComponentInfo, RuntimeError } from '../common/component/types.js';
 
 import { COMPONENT_CHANNEL_NAME } from '../common/component/index.js';
 

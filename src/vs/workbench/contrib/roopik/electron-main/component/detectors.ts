@@ -15,7 +15,7 @@
 
 import { promises as fs } from 'fs';
 import * as path from '../../../../../base/common/path.js';
-import { Framework } from '../../common/storage/storageTypes.js';
+import type { Framework } from '../../common/storage/storageTypes.js';
 import { detectFrameworkFromFile } from '../../common/build/componentParser.js';
 
 // ============================================================================

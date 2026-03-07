@@ -7,4 +7,5 @@
  * Watch Module - Public API
  */
 
-export { IFileWatcher, FileChangeEvent } from './fileWatcher.js';
+export { IFileWatcher } from './fileWatcher.js';
+export type { FileChangeEvent } from './fileWatcher.js';

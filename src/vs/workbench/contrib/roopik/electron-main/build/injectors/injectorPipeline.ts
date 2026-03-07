@@ -20,7 +20,7 @@
  *   const result = pipeline.inject(code, context);
  */
 
-import { IScriptInjector, InjectorContext } from './types.js';
+import type { IScriptInjector, InjectorContext } from './types.js';
 
 export class InjectorPipeline {
 	private readonly injectors: Map<string, IScriptInjector> = new Map();

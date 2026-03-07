@@ -4,13 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import {
-	WorkspaceConfig,
-	CanvasInfo,
-	CanvasFile,
-	ComponentReference
-} from './storageTypes.js';
-import { CanvasMeta } from '../canvas/types.js';
+import type { WorkspaceConfig, CanvasInfo, CanvasFile, ComponentReference } from './storageTypes.js';
+import type { CanvasMeta } from '../canvas/types.js';
 
 // ============================================================================
 // Service Interface

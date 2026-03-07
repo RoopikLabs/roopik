@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import { Framework } from '../storage/storageTypes.js';
+import type { Framework } from '../storage/storageTypes.js';
 
 // ============================================================================
 // Build Input/Output Types

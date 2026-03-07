@@ -18,7 +18,7 @@ import { Event } from '../../../../base/common/event.js';
 import { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
 import { IProjectStorageService, PROJECT_STORAGE_CHANNEL } from '../common/projectStorage/index.js';
-import { ProjectInfo } from '../common/storage/storageTypes.js';
+import type { ProjectInfo } from '../common/storage/storageTypes.js';
 
 export class ProjectStorageServiceClient implements IProjectStorageService {
 	readonly _serviceBrand: undefined;

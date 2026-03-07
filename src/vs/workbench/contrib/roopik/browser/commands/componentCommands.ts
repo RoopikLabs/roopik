@@ -24,7 +24,7 @@ import { registerAction2, Action2 } from '../../../../../platform/actions/common
 import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { ICanvasService, CreateCanvasResult } from '../../common/canvas/index.js';
 import { IComponentService } from '../../common/component/componentService.js';
-import { Component, AddComponentRequest } from '../../common/component/types.js';
+import type { Component, AddComponentRequest } from '../../common/component/types.js';
 
 /**
  * Register all component-related commands (Extension → Core)

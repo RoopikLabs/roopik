@@ -7,8 +7,8 @@
  * Component Module - Public API
  */
 
-// Types
-export {
+// Types (type-only re-exports)
+export type {
 	Component,
 	AddComponentRequest,
 	BuildResult,
@@ -17,9 +17,11 @@ export {
 	BuildErrorLocation
 } from './types.js';
 
-// Service Interface & Events
-export {
-	IComponentService,
+// Service Decorator (runtime value via createDecorator)
+export { IComponentService } from './componentService.js';
+
+// Event interfaces (type-only re-exports)
+export type {
 	ComponentCreatedEvent,
 	ComponentBuildEvent,
 	ComponentDeletedEvent,

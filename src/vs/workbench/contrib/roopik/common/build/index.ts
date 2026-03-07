@@ -7,4 +7,5 @@
  * Build Module - Public API
  */
 
-export { IBuildService, BuildInput, BuildOutput } from './buildService.js';
+export { IBuildService } from './buildService.js';
+export type { BuildInput, BuildOutput } from './buildService.js';

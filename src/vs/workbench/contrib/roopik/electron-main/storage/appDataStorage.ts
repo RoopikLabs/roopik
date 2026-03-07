@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { BundledOutput, BuildMeta } from '../../common/storage/storageTypes.js';
+import type { BundledOutput, BuildMeta } from '../../common/storage/storageTypes.js';
 import {
 	getWorkspaceAppDataPath,
 	getWorkspaceRefPath,

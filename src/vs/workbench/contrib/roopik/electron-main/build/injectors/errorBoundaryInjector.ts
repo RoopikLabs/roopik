@@ -10,7 +10,8 @@
  * Shows user-friendly error messages instead of white screens.
  */
 
-import { BaseInjector, InjectorContext } from './types.js';
+import { BaseInjector } from './types.js';
+import type { InjectorContext } from './types.js';
 
 export class ErrorBoundaryInjector extends BaseInjector {
 	override readonly name = 'error-boundary';

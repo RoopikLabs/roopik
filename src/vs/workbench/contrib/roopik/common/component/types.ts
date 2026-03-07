@@ -12,7 +12,7 @@
  * - Component: Runtime in-memory state (with folderPath instead of storagePath)
  */
 
-import { Framework, BuildState } from '../storage/storageTypes.js';
+import type { Framework, BuildState } from '../storage/storageTypes.js';
 
 // ============================================================================
 // Runtime Error (from canvas rendering)

@@ -9,8 +9,11 @@
  * Export all storage types and interfaces for use by other modules.
  */
 
-// Types
-export {
+// Runtime values
+export { DEFAULT_WORKSPACE_CONFIG } from './storageTypes.js';
+
+// Types (type-only re-exports)
+export type {
 	Framework,
 	BundledOutput,
 	BuildMeta,
@@ -19,11 +22,8 @@ export {
 	ComponentReference,
 	CanvasFile,
 	BuildState,
-	WorkspaceConfig,
-	DEFAULT_WORKSPACE_CONFIG
+	WorkspaceConfig
 } from './storageTypes.js';
 
-// Service Interface
-export {
-	IRoopikStorageService
-} from './storageService.js';
+// Service Interface (runtime value via createDecorator)
+export { IRoopikStorageService } from './storageService.js';

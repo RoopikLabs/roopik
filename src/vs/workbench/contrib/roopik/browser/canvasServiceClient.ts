@@ -17,20 +17,9 @@
 import { Event } from '../../../../base/common/event.js';
 import { IChannel } from '../../../../base/parts/ipc/common/ipc.js';
 import { IMainProcessService } from '../../../../platform/ipc/common/mainProcessService.js';
-import {
-	ICanvasService,
-	CanvasCreatedEvent,
-	CanvasDeletedEvent,
-	CanvasUpdatedEvent,
-	CanvasFocusChangedEvent
-} from '../common/canvas/canvasService.js';
-import {
-	CanvasMeta,
-	Canvas,
-	CreateCanvasResult,
-	ListCanvasOptions,
-	CanvasPanelState
-} from '../common/canvas/types.js';
+import { ICanvasService } from '../common/canvas/canvasService.js';
+import type { CanvasCreatedEvent, CanvasDeletedEvent, CanvasUpdatedEvent, CanvasFocusChangedEvent } from '../common/canvas/canvasService.js';
+import type { CanvasMeta, Canvas, CreateCanvasResult, ListCanvasOptions, CanvasPanelState } from '../common/canvas/types.js';
 
 import { CANVAS_CHANNEL_NAME } from '../common/canvas/index.js';
 

@@ -7,24 +7,12 @@
  * Roopik Settings System - Public Exports
  */
 
-// Service
-export { IRoopikSettingsService, RoopikSettingsService, SettingsChangeEvent } from './roopikSettingsService.js';
+// Service (runtime values)
+export { IRoopikSettingsService, RoopikSettingsService } from './roopikSettingsService.js';
+export type { SettingsChangeEvent } from './roopikSettingsService.js';
 
-// Types
+// Defaults (runtime values)
 export {
-	// App Settings
-	RoopikAppSettings,
-	BrowserSettings,
-	CanvasSettings,
-	WelcomeSettings,
-	AgentSettings,
-
-	// Workspace Settings
-	RoopikWorkspaceSettings,
-	WorkspaceBrowserConfig,
-	WorkspaceComponentConfig,
-
-	// Defaults
 	DEFAULT_APP_SETTINGS,
 	DEFAULT_BROWSER_SETTINGS,
 	DEFAULT_CANVAS_SETTINGS,
@@ -32,9 +20,19 @@ export {
 	DEFAULT_AGENT_SETTINGS,
 	DEFAULT_WORKSPACE_SETTINGS,
 	DEFAULT_WORKSPACE_BROWSER_CONFIG,
-	DEFAULT_WORKSPACE_COMPONENT_CONFIG,
+	DEFAULT_WORKSPACE_COMPONENT_CONFIG
+} from './roopikSettingsTypes.js';
 
-	// Type helpers
+// Types (type-only re-exports)
+export type {
+	RoopikAppSettings,
+	BrowserSettings,
+	CanvasSettings,
+	WelcomeSettings,
+	AgentSettings,
+	RoopikWorkspaceSettings,
+	WorkspaceBrowserConfig,
+	WorkspaceComponentConfig,
 	AppSettingsPath,
 	WorkspaceSettingsPath,
 	SettingValue

@@ -10,7 +10,8 @@
  * Listens for update messages from parent and reloads component.
  */
 
-import { BaseInjector, InjectorContext } from './types.js';
+import { BaseInjector } from './types.js';
+import type { InjectorContext } from './types.js';
 
 export class HmrBridgeInjector extends BaseInjector {
 	override readonly name = 'hmr-bridge';

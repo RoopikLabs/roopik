@@ -18,7 +18,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import { CanvasMeta, Canvas, CreateCanvasResult, ListCanvasOptions, CanvasPanelState } from './types.js';
+import type { CanvasMeta, Canvas, CreateCanvasResult, ListCanvasOptions, CanvasPanelState } from './types.js';
 
 // ============================================================================
 // Service Decorator (for Dependency Injection)

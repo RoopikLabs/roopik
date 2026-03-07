@@ -17,7 +17,7 @@
 import { Event } from '../../../../../base/common/event.js';
 import { IServerChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import { ICanvasService } from '../../common/canvas/canvasService.js';
-import { ListCanvasOptions } from '../../common/canvas/types.js';
+import type { ListCanvasOptions } from '../../common/canvas/types.js';
 
 export class CanvasChannel implements IServerChannel {
 	constructor(private readonly service: ICanvasService) { }

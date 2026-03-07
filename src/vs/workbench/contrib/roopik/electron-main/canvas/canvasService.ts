@@ -24,20 +24,9 @@
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
-import {
-	ICanvasService,
-	CanvasCreatedEvent,
-	CanvasDeletedEvent,
-	CanvasUpdatedEvent,
-	CanvasFocusChangedEvent
-} from '../../common/canvas/canvasService.js';
-import {
-	CanvasMeta,
-	Canvas,
-	CreateCanvasResult,
-	ListCanvasOptions,
-	CanvasPanelState
-} from '../../common/canvas/types.js';
+import { ICanvasService } from '../../common/canvas/canvasService.js';
+import type { CanvasCreatedEvent, CanvasDeletedEvent, CanvasUpdatedEvent, CanvasFocusChangedEvent } from '../../common/canvas/canvasService.js';
+import type { CanvasMeta, Canvas, CreateCanvasResult, ListCanvasOptions, CanvasPanelState } from '../../common/canvas/types.js';
 import { IRoopikStorageService } from '../../common/storage/storageService.js';
 
 // ============================================================================

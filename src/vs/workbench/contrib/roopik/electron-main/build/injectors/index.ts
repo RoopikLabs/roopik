@@ -9,8 +9,9 @@
  * Pipeline pattern for injecting scripts into bundled component code.
  */
 
-// Types
-export { IScriptInjector, InjectorContext, BaseInjector } from './types.js';
+// Types (BaseInjector is a runtime class, interfaces are type-only)
+export { BaseInjector } from './types.js';
+export type { IScriptInjector, InjectorContext } from './types.js';
 
 // Pipeline
 export { InjectorPipeline } from './injectorPipeline.js';
@@ -23,7 +24,8 @@ export { HmrBridgeInjector } from './hmrBridgeInjector.js';
 export { SourceTrackingInjector, createSourceTrackingTransform } from './sourceTrackingInjector.js';
 
 // Source Tracking Core (for direct use)
-export { transformCode, parseElements, ParseOptions, TransformResult } from './sourceTrackingCore.js';
+export { transformCode, parseElements } from './sourceTrackingCore.js';
+export type { ParseOptions, TransformResult } from './sourceTrackingCore.js';
 
 // ============================================================================
 // Factory for default pipeline

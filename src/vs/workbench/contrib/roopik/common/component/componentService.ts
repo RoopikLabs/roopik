@@ -5,7 +5,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import { Component, AddComponentRequest, BuildResult, BuildErrorInfo, ComponentInfo, RuntimeError } from './types.js';
+import type { Component, AddComponentRequest, BuildResult, BuildErrorInfo, ComponentInfo, RuntimeError } from './types.js';
 
 // ============================================================================
 // Event Types

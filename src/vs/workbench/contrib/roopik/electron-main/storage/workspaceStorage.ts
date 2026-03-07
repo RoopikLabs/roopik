@@ -5,19 +5,9 @@
 
 import * as fs from 'fs';
 import { dirname } from '../../../../../base/common/path.js';
-import {
-	CanvasInfo,
-	CanvasRegistry,
-	CanvasFile,
-	ComponentReference,
-	WorkspaceConfig,
-	DEFAULT_WORKSPACE_CONFIG,
-	DEFAULT_CANVAS_PREFERENCES,
-	ProjectInfo,
-	ProjectIndex,
-	DEFAULT_PROJECT_INDEX
-} from '../../common/storage/storageTypes.js';
-import { CanvasMeta } from '../../common/canvas/types.js';
+import { DEFAULT_WORKSPACE_CONFIG, DEFAULT_CANVAS_PREFERENCES, DEFAULT_PROJECT_INDEX } from '../../common/storage/storageTypes.js';
+import type { CanvasInfo, CanvasRegistry, CanvasFile, ComponentReference, WorkspaceConfig, ProjectInfo, ProjectIndex } from '../../common/storage/storageTypes.js';
+import type { CanvasMeta } from '../../common/canvas/types.js';
 import {
 	getWorkspaceRoopikPath,
 	getConfigPath,

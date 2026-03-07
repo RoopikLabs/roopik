@@ -6,7 +6,7 @@
 import { IStorageService, StorageScope, StorageTarget } from '../../../../../../platform/storage/common/storage.js';
 import { INotificationService, Severity } from '../../../../../../platform/notification/common/notification.js';
 import { ILogger } from '../../../../../../platform/log/common/log.js';
-import { BrowserBookmark } from '../components/browserControlBar.js';
+import type { BrowserBookmark } from '../components/browserControlBar.js';
 
 /**
  * Storage key for browser bookmarks (workspace-scoped)

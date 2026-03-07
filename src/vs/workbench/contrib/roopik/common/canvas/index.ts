@@ -9,8 +9,8 @@
  * Re-exports all public types and interfaces for the canvas system.
  */
 
-// Types
-export {
+// Types (type-only re-exports — must use `export type` to avoid runtime import of empty module)
+export type {
 	CanvasMeta,
 	Canvas,
 	CreateCanvasResult,
@@ -18,9 +18,11 @@ export {
 	CanvasPanelState
 } from './types.js';
 
-// Service Decorator & Interface & Events
-export {
-	ICanvasService,  // Also serves as DI decorator via createDecorator
+// Service Decorator (runtime value via createDecorator)
+export { ICanvasService } from './canvasService.js';
+
+// Event interfaces (type-only re-exports)
+export type {
 	CanvasCreatedEvent,
 	CanvasDeletedEvent,
 	CanvasUpdatedEvent,

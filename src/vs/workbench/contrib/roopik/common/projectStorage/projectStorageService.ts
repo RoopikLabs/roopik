@@ -14,7 +14,7 @@
 
 import { Event } from '../../../../../base/common/event.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
-import { ProjectInfo } from '../storage/storageTypes.js';
+import type { ProjectInfo } from '../storage/storageTypes.js';
 
 // ============================================================================
 // Service Decorator (for Dependency Injection)

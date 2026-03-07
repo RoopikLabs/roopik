@@ -25,7 +25,8 @@ import { IMainProcessService } from '../../../../../platform/ipc/common/mainProc
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { IEditorGroupsService } from '../../../../services/editor/common/editorGroupsService.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
-import { ROOPIK_TOOLS_CHANNEL_NAME, RoopikToolResult } from '../../common/tools/types.js';
+import { ROOPIK_TOOLS_CHANNEL_NAME } from '../../common/tools/types.js';
+import type { RoopikToolResult } from '../../common/tools/types.js';
 import { openBrowserEditor } from './browserCommands.js';
 
 /**

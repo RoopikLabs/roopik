@@ -10,4 +10,5 @@
  */
 
 export { ComponentService } from './componentService.js';
-export { BuildQueue, BuildRequest, QueueBuildResult, BuildTrigger, BuildPriority } from './buildQueue.js';
+export { BuildQueue } from './buildQueue.js';
+export type { BuildRequest, QueueBuildResult, BuildTrigger, BuildPriority } from './buildQueue.js';
