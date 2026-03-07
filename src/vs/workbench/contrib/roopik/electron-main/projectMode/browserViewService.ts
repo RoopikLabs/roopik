@@ -16,6 +16,7 @@ import { CDPCssService } from './cssResolvers/cdpCssService.js';
 import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.js';
 import contextMenu from 'electron-context-menu';
 import { cleanupCDPMonitoring } from '../tools/cdpMonitorService.js';
+import { injectStealthPatches } from './browserStealth.js';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
 
@@ -213,17 +214,42 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				callback(0);
 			});
 
-			// C. Auto-Grant Permissions for Dev
-			// Local dev servers often request permissions causing invisible prompts.
+			// C. Auto-Grant Permissions (Real Chrome-like behavior)
+			// Two handlers needed: requestHandler for explicit prompts, checkHandler for implicit checks
+			const allowedPermissions = ['media', 'geolocation', 'notifications', 'clipboard-read', 'clipboard-write', 'clipboard-sanitized-write', 'midi', 'midiSysex', 'pointerLock', 'fullscreen', 'display-capture', 'mediaKeySystem', 'idle-detection', 'storage-access', 'window-management', 'local-fonts', 'screen-wake-lock', 'speaker-selection'];
+
+			// Handler for explicit permission requests (e.g., getUserMedia prompt)
 			browserSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-				const allowedPermissions = ['media', 'geolocation', 'notifications', 'clipboard-read', 'clipboard-write', 'midi', 'pointerLock', 'fullscreen'];
 				callback(allowedPermissions.includes(permission));
+			});
+
+			// Handler for implicit permission checks (e.g., enumerateDevices, permission.query)
+			// WITHOUT THIS, camera/mic streams return blank even after permission is "granted"
+			browserSession.setPermissionCheckHandler((_webContents, permission) => {
+				return allowedPermissions.includes(permission);
 			});
 
 			// D. Load DevTools Extensions (React DevTools, Vue DevTools, etc.)
 			// Extensions are loaded from resources/devtools-extensions/
 			// User can add new extensions by extracting CRX files and updating manifest.json
 			this.loadDevToolsExtensionsAsync(browserSession);
+
+			// E. Browser Stealth: Make embedded browser indistinguishable from real Chrome
+			// Strip Electron/Roopik identifiers from User-Agent to bypass Cloudflare/bot detection
+			const defaultUA = browserSession.getUserAgent();
+			const cleanUA = defaultUA
+				.replace(/\s*roopik[-\w]*\/[\d.]+/gi, '')
+				.replace(/\s*Electron\/[\d.]+/gi, '');
+			browserSession.setUserAgent(cleanUA);
+			this.logger.info('Browser stealth: UA cleaned', { cleanUA });
+
+			// Override Accept-Language header to match real Chrome (multiple locales)
+			browserSession.webRequest.onBeforeSendHeaders((details, callback) => {
+				details.requestHeaders['Accept-Language'] = 'en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7';
+				// Also ensure the User-Agent header matches (some Electron versions leak in headers)
+				details.requestHeaders['User-Agent'] = cleanUA;
+				callback({ requestHeaders: details.requestHeaders });
+			});
 		}
 
 		// =========================================================
@@ -231,13 +257,17 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		// =========================================================
 
 		// Create browser WebContentsView with custom session
+		// Match real Chrome browser security model: sandbox ON, webSecurity ON
+		// sandbox:true prevents Node.js globals from leaking (no global, process, etc.)
+		// webSecurity:true enforces same-origin policy (Cloudflare checks this!)
 		const browserView = new WebContentsView({
 			webPreferences: {
 				nodeIntegration: false,
 				contextIsolation: true,
-				sandbox: false,
-				webSecurity: false,
-				allowRunningInsecureContent: true,
+				sandbox: true,
+				javascript: true,
+				navigateOnDragDrop: false,
+				enableBlinkFeatures: 'StandardizedBrowserZoom',
 				session: browserSession // CRITICAL: Use our configured session for localhost support
 			}
 	});
@@ -263,6 +293,17 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// Setup event listeners
 		this.setupBrowserEvents(browserView);
+
+		// =========================================================================
+		// BROWSER STEALTH: Inject fingerprint patches via CDP
+		// Uses Page.addScriptToEvaluateOnNewDocument to run BEFORE any page JS.
+		// contextIsolation: true means this runs in the PAGE's V8 context,
+		// NOT in Electron's renderer — safe, won't break VSCode internals.
+		// NON-BLOCKING: Don't let stealth injection block browser creation
+		// =========================================================================
+		injectStealthPatches(browserView, this.debuggerAttached).catch(err => {
+			this.logger.error('Stealth patches failed (non-fatal)', { error: err });
+		});
 
 		// =========================================================================
 		// CRITICAL: THE SAFETY LEASH
