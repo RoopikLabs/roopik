@@ -17,6 +17,8 @@ import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.
 import contextMenu from 'electron-context-menu';
 import { cleanupCDPMonitoring } from '../tools/cdpMonitorService.js';
 import { injectStealthPatches } from './browserStealth.js';
+import { FileAccess } from '../../../../../base/common/network.js';
+import { ipcMain } from 'electron';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
 
@@ -268,6 +270,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				javascript: true,
 				navigateOnDragDrop: false,
 				enableBlinkFeatures: 'StandardizedBrowserZoom',
+				preload: FileAccess.asFileUri('vs/platform/browserView/electron-main/preload-browser.js').fsPath,
 				session: browserSession // CRITICAL: Use our configured session for localhost support
 			}
 	});
@@ -1604,6 +1607,17 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	private setupBrowserEvents(browserView: WebContentsView): void {
 		const webContents = browserView.webContents;
 		const browserViewId = webContents.id;
+
+		// =====================================================
+		// IPC messages from preload script (roopikBrowser.send)
+		// =====================================================
+		ipcMain.on('roopik:browser-view-message', (_event, channel: string, ...args: unknown[]) => {
+			if (channel === 'passkey-not-supported') {
+				this.logger.info('WebAuthn/Passkey not supported notification', { browserViewId });
+			} else {
+				this.logger.info('Browser view IPC message', { browserViewId, channel, args });
+			}
+		});
 
 		// Error codes that are expected/normal and should NOT be logged as errors:
 		// -3: ERR_ABORTED - Normal navigation cancellation (user navigated away, pressed stop, or new navigation started)
