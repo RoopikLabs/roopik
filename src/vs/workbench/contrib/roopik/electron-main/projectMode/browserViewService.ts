@@ -190,6 +190,13 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	async createBrowserView(windowId: number): Promise<BrowserViewResult> {
 		this.logger.info('createBrowserView requested', { windowId });
 
+		// CRITICAL: Destroy any existing browser views first.
+		const existingIds = Array.from(this.browserViews.keys());
+		for (const oldId of existingIds) {
+			// this.logger.info('Destroying existing browser view before creating new one', { oldId });
+			await this.destroyBrowserView(oldId);
+		}
+
 		const window = BrowserWindow.fromId(windowId);
 		if (!window) {
 			throw new Error(`Window ${windowId} not found`);
@@ -404,7 +411,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	 */
 	getActiveBrowserViewId(): number | undefined {
 		const ids = Array.from(this.browserViews.keys());
-		return ids.length > 0 ? ids[0] : undefined;
+		// Return the LAST (most recently created) browser view ID
+		// Safety measure in case multiple views exist during a brief race window
+		return ids.length > 0 ? ids[ids.length - 1] : undefined;
 	}
 
 	async setBrowserBounds(browserViewId: number, bounds: ViewBounds): Promise<void> {
