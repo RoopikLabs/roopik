@@ -276,6 +276,7 @@ const desktopResourcePatterns = [
 	'vs/workbench/contrib/roopik/browser/media/*.png',
 	'vs/workbench/contrib/roopik/resources/*.json',
 	'vs/workbench/contrib/roopik/electron-main/projectMode/devServer/**/*.mjs',
+	'vs/platform/browserView/electron-main/preload-browser.js',
 ];
 
 // Resources for server target (minimal - no UI)
