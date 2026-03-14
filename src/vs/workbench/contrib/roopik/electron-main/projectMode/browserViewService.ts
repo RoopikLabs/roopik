@@ -226,7 +226,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 						this.browserWindows.set(existingBrowserViewId, targetWindow);
 						this.setActiveTabInternal(tabId);
 						this.logger.info('Reattached existing view for tab', { tabId, browserViewId: existingBrowserViewId });
-						return { browserViewId: existingBrowserViewId, debuggingPort: 0, tabId };
+						return { browserViewId: existingBrowserViewId, debuggingPort: 0, tabId, isReattach: true };
 					}
 				}
 			}

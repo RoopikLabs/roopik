@@ -89,6 +89,8 @@ export interface NetworkRequest {
 export interface BrowserViewResult {
 	browserViewId: number;
 	debuggingPort: number;
+	/** True if an existing view was reattached (drag between groups), false if newly created */
+	isReattach?: boolean;
 }
 
 /**

@@ -69,7 +69,9 @@ export class EditorTabInput extends EditorInput {
 	}
 
 	override get capabilities(): EditorInputCapabilities {
-		return EditorInputCapabilities.None;
+		// Singleton: prevents "Split Editor" from cloning the tab to another group.
+		// WebContentsView can only exist in one place — splitting creates a dead pane.
+		return EditorInputCapabilities.Singleton;
 	}
 
 	override get resource(): URI {
