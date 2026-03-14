@@ -18,10 +18,10 @@
  * Tool Naming Convention: category_action (e.g., browser_navigate, component_add)
  *
  * Tool Categories:
- * - Browser Tools (16): browser_open, browser_close, browser_navigate, browser_reload, browser_screenshot,
+ * - Browser Tools (15): browser_open, browser_close, browser_navigate, browser_reload, browser_screenshot,
  *                       browser_action_input, browser_execute_script, browser_inspect_element, browser_get_errors,
  *                       browser_get_console_logs, browser_get_performance, browser_get_state,
- *                       browser_set_viewport, browser_get_network_requests, browser_list_tabs, browser_close_tab
+ *                       browser_set_viewport, browser_get_network_requests, browser_list_tabs
  * - Project Tools (3): project_get_active, project_start, project_stop
  * - Canvas Tools (4): canvas_list, canvas_get_active, canvas_create, canvas_open
  * - Component Tools (7): component_add, component_add_batch, component_remove,
@@ -103,13 +103,13 @@ export class RoopikToolsChannel implements IServerChannel {
 		try {
 			switch (command) {
 				// ============================================================
-				// Browser Tools (16)
+				// Browser Tools (15)
 				// ============================================================
 				case 'browser_open':
-					return this.handleBrowserOpen(arg as { url?: string; tabId?: number; newTab?: boolean });
+					return this.browserToolService.open(arg as { url?: string; tabId?: number; newTab?: boolean });
 
 				case 'browser_close':
-					return this.handleBrowserClose();
+					return this.browserToolService.close((arg as { tabId?: number })?.tabId);
 
 				case 'browser_navigate':
 					return this.handleNavigate(arg as { url: string; tabId?: number });
@@ -158,9 +158,6 @@ export class RoopikToolsChannel implements IServerChannel {
 
 				case 'browser_list_tabs':
 					return this.browserToolService.listTabs();
-
-				case 'browser_close_tab':
-					return this.browserToolService.closeTab((arg as { tabId: number }).tabId);
 
 				// ============================================================
 				// Project Tools (3)
@@ -248,106 +245,6 @@ export class RoopikToolsChannel implements IServerChannel {
 	// ========================================================================
 	// Browser Tool Handlers
 	// ========================================================================
-
-	/**
-	 * Open a browser view without requiring a project.
-	 *
-	 * In embedded mode: This is called from the renderer after the editor tab is opened.
-	 * In external mode: This launches Chrome directly via requestBrowserOpen().
-	 *
-	 * Returns meaningful state: current URL, title, and whether browser was already open.
-	 */
-	private async handleBrowserOpen(args: { url?: string; tabId?: number; newTab?: boolean }): Promise<RoopikToolResult> {
-		// For newTab or specific tabId requests, delegate directly to BrowserToolService
-		if (args.newTab || args.tabId !== undefined) {
-			return this.browserToolService.open(args);
-		}
-
-		const existingBrowserViewId = this.browserViewService.getActiveBrowserViewId();
-
-		if (existingBrowserViewId !== undefined) {
-			// Browser already open - navigate if URL provided, then return state
-			if (args.url) {
-				await this.browserViewService.navigate(existingBrowserViewId, args.url);
-			}
-
-			const activeTabId = this.browserViewService.getActiveTabId();
-
-			// Return current browser state
-			try {
-				const state = await this.browserViewService.getNavigationState(existingBrowserViewId);
-				return {
-					success: true,
-					data: {
-						browserOpen: true,
-						alreadyOpen: true,
-						tabId: activeTabId,
-						url: state.url,
-						title: state.title,
-						message: args.url
-							? `Navigated to ${args.url}`
-							: `Browser open at ${state.url}`
-					}
-				};
-			} catch {
-				return {
-					success: true,
-					data: {
-						browserOpen: true,
-						alreadyOpen: true,
-						tabId: activeTabId,
-						message: 'Browser is open'
-					}
-				};
-			}
-		}
-
-		// Browser not open - launch it
-		this.browserViewService.requestBrowserOpen(args.url);
-
-		// Wait briefly for Chrome to connect (external mode needs time to spawn + CDP handshake)
-		const maxWait = 8000;
-		const interval = 200;
-		let waited = 0;
-		while (waited < maxWait) {
-			await new Promise(r => setTimeout(r, interval));
-			waited += interval;
-			const viewId = this.browserViewService.getActiveBrowserViewId();
-			if (viewId !== undefined) {
-				const tabId = this.browserViewService.getActiveTabId();
-				// Connected! Return state
-				try {
-					const state = await this.browserViewService.getNavigationState(viewId);
-					return {
-						success: true,
-						data: {
-							browserOpen: true,
-							alreadyOpen: false,
-							tabId,
-							url: state.url,
-							title: state.title,
-							message: `Browser launched at ${state.url}`
-						}
-					};
-				} catch {
-					return {
-						success: true,
-						data: {
-							browserOpen: true,
-							alreadyOpen: false,
-							tabId,
-							message: 'Browser launched'
-						}
-					};
-				}
-			}
-		}
-
-		return {
-			success: false,
-			error: 'Browser launch timed out. Chrome may not be installed or the CDP port may be in use.'
-		};
-	}
 
 	/**
 	 * Get performance metrics from the browser including Web Vitals.
@@ -534,15 +431,6 @@ export class RoopikToolsChannel implements IServerChannel {
 
 	private async handleScreenshot(args?: { tabId?: number }): Promise<RoopikToolResult> {
 		return this.browserToolService.screenshot(args?.tabId);
-	}
-
-	/**
-	 * Close the browser view
-	 * Delegates to unified BrowserToolService which handles event-based cleanup
-	 */
-	private async handleBrowserClose(): Promise<RoopikToolResult> {
-		// Delegate to unified BrowserToolService
-		return this.browserToolService.close();
 	}
 
 	/**

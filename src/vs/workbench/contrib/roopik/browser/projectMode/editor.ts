@@ -98,6 +98,9 @@ export class Editor extends EditorPane {
 		lastKnownTitle: string;
 		lastKnownFavicon: string;
 		lastErrorUrl: string;
+		// Feature states (synced to control bar on tab switch)
+		devtoolsVisible: boolean;
+		stylePanelVisible: boolean;
 	}>(); // tabId → per-tab state
 	private activeTabId: number | undefined;
 
@@ -814,7 +817,7 @@ export class Editor extends EditorPane {
 	 */
 	private handleEscapeKey(): void {
 		// 1. Exit inspect mode if active
-		if (this.inspectMode.getIsActive()) {
+		if (this.inspectMode.getIsActive(this.browserViewId)) {
 			// Disable inspect mode in browser
 			if (this.browserViewId) {
 				this.inspectMode.disable(this.browserViewId);
@@ -852,7 +855,7 @@ export class Editor extends EditorPane {
 
 		// 1. Re-inject inspect mode script if it was active before page load
 		// Page navigation wipes all injected scripts, so we need to re-inject
-		if (this.inspectMode.getIsActive()) {
+		if (this.inspectMode.getIsActive(this.browserViewId)) {
 			this.logger.info('[ProjectMode] Re-injecting inspect mode script');
 			this.inspectMode.enable(this.browserViewId).catch((error) => {
 				this.logger.warn('[ProjectMode] Failed to re-inject inspect mode after page load:', error);
@@ -2063,7 +2066,7 @@ export class Editor extends EditorPane {
 		}
 
 		// Toggle based on current state
-		if (this.inspectMode.getIsActive()) {
+		if (this.inspectMode.getIsActive(this.browserViewId)) {
 			// Disable inspect mode
 			await this.inspectMode.disable(this.browserViewId);
 			this.controlBar?.setInspectModeActive(false);
@@ -2296,6 +2299,8 @@ export class Editor extends EditorPane {
 					lastKnownTitle: this.lastKnownTitle,
 					lastKnownFavicon: this.lastKnownFavicon,
 					lastErrorUrl: this.lastErrorUrl,
+					devtoolsVisible: this.devtoolsVisible,
+					stylePanelVisible: this.styleInspect.getIsActive(),
 				});
 				// Hide old tab's browser view
 				this.browserService.setBrowserVisible(this.browserViewId, false);
@@ -2360,6 +2365,7 @@ export class Editor extends EditorPane {
 				this.lastErrorUrl = existingState.lastErrorUrl;
 
 				// Restore control bar UI from saved state
+				this.devtoolsVisible = existingState.devtoolsVisible;
 				if (this.controlBar) {
 					// Restore URL bar
 					if (this.lastKnownUrl && this.lastKnownUrl !== 'about:blank') {
@@ -2373,6 +2379,10 @@ export class Editor extends EditorPane {
 					} else {
 						this.controlBar.hideLoading();
 					}
+					// Restore feature button states for this tab
+					this.controlBar.setInspectModeActive(this.inspectMode.getIsActive(this.browserViewId));
+					this.controlBar.setDevToolsActive(existingState.devtoolsVisible);
+					this.controlBar.setStylePanelActive(existingState.stylePanelVisible);
 				}
 
 				if (this.hasLoadedUrl) {
@@ -2434,6 +2444,8 @@ export class Editor extends EditorPane {
 						lastKnownTitle: this.lastKnownTitle,
 						lastKnownFavicon: this.lastKnownFavicon,
 						lastErrorUrl: this.lastErrorUrl,
+						devtoolsVisible: this.devtoolsVisible,
+						stylePanelVisible: this.styleInspect.getIsActive(),
 					});
 				}
 

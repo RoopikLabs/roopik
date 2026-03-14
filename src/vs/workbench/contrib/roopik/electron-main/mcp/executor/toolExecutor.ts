@@ -122,7 +122,7 @@ export class ToolExecutor {
 	 */
 	getAvailableTools(): string[] {
 		return [
-			// Browser tools (16)
+			// Browser tools (15)
 			'browser_open',
 			'browser_close',
 			'browser_screenshot',
@@ -138,7 +138,6 @@ export class ToolExecutor {
 			'browser_set_viewport',
 			'browser_get_network_requests',
 			'browser_list_tabs',
-			'browser_close_tab',
 			// Canvas tools (5)
 			'canvas_list',
 			'canvas_get_active',
@@ -178,7 +177,7 @@ export class ToolExecutor {
 				});
 
 			case 'browser_close':
-				return this.browserToolService.close();
+				return this.browserToolService.close(tabId);
 
 			case 'browser_screenshot':
 				return this.browserToolService.screenshot(tabId);
@@ -252,9 +251,6 @@ export class ToolExecutor {
 
 			case 'browser_list_tabs':
 				return this.browserToolService.listTabs();
-
-			case 'browser_close_tab':
-				return this.browserToolService.closeTab(params.tabId as number);
 
 			default:
 				return {

@@ -109,13 +109,14 @@ export class BrowserToolService {
 			const browserViewId = this.browserViewService.getActiveBrowserViewId();
 
 			if (browserViewId === undefined) {
-				// No tab open — fire event to open
-				this.browserViewService.requestBrowserOpen(url);
+				// No tab open — open a new tab (waits for real tabId)
+				const newTabId = await this.browserViewService.openNewTab(url);
 				return {
 					success: true,
 					data: {
-						message: 'Browser open request sent. The browser will open shortly.',
-						url: url || undefined
+						message: url ? `Browser opened and navigating to ${url}` : 'Browser opened',
+						url: url || undefined,
+						tabId: newTabId
 					}
 				};
 			}
@@ -149,29 +150,60 @@ export class BrowserToolService {
 		}
 	}
 
-	async close(): Promise<ToolResult<{ message: string }>> {
+	/**
+	 * Close browser tabs.
+	 * - With tabId: closes that specific tab
+	 * - Without tabId: closes ALL open browser tabs
+	 *
+	 * Flow: Backend destroys view + CDP cleanup, then fires renderer event
+	 * to close editor tab. The renderer close triggers dispose() which is
+	 * a no-op since the backend view is already destroyed.
+	 */
+	async close(tabId?: number): Promise<ToolResult<{ message: string }>> {
 		try {
-			const activeTabId = this.browserViewService.getActiveTabId();
-
-			if (activeTabId === undefined) {
+			if (tabId !== undefined) {
+				// Close specific tab — validate it exists first
+				const browserViewId = this.browserViewService.resolveTabId(tabId);
+				this.cdpMonitorService.cleanup(browserViewId);
+				await this.browserViewService.closeTab(tabId);
+				// Tell renderer to close the editor tab (triggers dispose which is safe)
+				this.browserViewService.requestBrowserClose(tabId);
 				return {
 					success: true,
-					data: { message: 'No browser tab is open' }
+					data: { message: `Tab ${tabId} closed` }
 				};
 			}
 
-			const browserViewId = this.browserViewService.resolveTabId(activeTabId);
+			// Close ALL tabs — snapshot the list first, then close each
+			const tabs = this.browserViewService.listTabs();
+			if (tabs.length === 0) {
+				return {
+					success: true,
+					data: { message: 'No browser tabs are open' }
+				};
+			}
 
-			// Cleanup CDP monitoring
-			this.cdpMonitorService.cleanup(browserViewId);
+			// Clean up CDP monitors for all tabs
+			for (const tab of tabs) {
+				try {
+					const browserViewId = this.browserViewService.resolveTabId(tab.tabId);
+					this.cdpMonitorService.cleanup(browserViewId);
+				} catch { /* tab may already be gone */ }
+			}
 
-			// Destroy the view first, then close the editor tab
-			await this.browserViewService.closeTab(activeTabId);
-			this.browserViewService.requestBrowserClose(activeTabId);
+			// Destroy all backend views
+			for (const tab of tabs) {
+				try {
+					await this.browserViewService.closeTab(tab.tabId);
+				} catch { /* tab may already be gone */ }
+			}
+
+			// Tell renderer to close ALL editor tabs in one shot
+			this.browserViewService.requestBrowserClose();
 
 			return {
 				success: true,
-				data: { message: `Active browser tab ${activeTabId} closed` }
+				data: { message: `Closed ${tabs.length} browser tab(s)` }
 			};
 		} catch (error) {
 			return {
@@ -200,30 +232,6 @@ export class BrowserToolService {
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to list tabs'
-			};
-		}
-	}
-
-	async closeTab(tabId: number): Promise<ToolResult<{ message: string; tabId: number }>> {
-		try {
-			// Cleanup CDP monitoring for this tab's view
-			const browserViewId = this.browserViewService.resolveTabId(tabId);
-			this.cdpMonitorService.cleanup(browserViewId);
-			// First destroy the browser view (kills the webContents)
-			await this.browserViewService.closeTab(tabId);
-			// Then fire event to close the editor tab in the renderer
-			this.browserViewService.requestBrowserClose(tabId);
-			return {
-				success: true,
-				data: {
-					message: `Tab ${tabId} closed`,
-					tabId
-				}
-			};
-		} catch (error) {
-			return {
-				success: false,
-				error: error instanceof Error ? error.message : 'Failed to close tab'
 			};
 		}
 	}

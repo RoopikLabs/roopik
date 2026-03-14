@@ -386,6 +386,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		// Cleanup CDP monitoring if active (from MCP CDP tools)
 		cleanupCDPMonitoring(browserViewId);
 
+		// Cleanup CDP CSS service caches and event listeners
+		this.cdpCssService.cleanup(browserViewId);
+
 		// Close DevTools if open
 		await this.closeDevTools(browserViewId);
 
@@ -494,11 +497,41 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		if (this.tabToBrowserViewId.size >= MAX_BROWSER_TABS) {
 			throw new Error(`Tab limit reached (max ${MAX_BROWSER_TABS}). Close a tab first.`);
 		}
-		// Fire MCP browser open event with forceNew — renderer will create a NEW editor tab
-		this._onMcpBrowserOpenRequest.fire({ url: url || '', forceNew: true });
-		// The tabId will be assigned in createBrowserView. Return the next expected tabId.
-		// (This is a simplification — the actual tabId is assigned in createBrowserView)
-		return this.nextTabId; // The next call to createBrowserView will use this
+
+		// Wait for the actual tab to be created by listening to onTabCreated.
+		// The renderer creates the editor tab, which calls createBrowserView(),
+		// which fires onTabCreated with the real tabId.
+		const tabCreatedPromise = new Promise<number>((resolve, reject) => {
+			const timeout = setTimeout(() => {
+				disposable.dispose();
+				reject(new Error('Timed out waiting for new tab creation'));
+			}, 10000);
+
+			const disposable = this._onTabCreated.event((event) => {
+				clearTimeout(timeout);
+				disposable.dispose();
+				resolve(event.tabId);
+			});
+		});
+
+		// Fire MCP browser open event with forceNew — renderer will create a NEW editor tab.
+		// IMPORTANT: Do NOT pass the URL here. Navigation is handled by the caller
+		// using the specific browserViewId AFTER the tab is created. This prevents
+		// race conditions when multiple tabs are opened rapidly — the renderer pane
+		// could switch context between creation and navigation.
+		this._onMcpBrowserOpenRequest.fire({ forceNew: true });
+
+		const tabId = await tabCreatedPromise;
+
+		// Navigate on the backend using the specific browserViewId (race-safe)
+		if (url) {
+			const browserViewId = this.tabToBrowserViewId.get(tabId);
+			if (browserViewId !== undefined) {
+				await this.navigate(browserViewId, url);
+			}
+		}
+
+		return tabId;
 	}
 
 	listTabs(): TabInfo[] {

@@ -103,8 +103,8 @@ export const browserTabIdOnlySchema = z.object({
 	tabId: tabIdField
 });
 
-export const browserCloseTabSchema = z.object({
-	tabId: z.number().describe('Tab ID to close. Use browser_list_tabs to see available tabs.')
+export const browserCloseSchema = z.object({
+	tabId: z.number().optional().describe('Tab ID to close. Omit to close ALL open browser tabs. Use browser_list_tabs to see available tabs.')
 });
 
 export const browserListTabsSchema = z.object({});
@@ -515,7 +515,7 @@ export interface ToolDefinition {
 // ============================================================================
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
-	// ========== Browser Tools (16) ==========
+	// ========== Browser Tools (15) ==========
 	{
 		name: 'browser_open',
 		description: 'Open a browser tab. With no args: focuses active tab (or opens first tab if none). With newTab:true: opens a new tab. With tabId: focuses that tab. With url: navigates after open/focus. Returns tabId in response.',
@@ -523,8 +523,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_close',
-		description: 'Close the currently active browser tab. Use browser_close_tab to close a specific tab by ID.',
-		schema: emptySchema
+		description: 'Close browser tabs. With tabId: closes that specific tab. Without tabId: closes ALL open browser tabs.',
+		schema: browserCloseSchema
 	},
 	{
 		name: 'browser_screenshot',
@@ -590,11 +590,6 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		name: 'browser_list_tabs',
 		description: 'List all open browser tabs with their IDs, URLs, titles, and active status.',
 		schema: browserListTabsSchema
-	},
-	{
-		name: 'browser_close_tab',
-		description: 'Close a specific browser tab by ID. Use browser_list_tabs to see available tabs.',
-		schema: browserCloseTabSchema
 	},
 
 	// ========== Canvas Tools (4) ==========

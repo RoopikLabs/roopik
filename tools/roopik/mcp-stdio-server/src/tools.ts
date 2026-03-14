@@ -30,7 +30,7 @@ const tabIdField = z.number().optional().describe(
 );
 
 // ============================================================================
-// Browser Tool Schemas (16)
+// Browser Tool Schemas (15)
 // ============================================================================
 
 export const browserOpenSchema = z.object({
@@ -107,8 +107,8 @@ export const browserTabIdOnlySchema = z.object({
 	tabId: tabIdField
 });
 
-export const browserCloseTabSchema = z.object({
-	tabId: z.number().describe('Tab ID to close. Use browser_list_tabs to see available tabs.')
+export const browserCloseSchema = z.object({
+	tabId: z.number().optional().describe('Tab ID to close. Omit to close ALL open browser tabs. Use browser_list_tabs to see available tabs.')
 });
 
 export const browserListTabsSchema = z.object({});
@@ -519,7 +519,7 @@ export interface ToolDefinition {
 // ============================================================================
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
-	// ========== Browser Tools (16) ==========
+	// ========== Browser Tools (15) ==========
 	{
 		name: 'browser_open',
 		description: 'Open a browser tab. With no args: focuses active tab (or opens first tab if none). With newTab:true: opens a new tab. With tabId: focuses that tab. With url: navigates after open/focus. Returns tabId in response.',
@@ -527,8 +527,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_close',
-		description: 'Close the currently active browser tab. Use browser_close_tab to close a specific tab by ID.',
-		schema: emptySchema
+		description: 'Close browser tabs. With tabId: closes that specific tab. Without tabId: closes ALL open browser tabs.',
+		schema: browserCloseSchema
 	},
 	{
 		name: 'browser_screenshot',
@@ -594,11 +594,6 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		name: 'browser_list_tabs',
 		description: 'List all open browser tabs with their IDs, URLs, titles, and active status.',
 		schema: browserListTabsSchema
-	},
-	{
-		name: 'browser_close_tab',
-		description: 'Close a specific browser tab by ID. Use browser_list_tabs to see available tabs.',
-		schema: browserCloseTabSchema
 	},
 
 	// ========== Canvas Tools (4) ==========
@@ -901,13 +896,13 @@ browser_get_errors → browser_get_console_logs → (fix code) → browser_reloa
 
 ## Tool Categories:
 - **Project Tools** (3): project_get_active, project_start, project_stop
-- **Browser Core** (8): browser_open, browser_close, browser_screenshot, browser_navigate, browser_reload, browser_action_input, browser_list_tabs, browser_close_tab
+- **Browser Core** (7): browser_open, browser_close, browser_screenshot, browser_navigate, browser_reload, browser_action_input, browser_list_tabs
 - **Browser Debug** (4): browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs
 - **Browser Info** (4): browser_get_performance, browser_get_state, browser_set_viewport, browser_get_network_requests
 - **Canvas Tools** (4): canvas_list, canvas_get_active, canvas_create, canvas_open
 - **Component Tools** (7): component_add, component_add_batch, component_remove, component_get_info, component_list, component_rebuild, canvas_validate_components
 
-## Total: 29 Tools`
+## Total: 30 Tools`
 	},
 	{
 		name: 'how-to-test-responsive',

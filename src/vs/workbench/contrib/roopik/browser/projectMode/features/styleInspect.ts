@@ -6,8 +6,7 @@
 import { INotificationService, Severity } from '../../../../../../platform/notification/common/notification.js';
 import type { IProjectModeService } from '../../../common/projectMode/ipc.js';
 import type { CSSSourceLocation, ElementStyleInfo, GetElementStylesResult } from '../../../common/cssResolvers/types.js';
-import { StyleInspectPanel } from '../components/styleInspectPanel.js';
-import type { IStyleInspectPanelCallbacks, DOMTreeNode } from '../components/styleInspectPanel.js';
+import { StyleInspectPanel, type IStyleInspectPanelCallbacks, type DOMTreeNode } from '../components/styleInspectPanel.js';
 import { ISourceNavigationService } from '../../../common/navigation/index.js';
 import type { InspectMode } from './inspectMode.js';
 import type { PendingMove } from './dragDrop/types.js';
@@ -58,9 +57,9 @@ export class StyleInspect {
 	private onVisibilityChangedCallback: ((visible: boolean, panelWidth: number) => void) | undefined;
 	private inspectModeRef: InspectMode | null = null;
 
-	// DOM tree state
+	// DOM tree state — per-browserViewId to avoid stale caches across tabs
 	private currentBrowserViewId: number | null = null;
-	private domTreeCache: DOMTreeNode | null = null;
+	private domTreeCaches = new Map<number, DOMTreeNode>();
 
 	// Flag to prevent DOM invalidation during style fetching
 	private isFetchingStyles: boolean = false;
@@ -301,8 +300,9 @@ export class StyleInspect {
 				this.showStylePanel(result.data);
 
 				// Sync with Components tree - highlight in UI only (no CDP calls)
-				if (this.domTreeCache) {
-					const nodeId = this.findNodeIdBySelector(this.domTreeCache, selector);
+				const cachedTree = this.getDOMTreeCache();
+				if (cachedTree) {
+					const nodeId = this.findNodeIdBySelector(cachedTree, selector);
 					if (nodeId) {
 						// Just update UI tree highlight - don't query CDP (avoids DOM invalidation)
 						this.highlightTreeNode(nodeId);
@@ -550,8 +550,9 @@ export class StyleInspect {
 
 			// Also set DOM tree if cached (for Components tab)
 			// This ensures tree is available when opening panel via inspect mode
-			if (this.domTreeCache) {
-				this.panel.setDOMTree(this.domTreeCache);
+			const tree = this.getDOMTreeCache();
+			if (tree) {
+				this.panel.setDOMTree(tree);
 			}
 		}
 	}
@@ -589,8 +590,9 @@ export class StyleInspect {
 
 			// If we have a cached DOM tree, set it on the panel
 			// This ensures Components tab has data even if opened before page load
-			if (this.domTreeCache) {
-				this.panel.setDOMTree(this.domTreeCache);
+			const cachedTree = this.getDOMTreeCache();
+			if (cachedTree) {
+				this.panel.setDOMTree(cachedTree);
 			}
 		}
 	}
@@ -645,6 +647,7 @@ export class StyleInspect {
 	/**
 	 * Edit a style value (placeholder - would need live CSS editing support)
 	 */
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: type CSSProperty properly
 	private editStyle(prop: any, newValue: string): void {
 		// TODO: Implement live CSS editing
 		// This would require:
@@ -674,7 +677,7 @@ export class StyleInspect {
 		}
 		this.inspectModeRef = null;
 		this.currentBrowserViewId = null;
-		this.domTreeCache = null;
+		this.domTreeCaches.clear();
 	}
 
 	// ============================================
@@ -704,7 +707,9 @@ export class StyleInspect {
 				const tree = this.convertCDPNodeToTree(result.root);
 
 				// Always cache the tree (even if panel not open)
-				this.domTreeCache = tree;
+				if (this.currentBrowserViewId !== null) {
+					this.domTreeCaches.set(this.currentBrowserViewId, tree);
+				}
 
 				// Update panel if it exists
 				if (this.panel && tree) {
@@ -721,7 +726,10 @@ export class StyleInspect {
 	 * Get cached DOM tree (for panel to use when opened)
 	 */
 	getDOMTreeCache(): DOMTreeNode | null {
-		return this.domTreeCache;
+		if (this.currentBrowserViewId !== null) {
+			return this.domTreeCaches.get(this.currentBrowserViewId) ?? null;
+		}
+		return null;
 	}
 
 	/**
@@ -844,7 +852,8 @@ export class StyleInspect {
 	 * 4. Use that fresh nodeId with Overlay.highlightNode
 	 */
 	async highlightElementInBrowser(nodeId: number): Promise<void> {
-		if (!this.currentBrowserViewId || !this.domTreeCache) {
+		const treeCache = this.getDOMTreeCache();
+		if (!this.currentBrowserViewId || !treeCache) {
 			return;
 		}
 
@@ -862,7 +871,7 @@ export class StyleInspect {
 			}
 
 			// Find the node in our cached tree and build a selector
-			const selector = this.buildSelectorFromNodeId(this.domTreeCache, nodeId);
+			const selector = this.buildSelectorFromNodeId(treeCache, nodeId);
 			if (!selector) {
 				console.warn('[StyleInspect] Could not build selector for nodeId:', nodeId);
 				return;

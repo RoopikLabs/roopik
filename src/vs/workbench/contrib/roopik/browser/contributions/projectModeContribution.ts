@@ -117,7 +117,7 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 
 				// Browser not open - explicit user stop or cleanup, close browser if somehow still exists
 				try {
-					await this.closeBrowser();
+					await this.closeAllBrowserTabs();
 				} catch (error) {
 					this.logger.error('Failed to close browser', { error });
 				}
@@ -162,36 +162,40 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 	}
 
 	/**
-	 * Open a NEW browser tab and optionally navigate to URL
-	 * Called when agent uses browser_open({ newTab: true })
+	 * Open a NEW browser tab (no navigation — backend handles that).
+	 * Called when agent uses browser_open({ newTab: true }).
+	 *
+	 * Navigation is intentionally NOT done here. The backend's openNewTab()
+	 * navigates using the specific browserViewId after tab creation. This
+	 * prevents race conditions when multiple tabs are opened rapidly — the
+	 * pane could switch context between creation and navigation.
 	 */
-	private async openNewBrowserTab(url: string): Promise<void> {
+	private async openNewBrowserTab(_url: string): Promise<void> {
 		if (this.isExternalMode) {
 			const channel = this.mainProcessService.getChannel('roopik.tools');
-			await channel.call('browser_open', { url, newTab: true });
+			await channel.call('browser_open', { newTab: true });
 			return;
 		}
 
-		// Embedded mode: force a new tab
-		const browserPane = await openBrowserEditor(
+		// Embedded mode: force a new tab (navigation handled by backend)
+		await openBrowserEditor(
 			this.editorService,
 			this.editorGroupsService,
 			this.configurationService,
 			{ forceNew: true }
 		);
-
-		if (browserPane && url) {
-			await browserPane.navigateToUrl(url, '');
-			this.logger.info('New browser tab opened with URL', { url });
-		}
 	}
 
 	/**
 	 * Open browser and navigate to URL
-	 * In embedded mode: navigates existing tab or opens new one if none exist
+	 * In embedded mode: opens/focuses editor tab, then delegates navigation to backend via IPC
 	 * In external mode: launches Chrome via IPC and navigates
+	 *
+	 * IMPORTANT: Navigation is handled by the backend, NOT the renderer pane.
+	 * The renderer only creates/focuses the editor tab. The backend navigates
+	 * using the specific browserViewId, preventing race conditions in multi-tab.
 	 */
-	private async openBrowserAndNavigate(url: string, projectRoot: string): Promise<void> {
+	private async openBrowserAndNavigate(url: string, _projectRoot: string): Promise<void> {
 		if (this.isExternalMode) {
 			// External mode: launch/navigate Chrome via tools channel IPC
 			const channel = this.mainProcessService.getChannel('roopik.tools');
@@ -201,17 +205,18 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 		}
 
 		// Embedded mode: focus existing tab or open new one (forceNew: false)
-		const browserPane = await openBrowserEditor(
+		await openBrowserEditor(
 			this.editorService,
 			this.editorGroupsService,
 			this.configurationService
 			// No forceNew — reuse existing tab for dev server navigation
 		);
 
-		// Navigate to the dev server URL
-		if (browserPane) {
-			await browserPane.navigateToUrl(url, projectRoot);
-			this.logger.info('Browser navigated to URL', { url });
+		// Delegate navigation to backend via IPC — backend resolves the correct browserViewId
+		if (url) {
+			const channel = this.mainProcessService.getChannel('roopik.tools');
+			await channel.call('browser_navigate', { url });
+			this.logger.info('Browser navigated to URL (via backend)', { url });
 		}
 	}
 

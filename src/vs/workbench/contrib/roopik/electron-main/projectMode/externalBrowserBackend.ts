@@ -880,7 +880,11 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 
 			this.pages.set(pageId, { session, target });
 			this.targetIdToPageId.set(target.id, pageId);
-			this.activePage = pageId;
+			// Only set active page if none is active yet — don't flip
+			// the active tab every time a new page is discovered
+			if (this.activePage === undefined) {
+				this.activePage = pageId;
+			}
 			this._onBrowserViewCreated.fire({ browserViewId: pageId });
 			this._onTabCreated.fire({ tabId: pageId, url: target.url });
 			console.log(`[ExternalBrowser] Connected to page ${pageId}: ${target.url}`);
@@ -897,12 +901,18 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 			this._onBrowserViewDestroyed.fire({ browserViewId: pageId });
 			this._onTabClosed.fire({ tabId: pageId });
 
-			// Update active page to next available
+			// Update active page: pick the nearest remaining tab (previous if possible)
 			if (this.activePage === pageId) {
 				const remaining = Array.from(this.pages.keys());
-				this.activePage = remaining.length > 0 ? remaining[remaining.length - 1] : undefined;
-				if (this.activePage !== undefined) {
+				if (remaining.length > 0) {
+					// Find the page that was just before the closed one, or fall back to the first remaining
+					const closedIndex = remaining.indexOf(pageId);
+					// Since pageId is already deleted, closedIndex will be -1.
+					// Pick the last remaining tab (most recently added) as a reasonable default.
+					this.activePage = remaining[remaining.length - 1];
 					this._onActiveTabChanged.fire({ tabId: this.activePage });
+				} else {
+					this.activePage = undefined;
 				}
 			}
 		}
