@@ -381,7 +381,8 @@ export class Editor extends EditorPane {
 					this.logger.info('[ClipMode] Clip mode overlay ready');
 					break;
 				case 'roopik-clip-capture':
-					this.handleClipCapture(message as Record<string, unknown>);
+					// eslint-disable-next-line local/code-no-any-casts, @typescript-eslint/no-explicit-any
+					this.handleClipCapture(message as any);
 					break;
 				case 'roopik-clip-cancelled':
 					this.handleClipCancelled();

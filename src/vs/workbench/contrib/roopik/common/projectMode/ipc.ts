@@ -188,7 +188,8 @@ export interface IProjectModeService {
 	/**
 	 * Send CDP command
 	 */
-	sendCDPCommand(browserViewId: number, method: string, params?: Record<string, unknown>): Promise<unknown>;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any>;
 
 	/**
 	 * Setup the browser bridge for script-to-main communication
@@ -230,7 +231,8 @@ export interface IProjectModeService {
 	/**
 	 * Execute JavaScript in browser
 	 */
-	executeScript(browserViewId: number, script: string): Promise<unknown>;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	executeScript(browserViewId: number, script: string): Promise<any>;
 
 	/**
 	 * Get page HTML

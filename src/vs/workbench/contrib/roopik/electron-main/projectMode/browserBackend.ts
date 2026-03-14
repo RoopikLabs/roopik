@@ -108,21 +108,19 @@ export interface IBrowserBackend {
 	sendScrollEvent(browserViewId: number, deltaX: number, deltaY: number, x?: number, y?: number): Promise<void>;
 
 	// ------ Script Execution ------
-	executeScript(browserViewId: number, script: string): Promise<unknown>;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	executeScript(browserViewId: number, script: string): Promise<any>;
 
 	// ------ CSS Inspection (source-map resolution) ------
-	getElementStyles(request: GetElementStylesRequest): Promise<{
-		success: boolean;
-		data?: GetElementStylesResult;
-		error?: string;
-	}>;
+	getElementStyles(request: GetElementStylesRequest): Promise<GetElementStylesResult>;
 
 	// ------ CDP (low-level) ------
 	attachDebugger(browserViewId: number): Promise<void>;
-	sendCDPCommand(browserViewId: number, method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any>;
 
 	// ------ Viewport ------
-	getViewportSize(browserViewId: number): { width: number; height: number } | undefined;
+	getViewportSize(browserViewId: number): { width: number; height: number } | null;
 
 	// ------ CDP Event Listener ------
 	/** Register a callback for CDP events on a browser view. Returns cleanup function. */

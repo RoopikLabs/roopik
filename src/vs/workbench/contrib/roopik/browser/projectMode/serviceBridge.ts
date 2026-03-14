@@ -160,7 +160,8 @@ export class ServiceBridge implements IProjectModeService {
 		return this.channel.call('enableCDPDomains', { browserViewId, domains });
 	}
 
-	async sendCDPCommand(browserViewId: number, method: string, params?: Record<string, unknown>): Promise<unknown> {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	async sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any> {
 		return this.channel.call('sendCDPCommand', { browserViewId, method, params });
 	}
 
@@ -188,7 +189,8 @@ export class ServiceBridge implements IProjectModeService {
 		return this.channel.call('focusBrowserView', browserViewId);
 	}
 
-	async executeScript(browserViewId: number, script: string): Promise<unknown> {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	async executeScript(browserViewId: number, script: string): Promise<any> {
 		return this.channel.call('executeScript', { browserViewId, script });
 	}
 

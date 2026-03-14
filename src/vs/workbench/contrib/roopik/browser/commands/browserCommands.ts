@@ -152,7 +152,7 @@ export function registerBrowserCommands(): void {
 				// External mode: launch Chrome via IPC (no embedded editor tab)
 				const mainProcessService = accessor.get(IMainProcessService);
 				const channel = mainProcessService.getChannel('roopik.tools');
-				const result = await channel.call('browser_open', {});
+				const result = await channel.call('browser_open', {}) as { success?: boolean; error?: string };
 				if (result && !result.success) {
 					notificationService.error(`Failed to open external browser: ${result.error}`);
 				} else {

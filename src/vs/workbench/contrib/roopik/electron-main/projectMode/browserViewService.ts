@@ -899,7 +899,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		}
 	}
 
-	async sendCDPCommand(browserViewId: number, method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>> {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	async sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any> {
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView || browserView.webContents.isDestroyed()) {
 			throw new Error(`Browser view ${browserViewId} not found`);
@@ -1532,7 +1533,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		return { width: bounds.width, height: bounds.height };
 	}
 
-	async executeScript(browserViewId: number, script: string): Promise<unknown> {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	async executeScript(browserViewId: number, script: string): Promise<any> {
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView || browserView.webContents.isDestroyed()) {
 			throw new Error(`Browser view ${browserViewId} not found`);

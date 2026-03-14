@@ -39,7 +39,7 @@ interface WsWebSocket {
 let wsModule: { default: new (url: string) => WsWebSocket } | null = null;
 async function getWsConstructor(): Promise<new (url: string) => WsWebSocket> {
 	if (!wsModule) {
-		wsModule = await import('ws') as typeof wsModule;
+		wsModule = await import('ws') as unknown as NonNullable<typeof wsModule>;
 	}
 	return wsModule!.default;
 }
@@ -542,7 +542,8 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	// Script Execution
 	// ========================================================================
 
-	async executeScript(browserViewId: number, script: string): Promise<unknown> {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	async executeScript(browserViewId: number, script: string): Promise<any> {
 		const session = this.getSession(browserViewId);
 		const result = await session.send('Runtime.evaluate', {
 			expression: script,
@@ -556,11 +557,7 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	// CSS Inspection
 	// ========================================================================
 
-	async getElementStyles(_request: GetElementStylesRequest): Promise<{
-		success: boolean;
-		data?: GetElementStylesResult;
-		error?: string;
-	}> {
+	async getElementStyles(_request: GetElementStylesRequest): Promise<GetElementStylesResult> {
 		// CSS source-map inspection requires the embedded browser's build pipeline.
 		// External Chrome doesn't have access to Vite's source maps in the same way.
 		// TODO: Implement via CDP CSS domain + source map fetching
@@ -579,7 +576,8 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 		// No-op — the session is already a CDP connection
 	}
 
-	async sendCDPCommand(browserViewId: number, method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>> {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	async sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any> {
 		const session = this.getSession(browserViewId);
 		return session.send(method, params);
 	}
@@ -588,8 +586,8 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	// Viewport
 	// ========================================================================
 
-	getViewportSize(browserViewId: number): { width: number; height: number } | undefined {
-		return this.viewportSizes.get(browserViewId);
+	getViewportSize(browserViewId: number): { width: number; height: number } | null {
+		return this.viewportSizes.get(browserViewId) ?? null;
 	}
 
 	// ========================================================================
@@ -929,7 +927,6 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 		if (page?.session.connected) {
 			try {
 				// CDP Target.closeTarget actually closes the tab
-				const targetId = page.target.id;
 				// Use the Browser domain to close the target
 				await page.session.send('Page.close');
 			} catch {
