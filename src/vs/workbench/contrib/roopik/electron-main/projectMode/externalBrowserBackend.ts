@@ -901,14 +901,10 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 			this._onBrowserViewDestroyed.fire({ browserViewId: pageId });
 			this._onTabClosed.fire({ tabId: pageId });
 
-			// Update active page: pick the nearest remaining tab (previous if possible)
+			// Update active page: pick the last remaining tab as a reasonable default
 			if (this.activePage === pageId) {
 				const remaining = Array.from(this.pages.keys());
 				if (remaining.length > 0) {
-					// Find the page that was just before the closed one, or fall back to the first remaining
-					const closedIndex = remaining.indexOf(pageId);
-					// Since pageId is already deleted, closedIndex will be -1.
-					// Pick the last remaining tab (most recently added) as a reasonable default.
 					this.activePage = remaining[remaining.length - 1];
 					this._onActiveTabChanged.fire({ tabId: this.activePage });
 				} else {

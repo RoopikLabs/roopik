@@ -26,7 +26,7 @@ const tabIdField = z.number().optional().describe(
 );
 
 // ============================================================================
-// Browser Tool Schemas (16)
+// Browser Tool Schemas (15)
 // ============================================================================
 
 export const browserOpenSchema = z.object({
@@ -699,4 +699,4 @@ export function getToolDefinitionsAsJsonSchema(): Array<{
 	}));
 }
 
-// Total: 32 Tools (16 Browser + 4 Canvas + 8 Component + 3 Project + 1 Guide)
+// Total: 30 Tools (15 Browser + 5 Canvas + 6 Component + 3 Project + 1 Guide)

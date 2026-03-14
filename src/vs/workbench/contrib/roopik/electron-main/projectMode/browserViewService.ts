@@ -112,6 +112,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	private tabToBrowserViewId = new Map<number, number>();   // tabId → browserViewId
 	private browserViewIdToTab = new Map<number, number>();   // browserViewId → tabId (reverse)
 	private activeTabId: number | undefined;
+	private openNewTabQueue: Promise<number> = Promise.resolve(0); // Serializes concurrent openNewTab calls
 
 	// CDP debugger state
 	private debuggerAttached = new Map<number, boolean>();
@@ -494,6 +495,19 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// ============================================
 
 	async openNewTab(url?: string): Promise<number> {
+		// Serialize concurrent openNewTab calls via queue.
+		// Each call waits for the previous to complete before firing its own
+		// onTabCreated listener, preventing multiple callers from resolving
+		// to the same tab creation event.
+		const result = this.openNewTabQueue.then(
+			() => this.openNewTabImpl(url),
+			() => this.openNewTabImpl(url) // Continue even if previous failed
+		);
+		this.openNewTabQueue = result.then(() => 0, () => 0); // Reset queue (value unused)
+		return result;
+	}
+
+	private async openNewTabImpl(url?: string): Promise<number> {
 		if (this.tabToBrowserViewId.size >= MAX_BROWSER_TABS) {
 			throw new Error(`Tab limit reached (max ${MAX_BROWSER_TABS}). Close a tab first.`);
 		}
@@ -1793,6 +1807,10 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				}
 			}
 		}
+
+		// Cleanup CDP monitoring and CSS resolver (best-effort, swallow errors)
+		try { cleanupCDPMonitoring(browserViewId); } catch { /* ignore */ }
+		try { this.cdpCssService.cleanup(browserViewId); } catch { /* ignore */ }
 
 		// Cleanup all maps
 		this.browserViews.delete(browserViewId);

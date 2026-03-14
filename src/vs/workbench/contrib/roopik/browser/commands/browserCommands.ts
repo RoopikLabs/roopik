@@ -64,28 +64,40 @@ export async function openBrowserEditor(
 ): Promise<ProjectModeEditor | undefined> {
 	const { tabId, forceNew } = options || {};
 
-	// If tabId specified, try to focus existing pane for that tab
+	// If tabId specified, try to focus existing editor for that tab
+	// Search ALL editor groups (not just visible panes) to find non-active tabs
 	if (tabId !== undefined) {
 		const existingInput = EditorTabInput.getByTabId(tabId);
 		if (existingInput) {
-			const existingPane = editorService.visibleEditorPanes.find(
-				pane => pane.input instanceof EditorTabInput && (pane.input as EditorTabInput).tabId === tabId
-			);
-			if (existingPane && existingPane instanceof ProjectModeEditor) {
-				await existingPane.group.openEditor(existingInput, { pinned: true });
-				return existingPane;
+			for (const group of editorGroupsService.groups) {
+				const matchingEditor = group.editors.find(
+					editor => editor instanceof EditorTabInput && editor.tabId === tabId
+				);
+				if (matchingEditor) {
+					await group.openEditor(matchingEditor, { pinned: true });
+					const pane = editorService.visibleEditorPanes.find(
+						p => p.input instanceof EditorTabInput && (p.input as EditorTabInput).tabId === tabId
+					);
+					return pane instanceof ProjectModeEditor ? pane : undefined;
+				}
 			}
 		}
 	}
 
 	// If not forcing new tab, try to focus any existing browser tab
+	// Search ALL editor groups to find non-visible browser tabs too
 	if (!forceNew) {
-		const existingPane = editorService.visibleEditorPanes.find(
-			pane => pane.input instanceof EditorTabInput
-		);
-		if (existingPane && existingPane instanceof ProjectModeEditor) {
-			await existingPane.group.openEditor(existingPane.input!, { pinned: true });
-			return existingPane;
+		for (const group of editorGroupsService.groups) {
+			const browserEditor = group.editors.find(
+				editor => editor instanceof EditorTabInput
+			);
+			if (browserEditor) {
+				await group.openEditor(browserEditor, { pinned: true });
+				const pane = editorService.visibleEditorPanes.find(
+					p => p.input instanceof EditorTabInput
+				);
+				return pane instanceof ProjectModeEditor ? pane : undefined;
+			}
 		}
 	}
 
@@ -112,9 +124,9 @@ export async function openBrowserEditor(
 		return undefined;
 	}
 
-	// Create a new browser tab. Use tabId=0 as placeholder — the actual tabId
-	// will be assigned by the backend when createBrowserView is called in editor.ts.
-	// For now, use a monotonically increasing local counter to ensure unique inputs.
+	// Create a new browser tab with a locally-assigned tabId.
+	// The backend uses this same tabId in createBrowserView() to set up tab maps.
+	// EditorTabInput.nextLocalTabId() ensures unique IDs across the renderer.
 	const newTabId = tabId ?? EditorTabInput.nextLocalTabId();
 	const input = new EditorTabInput(newTabId);
 

@@ -162,7 +162,7 @@ export class ToolExecutor {
 	}
 
 	// ==========================================================================
-	// Browser Tool Routing (14 tools) - Delegates to BrowserToolService
+	// Browser Tool Routing (15 tools) - Delegates to BrowserToolService
 	// ==========================================================================
 
 	private async executeBrowserTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
