@@ -43,45 +43,62 @@ interface OpenProjectPreviewArgs {
 const BROWSER_OPEN_IN_SPLIT_VIEW = false;
 
 /**
- * Helper function to open/focus the browser editor.
- * This centralizes the logic since the browser is a singleton.
+ * Helper function to open/focus a browser editor tab.
+ *
+ * Multi-tab behavior:
+ * - With tabId: focus existing tab (or create new if not found)
+ * - Without tabId and forceNew=false: focus any existing browser tab (first found)
+ * - Without tabId and forceNew=true: always create a new tab
  *
  * @returns The opened browser editor pane, or undefined if failed
  */
 export async function openBrowserEditor(
 	editorService: IEditorService,
 	editorGroupsService: IEditorGroupsService,
-	configurationService: IConfigurationService
+	configurationService: IConfigurationService,
+	options?: { tabId?: number; forceNew?: boolean }
 ): Promise<ProjectModeEditor | undefined> {
-	const input = EditorTabInput.getInstance();
+	const { tabId, forceNew } = options || {};
 
-	// Check if browser editor is already open in any group
-	const visibleEditors = editorService.visibleEditorPanes;
-	const existingPane = visibleEditors.find(
-		pane => pane.input instanceof EditorTabInput
-	);
-
-	if (existingPane && existingPane instanceof ProjectModeEditor) {
-		// Browser already open -> focus it
-		await existingPane.group.openEditor(input, { pinned: true });
-
-		if (BROWSER_OPEN_IN_SPLIT_VIEW && editorGroupsService.groups.length > 1) {
-			existingPane.group.lock(true);
+	// If tabId specified, try to focus existing pane for that tab
+	if (tabId !== undefined) {
+		const existingInput = EditorTabInput.getByTabId(tabId);
+		if (existingInput) {
+			const existingPane = editorService.visibleEditorPanes.find(
+				pane => pane.input instanceof EditorTabInput && (pane.input as EditorTabInput).tabId === tabId
+			);
+			if (existingPane && existingPane instanceof ProjectModeEditor) {
+				await existingPane.group.openEditor(existingInput, { pinned: true });
+				return existingPane;
+			}
 		}
-
-		return existingPane;
 	}
+
+	// If not forcing new tab, try to focus any existing browser tab
+	if (!forceNew) {
+		const existingPane = editorService.visibleEditorPanes.find(
+			pane => pane.input instanceof EditorTabInput
+		);
+		if (existingPane && existingPane instanceof ProjectModeEditor) {
+			await existingPane.group.openEditor(existingPane.input!, { pinned: true });
+			return existingPane;
+		}
+	}
+
+	// Create a new browser tab. Use tabId=0 as placeholder — the actual tabId
+	// will be assigned by the backend when createBrowserView is called in editor.ts.
+	// For now, use a monotonically increasing local counter to ensure unique inputs.
+	const newTabId = tabId ?? EditorTabInput.nextLocalTabId();
+	const input = new EditorTabInput(newTabId);
 
 	let targetGroup;
 	if (BROWSER_OPEN_IN_SPLIT_VIEW) {
-		// Open in a side group (split view)
 		const direction = preferredSideBySideGroupDirection(configurationService);
 		targetGroup = editorGroupsService.findGroup({ direction });
 		if (!targetGroup) {
 			targetGroup = editorGroupsService.addGroup(editorGroupsService.activeGroup, direction);
 		}
 	} else {
-		// Open in active group as regular tab
 		targetGroup = editorGroupsService.activeGroup;
 	}
 
@@ -93,7 +110,7 @@ export async function openBrowserEditor(
 
 	// Find the newly opened editor pane
 	const newPane = editorService.visibleEditorPanes.find(
-		pane => pane.input instanceof EditorTabInput
+		pane => pane.input instanceof EditorTabInput && (pane.input as EditorTabInput).tabId === newTabId
 	);
 
 	return newPane instanceof ProjectModeEditor ? newPane : undefined;
@@ -148,8 +165,8 @@ export function registerBrowserCommands(): void {
 			const editorService = accessor.get(IEditorService);
 			const editorGroupsService = accessor.get(IEditorGroupsService);
 
-			// Open/focus browser editor and lock its group (centralized logic)
-			await openBrowserEditor(editorService, editorGroupsService, configurationService);
+			// User clicked "Browse Web" button — open a NEW tab (or focus existing if at limit)
+			await openBrowserEditor(editorService, editorGroupsService, configurationService, { forceNew: true });
 
 			// Show hint notification (once per installation)
 			const hintKey = 'roopik.browserRightSideHintShown';

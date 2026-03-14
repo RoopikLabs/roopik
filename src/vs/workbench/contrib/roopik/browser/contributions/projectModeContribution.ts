@@ -151,7 +151,7 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 
 	/**
 	 * Open browser and navigate to URL
-	 * In embedded mode: opens editor tab and navigates
+	 * In embedded mode: navigates existing tab or opens new one if none exist
 	 * In external mode: launches Chrome via IPC and navigates
 	 */
 	private async openBrowserAndNavigate(url: string, projectRoot: string): Promise<void> {
@@ -163,11 +163,12 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 			return;
 		}
 
-		// Embedded mode: open editor tab and navigate
+		// Embedded mode: focus existing tab or open new one (forceNew: false)
 		const browserPane = await openBrowserEditor(
 			this.editorService,
 			this.editorGroupsService,
 			this.configurationService
+			// No forceNew — reuse existing tab for dev server navigation
 		);
 
 		// Navigate to the dev server URL

@@ -15,6 +15,7 @@ import type { IProjectModeService } from '../../common/projectMode/ipc.js';
 export class ProjectModeChannel implements IServerChannel {
 	constructor(private service: IProjectModeService) { }
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	listen(_: unknown, event: string): Event<any> {
 		switch (event) {
 			case 'onDevToolsClosed':
@@ -38,11 +39,16 @@ export class ProjectModeChannel implements IServerChannel {
 		}
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	call(_: unknown, command: string, arg?: any): Promise<any> {
 		switch (command) {
 			// Browser View Lifecycle
 			case 'createBrowserView':
-				return this.service.createBrowserView(arg);
+				// arg can be number (legacy) or { windowId, tabId } (multi-tab)
+				if (typeof arg === 'number') {
+					return this.service.createBrowserView(arg);
+				}
+				return this.service.createBrowserView(arg.windowId, arg.tabId);
 			case 'destroyBrowserView':
 				return this.service.destroyBrowserView(arg);
 			case 'setBrowserBounds':

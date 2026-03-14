@@ -22,8 +22,7 @@ import { ServiceBridge } from './serviceBridge.js';
 import { PROJECT_MODE_CHANNEL } from '../../common/projectMode/ipc.js';
 import { DevServerBridge } from './devServerBridge.js';
 import { DEV_SERVER_CHANNEL } from '../../common/projectMode/devServer.js';
-import { BrowserControlBar } from './components/browserControlBar.js';
-import type { IBrowserControlBarConfig, IBrowserControlBarCallbacks } from './components/browserControlBar.js';
+import { BrowserControlBar, type IBrowserControlBarConfig, type IBrowserControlBarCallbacks } from './components/browserControlBar.js';
 import type { ViewBounds, NavigationStateChangedEvent } from '../../common/projectMode/types.js';
 import { IRoopikEventService } from '../../common/events/index.js';
 import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
@@ -382,7 +381,7 @@ export class Editor extends EditorPane {
 					this.logger.info('[ClipMode] Clip mode overlay ready');
 					break;
 				case 'roopik-clip-capture':
-					this.handleClipCapture(message as any);
+					this.handleClipCapture(message as Record<string, unknown>);
 					break;
 				case 'roopik-clip-cancelled':
 					this.handleClipCancelled();
@@ -1128,7 +1127,9 @@ export class Editor extends EditorPane {
 	private async doInitializeBrowserView(): Promise<void> {
 		try {
 			const windowId = await this.nativeHostService.windowId;
-			const result = await this.browserService.createBrowserView(windowId);
+			// Pass tabId from current input so the backend maps this tab correctly
+			const currentInput = this.input instanceof EditorTabInput ? this.input : undefined;
+			const result = await this.browserService.createBrowserView(windowId, currentInput?.tabId);
 			this.browserViewId = result.browserViewId;
 
 			this.logger.info('[ProjectMode] Browser view initialized', {

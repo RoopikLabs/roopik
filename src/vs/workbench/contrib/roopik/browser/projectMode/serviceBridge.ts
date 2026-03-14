@@ -84,8 +84,8 @@ export class ServiceBridge implements IProjectModeService {
 	// Browser View Lifecycle
 	// ============================================
 
-	async createBrowserView(windowId: number): Promise<BrowserViewResult> {
-		return this.channel.call('createBrowserView', windowId);
+	async createBrowserView(windowId: number, tabId?: number): Promise<BrowserViewResult & { tabId: number }> {
+		return this.channel.call('createBrowserView', { windowId, tabId });
 	}
 
 	async destroyBrowserView(browserViewId: number): Promise<void> {
@@ -160,7 +160,7 @@ export class ServiceBridge implements IProjectModeService {
 		return this.channel.call('enableCDPDomains', { browserViewId, domains });
 	}
 
-	async sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any> {
+	async sendCDPCommand(browserViewId: number, method: string, params?: Record<string, unknown>): Promise<unknown> {
 		return this.channel.call('sendCDPCommand', { browserViewId, method, params });
 	}
 
@@ -188,7 +188,7 @@ export class ServiceBridge implements IProjectModeService {
 		return this.channel.call('focusBrowserView', browserViewId);
 	}
 
-	async executeScript(browserViewId: number, script: string): Promise<any> {
+	async executeScript(browserViewId: number, script: string): Promise<unknown> {
 		return this.channel.call('executeScript', { browserViewId, script });
 	}
 

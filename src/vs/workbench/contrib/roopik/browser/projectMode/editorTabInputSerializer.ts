@@ -14,13 +14,15 @@ import { EditorTabInput } from './editorTabInput.js';
 interface ISerializedEditorTabInput {
 	url: string;
 	pageTitle: string;
+	tabId: number;
 }
 
 /**
  * Serializer for EditorTabInput
- * Enables VS Code to restore browser preview with the same URL after reload
+ * Enables VS Code to restore browser preview tabs with the same URL after reload
  *
- * This follows the same pattern as other VS Code editors (Search Editor, Chat Editor, etc.)
+ * Multi-tab: Each tab is serialized/deserialized with its tabId.
+ * On restore, new tabIds are assigned (backend assigns fresh IDs on createBrowserView).
  */
 export class EditorTabInputSerializer implements IEditorSerializer {
 	canSerialize(editorInput: EditorInput): boolean {
@@ -31,7 +33,8 @@ export class EditorTabInputSerializer implements IEditorSerializer {
 		if (editorInput instanceof EditorTabInput) {
 			const data: ISerializedEditorTabInput = {
 				url: editorInput.url,
-				pageTitle: editorInput.pageTitle
+				pageTitle: editorInput.pageTitle,
+				tabId: editorInput.tabId
 			};
 			return JSON.stringify(data);
 		}
@@ -41,7 +44,8 @@ export class EditorTabInputSerializer implements IEditorSerializer {
 	deserialize(instantiationService: IInstantiationService, serializedEditorInput: string): EditorInput {
 		try {
 			const data = JSON.parse(serializedEditorInput) as ISerializedEditorTabInput;
-			const input = EditorTabInput.getInstance();
+			// Create a new tab with a fresh local ID (backend will assign real tabId on createBrowserView)
+			const input = new EditorTabInput(EditorTabInput.nextLocalTabId());
 
 			// Restore URL and page title
 			if (data.url && data.url !== 'about:blank') {
@@ -54,8 +58,7 @@ export class EditorTabInputSerializer implements IEditorSerializer {
 			return input;
 		} catch {
 			// On error, return a fresh instance (will show about:blank)
-			return EditorTabInput.getInstance();
+			return new EditorTabInput(EditorTabInput.nextLocalTabId());
 		}
 	}
 }
-

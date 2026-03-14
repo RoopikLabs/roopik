@@ -89,7 +89,7 @@ export interface IProjectModeService {
 	 * @param windowId - The parent window ID
 	 * @returns Browser view ID and debugging port
 	 */
-	createBrowserView(windowId: number): Promise<BrowserViewResult>;
+	createBrowserView(windowId: number, tabId?: number): Promise<BrowserViewResult & { tabId: number }>;
 
 	/**
 	 * Destroy browser view and cleanup resources
@@ -188,7 +188,7 @@ export interface IProjectModeService {
 	/**
 	 * Send CDP command
 	 */
-	sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any>;
+	sendCDPCommand(browserViewId: number, method: string, params?: Record<string, unknown>): Promise<unknown>;
 
 	/**
 	 * Setup the browser bridge for script-to-main communication
@@ -230,7 +230,7 @@ export interface IProjectModeService {
 	/**
 	 * Execute JavaScript in browser
 	 */
-	executeScript(browserViewId: number, script: string): Promise<any>;
+	executeScript(browserViewId: number, script: string): Promise<unknown>;
 
 	/**
 	 * Get page HTML
