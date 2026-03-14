@@ -37,8 +37,10 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 	static readonly ID = 'roopik.projectModeContribution';
 
 	private devServerService: DevServerBridge;
-	private projectModeService: ServiceBridge;
+	private projectModeService: ServiceBridge | null = null;
+	private readonly mainProcessService: IMainProcessService;
 	private readonly logger;
+	private readonly isExternalMode: boolean;
 
 	constructor(
 		@IEditorService private readonly editorService: IEditorService,
@@ -49,21 +51,26 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 	) {
 		super();
 		this.logger = getRoopikLogger(loggerService, 'PROJECT_MODE_CONTRIBUTION');
+		this.mainProcessService = mainProcessService;
+		this.isExternalMode = (configurationService.getValue<string>('roopik.browser.mode') || 'embedded') === 'external';
 
 		// Get DevServerService via IPC
 		this.devServerService = new DevServerBridge(mainProcessService.getChannel(DEV_SERVER_CHANNEL));
 
-		// Get ProjectModeService via IPC (for MCP browser open events)
-		this.projectModeService = new ServiceBridge(mainProcessService.getChannel(PROJECT_MODE_CHANNEL));
-
 		// Listen to server status changes
 		this.setupDevServerListener();
 
-		// Listen for MCP browser open requests
-		this.setupMcpBrowserOpenListener();
+		// ProjectModeChannel only exists in embedded mode
+		if (!this.isExternalMode) {
+			// Get ProjectModeService via IPC (for MCP browser open events)
+			this.projectModeService = new ServiceBridge(mainProcessService.getChannel(PROJECT_MODE_CHANNEL));
 
-		// Listen for MCP browser close requests
-		this.setupMcpBrowserCloseListener();
+			// Listen for MCP browser open requests
+			this.setupMcpBrowserOpenListener();
+
+			// Listen for MCP browser close requests
+			this.setupMcpBrowserCloseListener();
+		}
 	}
 
 	/**
@@ -124,7 +131,7 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 	 * this opens the browser editor with proper UI
 	 */
 	private setupMcpBrowserOpenListener(): void {
-		this._register(this.projectModeService.onMcpBrowserOpenRequest(async (event) => {
+		this._register(this.projectModeService!.onMcpBrowserOpenRequest(async (event) => {
 			// Same as roopik.openProjectPreview command (Browse Web button)
 			await this.openBrowserAndNavigate(event.url || '', '');
 		}));
@@ -136,18 +143,27 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 	 * This triggers the full cleanup chain (EditorTabInput.dispose -> destroyBrowserNow -> etc.)
 	 */
 	private setupMcpBrowserCloseListener(): void {
-		this._register(this.projectModeService.onMcpBrowserCloseRequest(async () => {
+		this._register(this.projectModeService!.onMcpBrowserCloseRequest(async () => {
 			this.logger.info('MCP browser close request received');
 			await this.closeBrowser();
 		}));
 	}
 
 	/**
-	 * Open browser editor and navigate to URL
-	 * Reuses existing browser if already open, otherwise creates new one
+	 * Open browser and navigate to URL
+	 * In embedded mode: opens editor tab and navigates
+	 * In external mode: launches Chrome via IPC and navigates
 	 */
 	private async openBrowserAndNavigate(url: string, projectRoot: string): Promise<void> {
-		// Open/focus browser editor and lock its group (centralized logic)
+		if (this.isExternalMode) {
+			// External mode: launch/navigate Chrome via tools channel IPC
+			const channel = this.mainProcessService.getChannel('roopik.tools');
+			await channel.call('browser_open', { url });
+			this.logger.info('External browser opened/navigated', { url });
+			return;
+		}
+
+		// Embedded mode: open editor tab and navigate
 		const browserPane = await openBrowserEditor(
 			this.editorService,
 			this.editorGroupsService,

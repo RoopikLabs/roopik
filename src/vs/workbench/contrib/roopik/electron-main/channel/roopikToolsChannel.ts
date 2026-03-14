@@ -31,7 +31,7 @@
 import { Event } from '../../../../../base/common/event.js';
 import { IServerChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import { resolve, normalize } from '../../../../../base/common/path.js';
-import type { BrowserViewService } from '../projectMode/browserViewService.js';
+import type { IBrowserBackend } from '../projectMode/browserBackend.js';
 import type { DevServerService } from '../projectMode/devServer/devServerService.js';
 import type { ComponentService } from '../component/componentService.js';
 import type { AddComponentRequest } from '../../common/component/types.js';
@@ -71,7 +71,7 @@ export class RoopikToolsChannel implements IServerChannel {
 	private readonly projectToolService: ProjectToolService;
 
 	constructor(
-		private readonly browserViewService: BrowserViewService,
+		private readonly browserViewService: IBrowserBackend,
 		private readonly devServerService: DevServerService,
 		private readonly componentService: ComponentService,
 		private readonly canvasService: ICanvasService,
@@ -246,43 +246,92 @@ export class RoopikToolsChannel implements IServerChannel {
 	/**
 	 * Open a browser view without requiring a project.
 	 *
-	 * NOTE: This handler is kept for backwards compatibility but browser_open
-	 * should be handled in the renderer process (roopikToolsCommands.ts) to
-	 * properly open the editor tab. Direct IPC calls here only create the
-	 * BrowserView without the editor UI.
+	 * In embedded mode: This is called from the renderer after the editor tab is opened.
+	 * In external mode: This launches Chrome directly via requestBrowserOpen().
 	 *
-	 * If browser is already open, this will work correctly for navigation.
-	 * If browser is not open, this will return an error directing to use
-	 * the proper command.
+	 * Returns meaningful state: current URL, title, and whether browser was already open.
 	 */
 	private async handleBrowserOpen(args: { url?: string }): Promise<RoopikToolResult> {
-		// Check if browser is already open
 		const existingBrowserViewId = this.browserViewService.getActiveBrowserViewId();
+
 		if (existingBrowserViewId !== undefined) {
-			// Browser already open - just navigate if URL provided
+			// Browser already open - navigate if URL provided, then return state
 			if (args.url) {
 				await this.browserViewService.navigate(existingBrowserViewId, args.url);
+			}
+
+			// Return current browser state
+			try {
+				const state = await this.browserViewService.getNavigationState(existingBrowserViewId);
 				return {
 					success: true,
 					data: {
-						url: args.url,
-						message: `Navigated existing browser to ${args.url}`
+						browserOpen: true,
+						alreadyOpen: true,
+						browserViewId: existingBrowserViewId,
+						url: state.url,
+						title: state.title,
+						message: args.url
+							? `Navigated to ${args.url}`
+							: `Browser open at ${state.url}`
+					}
+				};
+			} catch {
+				return {
+					success: true,
+					data: {
+						browserOpen: true,
+						alreadyOpen: true,
+						browserViewId: existingBrowserViewId,
+						message: 'Browser is open'
 					}
 				};
 			}
-			return {
-				success: true,
-				data: {
-					message: 'Browser is already open'
-				}
-			};
 		}
 
-		// Browser not open - this should be handled via the renderer command
-		// which properly opens the editor tab
+		// Browser not open - launch it
+		this.browserViewService.requestBrowserOpen(args.url);
+
+		// Wait briefly for Chrome to connect (external mode needs time to spawn + CDP handshake)
+		const maxWait = 8000;
+		const interval = 200;
+		let waited = 0;
+		while (waited < maxWait) {
+			await new Promise(r => setTimeout(r, interval));
+			waited += interval;
+			const viewId = this.browserViewService.getActiveBrowserViewId();
+			if (viewId !== undefined) {
+				// Connected! Return state
+				try {
+					const state = await this.browserViewService.getNavigationState(viewId);
+					return {
+						success: true,
+						data: {
+							browserOpen: true,
+							alreadyOpen: false,
+							browserViewId: viewId,
+							url: state.url,
+							title: state.title,
+							message: `Browser launched at ${state.url}`
+						}
+					};
+				} catch {
+					return {
+						success: true,
+						data: {
+							browserOpen: true,
+							alreadyOpen: false,
+							browserViewId: viewId,
+							message: 'Browser launched'
+						}
+					};
+				}
+			}
+		}
+
 		return {
 			success: false,
-			error: 'Browser is not open. Use the roopik.tools.browserOpen command (not direct IPC) to open the browser with proper UI.'
+			error: 'Browser launch timed out. Chrome may not be installed or the CDP port may be in use.'
 		};
 	}
 

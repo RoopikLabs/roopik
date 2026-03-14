@@ -20,7 +20,7 @@
  * - Classifies network requests as 'static' vs 'api' for compression
  */
 
-import type { BrowserViewService } from '../projectMode/browserViewService.js';
+import type { IBrowserBackend } from '../projectMode/browserBackend.js';
 
 // ============================================================================
 // Noise Filtering Patterns
@@ -136,7 +136,7 @@ export function cleanupCDPMonitoring(browserViewId: number): void {
 
 export class CDPMonitorService {
 	constructor(
-		private readonly browserViewService: BrowserViewService
+		private readonly browserViewService: IBrowserBackend
 	) {
 		// Auto-initialize CDP monitoring for ALL browser views
 		// This ensures monitoring works regardless of how browser was opened (tool, manual, etc.)

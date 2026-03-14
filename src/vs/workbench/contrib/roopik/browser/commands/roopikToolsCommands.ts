@@ -29,6 +29,11 @@ import { ROOPIK_TOOLS_CHANNEL_NAME } from '../../common/tools/types.js';
 import type { RoopikToolResult } from '../../common/tools/types.js';
 import { openBrowserEditor } from './browserCommands.js';
 
+/** Check if external browser mode is configured */
+function isExternalMode(configurationService: IConfigurationService): boolean {
+	return (configurationService.getValue<string>('roopik.browser.mode') || 'embedded') === 'external';
+}
+
 /**
  * Generic tool call interface for extensions
  */
@@ -105,13 +110,19 @@ export function registerRoopikToolsCommands(): void {
 
 		async run(accessor: ServicesAccessor, args?: { url?: string }): Promise<RoopikToolResult> {
 			try {
-				const editorService = accessor.get(IEditorService);
-				const editorGroupsService = accessor.get(IEditorGroupsService);
 				const configurationService = accessor.get(IConfigurationService);
-				// Get mainProcessService immediately - accessor is only valid during synchronous execution
 				const mainProcessService = accessor.get(IMainProcessService);
 
-				// Open/focus the browser editor tab (this triggers createBrowserView internally)
+				if (isExternalMode(configurationService)) {
+					// External mode: launch Chrome via IPC (no embedded editor)
+					const channel = getToolsChannel(mainProcessService);
+					return await channel.call('browser_open', { url: args?.url }) as RoopikToolResult;
+				}
+
+				// Embedded mode: open editor tab + navigate
+				const editorService = accessor.get(IEditorService);
+				const editorGroupsService = accessor.get(IEditorGroupsService);
+
 				const browserPane = await openBrowserEditor(editorService, editorGroupsService, configurationService);
 
 				if (!browserPane) {
@@ -122,14 +133,11 @@ export function registerRoopikToolsCommands(): void {
 				}
 
 				// If URL provided, navigate via IPC channel
-				// The editor creates the browser asynchronously, so we use a short delay
-				// to ensure the browser is ready before navigating
 				if (args?.url) {
 					// Small delay to let browser initialize
 					await new Promise(resolve => setTimeout(resolve, 500));
 
 					const channel = getToolsChannel(mainProcessService);
-					// URL normalization is done in browserViewService.navigate()
 					const navResult = await channel.call('browser_navigate', { url: args.url }) as RoopikToolResult;
 
 					if (navResult?.success) {
@@ -141,7 +149,6 @@ export function registerRoopikToolsCommands(): void {
 							}
 						};
 					}
-					// Navigation may fail if browser not ready yet, but browser is open
 					return {
 						success: true,
 						data: {

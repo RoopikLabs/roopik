@@ -139,6 +139,8 @@ import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetr
 
 // ROOPIK: ProjectMode - Browser Preview with embedded DevTools
 import { BrowserViewService } from '../../workbench/contrib/roopik/electron-main/projectMode/browserViewService.js';
+import { ExternalBrowserBackend } from '../../workbench/contrib/roopik/electron-main/projectMode/externalBrowserBackend.js';
+import type { IBrowserBackend } from '../../workbench/contrib/roopik/electron-main/projectMode/browserBackend.js';
 import { ProjectModeChannel } from '../../workbench/contrib/roopik/electron-main/projectMode/projectModeChannel.js';
 import { PROJECT_MODE_CHANNEL } from '../../workbench/contrib/roopik/common/projectMode/ipc.js';
 // ROOPIK: DevServer - Vite dev server management
@@ -1365,10 +1367,27 @@ export class CodeApplication extends Disposable {
 		mainProcessElectronServer.registerChannel(ipcUtilityProcessWorkerChannelName, utilityProcessWorkerChannel);
 
 		// ROOPIK: -----------------------------------------------------------
-		// ROOPIK: Project Mode Service - Browser View management with CDP
-		const projectModeService = new BrowserViewService(accessor.get(ILoggerService), accessor.get(ILifecycleMainService));
-		const projectModeChannel = new ProjectModeChannel(projectModeService);
-		mainProcessElectronServer.registerChannel(PROJECT_MODE_CHANNEL, projectModeChannel);
+		// ROOPIK: Project Mode Service - Browser backend (embedded or external)
+		const browserMode = this.configurationService.getValue<string>('roopik.browser.mode') || 'embedded';
+		let browserBackend: IBrowserBackend;
+
+		if (browserMode === 'external') {
+			const cdpPort = this.configurationService.getValue<number>('roopik.browser.externalCdpPort') || 9222;
+			const chromePath = this.configurationService.getValue<string>('roopik.browser.externalChromePath') || undefined;
+			browserBackend = new ExternalBrowserBackend(cdpPort, chromePath);
+			console.log(`[Roopik] Browser mode: external (CDP port ${cdpPort})`);
+		} else {
+			browserBackend = new BrowserViewService(accessor.get(ILoggerService), accessor.get(ILifecycleMainService));
+			console.log('[Roopik] Browser mode: embedded');
+		}
+
+		// ProjectModeChannel still needs BrowserViewService for renderer ↔ main IPC
+		// (only available in embedded mode — external mode doesn't have WebContentsView)
+		const projectModeService = browserBackend instanceof BrowserViewService ? browserBackend : null;
+		if (projectModeService) {
+			const projectModeChannel = new ProjectModeChannel(projectModeService);
+			mainProcessElectronServer.registerChannel(PROJECT_MODE_CHANNEL, projectModeChannel);
+		}
 
 		// ROOPIK: Project Storage Service - Recent projects for Project Mode
 		// NOTE: Created before DevServerService so it can be injected
@@ -1400,7 +1419,7 @@ export class CodeApplication extends Disposable {
 		const mcpServerService = new McpServerService(
 			accessor.get(ILoggerService),
 			devServerService,
-			projectModeService,
+			browserBackend,        // IBrowserBackend (embedded or external)
 			componentService,
 			canvasService,
 			roopikStorageService,
@@ -1418,7 +1437,7 @@ export class CodeApplication extends Disposable {
 		// ROOPIK: Tools Channel - Direct IPC for agent roopik-roo extension
 		// Provides faster, timeout-free access to IDE tools (alternative to MCP HTTP)
 		const roopikToolsChannel = new RoopikToolsChannel(
-			projectModeService,    // BrowserViewService
+			browserBackend,        // IBrowserBackend (embedded or external)
 			devServerService,      // DevServerService
 			componentService,      // ComponentService
 			canvasService,         // ICanvasService

@@ -12,7 +12,7 @@
 
 import type { DevServerService } from '../projectMode/devServer/devServerService.js';
 import type { IRoopikStorageService } from '../../common/storage/storageService.js';
-import type { BrowserViewService } from '../projectMode/browserViewService.js';
+import type { IBrowserBackend } from '../projectMode/browserBackend.js';
 import type {
 	ToolResult,
 	ProjectServerInfo,
@@ -29,7 +29,7 @@ export class ProjectToolService {
 	constructor(
 		private readonly devServerService: DevServerService,
 		private readonly storageService: IRoopikStorageService,
-		private readonly browserViewService: BrowserViewService
+		private readonly browserViewService: IBrowserBackend
 	) {}
 
 	// ==========================================================================

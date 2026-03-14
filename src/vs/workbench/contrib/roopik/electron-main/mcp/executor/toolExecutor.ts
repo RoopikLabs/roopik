@@ -15,7 +15,7 @@
  * - This file is now a thin adapter that routes and delegates
  */
 
-import type { BrowserViewService } from '../../projectMode/browserViewService.js';
+import type { IBrowserBackend } from '../../projectMode/browserBackend.js';
 import type { IRoopikStorageService } from '../../../common/storage/storageService.js';
 import type { ICanvasService } from '../../../common/canvas/canvasService.js';
 import type { ComponentService } from '../../component/componentService.js';
@@ -59,7 +59,7 @@ export class ToolExecutor {
 	private readonly storageService: IRoopikStorageService;
 
 	constructor(
-		browserViewService: BrowserViewService,
+		browserViewService: IBrowserBackend,
 		storageService: IRoopikStorageService,
 		canvasService: ICanvasService,
 		componentService: ComponentService,

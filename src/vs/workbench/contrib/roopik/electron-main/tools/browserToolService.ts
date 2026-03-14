@@ -10,7 +10,7 @@
  * Single source of truth - used by both WebSocket MCP and Native IPC.
  */
 
-import type { BrowserViewService } from '../projectMode/browserViewService.js';
+import type { IBrowserBackend } from '../projectMode/browserBackend.js';
 import type { CDPMonitorService } from './cdpMonitorService.js';
 import type {
 	ToolResult,
@@ -34,7 +34,7 @@ import type {
 
 export class BrowserToolService {
 	constructor(
-		private readonly browserViewService: BrowserViewService,
+		private readonly browserViewService: IBrowserBackend,
 		private readonly cdpMonitorService: CDPMonitorService
 	) { }
 

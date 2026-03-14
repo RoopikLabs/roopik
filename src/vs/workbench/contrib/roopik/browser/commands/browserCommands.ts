@@ -118,6 +118,7 @@ export function registerBrowserCommands(): void {
 			const commandService = accessor.get(ICommandService);
 			const notificationService = accessor.get(INotificationService);
 			const storageService = accessor.get(IStorageService);
+			const configurationService = accessor.get(IConfigurationService);
 
 			// If projectPath provided, delegate to startProject command
 			// This ensures single flow: start server -> event opens browser
@@ -128,10 +129,24 @@ export function registerBrowserCommands(): void {
 				return;
 			}
 
-			// No projectPath: Just open empty browser (for "Browse Web" button)
+			const browserMode = configurationService.getValue<string>('roopik.browser.mode') || 'embedded';
+
+			if (browserMode === 'external') {
+				// External mode: launch Chrome via IPC (no embedded editor tab)
+				const mainProcessService = accessor.get(IMainProcessService);
+				const channel = mainProcessService.getChannel('roopik.tools');
+				const result = await channel.call('browser_open', {});
+				if (result && !result.success) {
+					notificationService.error(`Failed to open external browser: ${result.error}`);
+				} else {
+					notificationService.info('External Chrome browser launched.');
+				}
+				return;
+			}
+
+			// Embedded mode: Open browser editor tab
 			const editorService = accessor.get(IEditorService);
 			const editorGroupsService = accessor.get(IEditorGroupsService);
-			const configurationService = accessor.get(IConfigurationService);
 
 			// Open/focus browser editor and lock its group (centralized logic)
 			await openBrowserEditor(editorService, editorGroupsService, configurationService);

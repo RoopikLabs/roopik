@@ -17,6 +17,7 @@ import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.
 import contextMenu from 'electron-context-menu';
 import { cleanupCDPMonitoring } from '../tools/cdpMonitorService.js';
 import { injectStealthPatches } from './browserStealth.js';
+import type { IBrowserBackend } from './browserBackend.js';
 import { FileAccess } from '../../../../../base/common/network.js';
 import { ipcMain } from 'electron';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
@@ -32,7 +33,7 @@ import { getRoopikLogger } from '../../common/roopikLogger.js';
  * - Device emulation via CDP
  * - Graceful cleanup on window reload (via ILifecycleMainService)
  */
-export class BrowserViewService extends Disposable implements IProjectModeService {
+export class BrowserViewService extends Disposable implements IProjectModeService, IBrowserBackend {
 	readonly _serviceBrand: undefined;
 
 	// ============================================
