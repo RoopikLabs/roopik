@@ -86,10 +86,19 @@ export class Editor extends EditorPane {
 	// Used to decide whether to show placeholder on tab switch
 	private hasLoadedUrl: boolean = false;
 
+	// ============================================
+	// Multi-tab state: per-tab browser view tracking
+	// The editor pane is reused across tabs — on tab switch, we save/restore state.
+	// ============================================
+	private readonly tabBrowserViewIds = new Map<number, number>(); // tabId → browserViewId
+	private readonly tabHasLoadedUrl = new Map<number, boolean>(); // tabId → hasLoadedUrl
+	private activeTabId: number | undefined;
 
 	// Track WHICH input we've registered the dispose listener for
 	// setInput() is called on EVERY tab switch, and may pass a different input instance!
 	private registeredInputForDispose: EditorTabInput | undefined;
+	// Track dispose listeners per tabId to avoid duplicates
+	private readonly registeredDisposeTabIds = new Set<number>();
 
 	// Features (extracted to features/ folder)
 	private inspectMode!: InspectMode;
@@ -2222,31 +2231,75 @@ export class Editor extends EditorPane {
 		await super.setInput(input, options, context, token);
 
 		if (input instanceof EditorTabInput) {
+			const tabId = input.tabId;
 			const initialUrl = input.url;
+
+			this.logger.info('[ProjectMode] setInput for tab', { tabId, activeTabId: this.activeTabId, hasBrowserViewId: !!this.browserViewId });
 
 			// CRITICAL: Listen for input disposal - this means the TAB is truly closed
 			// (not just hidden for tab switching). When input is disposed, destroy the browser!
-			// NOTE: Only register if we haven't registered for THIS SPECIFIC input instance.
-			// setInput() may be called with different input instances on tab switch!
-			if (this.registeredInputForDispose !== input) {
-				this.registeredInputForDispose = input;
+			// NOTE: Only register ONCE per tabId to avoid duplicate listeners.
+			if (!this.registeredDisposeTabIds.has(tabId)) {
+				this.registeredDisposeTabIds.add(tabId);
 				this._register(input.onWillDispose(() => {
-					// Stop dev server FIRST to release the port
-					// This is critical - if we don't stop here, the server becomes orphaned
-					// and blocks the port until VSCode is restarted
-					this.stopDevServerOnClose();
-					this.destroyBrowserNow();
+					this.logger.info('[ProjectMode] Tab input disposed', { tabId });
+					// Destroy this tab's browser view specifically
+					const viewId = this.tabBrowserViewIds.get(tabId);
+					if (viewId) {
+						this.tabBrowserViewIds.delete(tabId);
+						this.tabHasLoadedUrl.delete(tabId);
+						this.registeredDisposeTabIds.delete(tabId);
+						// If this was the active tab, clear pane state
+						if (this.activeTabId === tabId) {
+							this.browserViewId = undefined;
+							this.hasLoadedUrl = false;
+							this.activeTabId = undefined;
+						}
+						this.stopDevServerOnClose();
+						// Destroy in main process
+						this.browserService.destroyBrowserView(viewId)
+							.catch(err => this.logger.error('[ProjectMode] Failed to destroy tab browser view:', err));
+					}
 				}));
 			}
 
-			// Initialize browser view if not already done
-			// This happens on:
-			// 1. First time opening the browser preview
-			// 2. After IDE reload (browser view was destroyed, needs to be recreated)
-			//    - EditorTabInputSerializer restores the URL
-			//    - setInput() is called with restored input
-			//    - Browser view is recreated and navigated to restored URL
-			if (!this.browserViewId) {
+			// ---- Multi-tab switch: save current tab state, restore target tab state ----
+
+			// Save current tab's state before switching away
+			if (this.activeTabId !== undefined && this.activeTabId !== tabId && this.browserViewId) {
+				this.tabBrowserViewIds.set(this.activeTabId, this.browserViewId);
+				this.tabHasLoadedUrl.set(this.activeTabId, this.hasLoadedUrl);
+				// Hide old tab's browser view
+				this.browserService.setBrowserVisible(this.browserViewId, false);
+			}
+
+			// Switch to new tab
+			this.activeTabId = tabId;
+
+			// Check if this tab already has a browser view
+			const existingViewId = this.tabBrowserViewIds.get(tabId);
+			if (existingViewId) {
+				// Restore this tab's browser view
+				this.browserViewId = existingViewId;
+				this.hasLoadedUrl = this.tabHasLoadedUrl.get(tabId) ?? false;
+
+				// Restore URL bar from CURRENT browser URL, not the stale input URL
+				this.syncUrlBarFromBrowser();
+
+				if (this.hasLoadedUrl) {
+					// Show and reposition
+					this.browserService.setBrowserVisible(this.browserViewId, true);
+					this.hidePlaceholder();
+				} else {
+					this.showPlaceholder();
+				}
+			} else {
+				// No browser view for this tab yet — create one
+				this.browserViewId = undefined;
+				this.hasLoadedUrl = false;
+				this.isInitializing = false;
+				this.initializationPromise = undefined;
+
 				// Set URL bar to initial URL for first load
 				if (this.controlBar) {
 					this.controlBar.setUrl(initialUrl);
@@ -2254,27 +2307,14 @@ export class Editor extends EditorPane {
 
 				await this.initializeBrowserView();
 
+				// Save the newly created view in our tab map
+				if (this.browserViewId) {
+					this.tabBrowserViewIds.set(tabId, this.browserViewId);
+				}
+
 				// Navigate only on first initialization if we have a real URL
-				// This handles both fresh opens and restores after reload
 				if (this.browserViewId && initialUrl && initialUrl !== 'about:blank') {
 					await this.navigate(initialUrl);
-				}
-			} else {
-				// Browser view already exists (tab switch back)
-				// Just restore visibility - NO re-navigation needed!
-
-				// Restore URL bar from CURRENT browser URL, not the stale input URL
-				// This ensures URL bar shows where the user actually navigated to
-				this.syncUrlBarFromBrowser();
-
-				if (this.hasLoadedUrl) {
-					// Restore browser visibility
-					this.browserService.setBrowserVisible(this.browserViewId, true);
-					this.hidePlaceholder();
-					// Note: hidePlaceholder() already calls updateBoundsWithRetry()
-				} else {
-					// Show placeholder if no URL was loaded
-					this.showPlaceholder();
 				}
 			}
 		}
@@ -2386,9 +2426,15 @@ export class Editor extends EditorPane {
 
 		// IMPORTANT: Only HIDE the browser view here, don't destroy it!
 		// clearInput() is called when switching tabs - we want to preserve the browser state.
-		// The browser should only be destroyed in dispose() when the editor is actually closed.
+		// The browser should only be destroyed when the tab input is disposed.
 		if (this.browserViewId) {
 			this.browserService.setBrowserVisible(this.browserViewId, false);
+		}
+
+		// Save state for the active tab before clearing
+		if (this.activeTabId !== undefined && this.browserViewId) {
+			this.tabBrowserViewIds.set(this.activeTabId, this.browserViewId);
+			this.tabHasLoadedUrl.set(this.activeTabId, this.hasLoadedUrl);
 		}
 
 		// Note: We do NOT reset hasLoadedUrl, lastKnownUrl, lastKnownTitle etc.
@@ -2435,27 +2481,34 @@ export class Editor extends EditorPane {
 
 	/**
 	 * Destroy browser view immediately
-	 * Called when EditorInput is disposed (tab truly closed)
+	 * Called on editor pane dispose — destroys ALL tab browser views
 	 */
 	private destroyBrowserNow(): void {
-		if (!this.browserViewId) {
-			return;
+		// Destroy the currently active view
+		if (this.browserViewId) {
+			const destroyedBrowserViewId = this.browserViewId;
+			this.browserViewId = undefined;
+
+			this.hideViews();
+
+			this.eventService.publish('browser.destroyed', {
+				browserViewId: destroyedBrowserViewId
+			});
+
+			this.browserService.destroyBrowserView(destroyedBrowserViewId)
+				.catch(err => this.logger.error('[ProjectMode] Failed to destroy browser view:', err));
 		}
 
-		const destroyedBrowserViewId = this.browserViewId;
-		this.browserViewId = undefined; // Clear immediately to prevent double destruction
-
-		// Hide views immediately
-		this.hideViews();
-
-		// Publish browser destroyed event to central event bus
-		this.eventService.publish('browser.destroyed', {
-			browserViewId: destroyedBrowserViewId
-		});
-
-		// Destroy the browser view in main process
-		this.browserService.destroyBrowserView(destroyedBrowserViewId)
-			.catch(err => this.logger.error('[ProjectMode] Failed to destroy browser view:', err));
+		// Also destroy any background tab views that aren't currently active
+		for (const [tabId, viewId] of this.tabBrowserViewIds) {
+			if (viewId !== this.browserViewId) {
+				this.browserService.destroyBrowserView(viewId)
+					.catch(err => this.logger.error('[ProjectMode] Failed to destroy tab browser view:', err));
+			}
+		}
+		this.tabBrowserViewIds.clear();
+		this.tabHasLoadedUrl.clear();
+		this.activeTabId = undefined;
 	}
 
 	override dispose(): void {

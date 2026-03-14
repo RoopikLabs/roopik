@@ -42,6 +42,10 @@ interface OpenProjectPreviewArgs {
 // - false: Open as regular tab in active group
 const BROWSER_OPEN_IN_SPLIT_VIEW = false;
 
+// Maximum number of embedded browser tabs allowed
+// Must match MAX_BROWSER_TABS in browserBackend.ts
+const MAX_BROWSER_TABS = 3;
+
 /**
  * Helper function to open/focus a browser editor tab.
  *
@@ -83,6 +87,20 @@ export async function openBrowserEditor(
 			await existingPane.group.openEditor(existingPane.input!, { pinned: true });
 			return existingPane;
 		}
+	}
+
+	// Enforce tab limit for embedded mode
+	const openTabCount = EditorTabInput.getAll().length;
+	if (openTabCount >= MAX_BROWSER_TABS) {
+		// At limit — focus the first existing tab instead of creating a new one
+		const firstExisting = editorService.visibleEditorPanes.find(
+			pane => pane.input instanceof EditorTabInput
+		);
+		if (firstExisting && firstExisting instanceof ProjectModeEditor) {
+			await firstExisting.group.openEditor(firstExisting.input!, { pinned: true });
+			return firstExisting;
+		}
+		return undefined;
 	}
 
 	// Create a new browser tab. Use tabId=0 as placeholder — the actual tabId
