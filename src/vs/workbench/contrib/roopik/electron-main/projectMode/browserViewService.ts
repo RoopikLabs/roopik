@@ -569,13 +569,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	/** Internal: set active tab and manage view visibility */
 	private setActiveTabInternal(tabId: number): void {
 		this.activeTabId = tabId;
-		// Show active view, hide others
-		for (const [tid, bvId] of this.tabToBrowserViewId) {
-			const view = this.browserViews.get(bvId);
-			if (view && !view.webContents.isDestroyed()) {
-				view.setVisible(tid === tabId);
-			}
-		}
+		// NOTE: Do NOT toggle visibility here. When tabs are in different editor groups
+		// (split view), each view must remain visible in its own pane. The renderer's
+		// setInput() handles per-pane visibility (hides old tab, shows new tab in same group).
 		this._onActiveTabChanged.fire({ tabId });
 	}
 

@@ -229,7 +229,13 @@ export class Editor extends EditorPane {
 	 */
 	private setupEventSubscriptions(): void {
 		// Subscribe to navigation events - update URL bar
+		// IMPORTANT: Filter by browserViewId to prevent cross-tab state leaking.
+		// Each Editor pane instance only handles events for ITS active browser view.
 		this._register(this.eventService.onBrowserNavigated((event) => {
+			// Multi-tab isolation: ignore events from other browser views
+			if (event.browserViewId !== this.browserViewId) {
+				return;
+			}
 
 			// Update URL bar
 			if (this.controlBar) {
@@ -252,7 +258,13 @@ export class Editor extends EditorPane {
 		}));
 
 		// Subscribe to title change events - update tab title
+		// IMPORTANT: Filter by browserViewId to prevent cross-tab title leaking.
 		this._register(this.eventService.onBrowserTitleChanged((event) => {
+			// Multi-tab isolation: ignore events from other browser views
+			if (event.browserViewId !== this.browserViewId) {
+				return;
+			}
+
 			// Don't update title when showing default screen
 			// This prevents "about:blank" from appearing as the tab title
 			if (!this.hasLoadedUrl) {
