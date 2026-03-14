@@ -8,6 +8,9 @@
  *
  * Unified implementation of all browser tools.
  * Single source of truth - used by both WebSocket MCP and Native IPC.
+ *
+ * Multi-tab: All methods accept optional tabId. Omit = active tab.
+ * The resolveTarget() helper translates tabId → browserViewId via the backend.
  */
 
 import type { IBrowserBackend } from '../projectMode/browserBackend.js';
@@ -26,6 +29,7 @@ import type {
 	ScriptExecutionResult,
 	BrowserViewportResult,
 	BrowserNetworkRequestsResult,
+	BrowserTabListResult,
 } from '../mcp/executor/types.js';
 
 // ============================================================================
@@ -39,17 +43,74 @@ export class BrowserToolService {
 	) { }
 
 	// ==========================================================================
+	// Tab Resolution Helper
+	// ==========================================================================
+
+	/**
+	 * Resolve an optional tabId to a browserViewId.
+	 * If tabId is provided, resolves it. Otherwise uses active tab.
+	 * Returns { browserViewId, tabId } for including in responses.
+	 */
+	private resolveTarget(tabId?: number): { browserViewId: number; tabId: number } {
+		if (tabId !== undefined) {
+			const browserViewId = this.browserViewService.resolveTabId(tabId);
+			return { browserViewId, tabId };
+		}
+		const activeTabId = this.browserViewService.getActiveTabId();
+		if (activeTabId === undefined) {
+			throw new Error('No browser tab is open. Use browser_open first.');
+		}
+		return {
+			browserViewId: this.browserViewService.resolveTabId(activeTabId),
+			tabId: activeTabId,
+		};
+	}
+
+	// ==========================================================================
 	// Browser Open/Close
 	// ==========================================================================
 
-	async open(url?: string): Promise<ToolResult<BrowserOpenResult>> {
+	async open(args?: { url?: string; tabId?: number; newTab?: boolean }): Promise<ToolResult<BrowserOpenResult>> {
 		try {
+			const { url, tabId, newTab } = args || {};
+
+			// Case 1: Open a new tab
+			if (newTab) {
+				const newTabId = await this.browserViewService.openNewTab(url);
+				return {
+					success: true,
+					data: {
+						message: url ? `New tab opened and navigating to ${url}` : 'New tab opened',
+						url: url || undefined,
+						tabId: newTabId
+					}
+				};
+			}
+
+			// Case 2: Focus a specific tab
+			if (tabId !== undefined) {
+				await this.browserViewService.setActiveTab(tabId);
+				const browserViewId = this.browserViewService.resolveTabId(tabId);
+				if (url) {
+					await this.browserViewService.navigate(browserViewId, url);
+					this.cdpMonitorService.ensureMonitoring(browserViewId).catch(() => { });
+				}
+				return {
+					success: true,
+					data: {
+						message: url ? `Focused tab ${tabId} and navigated to ${url}` : `Focused tab ${tabId}`,
+						url: url || undefined,
+						tabId
+					}
+				};
+			}
+
+			// Case 3: Default — focus active tab or open first
 			const browserViewId = this.browserViewService.getActiveBrowserViewId();
 
 			if (browserViewId === undefined) {
-				// Browser not open - fire event for renderer to open it
+				// No tab open — fire event to open
 				this.browserViewService.requestBrowserOpen(url);
-
 				return {
 					success: true,
 					data: {
@@ -59,19 +120,16 @@ export class BrowserToolService {
 				};
 			}
 
-			// Browser is already open - navigate if URL provided
+			// Browser is already open — navigate if URL provided
 			if (url) {
-				// Navigate first, then enable CDP (CDP before navigation can hang)
 				await this.browserViewService.navigate(browserViewId, url);
-
-				// Enable CDP monitoring non-blocking
 				this.cdpMonitorService.ensureMonitoring(browserViewId).catch(() => { });
-
 				return {
 					success: true,
 					data: {
 						url,
-						message: `Navigated to ${url}`
+						message: `Navigated to ${url}`,
+						tabId: this.browserViewService.getActiveTabId()
 					}
 				};
 			}
@@ -79,7 +137,8 @@ export class BrowserToolService {
 			return {
 				success: true,
 				data: {
-					message: 'Browser is already open'
+					message: 'Browser is already open',
+					tabId: this.browserViewService.getActiveTabId()
 				}
 			};
 		} catch (error) {
@@ -120,19 +179,55 @@ export class BrowserToolService {
 	}
 
 	// ==========================================================================
+	// Tab Management
+	// ==========================================================================
+
+	async listTabs(): Promise<ToolResult<BrowserTabListResult>> {
+		try {
+			const tabs = this.browserViewService.listTabs();
+			return {
+				success: true,
+				data: {
+					tabs,
+					activeTabId: this.browserViewService.getActiveTabId(),
+					count: tabs.length
+				}
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to list tabs'
+			};
+		}
+	}
+
+	async closeTab(tabId: number): Promise<ToolResult<{ message: string; tabId: number }>> {
+		try {
+			await this.browserViewService.closeTab(tabId);
+			return {
+				success: true,
+				data: {
+					message: `Tab ${tabId} closed`,
+					tabId
+				}
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to close tab'
+			};
+		}
+	}
+
+	// ==========================================================================
 	// Screenshot
 	// ==========================================================================
 
-	async screenshot(): Promise<ToolResult<BrowserScreenshotResult>> {
+	async screenshot(tabId?: number): Promise<ToolResult<BrowserScreenshotResult>> {
 		try {
-			const browserViewId = this.browserViewService.getActiveBrowserViewId();
+			const target = this.resolveTarget(tabId);
 
-			if (browserViewId === undefined) {
-				return { success: false, error: 'No browser is open. Use browser_open first.' };
-			}
-
-			// takeScreenshotWithMetadata returns {image: dataUrl, width, height, devicePixelRatio}
-			const screenshot = await this.browserViewService.takeScreenshotWithMetadata(browserViewId);
+			const screenshot = await this.browserViewService.takeScreenshotWithMetadata(target.browserViewId);
 
 			return {
 				success: true,
@@ -146,7 +241,8 @@ export class BrowserToolService {
 						width: screenshot.width,
 						height: screenshot.height,
 						devicePixelRatio: screenshot.devicePixelRatio
-					}
+					},
+					tabId: target.tabId
 				}
 			};
 		} catch (error) {
@@ -161,28 +257,19 @@ export class BrowserToolService {
 	// Navigation
 	// ==========================================================================
 
-	async navigate(url: string): Promise<ToolResult<BrowserNavigateResult>> {
+	async navigate(url: string, tabId?: number): Promise<ToolResult<BrowserNavigateResult>> {
 		try {
-			const browserViewId = this.browserViewService.getActiveBrowserViewId();
+			const target = this.resolveTarget(tabId);
 
-			if (browserViewId === undefined) {
-				return { success: false, error: 'No browser is open. Use browser_open first.' };
-			}
-
-			// Navigate first, then enable CDP monitoring
-			// (CDP monitoring before navigation can hang if browser view isn't fully ready)
-			await this.browserViewService.navigate(browserViewId, url);
-
-			// Enable CDP monitoring for console/network capture (non-blocking)
-			this.cdpMonitorService.ensureMonitoring(browserViewId).catch(() => {
-				// Ignore CDP errors - navigation already succeeded
-			});
+			await this.browserViewService.navigate(target.browserViewId, url);
+			this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
 
 			return {
 				success: true,
 				data: {
 					url,
-					message: `Navigated to ${url}`
+					message: `Navigated to ${url}`,
+					tabId: target.tabId
 				}
 			};
 		} catch (error) {
@@ -193,29 +280,22 @@ export class BrowserToolService {
 		}
 	}
 
-	async reload(ignoreCache?: boolean): Promise<ToolResult<BrowserNavigateResult>> {
+	async reload(ignoreCache?: boolean, tabId?: number): Promise<ToolResult<BrowserNavigateResult>> {
 		try {
-			const browserViewId = this.browserViewService.getActiveBrowserViewId();
+			const target = this.resolveTarget(tabId);
 
-			if (browserViewId === undefined) {
-				return { success: false, error: 'No browser is open. Use browser_open first.' };
-			}
+			await this.browserViewService.reload(target.browserViewId, ignoreCache);
+			this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
 
-			// Reload first, then enable CDP (CDP before reload can hang)
-			await this.browserViewService.reload(browserViewId, ignoreCache);
-
-			// Enable CDP monitoring non-blocking
-			this.cdpMonitorService.ensureMonitoring(browserViewId).catch(() => { });
-
-			// Get current URL from navigation state
-			const navState = await this.browserViewService.getNavigationState(browserViewId);
+			const navState = await this.browserViewService.getNavigationState(target.browserViewId);
 			const currentUrl = navState.url || 'unknown';
 
 			return {
 				success: true,
 				data: {
 					url: currentUrl,
-					message: `Reloaded page${ignoreCache ? ' (cache ignored)' : ''}`
+					message: `Reloaded page${ignoreCache ? ' (cache ignored)' : ''}`,
+					tabId: target.tabId
 				}
 			};
 		} catch (error) {
@@ -238,13 +318,10 @@ export class BrowserToolService {
 		modifiers?: string[];
 		deltaX?: number;
 		deltaY?: number;
+		tabId?: number;
 	}): Promise<ToolResult<BrowserActionResult>> {
 		try {
-			const browserViewId = this.browserViewService.getActiveBrowserViewId();
-
-			if (browserViewId === undefined) {
-				return { success: false, error: 'No browser is open. Use browser_open first.' };
-			}
+			const target = this.resolveTarget(params.tabId);
 
 			const { action, coordinate, text, key, modifiers, deltaX, deltaY } = params;
 
@@ -267,25 +344,25 @@ export class BrowserToolService {
 					if (x === undefined || y === undefined) {
 						return { success: false, error: `${action} requires coordinate parameter (e.g., "100,200")` };
 					}
-					await this.browserViewService.sendMouseEvent(browserViewId, action, x, y);
+					await this.browserViewService.sendMouseEvent(target.browserViewId, action, x, y);
 					break;
 
 				case 'type':
 					if (!text) {
 						return { success: false, error: 'type action requires text parameter' };
 					}
-					await this.browserViewService.sendTypeEvent(browserViewId, text);
+					await this.browserViewService.sendTypeEvent(target.browserViewId, text);
 					break;
 
 				case 'press':
 					if (!key) {
 						return { success: false, error: 'press action requires key parameter' };
 					}
-					await this.browserViewService.sendKeyEvent(browserViewId, key, modifiers);
+					await this.browserViewService.sendKeyEvent(target.browserViewId, key, modifiers);
 					break;
 
 				case 'scroll':
-					await this.browserViewService.sendScrollEvent(browserViewId, deltaX || 0, deltaY || 0, x, y);
+					await this.browserViewService.sendScrollEvent(target.browserViewId, deltaX || 0, deltaY || 0, x, y);
 					break;
 
 				case 'drag':
@@ -299,7 +376,8 @@ export class BrowserToolService {
 				success: true,
 				data: {
 					action,
-					message: `Executed ${action} action`
+					message: `Executed ${action} action`,
+					tabId: target.tabId
 				}
 			};
 		} catch (error) {
@@ -314,15 +392,11 @@ export class BrowserToolService {
 	// Script Execution
 	// ==========================================================================
 
-	async executeScript(script: string): Promise<ToolResult<ScriptExecutionResult>> {
+	async executeScript(script: string, tabId?: number): Promise<ToolResult<ScriptExecutionResult>> {
 		try {
-			const browserViewId = this.browserViewService.getActiveBrowserViewId();
+			const target = this.resolveTarget(tabId);
 
-			if (browserViewId === undefined) {
-				return { success: false, error: 'No browser is open. Use browser_open first.' };
-			}
-
-			const result = await this.browserViewService.executeScript(browserViewId, script);
+			const result = await this.browserViewService.executeScript(target.browserViewId, script);
 
 			return {
 				success: true,
@@ -343,16 +417,12 @@ export class BrowserToolService {
 	// Element Inspection
 	// ==========================================================================
 
-	async inspectElement(selector: string, includeInherited?: boolean, projectRoot?: string): Promise<ToolResult<ElementInspectionResult>> {
+	async inspectElement(selector: string, includeInherited?: boolean, projectRoot?: string, tabId?: number): Promise<ToolResult<ElementInspectionResult>> {
 		try {
-			const browserViewId = this.browserViewService.getActiveBrowserViewId();
-
-			if (browserViewId === undefined) {
-				return { success: false, error: 'No browser is open. Use browser_open first.' };
-			}
+			const target = this.resolveTarget(tabId);
 
 			const result = await this.browserViewService.getElementStyles({
-				browserViewId,
+				browserViewId: target.browserViewId,
 				target: selector,
 				projectRoot: projectRoot ?? '',
 				includeInherited: includeInherited ?? false,
@@ -402,18 +472,14 @@ export class BrowserToolService {
 		since?: number;
 		limit?: number;
 		clear?: boolean;
+		tabId?: number;
 	}): Promise<ToolResult<BrowserConsoleLogsResult>> {
 		try {
-			const browserViewId = this.browserViewService.getActiveBrowserViewId();
+			const target = this.resolveTarget(options?.tabId);
 
-			if (browserViewId === undefined) {
-				return { success: false, error: 'No browser is open. Use browser_open first.' };
-			}
+			await this.cdpMonitorService.ensureMonitoring(target.browserViewId);
 
-			// Ensure monitoring is active
-			await this.cdpMonitorService.ensureMonitoring(browserViewId);
-
-			const logs = this.cdpMonitorService.getConsoleLogs(browserViewId, options);
+			const logs = this.cdpMonitorService.getConsoleLogs(target.browserViewId, options);
 
 			return {
 				success: true,
@@ -437,18 +503,13 @@ export class BrowserToolService {
 		}
 	}
 
-	async getErrors(limit?: number): Promise<ToolResult<BrowserErrorsResult>> {
+	async getErrors(limit?: number, tabId?: number): Promise<ToolResult<BrowserErrorsResult>> {
 		try {
-			const browserViewId = this.browserViewService.getActiveBrowserViewId();
+			const target = this.resolveTarget(tabId);
 
-			if (browserViewId === undefined) {
-				return { success: false, error: 'No browser is open. Use browser_open first.' };
-			}
+			await this.cdpMonitorService.ensureMonitoring(target.browserViewId);
 
-			// Ensure monitoring is active
-			await this.cdpMonitorService.ensureMonitoring(browserViewId);
-
-			const errors = this.cdpMonitorService.getErrors(browserViewId, limit);
+			const errors = this.cdpMonitorService.getErrors(target.browserViewId, limit);
 
 			return {
 				success: true,
@@ -470,18 +531,14 @@ export class BrowserToolService {
 		method?: string;
 		statusFilter?: 'success' | 'error' | 'all';
 		limit?: number;
+		tabId?: number;
 	}): Promise<ToolResult<BrowserNetworkRequestsResult>> {
 		try {
-			const browserViewId = this.browserViewService.getActiveBrowserViewId();
+			const target = this.resolveTarget(options?.tabId);
 
-			if (browserViewId === undefined) {
-				return { success: false, error: 'No browser is open. Use browser_open first.' };
-			}
+			await this.cdpMonitorService.ensureMonitoring(target.browserViewId);
 
-			// Ensure monitoring is active
-			await this.cdpMonitorService.ensureMonitoring(browserViewId);
-
-			const requests = this.cdpMonitorService.getNetworkRequests(browserViewId, options);
+			const requests = this.cdpMonitorService.getNetworkRequests(target.browserViewId, options);
 
 			return {
 				success: true,
@@ -502,16 +559,12 @@ export class BrowserToolService {
 	// Performance
 	// ==========================================================================
 
-	async getPerformance(): Promise<ToolResult<BrowserPerformanceResult>> {
+	async getPerformance(tabId?: number): Promise<ToolResult<BrowserPerformanceResult>> {
 		try {
-			const browserViewId = this.browserViewService.getActiveBrowserViewId();
-
-			if (browserViewId === undefined) {
-				return { success: false, error: 'No browser is open. Use browser_open first.' };
-			}
+			const target = this.resolveTarget(tabId);
 
 			// Get performance metrics via JavaScript
-			const webVitals = await this.browserViewService.executeScript(browserViewId, `
+			const webVitals = await this.browserViewService.executeScript(target.browserViewId, `
 				(function() {
 					const timing = performance.timing || {};
 					const entries = performance.getEntriesByType?.('navigation')?.[0] || {};
@@ -531,8 +584,8 @@ export class BrowserToolService {
 			const runtimeMetrics: Record<string, number> = {};
 
 			try {
-				await this.browserViewService.attachDebugger(browserViewId);
-				const result = await this.browserViewService.sendCDPCommand(browserViewId, 'Performance.getMetrics', {});
+				await this.browserViewService.attachDebugger(target.browserViewId);
+				const result = await this.browserViewService.sendCDPCommand(target.browserViewId, 'Performance.getMetrics', {});
 				const metrics = result.metrics as Array<{ name: string; value: number }>;
 				for (const metric of metrics) {
 					runtimeMetrics[metric.name] = metric.value;
@@ -576,25 +629,28 @@ export class BrowserToolService {
 	// Browser State
 	// ==========================================================================
 
-	async getState(): Promise<ToolResult<BrowserStateResult>> {
+	async getState(tabId?: number): Promise<ToolResult<BrowserStateResult>> {
 		try {
-			const browserViewId = this.browserViewService.getActiveBrowserViewId();
-			// Note: devServerRunning state would need to be passed via different means
-			// For now, return false - actual dev server status should be checked via project_get_active
 			const devServerRunning = false;
+			const tabs = this.browserViewService.listTabs();
+			const activeTabId = this.browserViewService.getActiveTabId();
 
-			if (browserViewId === undefined) {
+			// If specific tab requested, get that tab's state
+			const effectiveTabId = tabId ?? activeTabId;
+
+			if (effectiveTabId === undefined || tabs.length === 0) {
 				return {
 					success: true,
 					data: {
 						browserOpen: false,
 						devServerRunning,
-						message: 'Browser is not open'
+						message: 'Browser is not open',
+						tabCount: 0
 					}
 				};
 			}
 
-			// Get navigation state which includes url, title, isLoading
+			const browserViewId = this.browserViewService.resolveTabId(effectiveTabId);
 			const navState = await this.browserViewService.getNavigationState(browserViewId);
 
 			return {
@@ -605,7 +661,9 @@ export class BrowserToolService {
 					title: navState.title,
 					isLoading: navState.isLoading,
 					devServerRunning,
-					message: 'Browser is open'
+					message: 'Browser is open',
+					tabId: effectiveTabId,
+					tabCount: tabs.length
 				}
 			};
 		} catch (error) {
@@ -625,28 +683,23 @@ export class BrowserToolService {
 		height?: number;
 		deviceScaleFactor?: number;
 		mobile?: boolean;
+		tabId?: number;
 	}): Promise<ToolResult<BrowserViewportResult>> {
 		try {
-			const browserViewId = this.browserViewService.getActiveBrowserViewId();
-
-			if (browserViewId === undefined) {
-				return { success: false, error: 'No browser is open. Use browser_open first.' };
-			}
+			const target = this.resolveTarget(params?.tabId);
 
 			// Attach debugger for CDP commands
 			try {
-				await this.browserViewService.attachDebugger(browserViewId);
+				await this.browserViewService.attachDebugger(target.browserViewId);
 			} catch {
 				// May already be attached
 			}
 
 			// If no params or no width/height, clear the override
 			if (!params || (params.width === undefined && params.height === undefined)) {
-				// Clear device metrics override via CDP
-				await this.browserViewService.sendCDPCommand(browserViewId, 'Emulation.clearDeviceMetricsOverride', {});
+				await this.browserViewService.sendCDPCommand(target.browserViewId, 'Emulation.clearDeviceMetricsOverride', {});
 
-				// Get actual viewport size
-				const size = this.browserViewService.getViewportSize(browserViewId);
+				const size = this.browserViewService.getViewportSize(target.browserViewId);
 
 				return {
 					success: true,
@@ -660,13 +713,12 @@ export class BrowserToolService {
 				};
 			}
 
-			// Set viewport override via CDP
 			const width = params.width || 1280;
 			const height = params.height || 720;
 			const deviceScaleFactor = params.deviceScaleFactor || 1;
 			const mobile = params.mobile || false;
 
-			await this.browserViewService.sendCDPCommand(browserViewId, 'Emulation.setDeviceMetricsOverride', {
+			await this.browserViewService.sendCDPCommand(target.browserViewId, 'Emulation.setDeviceMetricsOverride', {
 				width,
 				height,
 				deviceScaleFactor,

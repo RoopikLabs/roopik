@@ -122,7 +122,7 @@ export class ToolExecutor {
 	 */
 	getAvailableTools(): string[] {
 		return [
-			// Browser tools (14)
+			// Browser tools (16)
 			'browser_open',
 			'browser_close',
 			'browser_screenshot',
@@ -137,6 +137,8 @@ export class ToolExecutor {
 			'browser_get_state',
 			'browser_set_viewport',
 			'browser_get_network_requests',
+			'browser_list_tabs',
+			'browser_close_tab',
 			// Canvas tools (5)
 			'canvas_list',
 			'canvas_get_active',
@@ -165,21 +167,27 @@ export class ToolExecutor {
 	// ==========================================================================
 
 	private async executeBrowserTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
+		const tabId = params.tabId as number | undefined;
+
 		switch (tool) {
 			case 'browser_open':
-				return this.browserToolService.open(params.url as string | undefined);
+				return this.browserToolService.open({
+					url: params.url as string | undefined,
+					tabId,
+					newTab: params.newTab as boolean | undefined,
+				});
 
 			case 'browser_close':
 				return this.browserToolService.close();
 
 			case 'browser_screenshot':
-				return this.browserToolService.screenshot();
+				return this.browserToolService.screenshot(tabId);
 
 			case 'browser_navigate':
-				return this.browserToolService.navigate(params.url as string);
+				return this.browserToolService.navigate(params.url as string, tabId);
 
 			case 'browser_reload':
-				return this.browserToolService.reload(params.ignoreCache as boolean | undefined);
+				return this.browserToolService.reload(params.ignoreCache as boolean | undefined, tabId);
 
 			case 'browser_action_input':
 				return this.browserToolService.actionInput({
@@ -190,20 +198,22 @@ export class ToolExecutor {
 					modifiers: params.modifiers as string[] | undefined,
 					deltaX: params.deltaX as number | undefined,
 					deltaY: params.deltaY as number | undefined,
+					tabId,
 				});
 
 			case 'browser_execute_script':
-				return this.browserToolService.executeScript(params.script as string);
+				return this.browserToolService.executeScript(params.script as string, tabId);
 
 			case 'browser_inspect_element':
 				return this.browserToolService.inspectElement(
 					params.selector as string,
 					params.includeInherited as boolean | undefined,
-					this.storageService.getWorkspacePath()
+					this.storageService.getWorkspacePath(),
+					tabId
 				);
 
 			case 'browser_get_errors':
-				return this.browserToolService.getErrors(params.limit as number | undefined);
+				return this.browserToolService.getErrors(params.limit as number | undefined, tabId);
 
 			case 'browser_get_console_logs':
 				return this.browserToolService.getConsoleLogs({
@@ -211,22 +221,23 @@ export class ToolExecutor {
 					since: params.since as number | undefined,
 					limit: params.limit as number | undefined,
 					clear: params.clear as boolean | undefined,
+					tabId,
 				});
 
 			case 'browser_get_performance':
-				return this.browserToolService.getPerformance();
+				return this.browserToolService.getPerformance(tabId);
 
 			case 'browser_get_state':
-				return this.browserToolService.getState();
+				return this.browserToolService.getState(tabId);
 
 			case 'browser_set_viewport':
-				// If no params or no width/height, pass undefined to clear viewport
 				return this.browserToolService.setViewport(
-					Object.keys(params).length === 0 ? undefined : {
+					Object.keys(params).filter(k => k !== 'tabId').length === 0 ? undefined : {
 						width: params.width as number | undefined,
 						height: params.height as number | undefined,
 						deviceScaleFactor: params.deviceScaleFactor as number | undefined,
 						mobile: params.mobile as boolean | undefined,
+						tabId,
 					}
 				);
 
@@ -236,7 +247,14 @@ export class ToolExecutor {
 					method: params.method as string | undefined,
 					statusFilter: params.statusFilter as 'success' | 'error' | 'all' | undefined,
 					limit: params.limit as number | undefined,
+					tabId,
 				});
+
+			case 'browser_list_tabs':
+				return this.browserToolService.listTabs();
+
+			case 'browser_close_tab':
+				return this.browserToolService.closeTab(params.tabId as number);
 
 			default:
 				return {
