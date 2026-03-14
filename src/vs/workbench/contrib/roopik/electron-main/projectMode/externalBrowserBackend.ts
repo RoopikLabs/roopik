@@ -241,6 +241,8 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	private readonly targetIdToPageId = new Map<string, number>();
 	private activePage: number | undefined;
 	private nextPageId = 1;
+	/** Serialization lock for discoverAndConnectPages to prevent duplicate connections */
+	private discoveryInProgress: Promise<void> | null = null;
 
 	// Viewport tracking
 	private readonly viewportSizes = new Map<number, { width: number; height: number }>();
@@ -1168,12 +1170,27 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 		throw new Error(`Chrome CDP not ready after ${maxAttempts * delay}ms on port ${this.cdpPort}`);
 	}
 
-	/** Discover open tabs and connect CDP sessions */
-	private async discoverAndConnectPages(): Promise<void> {
+	/**
+	 * Discover open tabs and connect CDP sessions.
+	 * Serialized via discoveryInProgress to prevent concurrent calls from
+	 * connecting to the same target twice (race between Target.targetCreated
+	 * event handler and direct calls from launchOrConnect/connectToNewTarget).
+	 */
+	private discoverAndConnectPages(): Promise<void> {
+		if (this.discoveryInProgress) {
+			return this.discoveryInProgress;
+		}
+		this.discoveryInProgress = this._discoverAndConnectPagesImpl().finally(() => {
+			this.discoveryInProgress = null;
+		});
+		return this.discoveryInProgress;
+	}
+
+	private async _discoverAndConnectPagesImpl(): Promise<void> {
 		const resp = await fetch(`http://127.0.0.1:${this.cdpPort}/json/list`);
 		const targets: CDPTarget[] = await resp.json() as CDPTarget[];
 
-		// Track which targets we already have sessions for (by wsUrl)
+		// Track which targets we already have sessions for (by wsUrl and targetId)
 		const existingWsUrls = new Set<string>();
 		for (const [, page] of this.pages) {
 			existingWsUrls.add(page.target.webSocketDebuggerUrl);
@@ -1181,8 +1198,9 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 
 		for (const target of targets) {
 			if (target.type !== 'page') { continue; }
-			// Skip targets we're already connected to
+			// Skip targets we're already connected to (check both wsUrl and targetId)
 			if (existingWsUrls.has(target.webSocketDebuggerUrl)) { continue; }
+			if (this.targetIdToPageId.has(target.id)) { continue; }
 
 			const pageId = this.nextPageId++;
 			const session = new CDPSession();
