@@ -14,85 +14,78 @@ import { truncate } from '../../../../../base/common/strings.js';
 const browserTabIcon = registerIcon('roopik-browser-tab', Codicon.globe, 'Icon for Browser Preview tab');
 
 /**
- * Editor Tab Input - Defines the browser preview tab identity
+ * Editor Tab Input - Defines a browser preview tab identity
  *
- * This is a TRUE SINGLETON - only ONE browser preview tab can exist at a time.
- * Clicking "Open Browser Preview" again will focus the existing tab.
- *
- * Responsibilities:
- * - Tab icon and title
- * - URL and page title state
- * - Singleton enforcement
+ * Multi-tab: Each browser tab gets its own EditorTabInput instance with a unique tabId.
+ * The tabId links to the backend's stable tab identifier.
+ * Each instance has a unique resource URI so VS Code treats them as separate editor tabs.
  */
 export class EditorTabInput extends EditorInput {
 	static readonly ID = 'roopik.editorTabInput';
-	static readonly RESOURCE = URI.parse('roopik-browser://browser/singleton');
 
-	// TRUE SINGLETON - only one instance ever
-	private static _welcomeInstance: EditorTabInput | undefined;
-	private static _settingsInstance: EditorTabInput | undefined;
+	// Track all open instances for lookup
+	private static readonly _instances = new Map<number, EditorTabInput>();
+	private static _nextLocalId = 1;
 
 	private _url: string = 'about:blank';
 	private _pageTitle: string = '';
 	private _favicon: string | undefined;
 
-	/**
-	 * Get the singleton browser instance.
-	 * Creates it if it doesn't exist.
-	 * ALWAYS use this method - never call constructor directly.
-	 */
-	static getInstance(viewMode: 'welcome' | 'settings' = 'welcome'): EditorTabInput {
-		if (viewMode === 'settings') {
-			if (!EditorTabInput._settingsInstance) {
-				EditorTabInput._settingsInstance = new EditorTabInput();
-			}
-			return EditorTabInput._settingsInstance;
-		}
-		if (!EditorTabInput._welcomeInstance) {
-			EditorTabInput._welcomeInstance = new EditorTabInput();
-		}
-		return EditorTabInput._welcomeInstance;
+	constructor(
+		private readonly _tabId: number
+	) {
+		super();
+		EditorTabInput._instances.set(_tabId, this);
+	}
+
+	get tabId(): number {
+		return this._tabId;
 	}
 
 	/**
-	 * Constructor - DO NOT call directly!
-	 * Use getInstance() instead.
-	 * Public constructor required for VSCode's SyncDescriptor registration.
+	 * Get an existing instance by tabId, or undefined if not found.
 	 */
-	constructor() {
-		super();
-		// Enforce singleton: if instance exists, return it
-		if (EditorTabInput._welcomeInstance) {
-			return EditorTabInput._welcomeInstance;
-		}
-		EditorTabInput._welcomeInstance = this;
+	static getByTabId(tabId: number): EditorTabInput | undefined {
+		return EditorTabInput._instances.get(tabId);
+	}
+
+	/**
+	 * Get all open browser tab inputs.
+	 */
+	static getAll(): EditorTabInput[] {
+		return Array.from(EditorTabInput._instances.values());
+	}
+
+	/**
+	 * Get a monotonically increasing local tab ID for creating new tabs.
+	 * This is used as a placeholder until the backend assigns the real tabId.
+	 */
+	static nextLocalTabId(): number {
+		return EditorTabInput._nextLocalId++;
 	}
 
 	override get typeId(): string {
 		return EditorTabInput.ID;
 	}
 
-	/**
-	 * Singleton capability prevents this editor from being split.
-	 */
 	override get capabilities(): EditorInputCapabilities {
+		// Singleton: prevents "Split Editor" from cloning the tab to another group.
+		// WebContentsView can only exist in one place — splitting creates a dead pane.
 		return EditorInputCapabilities.Singleton;
 	}
 
 	override get resource(): URI {
-		return EditorTabInput.RESOURCE;
+		return URI.parse(`roopik-browser://browser/tab/${this._tabId}`);
 	}
 
 	// Max length for tab title
 	private static readonly TAB_TITLE_MAX_LENGTH = 15;
 
 	override getName(): string {
-		// Use page title if available
 		if (this._pageTitle) {
 			return truncate(this._pageTitle, EditorTabInput.TAB_TITLE_MAX_LENGTH);
 		}
 
-		// Fallback to hostname or default
 		if (this._url === 'about:blank') {
 			return 'Browser Preview';
 		}
@@ -105,13 +98,10 @@ export class EditorTabInput extends EditorInput {
 	}
 
 	override getIcon(): ThemeIcon | URI {
-		// Use favicon if available and valid, otherwise fall back to globe icon
-		// Check for non-empty string to avoid issues with empty/invalid URLs
 		if (this._favicon && this._favicon.length > 0) {
 			try {
 				return URI.parse(this._favicon);
 			} catch {
-				// Invalid favicon URL, use default
 				return browserTabIcon;
 			}
 		}
@@ -129,9 +119,6 @@ export class EditorTabInput extends EditorInput {
 		}
 	}
 
-	/**
-	 * Set page title (from browser's document.title)
-	 */
 	setPageTitle(title: string): void {
 		if (this._pageTitle !== title) {
 			this._pageTitle = title;
@@ -143,9 +130,6 @@ export class EditorTabInput extends EditorInput {
 		return this._pageTitle;
 	}
 
-	/**
-	 * Set favicon URL (from page-favicon-updated event)
-	 */
 	setFavicon(favicon: string | undefined): void {
 		if (this._favicon !== favicon) {
 			this._favicon = favicon;
@@ -154,18 +138,11 @@ export class EditorTabInput extends EditorInput {
 	}
 
 	override matches(other: EditorInput): boolean {
-		// Always match if it's a EditorTabInput - there's only one!
-		return other instanceof EditorTabInput;
+		return other instanceof EditorTabInput && other._tabId === this._tabId;
 	}
 
 	override dispose(): void {
-		// Clear singleton reference so a fresh instance is created next time
-		if (EditorTabInput._welcomeInstance === this) {
-			EditorTabInput._welcomeInstance = undefined;
-		}
-		if (EditorTabInput._settingsInstance === this) {
-			EditorTabInput._settingsInstance = undefined;
-		}
+		EditorTabInput._instances.delete(this._tabId);
 		super.dispose();
 	}
 }

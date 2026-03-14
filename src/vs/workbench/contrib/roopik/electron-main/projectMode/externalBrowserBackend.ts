@@ -19,10 +19,11 @@
 
 import { spawn, type ChildProcess } from 'child_process';
 import { existsSync } from 'fs';
+// eslint-disable-next-line local/code-import-patterns
 import { join } from 'path';
 import { homedir, platform } from 'os';
 import { Emitter, type Event } from '../../../../../base/common/event.js';
-import type { IBrowserBackend, ScreenshotWithMetadata } from './browserBackend.js';
+import type { IBrowserBackend, ScreenshotWithMetadata, TabInfo } from './browserBackend.js';
 import type { NavigationState, NavigationStateChangedEvent, DevToolsClosedEvent } from '../../common/projectMode/types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 
@@ -38,7 +39,7 @@ interface WsWebSocket {
 let wsModule: { default: new (url: string) => WsWebSocket } | null = null;
 async function getWsConstructor(): Promise<new (url: string) => WsWebSocket> {
 	if (!wsModule) {
-		wsModule = await import('ws') as typeof wsModule;
+		wsModule = await import('ws') as unknown as NonNullable<typeof wsModule>;
 	}
 	return wsModule!.default;
 }
@@ -249,6 +250,16 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	private readonly _onDevToolsClosed = new Emitter<DevToolsClosedEvent>();
 	readonly onDevToolsClosed: Event<DevToolsClosedEvent> = this._onDevToolsClosed.event;
 
+	// Tab Events (multi-tab)
+	private readonly _onTabCreated = new Emitter<{ tabId: number; url?: string }>();
+	readonly onTabCreated: Event<{ tabId: number; url?: string }> = this._onTabCreated.event;
+
+	private readonly _onTabClosed = new Emitter<{ tabId: number }>();
+	readonly onTabClosed: Event<{ tabId: number }> = this._onTabClosed.event;
+
+	private readonly _onActiveTabChanged = new Emitter<{ tabId: number }>();
+	readonly onActiveTabChanged: Event<{ tabId: number }> = this._onActiveTabChanged.event;
+
 	constructor(cdpPort: number = 9222, customChromePath?: string) {
 		this.cdpPort = cdpPort;
 		this.chromePath = findChromePath(customChromePath);
@@ -278,12 +289,110 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 		});
 	}
 
-	requestBrowserClose(): void {
+	requestBrowserClose(_tabId?: number): void {
 		this.closeActivePage().catch(err => {
 			console.error('[ExternalBrowser] Failed to close page:', err);
 			// Fallback: just disconnect our sessions (don't kill Chrome)
 			this.disconnectAll();
 		});
+	}
+
+	// ========================================================================
+	// Multi-tab Management
+	// ========================================================================
+
+	async openNewTab(url?: string): Promise<number> {
+		// Ensure Chrome is running
+		if (!this.browserSession?.connected) {
+			await this.launchOrConnect(url);
+			if (this.activePage !== undefined) {
+				return this.activePage;
+			}
+			throw new Error('Failed to launch Chrome');
+		}
+
+		// Create new tab via CDP
+		const result = await this.browserSession.send('Target.createTarget', {
+			url: url || 'about:blank',
+		}) as { targetId?: string };
+
+		if (!result.targetId) {
+			throw new Error('Failed to create new tab');
+		}
+
+		// Wait for the target to be discovered and connected
+		await new Promise(r => setTimeout(r, 500));
+		await this.discoverAndConnectPages();
+
+		const pageId = this.targetIdToPageId.get(result.targetId);
+		if (pageId !== undefined) {
+			this.activePage = pageId;
+			this._onActiveTabChanged.fire({ tabId: pageId });
+			return pageId;
+		}
+
+		throw new Error('New tab created but failed to connect');
+	}
+
+	listTabs(): TabInfo[] {
+		this.cleanupDeadSessions();
+		const tabs: TabInfo[] = [];
+		for (const [pageId, page] of this.pages) {
+			if (page.session.connected) {
+				tabs.push({
+					tabId: pageId,
+					url: page.target.url || '',
+					title: page.target.title || '',
+					isActive: pageId === this.activePage,
+				});
+			}
+		}
+		return tabs;
+	}
+
+	getActiveTabId(): number | undefined {
+		return this.getActiveBrowserViewId(); // reuses existing live-check logic
+	}
+
+	async setActiveTab(tabId: number): Promise<void> {
+		const page = this.pages.get(tabId);
+		if (!page) {
+			throw new Error(`Tab ${tabId} not found. Use browser_list_tabs to see available tabs.`);
+		}
+		// Activate in Chrome
+		if (this.browserSession?.connected) {
+			try {
+				await this.browserSession.send('Target.activateTarget', { targetId: page.target.id });
+			} catch {
+				// Target.activateTarget may not be available in all Chrome versions
+			}
+		}
+		this.activePage = tabId;
+		this._onActiveTabChanged.fire({ tabId });
+	}
+
+	async closeTab(tabId: number): Promise<void> {
+		const page = this.pages.get(tabId);
+		if (!page) {
+			throw new Error(`Tab ${tabId} not found.`);
+		}
+		if (page.session.connected) {
+			try {
+				await page.session.send('Page.close');
+			} catch {
+				try {
+					await fetch(`http://127.0.0.1:${this.cdpPort}/json/close/${page.target.id}`);
+				} catch { /* last resort */ }
+			}
+		}
+		this.removePage(tabId);
+	}
+
+	resolveTabId(tabId: number): number {
+		if (!this.pages.has(tabId)) {
+			throw new Error(`Tab ${tabId} not found. Use browser_list_tabs to see available tabs.`);
+		}
+		return tabId; // In external mode, tabId IS the pageId/browserViewId
 	}
 
 	/** Remove pages whose CDP sessions have disconnected */
@@ -433,7 +542,8 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	// Script Execution
 	// ========================================================================
 
-	async executeScript(browserViewId: number, script: string): Promise<unknown> {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	async executeScript(browserViewId: number, script: string): Promise<any> {
 		const session = this.getSession(browserViewId);
 		const result = await session.send('Runtime.evaluate', {
 			expression: script,
@@ -447,11 +557,7 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	// CSS Inspection
 	// ========================================================================
 
-	async getElementStyles(_request: GetElementStylesRequest): Promise<{
-		success: boolean;
-		data?: GetElementStylesResult;
-		error?: string;
-	}> {
+	async getElementStyles(_request: GetElementStylesRequest): Promise<GetElementStylesResult> {
 		// CSS source-map inspection requires the embedded browser's build pipeline.
 		// External Chrome doesn't have access to Vite's source maps in the same way.
 		// TODO: Implement via CDP CSS domain + source map fetching
@@ -470,7 +576,8 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 		// No-op — the session is already a CDP connection
 	}
 
-	async sendCDPCommand(browserViewId: number, method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>> {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	async sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any> {
 		const session = this.getSession(browserViewId);
 		return session.send(method, params);
 	}
@@ -479,8 +586,8 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	// Viewport
 	// ========================================================================
 
-	getViewportSize(browserViewId: number): { width: number; height: number } | undefined {
-		return this.viewportSizes.get(browserViewId);
+	getViewportSize(browserViewId: number): { width: number; height: number } | null {
+		return this.viewportSizes.get(browserViewId) ?? null;
 	}
 
 	// ========================================================================
@@ -773,8 +880,13 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 
 			this.pages.set(pageId, { session, target });
 			this.targetIdToPageId.set(target.id, pageId);
-			this.activePage = pageId;
+			// Only set active page if none is active yet — don't flip
+			// the active tab every time a new page is discovered
+			if (this.activePage === undefined) {
+				this.activePage = pageId;
+			}
 			this._onBrowserViewCreated.fire({ browserViewId: pageId });
+			this._onTabCreated.fire({ tabId: pageId, url: target.url });
 			console.log(`[ExternalBrowser] Connected to page ${pageId}: ${target.url}`);
 		}
 	}
@@ -787,11 +899,17 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 			this.targetIdToPageId.delete(page.target.id);
 			this.viewportSizes.delete(pageId);
 			this._onBrowserViewDestroyed.fire({ browserViewId: pageId });
+			this._onTabClosed.fire({ tabId: pageId });
 
-			// Update active page to next available
+			// Update active page: pick the last remaining tab as a reasonable default
 			if (this.activePage === pageId) {
 				const remaining = Array.from(this.pages.keys());
-				this.activePage = remaining.length > 0 ? remaining[remaining.length - 1] : undefined;
+				if (remaining.length > 0) {
+					this.activePage = remaining[remaining.length - 1];
+					this._onActiveTabChanged.fire({ tabId: this.activePage });
+				} else {
+					this.activePage = undefined;
+				}
 			}
 		}
 	}
@@ -815,7 +933,6 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 		if (page?.session.connected) {
 			try {
 				// CDP Target.closeTarget actually closes the tab
-				const targetId = page.target.id;
 				// Use the Browser domain to close the target
 				await page.session.send('Page.close');
 			} catch {

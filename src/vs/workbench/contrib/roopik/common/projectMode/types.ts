@@ -89,6 +89,8 @@ export interface NetworkRequest {
 export interface BrowserViewResult {
 	browserViewId: number;
 	debuggingPort: number;
+	/** True if an existing view was reattached (drag between groups), false if newly created */
+	isReattach?: boolean;
 }
 
 /**
@@ -359,6 +361,8 @@ export interface BrowserKeyEvent {
 export interface McpBrowserOpenRequestEvent {
 	/** URL to navigate to after browser opens (optional) */
 	url?: string;
+	/** If true, force creation of a new tab instead of reusing existing */
+	forceNew?: boolean;
 }
 
 /**
@@ -367,7 +371,7 @@ export interface McpBrowserOpenRequestEvent {
  * Renderer listens and closes the editor tab properly (which triggers full cleanup chain)
  */
 export interface McpBrowserCloseRequestEvent {
-	/** Placeholder for future use */
-	_?: undefined;
+	/** Specific tab to close. If undefined, close ALL browser tabs. */
+	tabId?: number;
 }
 

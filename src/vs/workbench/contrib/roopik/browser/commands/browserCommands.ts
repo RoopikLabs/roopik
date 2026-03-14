@@ -42,46 +42,102 @@ interface OpenProjectPreviewArgs {
 // - false: Open as regular tab in active group
 const BROWSER_OPEN_IN_SPLIT_VIEW = false;
 
+// Maximum number of embedded browser tabs allowed
+// Must match MAX_BROWSER_TABS in browserBackend.ts
+const MAX_BROWSER_TABS = 3;
+
 /**
- * Helper function to open/focus the browser editor.
- * This centralizes the logic since the browser is a singleton.
+ * Helper function to open/focus a browser editor tab.
+ *
+ * Multi-tab behavior:
+ * - With tabId: focus existing tab (or create new if not found)
+ * - Without tabId and forceNew=false: focus any existing browser tab (first found)
+ * - Without tabId and forceNew=true: always create a new tab
  *
  * @returns The opened browser editor pane, or undefined if failed
  */
 export async function openBrowserEditor(
 	editorService: IEditorService,
 	editorGroupsService: IEditorGroupsService,
-	configurationService: IConfigurationService
+	configurationService: IConfigurationService,
+	options?: { tabId?: number; forceNew?: boolean }
 ): Promise<ProjectModeEditor | undefined> {
-	const input = EditorTabInput.getInstance();
+	const { tabId, forceNew } = options || {};
 
-	// Check if browser editor is already open in any group
-	const visibleEditors = editorService.visibleEditorPanes;
-	const existingPane = visibleEditors.find(
-		pane => pane.input instanceof EditorTabInput
-	);
-
-	if (existingPane && existingPane instanceof ProjectModeEditor) {
-		// Browser already open -> focus it
-		await existingPane.group.openEditor(input, { pinned: true });
-
-		if (BROWSER_OPEN_IN_SPLIT_VIEW && editorGroupsService.groups.length > 1) {
-			existingPane.group.lock(true);
+	// If tabId specified, try to focus existing editor for that tab
+	// Search ALL editor groups (not just visible panes) to find non-active tabs
+	if (tabId !== undefined) {
+		const existingInput = EditorTabInput.getByTabId(tabId);
+		if (existingInput) {
+			for (const group of editorGroupsService.groups) {
+				const matchingEditor = group.editors.find(
+					editor => editor instanceof EditorTabInput && editor.tabId === tabId
+				);
+				if (matchingEditor) {
+					await group.openEditor(matchingEditor, { pinned: true });
+					const pane = editorService.visibleEditorPanes.find(
+						p => p.input instanceof EditorTabInput && (p.input as EditorTabInput).tabId === tabId
+					);
+					return pane instanceof ProjectModeEditor ? pane : undefined;
+				}
+			}
 		}
-
-		return existingPane;
 	}
+
+	// If not forcing new tab, try to focus any existing browser tab
+	// Search ALL editor groups to find non-visible browser tabs too
+	if (!forceNew) {
+		for (const group of editorGroupsService.groups) {
+			const browserEditor = group.editors.find(
+				editor => editor instanceof EditorTabInput
+			);
+			if (browserEditor) {
+				await group.openEditor(browserEditor, { pinned: true });
+				const pane = editorService.visibleEditorPanes.find(
+					p => p.input instanceof EditorTabInput
+				);
+				return pane instanceof ProjectModeEditor ? pane : undefined;
+			}
+		}
+	}
+
+	// Enforce tab limit for embedded mode
+	const allTabs = EditorTabInput.getAll();
+	if (allTabs.length >= MAX_BROWSER_TABS) {
+		// At limit — focus the most recently created tab (last in the list)
+		const lastTab = allTabs[allTabs.length - 1];
+		if (lastTab) {
+			// Find the editor group containing this tab, or use any group with a browser pane
+			for (const group of editorGroupsService.groups) {
+				for (const editor of group.editors) {
+					if (editor instanceof EditorTabInput && editor.tabId === lastTab.tabId) {
+						await group.openEditor(editor, { pinned: true });
+						// Find the pane
+						const pane = editorService.visibleEditorPanes.find(
+							p => p.input instanceof EditorTabInput && (p.input as EditorTabInput).tabId === lastTab.tabId
+						);
+						return pane instanceof ProjectModeEditor ? pane : undefined;
+					}
+				}
+			}
+		}
+		return undefined;
+	}
+
+	// Create a new browser tab with a locally-assigned tabId.
+	// The backend uses this same tabId in createBrowserView() to set up tab maps.
+	// EditorTabInput.nextLocalTabId() ensures unique IDs across the renderer.
+	const newTabId = tabId ?? EditorTabInput.nextLocalTabId();
+	const input = new EditorTabInput(newTabId);
 
 	let targetGroup;
 	if (BROWSER_OPEN_IN_SPLIT_VIEW) {
-		// Open in a side group (split view)
 		const direction = preferredSideBySideGroupDirection(configurationService);
 		targetGroup = editorGroupsService.findGroup({ direction });
 		if (!targetGroup) {
 			targetGroup = editorGroupsService.addGroup(editorGroupsService.activeGroup, direction);
 		}
 	} else {
-		// Open in active group as regular tab
 		targetGroup = editorGroupsService.activeGroup;
 	}
 
@@ -93,7 +149,7 @@ export async function openBrowserEditor(
 
 	// Find the newly opened editor pane
 	const newPane = editorService.visibleEditorPanes.find(
-		pane => pane.input instanceof EditorTabInput
+		pane => pane.input instanceof EditorTabInput && (pane.input as EditorTabInput).tabId === newTabId
 	);
 
 	return newPane instanceof ProjectModeEditor ? newPane : undefined;
@@ -135,7 +191,7 @@ export function registerBrowserCommands(): void {
 				// External mode: launch Chrome via IPC (no embedded editor tab)
 				const mainProcessService = accessor.get(IMainProcessService);
 				const channel = mainProcessService.getChannel('roopik.tools');
-				const result = await channel.call('browser_open', {});
+				const result = await channel.call('browser_open', {}) as { success?: boolean; error?: string };
 				if (result && !result.success) {
 					notificationService.error(`Failed to open external browser: ${result.error}`);
 				} else {
@@ -148,8 +204,18 @@ export function registerBrowserCommands(): void {
 			const editorService = accessor.get(IEditorService);
 			const editorGroupsService = accessor.get(IEditorGroupsService);
 
-			// Open/focus browser editor and lock its group (centralized logic)
-			await openBrowserEditor(editorService, editorGroupsService, configurationService);
+			// Check if at tab limit before opening
+			const atLimit = EditorTabInput.getAll().length >= MAX_BROWSER_TABS;
+
+			// User clicked "Browse Web" button — open a NEW tab (or focus existing if at limit)
+			await openBrowserEditor(editorService, editorGroupsService, configurationService, { forceNew: true });
+
+			if (atLimit) {
+				notificationService.warn(
+					`Maximum ${MAX_BROWSER_TABS} browser tabs reached. Close a tab to open a new one, or switch to external browser mode (Settings → Roopik → Browser Mode) for unlimited tabs.`
+				);
+				return;
+			}
 
 			// Show hint notification (once per installation)
 			const hintKey = 'roopik.browserRightSideHintShown';

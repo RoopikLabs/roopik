@@ -130,6 +130,20 @@ export function cleanupCDPMonitoring(browserViewId: number): void {
 	}
 }
 
+/**
+ * Transfer CDP monitoring data from one browserViewId to another.
+ * Used when a view is recreated (e.g., drag between editor groups)
+ * but the tab stays the same — preserves console logs, network data.
+ */
+export function transferCDPMonitoring(oldBrowserViewId: number, newBrowserViewId: number): void {
+	const monitor = sharedMonitors.get(oldBrowserViewId);
+	if (monitor) {
+		monitor.browserViewId = newBrowserViewId;
+		sharedMonitors.delete(oldBrowserViewId);
+		sharedMonitors.set(newBrowserViewId, monitor);
+	}
+}
+
 // ============================================================================
 // CDP Monitor Service
 // ============================================================================
@@ -162,12 +176,8 @@ export class CDPMonitorService {
 	 * Safe to call multiple times - only sets up once per browserViewId.
 	 */
 	async ensureMonitoring(browserViewId: number): Promise<void> {
-		// Cleanup stale monitors from other browser views
-		for (const [monitoredId] of sharedMonitors) {
-			if (monitoredId !== browserViewId) {
-				this.cleanup(monitoredId);
-			}
-		}
+		// Multi-tab: DO NOT clean up monitors for other browser views.
+		// Each tab has its own monitor that persists independently.
 
 		if (sharedMonitors.has(browserViewId)) {
 			return;

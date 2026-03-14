@@ -18,10 +18,10 @@
  * Tool Naming Convention: category_action (e.g., browser_navigate, component_add)
  *
  * Tool Categories:
- * - Browser Tools (14): browser_open, browser_close, browser_navigate, browser_reload, browser_screenshot,
+ * - Browser Tools (15): browser_open, browser_close, browser_navigate, browser_reload, browser_screenshot,
  *                       browser_action_input, browser_execute_script, browser_inspect_element, browser_get_errors,
  *                       browser_get_console_logs, browser_get_performance, browser_get_state,
- *                       browser_set_viewport, browser_get_network_requests
+ *                       browser_set_viewport, browser_get_network_requests, browser_list_tabs
  * - Project Tools (3): project_get_active, project_start, project_stop
  * - Canvas Tools (4): canvas_list, canvas_get_active, canvas_create, canvas_open
  * - Component Tools (7): component_add, component_add_batch, component_remove,
@@ -37,8 +37,7 @@ import type { ComponentService } from '../component/componentService.js';
 import type { AddComponentRequest } from '../../common/component/types.js';
 import type { ICanvasService } from '../../common/canvas/canvasService.js';
 import type { IRoopikStorageService } from '../../common/storage/storageService.js';
-import { ROOPIK_TOOLS_CHANNEL_NAME } from '../../common/tools/types.js';
-import type { RoopikToolResult } from '../../common/tools/types.js';
+import { ROOPIK_TOOLS_CHANNEL_NAME, type RoopikToolResult } from '../../common/tools/types.js';
 
 // Import unified tool services (Phase 4 migration)
 import { CDPMonitorService } from '../tools/cdpMonitorService.js';
@@ -104,22 +103,22 @@ export class RoopikToolsChannel implements IServerChannel {
 		try {
 			switch (command) {
 				// ============================================================
-				// Browser Tools (14)
+				// Browser Tools (15)
 				// ============================================================
 				case 'browser_open':
-					return this.handleBrowserOpen(arg as { url?: string });
+					return this.browserToolService.open(arg as { url?: string; tabId?: number; newTab?: boolean });
 
 				case 'browser_close':
-					return this.handleBrowserClose();
+					return this.browserToolService.close((arg as { tabId?: number })?.tabId);
 
 				case 'browser_navigate':
-					return this.handleNavigate(arg as { url: string });
+					return this.handleNavigate(arg as { url: string; tabId?: number });
 
 				case 'browser_reload':
-					return this.handleReload(arg as { ignoreCache?: boolean });
+					return this.handleReload(arg as { ignoreCache?: boolean; tabId?: number });
 
 				case 'browser_screenshot':
-					return this.handleScreenshot();
+					return this.handleScreenshot(arg as { tabId?: number } | undefined);
 
 				case 'browser_action_input':
 					return this.handleBrowserAction(arg as {
@@ -130,31 +129,35 @@ export class RoopikToolsChannel implements IServerChannel {
 						modifiers?: string[];
 						deltaX?: number;
 						deltaY?: number;
+						tabId?: number;
 					});
 
 				case 'browser_execute_script':
-					return this.handleExecuteScript(arg as { script: string });
+					return this.handleExecuteScript(arg as { script: string; tabId?: number });
 
 				case 'browser_inspect_element':
-					return this.handleInspectElement(arg as { selector: string; includeInherited?: boolean });
+					return this.handleInspectElement(arg as { selector: string; includeInherited?: boolean; tabId?: number });
 
 				case 'browser_get_errors':
-					return this.handleGetErrors(arg as { limit?: number });
+					return this.handleGetErrors(arg as { limit?: number; tabId?: number });
 
 				case 'browser_get_console_logs':
-					return this.handleGetConsoleLogs(arg as { limit?: number; type?: string });
+					return this.handleGetConsoleLogs(arg as { limit?: number; types?: string[]; since?: number; clear?: boolean; tabId?: number });
 
 				case 'browser_get_performance':
-					return this.handleBrowserGetPerformance();
+					return this.handleBrowserGetPerformance(arg as { tabId?: number } | undefined);
 
 				case 'browser_get_state':
-					return this.handleBrowserGetState();
+					return this.handleBrowserGetState(arg as { tabId?: number } | undefined);
 
 				case 'browser_set_viewport':
-					return this.handleSetViewport(arg as { width?: number; height?: number; deviceScaleFactor?: number; mobile?: boolean } | undefined);
+					return this.handleSetViewport(arg as { width?: number; height?: number; deviceScaleFactor?: number; mobile?: boolean; tabId?: number } | undefined);
 
 				case 'browser_get_network_requests':
-					return this.handleGetNetworkRequests(arg as { urlFilter?: string; method?: string; statusFilter?: string; limit?: number });
+					return this.handleGetNetworkRequests(arg as { urlFilter?: string; method?: string; statusFilter?: string; limit?: number; tabId?: number });
+
+				case 'browser_list_tabs':
+					return this.browserToolService.listTabs();
 
 				// ============================================================
 				// Project Tools (3)
@@ -244,110 +247,26 @@ export class RoopikToolsChannel implements IServerChannel {
 	// ========================================================================
 
 	/**
-	 * Open a browser view without requiring a project.
-	 *
-	 * In embedded mode: This is called from the renderer after the editor tab is opened.
-	 * In external mode: This launches Chrome directly via requestBrowserOpen().
-	 *
-	 * Returns meaningful state: current URL, title, and whether browser was already open.
-	 */
-	private async handleBrowserOpen(args: { url?: string }): Promise<RoopikToolResult> {
-		const existingBrowserViewId = this.browserViewService.getActiveBrowserViewId();
-
-		if (existingBrowserViewId !== undefined) {
-			// Browser already open - navigate if URL provided, then return state
-			if (args.url) {
-				await this.browserViewService.navigate(existingBrowserViewId, args.url);
-			}
-
-			// Return current browser state
-			try {
-				const state = await this.browserViewService.getNavigationState(existingBrowserViewId);
-				return {
-					success: true,
-					data: {
-						browserOpen: true,
-						alreadyOpen: true,
-						browserViewId: existingBrowserViewId,
-						url: state.url,
-						title: state.title,
-						message: args.url
-							? `Navigated to ${args.url}`
-							: `Browser open at ${state.url}`
-					}
-				};
-			} catch {
-				return {
-					success: true,
-					data: {
-						browserOpen: true,
-						alreadyOpen: true,
-						browserViewId: existingBrowserViewId,
-						message: 'Browser is open'
-					}
-				};
-			}
-		}
-
-		// Browser not open - launch it
-		this.browserViewService.requestBrowserOpen(args.url);
-
-		// Wait briefly for Chrome to connect (external mode needs time to spawn + CDP handshake)
-		const maxWait = 8000;
-		const interval = 200;
-		let waited = 0;
-		while (waited < maxWait) {
-			await new Promise(r => setTimeout(r, interval));
-			waited += interval;
-			const viewId = this.browserViewService.getActiveBrowserViewId();
-			if (viewId !== undefined) {
-				// Connected! Return state
-				try {
-					const state = await this.browserViewService.getNavigationState(viewId);
-					return {
-						success: true,
-						data: {
-							browserOpen: true,
-							alreadyOpen: false,
-							browserViewId: viewId,
-							url: state.url,
-							title: state.title,
-							message: `Browser launched at ${state.url}`
-						}
-					};
-				} catch {
-					return {
-						success: true,
-						data: {
-							browserOpen: true,
-							alreadyOpen: false,
-							browserViewId: viewId,
-							message: 'Browser launched'
-						}
-					};
-				}
-			}
-		}
-
-		return {
-			success: false,
-			error: 'Browser launch timed out. Chrome may not be installed or the CDP port may be in use.'
-		};
-	}
-
-	/**
 	 * Get performance metrics from the browser including Web Vitals.
 	 * Uses CDP's PerformanceTimeline domain for LCP, CLS data,
 	 * and Performance domain for runtime metrics.
 	 */
-	private async handleBrowserGetPerformance(): Promise<RoopikToolResult> {
-		const browserViewId = this.browserViewService.getActiveBrowserViewId();
+	private async handleBrowserGetPerformance(args?: { tabId?: number }): Promise<RoopikToolResult> {
+		// Delegate to unified BrowserToolService for simple performance metrics
+		// The channel's custom CDP-based implementation with PerformanceTimeline is more detailed
+		// but the unified service provides the standard interface
+		const browserViewId = args?.tabId !== undefined
+			? this.browserViewService.resolveTabId(args.tabId)
+			: this.browserViewService.getActiveBrowserViewId();
+
 		if (browserViewId === undefined) {
 			return {
 				success: false,
 				error: 'No browser is open. Use browser_open first.'
 			};
 		}
+
+		const tabId = args?.tabId ?? this.browserViewService.getActiveTabId();
 
 		try {
 			// Attach debugger if not already attached
@@ -360,7 +279,6 @@ export class RoopikToolsChannel implements IServerChannel {
 			const cdpMetrics = await this.browserViewService.sendCDPCommand(browserViewId, 'Performance.getMetrics');
 
 			// Enable PerformanceTimeline domain for Web Vitals (LCP, LayoutShift)
-			// Note: This returns buffered events from page load
 			interface TimelineEvent {
 				type: string;
 				lcpDetails?: { renderTime?: number; loadTime?: number; size?: number; nodeId?: number };
@@ -377,11 +295,9 @@ export class RoopikToolsChannel implements IServerChannel {
 					timelineEvents = timelineResult.timelineEvents;
 				}
 			} catch (e) {
-				// PerformanceTimeline may not be available in all Chromium versions
 				console.warn('[RoopikTools] PerformanceTimeline not available:', e);
 			}
 
-			// Process timeline events for Web Vitals
 			let lcp: { renderTime?: number; loadTime?: number; size?: number; nodeId?: number } | null = null;
 			let cls = 0;
 			const layoutShifts: TimelineEvent['layoutShiftDetails'][] = [];
@@ -398,7 +314,6 @@ export class RoopikToolsChannel implements IServerChannel {
 				}
 			}
 
-			// Format CDP runtime metrics into a more readable object
 			const metricsMap: Record<string, number> = {};
 			if (cdpMetrics && cdpMetrics.metrics) {
 				for (const metric of cdpMetrics.metrics) {
@@ -406,14 +321,13 @@ export class RoopikToolsChannel implements IServerChannel {
 				}
 			}
 
-			// Extract key metrics from CDP Performance.getMetrics
 			const jsHeapUsedMB = metricsMap['JSHeapUsedSize'] ? Math.round(metricsMap['JSHeapUsedSize'] / 1024 / 1024) : null;
 			const jsHeapTotalMB = metricsMap['JSHeapTotalSize'] ? Math.round(metricsMap['JSHeapTotalSize'] / 1024 / 1024) : null;
 
 			return {
 				success: true,
 				data: {
-					// Web Vitals from CDP PerformanceTimeline
+					tabId,
 					webVitals: {
 						lcp: lcp ? {
 							renderTime: lcp.renderTime,
@@ -423,7 +337,6 @@ export class RoopikToolsChannel implements IServerChannel {
 						cls: Math.round(cls * 1000) / 1000,
 						layoutShiftCount: layoutShifts.length
 					},
-					// Runtime metrics from CDP Performance.getMetrics
 					runtime: {
 						jsHeapUsedMB,
 						jsHeapTotalMB,
@@ -436,9 +349,7 @@ export class RoopikToolsChannel implements IServerChannel {
 						layoutDuration: metricsMap['LayoutDuration'] ? Math.round(metricsMap['LayoutDuration'] * 1000) : null,
 						taskDuration: metricsMap['TaskDuration'] ? Math.round(metricsMap['TaskDuration'] * 1000) : null
 					},
-					// Full CDP metrics for advanced users
 					cdpMetrics: metricsMap,
-					// Human-readable summary
 					summary: {
 						lcp: lcp?.renderTime ? `${Math.round(lcp.renderTime)}ms` : (lcp?.loadTime ? `${Math.round(lcp.loadTime)}ms` : 'N/A'),
 						cls: Math.round(cls * 1000) / 1000,
@@ -464,17 +375,22 @@ export class RoopikToolsChannel implements IServerChannel {
 	 *
 	 * Note: Use tools/list for available tools, not this method.
 	 */
-	private async handleBrowserGetState(): Promise<RoopikToolResult> {
-		const browserViewId = this.browserViewService.getActiveBrowserViewId();
+	private async handleBrowserGetState(args?: { tabId?: number }): Promise<RoopikToolResult> {
+		const browserViewId = args?.tabId !== undefined
+			? this.browserViewService.resolveTabId(args.tabId)
+			: this.browserViewService.getActiveBrowserViewId();
 
 		// Get dev server info if running
 		const runningServer = await this.devServerService.getRunningServer();
+		const tabs = this.browserViewService.listTabs();
+		const activeTabId = this.browserViewService.getActiveTabId();
 
 		if (browserViewId === undefined) {
 			return {
 				success: true,
 				data: {
 					browserOpen: false,
+					tabCount: tabs.length,
 					devServerRunning: !!runningServer,
 					devServer: runningServer ? {
 						url: runningServer.url,
@@ -487,6 +403,8 @@ export class RoopikToolsChannel implements IServerChannel {
 			};
 		}
 
+		const effectiveTabId = args?.tabId ?? activeTabId;
+
 		// Get navigation state (includes current URL)
 		const navState = await this.browserViewService.getNavigationState(browserViewId);
 
@@ -494,6 +412,8 @@ export class RoopikToolsChannel implements IServerChannel {
 			success: true,
 			data: {
 				browserOpen: true,
+				tabId: effectiveTabId,
+				tabCount: tabs.length,
 				currentUrl: navState.url,
 				title: navState.title,
 				isLoading: navState.isLoading,
@@ -509,18 +429,8 @@ export class RoopikToolsChannel implements IServerChannel {
 		};
 	}
 
-	private async handleScreenshot(): Promise<RoopikToolResult> {
-		// Delegate to unified BrowserToolService
-		return this.browserToolService.screenshot();
-	}
-
-	/**
-	 * Close the browser view
-	 * Delegates to unified BrowserToolService which handles event-based cleanup
-	 */
-	private async handleBrowserClose(): Promise<RoopikToolResult> {
-		// Delegate to unified BrowserToolService
-		return this.browserToolService.close();
+	private async handleScreenshot(args?: { tabId?: number }): Promise<RoopikToolResult> {
+		return this.browserToolService.screenshot(args?.tabId);
 	}
 
 	/**
@@ -535,8 +445,8 @@ export class RoopikToolsChannel implements IServerChannel {
 		modifiers?: string[];
 		deltaX?: number;
 		deltaY?: number;
+		tabId?: number;
 	}): Promise<RoopikToolResult> {
-		// Delegate to unified BrowserToolService
 		return this.browserToolService.actionInput({
 			action: args.action as 'click' | 'right_click' | 'double_click' | 'hover' | 'drag' | 'type' | 'press' | 'scroll',
 			coordinate: args.coordinate,
@@ -544,32 +454,30 @@ export class RoopikToolsChannel implements IServerChannel {
 			key: args.key,
 			modifiers: args.modifiers,
 			deltaX: args.deltaX,
-			deltaY: args.deltaY
+			deltaY: args.deltaY,
+			tabId: args.tabId
 		});
 	}
 
-	private async handleNavigate(args: { url: string }): Promise<RoopikToolResult> {
-		// Delegate to unified BrowserToolService
-		return this.browserToolService.navigate(args.url);
+	private async handleNavigate(args: { url: string; tabId?: number }): Promise<RoopikToolResult> {
+		return this.browserToolService.navigate(args.url, args.tabId);
 	}
 
-	private async handleReload(args: { ignoreCache?: boolean }): Promise<RoopikToolResult> {
-		// Delegate to unified BrowserToolService
-		return this.browserToolService.reload(args.ignoreCache);
+	private async handleReload(args: { ignoreCache?: boolean; tabId?: number }): Promise<RoopikToolResult> {
+		return this.browserToolService.reload(args.ignoreCache, args.tabId);
 	}
 
-	private async handleExecuteScript(args: { script: string }): Promise<RoopikToolResult> {
-		// Delegate to unified BrowserToolService
-		return this.browserToolService.executeScript(args.script);
+	private async handleExecuteScript(args: { script: string; tabId?: number }): Promise<RoopikToolResult> {
+		return this.browserToolService.executeScript(args.script, args.tabId);
 	}
 
-	private async handleInspectElement(args: { selector: string; includeInherited?: boolean }): Promise<RoopikToolResult> {
-		// Delegate to unified BrowserToolService with workspace path for CSS source resolution
+	private async handleInspectElement(args: { selector: string; includeInherited?: boolean; tabId?: number }): Promise<RoopikToolResult> {
 		const workspacePath = this.storageService.getWorkspacePath();
 		return this.browserToolService.inspectElement(
 			args.selector,
 			args.includeInherited ?? true,
-			workspacePath
+			workspacePath,
+			args.tabId
 		);
 	}
 
@@ -577,19 +485,17 @@ export class RoopikToolsChannel implements IServerChannel {
 	// CDP Tool Handlers (Phase 4: Now using unified CDPMonitorService!)
 	// ========================================================================
 
-	private async handleGetErrors(args: { limit?: number }): Promise<RoopikToolResult> {
-		// Delegate to unified BrowserToolService which uses CDPMonitorService
-		// This now works! Same CDP monitoring shared with external agents (Claude Code, Cursor)
-		return this.browserToolService.getErrors(args.limit);
+	private async handleGetErrors(args: { limit?: number; tabId?: number }): Promise<RoopikToolResult> {
+		return this.browserToolService.getErrors(args.limit, args.tabId);
 	}
 
-	private async handleGetConsoleLogs(args: { limit?: number; types?: string[]; since?: number; clear?: boolean }): Promise<RoopikToolResult> {
-		// Delegate to unified BrowserToolService which uses CDPMonitorService
+	private async handleGetConsoleLogs(args: { limit?: number; types?: string[]; since?: number; clear?: boolean; tabId?: number }): Promise<RoopikToolResult> {
 		return this.browserToolService.getConsoleLogs({
 			limit: args.limit,
 			types: args.types,
 			since: args.since,
-			clear: args.clear
+			clear: args.clear,
+			tabId: args.tabId
 		});
 	}
 
@@ -602,31 +508,26 @@ export class RoopikToolsChannel implements IServerChannel {
 		height?: number;
 		deviceScaleFactor?: number;
 		mobile?: boolean;
+		tabId?: number;
 	}): Promise<RoopikToolResult> {
-		// Delegate to unified BrowserToolService
-		// Pass undefined to clear viewport, or object with dimensions to set
 		return this.browserToolService.setViewport(
-			args && (args.width || args.height) ? args : undefined
+			args && (args.width || args.height) ? args : (args?.tabId !== undefined ? { tabId: args.tabId } : undefined)
 		);
 	}
 
-	/**
-	 * Get network requests captured by CDP.
-	 * Phase 4: Now delegates to unified BrowserToolService which uses CDPMonitorService.
-	 */
 	private async handleGetNetworkRequests(args: {
 		urlFilter?: string;
 		method?: string;
 		statusFilter?: string;
 		limit?: number;
+		tabId?: number;
 	}): Promise<RoopikToolResult> {
-		// Delegate to unified BrowserToolService which uses CDPMonitorService
-		// This now works! Same CDP monitoring shared with external agents (Claude Code, Cursor)
 		return this.browserToolService.getNetworkRequests({
 			urlFilter: args.urlFilter,
 			method: args.method,
 			statusFilter: args.statusFilter as 'success' | 'error' | 'all' | undefined,
-			limit: args.limit
+			limit: args.limit,
+			tabId: args.tabId
 		});
 	}
 
