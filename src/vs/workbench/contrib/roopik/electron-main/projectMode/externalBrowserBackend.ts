@@ -25,7 +25,15 @@ import { homedir, platform } from 'os';
 import { Emitter, type Event } from '../../../../../base/common/event.js';
 import type { IBrowserBackend, ScreenshotWithMetadata, TabInfo } from './browserBackend.js';
 import type { NavigationState, NavigationStateChangedEvent, DevToolsClosedEvent } from '../../common/projectMode/types.js';
-import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
+import type {
+	GetElementStylesRequest,
+	GetElementStylesResult,
+	MatchedCSSRule,
+	MatchedCSSProperty,
+	InlineStyleProperty,
+	InheritedStyleInfo,
+	ComputedStyleValues,
+} from '../../common/cssResolvers/types.js';
 
 // WebSocket type (from 'ws' package, loaded via dynamic import)
 interface WsWebSocket {
@@ -290,11 +298,10 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	}
 
 	requestBrowserClose(_tabId?: number): void {
-		this.closeActivePage().catch(err => {
-			console.error('[ExternalBrowser] Failed to close page:', err);
-			// Fallback: just disconnect our sessions (don't kill Chrome)
-			this.disconnectAll();
-		});
+		// No-op in external mode.
+		// In embedded mode this tells the renderer to close editor tabs.
+		// External Chrome manages its own tab UI, and closeTab() already
+		// handles the CDP close + state cleanup via removePage().
 	}
 
 	// ========================================================================
@@ -320,18 +327,67 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 			throw new Error('Failed to create new tab');
 		}
 
-		// Wait for the target to be discovered and connected
-		await new Promise(r => setTimeout(r, 500));
-		await this.discoverAndConnectPages();
+		// Wait for the target to be discovered and connected via browser monitor.
+		// The Target.targetCreated event handler calls connectToNewTarget() which
+		// populates targetIdToPageId. We poll until it appears.
+		const pageId = await this.waitForTarget(result.targetId, 5000);
 
-		const pageId = this.targetIdToPageId.get(result.targetId);
-		if (pageId !== undefined) {
-			this.activePage = pageId;
-			this._onActiveTabChanged.fire({ tabId: pageId });
-			return pageId;
-		}
+		this.activePage = pageId;
+		this._onActiveTabChanged.fire({ tabId: pageId });
+		return pageId;
+	}
 
-		throw new Error('New tab created but failed to connect');
+	/**
+	 * Wait for a CDP target to be discovered and connected.
+	 * Polls targetIdToPageId until the target appears, with a fallback
+	 * manual discovery attempt at timeout.
+	 */
+	private waitForTarget(targetId: string, timeoutMs: number): Promise<number> {
+		return new Promise((resolve, reject) => {
+			// Check if already connected (event may have fired before we started waiting)
+			const existing = this.targetIdToPageId.get(targetId);
+			if (existing !== undefined) {
+				resolve(existing);
+				return;
+			}
+
+			let resolved = false;
+
+			const timer = setTimeout(async () => {
+				if (resolved) { return; }
+				// Timeout fallback: try one manual discovery
+				try {
+					await this.discoverAndConnectPages();
+					const pageId = this.targetIdToPageId.get(targetId);
+					if (pageId !== undefined && !resolved) {
+						resolved = true;
+						clearInterval(interval);
+						resolve(pageId);
+						return;
+					}
+				} catch { /* ignore */ }
+				if (!resolved) {
+					resolved = true;
+					clearInterval(interval);
+					reject(new Error('New tab created but failed to connect within timeout'));
+				}
+			}, timeoutMs);
+
+			// Poll at short intervals — browser monitor populates targetIdToPageId async
+			const interval = setInterval(() => {
+				if (resolved) {
+					clearInterval(interval);
+					return;
+				}
+				const pageId = this.targetIdToPageId.get(targetId);
+				if (pageId !== undefined) {
+					resolved = true;
+					clearTimeout(timer);
+					clearInterval(interval);
+					resolve(pageId);
+				}
+			}, 50);
+		});
 	}
 
 	listTabs(): TabInfo[] {
@@ -554,17 +610,320 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	}
 
 	// ========================================================================
-	// CSS Inspection
+	// CSS Inspection — Universal via CDP CSS Domain
+	//
+	// Unlike embedded mode which uses Vite source maps to resolve styles back
+	// to source files (file:line:column), external mode uses Chrome's CDP CSS
+	// domain directly. This means it works on ANY website (not just local
+	// projects) — GitHub, YouTube, production sites, etc.
+	//
+	// Trade-off: No source file locations (no source maps), but full matched
+	// CSS rules, selectors, inline styles, inherited styles, and computed
+	// values straight from Chrome's rendering engine.
+	//
+	// Flow: DOM.enable → CSS.enable → DOM.querySelector/getNodeForLocation
+	//       → DOM.describeNode → CSS.getMatchedStylesForNode
+	//       → CSS.getComputedStyleForNode
 	// ========================================================================
 
-	async getElementStyles(_request: GetElementStylesRequest): Promise<GetElementStylesResult> {
-		// CSS source-map inspection requires the embedded browser's build pipeline.
-		// External Chrome doesn't have access to Vite's source maps in the same way.
-		// TODO: Implement via CDP CSS domain + source map fetching
-		return {
-			success: false,
-			error: 'CSS inspection with source maps is not yet supported in external browser mode. Use embedded mode for this feature.',
-		};
+	async getElementStyles(request: GetElementStylesRequest): Promise<GetElementStylesResult> {
+		const startTime = Date.now();
+		const session = this.getSession(request.browserViewId);
+
+		try {
+			// Enable DOM and CSS domains
+			await session.send('DOM.enable', {});
+			await session.send('CSS.enable', {});
+
+			// Step 1: Find the target node
+			let nodeId: number;
+
+			if (typeof request.target === 'string') {
+				// CSS selector
+				const doc = await session.send('DOM.getDocument', { depth: 0 }) as { root: { nodeId: number } };
+				const queryResult = await session.send('DOM.querySelector', {
+					nodeId: doc.root.nodeId,
+					selector: request.target,
+				}) as { nodeId: number };
+
+				if (!queryResult.nodeId) {
+					return { success: false, error: `Element not found: ${request.target}` };
+				}
+				nodeId = queryResult.nodeId;
+			} else {
+				// Coordinates
+				const nodeResult = await session.send('DOM.getNodeForLocation', {
+					x: request.target.x,
+					y: request.target.y,
+				}) as { nodeId: number; backendNodeId: number };
+
+				if (!nodeResult.nodeId) {
+					return { success: false, error: `No element at (${request.target.x}, ${request.target.y})` };
+				}
+				nodeId = nodeResult.nodeId;
+			}
+
+			// Step 2: Get element info (tagName, id, classes)
+			const nodeInfo = await session.send('DOM.describeNode', { nodeId }) as {
+				node: { localName: string; attributes: string[]; nodeId: number };
+			};
+			const node = nodeInfo.node;
+			const tagName = node.localName || 'unknown';
+			const attrs: Record<string, string> = {};
+			if (node.attributes) {
+				for (let i = 0; i < node.attributes.length; i += 2) {
+					attrs[node.attributes[i]] = node.attributes[i + 1];
+				}
+			}
+			const id = attrs['id'] || undefined;
+			const classes = attrs['class'] ? attrs['class'].split(/\s+/).filter(Boolean) : [];
+
+			// Step 3: Get matched styles
+			const matchedStyles = await session.send('CSS.getMatchedStylesForNode', { nodeId }) as {
+				inlineStyle?: { cssProperties: Array<{ name: string; value: string; important?: boolean; disabled?: boolean }> };
+				matchedCSSRules?: Array<{
+					rule: {
+						selectorList: { text: string };
+						origin: 'injected' | 'user-agent' | 'inspector' | 'regular';
+						style: { cssProperties: Array<{ name: string; value: string; important?: boolean; disabled?: boolean }> };
+						styleSheetId?: string;
+					};
+					matchingSelectors: number[];
+				}>;
+				inherited?: Array<{
+					inlineStyle?: { cssProperties: Array<{ name: string; value: string; important?: boolean; disabled?: boolean }> };
+					matchedCSSRules: Array<{
+						rule: {
+							selectorList: { text: string };
+							origin: 'injected' | 'user-agent' | 'inspector' | 'regular';
+							style: { cssProperties: Array<{ name: string; value: string; important?: boolean; disabled?: boolean }> };
+						};
+					}>;
+				}>;
+			};
+
+			// Step 4: Get computed styles
+			const computedResult = await session.send('CSS.getComputedStyleForNode', { nodeId }) as {
+				computedStyle: Array<{ name: string; value: string }>;
+			};
+
+			// Build computed style map
+			const computedMap = new Map<string, string>();
+			for (const prop of computedResult.computedStyle) {
+				computedMap.set(prop.name, prop.value);
+			}
+
+			// Step 5: Build matchedRules array
+			const matchedRules: MatchedCSSRule[] = [];
+			let rulesMatched = 0;
+
+			if (matchedStyles.matchedCSSRules) {
+				for (const entry of matchedStyles.matchedCSSRules) {
+					const rule = entry.rule;
+					const origin = rule.origin as 'regular' | 'user-agent' | 'injected';
+
+					// Skip user-agent styles unless requested
+					if (origin === 'user-agent' && !request.includeUserAgent) {
+						continue;
+					}
+
+					const properties: MatchedCSSProperty[] = rule.style.cssProperties
+						.filter(p => !p.disabled && p.value)
+						.map(p => ({
+							name: p.name,
+							value: p.value,
+							isOverridden: false, // Can't determine without full cascade analysis
+							isImportant: p.important || false,
+						}));
+
+					if (properties.length > 0) {
+						matchedRules.push({
+							selector: rule.selectorList.text,
+							file: '', // No source map resolution in external mode
+							location: { file: '', line: 0, column: 0 },
+							properties,
+							origin,
+						});
+						rulesMatched++;
+					}
+				}
+			}
+
+			// Step 6: Build inline styles
+			const inlineStyles: InlineStyleProperty[] = [];
+			if (matchedStyles.inlineStyle?.cssProperties) {
+				for (const prop of matchedStyles.inlineStyle.cssProperties) {
+					if (!prop.disabled && prop.value) {
+						inlineStyles.push({ name: prop.name, value: prop.value });
+					}
+				}
+			}
+
+			// Step 7: Build inherited styles (if requested)
+			const inheritedStyles: InheritedStyleInfo[] = [];
+			if (request.includeInherited !== false && matchedStyles.inherited) {
+				// Walk up the ancestor chain to get parent element descriptions
+				let currentNodeId = nodeId;
+				for (let i = 0; i < matchedStyles.inherited.length; i++) {
+					const inherited = matchedStyles.inherited[i];
+
+					// Get parent node info
+					let fromElement = `ancestor[${i}]`;
+					try {
+						// Navigate to parent
+						const parentResult = await session.send('DOM.requestNode', { nodeId: currentNodeId }) as { nodeId: number };
+						if (parentResult?.nodeId) {
+							currentNodeId = parentResult.nodeId;
+						}
+						const parentInfo = await session.send('DOM.describeNode', { nodeId: currentNodeId }) as {
+							node: { localName: string; attributes: string[] };
+						};
+						const parentAttrs: Record<string, string> = {};
+						if (parentInfo.node.attributes) {
+							for (let j = 0; j < parentInfo.node.attributes.length; j += 2) {
+								parentAttrs[parentInfo.node.attributes[j]] = parentInfo.node.attributes[j + 1];
+							}
+						}
+						const parentTag = parentInfo.node.localName || 'unknown';
+						const parentId = parentAttrs['id'] ? `#${parentAttrs['id']}` : '';
+						const parentClass = parentAttrs['class'] ? `.${parentAttrs['class'].split(/\s+/)[0]}` : '';
+						fromElement = `${parentTag}${parentId}${parentClass}`;
+					} catch {
+						// Use fallback description
+					}
+
+					const inheritedRules: MatchedCSSRule[] = [];
+					for (const entry of inherited.matchedCSSRules) {
+						const rule = entry.rule;
+						if (rule.origin === 'user-agent' && !request.includeUserAgent) {
+							continue;
+						}
+						const props: MatchedCSSProperty[] = rule.style.cssProperties
+							.filter(p => !p.disabled && p.value)
+							.map(p => ({
+								name: p.name,
+								value: p.value,
+								isOverridden: false,
+								isImportant: p.important || false,
+							}));
+						if (props.length > 0) {
+							inheritedRules.push({
+								selector: rule.selectorList.text,
+								file: '',
+								location: { file: '', line: 0, column: 0 },
+								properties: props,
+								origin: rule.origin as 'regular' | 'user-agent' | 'injected',
+							});
+						}
+					}
+
+					const inheritedInline: InlineStyleProperty[] = [];
+					if (inherited.inlineStyle?.cssProperties) {
+						for (const prop of inherited.inlineStyle.cssProperties) {
+							if (!prop.disabled && prop.value) {
+								inheritedInline.push({ name: prop.name, value: prop.value });
+							}
+						}
+					}
+
+					if (inheritedRules.length > 0 || inheritedInline.length > 0) {
+						inheritedStyles.push({
+							fromElement,
+							matchedRules: inheritedRules,
+							inlineStyle: inheritedInline.length > 0 ? inheritedInline : undefined,
+						});
+					}
+				}
+			}
+
+			// Step 8: Build computed style values
+			const computedStyles: ComputedStyleValues = {
+				display: computedMap.get('display'),
+				position: computedMap.get('position'),
+				flexDirection: computedMap.get('flex-direction'),
+				justifyContent: computedMap.get('justify-content'),
+				alignItems: computedMap.get('align-items'),
+				gap: computedMap.get('gap'),
+				width: computedMap.get('width'),
+				height: computedMap.get('height'),
+				minWidth: computedMap.get('min-width'),
+				maxWidth: computedMap.get('max-width'),
+				minHeight: computedMap.get('min-height'),
+				maxHeight: computedMap.get('max-height'),
+				marginTop: computedMap.get('margin-top'),
+				marginRight: computedMap.get('margin-right'),
+				marginBottom: computedMap.get('margin-bottom'),
+				marginLeft: computedMap.get('margin-left'),
+				paddingTop: computedMap.get('padding-top'),
+				paddingRight: computedMap.get('padding-right'),
+				paddingBottom: computedMap.get('padding-bottom'),
+				paddingLeft: computedMap.get('padding-left'),
+				borderWidth: computedMap.get('border-width'),
+				borderStyle: computedMap.get('border-style'),
+				borderColor: computedMap.get('border-color'),
+				borderRadius: computedMap.get('border-radius'),
+				fontFamily: computedMap.get('font-family'),
+				fontSize: computedMap.get('font-size'),
+				fontWeight: computedMap.get('font-weight'),
+				lineHeight: computedMap.get('line-height'),
+				letterSpacing: computedMap.get('letter-spacing'),
+				textAlign: computedMap.get('text-align'),
+				color: computedMap.get('color'),
+				backgroundColor: computedMap.get('background-color'),
+				opacity: computedMap.get('opacity'),
+				boxShadow: computedMap.get('box-shadow'),
+				overflow: computedMap.get('overflow'),
+				transform: computedMap.get('transform'),
+				zIndex: computedMap.get('z-index'),
+				top: computedMap.get('top'),
+				right: computedMap.get('right'),
+				bottom: computedMap.get('bottom'),
+				left: computedMap.get('left'),
+			};
+
+			// Get bounding box via JS evaluation
+			try {
+				const boxResult = await session.send('Runtime.evaluate', {
+					expression: `(() => {
+						const el = document.querySelector(${JSON.stringify(typeof request.target === 'string' ? request.target : `[data-nodeId]`)});
+						if (!el) return null;
+						const r = el.getBoundingClientRect();
+						return { x: r.x, y: r.y, width: r.width, height: r.height };
+					})()`,
+					returnByValue: true,
+				}) as { result?: { value?: { x: number; y: number; width: number; height: number } } };
+				if (boxResult.result?.value) {
+					computedStyles.boundingBox = boxResult.result.value;
+				}
+			} catch {
+				// Bounding box is optional
+			}
+
+			return {
+				success: true,
+				data: {
+					tagName,
+					id,
+					classes,
+					matchedRules,
+					inlineStyles,
+					inheritedStyles: inheritedStyles.length > 0 ? inheritedStyles : undefined,
+					computedStyles,
+					properties: [], // Full ResolvedCSSProperty[] requires source map resolution
+				},
+				diagnostics: {
+					duration: Date.now() - startTime,
+					styleSheetsScanned: 0, // No source map scanning in external mode
+					rulesMatched,
+					sourceMapsUsed: [],
+				},
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: `CSS inspection failed: ${error instanceof Error ? error.message : String(error)}`,
+			};
+		}
 	}
 
 	// ========================================================================
@@ -742,6 +1101,12 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 				if (method === 'Target.targetInfoChanged') {
 					const pageId = this.targetIdToPageId.get(targetInfo.targetId!);
 					if (pageId !== undefined) {
+						// Update stored target info so listTabs() returns current data
+						const page = this.pages.get(pageId);
+						if (page) {
+							if (targetInfo.url) { page.target.url = targetInfo.url; }
+							if (targetInfo.title) { page.target.title = targetInfo.title; }
+						}
 						// URL or title changed — fire navigation event
 						this._onNavigationStateChanged.fire({
 							browserViewId: pageId,
@@ -850,8 +1215,11 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 			// Listen for navigation events
 			session.addListener((method, params) => {
 				if (method === 'Page.frameNavigated') {
-					const frame = (params as { frame?: { url?: string } }).frame;
-					if (frame?.url) {
+					const frame = (params as { frame?: { url?: string; parentId?: string } }).frame;
+					if (frame?.url && !frame.parentId) {
+						// Update stored target info for listTabs()
+						const currentPage = this.pages.get(pageId);
+						if (currentPage) { currentPage.target.url = frame.url; }
 						this._onNavigationStateChanged.fire({
 							browserViewId: pageId,
 							url: frame.url,
@@ -864,6 +1232,12 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 				}
 				if (method === 'Page.loadEventFired') {
 					this.getNavigationState(pageId).then(state => {
+						// Update stored target info for listTabs()
+						const currentPage = this.pages.get(pageId);
+						if (currentPage) {
+							if (state.url) { currentPage.target.url = state.url; }
+							if (state.title) { currentPage.target.title = state.title; }
+						}
 						this._onNavigationStateChanged.fire({
 							browserViewId: pageId,
 							...state,
@@ -920,33 +1294,6 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 			throw new Error(`No CDP session for browserViewId: ${browserViewId}`);
 		}
 		return page.session;
-	}
-
-	/**
-	 * Close the active page via CDP (actually closes the tab in Chrome).
-	 * Does NOT kill Chrome — it's the user's browser.
-	 */
-	private async closeActivePage(): Promise<void> {
-		if (this.activePage === undefined) { return; }
-
-		const page = this.pages.get(this.activePage);
-		if (page?.session.connected) {
-			try {
-				// CDP Target.closeTarget actually closes the tab
-				// Use the Browser domain to close the target
-				await page.session.send('Page.close');
-			} catch {
-				// Page.close might not be available, try via HTTP endpoint
-				try {
-					await fetch(`http://127.0.0.1:${this.cdpPort}/json/close/${page.target.id}`);
-				} catch {
-					// Last resort: just disconnect
-				}
-			}
-		}
-
-		// Clean up our state (WebSocket onClose will also fire)
-		this.removePage(this.activePage);
 	}
 
 	/** Disconnect all CDP sessions without killing Chrome */
