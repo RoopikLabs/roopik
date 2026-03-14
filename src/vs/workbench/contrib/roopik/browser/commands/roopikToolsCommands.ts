@@ -25,8 +25,7 @@ import { IMainProcessService } from '../../../../../platform/ipc/common/mainProc
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { IEditorGroupsService } from '../../../../services/editor/common/editorGroupsService.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
-import { ROOPIK_TOOLS_CHANNEL_NAME } from '../../common/tools/types.js';
-import type { RoopikToolResult } from '../../common/tools/types.js';
+import { ROOPIK_TOOLS_CHANNEL_NAME, type RoopikToolResult } from '../../common/tools/types.js';
 import { openBrowserEditor } from './browserCommands.js';
 
 /** Check if external browser mode is configured */
@@ -422,6 +421,43 @@ export function registerRoopikToolsCommands(): void {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
 			return channel.call('browser_get_network_requests', args || {});
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserListTabs',
+				title: { value: 'List Browser Tabs', original: 'List Browser Tabs' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('browser_list_tabs');
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserCloseTab',
+				title: { value: 'Close Browser Tab', original: 'Close Browser Tab' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: { tabId: number }): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			if (!args?.tabId) {
+				return { success: false, error: 'tabId is required' };
+			}
+			return channel.call('browser_close_tab', { tabId: args.tabId });
 		}
 	});
 

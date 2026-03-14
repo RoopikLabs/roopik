@@ -326,9 +326,10 @@ This workflow teaches you the complete cycle for frontend development.
 **Project Tools** (3):
 - project_get_active, project_start, project_stop
 
-**Browser Core** (6):
+**Browser Core** (8):
 - browser_open, browser_close, browser_screenshot
 - browser_navigate, browser_reload, browser_action_input
+- browser_list_tabs, browser_close_tab
 
 **Browser Debug** (4):
 - browser_execute_script, browser_inspect_element
@@ -345,7 +346,7 @@ This workflow teaches you the complete cycle for frontend development.
 - component_add, component_add_batch, component_remove
 - component_get_info, component_list, component_rebuild
 
-## Total: 26 Tools
+## Total: 28 Tools
 
 ## Key Tips:
 - Always check project_get_active before starting
