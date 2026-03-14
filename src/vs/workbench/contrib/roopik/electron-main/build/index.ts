@@ -13,11 +13,10 @@ export { BuildService } from './buildService.js';
 // Injectors (re-export for convenience)
 export {
 	InjectorPipeline,
-	IScriptInjector,
-	InjectorContext,
 	BaseInjector,
 	ErrorBoundaryInjector,
 	InspectModeInjector,
 	HmrBridgeInjector,
 	createDefaultPipeline
 } from './injectors/index.js';
+export type { IScriptInjector, InjectorContext } from './injectors/index.js';

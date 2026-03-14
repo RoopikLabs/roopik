@@ -15,7 +15,8 @@
  * - ComponentParser for framework/entry detection
  */
 
-import { IBuildService, BuildInput, BuildOutput } from '../../common/build/buildService.js';
+import { IBuildService } from '../../common/build/buildService.js';
+import type { BuildInput, BuildOutput } from '../../common/build/buildService.js';
 import { ESBuildTransformer } from './esbuildTransformer.js';
 import { ComponentParser } from '../../common/build/componentParser.js';
 import { InjectorPipeline, createDefaultPipeline, IScriptInjector } from './injectors/index.js';

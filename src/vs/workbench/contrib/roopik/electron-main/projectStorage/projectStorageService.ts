@@ -16,7 +16,7 @@ import { Emitter, Event } from '../../../../../base/common/event.js';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
 import { IProjectStorageService } from '../../common/projectStorage/projectStorageService.js';
-import { ProjectInfo } from '../../common/storage/storageTypes.js';
+import type { ProjectInfo } from '../../common/storage/storageTypes.js';
 import { WorkspaceStorage } from '../storage/workspaceStorage.js';
 
 export class ProjectStorageService implements IProjectStorageService {

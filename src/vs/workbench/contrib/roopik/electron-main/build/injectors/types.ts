@@ -10,7 +10,7 @@
  * Follows pipeline pattern - each injector transforms code in sequence.
  */
 
-import { Framework } from '../../../common/storage/storageTypes.js';
+import type { Framework } from '../../../common/storage/storageTypes.js';
 
 // ============================================================================
 // Injector Types

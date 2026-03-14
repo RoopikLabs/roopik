@@ -21,7 +21,8 @@
 import { createServer, Server as HttpServer } from 'http';
 import { Emitter, Event } from '../../../../../../base/common/event.js';
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
-import { McpRequestRouter, McpRequest, McpResponse, MCP_ERROR_CODES } from './mcpRequestRouter.js';
+import { McpRequestRouter, MCP_ERROR_CODES } from './mcpRequestRouter.js';
+import type { McpRequest, McpResponse } from './mcpRequestRouter.js';
 import type { ToolExecutor } from '../executor/index.js';
 
 // ============================================================================

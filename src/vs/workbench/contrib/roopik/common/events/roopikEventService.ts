@@ -7,30 +7,7 @@ import { createDecorator } from '../../../../../platform/instantiation/common/in
 import { Disposable, IDisposable } from '../../../../../base/common/lifecycle.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { ILogService } from '../../../../../platform/log/common/log.js';
-import {
-	RoopikEventTopic,
-	RoopikEventMap,
-	EventPayload,
-	BrowserCreatedEvent,
-	BrowserDestroyedEvent,
-	BrowserNavigatedEvent,
-	BrowserTitleChangedEvent,
-	BrowserLoadingStartedEvent,
-	BrowserLoadingFinishedEvent,
-	CanvasCreatedEvent,
-	CanvasDestroyedEvent,
-	CanvasRenamedEvent,
-	CanvasFocusedEvent,
-	ComponentAddedEvent,
-	ComponentRemovedEvent,
-	ComponentUpdatedEvent,
-	ComponentSelectedEvent,
-	SettingsChangedEvent,
-	SettingsResetEvent,
-	AgentActionStartedEvent,
-	AgentActionCompletedEvent,
-	AgentErrorEvent
-} from './roopikEventTypes.js';
+import type { RoopikEventTopic, RoopikEventMap, EventPayload, BrowserCreatedEvent, BrowserDestroyedEvent, BrowserNavigatedEvent, BrowserTitleChangedEvent, BrowserLoadingStartedEvent, BrowserLoadingFinishedEvent, CanvasCreatedEvent, CanvasDestroyedEvent, CanvasRenamedEvent, CanvasFocusedEvent, ComponentAddedEvent, ComponentRemovedEvent, ComponentUpdatedEvent, ComponentSelectedEvent, SettingsChangedEvent, SettingsResetEvent, AgentActionStartedEvent, AgentActionCompletedEvent, AgentErrorEvent } from './roopikEventTypes.js';
 
 // ============================================
 // Service Interface

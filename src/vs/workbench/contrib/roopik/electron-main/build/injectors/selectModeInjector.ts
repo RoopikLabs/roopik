@@ -18,7 +18,8 @@
  * - Element dimensions
  */
 
-import { BaseInjector, InjectorContext } from './types.js';
+import { BaseInjector } from './types.js';
+import type { InjectorContext } from './types.js';
 
 export class SelectModeInjector extends BaseInjector {
 	override readonly name = 'select-mode';

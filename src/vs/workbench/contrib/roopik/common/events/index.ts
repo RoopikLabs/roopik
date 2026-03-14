@@ -10,8 +10,8 @@
 // Service
 export { IRoopikEventService, RoopikEventService } from './roopikEventService.js';
 
-// Types
-export {
+// Types (type-only re-exports)
+export type {
 	// Topics
 	RoopikEventTopic,
 	RoopikEventMap,

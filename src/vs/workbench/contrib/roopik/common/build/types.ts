@@ -10,7 +10,7 @@
  * These are internal types for the build process.
  */
 
-import { Framework } from '../storage/storageTypes.js';
+import type { Framework } from '../storage/storageTypes.js';
 
 // Re-export Framework for convenience
 export { Framework };

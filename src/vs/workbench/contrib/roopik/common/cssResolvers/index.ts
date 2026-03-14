@@ -10,4 +10,4 @@
  * These types are used by both browser and main process code.
  */
 
-export * from './types.js';
+export type * from './types.js';

@@ -20,27 +20,17 @@ import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
-import {
-	IComponentService,
-	ComponentCreatedEvent,
-	ComponentBuildEvent,
-	ComponentDeletedEvent,
-	ComponentUpdatedEvent,
-	ComponentScreenshotRequestEvent
-} from '../../common/component/componentService.js';
-import {
-	Component,
-	AddComponentRequest,
-	ComponentInfo,
-	BuildErrorInfo,
-	RuntimeError
-} from '../../common/component/types.js';
-import { ComponentReference, Framework } from '../../common/storage/storageTypes.js';
+import { IComponentService } from '../../common/component/componentService.js';
+import type { ComponentCreatedEvent, ComponentBuildEvent, ComponentDeletedEvent, ComponentUpdatedEvent, ComponentScreenshotRequestEvent } from '../../common/component/componentService.js';
+import type { Component, AddComponentRequest, ComponentInfo, BuildErrorInfo, RuntimeError } from '../../common/component/types.js';
+import type { ComponentReference, Framework } from '../../common/storage/storageTypes.js';
 import { IRoopikStorageService } from '../../common/storage/storageService.js';
 import { IBuildService } from '../../common/build/buildService.js';
 import { ICanvasService } from '../../common/canvas/canvasService.js';
-import { IFileWatcher, FileChangeEvent } from '../../common/watch/fileWatcher.js';
-import { BuildQueue, BuildRequest, QueueBuildResult } from './buildQueue.js';
+import { IFileWatcher } from '../../common/watch/fileWatcher.js';
+import type { FileChangeEvent } from '../../common/watch/fileWatcher.js';
+import { BuildQueue } from './buildQueue.js';
+import type { BuildRequest, QueueBuildResult } from './buildQueue.js';
 import { getBundlePath } from '../storage/paths.js';
 import { detectEntryFile, detectFramework } from './detectors.js';
 import { computeContentHashFromFolder } from '../../common/hash/contentHash.js';

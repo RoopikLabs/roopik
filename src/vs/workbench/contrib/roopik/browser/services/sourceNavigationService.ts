@@ -7,11 +7,8 @@ import { URI } from '../../../../../base/common/uri.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
 import { ITextResourceEditorInput } from '../../../../../platform/editor/common/editor.js';
-import {
-	ISourceNavigationService,
-	SourceLocation,
-	OpenSourceOptions
-} from '../../common/navigation/sourceNavigationService.js';
+import { ISourceNavigationService } from '../../common/navigation/sourceNavigationService.js';
+import type { SourceLocation, OpenSourceOptions } from '../../common/navigation/sourceNavigationService.js';
 
 /**
  * Source Navigation Service Implementation

@@ -6,12 +6,8 @@
 import {
 	IRoopikStorageService
 } from '../../common/storage/storageService.js';
-import {
-	BundledOutput,
-	CanvasInfo,
-	WorkspaceConfig
-} from '../../common/storage/storageTypes.js';
-import { CanvasMeta } from '../../common/canvas/types.js';
+import type { BundledOutput, CanvasInfo, WorkspaceConfig } from '../../common/storage/storageTypes.js';
+import type { CanvasMeta } from '../../common/canvas/types.js';
 import { WorkspaceStorage } from './workspaceStorage.js';
 import { AppDataStorage } from './appDataStorage.js';
 import {

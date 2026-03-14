@@ -17,7 +17,7 @@
 import { Event } from '../../../../../base/common/event.js';
 import { IServerChannel } from '../../../../../base/parts/ipc/common/ipc.js';
 import { IComponentService } from '../../common/component/componentService.js';
-import { AddComponentRequest, RuntimeError } from '../../common/component/types.js';
+import type { AddComponentRequest, RuntimeError } from '../../common/component/types.js';
 
 export class ComponentChannel implements IServerChannel {
 	constructor(private readonly service: IComponentService) { }

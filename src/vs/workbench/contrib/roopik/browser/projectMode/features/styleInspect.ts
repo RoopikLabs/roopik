@@ -6,7 +6,8 @@
 import { INotificationService, Severity } from '../../../../../../platform/notification/common/notification.js';
 import type { IProjectModeService } from '../../../common/projectMode/ipc.js';
 import type { CSSSourceLocation, ElementStyleInfo, GetElementStylesResult } from '../../../common/cssResolvers/types.js';
-import { StyleInspectPanel, IStyleInspectPanelCallbacks, DOMTreeNode } from '../components/styleInspectPanel.js';
+import { StyleInspectPanel } from '../components/styleInspectPanel.js';
+import type { IStyleInspectPanelCallbacks, DOMTreeNode } from '../components/styleInspectPanel.js';
 import { ISourceNavigationService } from '../../../common/navigation/index.js';
 import type { InspectMode } from './inspectMode.js';
 import type { PendingMove } from './dragDrop/types.js';

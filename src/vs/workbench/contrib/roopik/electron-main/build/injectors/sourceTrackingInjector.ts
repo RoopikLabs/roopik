@@ -24,8 +24,10 @@
  * - data-roopik-parent: DISABLED (using CSS selectors instead)
  */
 
-import { BaseInjector, InjectorContext } from './types.js';
-import { transformCode, ParseOptions } from './sourceTrackingCore.js';
+import { BaseInjector } from './types.js';
+import type { InjectorContext } from './types.js';
+import { transformCode } from './sourceTrackingCore.js';
+import type { ParseOptions } from './sourceTrackingCore.js';
 
 // Type declaration for @babel/core (types are in @types/babel__core)
 /// \u003creference types="@types/babel__core" /\u003e

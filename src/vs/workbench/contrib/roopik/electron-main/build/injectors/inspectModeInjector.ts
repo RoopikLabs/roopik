@@ -10,7 +10,8 @@
  * Enables element inspection in the canvas sandbox.
  */
 
-import { BaseInjector, InjectorContext } from './types.js';
+import { BaseInjector } from './types.js';
+import type { InjectorContext } from './types.js';
 
 export class InspectModeInjector extends BaseInjector {
 	override readonly name = 'inspect-mode';

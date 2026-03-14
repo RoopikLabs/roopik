@@ -28,7 +28,8 @@ import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
-import { IFileWatcher, FileChangeEvent } from '../../common/watch/fileWatcher.js';
+import { IFileWatcher } from '../../common/watch/fileWatcher.js';
+import type { FileChangeEvent } from '../../common/watch/fileWatcher.js';
 
 /**
  * Registered folder watch for a component

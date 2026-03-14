@@ -48,12 +48,12 @@ export async function getRooModels(baseUrl: string, apiKey?: string): Promise<Mo
 					errorBody = "(unable to read response body)"
 				}
 
-				// console.error(`[getRooModels] HTTP error:`, {
-				// 	status: response.status,
-				// 	statusText: response.statusText,
-				// 	url,
-				// 	body: errorBody,
-				// })
+				console.error(`[getRooModels] HTTP error:`, {
+					status: response.status,
+					statusText: response.statusText,
+					url,
+					body: errorBody,
+				})
 
 				throw new Error(`HTTP ${response.status}: ${response.statusText}`)
 			}

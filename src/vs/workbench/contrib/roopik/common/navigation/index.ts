@@ -3,8 +3,5 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-export {
-	ISourceNavigationService,
-	SourceLocation,
-	OpenSourceOptions
-} from './sourceNavigationService.js';
+export { ISourceNavigationService } from './sourceNavigationService.js';
+export type { SourceLocation, OpenSourceOptions } from './sourceNavigationService.js';

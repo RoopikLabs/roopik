@@ -3,7 +3,8 @@
  * Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { Framework, ComponentInput, ValidationResult, FrameworkConfigMap, FrameworkConfig } from './types.js';
+import { Framework } from './types.js';
+import type { ComponentInput, ValidationResult, FrameworkConfigMap, FrameworkConfig } from './types.js';
 import { promises as fs } from 'fs';
 import * as path from '../../../../../base/common/path.js';
 

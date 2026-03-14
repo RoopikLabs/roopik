@@ -10,6 +10,7 @@ src/vs/base/browser/ui/codicons/codicon/codicon.ttf
 /out*/
 /extensions/**/out/
 build/node_modules
+build/darwin/.dmgbuild
 coverage/
 test_data/
 test-results/
@@ -24,9 +25,12 @@ vscode.db
 .vscode-test
 vscode-telemetry-docs/
 test-output.json
+test/componentFixtures/.screenshots/*
+!test/componentFixtures/.screenshots/baseline/
+dist
 
 # Microsoft-specific CI/CD and automation (not needed for Roopik fork)
-# .github/workflows/
+.github/workflows/
 .github/endgame/
 .github/CODEOWNERS
 .github/dependabot.yml
@@ -35,8 +39,3 @@ test-output.json
 .github/CODENOTIFY
 .github/commands/
 .github/commands.json
-
-# Roopik IDE metadata
-/docs
-.roopik/
-/resources/mcp-binaries

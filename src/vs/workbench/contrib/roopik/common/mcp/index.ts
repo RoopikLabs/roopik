@@ -7,8 +7,8 @@
  * MCP Server Module - Public API
  */
 
-export {
-	IMcpServerService,
+export { IMcpServerService } from './mcpServerService.js';
+export type {
 	McpServerStatus,
 	McpConnectionInfo,
 	AgentId,

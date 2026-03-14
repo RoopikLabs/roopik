@@ -7,15 +7,8 @@ import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
-import {
-	RoopikAppSettings,
-	RoopikWorkspaceSettings,
-	AppSettingsPath,
-	WorkspaceSettingsPath,
-	SettingValue,
-	DEFAULT_APP_SETTINGS,
-	DEFAULT_WORKSPACE_SETTINGS
-} from './roopikSettingsTypes.js';
+import { DEFAULT_APP_SETTINGS, DEFAULT_WORKSPACE_SETTINGS } from './roopikSettingsTypes.js';
+import type { RoopikAppSettings, RoopikWorkspaceSettings, AppSettingsPath, WorkspaceSettingsPath, SettingValue } from './roopikSettingsTypes.js';
 import { IRoopikEventService } from '../events/index.js';
 
 // ============================================================================

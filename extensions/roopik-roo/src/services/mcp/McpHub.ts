@@ -161,14 +161,25 @@ export class McpHub {
 	private isProgrammaticUpdate: boolean = false
 	private flagResetTimer?: NodeJS.Timeout
 	private sanitizedNameRegistry: Map<string, string> = new Map()
+	private initializationPromise: Promise<void>
 
 	constructor(provider: ClineProvider) {
 		this.providerRef = new WeakRef(provider)
 		this.watchMcpSettingsFile()
 		this.watchProjectMcpFile().catch(console.error)
 		this.setupWorkspaceFoldersWatcher()
-		this.initializeGlobalMcpServers()
-		this.initializeProjectMcpServers()
+		this.initializationPromise = Promise.all([
+			this.initializeGlobalMcpServers(),
+			this.initializeProjectMcpServers(),
+		]).then(() => {})
+	}
+
+	/**
+	 * Waits until all MCP servers have finished their initial connection attempts.
+	 * Each server individually handles its own timeout, so this will not block indefinitely.
+	 */
+	async waitUntilReady(): Promise<void> {
+		await this.initializationPromise
 	}
 	/**
 	 * Registers a client (e.g., ClineProvider) using this hub.
@@ -1742,7 +1753,7 @@ export class McpHub {
 			timeout = 60 * 1000
 		}
 
-		return await connection.client.request(
+		return (await connection.client.request(
 			{
 				method: "tools/call",
 				params: {
@@ -1754,7 +1765,7 @@ export class McpHub {
 			{
 				timeout,
 			},
-		)
+		)) as McpToolCallResponse
 	}
 
 	/**

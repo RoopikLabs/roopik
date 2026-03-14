@@ -16,6 +16,9 @@ import { CDPCssService } from './cssResolvers/cdpCssService.js';
 import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.js';
 import contextMenu from 'electron-context-menu';
 import { cleanupCDPMonitoring } from '../tools/cdpMonitorService.js';
+import { injectStealthPatches } from './browserStealth.js';
+import { FileAccess } from '../../../../../base/common/network.js';
+import { ipcMain } from 'electron';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
 
@@ -73,6 +76,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 	// Track if session has been configured (only configure ONCE)
 	private static sessionConfigured = false;
+	private static ipcListenerRegistered = false;
 
 	/**
 	 * Check if a webContents ID is managed by ProjectMode
@@ -186,6 +190,13 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	async createBrowserView(windowId: number): Promise<BrowserViewResult> {
 		this.logger.info('createBrowserView requested', { windowId });
 
+		// CRITICAL: Destroy any existing browser views first.
+		const existingIds = Array.from(this.browserViews.keys());
+		for (const oldId of existingIds) {
+			// this.logger.info('Destroying existing browser view before creating new one', { oldId });
+			await this.destroyBrowserView(oldId);
+		}
+
 		const window = BrowserWindow.fromId(windowId);
 		if (!window) {
 			throw new Error(`Window ${windowId} not found`);
@@ -213,17 +224,42 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				callback(0);
 			});
 
-			// C. Auto-Grant Permissions for Dev
-			// Local dev servers often request permissions causing invisible prompts.
+			// C. Auto-Grant Permissions (Real Chrome-like behavior)
+			// Two handlers needed: requestHandler for explicit prompts, checkHandler for implicit checks
+			const allowedPermissions = ['media', 'geolocation', 'notifications', 'clipboard-read', 'clipboard-write', 'clipboard-sanitized-write', 'midi', 'midiSysex', 'pointerLock', 'fullscreen', 'display-capture', 'mediaKeySystem', 'idle-detection', 'storage-access', 'window-management', 'local-fonts', 'screen-wake-lock', 'speaker-selection'];
+
+			// Handler for explicit permission requests (e.g., getUserMedia prompt)
 			browserSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-				const allowedPermissions = ['media', 'geolocation', 'notifications', 'clipboard-read', 'clipboard-write', 'midi', 'pointerLock', 'fullscreen'];
 				callback(allowedPermissions.includes(permission));
+			});
+
+			// Handler for implicit permission checks (e.g., enumerateDevices, permission.query)
+			// WITHOUT THIS, camera/mic streams return blank even after permission is "granted"
+			browserSession.setPermissionCheckHandler((_webContents, permission) => {
+				return allowedPermissions.includes(permission);
 			});
 
 			// D. Load DevTools Extensions (React DevTools, Vue DevTools, etc.)
 			// Extensions are loaded from resources/devtools-extensions/
 			// User can add new extensions by extracting CRX files and updating manifest.json
 			this.loadDevToolsExtensionsAsync(browserSession);
+
+			// E. Browser Stealth: Make embedded browser indistinguishable from real Chrome
+			// Strip Electron/Roopik identifiers from User-Agent to bypass Cloudflare/bot detection
+			const defaultUA = browserSession.getUserAgent();
+			const cleanUA = defaultUA
+				.replace(/\s*roopik[-\w]*\/[\d.]+/gi, '')
+				.replace(/\s*Electron\/[\d.]+/gi, '');
+			browserSession.setUserAgent(cleanUA);
+			this.logger.info('Browser stealth: UA cleaned', { cleanUA });
+
+			// Override Accept-Language header to match real Chrome (multiple locales)
+			browserSession.webRequest.onBeforeSendHeaders((details, callback) => {
+				details.requestHeaders['Accept-Language'] = 'en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7';
+				// Also ensure the User-Agent header matches (some Electron versions leak in headers)
+				details.requestHeaders['User-Agent'] = cleanUA;
+				callback({ requestHeaders: details.requestHeaders });
+			});
 		}
 
 		// =========================================================
@@ -231,13 +267,18 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		// =========================================================
 
 		// Create browser WebContentsView with custom session
+		// Match real Chrome browser security model: sandbox ON, webSecurity ON
+		// sandbox:true prevents Node.js globals from leaking (no global, process, etc.)
+		// webSecurity:true enforces same-origin policy (Cloudflare checks this!)
 		const browserView = new WebContentsView({
 			webPreferences: {
 				nodeIntegration: false,
 				contextIsolation: true,
-				sandbox: false,
-				webSecurity: false,
-				allowRunningInsecureContent: true,
+				sandbox: true,
+				javascript: true,
+				navigateOnDragDrop: false,
+				enableBlinkFeatures: 'StandardizedBrowserZoom',
+				preload: FileAccess.asFileUri('vs/platform/browserView/electron-main/preload-browser.js').fsPath,
 				session: browserSession // CRITICAL: Use our configured session for localhost support
 			}
 	});
@@ -263,6 +304,14 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// Setup event listeners
 		this.setupBrowserEvents(browserView);
+
+		// =========================================================================
+		// BROWSER STEALTH: Inject fingerprint patches via CDP
+		// Phase 1: dom-ready handler injects stealth on first page load
+		// Phase 2: CDP registers stealth for all subsequent navigations
+		// Both phases are non-blocking — won't delay browser creation
+		// =========================================================================
+		injectStealthPatches(browserView, this.debuggerAttached);
 
 		// =========================================================================
 		// CRITICAL: THE SAFETY LEASH
@@ -362,7 +411,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	 */
 	getActiveBrowserViewId(): number | undefined {
 		const ids = Array.from(this.browserViews.keys());
-		return ids.length > 0 ? ids[0] : undefined;
+		// Return the LAST (most recently created) browser view ID
+		// Safety measure in case multiple views exist during a brief race window
+		return ids.length > 0 ? ids[ids.length - 1] : undefined;
 	}
 
 	async setBrowserBounds(browserViewId: number, bounds: ViewBounds): Promise<void> {
@@ -1567,6 +1618,21 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		const webContents = browserView.webContents;
 		const browserViewId = webContents.id;
 
+		// =====================================================
+		// IPC messages from preload script (roopikBrowser.send)
+		// Registered ONCE globally (not per-view) to avoid listener stacking
+		// =====================================================
+		if (!BrowserViewService.ipcListenerRegistered) {
+			BrowserViewService.ipcListenerRegistered = true;
+			ipcMain.on('roopik:browser-view-message', (_event, channel: string, ...args: unknown[]) => {
+				if (channel === 'passkey-not-supported') {
+					this.logger.info('WebAuthn/Passkey not supported notification');
+				} else {
+					this.logger.info('Browser view IPC message', { channel, args });
+				}
+			});
+		}
+
 		// Error codes that are expected/normal and should NOT be logged as errors:
 		// -3: ERR_ABORTED - Normal navigation cancellation (user navigated away, pressed stop, or new navigation started)
 		const IGNORED_ERROR_CODES = new Set([-3]);
@@ -1697,25 +1763,19 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			});
 		});
 
-		webContents.on('did-finish-load', () => {
+		// did-stop-loading is the single source of truth for "loading done"
+		// Using ONLY this event (not did-finish-load) prevents double loading bar animations.
+		// did-finish-load fires slightly before did-stop-loading, causing a race where
+		// hideLoading() gets called twice — producing two overlapping progress bar animations.
+		webContents.on('did-stop-loading', () => {
 			if (!this.browserViews.has(browserViewId)) {
 				return;
 			}
 
 			// Clear any previous error on successful load
 			this.clearNavigationError(browserViewId);
-			// Fire event with EXPLICIT isLoading = false
-			this.fireNavigationStateChanged(browserViewId, false);
-		});
-
-		// did-stop-loading is more reliable than did-finish-load for complex pages
-		webContents.on('did-stop-loading', () => {
-			if (!this.browserViews.has(browserViewId)) {
-				return;
-			}
 
 			// If no favicon was received during this page load, clear the old one
-			// This handles sites that have no favicon
 			if (!this.faviconReceivedForCurrentLoad.get(browserViewId)) {
 				this.favicons.delete(browserViewId);
 			}
@@ -1723,8 +1783,6 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			this.fireNavigationStateChanged(browserViewId, false);
 
 			// CRITICAL: Set visual zoom limits AFTER page loads (per Electron docs)
-			// This enables pinch-to-zoom on touchpads
-			// Must be called after content is loaded for visual zoom to work properly
 			webContents.setVisualZoomLevelLimits(1, 5);
 		});
 

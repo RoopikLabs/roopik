@@ -151,7 +151,13 @@ export class ExtHostTreeViews extends Disposable implements ExtHostTreeViewsShap
 			dispose: async () => {
 				// Wait for the registration promise to finish before doing the dispose.
 				await registerPromise;
-				this._treeViews.delete(viewId);
+				// Only notify the main thread if this view was not replaced by a new registration.
+				// When an extension disposes a view and immediately re-registers it, the new
+				// registration may have already updated _treeViews before this async dispose runs.
+				if (this._treeViews.get(viewId) === treeView) {
+					this._treeViews.delete(viewId);
+					this._proxy.$disposeTree(viewId);
+				}
 				treeView.dispose();
 			}
 		};
@@ -699,24 +705,24 @@ class ExtHostTreeView<T> extends Disposable {
 		return asPromise(() => this._dataProvider.getParent!(element));
 	}
 
-	private _resolveTreeNode(element: T, parent?: TreeNode): Promise<TreeNode> {
+	private async _resolveTreeNode(element: T, parent?: TreeNode): Promise<TreeNode> {
 		const node = this._nodes.get(element);
 		if (node) {
-			return Promise.resolve(node);
+			return node;
 		}
-		return asPromise(() => this._dataProvider.getTreeItem(element))
-			.then(extTreeItem => this._createHandle(element, extTreeItem, parent, true))
-			.then(handle => this.getChildren(parent ? parent.item.handle : undefined)
-				.then(() => {
-					const cachedElement = this.getExtensionElement(handle);
-					if (cachedElement) {
-						const node = this._nodes.get(cachedElement);
-						if (node) {
-							return Promise.resolve(node);
-						}
-					}
-					throw new Error(`Cannot resolve tree item for element ${handle} from extension ${this._extension.identifier.value}`);
-				}));
+		const extTreeItem = await asPromise(() => this._dataProvider.getTreeItem(element));
+		const handle = this._createHandle(element, extTreeItem, parent, true);
+		await this.getChildren(parent ? parent.item.handle : undefined);
+		const cachedElement = this.getExtensionElement(handle);
+		if (cachedElement) {
+			const node = this._nodes.get(cachedElement);
+			if (node) {
+				return node;
+			}
+		}
+		this._logService.error(`[TreeView:${this._viewId}] Failed to resolve tree node for element ${handle}`);
+		this._proxy.$logResolveTreeNodeFailure(this._extension.identifier.value);
+		throw new Error(`Cannot resolve tree item for element ${handle} from extension ${this._extension.identifier.value}`);
 	}
 
 	private _getChildrenNodes(parentNodeOrHandle: TreeNode | TreeItemHandle | Root): TreeNode[] | undefined {
@@ -1108,6 +1114,5 @@ class ExtHostTreeView<T> extends Disposable {
 		this._refreshCancellationSource.dispose();
 
 		this._clearAll();
-		this._proxy.$disposeTree(this._viewId);
 	}
 }

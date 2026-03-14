@@ -37,7 +37,8 @@ import type { ComponentService } from '../component/componentService.js';
 import type { AddComponentRequest } from '../../common/component/types.js';
 import type { ICanvasService } from '../../common/canvas/canvasService.js';
 import type { IRoopikStorageService } from '../../common/storage/storageService.js';
-import { ROOPIK_TOOLS_CHANNEL_NAME, RoopikToolResult } from '../../common/tools/types.js';
+import { ROOPIK_TOOLS_CHANNEL_NAME } from '../../common/tools/types.js';
+import type { RoopikToolResult } from '../../common/tools/types.js';
 
 // Import unified tool services (Phase 4 migration)
 import { CDPMonitorService } from '../tools/cdpMonitorService.js';

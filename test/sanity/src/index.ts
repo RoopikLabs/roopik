@@ -10,13 +10,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const options = minimist(process.argv.slice(2), {
-	string: ['fgrep', 'grep', 'test-results', 'timeout'],
+	string: ['fgrep', 'grep', 'test-results', 'timeout', 'screenshots-dir'],
 	boolean: ['help'],
-	alias: { fgrep: 'f', grep: 'g', help: 'h', 'test-results': 't' },
+	alias: { fgrep: 'f', grep: 'g', help: 'h', 'test-results': 't', 'screenshots-dir': 's' },
 });
 
 if (options.help) {
-	console.info('Usage: npm run sanity-test -- [options]');
+	console.info(`Usage: node ${path.basename(process.argv[1])} [options]`);
 	console.info('Options:');
 	console.info('  --commit, -c <commit>           The commit to test (required)');
 	console.info(`  --quality, -q <quality>         The quality to test (required, "stable", "insider" or "exploration")`);
@@ -28,6 +28,7 @@ if (options.help) {
 	console.info('  --fgrep, -f <string>            Only run tests containing the given <string>');
 	console.info('  --test-results, -t <path>       Output test results in JUnit format to the specified path');
 	console.info('  --timeout <sec>                 Set the test-case timeout in seconds (default: 600 seconds)');
+	console.info('  --screenshots-dir, -s <path>    Save failure screenshots to the specified directory');
 	console.info('  --verbose, -v                   Enable verbose logging');
 	console.info('  --help, -h                      Show this help message');
 	process.exit(0);
@@ -36,7 +37,7 @@ if (options.help) {
 const testResults = options['test-results'];
 const mochaOptions: MochaOptions = {
 	color: true,
-	timeout: (options.timeout ?? 600) * 1000,
+	timeout: (options.timeout ?? 10 * 60) * 1000,
 	slow: 3 * 60 * 1000,
 	grep: options.grep,
 	fgrep: options.fgrep,
