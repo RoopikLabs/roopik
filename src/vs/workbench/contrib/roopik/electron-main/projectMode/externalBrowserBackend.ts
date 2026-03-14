@@ -566,6 +566,9 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 		// Wait for CDP to become ready
 		await this.waitForCDP();
 
+		// Connect browser-level monitor (tracks all tab open/close events)
+		await this.connectBrowserMonitor();
+
 		// Connect to pages
 		await this.discoverAndConnectPages();
 	}
@@ -576,12 +579,104 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 			const resp = await fetch(`http://127.0.0.1:${this.cdpPort}/json/version`);
 			if (!resp.ok) { return false; }
 
-			// Chrome is running — discover and connect to its pages
+			// Chrome is running — connect browser-level monitor + discover pages
+			await this.connectBrowserMonitor();
 			await this.discoverAndConnectPages();
 			return this.activePage !== undefined;
 		} catch {
 			return false;
 		}
+	}
+
+	/**
+	 * Connect a browser-level CDP session that monitors all targets.
+	 * This gives us real-time events when tabs are created/destroyed/changed,
+	 * even when the user interacts with Chrome directly.
+	 *
+	 * Similar to how Antigravity uses puppeteer.connect() which tracks all pages.
+	 */
+	private async connectBrowserMonitor(): Promise<void> {
+		// Already monitoring
+		if (this.browserSession?.connected) { return; }
+
+		try {
+			// Get the browser's WebSocket URL (different from page WebSockets)
+			const resp = await fetch(`http://127.0.0.1:${this.cdpPort}/json/version`);
+			const version = await resp.json() as { webSocketDebuggerUrl?: string };
+			if (!version.webSocketDebuggerUrl) { return; }
+
+			this.browserSession = new CDPSession();
+			await this.browserSession.connect(version.webSocketDebuggerUrl);
+
+			// Enable target discovery — this fires events for ALL tab open/close
+			await this.browserSession.send('Target.setDiscoverTargets', { discover: true });
+
+			this.browserSession.addListener((method, params) => {
+				const p = params as { targetInfo?: { targetId?: string; type?: string; url?: string; title?: string } };
+				const targetInfo = p.targetInfo;
+				if (!targetInfo || targetInfo.type !== 'page') { return; }
+
+				if (method === 'Target.targetCreated') {
+					console.log(`[ExternalBrowser] Tab created: ${targetInfo.url}`);
+					// Auto-connect to new tabs
+					this.connectToNewTarget(targetInfo.targetId!).catch(err => {
+						console.warn('[ExternalBrowser] Failed to connect to new tab:', err);
+					});
+				}
+
+				if (method === 'Target.targetDestroyed') {
+					const pageId = this.targetIdToPageId.get(targetInfo.targetId!);
+					if (pageId !== undefined) {
+						console.log(`[ExternalBrowser] Tab destroyed: ${targetInfo.targetId}`);
+						this.removePage(pageId);
+					}
+				}
+
+				if (method === 'Target.targetInfoChanged') {
+					const pageId = this.targetIdToPageId.get(targetInfo.targetId!);
+					if (pageId !== undefined) {
+						// URL or title changed — fire navigation event
+						this._onNavigationStateChanged.fire({
+							browserViewId: pageId,
+							url: targetInfo.url || '',
+							title: targetInfo.title || '',
+							isLoading: false,
+							canGoBack: false,
+							canGoForward: false,
+						});
+					}
+				}
+			});
+
+			// If browser-level WS closes, Chrome was fully closed
+			this.browserSession.onClose(() => {
+				console.log('[ExternalBrowser] Browser-level CDP closed — Chrome exited');
+				this.browserSession = null;
+				this.disconnectAll();
+			});
+
+			console.log('[ExternalBrowser] Browser monitor connected — tracking all tabs');
+		} catch (err) {
+			console.warn('[ExternalBrowser] Failed to connect browser monitor:', err);
+		}
+	}
+
+	/**
+	 * Connect to a newly created tab via CDP.
+	 * Called when Target.targetCreated fires.
+	 */
+	private async connectToNewTarget(targetId: string): Promise<void> {
+		// Skip if we already track this target
+		if (this.targetIdToPageId.has(targetId)) { return; }
+
+		// Get the WebSocket URL for this target
+		const resp = await fetch(`http://127.0.0.1:${this.cdpPort}/json/list`);
+		const targets: CDPTarget[] = await resp.json() as CDPTarget[];
+		const target = targets.find(t => t.id === targetId && t.type === 'page');
+		if (!target) { return; }
+
+		// Re-use discoverAndConnectPages logic (it skips already-connected targets)
+		await this.discoverAndConnectPages();
 	}
 
 	/** Poll CDP endpoint until Chrome is ready */
@@ -677,6 +772,7 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 			});
 
 			this.pages.set(pageId, { session, target });
+			this.targetIdToPageId.set(target.id, pageId);
 			this.activePage = pageId;
 			this._onBrowserViewCreated.fire({ browserViewId: pageId });
 			console.log(`[ExternalBrowser] Connected to page ${pageId}: ${target.url}`);
@@ -688,10 +784,11 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 		if (page) {
 			page.session.disconnect();
 			this.pages.delete(pageId);
+			this.targetIdToPageId.delete(page.target.id);
 			this.viewportSizes.delete(pageId);
 			this._onBrowserViewDestroyed.fire({ browserViewId: pageId });
 
-			// Update active page
+			// Update active page to next available
 			if (this.activePage === pageId) {
 				const remaining = Array.from(this.pages.keys());
 				this.activePage = remaining.length > 0 ? remaining[remaining.length - 1] : undefined;
@@ -739,6 +836,10 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	private disconnectAll(): void {
 		for (const [pageId] of this.pages) {
 			this.removePage(pageId);
+		}
+		if (this.browserSession) {
+			this.browserSession.disconnect();
+			this.browserSession = null;
 		}
 		this.activePage = undefined;
 	}
