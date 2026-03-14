@@ -12,16 +12,40 @@
  * The tools layer (BrowserToolService, RoopikToolsChannel) calls this interface —
  * it never knows whether the browser is embedded or external.
  *
+ * Multi-tab architecture:
+ *   - Agents reference tabs by stable `tabId` (auto-incrementing integer)
+ *   - Internally, each backend maps tabId → actual browserViewId/CDPSession
+ *   - tabId survives view recreation (e.g., drag between editor groups)
+ *   - Tools pass optional tabId; omit = active tab
+ *
  * Usage:
- *   const backend = getBrowserBackend(); // returns active backend based on settings
- *   const id = backend.getActiveBrowserViewId();
- *   await backend.navigate(id, url);
+ *   const backend = getBrowserBackend();
+ *   const tabId = await backend.openNewTab('https://example.com');
+ *   const browserViewId = backend.resolveTabId(tabId);
+ *   await backend.navigate(browserViewId, url);
  */
 
-import type { NavigationState } from '../../common/projectMode/types.js';
+import type { NavigationState, NavigationStateChangedEvent, DevToolsClosedEvent } from '../../common/projectMode/types.js';
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 import type { Event } from '../../../../../base/common/event.js';
-import type { NavigationStateChangedEvent, DevToolsClosedEvent } from '../../common/projectMode/types.js';
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/** Maximum number of browser tabs allowed in embedded mode. External mode has no limit. */
+export const MAX_BROWSER_TABS = 3;
+
+// ============================================================================
+// Tab Info — returned by listTabs()
+// ============================================================================
+
+export interface TabInfo {
+	tabId: number;
+	url: string;
+	title: string;
+	isActive: boolean;
+}
 
 // ============================================================================
 // Screenshot metadata returned by both backends
@@ -38,7 +62,28 @@ export interface ScreenshotWithMetadata {
 // ============================================================================
 export interface IBrowserBackend {
 
-	// ------ Lifecycle ------
+	// ------ Tab Management (multi-tab) ------
+
+	/** Open a new tab. Returns the stable tabId. Respects MAX_BROWSER_TABS in embedded mode. */
+	openNewTab(url?: string): Promise<number>;
+
+	/** List all open tabs with their info */
+	listTabs(): TabInfo[];
+
+	/** Get the active tab's stable ID. undefined = no tabs open. */
+	getActiveTabId(): number | undefined;
+
+	/** Switch active tab. In embedded mode, shows/hides views. */
+	setActiveTab(tabId: number): Promise<void>;
+
+	/** Close a specific tab by tabId */
+	closeTab(tabId: number): Promise<void>;
+
+	/** Resolve stable tabId to internal browserViewId. Throws if not found. */
+	resolveTabId(tabId: number): number;
+
+	// ------ Lifecycle (legacy — used internally) ------
+
 	/** Get the active browser view/page ID. undefined = no browser open. */
 	getActiveBrowserViewId(): number | undefined;
 
@@ -88,4 +133,9 @@ export interface IBrowserBackend {
 	readonly onBrowserViewDestroyed: Event<{ browserViewId: number }>;
 	readonly onNavigationStateChanged: Event<NavigationStateChangedEvent>;
 	readonly onDevToolsClosed: Event<DevToolsClosedEvent>;
+
+	// ------ Tab Events (multi-tab) ------
+	readonly onTabCreated: Event<{ tabId: number; url?: string }>;
+	readonly onTabClosed: Event<{ tabId: number }>;
+	readonly onActiveTabChanged: Event<{ tabId: number }>;
 }
