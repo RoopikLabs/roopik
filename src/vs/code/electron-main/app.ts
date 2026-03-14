@@ -1381,6 +1381,9 @@ export class CodeApplication extends Disposable {
 			console.log('[Roopik] Browser mode: embedded');
 		}
 
+		// Clean up browser backend on IDE shutdown (kills external Chrome if we spawned it)
+		Event.once(this.lifecycleMainService.onWillShutdown)(() => browserBackend.dispose());
+
 		// ProjectModeChannel still needs BrowserViewService for renderer ↔ main IPC
 		// (only available in embedded mode — external mode doesn't have WebContentsView)
 		const projectModeService = browserBackend instanceof BrowserViewService ? browserBackend : null;

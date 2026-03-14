@@ -136,4 +136,8 @@ export interface IBrowserBackend {
 	readonly onTabCreated: Event<{ tabId: number; url?: string }>;
 	readonly onTabClosed: Event<{ tabId: number }>;
 	readonly onActiveTabChanged: Event<{ tabId: number }>;
+
+	// ------ Cleanup ------
+	/** Clean up resources on IDE shutdown. External mode kills Chrome; embedded is no-op. */
+	dispose(): void;
 }

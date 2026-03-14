@@ -1325,4 +1325,31 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 		}
 		this.activePage = undefined;
 	}
+
+	/**
+	 * Clean up on IDE shutdown — kill the Chrome process we spawned.
+	 * Only kills Chrome if WE launched it (chromeProcess is set).
+	 * If we attached to an existing user-launched Chrome, we just disconnect.
+	 */
+	dispose(): void {
+		this.disconnectAll();
+
+		if (this.chromeProcess) {
+			try {
+				// Kill the Chrome process tree.
+				// On Windows, detached processes need explicit kill.
+				if (process.platform === 'win32') {
+					spawn('taskkill', ['/pid', String(this.chromeProcess.pid), '/T', '/F'], {
+						stdio: 'ignore',
+					});
+				} else {
+					// Send SIGTERM to the process group (negative PID)
+					process.kill(-this.chromeProcess.pid!, 'SIGTERM');
+				}
+			} catch {
+				// Process may have already exited
+			}
+			this.chromeProcess = null;
+		}
+	}
 }
