@@ -90,15 +90,24 @@ export async function openBrowserEditor(
 	}
 
 	// Enforce tab limit for embedded mode
-	const openTabCount = EditorTabInput.getAll().length;
-	if (openTabCount >= MAX_BROWSER_TABS) {
-		// At limit — focus the first existing tab instead of creating a new one
-		const firstExisting = editorService.visibleEditorPanes.find(
-			pane => pane.input instanceof EditorTabInput
-		);
-		if (firstExisting && firstExisting instanceof ProjectModeEditor) {
-			await firstExisting.group.openEditor(firstExisting.input!, { pinned: true });
-			return firstExisting;
+	const allTabs = EditorTabInput.getAll();
+	if (allTabs.length >= MAX_BROWSER_TABS) {
+		// At limit — focus the most recently created tab (last in the list)
+		const lastTab = allTabs[allTabs.length - 1];
+		if (lastTab) {
+			// Find the editor group containing this tab, or use any group with a browser pane
+			for (const group of editorGroupsService.groups) {
+				for (const editor of group.editors) {
+					if (editor instanceof EditorTabInput && editor.tabId === lastTab.tabId) {
+						await group.openEditor(editor, { pinned: true });
+						// Find the pane
+						const pane = editorService.visibleEditorPanes.find(
+							p => p.input instanceof EditorTabInput && (p.input as EditorTabInput).tabId === lastTab.tabId
+						);
+						return pane instanceof ProjectModeEditor ? pane : undefined;
+					}
+				}
+			}
 		}
 		return undefined;
 	}
@@ -183,8 +192,18 @@ export function registerBrowserCommands(): void {
 			const editorService = accessor.get(IEditorService);
 			const editorGroupsService = accessor.get(IEditorGroupsService);
 
+			// Check if at tab limit before opening
+			const atLimit = EditorTabInput.getAll().length >= MAX_BROWSER_TABS;
+
 			// User clicked "Browse Web" button — open a NEW tab (or focus existing if at limit)
 			await openBrowserEditor(editorService, editorGroupsService, configurationService, { forceNew: true });
+
+			if (atLimit) {
+				notificationService.warn(
+					`Maximum ${MAX_BROWSER_TABS} browser tabs reached. Close a tab to open a new one, or switch to external browser mode (Settings → Roopik → Browser Mode) for unlimited tabs.`
+				);
+				return;
+			}
 
 			// Show hint notification (once per installation)
 			const hintKey = 'roopik.browserRightSideHintShown';
