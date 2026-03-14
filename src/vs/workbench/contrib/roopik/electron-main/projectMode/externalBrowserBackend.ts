@@ -289,7 +289,7 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 		});
 	}
 
-	requestBrowserClose(): void {
+	requestBrowserClose(_tabId?: number): void {
 		this.closeActivePage().catch(err => {
 			console.error('[ExternalBrowser] Failed to close page:', err);
 			// Fallback: just disconnect our sessions (don't kill Chrome)

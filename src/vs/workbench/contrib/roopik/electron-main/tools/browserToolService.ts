@@ -151,24 +151,27 @@ export class BrowserToolService {
 
 	async close(): Promise<ToolResult<{ message: string }>> {
 		try {
-			const browserViewId = this.browserViewService.getActiveBrowserViewId();
+			const activeTabId = this.browserViewService.getActiveTabId();
 
-			if (browserViewId === undefined) {
+			if (activeTabId === undefined) {
 				return {
 					success: true,
-					data: { message: 'Browser is not open' }
+					data: { message: 'No browser tab is open' }
 				};
 			}
+
+			const browserViewId = this.browserViewService.resolveTabId(activeTabId);
 
 			// Cleanup CDP monitoring
 			this.cdpMonitorService.cleanup(browserViewId);
 
-			// Close browser using event-based approach
-			this.browserViewService.requestBrowserClose();
+			// Destroy the view first, then close the editor tab
+			await this.browserViewService.closeTab(activeTabId);
+			this.browserViewService.requestBrowserClose(activeTabId);
 
 			return {
 				success: true,
-				data: { message: 'Browser close request sent' }
+				data: { message: `Active browser tab ${activeTabId} closed` }
 			};
 		} catch (error) {
 			return {
@@ -203,7 +206,13 @@ export class BrowserToolService {
 
 	async closeTab(tabId: number): Promise<ToolResult<{ message: string; tabId: number }>> {
 		try {
+			// Cleanup CDP monitoring for this tab's view
+			const browserViewId = this.browserViewService.resolveTabId(tabId);
+			this.cdpMonitorService.cleanup(browserViewId);
+			// First destroy the browser view (kills the webContents)
 			await this.browserViewService.closeTab(tabId);
+			// Then fire event to close the editor tab in the renderer
+			this.browserViewService.requestBrowserClose(tabId);
 			return {
 				success: true,
 				data: {

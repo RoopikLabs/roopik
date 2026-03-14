@@ -527,7 +527,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_close',
-		description: 'Close all browser tabs and the browser view.',
+		description: 'Close the currently active browser tab. Use browser_close_tab to close a specific tab by ID.',
 		schema: emptySchema
 	},
 	{

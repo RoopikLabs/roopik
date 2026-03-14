@@ -132,8 +132,13 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 	 */
 	private setupMcpBrowserOpenListener(): void {
 		this._register(this.projectModeService!.onMcpBrowserOpenRequest(async (event) => {
-			// Same as roopik.openProjectPreview command (Browse Web button)
-			await this.openBrowserAndNavigate(event.url || '', '');
+			if (event.forceNew) {
+				// Agent requested a NEW tab — create one (same as "Browse Web" button click)
+				await this.openNewBrowserTab(event.url || '');
+			} else {
+				// Default: reuse existing tab or open first one
+				await this.openBrowserAndNavigate(event.url || '', '');
+			}
 		}));
 	}
 
@@ -143,10 +148,42 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 	 * This triggers the full cleanup chain (EditorTabInput.dispose -> destroyBrowserNow -> etc.)
 	 */
 	private setupMcpBrowserCloseListener(): void {
-		this._register(this.projectModeService!.onMcpBrowserCloseRequest(async () => {
-			this.logger.info('MCP browser close request received');
-			await this.closeBrowser();
+		this._register(this.projectModeService!.onMcpBrowserCloseRequest(async (event) => {
+			if (event.tabId !== undefined) {
+				// Close a specific tab by tabId
+				this.logger.info('MCP browser close tab request', { tabId: event.tabId });
+				await this.closeBrowserTab(event.tabId);
+			} else {
+				// Close all browser tabs
+				this.logger.info('MCP browser close all request');
+				await this.closeAllBrowserTabs();
+			}
 		}));
+	}
+
+	/**
+	 * Open a NEW browser tab and optionally navigate to URL
+	 * Called when agent uses browser_open({ newTab: true })
+	 */
+	private async openNewBrowserTab(url: string): Promise<void> {
+		if (this.isExternalMode) {
+			const channel = this.mainProcessService.getChannel('roopik.tools');
+			await channel.call('browser_open', { url, newTab: true });
+			return;
+		}
+
+		// Embedded mode: force a new tab
+		const browserPane = await openBrowserEditor(
+			this.editorService,
+			this.editorGroupsService,
+			this.configurationService,
+			{ forceNew: true }
+		);
+
+		if (browserPane && url) {
+			await browserPane.navigateToUrl(url, '');
+			this.logger.info('New browser tab opened with URL', { url });
+		}
 	}
 
 	/**
@@ -179,21 +216,42 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 	}
 
 	/**
-	 * Close browser editor if open
+	 * Close a specific browser tab by tabId
+	 * Finds the editor tab with matching tabId and closes it properly
 	 */
-	private async closeBrowser(): Promise<void> {
-		// Find open browser editor panes
-		const visibleEditors = this.editorService.visibleEditorPanes;
-		const browserPane = visibleEditors.find(
-			pane => pane.input instanceof EditorTabInput
-		);
+	private async closeBrowserTab(tabId: number): Promise<void> {
+		// Search all editor groups for the matching tab
+		for (const group of this.editorGroupsService.groups) {
+			for (const editor of group.editors) {
+				if (editor instanceof EditorTabInput && editor.tabId === tabId) {
+					await group.closeEditor(editor);
+					this.logger.info('Browser tab closed', { tabId });
+					return;
+				}
+			}
+		}
+		this.logger.debug('No browser tab found to close', { tabId });
+	}
 
-		if (browserPane && browserPane.group) {
-			// Close the editor in its group
-			await browserPane.group.closeEditor(browserPane.input);
-			this.logger.info('Browser editor closed');
+	/**
+	 * Close ALL browser editor tabs
+	 */
+	private async closeAllBrowserTabs(): Promise<void> {
+		const toClose: { group: typeof this.editorGroupsService.groups[0]; editor: EditorTabInput }[] = [];
+		for (const group of this.editorGroupsService.groups) {
+			for (const editor of group.editors) {
+				if (editor instanceof EditorTabInput) {
+					toClose.push({ group, editor });
+				}
+			}
+		}
+		for (const { group, editor } of toClose) {
+			await group.closeEditor(editor);
+		}
+		if (toClose.length > 0) {
+			this.logger.info('All browser tabs closed', { count: toClose.length });
 		} else {
-			this.logger.debug('No browser editor to close');
+			this.logger.debug('No browser tabs to close');
 		}
 	}
 }

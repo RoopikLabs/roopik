@@ -359,6 +359,8 @@ export interface BrowserKeyEvent {
 export interface McpBrowserOpenRequestEvent {
 	/** URL to navigate to after browser opens (optional) */
 	url?: string;
+	/** If true, force creation of a new tab instead of reusing existing */
+	forceNew?: boolean;
 }
 
 /**
@@ -367,7 +369,7 @@ export interface McpBrowserOpenRequestEvent {
  * Renderer listens and closes the editor tab properly (which triggers full cleanup chain)
  */
 export interface McpBrowserCloseRequestEvent {
-	/** Placeholder for future use */
-	_?: undefined;
+	/** Specific tab to close. If undefined, close ALL browser tabs. */
+	tabId?: number;
 }
 

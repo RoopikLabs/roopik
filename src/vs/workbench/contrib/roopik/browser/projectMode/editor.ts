@@ -90,8 +90,15 @@ export class Editor extends EditorPane {
 	// Multi-tab state: per-tab browser view tracking
 	// The editor pane is reused across tabs — on tab switch, we save/restore state.
 	// ============================================
-	private readonly tabBrowserViewIds = new Map<number, number>(); // tabId → browserViewId
-	private readonly tabHasLoadedUrl = new Map<number, boolean>(); // tabId → hasLoadedUrl
+	private readonly tabStates = new Map<number, {
+		browserViewId: number;
+		hasLoadedUrl: boolean;
+		wasLoading: boolean;
+		lastKnownUrl: string;
+		lastKnownTitle: string;
+		lastKnownFavicon: string;
+		lastErrorUrl: string;
+	}>(); // tabId → per-tab state
 	private activeTabId: number | undefined;
 
 	// Track WHICH input we've registered the dispose listener for
@@ -1209,39 +1216,80 @@ export class Editor extends EditorPane {
 	 * Event fires on: did-navigate, did-start-loading, did-finish-load, page-title-updated, did-stop-loading
 	 */
 	private handleNavigationStateChanged(event: NavigationStateChangedEvent): void {
-		// CRITICAL: Filter by browserViewId for multi-browser support!
-		// Each browser instance only handles events for its own view
-		if (event.browserViewId !== this.browserViewId) {
-			return;
+		// ============================================
+		// Multi-tab isolation: Route events to the correct tab
+		// Active tab → update shared state + UI (control bar, loading)
+		// Background tab → update tabStates silently (no UI)
+		// ============================================
+		const isActiveTab = event.browserViewId === this.browserViewId;
+
+		// Find which tab this event belongs to (active or background)
+		let backgroundTabId: number | undefined;
+		if (!isActiveTab) {
+			// Search tabStates for a background tab with this browserViewId
+			for (const [tabId, state] of this.tabStates) {
+				if (state.browserViewId === event.browserViewId) {
+					backgroundTabId = tabId;
+					break;
+				}
+			}
+			// Event is for an unknown view — ignore it
+			if (backgroundTabId === undefined) {
+				return;
+			}
 		}
 
 		const currentUrl = event.url || '';
 		const currentTitle = event.title || '';
+		const currentFavicon = event.favicon || '';
+
+		// ---- Background tab: update saved state silently, no UI ----
+		if (!isActiveTab && backgroundTabId !== undefined) {
+			const bgState = this.tabStates.get(backgroundTabId);
+			if (bgState) {
+				bgState.wasLoading = !!event.isLoading;
+				if (currentUrl) {
+					bgState.lastKnownUrl = currentUrl;
+					bgState.hasLoadedUrl = currentUrl !== 'about:blank';
+				}
+				if (currentTitle) {
+					bgState.lastKnownTitle = currentTitle;
+				}
+				if (currentFavicon) {
+					bgState.lastKnownFavicon = currentFavicon;
+				}
+				if (event.lastError) {
+					bgState.lastErrorUrl = event.lastError.validatedURL;
+				}
+			}
+			// Update the background tab's EditorTabInput URL for serialization
+			const bgInput = EditorTabInput.getByTabId(backgroundTabId);
+			if (bgInput && currentUrl && currentUrl !== 'about:blank') {
+				bgInput.setUrl(currentUrl);
+			}
+			if (bgInput && currentFavicon) {
+				bgInput.setFavicon(currentFavicon || undefined);
+			}
+			return;
+		}
+
+		// ---- Active tab: update shared state AND UI ----
 
 		// Update loading progress bar
-		// IMPORTANT: Always respect the isLoading value from the event
-		// The main process sends explicit true/false values for loading events
 		if (event.isLoading) {
-			// Currently loading - show loading bar
 			if (!this.wasLoading) {
 				this.wasLoading = true;
 				this.controlBar?.showLoading();
 
-				// Publish loading started event
 				this.eventService.publish('browser.loadingStarted', {
 					browserViewId: event.browserViewId
 				});
 			}
 		} else {
-			// Not loading - ALWAYS hide loading bar
-			// This is critical because did-stop-loading sends isLoading=false explicitly
 			if (this.wasLoading) {
-				// Publish loading finished event
 				this.eventService.publish('browser.loadingFinished', {
 					browserViewId: event.browserViewId
 				});
-
-				// Page finished loading - do post-load setup
 				this.onPageLoadComplete();
 			}
 			this.wasLoading = false;
@@ -1252,13 +1300,11 @@ export class Editor extends EditorPane {
 		if (event.lastError && event.lastError.validatedURL !== this.lastErrorUrl) {
 			this.lastErrorUrl = event.lastError.validatedURL;
 
-			// Hide loading bar on error
 			if (this.controlBar) {
 				this.controlBar.hideLoading();
 			}
 			this.wasLoading = false;
 
-			// Show error on placeholder
 			const errorMessage = this.getNavigationErrorMessageFromCode(
 				event.lastError.errorCode,
 				event.lastError.errorDescription,
@@ -1272,31 +1318,23 @@ export class Editor extends EditorPane {
 			const previousUrl = this.lastKnownUrl;
 			this.lastKnownUrl = currentUrl;
 
-			// CRITICAL: Update input URL so it gets serialized correctly on reload
-			// This ensures the full URL (including path, query params, etc.) is saved
-			// not just the initial navigation URL which might have been redirected
-			// Update whenever URL changes to capture the final URL after all redirects
+			// Update input URL for serialization
 			const input = this.input as EditorTabInput;
 			if (input && currentUrl && currentUrl !== 'about:blank') {
 				input.setUrl(currentUrl);
 			}
 
-			// Publish navigation event to central event bus (title is sent separately via titleChanged)
+			// Update control bar URL
+			if (this.controlBar && currentUrl && currentUrl !== 'about:blank') {
+				this.controlBar.setUrl(currentUrl);
+			}
+
 			this.eventService.publish('browser.navigated', {
 				browserViewId: event.browserViewId,
 				url: currentUrl
 			});
 
-			// UI updates now happen via event subscription (see setupEventSubscriptions)
-
-			// If page is not loading and we don't have a DOM tree cache, fetch it
-			// This handles cases where we miss the loading transition:
-			// - First navigation from about:blank
-			// - Fast page loads
-			// - Reconnecting to an already-loaded page
 			if (!event.isLoading && currentUrl && currentUrl !== 'about:blank') {
-				// Always call onPageLoadComplete if we're not loading and URL changed significantly
-				// It's safe to call multiple times - it just re-injects scripts and refreshes DOM tree
 				if (previousUrl !== currentUrl || !this.styleInspect.getDOMTreeCache()) {
 					this.onPageLoadComplete();
 				}
@@ -1307,17 +1345,13 @@ export class Editor extends EditorPane {
 		if (currentTitle !== this.lastKnownTitle) {
 			this.lastKnownTitle = currentTitle;
 
-			// Publish title changed event to central event bus
 			this.eventService.publish('browser.titleChanged', {
 				browserViewId: event.browserViewId,
 				title: currentTitle
 			});
-
-			// UI updates now happen via event subscription (see setupEventSubscriptions)
 		}
 
 		// Update tab favicon when it changes
-		const currentFavicon = event.favicon || '';
 		if (currentFavicon !== this.lastKnownFavicon) {
 			this.lastKnownFavicon = currentFavicon;
 			const input = this.input as EditorTabInput;
@@ -2244,20 +2278,25 @@ export class Editor extends EditorPane {
 				this._register(input.onWillDispose(() => {
 					this.logger.info('[ProjectMode] Tab input disposed', { tabId });
 					// Destroy this tab's browser view specifically
-					const viewId = this.tabBrowserViewIds.get(tabId);
-					if (viewId) {
-						this.tabBrowserViewIds.delete(tabId);
-						this.tabHasLoadedUrl.delete(tabId);
+					const tabState = this.tabStates.get(tabId);
+					if (tabState) {
+						this.tabStates.delete(tabId);
 						this.registeredDisposeTabIds.delete(tabId);
 						// If this was the active tab, clear pane state
 						if (this.activeTabId === tabId) {
 							this.browserViewId = undefined;
 							this.hasLoadedUrl = false;
+							this.wasLoading = false;
+							this.lastKnownUrl = '';
+							this.lastKnownTitle = '';
 							this.activeTabId = undefined;
+							// Reset control bar
+							this.controlBar?.hideLoading();
+							this.controlBar?.setUrl('');
 						}
 						this.stopDevServerOnClose();
 						// Destroy in main process
-						this.browserService.destroyBrowserView(viewId)
+						this.browserService.destroyBrowserView(tabState.browserViewId)
 							.catch(err => this.logger.error('[ProjectMode] Failed to destroy tab browser view:', err));
 					}
 				}));
@@ -2265,10 +2304,17 @@ export class Editor extends EditorPane {
 
 			// ---- Multi-tab switch: save current tab state, restore target tab state ----
 
-			// Save current tab's state before switching away
+			// Save current tab's FULL state before switching away
 			if (this.activeTabId !== undefined && this.activeTabId !== tabId && this.browserViewId) {
-				this.tabBrowserViewIds.set(this.activeTabId, this.browserViewId);
-				this.tabHasLoadedUrl.set(this.activeTabId, this.hasLoadedUrl);
+				this.tabStates.set(this.activeTabId, {
+					browserViewId: this.browserViewId,
+					hasLoadedUrl: this.hasLoadedUrl,
+					wasLoading: this.wasLoading,
+					lastKnownUrl: this.lastKnownUrl,
+					lastKnownTitle: this.lastKnownTitle,
+					lastKnownFavicon: this.lastKnownFavicon,
+					lastErrorUrl: this.lastErrorUrl,
+				});
 				// Hide old tab's browser view
 				this.browserService.setBrowserVisible(this.browserViewId, false);
 			}
@@ -2276,15 +2322,33 @@ export class Editor extends EditorPane {
 			// Switch to new tab
 			this.activeTabId = tabId;
 
-			// Check if this tab already has a browser view
-			const existingViewId = this.tabBrowserViewIds.get(tabId);
-			if (existingViewId) {
-				// Restore this tab's browser view
-				this.browserViewId = existingViewId;
-				this.hasLoadedUrl = this.tabHasLoadedUrl.get(tabId) ?? false;
+			// Check if this tab already has saved state
+			const existingState = this.tabStates.get(tabId);
+			if (existingState) {
+				// Restore this tab's full state
+				this.browserViewId = existingState.browserViewId;
+				this.hasLoadedUrl = existingState.hasLoadedUrl;
+				this.wasLoading = existingState.wasLoading;
+				this.lastKnownUrl = existingState.lastKnownUrl;
+				this.lastKnownTitle = existingState.lastKnownTitle;
+				this.lastKnownFavicon = existingState.lastKnownFavicon;
+				this.lastErrorUrl = existingState.lastErrorUrl;
 
-				// Restore URL bar from CURRENT browser URL, not the stale input URL
-				this.syncUrlBarFromBrowser();
+				// Restore control bar UI from saved state
+				if (this.controlBar) {
+					// Restore URL bar
+					if (this.lastKnownUrl && this.lastKnownUrl !== 'about:blank') {
+						this.controlBar.setUrl(this.lastKnownUrl);
+					} else {
+						this.controlBar.setUrl('');
+					}
+					// Restore loading bar state
+					if (this.wasLoading) {
+						this.controlBar.showLoading();
+					} else {
+						this.controlBar.hideLoading();
+					}
+				}
 
 				if (this.hasLoadedUrl) {
 					// Show and reposition
@@ -2294,22 +2358,36 @@ export class Editor extends EditorPane {
 					this.showPlaceholder();
 				}
 			} else {
-				// No browser view for this tab yet — create one
+				// No state for this tab yet — create a new browser view
 				this.browserViewId = undefined;
 				this.hasLoadedUrl = false;
+				this.wasLoading = false;
+				this.lastKnownUrl = '';
+				this.lastKnownTitle = '';
+				this.lastKnownFavicon = '';
+				this.lastErrorUrl = '';
 				this.isInitializing = false;
 				this.initializationPromise = undefined;
 
-				// Set URL bar to initial URL for first load
+				// Reset control bar for new empty tab
 				if (this.controlBar) {
 					this.controlBar.setUrl(initialUrl);
+					this.controlBar.hideLoading();
 				}
 
 				await this.initializeBrowserView();
 
-				// Save the newly created view in our tab map
+				// Save the newly created view in tabStates
 				if (this.browserViewId) {
-					this.tabBrowserViewIds.set(tabId, this.browserViewId);
+					this.tabStates.set(tabId, {
+						browserViewId: this.browserViewId,
+						hasLoadedUrl: this.hasLoadedUrl,
+						wasLoading: false,
+						lastKnownUrl: '',
+						lastKnownTitle: '',
+						lastKnownFavicon: '',
+						lastErrorUrl: '',
+					});
 				}
 
 				// Navigate only on first initialization if we have a real URL
@@ -2317,25 +2395,6 @@ export class Editor extends EditorPane {
 					await this.navigate(initialUrl);
 				}
 			}
-		}
-	}
-
-	/**
-	 * Sync URL bar from current browser URL
-	 * Called on tab switch back to restore correct URL
-	 */
-	private async syncUrlBarFromBrowser(): Promise<void> {
-		if (!this.browserViewId || !this.controlBar) {
-			return;
-		}
-
-		try {
-			const state = await this.browserService.getNavigationState(this.browserViewId);
-			if (state.url && state.url !== 'about:blank') {
-				this.controlBar.setUrl(state.url);
-			}
-		} catch (error) {
-			this.logger.warn('[ProjectMode] Failed to sync URL bar:', error);
 		}
 	}
 
@@ -2431,10 +2490,17 @@ export class Editor extends EditorPane {
 			this.browserService.setBrowserVisible(this.browserViewId, false);
 		}
 
-		// Save state for the active tab before clearing
+		// Save full state for the active tab before clearing
 		if (this.activeTabId !== undefined && this.browserViewId) {
-			this.tabBrowserViewIds.set(this.activeTabId, this.browserViewId);
-			this.tabHasLoadedUrl.set(this.activeTabId, this.hasLoadedUrl);
+			this.tabStates.set(this.activeTabId, {
+				browserViewId: this.browserViewId,
+				hasLoadedUrl: this.hasLoadedUrl,
+				wasLoading: this.wasLoading,
+				lastKnownUrl: this.lastKnownUrl,
+				lastKnownTitle: this.lastKnownTitle,
+				lastKnownFavicon: this.lastKnownFavicon,
+				lastErrorUrl: this.lastErrorUrl,
+			});
 		}
 
 		// Note: We do NOT reset hasLoadedUrl, lastKnownUrl, lastKnownTitle etc.
@@ -2484,30 +2550,30 @@ export class Editor extends EditorPane {
 	 * Called on editor pane dispose — destroys ALL tab browser views
 	 */
 	private destroyBrowserNow(): void {
+		const activeViewId = this.browserViewId;
+
 		// Destroy the currently active view
-		if (this.browserViewId) {
-			const destroyedBrowserViewId = this.browserViewId;
+		if (activeViewId) {
 			this.browserViewId = undefined;
 
 			this.hideViews();
 
 			this.eventService.publish('browser.destroyed', {
-				browserViewId: destroyedBrowserViewId
+				browserViewId: activeViewId
 			});
 
-			this.browserService.destroyBrowserView(destroyedBrowserViewId)
+			this.browserService.destroyBrowserView(activeViewId)
 				.catch(err => this.logger.error('[ProjectMode] Failed to destroy browser view:', err));
 		}
 
 		// Also destroy any background tab views that aren't currently active
-		for (const [tabId, viewId] of this.tabBrowserViewIds) {
-			if (viewId !== this.browserViewId) {
-				this.browserService.destroyBrowserView(viewId)
+		for (const [, tabState] of this.tabStates) {
+			if (tabState.browserViewId !== activeViewId) {
+				this.browserService.destroyBrowserView(tabState.browserViewId)
 					.catch(err => this.logger.error('[ProjectMode] Failed to destroy tab browser view:', err));
 			}
 		}
-		this.tabBrowserViewIds.clear();
-		this.tabHasLoadedUrl.clear();
+		this.tabStates.clear();
 		this.activeTabId = undefined;
 	}
 

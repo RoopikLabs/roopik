@@ -90,8 +90,8 @@ export interface IBrowserBackend {
 	/** Request the browser to open (may be async — fires event for renderer in embedded mode) */
 	requestBrowserOpen(url?: string): void;
 
-	/** Request the browser to close */
-	requestBrowserClose(): void;
+	/** Request the browser to close. If tabId provided, close only that tab. */
+	requestBrowserClose(tabId?: number): void;
 
 	// ------ Navigation ------
 	navigate(browserViewId: number, url: string): Promise<void>;

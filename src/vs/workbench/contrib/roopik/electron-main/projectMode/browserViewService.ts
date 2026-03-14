@@ -291,7 +291,6 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				.replace(/\s*roopik[-\w]*\/[\d.]+/gi, '')
 				.replace(/\s*Electron\/[\d.]+/gi, '');
 			browserSession.setUserAgent(cleanUA);
-			this.logger.info('Browser stealth: UA cleaned', { cleanUA });
 
 			// Override Accept-Language header to match real Chrome (multiple locales)
 			browserSession.webRequest.onBeforeSendHeaders((details, callback) => {
@@ -495,8 +494,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		if (this.tabToBrowserViewId.size >= MAX_BROWSER_TABS) {
 			throw new Error(`Tab limit reached (max ${MAX_BROWSER_TABS}). Close a tab first.`);
 		}
-		// Fire MCP browser open event — renderer will call createBrowserView
-		this._onMcpBrowserOpenRequest.fire({ url: url || '' });
+		// Fire MCP browser open event with forceNew — renderer will create a NEW editor tab
+		this._onMcpBrowserOpenRequest.fire({ url: url || '', forceNew: true });
 		// The tabId will be assigned in createBrowserView. Return the next expected tabId.
 		// (This is a simplification — the actual tabId is assigned in createBrowserView)
 		return this.nextTabId; // The next call to createBrowserView will use this
@@ -1581,9 +1580,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	 * This triggers the full cleanup chain (stop dev server, destroy browser view, etc.)
 	 * This is the CORRECT way to close the browser - NOT calling destroyBrowserView directly!
 	 */
-	requestBrowserClose(): void {
-		this.logger.info('MCP browser close request');
-		this._onMcpBrowserCloseRequest.fire({});
+	requestBrowserClose(tabId?: number): void {
+		this.logger.info('MCP browser close request', { tabId });
+		this._onMcpBrowserCloseRequest.fire({ tabId });
 	}
 
 	// ============================================
@@ -1609,7 +1608,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			this.cdpCssService.resetForPageLoad(browserViewId);
 			await this.cdpCssService.ensureCSSEnabled(browserViewId);
 		} catch (error) {
-			this.logger.error('Failed to enable CSS domain', { error });
+			// Expected during tab close — webContents may already be destroyed
+			this.logger.debug('Failed to enable CSS domain (likely tab closing)', { error });
 		}
 	}
 
@@ -1717,7 +1717,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		const hadBrowserView = this.browserViews.has(browserViewId);
 		const activeIdsSnapshot = Array.from(this.browserViews.keys());
 
-		this.logger.warn('destroyBrowserViewSync invoked', {
+		// Debug-level: this fires on both explicit destroy and webcontents:destroyed event
+		this.logger.debug('destroyBrowserViewSync invoked', {
 			browserViewId,
 			source: source ?? 'unknown',
 			hadBrowserView,
@@ -1785,7 +1786,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			}
 		}
 
-		this.logger.warn('destroyBrowserViewSync cleanup complete', {
+		this.logger.debug('destroyBrowserViewSync cleanup complete', {
 			browserViewId,
 			source: source ?? 'unknown',
 			activeIdsAfter: Array.from(this.browserViews.keys())
@@ -1821,7 +1822,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// Detect when this specific webContents dies (regardless of window events)
 		webContents.on('destroyed', () => {
-			this.logger.warn('webContents destroyed for browser view', {
+			this.logger.debug('webContents destroyed for browser view', {
 				browserViewId,
 				webContentsId: webContents.id
 			});
