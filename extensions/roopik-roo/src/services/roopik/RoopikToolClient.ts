@@ -353,10 +353,10 @@ export class RoopikToolClient {
 	// ========================================================================
 
 	/**
-	 * Open a browser tab
+	 * Open a browser tab. If browser is already open, opens a new tab.
 	 */
-	async browserOpen(url?: string, newTab?: boolean, tabId?: number): Promise<RoopikToolResult<{ url?: string; message: string }>> {
-		return this.executeCommand<{ url?: string; message: string }>("roopik.tools.browserOpen", { url, newTab, tabId })
+	async browserOpen(url?: string): Promise<RoopikToolResult<{ url?: string; message: string }>> {
+		return this.executeCommand<{ url?: string; message: string }>("roopik.tools.browserOpen", url ? { url } : {})
 	}
 
 	/**

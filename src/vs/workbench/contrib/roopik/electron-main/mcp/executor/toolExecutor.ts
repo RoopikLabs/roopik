@@ -171,8 +171,6 @@ export class ToolExecutor {
 			case 'browser_open':
 				return this.browserToolService.open({
 					url: params.url as string | undefined,
-					tabId,
-					newTab: params.newTab as boolean | undefined,
 				});
 
 			case 'browser_close':

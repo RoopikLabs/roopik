@@ -34,9 +34,7 @@ const tabIdField = z.number().optional().describe(
 // ============================================================================
 
 export const browserOpenSchema = z.object({
-	url: z.string().optional().describe('Optional URL to navigate to'),
-	tabId: tabIdField,
-	newTab: z.boolean().optional().describe('If true, open a new tab instead of focusing the active one')
+	url: z.string().optional().describe('URL to navigate to in the new tab. If omitted, opens a blank tab.')
 });
 
 export const browserNavigateSchema = z.object({
@@ -520,7 +518,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	// ========== Browser Tools (14) ==========
 	{
 		name: 'browser_open',
-		description: 'Open a browser tab. With no args: focuses active tab (or opens first tab if none). With newTab:true: opens a new tab. With tabId: focuses that tab. With url: navigates after open/focus. Returns tabId in response.',
+		description: 'Open a browser tab. If the browser is not open, opens it. If already open, opens a new tab. Optionally provide a URL to navigate immediately.',
 		schema: browserOpenSchema
 	},
 	{

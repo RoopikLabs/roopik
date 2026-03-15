@@ -9,22 +9,14 @@ export const browser_open: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_open",
 		description:
-			"[Roopik IDE] Open a browser tab and optionally navigate to a URL. Opens a new tab if newTab:true, otherwise reuses the active tab. Use tabId to switch to a specific tab. Returns the tabId of the active tab.",
+			"[Roopik IDE] Open a browser tab. If the browser is not open, opens it. If already open, opens a new tab. Optionally provide a URL to navigate immediately.\n\nExamples:\n- `{}` — open a blank tab (or launch browser if closed)\n- `{url: \"https://example.com\"}` — open a new tab at the given URL",
 		strict: true,
 		parameters: {
 			type: "object",
 			properties: {
 				url: {
 					type: "string",
-					description: "URL to open after the browser is ready (optional)",
-				},
-				newTab: {
-					type: "boolean",
-					description: "Open a new fresh browser tab",
-				},
-				tabId: {
-					type: "number",
-					description: "Focus an existing tab by ID. Use browser_get_state to see all open tabs.",
+					description: "URL to navigate to in the new tab. If omitted, opens a blank tab.",
 				},
 			},
 			required: [],

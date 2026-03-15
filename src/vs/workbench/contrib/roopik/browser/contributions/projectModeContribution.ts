@@ -163,7 +163,6 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 
 	/**
 	 * Open a NEW browser tab (no navigation — backend handles that).
-	 * Called when agent uses browser_open({ newTab: true }).
 	 *
 	 * Navigation is intentionally NOT done here. The backend's openNewTab()
 	 * navigates using the specific browserViewId after tab creation. This
@@ -173,7 +172,7 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 	private async openNewBrowserTab(_url: string): Promise<void> {
 		if (this.isExternalMode) {
 			const channel = this.mainProcessService.getChannel('roopik.tools');
-			await channel.call('browser_open', { newTab: true });
+			await channel.call('browser_open', {});
 			return;
 		}
 

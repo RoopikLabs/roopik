@@ -118,7 +118,6 @@ export const toolParamNames = [
 	"deltaY", // browser_action (drag, scroll)
 	// Multi-tab parameters
 	"tabId", // all browser tools (optional, targets specific tab)
-	"newTab", // browser_open (open a new tab)
 ] as const
 
 export type ToolParamName = (typeof toolParamNames)[number]
@@ -157,7 +156,7 @@ export type NativeToolArgs = {
 	// Add more tools as they are migrated to native protocol
 
 	// Roopik Browser Tools
-	browser_open: { url?: string; newTab?: boolean; tabId?: number }
+	browser_open: { url?: string }
 	browser_close: { tabId?: number }
 	browser_action_input: { action: string; coordinate?: [number, number]; text?: string; key?: string; modifiers?: string[]; deltaX?: number; deltaY?: number; tabId?: number }
 	browser_navigate: { url: string; tabId?: number }

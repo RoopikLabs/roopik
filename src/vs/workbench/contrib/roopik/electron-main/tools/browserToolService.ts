@@ -72,76 +72,26 @@ export class BrowserToolService {
 	// Browser Open/Close
 	// ==========================================================================
 
-	async open(args?: { url?: string; tabId?: number; newTab?: boolean }): Promise<ToolResult<BrowserOpenResult>> {
+	async open(args?: { url?: string }): Promise<ToolResult<BrowserOpenResult>> {
 		try {
-			const { url, tabId, newTab } = args || {};
-
-			// Case 1: Open a new tab
-			if (newTab) {
-				const newTabId = await this.browserViewService.openNewTab(url);
-				return {
-					success: true,
-					data: {
-						message: url ? `New tab opened and navigating to ${url}` : 'New tab opened',
-						url: url || undefined,
-						tabId: newTabId
-					}
-				};
-			}
-
-			// Case 2: Focus a specific tab
-			if (tabId !== undefined) {
-				await this.browserViewService.setActiveTab(tabId);
-				const browserViewId = this.browserViewService.resolveTabId(tabId);
-				if (url) {
-					await this.browserViewService.navigate(browserViewId, url);
-					this.cdpMonitorService.ensureMonitoring(browserViewId).catch(() => { });
-				}
-				return {
-					success: true,
-					data: {
-						message: url ? `Focused tab ${tabId} and navigated to ${url}` : `Focused tab ${tabId}`,
-						url: url || undefined,
-						tabId
-					}
-				};
-			}
-
-			// Case 3: Default — focus active tab or open first
+			const url = args?.url;
 			const browserViewId = this.browserViewService.getActiveBrowserViewId();
 
-			if (browserViewId === undefined) {
-				// No tab open — open a new tab (waits for real tabId)
-				const newTabId = await this.browserViewService.openNewTab(url);
-				return {
-					success: true,
-					data: {
-						message: url ? `Browser opened and navigating to ${url}` : 'Browser opened',
-						url: url || undefined,
-						tabId: newTabId
-					}
-				};
-			}
-
-			// Browser is already open — navigate if URL provided
+			// Always open a new tab (first tab if browser not open, additional tab if already open)
+			const newTabId = await this.browserViewService.openNewTab(url);
 			if (url) {
-				await this.browserViewService.navigate(browserViewId, url);
-				this.cdpMonitorService.ensureMonitoring(browserViewId).catch(() => { });
-				return {
-					success: true,
-					data: {
-						url,
-						message: `Navigated to ${url}`,
-						tabId: this.browserViewService.getActiveTabId()
-					}
-				};
+				const viewId = this.browserViewService.resolveTabId(newTabId);
+				this.cdpMonitorService.ensureMonitoring(viewId).catch(() => { });
 			}
 
 			return {
 				success: true,
 				data: {
-					message: 'Browser is already open',
-					tabId: this.browserViewService.getActiveTabId()
+					message: browserViewId === undefined
+						? (url ? `Browser opened at ${url}` : 'Browser opened')
+						: (url ? `New tab opened at ${url}` : 'New tab opened'),
+					url: url || undefined,
+					tabId: newTabId
 				}
 			};
 		} catch (error) {

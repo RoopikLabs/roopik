@@ -641,9 +641,11 @@ export class NativeToolCallParser {
 			// Roopik IDE Tools - Partial args for streaming
 			// ============================================================================
 
-			// Browser Tools (12)
+			// Browser Tools (14)
 			case "browser_open":
-				nativeArgs = { url: partialArgs.url, newTab: partialArgs.newTab, tabId: partialArgs.tabId }
+				nativeArgs = {
+					url: partialArgs.url,
+				}
 				break
 			case "browser_close":
 				nativeArgs = { tabId: partialArgs.tabId }
@@ -1128,10 +1130,11 @@ export class NativeToolCallParser {
 				// Roopik IDE Tools
 				// ============================================================================
 
-				// Browser Tools (12)
+				// Browser Tools (14)
 				case "browser_open":
-					// url is optional
-					nativeArgs = { url: args.url } as NativeArgsFor<TName>
+					nativeArgs = {
+						url: args.url,
+					} as NativeArgsFor<TName>
 					break
 				case "browser_close":
 					nativeArgs = {} as NativeArgsFor<TName>

@@ -108,7 +108,7 @@ export class RoopikToolsChannel implements IServerChannel {
 				// Browser Tools (14)
 				// ============================================================
 				case 'browser_open':
-					return this.browserToolService.open(arg as { url?: string; tabId?: number; newTab?: boolean });
+					return this.browserToolService.open(arg as { url?: string });
 
 				case 'browser_close':
 					return this.browserToolService.close((arg as { tabId?: number })?.tabId);
