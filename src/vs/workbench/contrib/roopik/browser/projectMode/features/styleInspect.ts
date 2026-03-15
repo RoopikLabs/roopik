@@ -707,7 +707,7 @@ export class StyleInspect {
 				const tree = this.convertCDPNodeToTree(result.root);
 
 				// Always cache the tree (even if panel not open)
-				if (this.currentBrowserViewId !== null) {
+				if (this.currentBrowserViewId !== null && tree) {
 					this.domTreeCaches.set(this.currentBrowserViewId, tree);
 				}
 

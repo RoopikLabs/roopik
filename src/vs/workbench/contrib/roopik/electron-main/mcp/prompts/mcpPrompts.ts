@@ -326,17 +326,16 @@ This workflow teaches you the complete cycle for frontend development.
 **Project Tools** (3):
 - project_get_active, project_start, project_stop
 
-**Browser Core** (7):
+**Browser Core** (6):
 - browser_open, browser_close, browser_screenshot
 - browser_navigate, browser_reload, browser_action_input
-- browser_list_tabs
 
 **Browser Debug** (4):
 - browser_execute_script, browser_inspect_element
 - browser_get_errors, browser_get_console_logs
 
 **Browser Info** (4):
-- browser_get_performance, browser_get_state
+- browser_get_state, browser_get_performance
 - browser_set_viewport, browser_get_network_requests
 
 **Canvas Tools** (4):
@@ -350,7 +349,7 @@ This workflow teaches you the complete cycle for frontend development.
 **Guide Tool** (1):
 - roopik_get_guide
 
-## Total: 30 Tools
+## Total: 29 Tools
 
 ## Key Tips:
 - Always check project_get_active before starting

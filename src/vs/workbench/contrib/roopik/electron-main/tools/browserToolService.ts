@@ -29,7 +29,6 @@ import type {
 	ScriptExecutionResult,
 	BrowserViewportResult,
 	BrowserNetworkRequestsResult,
-	BrowserTabListResult,
 } from '../mcp/executor/types.js';
 
 // ============================================================================
@@ -209,29 +208,6 @@ export class BrowserToolService {
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to close browser'
-			};
-		}
-	}
-
-	// ==========================================================================
-	// Tab Management
-	// ==========================================================================
-
-	async listTabs(): Promise<ToolResult<BrowserTabListResult>> {
-		try {
-			const tabs = this.browserViewService.listTabs();
-			return {
-				success: true,
-				data: {
-					tabs,
-					activeTabId: this.browserViewService.getActiveTabId(),
-					count: tabs.length
-				}
-			};
-		} catch (error) {
-			return {
-				success: false,
-				error: error instanceof Error ? error.message : 'Failed to list tabs'
 			};
 		}
 	}
@@ -649,38 +625,46 @@ export class BrowserToolService {
 	async getState(tabId?: number): Promise<ToolResult<BrowserStateResult>> {
 		try {
 			const devServerRunning = false;
-			const tabs = this.browserViewService.listTabs();
+			const allTabs = this.browserViewService.listTabs();
 			const activeTabId = this.browserViewService.getActiveTabId();
 
-			// If specific tab requested, get that tab's state
-			const effectiveTabId = tabId ?? activeTabId;
-
-			if (effectiveTabId === undefined || tabs.length === 0) {
+			if (allTabs.length === 0) {
 				return {
 					success: true,
 					data: {
 						browserOpen: false,
 						devServerRunning,
-						message: 'Browser is not open',
-						tabCount: 0
+						tabCount: 0,
+						tabs: [],
 					}
 				};
 			}
 
-			const browserViewId = this.browserViewService.resolveTabId(effectiveTabId);
-			const navState = await this.browserViewService.getNavigationState(browserViewId);
+			// If tabId provided, only return that tab's info
+			const tabsToQuery = tabId !== undefined
+				? allTabs.filter(t => t.tabId === tabId)
+				: allTabs;
 
 			return {
 				success: true,
 				data: {
 					browserOpen: true,
-					currentUrl: navState.url,
-					title: navState.title,
-					isLoading: navState.isLoading,
 					devServerRunning,
-					message: 'Browser is open',
-					tabId: effectiveTabId,
-					tabCount: tabs.length
+					activeTabId,
+					tabCount: allTabs.length,
+					tabs: await Promise.all(tabsToQuery.map(async t => {
+						const viewId = this.browserViewService.resolveTabId(t.tabId);
+						const nav = await this.browserViewService.getNavigationState(viewId).catch(() => null);
+						const vp = this.browserViewService.getViewportSize(viewId);
+						return {
+							tabId: t.tabId,
+							url: nav?.url ?? t.url,
+							title: nav?.title ?? t.title,
+							isActive: t.isActive,
+							isLoading: nav?.isLoading ?? false,
+							...(vp ? { viewport: { width: vp.width, height: vp.height } } : {}),
+						};
+					})),
 				}
 			};
 		} catch (error) {

@@ -28,6 +28,7 @@ import { DEV_SERVER_CHANNEL } from '../../common/projectMode/devServer.js';
 import { IMcpServerService } from '../../common/mcp/index.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
+import { MAX_BROWSER_TABS } from '../../common/projectMode/types.js';
 
 /**
  * Arguments for openProjectPreview command
@@ -41,8 +42,6 @@ interface OpenProjectPreviewArgs {
 // - true: Open in split view with locked group (original behavior)
 // - false: Open as regular tab in active group
 const BROWSER_OPEN_IN_SPLIT_VIEW = false;
-
-import { MAX_BROWSER_TABS } from '../../common/projectMode/types.js';
 
 /**
  * Helper function to open/focus a browser editor tab.

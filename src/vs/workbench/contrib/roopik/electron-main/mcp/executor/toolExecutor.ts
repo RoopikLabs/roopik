@@ -122,7 +122,7 @@ export class ToolExecutor {
 	 */
 	getAvailableTools(): string[] {
 		return [
-			// Browser tools (15)
+			// Browser tools (14)
 			'browser_open',
 			'browser_close',
 			'browser_screenshot',
@@ -137,14 +137,13 @@ export class ToolExecutor {
 			'browser_get_state',
 			'browser_set_viewport',
 			'browser_get_network_requests',
-			'browser_list_tabs',
 			// Canvas tools (5)
 			'canvas_list',
 			'canvas_get_active',
 			'canvas_create',
 			'canvas_open',
 			'canvas_validate_components',
-			// Component tools (8)
+			// Component tools (6)
 			'component_add',
 			'component_add_batch',
 			'component_remove',
@@ -162,7 +161,7 @@ export class ToolExecutor {
 	}
 
 	// ==========================================================================
-	// Browser Tool Routing (15 tools) - Delegates to BrowserToolService
+	// Browser Tool Routing (14 tools) - Delegates to BrowserToolService
 	// ==========================================================================
 
 	private async executeBrowserTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
@@ -229,16 +228,18 @@ export class ToolExecutor {
 			case 'browser_get_state':
 				return this.browserToolService.getState(tabId);
 
-			case 'browser_set_viewport':
+			case 'browser_set_viewport': {
+				const hasViewportParams = Object.keys(params).some(k => k !== 'tabId');
 				return this.browserToolService.setViewport(
-					Object.keys(params).filter(k => k !== 'tabId').length === 0 ? undefined : {
+					hasViewportParams ? {
 						width: params.width as number | undefined,
 						height: params.height as number | undefined,
 						deviceScaleFactor: params.deviceScaleFactor as number | undefined,
 						mobile: params.mobile as boolean | undefined,
 						tabId,
-					}
+					} : tabId !== undefined ? { tabId } : undefined
 				);
+			}
 
 			case 'browser_get_network_requests':
 				return this.browserToolService.getNetworkRequests({
@@ -249,9 +250,6 @@ export class ToolExecutor {
 					tabId,
 				});
 
-			case 'browser_list_tabs':
-				return this.browserToolService.listTabs();
-
 			default:
 				return {
 					success: false,
@@ -261,7 +259,7 @@ export class ToolExecutor {
 	}
 
 	// ==========================================================================
-	// Canvas Tool Routing (4 tools) - Delegates to CanvasToolService
+	// Canvas Tool Routing (5 tools) - Delegates to CanvasToolService
 	// ==========================================================================
 
 	private async executeCanvasTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
@@ -299,7 +297,7 @@ export class ToolExecutor {
 	}
 
 	// ==========================================================================
-	// Component Tool Routing (8 tools) - Delegates to ComponentToolService
+	// Component Tool Routing (6 tools) - Delegates to ComponentToolService
 	// ==========================================================================
 
 	private async executeComponentTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {

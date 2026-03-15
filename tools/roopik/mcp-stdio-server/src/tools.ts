@@ -26,11 +26,11 @@ import { z } from 'zod';
 // ============================================================================
 
 const tabIdField = z.number().optional().describe(
-	'Target tab ID. Omit to use the active tab. Use browser_list_tabs to see available tabs.'
+	'Target tab ID. Omit to use the active tab. Use browser_get_state to see all open tabs.'
 );
 
 // ============================================================================
-// Browser Tool Schemas (15)
+// Browser Tool Schemas (14)
 // ============================================================================
 
 export const browserOpenSchema = z.object({
@@ -108,10 +108,8 @@ export const browserTabIdOnlySchema = z.object({
 });
 
 export const browserCloseSchema = z.object({
-	tabId: z.number().optional().describe('Tab ID to close. Omit to close ALL open browser tabs. Use browser_list_tabs to see available tabs.')
+	tabId: z.number().optional().describe('Tab ID to close. Omit to close ALL open browser tabs. Use browser_get_state to see all open tabs.')
 });
-
-export const browserListTabsSchema = z.object({});
 
 // Empty schemas for tools with no parameters
 export const emptySchema = z.object({});
@@ -519,7 +517,7 @@ export interface ToolDefinition {
 // ============================================================================
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
-	// ========== Browser Tools (15) ==========
+	// ========== Browser Tools (14) ==========
 	{
 		name: 'browser_open',
 		description: 'Open a browser tab. With no args: focuses active tab (or opens first tab if none). With newTab:true: opens a new tab. With tabId: focuses that tab. With url: navigates after open/focus. Returns tabId in response.',
@@ -577,7 +575,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_get_state',
-		description: 'Get browser state (open/closed, current URL, title, tab count). Includes active tab info.',
+		description: 'Get browser state: open/closed, dev server status, active tab ID, and all tabs with URLs, titles, loading status, and viewport sizes. Pass tabId to get only that tab\'s info.',
 		schema: browserTabIdOnlySchema
 	},
 	{
@@ -589,11 +587,6 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		name: 'browser_get_network_requests',
 		description: 'Get network requests from a tab. Use includeStaticAssets to show all assets.',
 		schema: browserGetNetworkRequestsSchema
-	},
-	{
-		name: 'browser_list_tabs',
-		description: 'List all open browser tabs with their IDs, URLs, titles, and active status.',
-		schema: browserListTabsSchema
 	},
 
 	// ========== Canvas Tools (4) ==========
@@ -618,7 +611,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		schema: canvasOpenSchema
 	},
 
-	// ========== Component Tools (6) ==========
+	// ========== Component Tools (7) ==========
 	{
 		name: 'component_add',
 		description: 'Add a component to a canvas for live preview. Components should be small, focused pieces (e.g., a hero section, a product card, a navigation bar) - NOT full pages. Each component folder should contain a single UI element that can be iterated on independently. The canvas displays all added components side-by-side for easy comparison and iteration.',
@@ -896,13 +889,13 @@ browser_get_errors → browser_get_console_logs → (fix code) → browser_reloa
 
 ## Tool Categories:
 - **Project Tools** (3): project_get_active, project_start, project_stop
-- **Browser Core** (7): browser_open, browser_close, browser_screenshot, browser_navigate, browser_reload, browser_action_input, browser_list_tabs
+- **Browser Core** (6): browser_open, browser_close, browser_screenshot, browser_navigate, browser_reload, browser_action_input
 - **Browser Debug** (4): browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs
-- **Browser Info** (4): browser_get_performance, browser_get_state, browser_set_viewport, browser_get_network_requests
+- **Browser Info** (4): browser_get_state, browser_get_performance, browser_set_viewport, browser_get_network_requests
 - **Canvas Tools** (4): canvas_list, canvas_get_active, canvas_create, canvas_open
 - **Component Tools** (7): component_add, component_add_batch, component_remove, component_get_info, component_list, component_rebuild, canvas_validate_components
 
-## Total: 30 Tools`
+## Total: 29 Tools`
 	},
 	{
 		name: 'how-to-test-responsive',

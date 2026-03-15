@@ -414,23 +414,6 @@ export function registerRoopikToolsCommands(): void {
 	registerAction2(class extends Action2 {
 		constructor() {
 			super({
-				id: 'roopik.tools.browserListTabs',
-				title: { value: 'List Browser Tabs', original: 'List Browser Tabs' },
-				category: { value: 'Roopik', original: 'Roopik' },
-				f1: false
-			});
-		}
-
-		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
-			const mainProcessService = accessor.get(IMainProcessService);
-			const channel = getToolsChannel(mainProcessService);
-			return channel.call('browser_list_tabs');
-		}
-	});
-
-	registerAction2(class extends Action2 {
-		constructor() {
-			super({
 				id: 'roopik.tools.browserCloseTab',
 				title: { value: 'Close Browser Tab', original: 'Close Browser Tab' },
 				category: { value: 'Roopik', original: 'Roopik' },

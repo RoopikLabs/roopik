@@ -571,7 +571,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	async setActiveTab(tabId: number): Promise<void> {
 		const browserViewId = this.tabToBrowserViewId.get(tabId);
 		if (browserViewId === undefined) {
-			throw new Error(`Tab ${tabId} not found. Use browser_list_tabs to see available tabs.`);
+			throw new Error(`Tab ${tabId} not found. Use browser_get_state to see available tabs.`);
 		}
 		this.setActiveTabInternal(tabId);
 	}
@@ -587,7 +587,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	resolveTabId(tabId: number): number {
 		const browserViewId = this.tabToBrowserViewId.get(tabId);
 		if (browserViewId === undefined) {
-			throw new Error(`Tab ${tabId} not found. Use browser_list_tabs to see available tabs.`);
+			throw new Error(`Tab ${tabId} not found. Use browser_get_state to see available tabs.`);
 		}
 		return browserViewId;
 	}

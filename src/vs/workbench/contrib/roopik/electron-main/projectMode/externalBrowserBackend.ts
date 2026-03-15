@@ -184,15 +184,17 @@ class CDPSession {
 		const id = ++this.messageId;
 		const timeout = timeoutMs ?? 30000;
 		return new Promise((resolve, reject) => {
-			this.pendingCallbacks.set(id, { resolve, reject });
-			this.ws!.send(JSON.stringify({ id, method, params: params || {} }));
-
-			setTimeout(() => {
+			const timer = setTimeout(() => {
 				if (this.pendingCallbacks.has(id)) {
 					this.pendingCallbacks.delete(id);
 					reject(new Error(`CDP command timed out after ${timeout}ms: ${method}`));
 				}
 			}, timeout);
+			this.pendingCallbacks.set(id, {
+				resolve: (v) => { clearTimeout(timer); resolve(v); },
+				reject: (e) => { clearTimeout(timer); reject(e); },
+			});
+			this.ws!.send(JSON.stringify({ id, method, params: params || {} }));
 		});
 	}
 
@@ -415,7 +417,7 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	async setActiveTab(tabId: number): Promise<void> {
 		const page = this.pages.get(tabId);
 		if (!page) {
-			throw new Error(`Tab ${tabId} not found. Use browser_list_tabs to see available tabs.`);
+			throw new Error(`Tab ${tabId} not found. Use browser_get_state to see available tabs.`);
 		}
 		// Activate in Chrome
 		if (this.browserSession?.connected) {
@@ -448,7 +450,7 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 
 	resolveTabId(tabId: number): number {
 		if (!this.pages.has(tabId)) {
-			throw new Error(`Tab ${tabId} not found. Use browser_list_tabs to see available tabs.`);
+			throw new Error(`Tab ${tabId} not found. Use browser_get_state to see available tabs.`);
 		}
 		return tabId; // In external mode, tabId IS the pageId/browserViewId
 	}
@@ -485,20 +487,22 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	async getNavigationState(browserViewId: number): Promise<NavigationState> {
 		const session = this.getSession(browserViewId);
 
-		// Get current URL and title via Runtime.evaluate
-		const [urlResult, titleResult, historyResult] = await Promise.all([
+		// Get current URL, title, loading state, and navigation history via CDP
+		const [urlResult, titleResult, readyStateResult, historyResult] = await Promise.all([
 			session.send('Runtime.evaluate', { expression: 'window.location.href' }),
 			session.send('Runtime.evaluate', { expression: 'document.title' }),
+			session.send('Runtime.evaluate', { expression: 'document.readyState' }),
 			session.send('Page.getNavigationHistory'),
 		]);
 
 		const entries = (historyResult as { entries?: unknown[] }).entries || [];
 		const currentIndex = (historyResult as { currentIndex?: number }).currentIndex ?? 0;
+		const readyState = (readyStateResult as { result?: { value?: string } }).result?.value;
 
 		return {
 			url: (urlResult as { result?: { value?: string } }).result?.value || '',
 			title: (titleResult as { result?: { value?: string } }).result?.value || '',
-			isLoading: false,
+			isLoading: readyState !== 'complete',
 			canGoBack: currentIndex > 0,
 			canGoForward: currentIndex < entries.length - 1,
 		};
@@ -1012,6 +1016,7 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 		console.log(`[ExternalBrowser] Launching Chrome: ${this.chromePath}`);
 		const args = [
 			`--remote-debugging-port=${this.cdpPort}`,
+			'--remote-debugging-address=127.0.0.1',
 			`--user-data-dir=${this.profilePath}`,
 			'--no-first-run',
 			'--no-default-browser-check',
@@ -1087,6 +1092,19 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 			await this.browserSession.send('Target.setDiscoverTargets', { discover: true });
 
 			this.browserSession.addListener((method, params) => {
+				// Target.targetDestroyed has shape { targetId } (no targetInfo wrapper)
+				if (method === 'Target.targetDestroyed') {
+					const dp = params as { targetId?: string };
+					if (!dp.targetId) { return; }
+					const pageId = this.targetIdToPageId.get(dp.targetId);
+					if (pageId !== undefined) {
+						console.log(`[ExternalBrowser] Tab destroyed: ${dp.targetId}`);
+						this.removePage(pageId);
+					}
+					return;
+				}
+
+				// targetCreated and targetInfoChanged provide { targetInfo: { ... } }
 				const p = params as { targetInfo?: { targetId?: string; type?: string; url?: string; title?: string } };
 				const targetInfo = p.targetInfo;
 				if (!targetInfo || targetInfo.type !== 'page') { return; }
@@ -1099,13 +1117,6 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 					});
 				}
 
-				if (method === 'Target.targetDestroyed') {
-					const pageId = this.targetIdToPageId.get(targetInfo.targetId!);
-					if (pageId !== undefined) {
-						console.log(`[ExternalBrowser] Tab destroyed: ${targetInfo.targetId}`);
-						this.removePage(pageId);
-					}
-				}
 
 				if (method === 'Target.targetInfoChanged') {
 					const pageId = this.targetIdToPageId.get(targetInfo.targetId!);

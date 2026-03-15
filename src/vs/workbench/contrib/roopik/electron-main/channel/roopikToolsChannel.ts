@@ -18,14 +18,15 @@
  * Tool Naming Convention: category_action (e.g., browser_navigate, component_add)
  *
  * Tool Categories:
- * - Browser Tools (15): browser_open, browser_close, browser_navigate, browser_reload, browser_screenshot,
+ * - Browser Tools (14): browser_open, browser_close, browser_navigate, browser_reload, browser_screenshot,
  *                       browser_action_input, browser_execute_script, browser_inspect_element, browser_get_errors,
  *                       browser_get_console_logs, browser_get_performance, browser_get_state,
- *                       browser_set_viewport, browser_get_network_requests, browser_list_tabs
+ *                       browser_set_viewport, browser_get_network_requests
  * - Project Tools (3): project_get_active, project_start, project_stop
  * - Canvas Tools (4): canvas_list, canvas_get_active, canvas_create, canvas_open
  * - Component Tools (7): component_add, component_add_batch, component_remove,
  *                        component_get_info, component_list, component_rebuild, canvas_validate_components
+ * - Roopik Tools (1): roopik_get_guide
  */
 
 import { Event } from '../../../../../base/common/event.js';
@@ -38,6 +39,7 @@ import type { AddComponentRequest } from '../../common/component/types.js';
 import type { ICanvasService } from '../../common/canvas/canvasService.js';
 import type { IRoopikStorageService } from '../../common/storage/storageService.js';
 import { ROOPIK_TOOLS_CHANNEL_NAME, type RoopikToolResult } from '../../common/tools/types.js';
+import { GUIDE_CONTENT } from '../mcp/toolSchemas.js';
 
 // Import unified tool services (Phase 4 migration)
 import { CDPMonitorService } from '../tools/cdpMonitorService.js';
@@ -103,7 +105,7 @@ export class RoopikToolsChannel implements IServerChannel {
 		try {
 			switch (command) {
 				// ============================================================
-				// Browser Tools (15)
+				// Browser Tools (14)
 				// ============================================================
 				case 'browser_open':
 					return this.browserToolService.open(arg as { url?: string; tabId?: number; newTab?: boolean });
@@ -148,16 +150,13 @@ export class RoopikToolsChannel implements IServerChannel {
 					return this.handleBrowserGetPerformance(arg as { tabId?: number } | undefined);
 
 				case 'browser_get_state':
-					return this.handleBrowserGetState(arg as { tabId?: number } | undefined);
+					return this.browserToolService.getState((arg as { tabId?: number } | undefined)?.tabId);
 
 				case 'browser_set_viewport':
 					return this.handleSetViewport(arg as { width?: number; height?: number; deviceScaleFactor?: number; mobile?: boolean; tabId?: number } | undefined);
 
 				case 'browser_get_network_requests':
 					return this.handleGetNetworkRequests(arg as { urlFilter?: string; method?: string; statusFilter?: string; limit?: number; tabId?: number });
-
-				case 'browser_list_tabs':
-					return this.browserToolService.listTabs();
 
 				// ============================================================
 				// Project Tools (3)
@@ -187,7 +186,7 @@ export class RoopikToolsChannel implements IServerChannel {
 					return this.handleOpenCanvas(arg as { canvasId?: string; name?: string });
 
 				// ============================================================
-				// Component Tools (6)
+				// Component Tools (7)
 				// ============================================================
 				case 'component_add':
 					return this.handleAddComponent(arg as {
@@ -227,6 +226,21 @@ export class RoopikToolsChannel implements IServerChannel {
 				// TODO: Feature pending - race condition with webview init
 				// case 'component_screenshot':
 				// 	return this.handleComponentScreenshot(arg as { componentId: string; canvasId: string });
+
+				// ============================================================
+				// Roopik Tools (1)
+				// ============================================================
+				case 'roopik_get_guide': {
+					const topic = (arg as { topic: string })?.topic;
+					if (!topic) {
+						return { success: false, error: 'Missing required parameter: topic' };
+					}
+					const content = GUIDE_CONTENT[topic];
+					if (!content) {
+						return { success: false, error: `Unknown guide topic: ${topic}. Available: ${Object.keys(GUIDE_CONTENT).join(', ')}` };
+					}
+					return { success: true, data: { guide: content } };
+				}
 
 				default:
 					return {
@@ -365,68 +379,6 @@ export class RoopikToolsChannel implements IServerChannel {
 				error: `Failed to get performance metrics: ${error instanceof Error ? error.message : String(error)}`
 			};
 		}
-	}
-
-	/**
-	 * Get browser state information.
-	 *
-	 * Returns the current browser status including URL, title, loading state,
-	 * and dev server info if running.
-	 *
-	 * Note: Use tools/list for available tools, not this method.
-	 */
-	private async handleBrowserGetState(args?: { tabId?: number }): Promise<RoopikToolResult> {
-		const browserViewId = args?.tabId !== undefined
-			? this.browserViewService.resolveTabId(args.tabId)
-			: this.browserViewService.getActiveBrowserViewId();
-
-		// Get dev server info if running
-		const runningServer = await this.devServerService.getRunningServer();
-		const tabs = this.browserViewService.listTabs();
-		const activeTabId = this.browserViewService.getActiveTabId();
-
-		if (browserViewId === undefined) {
-			return {
-				success: true,
-				data: {
-					browserOpen: false,
-					tabCount: tabs.length,
-					devServerRunning: !!runningServer,
-					devServer: runningServer ? {
-						url: runningServer.url,
-						projectRoot: runningServer.projectRoot,
-						port: runningServer.port,
-						framework: runningServer.framework
-					} : null,
-					message: 'No browser open. Use browser_open or project_start to open a browser.'
-				}
-			};
-		}
-
-		const effectiveTabId = args?.tabId ?? activeTabId;
-
-		// Get navigation state (includes current URL)
-		const navState = await this.browserViewService.getNavigationState(browserViewId);
-
-		return {
-			success: true,
-			data: {
-				browserOpen: true,
-				tabId: effectiveTabId,
-				tabCount: tabs.length,
-				currentUrl: navState.url,
-				title: navState.title,
-				isLoading: navState.isLoading,
-				devServerRunning: !!runningServer,
-				devServer: runningServer ? {
-					url: runningServer.url,
-					projectRoot: runningServer.projectRoot,
-					port: runningServer.port,
-					framework: runningServer.framework
-				} : null,
-				message: `Browser open at ${navState.url}`
-			}
-		};
 	}
 
 	private async handleScreenshot(args?: { tabId?: number }): Promise<RoopikToolResult> {

@@ -21,7 +21,7 @@
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { IWorkbenchContribution } from '../../../../common/contributions.js';
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
-import { IEditorGroupsService } from '../../../../services/editor/common/editorGroupsService.js';
+import { IEditorGroup, IEditorGroupsService } from '../../../../services/editor/common/editorGroupsService.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { IMainProcessService } from '../../../../../platform/ipc/common/mainProcessService.js';
 import { EditorTabInput } from '../projectMode/editorTabInput.js';
@@ -242,7 +242,7 @@ export class RoopikProjectModeContribution extends Disposable implements IWorkbe
 	 * Close ALL browser editor tabs
 	 */
 	private async closeAllBrowserTabs(): Promise<void> {
-		const toClose: { group: typeof this.editorGroupsService.groups[0]; editor: EditorTabInput }[] = [];
+		const toClose: { group: IEditorGroup; editor: EditorTabInput }[] = [];
 		for (const group of this.editorGroupsService.groups) {
 			for (const editor of group.editors) {
 				if (editor instanceof EditorTabInput) {

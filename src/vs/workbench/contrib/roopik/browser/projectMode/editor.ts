@@ -104,9 +104,6 @@ export class Editor extends EditorPane {
 	}>(); // tabId → per-tab state
 	private activeTabId: number | undefined;
 
-	// Track WHICH input we've registered the dispose listener for
-	// setInput() is called on EVERY tab switch, and may pass a different input instance!
-	private registeredInputForDispose: EditorTabInput | undefined;
 	// Track dispose listeners per tabId to avoid duplicates
 	private readonly registeredDisposeTabIds = new Set<number>();
 

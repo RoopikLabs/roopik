@@ -141,27 +141,17 @@ export interface BrowserPerformanceResult {
  */
 export interface BrowserStateResult {
 	browserOpen: boolean;
-	currentUrl?: string;
-	title?: string;
-	isLoading?: boolean;
 	devServerRunning: boolean;
-	message: string;
-	tabId?: number;
-	tabCount?: number;
-}
-
-/**
- * Browser tab list result
- */
-export interface BrowserTabListResult {
+	activeTabId?: number;
+	tabCount: number;
 	tabs: Array<{
 		tabId: number;
 		url: string;
 		title: string;
 		isActive: boolean;
+		isLoading: boolean;
+		viewport?: { width: number; height: number };
 	}>;
-	activeTabId?: number;
-	count: number;
 }
 
 /**
