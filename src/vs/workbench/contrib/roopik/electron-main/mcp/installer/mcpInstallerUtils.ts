@@ -17,7 +17,7 @@
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
+import * as path from '../../../../../../base/common/path.js';
 import * as os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -94,10 +94,10 @@ export function getMcpBinaryPath(): string {
 function getResourcesPath(): string {
 	// Try to get from electron app
 	try {
-		// eslint-disable-next-line @typescript-eslint/no-require-imports
-		const { app } = require('electron');
-		if (app && app.isPackaged) {
-			return path.join(app.getPath('resources'));
+		// Dynamic import needed — this runs in contexts where electron may not be available
+		const electron = globalThis.require?.('electron');
+		if (electron?.app?.isPackaged) {
+			return path.join(electron.app.getPath('resources'));
 		}
 	} catch {
 		// Not in electron context
@@ -398,9 +398,10 @@ export function getCodexBinaryPath(extensionPath: string | undefined): string | 
  * IMPORTANT: -s user flag registers at USER scope (global, all projects)
  * Without it, defaults to PROJECT scope (only current folder)
  */
-export function buildClaudeExtensionAddCommand(claudeBinaryPath: string, mcpBinaryPath: string, wsPort: number): string {
+export function buildClaudeExtensionAddCommand(claudeBinaryPath: string, mcpBinaryPath: string, wsPort: number, token?: string): string {
 	// Format: claude mcp add <name> -s user -- <command> [args...]
-	return `"${claudeBinaryPath}" mcp add ${ROOPIK_MCP_NAME} -s user -- "${mcpBinaryPath}" --ws-port ${wsPort}`;
+	const tokenArg = token ? ` --token ${token}` : '';
+	return `"${claudeBinaryPath}" mcp add ${ROOPIK_MCP_NAME} -s user -- "${mcpBinaryPath}" --ws-port ${wsPort}${tokenArg}`;
 }
 
 /**
@@ -416,8 +417,9 @@ export function buildClaudeExtensionRemoveCommand(claudeBinaryPath: string): str
  *
  * Format: claude mcp add <name> -s user -- <command> [args...]
  */
-export function buildGlobalClaudeAddCommand(mcpBinaryPath: string, wsPort: number): string {
-	return `claude mcp add ${ROOPIK_MCP_NAME} -s user -- "${mcpBinaryPath}" --ws-port ${wsPort}`;
+export function buildGlobalClaudeAddCommand(mcpBinaryPath: string, wsPort: number, token?: string): string {
+	const tokenArg = token ? ` --token ${token}` : '';
+	return `claude mcp add ${ROOPIK_MCP_NAME} -s user -- "${mcpBinaryPath}" --ws-port ${wsPort}${tokenArg}`;
 }
 
 /**
@@ -431,8 +433,9 @@ export function buildGlobalClaudeRemoveCommand(): string {
  * Build Codex extension add command
  * Uses the Codex binary bundled with the VS Code extension
  */
-export function buildCodexExtensionAddCommand(codexBinaryPath: string, mcpBinaryPath: string, wsPort: number): string {
-	return `"${codexBinaryPath}" mcp add ${ROOPIK_MCP_NAME} -- "${mcpBinaryPath}" --ws-port ${wsPort}`;
+export function buildCodexExtensionAddCommand(codexBinaryPath: string, mcpBinaryPath: string, wsPort: number, token?: string): string {
+	const tokenArg = token ? ` --token ${token}` : '';
+	return `"${codexBinaryPath}" mcp add ${ROOPIK_MCP_NAME} -- "${mcpBinaryPath}" --ws-port ${wsPort}${tokenArg}`;
 }
 
 /**
@@ -446,8 +449,9 @@ export function buildCodexExtensionRemoveCommand(codexBinaryPath: string): strin
  * Build global Codex CLI add command
  * Uses the global `codex` command installed in PATH
  */
-export function buildGlobalCodexAddCommand(mcpBinaryPath: string, wsPort: number): string {
-	return `codex mcp add ${ROOPIK_MCP_NAME} -- "${mcpBinaryPath}" --ws-port ${wsPort}`;
+export function buildGlobalCodexAddCommand(mcpBinaryPath: string, wsPort: number, token?: string): string {
+	const tokenArg = token ? ` --token ${token}` : '';
+	return `codex mcp add ${ROOPIK_MCP_NAME} -- "${mcpBinaryPath}" --ws-port ${wsPort}${tokenArg}`;
 }
 
 /**
@@ -606,7 +610,7 @@ export function isRoopikRegistered(config: { mcpServers?: Record<string, unknown
 	if (!config || !config.mcpServers) {
 		return false;
 	}
-	return ROOPIK_MCP_NAME in config.mcpServers;
+	return Object.prototype.hasOwnProperty.call(config.mcpServers, ROOPIK_MCP_NAME);
 }
 
 /**
@@ -616,7 +620,7 @@ export function addRoopikToConfig<T extends { mcpServers?: Record<string, unknow
 	config: T | null,
 	entry: McpServerEntry
 ): T {
-	const result = config || {} as T;
+	const result: T = config || Object.create(null);
 	if (!result.mcpServers) {
 		result.mcpServers = {};
 	}

@@ -1127,7 +1127,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			throw new Error(`Browser view ${browserViewId} not found`);
 		}
 
-		this.logger.info('captureElementScreenshot called', { browserViewId, selector });
+		// this.logger.info('captureElementScreenshot called', { browserViewId, selector });
 
 		try {
 			// Ensure debugger is attached
@@ -1203,13 +1203,13 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				return null;
 			}
 
-			this.logger.info('Capturing element screenshot', {
-				selector,
-				originalBounds: { x, y, width, height },
-				zoomFactor,
-				scaledBounds: { x: scaledX, y: scaledY, width: scaledWidth, height: scaledHeight },
-				clippedBounds: { x: clippedX, y: clippedY, width: clippedWidth, height: clippedHeight }
-			});
+			// this.logger.info('Capturing element screenshot', {
+			// 	selector,
+			// 	originalBounds: { x, y, width, height },
+			// 	zoomFactor,
+			// 	scaledBounds: { x: scaledX, y: scaledY, width: scaledWidth, height: scaledHeight },
+			// 	clippedBounds: { x: clippedX, y: clippedY, width: clippedWidth, height: clippedHeight }
+			// });
 
 			// Capture the screenshot of the element region
 			const image = await browserView.webContents.capturePage({
