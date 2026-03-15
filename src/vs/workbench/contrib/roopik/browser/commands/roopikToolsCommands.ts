@@ -22,18 +22,7 @@
 import { registerAction2, Action2 } from '../../../../../platform/actions/common/actions.js';
 import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { IMainProcessService } from '../../../../../platform/ipc/common/mainProcessService.js';
-import { IEditorService } from '../../../../services/editor/common/editorService.js';
-import { IEditorGroupsService } from '../../../../services/editor/common/editorGroupsService.js';
-import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { ROOPIK_TOOLS_CHANNEL_NAME, type RoopikToolResult } from '../../common/tools/types.js';
-import { openBrowserEditor } from './browserCommands.js';
-import { EditorTabInput } from '../projectMode/editorTabInput.js';
-import { DEFAULT_MAX_BROWSER_TABS } from '../../common/projectMode/types.js';
-
-/** Check if external browser mode is configured */
-function isExternalMode(configurationService: IConfigurationService): boolean {
-	return (configurationService.getValue<string>('roopik.browser.mode') || 'embedded') === 'external';
-}
 
 /**
  * Generic tool call interface for extensions
@@ -111,64 +100,12 @@ export function registerRoopikToolsCommands(): void {
 
 		async run(accessor: ServicesAccessor, args?: { url?: string }): Promise<RoopikToolResult> {
 			try {
-				const configurationService = accessor.get(IConfigurationService);
 				const mainProcessService = accessor.get(IMainProcessService);
 
-				if (isExternalMode(configurationService)) {
-					// External mode: delegate entirely to backend
-					const channel = getToolsChannel(mainProcessService);
-					return await channel.call('browser_open', args) as RoopikToolResult;
-				}
-
-				// Embedded mode: open/focus editor tab, or create new tab if browser already open
-				const editorService = accessor.get(IEditorService);
-				const editorGroupsService = accessor.get(IEditorGroupsService);
-
-				// Check if browser is already open — if so, force a new tab
-				const existingBrowser = editorService.visibleEditorPanes.find(
-					p => p.input instanceof EditorTabInput
-				);
-
-				// Check tab limit before attempting
-				const maxTabs = configurationService.getValue<number>('roopik.browser.maxTabs') || DEFAULT_MAX_BROWSER_TABS;
-				const currentTabs = EditorTabInput.getAll();
-				const atLimit = existingBrowser && currentTabs.length >= maxTabs;
-
-				const browserPane = await openBrowserEditor(editorService, editorGroupsService, configurationService, {
-					forceNew: !!existingBrowser,
-				});
-
-				if (!browserPane) {
-					return {
-						success: false,
-						error: 'Failed to open browser editor'
-					};
-				}
-
-				// Delegate navigation to backend via IPC — backend resolves the correct browserViewId
-				if (args?.url) {
-					const channel = getToolsChannel(mainProcessService);
-					await channel.call('browser_navigate', { url: args.url });
-					const warning = atLimit
-						? `Tab limit reached (max ${maxTabs}). Navigated existing tab to ${args.url} instead. Close a tab first or increase the limit in Settings → Roopik → Browser → Max Tabs.`
-						: undefined;
-					return {
-						success: true,
-						data: {
-							url: args.url,
-							message: warning || (existingBrowser ? `New tab opened at ${args.url}` : `Browser opened at ${args.url}`)
-						}
-					};
-				}
-
-				return {
-					success: true,
-					data: {
-						message: atLimit
-							? `Tab limit reached (max ${maxTabs}). No new tab opened. Close a tab first or increase the limit in Settings → Roopik → Browser → Max Tabs.`
-							: 'Browser opened'
-					}
-				};
+				// Both embedded and external mode: delegate to backend via IPC
+				// browserToolService.open() handles tab limits, warnings, and navigation
+				const channel = getToolsChannel(mainProcessService);
+				return await channel.call('browser_open', args) as RoopikToolResult;
 			} catch (error) {
 				return {
 					success: false,
