@@ -176,23 +176,23 @@ class CDPSession {
 		this.closeListeners.push(callback);
 	}
 
-	async send(method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>> {
+	async send(method: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<Record<string, unknown>> {
 		if (!this.ws || !this._connected) {
 			throw new Error('CDP session not connected');
 		}
 
 		const id = ++this.messageId;
+		const timeout = timeoutMs ?? 30000;
 		return new Promise((resolve, reject) => {
 			this.pendingCallbacks.set(id, { resolve, reject });
 			this.ws!.send(JSON.stringify({ id, method, params: params || {} }));
 
-			// Timeout after 30s
 			setTimeout(() => {
 				if (this.pendingCallbacks.has(id)) {
 					this.pendingCallbacks.delete(id);
-					reject(new Error(`CDP command timed out: ${method}`));
+					reject(new Error(`CDP command timed out after ${timeout}ms: ${method}`));
 				}
-			}, 30000);
+			}, timeout);
 		});
 	}
 
@@ -764,35 +764,38 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 			// Step 7: Build inherited styles (if requested)
 			const inheritedStyles: InheritedStyleInfo[] = [];
 			if (request.includeInherited !== false && matchedStyles.inherited) {
-				// Walk up the ancestor chain to get parent element descriptions
-				let currentNodeId = nodeId;
+				// Get ancestor descriptions via JS — CDP inherited[] is ordered:
+				// index 0 = direct parent, index 1 = grandparent, etc.
+				const ancestorCount = matchedStyles.inherited.length;
+				let ancestorDescriptions: string[] = [];
+				try {
+					const ancestorResult = await session.send('Runtime.evaluate', {
+						expression: `(() => {
+							const el = document.querySelector(${JSON.stringify(typeof request.target === 'string' ? request.target : '*')});
+							if (!el) return [];
+							const descs = [];
+							let cur = el.parentElement;
+							for (let i = 0; i < ${ancestorCount} && cur; i++) {
+								const tag = cur.tagName.toLowerCase();
+								const id = cur.id ? '#' + cur.id : '';
+								const cls = cur.classList.length ? '.' + cur.classList[0] : '';
+								descs.push(tag + id + cls);
+								cur = cur.parentElement;
+							}
+							return descs;
+						})()`,
+						returnByValue: true,
+					}) as { result?: { value?: string[] } };
+					if (Array.isArray(ancestorResult.result?.value)) {
+						ancestorDescriptions = ancestorResult.result.value;
+					}
+				} catch {
+					// Fallback to generic labels
+				}
+
 				for (let i = 0; i < matchedStyles.inherited.length; i++) {
 					const inherited = matchedStyles.inherited[i];
-
-					// Get parent node info
-					let fromElement = `ancestor[${i}]`;
-					try {
-						// Navigate to parent
-						const parentResult = await session.send('DOM.requestNode', { nodeId: currentNodeId }) as { nodeId: number };
-						if (parentResult?.nodeId) {
-							currentNodeId = parentResult.nodeId;
-						}
-						const parentInfo = await session.send('DOM.describeNode', { nodeId: currentNodeId }) as {
-							node: { localName: string; attributes: string[] };
-						};
-						const parentAttrs: Record<string, string> = {};
-						if (parentInfo.node.attributes) {
-							for (let j = 0; j < parentInfo.node.attributes.length; j += 2) {
-								parentAttrs[parentInfo.node.attributes[j]] = parentInfo.node.attributes[j + 1];
-							}
-						}
-						const parentTag = parentInfo.node.localName || 'unknown';
-						const parentId = parentAttrs['id'] ? `#${parentAttrs['id']}` : '';
-						const parentClass = parentAttrs['class'] ? `.${parentAttrs['class'].split(/\s+/)[0]}` : '';
-						fromElement = `${parentTag}${parentId}${parentClass}`;
-					} catch {
-						// Use fallback description
-					}
+					const fromElement = ancestorDescriptions[i] || `ancestor[${i}]`;
 
 					const inheritedRules: MatchedCSSRule[] = [];
 					for (const entry of inherited.matchedCSSRules) {
@@ -883,19 +886,21 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 				left: computedMap.get('left'),
 			};
 
-			// Get bounding box via JS evaluation
+			// Get bounding box via CDP DOM.getBoxModel (works with nodeId directly,
+			// no selector needed — correct for both selector and coordinate targets)
 			try {
-				const boxResult = await session.send('Runtime.evaluate', {
-					expression: `(() => {
-						const el = document.querySelector(${JSON.stringify(typeof request.target === 'string' ? request.target : `[data-nodeId]`)});
-						if (!el) return null;
-						const r = el.getBoundingClientRect();
-						return { x: r.x, y: r.y, width: r.width, height: r.height };
-					})()`,
-					returnByValue: true,
-				}) as { result?: { value?: { x: number; y: number; width: number; height: number } } };
-				if (boxResult.result?.value) {
-					computedStyles.boundingBox = boxResult.result.value;
+				const boxModel = await session.send('DOM.getBoxModel', { nodeId }) as {
+					model?: { content: number[]; width: number; height: number };
+				};
+				if (boxModel.model) {
+					// content quad: [x1,y1, x2,y2, x3,y3, x4,y4] — use top-left corner
+					const content = boxModel.model.content;
+					computedStyles.boundingBox = {
+						x: content[0],
+						y: content[1],
+						width: boxModel.model.width,
+						height: boxModel.model.height,
+					};
 				}
 			} catch {
 				// Bounding box is optional
@@ -1346,8 +1351,8 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 					// Send SIGTERM to the process group (negative PID)
 					process.kill(-this.chromeProcess.pid!, 'SIGTERM');
 				}
-			} catch {
-				// Process may have already exited
+			} catch (err) {
+				console.debug('[ExternalBrowser] Chrome process already exited or kill failed:', err);
 			}
 			this.chromeProcess = null;
 		}
