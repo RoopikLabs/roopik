@@ -36,6 +36,9 @@ import type {
 // ============================================================================
 
 export class BrowserToolService {
+	/** Tracks emulated viewport overrides per browserViewId (set by setViewport, cleared on reset) */
+	private readonly viewportOverrides = new Map<number, { width: number; height: number }>();
+
 	constructor(
 		private readonly browserViewService: IBrowserBackend,
 		private readonly cdpMonitorService: CDPMonitorService
@@ -164,6 +167,7 @@ export class BrowserToolService {
 				// Close specific tab — validate it exists first
 				const browserViewId = this.browserViewService.resolveTabId(tabId);
 				this.cdpMonitorService.cleanup(browserViewId);
+				this.viewportOverrides.delete(browserViewId);
 				await this.browserViewService.closeTab(tabId);
 				// Tell renderer to close the editor tab (triggers dispose which is safe)
 				this.browserViewService.requestBrowserClose(tabId);
@@ -191,6 +195,7 @@ export class BrowserToolService {
 			}
 
 			// Destroy all backend views
+			this.viewportOverrides.clear();
 			for (const tab of tabs) {
 				try {
 					await this.browserViewService.closeTab(tab.tabId);
@@ -655,7 +660,8 @@ export class BrowserToolService {
 					tabs: await Promise.all(tabsToQuery.map(async t => {
 						const viewId = this.browserViewService.resolveTabId(t.tabId);
 						const nav = await this.browserViewService.getNavigationState(viewId).catch(() => null);
-						const vp = this.browserViewService.getViewportSize(viewId);
+						const override = this.viewportOverrides.get(viewId);
+						const vp = override ?? this.browserViewService.getViewportSize(viewId);
 						return {
 							tabId: t.tabId,
 							url: nav?.url ?? t.url,
@@ -699,6 +705,7 @@ export class BrowserToolService {
 			// If no params or no width/height, clear the override
 			if (!params || (params.width === undefined && params.height === undefined)) {
 				await this.browserViewService.sendCDPCommand(target.browserViewId, 'Emulation.clearDeviceMetricsOverride', {});
+				this.viewportOverrides.delete(target.browserViewId);
 
 				const size = this.browserViewService.getViewportSize(target.browserViewId);
 
@@ -725,6 +732,7 @@ export class BrowserToolService {
 				deviceScaleFactor,
 				mobile
 			});
+			this.viewportOverrides.set(target.browserViewId, { width, height });
 
 			return {
 				success: true,
