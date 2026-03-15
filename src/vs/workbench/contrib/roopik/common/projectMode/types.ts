@@ -4,6 +4,13 @@
  *--------------------------------------------------------------------------------------------*/
 
 /**
+ * Maximum number of browser tabs allowed in embedded mode.
+ * External mode has no limit (Chrome manages its own tabs).
+ * Shared constant — imported by both renderer (browserCommands) and main (browserViewService).
+ */
+export const MAX_BROWSER_TABS = 3;
+
+/**
  * Device preset for viewport emulation
  */
 export interface DevicePreset {

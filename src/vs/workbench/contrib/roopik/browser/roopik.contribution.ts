@@ -225,7 +225,7 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 				'Use the built-in browser inside Roopik IDE (WebContentsView)',
 				'Launch and control an external Chrome browser via CDP (remote debugging)'
 			],
-			markdownDescription: '**Browser Mode** - Choose between the embedded browser (built into the IDE) or an external Chrome browser controlled via Chrome DevTools Protocol.\n\n- **Embedded**: Fast, seamless preview inside the IDE. Single tab.\n- **External**: Full Chrome with multi-tab support, extensions, and DevTools. Controlled remotely via CDP.\n\n⚠️ *Requires IDE restart to take effect.*'
+			markdownDescription: '**Browser Mode** - Choose between the embedded browser (built into the IDE) or an external Chrome browser controlled via Chrome DevTools Protocol.\n\n- **Embedded**: Fast, seamless preview inside the IDE. Up to 3 tabs. Source-map CSS inspection.\n- **External**: Full Chrome with unlimited tabs, extensions, and DevTools. Universal CSS inspection on any site.\n\n⚠️ *Requires IDE restart to take effect.*'
 		},
 		'roopik.browser.externalChromePath': {
 			type: 'string',

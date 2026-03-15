@@ -42,9 +42,7 @@ interface OpenProjectPreviewArgs {
 // - false: Open as regular tab in active group
 const BROWSER_OPEN_IN_SPLIT_VIEW = false;
 
-// Maximum number of embedded browser tabs allowed
-// Must match MAX_BROWSER_TABS in browserBackend.ts
-const MAX_BROWSER_TABS = 3;
+import { MAX_BROWSER_TABS } from '../../common/projectMode/types.js';
 
 /**
  * Helper function to open/focus a browser editor tab.

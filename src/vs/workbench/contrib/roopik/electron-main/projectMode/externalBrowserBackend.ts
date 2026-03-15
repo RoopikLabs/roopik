@@ -462,7 +462,9 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 		}
 		if (this.pages.size === 0) {
 			this.activePage = undefined;
-			this.chromeProcess = null;
+			// NOTE: Do NOT null chromeProcess here. Chrome may still be running
+			// (user closed all tabs but Chrome stays alive). dispose() needs the
+			// handle to kill Chrome on IDE shutdown.
 		}
 	}
 

@@ -29,12 +29,8 @@ import type { NavigationState, NavigationStateChangedEvent, DevToolsClosedEvent 
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 import type { Event } from '../../../../../base/common/event.js';
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-/** Maximum number of browser tabs allowed in embedded mode. External mode has no limit. */
-export const MAX_BROWSER_TABS = 3;
+// Re-export MAX_BROWSER_TABS from common so existing electron-main imports still work
+export { MAX_BROWSER_TABS } from '../../common/projectMode/types.js';
 
 // ============================================================================
 // Tab Info — returned by listTabs()

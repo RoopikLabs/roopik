@@ -699,4 +699,4 @@ export function getToolDefinitionsAsJsonSchema(): Array<{
 	}));
 }
 
-// Total: 30 Tools (15 Browser + 5 Canvas + 6 Component + 3 Project + 1 Guide)
+// Total: 30 Tools (15 Browser + 4 Canvas + 7 Component + 3 Project + 1 Guide)
