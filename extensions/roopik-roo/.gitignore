@@ -54,6 +54,9 @@ qdrant_storage/
 # Architect plans
 plans/
 
+# Webview build output (built by CI)
+webview-ui/build/
+
 # Ignore compiled JavaScript files and source maps from TypeScript compilation
 *.js
 *.js.map

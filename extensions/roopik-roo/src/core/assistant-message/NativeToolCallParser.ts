@@ -643,10 +643,10 @@ export class NativeToolCallParser {
 
 			// Browser Tools (12)
 			case "browser_open":
-				nativeArgs = { url: partialArgs.url }
+				nativeArgs = { url: partialArgs.url, newTab: partialArgs.newTab, tabId: partialArgs.tabId }
 				break
 			case "browser_close":
-				nativeArgs = {}
+				nativeArgs = { tabId: partialArgs.tabId }
 				break
 			case "browser_action_input":
 				nativeArgs = {
@@ -657,37 +657,39 @@ export class NativeToolCallParser {
 					modifiers: partialArgs.modifiers,
 					deltaX: partialArgs.deltaX,
 					deltaY: partialArgs.deltaY,
+					tabId: partialArgs.tabId,
 				}
 				break
 			case "browser_navigate":
-				nativeArgs = { url: partialArgs.url }
+				nativeArgs = { url: partialArgs.url, tabId: partialArgs.tabId }
 				break
 			case "browser_reload":
-				nativeArgs = { ignoreCache: partialArgs.ignoreCache }
+				nativeArgs = { ignoreCache: partialArgs.ignoreCache, tabId: partialArgs.tabId }
 				break
 			case "browser_screenshot":
-				nativeArgs = {}
+				nativeArgs = { tabId: partialArgs.tabId }
 				break
 			case "browser_execute_script":
-				nativeArgs = { script: partialArgs.script }
+				nativeArgs = { script: partialArgs.script, tabId: partialArgs.tabId }
 				break
 			case "browser_inspect_element":
 				nativeArgs = {
 					selector: partialArgs.selector,
 					includeInherited: partialArgs.includeInherited,
+					tabId: partialArgs.tabId,
 				}
 				break
 			case "browser_get_errors":
-				nativeArgs = { limit: partialArgs.limit }
+				nativeArgs = { limit: partialArgs.limit, tabId: partialArgs.tabId }
 				break
 			case "browser_get_console_logs":
-				nativeArgs = { limit: partialArgs.limit, type: partialArgs.type }
+				nativeArgs = { limit: partialArgs.limit, type: partialArgs.type, tabId: partialArgs.tabId }
 				break
 			case "browser_get_performance":
-				nativeArgs = {}
+				nativeArgs = { tabId: partialArgs.tabId }
 				break
 			case "browser_get_state":
-				nativeArgs = {}
+				nativeArgs = { tabId: partialArgs.tabId }
 				break
 			case "browser_set_viewport":
 				nativeArgs = {
@@ -695,6 +697,7 @@ export class NativeToolCallParser {
 					height: partialArgs.height,
 					deviceScaleFactor: partialArgs.deviceScaleFactor,
 					mobile: partialArgs.mobile,
+					tabId: partialArgs.tabId,
 				}
 				break
 			case "browser_get_network_requests":
@@ -704,6 +707,7 @@ export class NativeToolCallParser {
 					method: partialArgs.method,
 					statusFilter: partialArgs.statusFilter,
 					limit: partialArgs.limit,
+					tabId: partialArgs.tabId,
 				}
 				break
 

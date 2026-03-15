@@ -198,13 +198,20 @@ async function handleRoopikToolPartial(
 // Browser Tool Handlers
 // ============================================================================
 
+/** Parse optional tabId from block params */
+function parseTabId(block: ToolUse): number | undefined {
+	return block.params.tabId ? parseInt(block.params.tabId, 10) : undefined
+}
+
 async function handleBrowserOpen(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
 	const url = block.params.url || block.params.args
-	return roopikClient.browserOpen(url)
+	const newTab = block.params.newTab === "true"
+	const tabId = parseTabId(block)
+	return roopikClient.browserOpen(url, newTab, tabId)
 }
 
 async function handleBrowserClose(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	return roopikClient.browserClose()
+	return roopikClient.browserClose(parseTabId(block))
 }
 
 async function handleBrowserActionInput(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
@@ -227,23 +234,24 @@ async function handleBrowserActionInput(task: Task, block: ToolUse, callbacks: T
 		action,
 		coordinate: block.params.coordinate,
 		text: block.params.text,
-		key: (block.params as any).key || block.params.args, // 'key' param or fallback to args
+		key: (block.params as any).key || block.params.args,
 		modifiers,
 		deltaX: (block.params as any).deltaX ? parseFloat((block.params as any).deltaX) : undefined,
 		deltaY: (block.params as any).deltaY ? parseFloat((block.params as any).deltaY) : undefined,
+		tabId: parseTabId(block),
 	})
 }
 
 async function handleScreenshot(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	return roopikClient.screenshot()
+	return roopikClient.screenshot(parseTabId(block))
 }
 
 async function handleBrowserGetPerformance(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	return roopikClient.browserGetPerformance()
+	return roopikClient.browserGetPerformance(parseTabId(block))
 }
 
 async function handleBrowserGetState(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	return roopikClient.browserGetState()
+	return roopikClient.browserGetState(parseTabId(block))
 }
 
 async function handleBrowserSetViewport(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
@@ -251,7 +259,7 @@ async function handleBrowserSetViewport(task: Task, block: ToolUse, callbacks: T
 	const height = block.params.height ? parseInt(block.params.height, 10) : undefined
 	const deviceScaleFactor = block.params.deviceScaleFactor ? parseFloat(block.params.deviceScaleFactor) : undefined
 	const mobile = block.params.mobile === "true"
-	return roopikClient.browserSetViewport(width, height, deviceScaleFactor, mobile)
+	return roopikClient.browserSetViewport(width, height, deviceScaleFactor, mobile, parseTabId(block))
 }
 
 async function handleBrowserGetNetworkRequests(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
@@ -260,7 +268,7 @@ async function handleBrowserGetNetworkRequests(task: Task, block: ToolUse, callb
 	const method = block.params.method
 	const statusFilter = block.params.statusFilter as "success" | "error" | "all" | undefined
 	const limit = block.params.limit ? parseInt(block.params.limit, 10) : undefined
-	return roopikClient.browserGetNetworkRequests({ includeStaticAssets, urlFilter, method, statusFilter, limit })
+	return roopikClient.browserGetNetworkRequests({ includeStaticAssets, urlFilter, method, statusFilter, limit, tabId: parseTabId(block) })
 }
 
 async function handleNavigate(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
@@ -268,12 +276,12 @@ async function handleNavigate(task: Task, block: ToolUse, callbacks: ToolCallbac
 	if (!url) {
 		return { success: false, error: "Missing required parameter: url" }
 	}
-	return roopikClient.navigate(url)
+	return roopikClient.navigate(url, parseTabId(block))
 }
 
 async function handleReload(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
 	const ignoreCache = block.params.args?.toLowerCase() === "true" || block.params.ignoreCache?.toLowerCase() === "true"
-	return roopikClient.reload(ignoreCache)
+	return roopikClient.reload(ignoreCache, parseTabId(block))
 }
 
 async function handleExecuteScript(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
@@ -281,7 +289,7 @@ async function handleExecuteScript(task: Task, block: ToolUse, callbacks: ToolCa
 	if (!script) {
 		return { success: false, error: "Missing required parameter: script" }
 	}
-	return roopikClient.executeScript(script)
+	return roopikClient.executeScript(script, parseTabId(block))
 }
 
 async function handleInspectElement(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
@@ -290,7 +298,7 @@ async function handleInspectElement(task: Task, block: ToolUse, callbacks: ToolC
 		return { success: false, error: "Missing required parameter: selector" }
 	}
 	const includeInherited = block.params.includeInherited?.toLowerCase() !== "false"
-	return roopikClient.inspectElement(selector, includeInherited)
+	return roopikClient.inspectElement(selector, includeInherited, parseTabId(block))
 }
 
 // ============================================================================
@@ -299,13 +307,13 @@ async function handleInspectElement(task: Task, block: ToolUse, callbacks: ToolC
 
 async function handleGetErrors(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
 	const limit = block.params.limit ? parseInt(block.params.limit, 10) : undefined
-	return roopikClient.getErrors(limit)
+	return roopikClient.getErrors(limit, parseTabId(block))
 }
 
 async function handleGetConsoleLogs(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
 	const limit = block.params.limit ? parseInt(block.params.limit, 10) : undefined
 	const type = block.params.type as "log" | "debug" | "info" | "warn" | "error" | undefined
-	return roopikClient.getConsoleLogs(limit, type)
+	return roopikClient.getConsoleLogs(limit, type, parseTabId(block))
 }
 
 // ============================================================================

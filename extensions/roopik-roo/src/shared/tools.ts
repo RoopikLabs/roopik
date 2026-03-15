@@ -116,6 +116,9 @@ export const toolParamNames = [
 	"modifiers", // browser_action (press)
 	"deltaX", // browser_action (drag, scroll)
 	"deltaY", // browser_action (drag, scroll)
+	// Multi-tab parameters
+	"tabId", // all browser tools (optional, targets specific tab)
+	"newTab", // browser_open (open a new tab)
 ] as const
 
 export type ToolParamName = (typeof toolParamNames)[number]
@@ -154,20 +157,20 @@ export type NativeToolArgs = {
 	// Add more tools as they are migrated to native protocol
 
 	// Roopik Browser Tools
-	browser_open: { url?: string }
-	browser_close: Record<string, never>
-	browser_action_input: { action: string; coordinate?: [number, number]; text?: string; key?: string; modifiers?: string[]; deltaX?: number; deltaY?: number }
-	browser_navigate: { url: string }
-	browser_reload: { ignoreCache?: boolean }
-	browser_screenshot: Record<string, never>
-	browser_execute_script: { script: string }
-	browser_inspect_element: { selector: string; includeInherited?: boolean }
-	browser_get_errors: { limit?: number }
-	browser_get_console_logs: { limit?: number; type?: string }
-	browser_get_performance: Record<string, never>
-	browser_get_state: Record<string, never>
-	browser_set_viewport: { width?: number; height?: number; deviceScaleFactor?: number; mobile?: boolean }
-	browser_get_network_requests: { includeStaticAssets?: boolean; urlFilter?: string; method?: string; statusFilter?: string; limit?: number }
+	browser_open: { url?: string; newTab?: boolean; tabId?: number }
+	browser_close: { tabId?: number }
+	browser_action_input: { action: string; coordinate?: [number, number]; text?: string; key?: string; modifiers?: string[]; deltaX?: number; deltaY?: number; tabId?: number }
+	browser_navigate: { url: string; tabId?: number }
+	browser_reload: { ignoreCache?: boolean; tabId?: number }
+	browser_screenshot: { tabId?: number }
+	browser_execute_script: { script: string; tabId?: number }
+	browser_inspect_element: { selector: string; includeInherited?: boolean; tabId?: number }
+	browser_get_errors: { limit?: number; tabId?: number }
+	browser_get_console_logs: { limit?: number; type?: string; tabId?: number }
+	browser_get_performance: { tabId?: number }
+	browser_get_state: { tabId?: number }
+	browser_set_viewport: { width?: number; height?: number; deviceScaleFactor?: number; mobile?: boolean; tabId?: number }
+	browser_get_network_requests: { includeStaticAssets?: boolean; urlFilter?: string; method?: string; statusFilter?: string; limit?: number; tabId?: number }
 
 	// Roopik Project Tools
 	project_get_active: Record<string, never>

@@ -516,7 +516,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	// ========== Browser Tools (14) ==========
 	{
 		name: 'browser_open',
-		description: 'Open a browser tab. With no args: focuses active tab (or opens first tab if none). With newTab:true: opens a new tab. With tabId: focuses that tab. With url: navigates after open/focus. Returns tabId in response.',
+		description: 'Open a browser tab and optionally navigate to a URL. Opens a new tab if newTab:true, otherwise reuses the active tab. Use tabId to switch to a specific tab. Returns the tabId of the active tab.',
 		schema: browserOpenSchema
 	},
 	{
