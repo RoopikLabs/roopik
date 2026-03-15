@@ -9,7 +9,7 @@
  */
 
 import { Task } from "../../task/Task"
-import type { ToolUse, ToolResponse, HandleError, PushToolResult, AskApproval } from "../../../shared/tools"
+import type { ToolUse, ToolResponse, HandleError, PushToolResult, AskApproval, NativeToolArgs } from "../../../shared/tools"
 import { formatResponse } from "../../prompts/responses"
 import { roopikClient, RoopikToolResult } from "../../../services/roopik"
 import { isRoopikTool, type RoopikToolName } from "../../prompts/tools/roopik/roopik-tools"
@@ -198,13 +198,15 @@ async function handleRoopikToolPartial(
 // Browser Tool Handlers
 // ============================================================================
 
-/** Parse optional tabId from block params */
+/** Parse optional tabId from block params (XML params are untyped strings) */
 function parseTabId(block: ToolUse): number | undefined {
-	return block.params.tabId ? parseInt(block.params.tabId, 10) : undefined
+	const raw = block.params.tabId
+	return raw ? parseInt(raw, 10) : undefined
 }
 
 async function handleBrowserOpen(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const url = block.nativeArgs?.url || block.params.url || block.params.args
+	const args = block.nativeArgs as NativeToolArgs['browser_open'] | undefined
+	const url = args?.url || block.params.url || block.params.args
 	return roopikClient.browserOpen(url)
 }
 
@@ -213,7 +215,7 @@ async function handleBrowserClose(task: Task, block: ToolUse, callbacks: ToolCal
 }
 
 async function handleBrowserActionInput(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const action = block.params.action as any
+	const action = block.params.action
 	if (!action) {
 		return { success: false, error: "Missing required parameter: action" }
 	}
@@ -229,13 +231,13 @@ async function handleBrowserActionInput(task: Task, block: ToolUse, callbacks: T
 	}
 
 	return roopikClient.browserAction({
-		action,
+		action: action as any,
 		coordinate: block.params.coordinate,
 		text: block.params.text,
-		key: (block.params as any).key || block.params.args,
+		key: block.params.key || block.params.args,
 		modifiers,
-		deltaX: (block.params as any).deltaX ? parseFloat((block.params as any).deltaX) : undefined,
-		deltaY: (block.params as any).deltaY ? parseFloat((block.params as any).deltaY) : undefined,
+		deltaX: block.params.deltaX ? parseFloat(block.params.deltaX) : undefined,
+		deltaY: block.params.deltaY ? parseFloat(block.params.deltaY) : undefined,
 		tabId: parseTabId(block),
 	})
 }
@@ -253,21 +255,23 @@ async function handleBrowserGetState(task: Task, block: ToolUse, callbacks: Tool
 }
 
 async function handleBrowserSetViewport(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const width = block.nativeArgs?.width ?? (block.params.width ? parseInt(block.params.width, 10) : undefined)
-	const height = block.nativeArgs?.height ?? (block.params.height ? parseInt(block.params.height, 10) : undefined)
-	const deviceScaleFactor = block.nativeArgs?.deviceScaleFactor ?? (block.params.deviceScaleFactor ? parseFloat(block.params.deviceScaleFactor) : undefined)
-	const mobile = block.nativeArgs?.mobile ?? (block.params.mobile === "true")
-	const tabId = block.nativeArgs?.tabId ?? parseTabId(block)
+	const args = block.nativeArgs as NativeToolArgs['browser_set_viewport'] | undefined
+	const width = args?.width ?? (block.params.width ? parseInt(block.params.width, 10) : undefined)
+	const height = args?.height ?? (block.params.height ? parseInt(block.params.height, 10) : undefined)
+	const deviceScaleFactor = args?.deviceScaleFactor ?? (block.params.deviceScaleFactor ? parseFloat(block.params.deviceScaleFactor) : undefined)
+	const mobile = args?.mobile ?? (block.params.mobile === "true")
+	const tabId = args?.tabId ?? parseTabId(block)
 	return roopikClient.browserSetViewport(width, height, deviceScaleFactor, mobile, tabId)
 }
 
 async function handleBrowserGetNetworkRequests(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const includeStaticAssets = block.nativeArgs?.includeStaticAssets ?? (block.params.includeStaticAssets === "true")
-	const urlFilter = block.nativeArgs?.urlFilter ?? block.params.urlFilter
-	const method = block.nativeArgs?.method ?? block.params.method
-	const statusFilter = (block.nativeArgs?.statusFilter ?? block.params.statusFilter) as "success" | "error" | "all" | undefined
-	const limit = block.nativeArgs?.limit ?? (block.params.limit ? parseInt(block.params.limit, 10) : undefined)
-	const tabId = block.nativeArgs?.tabId ?? parseTabId(block)
+	const args = block.nativeArgs as NativeToolArgs['browser_get_network_requests'] | undefined
+	const includeStaticAssets = args?.includeStaticAssets ?? (block.params.includeStaticAssets === "true")
+	const urlFilter = args?.urlFilter ?? block.params.urlFilter
+	const method = args?.method ?? block.params.method
+	const statusFilter = (args?.statusFilter ?? block.params.statusFilter) as "success" | "error" | "all" | undefined
+	const limit = args?.limit ?? (block.params.limit ? parseInt(block.params.limit, 10) : undefined)
+	const tabId = args?.tabId ?? parseTabId(block)
 	return roopikClient.browserGetNetworkRequests({ includeStaticAssets, urlFilter, method, statusFilter, limit, tabId })
 }
 
@@ -448,11 +452,12 @@ async function handleAddComponents(task: Task, block: ToolUse, callbacks: ToolCa
 }
 
 async function handleRemoveComponent(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const componentId = block.nativeArgs?.componentId ?? block.params.componentId ?? block.params.args
+	const args = block.nativeArgs as NativeToolArgs['component_remove'] | undefined
+	const componentId = args?.componentId ?? block.params.componentId ?? block.params.args
 	if (!componentId) {
 		return { success: false, error: "Missing required parameter: componentId" }
 	}
-	const deleteSourceCode = block.nativeArgs?.deleteSourceCode ?? (block.params.deleteSourceCode === "true")
+	const deleteSourceCode = args?.deleteSourceCode ?? (block.params.deleteSourceCode === "true")
 	return roopikClient.removeComponent(componentId, deleteSourceCode)
 }
 

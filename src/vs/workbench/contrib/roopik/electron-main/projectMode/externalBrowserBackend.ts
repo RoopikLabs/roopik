@@ -272,13 +272,11 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	private readonly _onActiveTabChanged = new Emitter<{ tabId: number }>();
 	readonly onActiveTabChanged: Event<{ tabId: number }> = this._onActiveTabChanged.event;
 
-	private readonly profileMode: 'persistent' | 'fresh';
 	private tempProfilePath?: string;
 
 	constructor(cdpPort: number = 9222, customChromePath?: string, profileMode: 'persistent' | 'fresh' = 'persistent') {
 		this.cdpPort = cdpPort;
 		this.chromePath = findChromePath(customChromePath);
-		this.profileMode = profileMode;
 		if (profileMode === 'fresh') {
 			this.tempProfilePath = mkdtempSync(join(tmpdir(), 'roopik-chrome-'));
 			this.profilePath = this.tempProfilePath;
