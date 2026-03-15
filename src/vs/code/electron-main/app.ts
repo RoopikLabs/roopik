@@ -1374,8 +1374,9 @@ export class CodeApplication extends Disposable {
 		if (browserMode === 'external') {
 			const cdpPort = this.configurationService.getValue<number>('roopik.browser.externalCdpPort') || 9222;
 			const chromePath = this.configurationService.getValue<string>('roopik.browser.externalChromePath') || undefined;
-			browserBackend = new ExternalBrowserBackend(cdpPort, chromePath);
-			console.log(`[Roopik] Browser mode: external (CDP port ${cdpPort})`);
+			const profileMode = this.configurationService.getValue<string>('roopik.browser.externalChromeProfile') === 'fresh' ? 'fresh' as const : 'persistent' as const;
+			browserBackend = new ExternalBrowserBackend(cdpPort, chromePath, profileMode);
+			console.log(`[Roopik] Browser mode: external (CDP port ${cdpPort}, profile: ${profileMode})`);
 		} else {
 			const maxTabs = this.configurationService.getValue<number>('roopik.browser.maxTabs') || 3;
 			browserBackend = new BrowserViewService(accessor.get(ILoggerService), accessor.get(ILifecycleMainService), maxTabs);

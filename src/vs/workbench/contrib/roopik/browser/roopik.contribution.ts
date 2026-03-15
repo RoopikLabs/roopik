@@ -249,10 +249,21 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 			order: 32,
 			markdownDescription: '**CDP Remote Debugging Port** - Port used to communicate with external Chrome.\n\nDefault: `9222`. Change if another app is already using this port.'
 		},
+		'roopik.browser.externalChromeProfile': {
+			type: 'string',
+			enum: ['persistent', 'fresh'],
+			default: 'persistent',
+			order: 33,
+			enumDescriptions: [
+				'Reuse a dedicated Roopik Chrome profile — extensions, passwords, and sessions persist across restarts',
+				'Start with a clean temporary profile every time — nothing is saved between sessions'
+			],
+			markdownDescription: '**Chrome Profile Mode** - Controls whether the external Chrome browser keeps its data between sessions.\n\n- **Persistent** *(default)*: A dedicated Roopik profile at `~/.roopik/browser-profile`. Install extensions, save passwords, stay logged in — everything persists.\n- **Fresh**: Temporary profile, destroyed when the browser closes. Useful for clean testing environments.\n\n⚠️ *Requires IDE restart to take effect.*'
+		},
 		'roopik.browser.attachElementScreenshot': {
 			type: 'boolean',
 			default: true,
-			order: 33,
+			order: 34,
 			markdownDescription: '**Include Screenshot in Inspect Mode** - When attaching an element to AI chat, also capture a screenshot of the element along with its HTML context.'
 		},
 

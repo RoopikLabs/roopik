@@ -18,10 +18,10 @@
  */
 
 import { spawn, type ChildProcess } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, mkdtempSync, rmSync } from 'fs';
 // eslint-disable-next-line local/code-import-patterns
 import { join } from 'path';
-import { homedir, platform } from 'os';
+import { homedir, platform, tmpdir } from 'os';
 import { Emitter, type Event } from '../../../../../base/common/event.js';
 import type { IBrowserBackend, ScreenshotWithMetadata, TabInfo } from './browserBackend.js';
 import type { NavigationState, NavigationStateChangedEvent, DevToolsClosedEvent } from '../../common/projectMode/types.js';
@@ -272,10 +272,19 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 	private readonly _onActiveTabChanged = new Emitter<{ tabId: number }>();
 	readonly onActiveTabChanged: Event<{ tabId: number }> = this._onActiveTabChanged.event;
 
-	constructor(cdpPort: number = 9222, customChromePath?: string) {
+	private readonly profileMode: 'persistent' | 'fresh';
+	private tempProfilePath?: string;
+
+	constructor(cdpPort: number = 9222, customChromePath?: string, profileMode: 'persistent' | 'fresh' = 'persistent') {
 		this.cdpPort = cdpPort;
 		this.chromePath = findChromePath(customChromePath);
-		this.profilePath = join(homedir(), '.roopik', 'browser-profile');
+		this.profileMode = profileMode;
+		if (profileMode === 'fresh') {
+			this.tempProfilePath = mkdtempSync(join(tmpdir(), 'roopik-chrome-'));
+			this.profilePath = this.tempProfilePath;
+		} else {
+			this.profilePath = join(homedir(), '.roopik', 'browser-profile');
+		}
 	}
 
 	// ========================================================================
@@ -1368,6 +1377,15 @@ export class ExternalBrowserBackend implements IBrowserBackend {
 				console.debug('[ExternalBrowser] Chrome process already exited or kill failed:', err);
 			}
 			this.chromeProcess = null;
+		}
+
+		// Clean up temp profile if using fresh mode
+		if (this.tempProfilePath) {
+			try {
+				rmSync(this.tempProfilePath, { recursive: true, force: true });
+			} catch {
+				// Best-effort cleanup
+			}
 		}
 	}
 }
