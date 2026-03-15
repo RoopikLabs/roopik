@@ -5,8 +5,7 @@
 
 import * as fs from 'fs';
 import { dirname } from '../../../../../base/common/path.js';
-import { DEFAULT_WORKSPACE_CONFIG, DEFAULT_CANVAS_PREFERENCES, DEFAULT_PROJECT_INDEX } from '../../common/storage/storageTypes.js';
-import type { CanvasInfo, CanvasRegistry, CanvasFile, ComponentReference, WorkspaceConfig, ProjectInfo, ProjectIndex } from '../../common/storage/storageTypes.js';
+import { DEFAULT_WORKSPACE_CONFIG, DEFAULT_CANVAS_PREFERENCES, DEFAULT_PROJECT_INDEX, type CanvasInfo, type CanvasRegistry, type CanvasFile, type ComponentReference, type WorkspaceConfig, type ProjectInfo, type ProjectIndex } from '../../common/storage/storageTypes.js';
 import type { CanvasMeta } from '../../common/canvas/types.js';
 import {
 	getWorkspaceRoopikPath,
@@ -32,6 +31,34 @@ import {
 export class WorkspaceStorage {
 	private workspacePath: string = '';
 	private initialized: boolean = false;
+
+	/**
+	 * Per-file write queue to prevent concurrent read-modify-write races.
+	 * Each key is a file identifier (e.g., canvasId or "registry").
+	 * Operations on the same file are serialized; different files run in parallel.
+	 */
+	private readonly writeQueues = new Map<string, Promise<unknown>>();
+
+	/**
+	 * Serialize an async operation on a given file key.
+	 * All operations with the same key execute one-at-a-time in order.
+	 */
+	private serialized<T>(fileKey: string, fn: () => Promise<T>): Promise<T> {
+		const prev = this.writeQueues.get(fileKey) ?? Promise.resolve();
+		const next = prev.then(fn, fn); // run fn even if prev rejected
+		this.writeQueues.set(fileKey, next);
+		// Clean up entry when queue drains to avoid unbounded map growth
+		next.then(() => {
+			if (this.writeQueues.get(fileKey) === next) {
+				this.writeQueues.delete(fileKey);
+			}
+		}, () => {
+			if (this.writeQueues.get(fileKey) === next) {
+				this.writeQueues.delete(fileKey);
+			}
+		});
+		return next;
+	}
 
 	// ========================================================================
 	// Initialization
@@ -142,32 +169,34 @@ export class WorkspaceStorage {
 	 * Creates the canvas file with empty components and default preferences
 	 */
 	async createCanvas(id: string, name: string): Promise<void> {
-		this.ensureInitialized();
+		return this.serialized('__registry__', async () => {
+			this.ensureInitialized();
 
-		// Create canvas file (.roopik/canvases/{id}.json)
-		const now = Date.now();
-		const canvasFile: CanvasFile = {
-			id,
-			name,
-			createdAt: now,
-			updatedAt: now,
-			preferences: { ...DEFAULT_CANVAS_PREFERENCES },
-			components: {}
-		};
+			// Create canvas file (.roopik/canvases/{id}.json)
+			const now = Date.now();
+			const canvasFile: CanvasFile = {
+				id,
+				name,
+				createdAt: now,
+				updatedAt: now,
+				preferences: { ...DEFAULT_CANVAS_PREFERENCES },
+				components: {}
+			};
 
-		const canvasFilePath = getCanvasPath(this.workspacePath, id);
-		await this.writeJson(canvasFilePath, canvasFile);
+			const canvasFilePath = getCanvasPath(this.workspacePath, id);
+			await this.writeJson(canvasFilePath, canvasFile);
 
-		// Update registry
-		const registry = await this.getCanvasRegistry();
-		const canvasInfo: CanvasInfo = {
-			id,
-			name,
-			createdAt: now,
-			updatedAt: now
-		};
-		registry.canvases.push(canvasInfo);
-		await this.writeJson(getCanvasRegistryPath(this.workspacePath), registry);
+			// Update registry
+			const registry = await this.getCanvasRegistry();
+			const canvasInfo: CanvasInfo = {
+				id,
+				name,
+				createdAt: now,
+				updatedAt: now
+			};
+			registry.canvases.push(canvasInfo);
+			await this.writeJson(getCanvasRegistryPath(this.workspacePath), registry);
+		});
 	}
 
 	/**
@@ -207,33 +236,37 @@ export class WorkspaceStorage {
 		const canvasFilePath = getCanvasPath(this.workspacePath, canvasFile.id);
 		await this.writeJson(canvasFilePath, canvasFile);
 
-		// Update registry timestamp
-		const registry = await this.getCanvasRegistry();
-		const entry = registry.canvases.find(c => c.id === canvasFile.id);
-		if (entry) {
-			entry.updatedAt = canvasFile.updatedAt;
-			await this.writeJson(getCanvasRegistryPath(this.workspacePath), registry);
-		}
+		// Update registry timestamp (serialized to prevent concurrent registry writes)
+		await this.serialized('__registry__', async () => {
+			const registry = await this.getCanvasRegistry();
+			const entry = registry.canvases.find(c => c.id === canvasFile.id);
+			if (entry) {
+				entry.updatedAt = canvasFile.updatedAt;
+				await this.writeJson(getCanvasRegistryPath(this.workspacePath), registry);
+			}
+		});
 	}
 
 	/**
 	 * Delete a canvas and its file
 	 */
 	async deleteCanvas(canvasId: string): Promise<void> {
-		this.ensureInitialized();
+		return this.serialized('__registry__', async () => {
+			this.ensureInitialized();
 
-		// Delete canvas file
-		const canvasFilePath = getCanvasPath(this.workspacePath, canvasId);
-		try {
-			await fs.promises.unlink(canvasFilePath);
-		} catch {
-			// Ignore if already deleted
-		}
+			// Delete canvas file
+			const canvasFilePath = getCanvasPath(this.workspacePath, canvasId);
+			try {
+				await fs.promises.unlink(canvasFilePath);
+			} catch {
+				// Ignore if already deleted
+			}
 
-		// Update registry
-		const registry = await this.getCanvasRegistry();
-		registry.canvases = registry.canvases.filter(c => c.id !== canvasId);
-		await this.writeJson(getCanvasRegistryPath(this.workspacePath), registry);
+			// Update registry
+			const registry = await this.getCanvasRegistry();
+			registry.canvases = registry.canvases.filter(c => c.id !== canvasId);
+			await this.writeJson(getCanvasRegistryPath(this.workspacePath), registry);
+		});
 	}
 
 	/**
@@ -249,11 +282,13 @@ export class WorkspaceStorage {
 	 * Set the active canvas ID in registry
 	 */
 	async setActiveCanvasId(canvasId: string | null): Promise<void> {
-		this.ensureInitialized();
-		const registry = await this.getCanvasRegistry();
-		registry.activeCanvasId = canvasId;
-		const registryPath = getCanvasRegistryPath(this.workspacePath);
-		await this.writeJson(registryPath, registry);
+		return this.serialized('__registry__', async () => {
+			this.ensureInitialized();
+			const registry = await this.getCanvasRegistry();
+			registry.activeCanvasId = canvasId;
+			const registryPath = getCanvasRegistryPath(this.workspacePath);
+			await this.writeJson(registryPath, registry);
+		});
 	}
 
 	/**
@@ -292,18 +327,20 @@ export class WorkspaceStorage {
 	 * Updates the canvas file with new metadata (name, preferences, etc.)
 	 */
 	async saveCanvasMeta(canvasId: string, meta: CanvasMeta): Promise<void> {
-		this.ensureInitialized();
+		return this.serialized(canvasId, async () => {
+			this.ensureInitialized();
 
-		const canvasFile = await this.loadCanvasFile(canvasId);
-		if (!canvasFile) {
-			throw new Error(`Canvas ${canvasId} not found`);
-		}
+			const canvasFile = await this.loadCanvasFile(canvasId);
+			if (!canvasFile) {
+				throw new Error(`Canvas ${canvasId} not found`);
+			}
 
-		// Update metadata fields
-		canvasFile.name = meta.name;
-		canvasFile.updatedAt = Date.now();
+			// Update metadata fields
+			canvasFile.name = meta.name;
+			canvasFile.updatedAt = Date.now();
 
-		await this.saveCanvasFile(canvasFile);
+			await this.saveCanvasFile(canvasFile);
+		});
 	}
 
 
@@ -323,36 +360,40 @@ export class WorkspaceStorage {
 		componentId: string,
 		reference: ComponentReference
 	): Promise<void> {
-		this.ensureInitialized();
+		return this.serialized(canvasId, async () => {
+			this.ensureInitialized();
 
-		const canvasFile = await this.loadCanvasFile(canvasId);
-		if (!canvasFile) {
-			throw new Error(`Canvas ${canvasId} not found`);
-		}
+			const canvasFile = await this.loadCanvasFile(canvasId);
+			if (!canvasFile) {
+				throw new Error(`Canvas ${canvasId} not found`);
+			}
 
-		// Add reference to canvas
-		canvasFile.components[componentId] = reference;
-		canvasFile.updatedAt = Date.now();
+			// Add reference to canvas
+			canvasFile.components[componentId] = reference;
+			canvasFile.updatedAt = Date.now();
 
-		await this.saveCanvasFile(canvasFile);
+			await this.saveCanvasFile(canvasFile);
+		});
 	}
 
 	/**
 	 * Remove component reference from canvas
 	 */
 	async removeComponentReference(canvasId: string, componentId: string): Promise<void> {
-		this.ensureInitialized();
+		return this.serialized(canvasId, async () => {
+			this.ensureInitialized();
 
-		const canvasFile = await this.loadCanvasFile(canvasId);
-		if (!canvasFile) {
-			throw new Error(`Canvas ${canvasId} not found`);
-		}
+			const canvasFile = await this.loadCanvasFile(canvasId);
+			if (!canvasFile) {
+				throw new Error(`Canvas ${canvasId} not found`);
+			}
 
-		// Remove reference from canvas
-		delete canvasFile.components[componentId];
-		canvasFile.updatedAt = Date.now();
+			// Remove reference from canvas
+			delete canvasFile.components[componentId];
+			canvasFile.updatedAt = Date.now();
 
-		await this.saveCanvasFile(canvasFile);
+			await this.saveCanvasFile(canvasFile);
+		});
 	}
 
 	/**
@@ -387,25 +428,27 @@ export class WorkspaceStorage {
 		componentId: string,
 		updates: Partial<ComponentReference>
 	): Promise<void> {
-		this.ensureInitialized();
+		return this.serialized(canvasId, async () => {
+			this.ensureInitialized();
 
-		const canvasFile = await this.loadCanvasFile(canvasId);
-		if (!canvasFile) {
-			throw new Error(`Canvas ${canvasId} not found`);
-		}
+			const canvasFile = await this.loadCanvasFile(canvasId);
+			if (!canvasFile) {
+				throw new Error(`Canvas ${canvasId} not found`);
+			}
 
-		const reference = canvasFile.components[componentId];
-		if (!reference) {
-			throw new Error(`Component ${componentId} not found in canvas ${canvasId}`);
-		}
+			const reference = canvasFile.components[componentId];
+			if (!reference) {
+				throw new Error(`Component ${componentId} not found in canvas ${canvasId}`);
+			}
 
-		// Update fields
-		Object.assign(reference, updates);
-		reference.updatedAt = Date.now();
-		canvasFile.updatedAt = Date.now();
+			// Update fields
+			Object.assign(reference, updates);
+			reference.updatedAt = Date.now();
+			canvasFile.updatedAt = Date.now();
 
-		// Save canvas file
-		await this.saveCanvasFile(canvasFile);
+			// Save canvas file
+			await this.saveCanvasFile(canvasFile);
+		});
 	}
 
 	/**
