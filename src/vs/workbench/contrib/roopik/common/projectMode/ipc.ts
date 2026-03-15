@@ -89,7 +89,7 @@ export interface IProjectModeService {
 	 * @param windowId - The parent window ID
 	 * @returns Browser view ID and debugging port
 	 */
-	createBrowserView(windowId: number): Promise<BrowserViewResult>;
+	createBrowserView(windowId: number, tabId?: number): Promise<BrowserViewResult & { tabId: number }>;
 
 	/**
 	 * Destroy browser view and cleanup resources
@@ -188,6 +188,7 @@ export interface IProjectModeService {
 	/**
 	 * Send CDP command
 	 */
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any>;
 
 	/**
@@ -230,6 +231,7 @@ export interface IProjectModeService {
 	/**
 	 * Execute JavaScript in browser
 	 */
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	executeScript(browserViewId: number, script: string): Promise<any>;
 
 	/**

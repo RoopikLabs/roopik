@@ -22,19 +22,31 @@
 import { z } from 'zod';
 
 // ============================================================================
+// Common field: tabId (used by all browser tools that target a specific tab)
+// ============================================================================
+
+const tabIdField = z.number().optional().describe(
+	'Target tab ID. Omit to use the active tab. Use browser_get_state to see all open tabs.'
+);
+
+// ============================================================================
 // Browser Tool Schemas (14)
 // ============================================================================
 
 export const browserOpenSchema = z.object({
-	url: z.string().optional().describe('Optional URL to navigate to')
+	url: z.string().optional().describe('Optional URL to navigate to'),
+	tabId: tabIdField,
+	newTab: z.boolean().optional().describe('If true, open a new tab instead of focusing the active one')
 });
 
 export const browserNavigateSchema = z.object({
-	url: z.string().describe('URL to navigate to')
+	url: z.string().describe('URL to navigate to'),
+	tabId: tabIdField
 });
 
 export const browserReloadSchema = z.object({
-	ignoreCache: z.boolean().optional().describe('Whether to ignore cache when reloading')
+	ignoreCache: z.boolean().optional().describe('Whether to ignore cache when reloading'),
+	tabId: tabIdField
 });
 
 export const browserActionInputSchema = z.object({
@@ -45,34 +57,40 @@ export const browserActionInputSchema = z.object({
 	key: z.string().optional().describe('Key to press (for press action)'),
 	modifiers: z.array(z.string()).optional().describe('Modifier keys (ctrl, alt, shift, meta)'),
 	deltaX: z.number().optional().describe('Horizontal scroll delta'),
-	deltaY: z.number().optional().describe('Vertical scroll delta')
+	deltaY: z.number().optional().describe('Vertical scroll delta'),
+	tabId: tabIdField
 });
 
 export const browserExecuteScriptSchema = z.object({
-	script: z.string().describe('JavaScript code to execute')
+	script: z.string().describe('JavaScript code to execute'),
+	tabId: tabIdField
 });
 
 export const browserInspectElementSchema = z.object({
 	selector: z.string().describe('CSS selector for the element'),
-	includeInherited: z.boolean().optional().describe('Include inherited styles')
+	includeInherited: z.boolean().optional().describe('Include inherited styles'),
+	tabId: tabIdField
 });
 
 export const browserGetErrorsSchema = z.object({
-	limit: z.number().optional().describe('Maximum number of errors to return')
+	limit: z.number().optional().describe('Maximum number of errors to return'),
+	tabId: tabIdField
 });
 
 export const browserGetConsoleLogsSchema = z.object({
 	types: z.array(z.string()).optional().describe('Filter by log types (log, warn, error, etc.)'),
 	since: z.number().optional().describe('Get logs since timestamp'),
 	limit: z.number().optional().describe('Maximum number of logs'),
-	clear: z.boolean().optional().describe('Clear logs after getting')
+	clear: z.boolean().optional().describe('Clear logs after getting'),
+	tabId: tabIdField
 });
 
 export const browserSetViewportSchema = z.object({
 	width: z.number().optional().describe('Viewport width in pixels. Omit to clear override.'),
 	height: z.number().optional().describe('Viewport height in pixels. Omit to clear override.'),
 	deviceScaleFactor: z.number().optional().describe('Device scale factor (default: 1)'),
-	mobile: z.boolean().optional().describe('Emulate mobile device (default: false)')
+	mobile: z.boolean().optional().describe('Emulate mobile device (default: false)'),
+	tabId: tabIdField
 });
 
 export const browserGetNetworkRequestsSchema = z.object({
@@ -81,7 +99,16 @@ export const browserGetNetworkRequestsSchema = z.object({
 	method: z.string().optional().describe('Filter by HTTP method (GET, POST, etc.)'),
 	statusFilter: z.enum(['success', 'error', 'all']).optional()
 		.describe('Filter by status: success (2xx-3xx), error (4xx-5xx or failed), all'),
-	limit: z.number().optional().describe('Maximum number of requests to return (default: 100, max: 500)')
+	limit: z.number().optional().describe('Maximum number of requests to return (default: 100, max: 500)'),
+	tabId: tabIdField
+});
+
+export const browserTabIdOnlySchema = z.object({
+	tabId: tabIdField
+});
+
+export const browserCloseSchema = z.object({
+	tabId: z.number().optional().describe('Tab ID to close. Omit to close ALL open browser tabs. Use browser_get_state to see all open tabs.')
 });
 
 // Empty schemas for tools with no parameters
@@ -249,12 +276,12 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 
 export default function HeroSection() {
-  const [count, setCount] = useState(0);
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <h1>Hero Section</h1>
-    </motion.div>
-  );
+	const [count, setCount] = useState(0);
+	return (
+		<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+			<h1>Hero Section</h1>
+		</motion.div>
+	);
 }
 \`\`\`
 
@@ -276,19 +303,19 @@ export default function HeroSection() {
 
 2-3. **Write + Add INCREMENTALLY** (critical for good UX!):
 
-   [OK] Write Hero -> Add Hero -> Write Card -> Add Card -> Write Nav -> Add Nav
-   [BAD] Write Hero -> Write Card -> Write Nav -> Add all at end
+		[OK] Write Hero -> Add Hero -> Write Card -> Add Card -> Write Nav -> Add Nav
+		[BAD] Write Hero -> Write Card -> Write Nav -> Add all at end
 
-   For each component:
-   a) Write **Single File Component (SFC)**:
-      - File: \`components/HeroSection/HeroSection.tsx\` (use component name, not index.tsx)
-      - MUST have default export
-      - Small, focused (one section) - NOT full pages
-      - Use standard imports, NOT CDN URLs
-   b) IMMEDIATELY call: \`component_add({ folderPath: "./components/HeroSection" })\`
-   c) User sees it appear in canvas instantly - move to next component
+		For each component:
+		a) Write **Single File Component (SFC)**:
+			- File: \`components/HeroSection/HeroSection.tsx\` (use component name, not index.tsx)
+			- MUST have default export
+			- Small, focused (one section) - NOT full pages
+			- Use standard imports, NOT CDN URLs
+		b) IMMEDIATELY call: \`component_add({ folderPath: "./components/HeroSection" })\`
+		c) User sees it appear in canvas instantly - move to next component
 
-   This gives users live feedback as each component becomes available!
+		This gives users live feedback as each component becomes available!
 
 4. Verify all at end: \`canvas_validate_components()\` - check build status
 
@@ -370,13 +397,13 @@ This lets users see live progress as you work.
 
 For each component:
 1. Write **Single File Component (SFC)**:
-   - [OK] HeroSection.tsx (just the hero)
-   - [OK] ProductCard.tsx (single card)
-   - [OK] NavBar.tsx (navigation only)
-   - [BAD] FullPage.tsx (too big!)
-   - [BAD] CompleteSite.html (not a component!)
-   - MUST have default export
-   - Use standard imports, NOT CDN URLs
+		- [OK] HeroSection.tsx (just the hero)
+		- [OK] ProductCard.tsx (single card)
+		- [OK] NavBar.tsx (navigation only)
+		- [BAD] FullPage.tsx (too big!)
+		- [BAD] CompleteSite.html (not a component!)
+		- MUST have default export
+		- Use standard imports, NOT CDN URLs
 
 Each component folder should contain ONE UI element.
 
@@ -455,22 +482,22 @@ Use Canvas Mode instead! Canvas shows multiple components side-by-side.`,
 Each component should be in its own folder (use component name, not index.tsx):
 \`\`\`
 components/
-  HeroSection/
-    HeroSection.tsx (or .vue, .svelte)
-    styles.css (optional)
-  ProductCard/
-    ProductCard.tsx
-  NavBar/
-    NavBar.tsx
+	HeroSection/
+		HeroSection.tsx (or .vue, .svelte)
+		styles.css (optional)
+	ProductCard/
+		ProductCard.tsx
+	NavBar/
+		NavBar.tsx
 \`\`\`
 
 ## For Variations
 Create separate component folders:
 \`\`\`
 components/
-  HeroSection-v1/
-  HeroSection-v2/
-  HeroSection-v3/
+	HeroSection-v1/
+	HeroSection-v2/
+	HeroSection-v3/
 \`\`\`
 Then add all three to the canvas to compare side-by-side.`
 };
@@ -493,37 +520,37 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	// ========== Browser Tools (14) ==========
 	{
 		name: 'browser_open',
-		description: 'Open the browser view. Optionally navigate to a URL. For local project files: file:// URLs are not supported. Use project_start for Vite-based projects, or manually start a server (e.g., npx serve) and use browser_navigate with the http://localhost address.',
+		description: 'Open a browser tab. With no args: focuses active tab (or opens first tab if none). With newTab:true: opens a new tab. With tabId: focuses that tab. With url: navigates after open/focus. Returns tabId in response.',
 		schema: browserOpenSchema
 	},
 	{
 		name: 'browser_close',
-		description: 'Close the browser view.',
-		schema: emptySchema
+		description: 'Close browser tabs. With tabId: closes that specific tab. Without tabId: closes ALL open browser tabs.',
+		schema: browserCloseSchema
 	},
 	{
 		name: 'browser_screenshot',
-		description: 'Take a screenshot of the current browser view. Returns base64 PNG image.',
-		schema: emptySchema
+		description: 'Take a screenshot of a browser tab. Returns base64 PNG image with tabId.',
+		schema: browserTabIdOnlySchema
 	},
 	{
 		name: 'browser_navigate',
-		description: 'Navigate to a URL in the browser. For local project files: file:// URLs are not supported. Use project_start for Vite-based projects, or manually start a server (e.g., npx serve) and use the http://localhost address.',
+		description: 'Navigate to a URL in a browser tab. For local projects: use project_start for Vite, or start a server and use http://localhost.',
 		schema: browserNavigateSchema
 	},
 	{
 		name: 'browser_reload',
-		description: 'Reload the current page.',
+		description: 'Reload a browser tab.',
 		schema: browserReloadSchema
 	},
 	{
 		name: 'browser_action_input',
-		description: 'Perform browser input actions (click, type, scroll, etc.).',
+		description: 'Perform browser input actions (click, type, scroll, etc.) on a tab.',
 		schema: browserActionInputSchema
 	},
 	{
 		name: 'browser_execute_script',
-		description: 'Execute JavaScript in the browser context.',
+		description: 'Execute JavaScript in a browser tab context.',
 		schema: browserExecuteScriptSchema
 	},
 	{
@@ -533,32 +560,32 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_get_errors',
-		description: 'Get console errors and network failures. Auto-clears on page reload.',
+		description: 'Get console errors and network failures from a tab. Auto-clears on page reload.',
 		schema: browserGetErrorsSchema
 	},
 	{
 		name: 'browser_get_console_logs',
-		description: 'Get browser console logs.',
+		description: 'Get browser console logs from a tab.',
 		schema: browserGetConsoleLogsSchema
 	},
 	{
 		name: 'browser_get_performance',
-		description: 'Get browser performance metrics (Web Vitals: LCP, CLS, FCP, TTFB and runtime metrics).',
-		schema: emptySchema
+		description: 'Get browser performance metrics (Web Vitals: LCP, CLS, FCP, TTFB and runtime metrics) from a tab.',
+		schema: browserTabIdOnlySchema
 	},
 	{
 		name: 'browser_get_state',
-		description: 'Get browser state information (open/closed, current URL, title).',
-		schema: emptySchema
+		description: 'Get browser state: open/closed, dev server status, active tab ID, and all tabs with URLs, titles, loading status, and viewport sizes. Pass tabId to get only that tab\'s info.',
+		schema: browserTabIdOnlySchema
 	},
 	{
 		name: 'browser_set_viewport',
-		description: 'Set or clear browser viewport override. Provide width/height to set a specific size (e.g., mobile 375x812). Call with NO parameters to clear override and restore natural browser size.',
+		description: 'Set or clear browser viewport override on a tab. Provide width/height to set a specific size (e.g., mobile 375x812). Call with NO parameters to clear override.',
 		schema: browserSetViewportSchema
 	},
 	{
 		name: 'browser_get_network_requests',
-		description: 'Get network requests. Use includeStaticAssets parameter to show all assets.',
+		description: 'Get network requests from a tab. Use includeStaticAssets to show all assets.',
 		schema: browserGetNetworkRequestsSchema
 	},
 
@@ -584,7 +611,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		schema: canvasOpenSchema
 	},
 
-	// ========== Component Tools (6) ==========
+	// ========== Component Tools (7) ==========
 	{
 		name: 'component_add',
 		description: 'Add a component to a canvas for live preview. Components should be small, focused pieces (e.g., a hero section, a product card, a navigation bar) - NOT full pages. Each component folder should contain a single UI element that can be iterated on independently. The canvas displays all added components side-by-side for easy comparison and iteration.',
@@ -864,11 +891,11 @@ browser_get_errors → browser_get_console_logs → (fix code) → browser_reloa
 - **Project Tools** (3): project_get_active, project_start, project_stop
 - **Browser Core** (6): browser_open, browser_close, browser_screenshot, browser_navigate, browser_reload, browser_action_input
 - **Browser Debug** (4): browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs
-- **Browser Info** (4): browser_get_performance, browser_get_state, browser_set_viewport, browser_get_network_requests
+- **Browser Info** (4): browser_get_state, browser_get_performance, browser_set_viewport, browser_get_network_requests
 - **Canvas Tools** (4): canvas_list, canvas_get_active, canvas_create, canvas_open
 - **Component Tools** (7): component_add, component_add_batch, component_remove, component_get_info, component_list, component_rebuild, canvas_validate_components
 
-## Total: 27 Tools`
+## Total: 29 Tools`
 	},
 	{
 		name: 'how-to-test-responsive',

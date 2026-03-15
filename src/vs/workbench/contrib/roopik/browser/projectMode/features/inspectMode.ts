@@ -29,7 +29,8 @@ import { INSPECT_MODE_SCRIPT } from '../scripts/inspectModeScript.js';
  * Script is modularized in: ../scripts/inspectModeScript.ts
  */
 export class InspectMode {
-	private isActive: boolean = false;
+	// Track inspect mode state per browserViewId (multi-tab safe)
+	private activeInViews = new Set<number>();
 
 	constructor(
 		private readonly browserService: IProjectModeService,
@@ -45,7 +46,7 @@ export class InspectMode {
 			return;
 		}
 
-		this.isActive = true;
+		this.activeInViews.add(browserViewId);
 
 		try {
 			await this.browserService.executeScript(browserViewId, INSPECT_MODE_SCRIPT);
@@ -53,7 +54,7 @@ export class InspectMode {
 			// Focus the browser view so ESC key events are received
 			await this.browserService.focusBrowserView(browserViewId);
 		} catch {
-			this.isActive = false;
+			this.activeInViews.delete(browserViewId);
 		}
 	}
 
@@ -65,7 +66,7 @@ export class InspectMode {
 			return;
 		}
 
-		this.isActive = false;
+		this.activeInViews.delete(browserViewId);
 
 		try {
 			await this.browserService.executeScript(browserViewId, `
@@ -79,10 +80,14 @@ export class InspectMode {
 	}
 
 	/**
-	 * Check if inspect mode is active (local state)
+	 * Check if inspect mode is active for a specific browser view.
+	 * Pass browserViewId to check per-tab; omit for backwards-compat (any active).
 	 */
-	getIsActive(): boolean {
-		return this.isActive;
+	getIsActive(browserViewId?: number): boolean {
+		if (browserViewId !== undefined) {
+			return this.activeInViews.has(browserViewId);
+		}
+		return this.activeInViews.size > 0;
 	}
 
 	/**

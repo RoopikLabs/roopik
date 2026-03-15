@@ -25,9 +25,13 @@ import { IMainProcessService } from '../../../../../platform/ipc/common/mainProc
 import { IEditorService } from '../../../../services/editor/common/editorService.js';
 import { IEditorGroupsService } from '../../../../services/editor/common/editorGroupsService.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
-import { ROOPIK_TOOLS_CHANNEL_NAME } from '../../common/tools/types.js';
-import type { RoopikToolResult } from '../../common/tools/types.js';
+import { ROOPIK_TOOLS_CHANNEL_NAME, type RoopikToolResult } from '../../common/tools/types.js';
 import { openBrowserEditor } from './browserCommands.js';
+
+/** Check if external browser mode is configured */
+function isExternalMode(configurationService: IConfigurationService): boolean {
+	return (configurationService.getValue<string>('roopik.browser.mode') || 'embedded') === 'external';
+}
 
 /**
  * Generic tool call interface for extensions
@@ -105,13 +109,19 @@ export function registerRoopikToolsCommands(): void {
 
 		async run(accessor: ServicesAccessor, args?: { url?: string }): Promise<RoopikToolResult> {
 			try {
-				const editorService = accessor.get(IEditorService);
-				const editorGroupsService = accessor.get(IEditorGroupsService);
 				const configurationService = accessor.get(IConfigurationService);
-				// Get mainProcessService immediately - accessor is only valid during synchronous execution
 				const mainProcessService = accessor.get(IMainProcessService);
 
-				// Open/focus the browser editor tab (this triggers createBrowserView internally)
+				if (isExternalMode(configurationService)) {
+					// External mode: delegate entirely to backend
+					const channel = getToolsChannel(mainProcessService);
+					return await channel.call('browser_open', { url: args?.url }) as RoopikToolResult;
+				}
+
+				// Embedded mode: open/focus editor tab (renderer only creates UI)
+				const editorService = accessor.get(IEditorService);
+				const editorGroupsService = accessor.get(IEditorGroupsService);
+
 				const browserPane = await openBrowserEditor(editorService, editorGroupsService, configurationService);
 
 				if (!browserPane) {
@@ -121,32 +131,15 @@ export function registerRoopikToolsCommands(): void {
 					};
 				}
 
-				// If URL provided, navigate via IPC channel
-				// The editor creates the browser asynchronously, so we use a short delay
-				// to ensure the browser is ready before navigating
+				// Delegate navigation to backend via IPC — backend resolves the correct browserViewId
 				if (args?.url) {
-					// Small delay to let browser initialize
-					await new Promise(resolve => setTimeout(resolve, 500));
-
 					const channel = getToolsChannel(mainProcessService);
-					// URL normalization is done in browserViewService.navigate()
-					const navResult = await channel.call('browser_navigate', { url: args.url }) as RoopikToolResult;
-
-					if (navResult?.success) {
-						return {
-							success: true,
-							data: {
-								url: args.url,
-								message: `Browser opened at ${args.url}`
-							}
-						};
-					}
-					// Navigation may fail if browser not ready yet, but browser is open
+					await channel.call('browser_navigate', { url: args.url });
 					return {
 						success: true,
 						data: {
 							url: args.url,
-							message: `Browser opened. Navigation to ${args.url} may still be in progress.`
+							message: `Browser opened at ${args.url}`
 						}
 					};
 				}
@@ -176,10 +169,10 @@ export function registerRoopikToolsCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
+		async run(accessor: ServicesAccessor, args?: { tabId?: number }): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('browser_close');
+			return channel.call('browser_close', args || {});
 		}
 	});
 
@@ -415,6 +408,24 @@ export function registerRoopikToolsCommands(): void {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
 			return channel.call('browser_get_network_requests', args || {});
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserCloseTab',
+				title: { value: 'Close Browser Tab', original: 'Close Browser Tab' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: { tabId?: number }): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			// Delegates to unified browser_close: tabId = close specific, no tabId = close all
+			return channel.call('browser_close', args ? { tabId: args.tabId } : {});
 		}
 	});
 

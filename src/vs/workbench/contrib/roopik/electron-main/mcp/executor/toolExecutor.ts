@@ -15,7 +15,7 @@
  * - This file is now a thin adapter that routes and delegates
  */
 
-import type { BrowserViewService } from '../../projectMode/browserViewService.js';
+import type { IBrowserBackend } from '../../projectMode/browserBackend.js';
 import type { IRoopikStorageService } from '../../../common/storage/storageService.js';
 import type { ICanvasService } from '../../../common/canvas/canvasService.js';
 import type { ComponentService } from '../../component/componentService.js';
@@ -59,7 +59,7 @@ export class ToolExecutor {
 	private readonly storageService: IRoopikStorageService;
 
 	constructor(
-		browserViewService: BrowserViewService,
+		browserViewService: IBrowserBackend,
 		storageService: IRoopikStorageService,
 		canvasService: ICanvasService,
 		componentService: ComponentService,
@@ -143,7 +143,7 @@ export class ToolExecutor {
 			'canvas_create',
 			'canvas_open',
 			'canvas_validate_components',
-			// Component tools (8)
+			// Component tools (6)
 			'component_add',
 			'component_add_batch',
 			'component_remove',
@@ -165,21 +165,27 @@ export class ToolExecutor {
 	// ==========================================================================
 
 	private async executeBrowserTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
+		const tabId = params.tabId as number | undefined;
+
 		switch (tool) {
 			case 'browser_open':
-				return this.browserToolService.open(params.url as string | undefined);
+				return this.browserToolService.open({
+					url: params.url as string | undefined,
+					tabId,
+					newTab: params.newTab as boolean | undefined,
+				});
 
 			case 'browser_close':
-				return this.browserToolService.close();
+				return this.browserToolService.close(tabId);
 
 			case 'browser_screenshot':
-				return this.browserToolService.screenshot();
+				return this.browserToolService.screenshot(tabId);
 
 			case 'browser_navigate':
-				return this.browserToolService.navigate(params.url as string);
+				return this.browserToolService.navigate(params.url as string, tabId);
 
 			case 'browser_reload':
-				return this.browserToolService.reload(params.ignoreCache as boolean | undefined);
+				return this.browserToolService.reload(params.ignoreCache as boolean | undefined, tabId);
 
 			case 'browser_action_input':
 				return this.browserToolService.actionInput({
@@ -190,20 +196,22 @@ export class ToolExecutor {
 					modifiers: params.modifiers as string[] | undefined,
 					deltaX: params.deltaX as number | undefined,
 					deltaY: params.deltaY as number | undefined,
+					tabId,
 				});
 
 			case 'browser_execute_script':
-				return this.browserToolService.executeScript(params.script as string);
+				return this.browserToolService.executeScript(params.script as string, tabId);
 
 			case 'browser_inspect_element':
 				return this.browserToolService.inspectElement(
 					params.selector as string,
 					params.includeInherited as boolean | undefined,
-					this.storageService.getWorkspacePath()
+					this.storageService.getWorkspacePath(),
+					tabId
 				);
 
 			case 'browser_get_errors':
-				return this.browserToolService.getErrors(params.limit as number | undefined);
+				return this.browserToolService.getErrors(params.limit as number | undefined, tabId);
 
 			case 'browser_get_console_logs':
 				return this.browserToolService.getConsoleLogs({
@@ -211,24 +219,27 @@ export class ToolExecutor {
 					since: params.since as number | undefined,
 					limit: params.limit as number | undefined,
 					clear: params.clear as boolean | undefined,
+					tabId,
 				});
 
 			case 'browser_get_performance':
-				return this.browserToolService.getPerformance();
+				return this.browserToolService.getPerformance(tabId);
 
 			case 'browser_get_state':
-				return this.browserToolService.getState();
+				return this.browserToolService.getState(tabId);
 
-			case 'browser_set_viewport':
-				// If no params or no width/height, pass undefined to clear viewport
+			case 'browser_set_viewport': {
+				const hasViewportParams = Object.keys(params).some(k => k !== 'tabId');
 				return this.browserToolService.setViewport(
-					Object.keys(params).length === 0 ? undefined : {
+					hasViewportParams ? {
 						width: params.width as number | undefined,
 						height: params.height as number | undefined,
 						deviceScaleFactor: params.deviceScaleFactor as number | undefined,
 						mobile: params.mobile as boolean | undefined,
-					}
+						tabId,
+					} : tabId !== undefined ? { tabId } : undefined
 				);
+			}
 
 			case 'browser_get_network_requests':
 				return this.browserToolService.getNetworkRequests({
@@ -236,6 +247,7 @@ export class ToolExecutor {
 					method: params.method as string | undefined,
 					statusFilter: params.statusFilter as 'success' | 'error' | 'all' | undefined,
 					limit: params.limit as number | undefined,
+					tabId,
 				});
 
 			default:
@@ -247,7 +259,7 @@ export class ToolExecutor {
 	}
 
 	// ==========================================================================
-	// Canvas Tool Routing (4 tools) - Delegates to CanvasToolService
+	// Canvas Tool Routing (5 tools) - Delegates to CanvasToolService
 	// ==========================================================================
 
 	private async executeCanvasTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
@@ -285,7 +297,7 @@ export class ToolExecutor {
 	}
 
 	// ==========================================================================
-	// Component Tool Routing (8 tools) - Delegates to ComponentToolService
+	// Component Tool Routing (6 tools) - Delegates to ComponentToolService
 	// ==========================================================================
 
 	private async executeComponentTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
