@@ -1377,8 +1377,9 @@ export class CodeApplication extends Disposable {
 			browserBackend = new ExternalBrowserBackend(cdpPort, chromePath);
 			console.log(`[Roopik] Browser mode: external (CDP port ${cdpPort})`);
 		} else {
-			browserBackend = new BrowserViewService(accessor.get(ILoggerService), accessor.get(ILifecycleMainService));
-			console.log('[Roopik] Browser mode: embedded');
+			const maxTabs = this.configurationService.getValue<number>('roopik.browser.maxTabs') || 3;
+			browserBackend = new BrowserViewService(accessor.get(ILoggerService), accessor.get(ILifecycleMainService), maxTabs);
+			console.log(`[Roopik] Browser mode: embedded (max ${maxTabs} tabs)`);
 		}
 
 		// Clean up browser backend on IDE shutdown (kills external Chrome if we spawned it)

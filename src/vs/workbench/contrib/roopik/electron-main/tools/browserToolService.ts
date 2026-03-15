@@ -77,9 +77,27 @@ export class BrowserToolService {
 			const url = args?.url;
 			const browserViewId = this.browserViewService.getActiveBrowserViewId();
 
-			// Always open a new tab (first tab if browser not open, additional tab if already open)
-			const newTabId = await this.browserViewService.openNewTab(url);
-			if (url) {
+			// Try to open a new tab
+			let newTabId: number;
+			let warning: string | undefined;
+			try {
+				newTabId = await this.browserViewService.openNewTab(url);
+			} catch (e) {
+				// Tab limit reached — navigate in the active tab instead
+				const activeTabId = this.browserViewService.getActiveTabId();
+				if (activeTabId === undefined) {
+					throw e; // No active tab at all — re-throw
+				}
+				if (url) {
+					const viewId = this.browserViewService.resolveTabId(activeTabId);
+					await this.browserViewService.navigate(viewId, url);
+				}
+				const maxTabs = this.browserViewService.listTabs().length;
+				warning = `Tab limit reached (max ${maxTabs}). ${url ? `Navigated existing tab ${activeTabId} to ${url} instead.` : 'No new tab opened.'} Close a tab first or increase the limit in Settings → Roopik → Browser → Max Tabs.`;
+				newTabId = activeTabId;
+			}
+
+			if (url && !warning) {
 				const viewId = this.browserViewService.resolveTabId(newTabId);
 				this.cdpMonitorService.ensureMonitoring(viewId).catch(() => { });
 			}
@@ -87,9 +105,11 @@ export class BrowserToolService {
 			return {
 				success: true,
 				data: {
-					message: browserViewId === undefined
-						? (url ? `Browser opened at ${url}` : 'Browser opened')
-						: (url ? `New tab opened at ${url}` : 'New tab opened'),
+					message: warning
+						? warning
+						: browserViewId === undefined
+							? (url ? `Browser opened at ${url}` : 'Browser opened')
+							: (url ? `New tab opened at ${url}` : 'New tab opened'),
 					url: url || undefined,
 					tabId: newTabId
 				}

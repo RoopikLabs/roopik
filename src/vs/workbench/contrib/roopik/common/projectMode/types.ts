@@ -4,11 +4,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 /**
- * Maximum number of browser tabs allowed in embedded mode.
+ * Default maximum number of browser tabs allowed in embedded mode.
  * External mode has no limit (Chrome manages its own tabs).
+ * Configurable via setting: roopik.browser.maxTabs
  * Shared constant — imported by both renderer (browserCommands) and main (browserViewService).
  */
-export const MAX_BROWSER_TABS = 3;
+export const DEFAULT_MAX_BROWSER_TABS = 3;
 
 /**
  * Device preset for viewport emulation

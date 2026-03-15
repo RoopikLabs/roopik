@@ -18,7 +18,7 @@ import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.
 import contextMenu from 'electron-context-menu';
 import { cleanupCDPMonitoring } from '../tools/cdpMonitorService.js';
 import { injectStealthPatches } from './browserStealth.js';
-import { MAX_BROWSER_TABS, type IBrowserBackend, type TabInfo } from './browserBackend.js';
+import { DEFAULT_MAX_BROWSER_TABS, type IBrowserBackend, type TabInfo } from './browserBackend.js';
 import { FileAccess } from '../../../../../base/common/network.js';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
@@ -139,15 +139,20 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// Logger
 	private readonly logger;
 
+	// Max tabs (configurable via roopik.browser.maxTabs setting)
+	private readonly maxTabs: number;
+
 	// ============================================
 	// Constructor & Lifecycle Setup
 	// ============================================
 
 	constructor(
 		@ILoggerService loggerService: ILoggerService,
-		private readonly lifecycleMainService?: ILifecycleMainService
+		private readonly lifecycleMainService?: ILifecycleMainService,
+		maxTabs?: number
 	) {
 		super();
+		this.maxTabs = maxTabs ?? DEFAULT_MAX_BROWSER_TABS;
 		this.logger = getRoopikLogger(loggerService, 'BROWSER_VIEW');
 		// Initialize CDP CSS Service with this as the browser service
 		this.cdpCssService = new CDPCssService(this);
@@ -234,8 +239,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		}
 
 		// Check tab limit (embedded mode only)
-		if (this.tabToBrowserViewId.size >= MAX_BROWSER_TABS) {
-			throw new Error(`Tab limit reached (max ${MAX_BROWSER_TABS}). Close a tab first.`);
+		if (this.tabToBrowserViewId.size >= this.maxTabs) {
+			throw new Error(`Tab limit reached (max ${this.maxTabs}). Close a tab first.`);
 		}
 
 		const window = BrowserWindow.fromId(windowId);
@@ -508,8 +513,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	}
 
 	private async openNewTabImpl(url?: string): Promise<number> {
-		if (this.tabToBrowserViewId.size >= MAX_BROWSER_TABS) {
-			throw new Error(`Tab limit reached (max ${MAX_BROWSER_TABS}). Close a tab first.`);
+		if (this.tabToBrowserViewId.size >= this.maxTabs) {
+			throw new Error(`Tab limit reached (max ${this.maxTabs}). Close a tab first.`);
 		}
 
 		// Wait for the actual tab to be created by listening to onTabCreated.

@@ -29,8 +29,8 @@ import type { NavigationState, NavigationStateChangedEvent, DevToolsClosedEvent 
 import type { GetElementStylesRequest, GetElementStylesResult } from '../../common/cssResolvers/types.js';
 import type { Event } from '../../../../../base/common/event.js';
 
-// Re-export MAX_BROWSER_TABS from common so existing electron-main imports still work
-export { MAX_BROWSER_TABS } from '../../common/projectMode/types.js';
+// Re-export DEFAULT_MAX_BROWSER_TABS from common so existing electron-main imports still work
+export { DEFAULT_MAX_BROWSER_TABS } from '../../common/projectMode/types.js';
 
 // ============================================================================
 // Tab Info — returned by listTabs()
@@ -60,7 +60,7 @@ export interface IBrowserBackend {
 
 	// ------ Tab Management (multi-tab) ------
 
-	/** Open a new tab. Returns the stable tabId. Respects MAX_BROWSER_TABS in embedded mode. */
+	/** Open a new tab. Returns the stable tabId. Respects maxTabs limit in embedded mode. */
 	openNewTab(url?: string): Promise<number>;
 
 	/** List all open tabs with their info */

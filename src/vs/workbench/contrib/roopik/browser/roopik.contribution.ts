@@ -225,12 +225,20 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 				'Use the built-in browser inside Roopik IDE (WebContentsView)',
 				'Launch and control an external Chrome browser via CDP (remote debugging)'
 			],
-			markdownDescription: '**Browser Mode** - Choose between the embedded browser (built into the IDE) or an external Chrome browser controlled via Chrome DevTools Protocol.\n\n- **Embedded**: Fast, seamless preview inside the IDE. Up to 3 tabs. Source-map CSS inspection.\n- **External**: Full Chrome with unlimited tabs, extensions, and DevTools. Universal CSS inspection on any site.\n\n⚠️ *Requires IDE restart to take effect.*'
+			markdownDescription: '**Browser Mode** - Choose between the embedded browser (built into the IDE) or an external Chrome browser controlled via Chrome DevTools Protocol.\n\n- **Embedded**: Fast, seamless preview inside the IDE. Tab limit configurable via `#roopik.browser.maxTabs#`. Source-map CSS inspection.\n- **External**: Full Chrome with unlimited tabs, extensions, and DevTools. Universal CSS inspection on any site.\n\n⚠️ *Requires IDE restart to take effect.*'
+		},
+		'roopik.browser.maxTabs': {
+			type: 'number',
+			default: 3,
+			minimum: 1,
+			maximum: 10,
+			order: 30,
+			markdownDescription: '**Max Browser Tabs** - Maximum number of browser tabs allowed in embedded mode. External mode has no limit.\n\nDefault: `3`. Increase if you need more parallel browser tabs for multi-agent workflows.'
 		},
 		'roopik.browser.externalChromePath': {
 			type: 'string',
 			default: '',
-			order: 30,
+			order: 31,
 			markdownDescription: '**Chrome Executable Path** - Full path to the Chrome or Chromium executable for external browser mode. Leave empty to auto-detect.\n\n**Examples:**\n- Windows: `C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe`\n- macOS: `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`\n- Linux: `/usr/bin/google-chrome`\n\n**Auto-detect locations** (checked when empty):\n- Windows: `%PROGRAMFILES%`, `%LOCALAPPDATA%`\n- macOS: `/Applications/`\n- Linux: `/usr/bin/google-chrome`, `/usr/bin/chromium-browser`'
 		},
 		'roopik.browser.externalCdpPort': {
@@ -238,13 +246,13 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 			default: 9222,
 			minimum: 1024,
 			maximum: 65535,
-			order: 31,
-			markdownDescription: '**CDP Remote Debugging Port** - Port used to communicate with external Chrome via Chrome DevTools Protocol.\n\nDefault: `9222`. Change if another app is already using this port.\n\nChrome will be launched with `--remote-debugging-port=<this value>`.'
+			order: 32,
+			markdownDescription: '**CDP Remote Debugging Port** - Port used to communicate with external Chrome.\n\nDefault: `9222`. Change if another app is already using this port.'
 		},
 		'roopik.browser.attachElementScreenshot': {
 			type: 'boolean',
 			default: true,
-			order: 32,
+			order: 33,
 			markdownDescription: '**Include Screenshot in Inspect Mode** - When attaching an element to AI chat, also capture a screenshot of the element along with its HTML context.'
 		},
 

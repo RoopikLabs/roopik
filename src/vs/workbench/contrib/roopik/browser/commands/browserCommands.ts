@@ -28,7 +28,7 @@ import { DEV_SERVER_CHANNEL } from '../../common/projectMode/devServer.js';
 import { IMcpServerService } from '../../common/mcp/index.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
-import { MAX_BROWSER_TABS } from '../../common/projectMode/types.js';
+import { DEFAULT_MAX_BROWSER_TABS } from '../../common/projectMode/types.js';
 
 /**
  * Arguments for openProjectPreview command
@@ -99,8 +99,9 @@ export async function openBrowserEditor(
 	}
 
 	// Enforce tab limit for embedded mode
+	const maxTabs = configurationService.getValue<number>('roopik.browser.maxTabs') || DEFAULT_MAX_BROWSER_TABS;
 	const allTabs = EditorTabInput.getAll();
-	if (allTabs.length >= MAX_BROWSER_TABS) {
+	if (allTabs.length >= maxTabs) {
 		// At limit — focus the most recently created tab (last in the list)
 		const lastTab = allTabs[allTabs.length - 1];
 		if (lastTab) {
@@ -202,14 +203,15 @@ export function registerBrowserCommands(): void {
 			const editorGroupsService = accessor.get(IEditorGroupsService);
 
 			// Check if at tab limit before opening
-			const atLimit = EditorTabInput.getAll().length >= MAX_BROWSER_TABS;
+			const maxTabs = configurationService.getValue<number>('roopik.browser.maxTabs') || DEFAULT_MAX_BROWSER_TABS;
+			const atLimit = EditorTabInput.getAll().length >= maxTabs;
 
 			// User clicked "Browse Web" button — open a NEW tab (or focus existing if at limit)
 			await openBrowserEditor(editorService, editorGroupsService, configurationService, { forceNew: true });
 
 			if (atLimit) {
 				notificationService.warn(
-					`Maximum ${MAX_BROWSER_TABS} browser tabs reached. Close a tab to open a new one, or switch to external browser mode (Settings → Roopik → Browser Mode) for unlimited tabs.`
+					`Maximum ${maxTabs} browser tabs reached. Close a tab to open a new one, or switch to external browser mode (Settings → Roopik → Browser Mode) for unlimited tabs.`
 				);
 				return;
 			}
