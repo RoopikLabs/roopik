@@ -28,6 +28,7 @@ import { IConfigurationService } from '../../../../../platform/configuration/com
 import { ROOPIK_TOOLS_CHANNEL_NAME, type RoopikToolResult } from '../../common/tools/types.js';
 import { openBrowserEditor } from './browserCommands.js';
 import { EditorTabInput } from '../projectMode/editorTabInput.js';
+import { DEFAULT_MAX_BROWSER_TABS } from '../../common/projectMode/types.js';
 
 /** Check if external browser mode is configured */
 function isExternalMode(configurationService: IConfigurationService): boolean {
@@ -127,6 +128,12 @@ export function registerRoopikToolsCommands(): void {
 				const existingBrowser = editorService.visibleEditorPanes.find(
 					p => p.input instanceof EditorTabInput
 				);
+
+				// Check tab limit before attempting
+				const maxTabs = configurationService.getValue<number>('roopik.browser.maxTabs') || DEFAULT_MAX_BROWSER_TABS;
+				const currentTabs = EditorTabInput.getAll();
+				const atLimit = existingBrowser && currentTabs.length >= maxTabs;
+
 				const browserPane = await openBrowserEditor(editorService, editorGroupsService, configurationService, {
 					forceNew: !!existingBrowser,
 				});
@@ -142,11 +149,14 @@ export function registerRoopikToolsCommands(): void {
 				if (args?.url) {
 					const channel = getToolsChannel(mainProcessService);
 					await channel.call('browser_navigate', { url: args.url });
+					const warning = atLimit
+						? `Tab limit reached (max ${maxTabs}). Navigated existing tab to ${args.url} instead. Close a tab first or increase the limit in Settings → Roopik → Browser → Max Tabs.`
+						: undefined;
 					return {
 						success: true,
 						data: {
 							url: args.url,
-							message: `Browser opened at ${args.url}`
+							message: warning || (existingBrowser ? `New tab opened at ${args.url}` : `Browser opened at ${args.url}`)
 						}
 					};
 				}
@@ -154,7 +164,9 @@ export function registerRoopikToolsCommands(): void {
 				return {
 					success: true,
 					data: {
-						message: 'Browser opened'
+						message: atLimit
+							? `Tab limit reached (max ${maxTabs}). No new tab opened. Close a tab first or increase the limit in Settings → Roopik → Browser → Max Tabs.`
+							: 'Browser opened'
 					}
 				};
 			} catch (error) {
