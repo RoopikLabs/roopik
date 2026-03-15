@@ -2383,9 +2383,10 @@ export class Editor extends EditorPane {
 				}
 
 				if (this.hasLoadedUrl) {
-					// Show and reposition
+					// Show, reposition, and ensure correct bounds
 					this.browserService.setBrowserVisible(this.browserViewId, true);
 					this.hidePlaceholder();
+					this.updateBoundsWithRetry();
 				} else {
 					this.showPlaceholder();
 				}
@@ -2537,6 +2538,23 @@ export class Editor extends EditorPane {
 	}
 
 	override clearInput(): void {
+		// Save tab state BEFORE clearing — when switching from browser to code editor,
+		// setInput() won't be called with a different tabId, so this is the only
+		// opportunity to persist the state for restoration when switching back.
+		if (this.activeTabId !== undefined && this.browserViewId) {
+			this.tabStates.set(this.activeTabId, {
+				browserViewId: this.browserViewId,
+				hasLoadedUrl: this.hasLoadedUrl,
+				wasLoading: this.wasLoading,
+				lastKnownUrl: this.lastKnownUrl,
+				lastKnownTitle: this.lastKnownTitle,
+				lastKnownFavicon: this.lastKnownFavicon,
+				lastErrorUrl: this.lastErrorUrl,
+				devtoolsVisible: this.devtoolsVisible,
+				stylePanelVisible: this.styleInspect.getIsActive(),
+			});
+		}
+
 		super.clearInput();
 
 		// IMPORTANT: Only HIDE the browser view here, don't destroy it!
@@ -2546,7 +2564,6 @@ export class Editor extends EditorPane {
 			this.browserService.setBrowserVisible(this.browserViewId, false);
 		}
 
-		// State saving is handled by setInput()'s pre-super save section.
 		// Clear browserViewId to prevent stale destroys if this pane gets disposed
 		// after a tab was dragged to a different group.
 		this.browserViewId = undefined;
