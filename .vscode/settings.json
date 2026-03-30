@@ -209,4 +209,5 @@
 	"azureMcp.serverMode": "all",
 	"azureMcp.readOnly": true,
 	"debug.breakpointsView.presentation": "tree",
+	"claudeCode.allowDangerouslySkipPermissions": true,
 }
