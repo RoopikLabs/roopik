@@ -29,6 +29,15 @@ interface ExecuteCommandParams {
 	timeout?: number | null
 }
 
+export function resolveAgentTimeoutMs(timeoutSeconds: number | null | undefined): number {
+	const requestedAgentTimeout = typeof timeoutSeconds === "number" && timeoutSeconds > 0 ? timeoutSeconds * 1000 : 0
+
+	// In CLI runtime, stdin harnesses expect command lifetime to be governed
+	// solely by commandExecutionTimeout (user setting), not model-provided
+	// background timeouts.
+	return process.env.ROO_CLI_RUNTIME === "1" ? 0 : requestedAgentTimeout
+}
+
 export class ExecuteCommandTool extends BaseTool<"execute_command"> {
 	readonly name = "execute_command" as const
 
@@ -87,7 +96,7 @@ export class ExecuteCommandTool extends BaseTool<"execute_command"> {
 			const commandExecutionTimeout = isCommandAllowlisted ? 0 : commandExecutionTimeoutSeconds * 1000
 
 			// Convert agent-specified timeout from seconds to milliseconds
-			const agentTimeout = typeof timeoutSeconds === "number" && timeoutSeconds > 0 ? timeoutSeconds * 1000 : 0
+			const agentTimeout = resolveAgentTimeoutMs(timeoutSeconds)
 
 			const options: ExecuteCommandOptions = {
 				executionId,
@@ -218,6 +227,53 @@ export async function executeCommandInTerminal(
 	// Bound accumulated output buffer size to prevent unbounded memory growth for long-running commands.
 	// The interceptor preserves full output; this buffer is only for UI display (100KB limit).
 	const maxAccumulatedOutputSize = 100_000
+	const commandOutputStreamThrottleMs = 150
+	let latestCompressedOutput = ""
+	let lastQueuedCommandOutput = ""
+	let lastCommandOutputEmitAt = 0
+	let pendingCommandOutputEmitTimer: NodeJS.Timeout | undefined
+	let commandOutputSayChain: Promise<void> = Promise.resolve()
+
+	const queueCommandOutputMessage = (text: string, partial: boolean, force = false): Promise<void> => {
+		if (!force && text === lastQueuedCommandOutput) {
+			return commandOutputSayChain
+		}
+
+		lastQueuedCommandOutput = text
+		commandOutputSayChain = commandOutputSayChain
+			.then(async () => {
+				await task.say("command_output", text, undefined, partial, undefined, undefined, {
+					isNonInteractive: true,
+				})
+			})
+			.catch((error) => {
+				console.error("[ExecuteCommandTool] Failed to publish command output:", error)
+			})
+
+		return commandOutputSayChain
+	}
+
+	const schedulePartialCommandOutputUpdate = () => {
+		if (!latestCompressedOutput || completed) {
+			return
+		}
+
+		const emitUpdate = () => {
+			pendingCommandOutputEmitTimer = undefined
+			lastCommandOutputEmitAt = Date.now()
+			void queueCommandOutputMessage(latestCompressedOutput, true)
+		}
+
+		const elapsed = Date.now() - lastCommandOutputEmitAt
+		if (elapsed >= commandOutputStreamThrottleMs) {
+			emitUpdate()
+			return
+		}
+
+		if (!pendingCommandOutputEmitTimer) {
+			pendingCommandOutputEmitTimer = setTimeout(emitUpdate, commandOutputStreamThrottleMs - elapsed)
+		}
+	}
 
 	// Track when onCompleted callback finishes to avoid race condition.
 	// The callback is async but Terminal/ExecaTerminal don't await it, so we track completion
@@ -242,8 +298,10 @@ export async function executeCommandInTerminal(
 
 			// Continue sending compressed output to webview for UI display (unchanged behavior)
 			const compressedOutput = Terminal.compressTerminalOutput(accumulatedOutput)
+			latestCompressedOutput = compressedOutput
 			const status: CommandExecutionStatus = { executionId, status: "output", output: compressedOutput }
 			provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(status) })
+			schedulePartialCommandOutputUpdate()
 
 			if (runInBackground || hasAskedForCommandOutput) {
 				return
@@ -266,6 +324,9 @@ export async function executeCommandInTerminal(
 		},
 		onCompleted: async (output: string | undefined) => {
 			try {
+				clearTimeout(pendingCommandOutputEmitTimer)
+				pendingCommandOutputEmitTimer = undefined
+
 				// Finalize interceptor and get persisted result.
 				// We await finalize() to ensure the artifact file is fully flushed
 				// before we advertise the artifact_id to the LLM.
@@ -275,8 +336,12 @@ export async function executeCommandInTerminal(
 
 				// Continue using compressed output for UI display
 				result = Terminal.compressTerminalOutput(output ?? "")
+				latestCompressedOutput = result
 
-				task.say("command_output", result)
+				// Preserve order: wait for queued partial updates, then emit the final
+				// non-partial command_output update.
+				await commandOutputSayChain
+				await queueCommandOutputMessage(result, false, true)
 				completed = true
 			} finally {
 				// Signal that onCompleted has finished, so the main code can safely use persistedResult
@@ -372,6 +437,7 @@ export async function executeCommandInTerminal(
 	} finally {
 		clearTimeout(agentTimeoutId)
 		clearTimeout(userTimeoutId)
+		clearTimeout(pendingCommandOutputEmitTimer)
 		task.terminalProcess = undefined
 	}
 
