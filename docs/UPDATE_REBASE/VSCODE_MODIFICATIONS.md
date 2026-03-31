@@ -277,6 +277,9 @@ NOTE: Add these two in devDepdencies for AST component source:
 | `src/vs/workbench/browser/parts/titlebar/titlebarPart.ts` | Added `onMenubarFocusStateChange: Event<boolean>` to `ITitlebarPart` interface and `BrowserTitlebarPart` class | Expose event when custom HTML menubar opens/closes |
 | `src/vs/workbench/browser/parts/titlebar/titlebarPart.ts` | In `installMenubar()`: Added listener `this.customMenubar.value.onFocusStateChange(focused => this._onMenubarFocusStateChange.fire(focused))` | Wire up menubar focus events to titlebar part |
 | `src/vs/workbench/browser/parts/titlebar/titlebarPart.ts` | In `BrowserTitleService`: Added `onMenubarFocusStateChange` property assignment from `mainPart` | Expose event through service |
+| `src/vs/sessions/browser/parts/titlebarPart.ts` | Added `onMenubarFocusStateChange` emitter, event, assignment, and declaration | **Upstream MS code** that implements `ITitlebarPart` — must match our interface extension |
+
+**Note:** `src/vs/sessions/` is **upstream Microsoft code** (not Roopik). It implements `ITitlebarPart`, so when we add `onMenubarFocusStateChange` to the interface, all implementations must be updated. This is handled automatically by `apply-branding.js` → `updateSessionsTitlebarPart()`.
 
 **Roopik Service (NOT in VSCode core - lives in our project):**
 
