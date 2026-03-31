@@ -1887,9 +1887,15 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		// =====================================================
 
 		// Standard load failure
-		webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+		webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
 			// Skip expected/normal errors
 			if (IGNORED_ERROR_CODES.has(errorCode)) {
+				return;
+			}
+			// Only handle main frame failures — sub-frame failures (ad iframes, trackers)
+			// should not replace the main page with an error screen
+			if (!isMainFrame) {
+				this.logger.warn('Sub-frame load failed (ignored)', { url: validatedURL, errorDescription, errorCode });
 				return;
 			}
 			this.logger.error('Load failed', { url: validatedURL, errorDescription, errorCode });
@@ -1901,9 +1907,15 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// Provisional load failure - catches CONNECTION_REFUSED, NAME_NOT_RESOLVED etc.
 		// This fires BEFORE did-fail-load for certain connection errors
-		webContents.on('did-fail-provisional-load', (_event, errorCode, errorDescription, validatedURL) => {
+		webContents.on('did-fail-provisional-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
 			// Skip expected/normal errors
 			if (IGNORED_ERROR_CODES.has(errorCode)) {
+				return;
+			}
+			// Only handle main frame failures — sub-frame failures (ad iframes, trackers)
+			// should not replace the main page with an error screen
+			if (!isMainFrame) {
+				this.logger.warn('Sub-frame provisional load failed (ignored)', { url: validatedURL, errorDescription, errorCode });
 				return;
 			}
 			this.logger.error('Provisional load failed', { url: validatedURL, errorDescription, errorCode });
