@@ -10,4 +10,3 @@ ThirdPartyNotices.txt eol=crlf
 *.patch eol=lf
 *.rtf -text
 **/*.json linguist-language=jsonc
-

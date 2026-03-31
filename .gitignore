@@ -28,6 +28,20 @@ test-output.json
 test/componentFixtures/.screenshots/*
 !test/componentFixtures/.screenshots/baseline/
 dist
+.playwright-cli
+.claude/
+.agents/agents/*.local.md
+.github/agents/*.local.md
+.agents/agents/*.local.agent.md
+.github/agents/*.local.agent.md
+.agents/hooks/*.local.json
+.github/hooks/*.local.json
+.agents/instructions/*.local.instructions.md
+.github/instructions/*.local.instructions.md
+.agents/prompts/*.local.prompt.md
+.github/prompts/*.local.prompt.md
+.agents/skills/.local/
+.github/skills/.local/
 
 # Microsoft-specific CI/CD and automation (not needed for Roopik fork)
 .github/workflows/
@@ -39,9 +53,3 @@ dist
 .github/CODENOTIFY
 .github/commands/
 .github/commands.json
-/extensions/roopik-roo/apps
-/TESTING-FOLDER
-/docs
-/.roopik
-/resources/mcp-binaries
-/extensions/roopik-roo/webview-ui/build/assets
