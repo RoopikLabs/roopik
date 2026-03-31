@@ -320,7 +320,6 @@ export function buildQuerySelectorScript(selector: string, maxResults: number = 
 					return results;
 				}
 				elements = walkElements(document);
-				}
 				break;
 			}
 
@@ -404,60 +403,69 @@ export function buildWaitForSelectorScript(selector: string, timeoutMs: number =
 
 	return `new Promise((resolve) => {
 		const timeout = ${timeoutMs};
-		const start = performance.now();
+		let settled = false;
+		let observer = null;
+		let interval = null;
+		let timer = null;
+
+		function done(value) {
+			if (settled) return;
+			settled = true;
+			if (timer) clearTimeout(timer);
+			if (interval) clearInterval(interval);
+			if (observer) { try { observer.disconnect(); } catch(e) {} }
+			resolve(value);
+		}
 
 		function check() {
-			const result = ${queryScript};
-			if (result && result.found && result.elements.length > 0) {
-				const el = result.elements[0];
-				if (el.rect.width > 0 && el.rect.height > 0) {
-					return {
-						found: true,
-						tag: el.tag,
-						rect: el.rect,
-						centerX: el.centerX,
-						centerY: el.centerY,
-					};
+			try {
+				const result = ${queryScript};
+				if (result && result.found && result.elements.length > 0) {
+					const el = result.elements[0];
+					if (el.rect.width > 0 && el.rect.height > 0) {
+						return {
+							found: true,
+							tag: el.tag,
+							rect: el.rect,
+							centerX: el.centerX,
+							centerY: el.centerY,
+						};
+					}
 				}
+			} catch(e) {
+				// Selector evaluation error — don't hang, report it
+				done({ found: false, reason: 'error', message: 'Selector evaluation failed: ' + e.message });
+				return null;
 			}
 			return null;
 		}
 
 		// Quick check first
 		const immediate = check();
-		if (immediate) { resolve(immediate); return; }
+		if (immediate) { done(immediate); return; }
+		if (settled) return; // check() may have called done() on error
 
-		// Use MutationObserver + polling
-		let observer;
-		const timer = setTimeout(() => {
-			if (observer) observer.disconnect();
-			resolve({ found: false, reason: 'timeout', message: 'Selector not found within ' + timeout + 'ms' });
+		// Hard timeout — guarantees we never hang
+		timer = setTimeout(() => {
+			done({ found: false, reason: 'timeout', message: 'Selector not found within ' + timeout + 'ms' });
 		}, timeout);
 
-		function tryCheck() {
-			const result = check();
-			if (result) {
-				clearTimeout(timer);
-				if (observer) observer.disconnect();
-				resolve(result);
-			}
+		// MutationObserver for DOM changes
+		try {
+			observer = new MutationObserver(() => {
+				const result = check();
+				if (result) done(result);
+			});
+			observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+		} catch(e) {
+			// MutationObserver not available — rely on polling only
 		}
 
-		observer = new MutationObserver(tryCheck);
-		observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
-
-		// Polling fallback every 200ms (MutationObserver may miss some changes)
-		const interval = setInterval(() => {
-			if (performance.now() - start > timeout) {
-				clearInterval(interval);
-				return;
-			}
-			tryCheck();
+		// Polling fallback every 200ms
+		interval = setInterval(() => {
+			const result = check();
+			if (result) done(result);
 		}, 200);
-
-		// Clean up interval when resolved
-		const origResolve = resolve;
-		resolve = (v) => { clearInterval(interval); origResolve(v); };
 	})`;
 }
 

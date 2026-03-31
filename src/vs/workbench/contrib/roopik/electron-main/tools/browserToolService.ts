@@ -90,6 +90,39 @@ export class BrowserToolService {
 	}
 
 	/**
+	 * Wait for a click-like action to finish a triggered navigation.
+	 * If navigation starts, this wait is authoritative: the action fails on timeout.
+	 */
+	private async waitForPostActionNavigation(browserViewId: number, action: string): Promise<void> {
+		const waitForComplete = async (): Promise<void> => {
+			const evaluate = this.getEvaluator(browserViewId);
+			const result = await waitForReadyState(evaluate, 'complete', NAVIGATION_TIMEOUT_MS);
+			if (!result.ready) {
+				throw new Error(
+					`${action} triggered navigation, but the page did not reach 'complete' within ${NAVIGATION_TIMEOUT_MS}ms (readyState: ${result.readyState})`
+				);
+			}
+		};
+
+		await new Promise(resolve => setTimeout(resolve, 100));
+
+		let readyState: string;
+		try {
+			const evaluate = this.getEvaluator(browserViewId);
+			readyState = await evaluate('document.readyState');
+		} catch {
+			// The previous document may have been torn down during navigation.
+			await new Promise(resolve => setTimeout(resolve, 500));
+			await waitForComplete();
+			return;
+		}
+
+		if (readyState !== 'complete') {
+			await waitForComplete();
+		}
+	}
+
+	/**
 	 * Playwright-style locator resolution: re-resolve selector + actionability check
 	 * in a unified retry loop. Each retry re-resolves the selector to get fresh coordinates,
 	 * handling DOM re-renders and layout shifts. Fails if element not found or not actionable
@@ -487,7 +520,7 @@ export class BrowserToolService {
 						return { success: false, error: `${action} requires coordinate or selector parameter` };
 					}
 					await this.browserViewService.sendMouseEvent(target.browserViewId, action, x, y);
-					if (action !== 'hover') { mayTriggerNavigation = true; }
+					if (action === 'click' || action === 'double_click') { mayTriggerNavigation = true; }
 					break;
 
 				case 'type':
@@ -522,25 +555,7 @@ export class BrowserToolService {
 			// for the page to settle. This prevents the agent from racing its next command
 			// against a mid-navigation page.
 			if (mayTriggerNavigation) {
-				try {
-					const evaluate = this.getEvaluator(target.browserViewId);
-					// Short wait: check if readyState dropped (navigation started)
-					// then wait for it to come back to 'complete'
-					await new Promise(r => setTimeout(r, 100)); // Let navigation start
-					const state = await evaluate('document.readyState').catch(() => 'loading');
-					if (state !== 'complete') {
-						// Navigation in progress — wait for it to finish
-						await waitForReadyState(evaluate, 'complete', 10000).catch(() => { });
-					}
-				} catch {
-					// Page navigated away — readyState check on old page threw.
-					// Wait briefly for new page to load.
-					await new Promise(r => setTimeout(r, 500));
-					try {
-						const evaluate = this.getEvaluator(target.browserViewId);
-						await waitForReadyState(evaluate, 'complete', 10000).catch(() => { });
-					} catch { /* new page not ready yet, agent will see it on next action */ }
-				}
+				await this.waitForPostActionNavigation(target.browserViewId, action);
 			}
 
 			return {
@@ -974,7 +989,21 @@ export class BrowserToolService {
 		try {
 			const target = this.resolveTarget(tabId);
 			const evaluate = this.getEvaluator(target.browserViewId);
-			const result = await waitForSelector(evaluate, selector, timeoutMs);
+			const effectiveTimeout = timeoutMs ?? 5000;
+
+			// Safety wrapper: race the selector wait against a hard timeout.
+			// Even if the injected script hangs, we guarantee a response.
+			const hardTimeoutMs = effectiveTimeout + 2000; // 2s grace beyond script timeout
+			const result = await Promise.race([
+				waitForSelector(evaluate, selector, effectiveTimeout),
+				new Promise<{ found: false; reason: string; message: string }>(resolve =>
+					setTimeout(() => resolve({
+						found: false,
+						reason: 'hard_timeout',
+						message: `Wait aborted after ${hardTimeoutMs}ms (safety timeout)`
+					}), hardTimeoutMs)
+				)
+			]);
 			return { success: true, data: result };
 		} catch (error) {
 			return {

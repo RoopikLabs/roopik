@@ -30,7 +30,7 @@ const tabIdField = z.number().optional().describe(
 );
 
 // ============================================================================
-// Browser Tool Schemas (14)
+// Browser Tool Schemas (16)
 // ============================================================================
 
 export const browserOpenSchema = z.object({

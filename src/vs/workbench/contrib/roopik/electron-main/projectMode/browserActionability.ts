@@ -178,7 +178,13 @@ export async function waitForActionable(
 							continue;
 						}
 					} catch {
-						// Stability check failed — proceed anyway (best effort)
+						lastResult = {
+							actionable: false,
+							reason: 'unstable',
+							message: 'Stability check failed while the page was navigating or the DOM was mutating'
+						};
+						attempt++;
+						continue;
 					}
 				}
 			}
@@ -186,6 +192,11 @@ export async function waitForActionable(
 			return result;
 		} catch {
 			// Script execution failed (page navigating, etc.)
+			lastResult = {
+				actionable: false,
+				reason: 'navigation',
+				message: 'Actionability check failed while the page was navigating or the element was detached'
+			};
 			attempt++;
 			continue;
 		}
