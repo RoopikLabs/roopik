@@ -1,1 +1,0 @@
-{"version":3,"file":"WebviewMessage.js","sourceRoot":"","sources":["WebviewMessage.ts"],"names":[],"mappings":"","sourcesContent":["export type { WebviewMessage, WebViewMessagePayload } from \"@roo-code/types\"\n\nexport type ClineAskResponse = \"yesButtonClicked\" | \"noButtonClicked\" | \"messageResponse\" | \"objectResponse\"\n"]}

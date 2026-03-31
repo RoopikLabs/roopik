@@ -1,1 +1,0 @@
-{"version":3,"file":"index.js","sourceRoot":"","sources":["index.ts"],"names":[],"mappings":"AACA,OAAO,EAAE,uBAAuB,EAAE,MAAM,2BAA2B,CAAA","sourcesContent":["export type { AssistantMessageContent } from \"./types\"\nexport { presentAssistantMessage } from \"./presentAssistantMessage\"\n"]}

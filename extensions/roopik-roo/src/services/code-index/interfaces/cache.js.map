@@ -1,1 +1,0 @@
-{"version":3,"file":"cache.js","sourceRoot":"","sources":["cache.ts"],"names":[],"mappings":"","sourcesContent":["export interface ICacheManager {\n\tgetHash(filePath: string): string | undefined\n\tupdateHash(filePath: string, hash: string): void\n\tdeleteHash(filePath: string): void\n\tflush(): Promise<void>\n\tgetAllHashes(): Record<string, string>\n}\n"]}
