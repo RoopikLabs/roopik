@@ -225,6 +225,10 @@ export class BrowserToolService {
 				newTabId = activeTabId;
 			}
 
+			// Kick off CDP monitoring in the background (non-blocking).
+			// Only when URL is provided — blank tabs have no real page to monitor.
+			// The onBrowserViewCreated listener in CDPMonitorService also auto-monitors,
+			// so subsequent navigations will capture fully regardless.
 			if (url && !warning) {
 				const viewId = this.browserViewService.resolveTabId(newTabId);
 				this.cdpMonitorService.ensureMonitoring(viewId).catch(() => { });
@@ -357,8 +361,9 @@ export class BrowserToolService {
 		try {
 			const target = this.resolveTarget(tabId);
 
-			// Ensure monitoring BEFORE navigation so we don't miss early requests for networkidle
-			await this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
+			// Kick off monitoring (non-blocking) — may already be attached from browser_open.
+			// We don't await because debugger attachment can hang on blank/uninitialized tabs.
+			this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
 			await this.browserViewService.navigate(target.browserViewId, url);
 
 			// Wait for page readiness — authoritative like Playwright's goto():
@@ -405,7 +410,7 @@ export class BrowserToolService {
 		try {
 			const target = this.resolveTarget(tabId);
 
-			await this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
+			this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
 			await this.browserViewService.reload(target.browserViewId, ignoreCache);
 
 			// Wait for page readiness — authoritative like Playwright: fails on timeout
