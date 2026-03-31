@@ -61,7 +61,6 @@ export const dirs = [
 	'.vscode/extensions/vscode-selfhost-import-aid',
 	'.vscode/extensions/vscode-selfhost-test-provider',
 	'.vscode/extensions/vscode-extras',
-	'extensions/roopik-roo',
 ];
 
 if (existsSync(`${import.meta.dirname}/../../.build/distro/npm`)) {
