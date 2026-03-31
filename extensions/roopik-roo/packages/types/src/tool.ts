@@ -61,6 +61,8 @@ export const toolNames = [
 	"browser_get_state",
 	"browser_set_viewport",
 	"browser_get_network_requests",
+	"browser_find_element",
+	"browser_wait_for_element",
 	// Roopik IDE Tools - Project (3)
 	"project_get_active",
 	"project_start",

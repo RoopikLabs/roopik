@@ -122,7 +122,7 @@ export class ToolExecutor {
 	 */
 	getAvailableTools(): string[] {
 		return [
-			// Browser tools (14)
+			// Browser tools (16)
 			'browser_open',
 			'browser_close',
 			'browser_screenshot',
@@ -137,6 +137,8 @@ export class ToolExecutor {
 			'browser_get_state',
 			'browser_set_viewport',
 			'browser_get_network_requests',
+			'browser_find_element',
+			'browser_wait_for_element',
 			// Canvas tools (5)
 			'canvas_list',
 			'canvas_get_active',
@@ -161,7 +163,7 @@ export class ToolExecutor {
 	}
 
 	// ==========================================================================
-	// Browser Tool Routing (14 tools) - Delegates to BrowserToolService
+	// Browser Tool Routing (16 tools) - Delegates to BrowserToolService
 	// ==========================================================================
 
 	private async executeBrowserTool(tool: string, params: Record<string, unknown>): Promise<ToolResult<unknown>> {
@@ -180,15 +182,24 @@ export class ToolExecutor {
 				return this.browserToolService.screenshot(tabId);
 
 			case 'browser_navigate':
-				return this.browserToolService.navigate(params.url as string, tabId);
+				return this.browserToolService.navigate(
+					params.url as string,
+					tabId,
+					params.waitUntil as 'load' | 'domcontentloaded' | 'networkidle' | undefined
+				);
 
 			case 'browser_reload':
-				return this.browserToolService.reload(params.ignoreCache as boolean | undefined, tabId);
+				return this.browserToolService.reload(
+					params.ignoreCache as boolean | undefined,
+					tabId,
+					params.waitUntil as 'load' | 'domcontentloaded' | 'networkidle' | undefined
+				);
 
 			case 'browser_action_input':
 				return this.browserToolService.actionInput({
 					action: params.action as 'click' | 'right_click' | 'double_click' | 'hover' | 'drag' | 'type' | 'press' | 'scroll',
 					coordinate: params.coordinate as string | undefined,
+					selector: params.selector as string | undefined,
 					text: params.text as string | undefined,
 					key: params.key as string | undefined,
 					modifiers: params.modifiers as string[] | undefined,
@@ -247,6 +258,16 @@ export class ToolExecutor {
 					limit: params.limit as number | undefined,
 					tabId,
 				});
+
+			case 'browser_find_element':
+				return this.browserToolService.findElements(params.selector as string, tabId);
+
+			case 'browser_wait_for_element':
+				return this.browserToolService.waitForElement(
+					params.selector as string,
+					params.timeout as number | undefined,
+					tabId
+				);
 
 			default:
 				return {

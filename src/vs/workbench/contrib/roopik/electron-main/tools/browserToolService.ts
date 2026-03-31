@@ -15,6 +15,15 @@
 
 import type { IBrowserBackend } from '../projectMode/browserBackend.js';
 import type { CDPMonitorService } from './cdpMonitorService.js';
+import {
+	waitForActionable,
+	waitForReadyState,
+	querySelector,
+	waitForSelector,
+	ACTION_TIMEOUT_MS,
+	NAVIGATION_TIMEOUT_MS,
+	type EvaluateJS,
+} from '../projectMode/browserActionability.js';
 import type {
 	ToolResult,
 	BrowserOpenResult,
@@ -66,6 +75,125 @@ export class BrowserToolService {
 			browserViewId: this.browserViewService.resolveTabId(activeTabId),
 			tabId: activeTabId,
 		};
+	}
+
+	// ==========================================================================
+	// Evaluate JS Helper (used by actionability layer)
+	// ==========================================================================
+
+	/**
+	 * Get an evaluate function bound to a specific browser view.
+	 * Works for both embedded (executeJavaScript) and external (Runtime.evaluate) modes.
+	 */
+	private getEvaluator(browserViewId: number): EvaluateJS {
+		return (script: string) => this.browserViewService.executeScript(browserViewId, script);
+	}
+
+	/**
+	 * Wait for a click-like action to finish a triggered navigation.
+	 * If navigation starts, this wait is authoritative: the action fails on timeout.
+	 */
+	private async waitForPostActionNavigation(browserViewId: number, action: string): Promise<void> {
+		const waitForComplete = async (): Promise<void> => {
+			const evaluate = this.getEvaluator(browserViewId);
+			const result = await waitForReadyState(evaluate, 'complete', NAVIGATION_TIMEOUT_MS);
+			if (!result.ready) {
+				throw new Error(
+					`${action} triggered navigation, but the page did not reach 'complete' within ${NAVIGATION_TIMEOUT_MS}ms (readyState: ${result.readyState})`
+				);
+			}
+		};
+
+		await new Promise(resolve => setTimeout(resolve, 100));
+
+		let readyState: string;
+		try {
+			const evaluate = this.getEvaluator(browserViewId);
+			readyState = await evaluate('document.readyState');
+		} catch {
+			// The previous document may have been torn down during navigation.
+			await new Promise(resolve => setTimeout(resolve, 500));
+			await waitForComplete();
+			return;
+		}
+
+		if (readyState !== 'complete') {
+			await waitForComplete();
+		}
+	}
+
+	/**
+	 * Playwright-style locator resolution: re-resolve selector + actionability check
+	 * in a unified retry loop. Each retry re-resolves the selector to get fresh coordinates,
+	 * handling DOM re-renders and layout shifts. Fails if element not found or not actionable
+	 * within timeout.
+	 */
+	private async resolveAndWaitForSelector(
+		evaluate: EvaluateJS,
+		selector: string,
+		timeoutMs: number
+	): Promise<{ success: boolean; x?: number; y?: number; info: string; error?: string }> {
+		const BACKOFF = [0, 20, 100, 100, 500];
+		const start = Date.now();
+		let attempt = 0;
+		let lastError = '';
+
+		while (Date.now() - start < timeoutMs) {
+			if (attempt > 0) {
+				const delay = BACKOFF[Math.min(attempt - 1, BACKOFF.length - 1)];
+				if (delay > 0) { await new Promise(r => setTimeout(r, delay)); }
+			}
+
+			try {
+				// Re-resolve selector each attempt (Playwright's core locator guarantee)
+				// Query up to 2 results to detect ambiguity
+				const selectorResult = await querySelector(evaluate, selector, 2);
+				if (!selectorResult.found || selectorResult.elements.length === 0) {
+					lastError = `Element not found: ${selector}`;
+					attempt++;
+					continue;
+				}
+
+				// Strict: fail if selector matches multiple elements (Playwright's locator contract)
+				if (selectorResult.count > 1) {
+					return {
+						success: false, info: '',
+						error: `Selector "${selector}" resolved to ${selectorResult.count} elements (strict mode requires exactly 1). Use a more specific selector.`
+					};
+				}
+
+				const el = selectorResult.elements[0];
+				const x = el.centerX;
+				const y = el.centerY;
+
+				// Check actionability at the fresh coordinates
+				const remaining = timeoutMs - (Date.now() - start);
+				const actionResult = await waitForActionable(evaluate, x, y, {
+					timeout: Math.min(remaining, 3000),
+					scrollIntoView: true,
+				});
+
+				if (!actionResult.actionable) {
+					lastError = `Element found but not actionable: ${actionResult.message || actionResult.reason}${actionResult.obscuredBy ? ` (obscured by ${actionResult.obscuredBy})` : ''}`;
+					attempt++;
+					continue;
+				}
+
+				const info = ` on <${el.tag}>${el.id ? '#' + el.id : ''}`;
+				return { success: true, x, y, info };
+			} catch (e) {
+				// Preserve specific error from actionability checks, don't overwrite with generic message
+				const msg = e instanceof Error ? e.message : String(e);
+				if (msg.includes('not actionable') || msg.includes('obscured') || msg.includes('disabled') || msg.includes('not visible')) {
+					lastError = msg;
+				} else {
+					lastError = lastError || `Selector evaluation failed: ${msg}`;
+				}
+				attempt++;
+			}
+		}
+
+		return { success: false, info: '', error: lastError || `Selector "${selector}" timed out after ${timeoutMs}ms` };
 	}
 
 	// ==========================================================================
@@ -225,18 +353,43 @@ export class BrowserToolService {
 	// Navigation
 	// ==========================================================================
 
-	async navigate(url: string, tabId?: number): Promise<ToolResult<BrowserNavigateResult>> {
+	async navigate(url: string, tabId?: number, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'): Promise<ToolResult<BrowserNavigateResult>> {
 		try {
 			const target = this.resolveTarget(tabId);
 
+			// Ensure monitoring BEFORE navigation so we don't miss early requests for networkidle
+			await this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
 			await this.browserViewService.navigate(target.browserViewId, url);
-			this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
+
+			// Wait for page readiness — authoritative like Playwright's goto():
+			// fails on timeout so agents don't chain actions on an unloaded page.
+			const waitState = waitUntil || 'load';
+
+			if (waitState === 'networkidle') {
+				const result = await this.cdpMonitorService.waitForNetworkIdle(target.browserViewId, NAVIGATION_TIMEOUT_MS);
+				if (!result.idle) {
+					return {
+						success: false,
+						error: `Navigation to ${url} timed out waiting for networkidle (${result.inflightCount} requests still inflight after ${NAVIGATION_TIMEOUT_MS}ms)`
+					};
+				}
+			} else {
+				const targetReadyState = waitState === 'domcontentloaded' ? 'interactive' as const : 'complete' as const;
+				const evaluate = this.getEvaluator(target.browserViewId);
+				const result = await waitForReadyState(evaluate, targetReadyState, NAVIGATION_TIMEOUT_MS);
+				if (!result.ready) {
+					return {
+						success: false,
+						error: `Navigation to ${url} timed out waiting for '${waitState}' (readyState: ${result.readyState} after ${NAVIGATION_TIMEOUT_MS}ms)`
+					};
+				}
+			}
 
 			return {
 				success: true,
 				data: {
 					url,
-					message: `Navigated to ${url}`,
+					message: `Navigated to ${url} (${waitState})`,
 					tabId: target.tabId
 				}
 			};
@@ -248,12 +401,35 @@ export class BrowserToolService {
 		}
 	}
 
-	async reload(ignoreCache?: boolean, tabId?: number): Promise<ToolResult<BrowserNavigateResult>> {
+	async reload(ignoreCache?: boolean, tabId?: number, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'): Promise<ToolResult<BrowserNavigateResult>> {
 		try {
 			const target = this.resolveTarget(tabId);
 
+			await this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
 			await this.browserViewService.reload(target.browserViewId, ignoreCache);
-			this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
+
+			// Wait for page readiness — authoritative like Playwright: fails on timeout
+			const waitState = waitUntil || 'load';
+
+			if (waitState === 'networkidle') {
+				const result = await this.cdpMonitorService.waitForNetworkIdle(target.browserViewId, NAVIGATION_TIMEOUT_MS);
+				if (!result.idle) {
+					return {
+						success: false,
+						error: `Reload timed out waiting for networkidle (${result.inflightCount} requests still inflight after ${NAVIGATION_TIMEOUT_MS}ms)`
+					};
+				}
+			} else {
+				const targetReadyState = waitState === 'domcontentloaded' ? 'interactive' as const : 'complete' as const;
+				const evaluate = this.getEvaluator(target.browserViewId);
+				const result = await waitForReadyState(evaluate, targetReadyState, NAVIGATION_TIMEOUT_MS);
+				if (!result.ready) {
+					return {
+						success: false,
+						error: `Reload timed out waiting for '${waitState}' (readyState: ${result.readyState} after ${NAVIGATION_TIMEOUT_MS}ms)`
+					};
+				}
+			}
 
 			const navState = await this.browserViewService.getNavigationState(target.browserViewId);
 			const currentUrl = navState.url || 'unknown';
@@ -262,7 +438,7 @@ export class BrowserToolService {
 				success: true,
 				data: {
 					url: currentUrl,
-					message: `Reloaded page${ignoreCache ? ' (cache ignored)' : ''}`,
+					message: `Reloaded page${ignoreCache ? ' (cache ignored)' : ''} (${waitState})`,
 					tabId: target.tabId
 				}
 			};
@@ -281,6 +457,7 @@ export class BrowserToolService {
 	async actionInput(params: {
 		action: 'click' | 'right_click' | 'double_click' | 'hover' | 'drag' | 'type' | 'press' | 'scroll';
 		coordinate?: string;
+		selector?: string;
 		text?: string;
 		key?: string;
 		modifiers?: string[];
@@ -291,28 +468,59 @@ export class BrowserToolService {
 		try {
 			const target = this.resolveTarget(params.tabId);
 
-			const { action, coordinate, text, key, modifiers, deltaX, deltaY } = params;
+			const { action, coordinate, selector, text, key, modifiers, deltaX, deltaY } = params;
+			const evaluate = this.getEvaluator(target.browserViewId);
+			const isPointerAction = ['click', 'right_click', 'double_click', 'hover'].includes(action);
 
-			// Parse coordinates if provided
 			let x: number | undefined;
 			let y: number | undefined;
-			if (coordinate) {
+			let autoWaitInfo = '';
+
+			if (selector && isPointerAction) {
+				// Selector-based action — Playwright's locator model:
+				// Re-resolve selector AND check actionability in a unified retry loop.
+				// If DOM re-renders or element moves during retries, we get fresh coordinates each time.
+				const result = await this.resolveAndWaitForSelector(evaluate, selector, ACTION_TIMEOUT_MS);
+				if (!result.success) {
+					return { success: false, error: result.error! };
+				}
+				x = result.x;
+				y = result.y;
+				autoWaitInfo = result.info;
+			} else if (coordinate) {
 				const parts = coordinate.split(',').map(p => parseFloat(p.trim()));
 				if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
 					[x, y] = parts;
 				}
 			}
 
+			// Auto-wait: For coordinate-based actions, verify element is actionable.
+			// Authoritative — if the element is not actionable, the action FAILS.
+			if (x !== undefined && y !== undefined && isPointerAction && !selector) {
+				const result = await waitForActionable(evaluate, x, y, { timeout: ACTION_TIMEOUT_MS });
+				if (!result.actionable) {
+					return {
+						success: false,
+						error: `Element not actionable: ${result.message || result.reason || 'unknown'}${result.obscuredBy ? ` (obscured by ${result.obscuredBy})` : ''}`
+					};
+				}
+				if (result.tag) {
+					autoWaitInfo = ` on <${result.tag}>`;
+				}
+			}
+
 			// Execute action based on type
+			let mayTriggerNavigation = false;
 			switch (action) {
 				case 'click':
 				case 'right_click':
 				case 'double_click':
 				case 'hover':
 					if (x === undefined || y === undefined) {
-						return { success: false, error: `${action} requires coordinate parameter (e.g., "100,200")` };
+						return { success: false, error: `${action} requires coordinate or selector parameter` };
 					}
 					await this.browserViewService.sendMouseEvent(target.browserViewId, action, x, y);
+					if (action === 'click' || action === 'double_click') { mayTriggerNavigation = true; }
 					break;
 
 				case 'type':
@@ -327,6 +535,8 @@ export class BrowserToolService {
 						return { success: false, error: 'press action requires key parameter' };
 					}
 					await this.browserViewService.sendKeyEvent(target.browserViewId, key, modifiers);
+					// Enter key on forms can trigger navigation
+					if (key === 'Enter') { mayTriggerNavigation = true; }
 					break;
 
 				case 'scroll':
@@ -340,11 +550,19 @@ export class BrowserToolService {
 					return { success: false, error: `Unknown action: ${action}` };
 			}
 
+			// Post-action navigation barrier (Playwright's SignalBarrier pattern):
+			// If the action may have triggered a navigation (click, Enter), wait briefly
+			// for the page to settle. This prevents the agent from racing its next command
+			// against a mid-navigation page.
+			if (mayTriggerNavigation) {
+				await this.waitForPostActionNavigation(target.browserViewId, action);
+			}
+
 			return {
 				success: true,
 				data: {
 					action,
-					message: `Executed ${action} action`,
+					message: `Executed ${action} action${autoWaitInfo}`,
 					tabId: target.tabId
 				}
 			};
@@ -718,6 +936,99 @@ export class BrowserToolService {
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to set viewport'
+			};
+		}
+	}
+
+	// ==========================================================================
+	// Smart Selectors (text=, role=, css=, xpath=, id=, data-testid=)
+	// ==========================================================================
+
+	/**
+	 * Find elements using smart selectors with shadow DOM piercing.
+	 * Supports: css=, text=, role=, xpath=, id=, data-testid= prefixes.
+	 * Default (no prefix) = CSS selector.
+	 */
+	async findElements(selector: string, tabId?: number): Promise<ToolResult<{
+		found: boolean;
+		count: number;
+		elements: Array<{
+			tag: string;
+			id?: string;
+			className?: string;
+			text: string;
+			rect: { x: number; y: number; width: number; height: number };
+			centerX: number;
+			centerY: number;
+		}>;
+	}>> {
+		try {
+			const target = this.resolveTarget(tabId);
+			const evaluate = this.getEvaluator(target.browserViewId);
+			const result = await querySelector(evaluate, selector);
+			return { success: true, data: result };
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to find elements'
+			};
+		}
+	}
+
+	/**
+	 * Wait for a selector to appear in the DOM and become visible.
+	 */
+	async waitForElement(selector: string, timeoutMs?: number, tabId?: number): Promise<ToolResult<{
+		found: boolean;
+		tag?: string;
+		rect?: { x: number; y: number; width: number; height: number };
+		centerX?: number;
+		centerY?: number;
+		reason?: string;
+	}>> {
+		try {
+			const target = this.resolveTarget(tabId);
+			const evaluate = this.getEvaluator(target.browserViewId);
+			const effectiveTimeout = timeoutMs ?? 5000;
+
+			// Safety wrapper: race the selector wait against a hard timeout.
+			// Even if the injected script hangs, we guarantee a response.
+			const hardTimeoutMs = effectiveTimeout + 2000; // 2s grace beyond script timeout
+			const result = await Promise.race([
+				waitForSelector(evaluate, selector, effectiveTimeout),
+				new Promise<{ found: false; reason: string; message: string }>(resolve =>
+					setTimeout(() => resolve({
+						found: false,
+						reason: 'hard_timeout',
+						message: `Wait aborted after ${hardTimeoutMs}ms (safety timeout)`
+					}), hardTimeoutMs)
+				)
+			]);
+			return { success: true, data: result };
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to wait for element'
+			};
+		}
+	}
+
+	// ==========================================================================
+	// Network Idle
+	// ==========================================================================
+
+	/**
+	 * Wait for network to become idle (no inflight requests for 500ms).
+	 */
+	async waitForNetworkIdle(tabId?: number, timeoutMs: number = 10000): Promise<ToolResult<{ idle: boolean; inflightCount: number }>> {
+		try {
+			const target = this.resolveTarget(tabId);
+			const result = await this.cdpMonitorService.waitForNetworkIdle(target.browserViewId, timeoutMs);
+			return { success: true, data: result };
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to wait for network idle'
 			};
 		}
 	}

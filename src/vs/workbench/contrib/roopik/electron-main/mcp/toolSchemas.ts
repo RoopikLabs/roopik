@@ -26,20 +26,25 @@ const tabIdField = z.number().optional().describe(
 );
 
 // ============================================================================
-// Browser Tool Schemas (14)
+// Browser Tool Schemas (16)
 // ============================================================================
 
 export const browserOpenSchema = z.object({
 	url: z.string().optional().describe('URL to navigate to in the new tab. If omitted, opens a blank tab.')
 });
 
+const waitUntilField = z.enum(['load', 'domcontentloaded', 'networkidle']).optional()
+	.describe('When to consider navigation done. "load" (default) = all resources loaded, "domcontentloaded" = DOM parsed, "networkidle" = no requests for 500ms');
+
 export const browserNavigateSchema = z.object({
 	url: z.string().describe('URL to navigate to'),
+	waitUntil: waitUntilField,
 	tabId: tabIdField
 });
 
 export const browserReloadSchema = z.object({
 	ignoreCache: z.boolean().optional().describe('Whether to ignore cache when reloading'),
+	waitUntil: waitUntilField,
 	tabId: tabIdField
 });
 
@@ -47,6 +52,7 @@ export const browserActionInputSchema = z.object({
 	action: z.enum(['click', 'right_click', 'double_click', 'hover', 'drag', 'type', 'press', 'scroll'])
 		.describe('The action to perform'),
 	coordinate: z.string().optional().describe('Coordinates in "x,y" format for click/hover actions'),
+	selector: z.string().optional().describe('Alternative to coordinate — click by selector instead. Element is re-resolved at action time (no stale coordinates). Examples: "#submit-btn", "text=Submit", "role=button[name=\\"Save\\"]", "data-testid=login". Plain string = CSS selector.'),
 	text: z.string().optional().describe('Text to type (for type action)'),
 	key: z.string().optional().describe('Key to press (for press action)'),
 	modifiers: z.array(z.string()).optional().describe('Modifier keys (ctrl, alt, shift, meta)'),
@@ -103,6 +109,17 @@ export const browserTabIdOnlySchema = z.object({
 
 export const browserCloseSchema = z.object({
 	tabId: z.number().optional().describe('Tab ID to close. Omit to close ALL open browser tabs. Use browser_get_state to see all open tabs.')
+});
+
+export const browserFindElementSchema = z.object({
+	selector: z.string().describe('Smart selector. Supports: css= (default), text=, role=, xpath=, id=, data-testid= prefixes. Examples: "text=Submit", "role=button[name=\\"Save\\"]", "#login-form", "data-testid=hero"'),
+	tabId: tabIdField
+});
+
+export const browserWaitForElementSchema = z.object({
+	selector: z.string().describe('Smart selector to wait for. Supports: css= (default), text=, role=, xpath=, id=, data-testid= prefixes.'),
+	timeout: z.number().optional().describe('Timeout in ms (default: 5000)'),
+	tabId: tabIdField
 });
 
 // Empty schemas for tools with no parameters
@@ -511,7 +528,7 @@ export interface ToolDefinition {
 // ============================================================================
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
-	// ========== Browser Tools (14) ==========
+	// ========== Browser Tools (16) ==========
 	{
 		name: 'browser_open',
 		description: 'Open a browser tab. If the browser is not open, opens it. If already open, opens a new tab. Optionally provide a URL to navigate immediately.',
@@ -581,6 +598,16 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		name: 'browser_get_network_requests',
 		description: 'Get network requests from a tab. Use includeStaticAssets to show all assets.',
 		schema: browserGetNetworkRequestsSchema
+	},
+	{
+		name: 'browser_find_element',
+		description: 'Find elements using smart selectors with shadow DOM piercing. Supports: css= (default), text=, role=, xpath=, id=, data-testid= prefixes. Returns coordinates for clicking. Examples: "text=Submit", "role=button[name=\\"Save\\"]", "#login-form".',
+		schema: browserFindElementSchema
+	},
+	{
+		name: 'browser_wait_for_element',
+		description: 'Wait for a selector to appear and become visible, with timeout. Supports smart selectors (text=, role=, css=). Useful after navigation or dynamic content loading.',
+		schema: browserWaitForElementSchema
 	},
 
 	// ========== Canvas Tools (4) ==========
@@ -690,4 +717,4 @@ export function getToolDefinitionsAsJsonSchema(): Array<{
 	}));
 }
 
-// Total: 29 Tools (14 Browser + 4 Canvas + 7 Component + 3 Project + 1 Guide)
+// Total: 31 Tools (16 Browser + 4 Canvas + 7 Component + 3 Project + 1 Guide)

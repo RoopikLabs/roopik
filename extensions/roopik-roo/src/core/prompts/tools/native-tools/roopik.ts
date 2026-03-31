@@ -1,7 +1,7 @@
 import type OpenAI from "openai"
 
 // ============================================================================
-// Browser Tools (14)
+// Browser Tools (16)
 // ============================================================================
 
 export const browser_open: OpenAI.Chat.ChatCompletionTool = {
@@ -40,6 +40,11 @@ export const browser_navigate: OpenAI.Chat.ChatCompletionTool = {
 					description:
 						"The URL to navigate to (e.g., http://localhost:5173/login or just /login for relative paths)",
 				},
+				waitUntil: {
+					type: "string",
+					enum: ["load", "domcontentloaded", "networkidle"],
+					description: 'When to consider navigation done. "load" (default) = all resources, "domcontentloaded" = DOM parsed, "networkidle" = no requests for 500ms.',
+				},
 				tabId: {
 					type: "number",
 					description: "Target tab ID. Omit for active tab. Use browser_get_state to see all open tabs.",
@@ -64,6 +69,11 @@ export const browser_reload: OpenAI.Chat.ChatCompletionTool = {
 				ignoreCache: {
 					type: "boolean",
 					description: "Set to true for hard reload (clears cache). Default is false.",
+				},
+				waitUntil: {
+					type: "string",
+					enum: ["load", "domcontentloaded", "networkidle"],
+					description: 'When to consider reload done. "load" (default) = all resources, "domcontentloaded" = DOM parsed, "networkidle" = no requests for 500ms.',
 				},
 				tabId: {
 					type: "number",
@@ -128,7 +138,7 @@ Coordinate format: 'x,y@WIDTHxHEIGHT' where WIDTH/HEIGHT are from browser_screen
 Example: '450,203@900x600' means click at (450,203) on a 900x600 viewport.
 
 Actions:
-- click/right_click/double_click/hover: requires 'coordinate'
+- click/right_click/double_click/hover: requires 'coordinate' or 'selector' (selector re-resolves at action time)
 - drag: requires 'coordinate' (start) + 'deltaX'/'deltaY' (offset to end)
 - type: requires 'text'
 - press: requires 'key' (e.g., 'Enter', 'Escape', 'Tab'), optional 'modifiers' (['ctrl', 'shift'])
@@ -145,6 +155,10 @@ Actions:
 				coordinate: {
 					type: "string",
 					description: "Coordinate string: 'x,y' or 'x,y@WIDTHxHEIGHT' for scaled coordinates",
+				},
+				selector: {
+					type: "string",
+					description: "Smart selector (alternative to coordinate). Re-resolved at action time. Supports: css=, text=, role= prefixes.",
 				},
 				text: {
 					type: "string",
@@ -424,6 +438,60 @@ export const project_get_active: OpenAI.Chat.ChatCompletionTool = {
 			type: "object",
 			properties: {},
 			required: [],
+			additionalProperties: false,
+		},
+	},
+}
+
+export const browser_find_element: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "browser_find_element",
+		description:
+			'[Roopik IDE] Find elements using smart selectors with shadow DOM piercing. Supports: css= (default), text=, role=, xpath=, id=, data-testid= prefixes. Returns coordinates for clicking.\n\nExamples:\n- `"text=Submit"` — find by visible text\n- `"role=button[name=\\"Save\\"]"` — find by ARIA role\n- `"#login-form"` — CSS selector (default)\n- `"data-testid=hero"` — by test ID',
+		strict: true,
+		parameters: {
+			type: "object",
+			properties: {
+				selector: {
+					type: "string",
+					description: "Smart selector string. Prefix with text=, role=, xpath=, id=, data-testid= or use plain CSS.",
+				},
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab.",
+				},
+			},
+			required: ["selector"],
+			additionalProperties: false,
+		},
+	},
+}
+
+export const browser_wait_for_element: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "browser_wait_for_element",
+		description:
+			"[Roopik IDE] Wait for a selector to appear and become visible, with timeout. Supports smart selectors (text=, role=, css=). Useful after navigation or dynamic content loading.",
+		strict: true,
+		parameters: {
+			type: "object",
+			properties: {
+				selector: {
+					type: "string",
+					description: "Smart selector to wait for. Supports: css= (default), text=, role=, xpath=, id=, data-testid= prefixes.",
+				},
+				timeout: {
+					type: "number",
+					description: "Timeout in milliseconds (default: 5000).",
+				},
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab.",
+				},
+			},
+			required: ["selector"],
 			additionalProperties: false,
 		},
 	},
@@ -757,7 +825,7 @@ export const canvas_validate_components: OpenAI.Chat.ChatCompletionTool = {
 // ============================================================================
 
 export const roopikNativeTools: OpenAI.Chat.ChatCompletionTool[] = [
-	// Browser (14 tools)
+	// Browser (16 tools)
 	browser_open,
 	browser_close,
 	browser_action_input,
@@ -772,6 +840,8 @@ export const roopikNativeTools: OpenAI.Chat.ChatCompletionTool[] = [
 	browser_get_state,
 	browser_set_viewport,
 	browser_get_network_requests,
+	browser_find_element,
+	browser_wait_for_element,
 	// Project (3 tools)
 	project_get_active,
 	project_start,

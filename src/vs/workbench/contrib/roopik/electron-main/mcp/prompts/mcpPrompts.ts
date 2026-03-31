@@ -338,6 +338,9 @@ This workflow teaches you the complete cycle for frontend development.
 - browser_get_state, browser_get_performance
 - browser_set_viewport, browser_get_network_requests
 
+**Browser Selectors** (2):
+- browser_find_element, browser_wait_for_element
+
 **Canvas Tools** (4):
 - canvas_list, canvas_get_active, canvas_create, canvas_open
 

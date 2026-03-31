@@ -510,7 +510,11 @@
 			"wantsToSetViewport": "Dio wants to set viewport size",
 			"didSetViewport": "Dio set viewport size",
 			"wantsToGetNetworkRequests": "Dio wants to get network requests",
-			"didGetNetworkRequests": "Dio retrieved network requests"
+			"didGetNetworkRequests": "Dio retrieved network requests",
+			"wantsToFindElement": "Dio wants to find an element",
+			"didFindElement": "Dio found element",
+			"wantsToWaitForElement": "Dio wants to wait for an element",
+			"didWaitForElement": "Dio waited for element"
 		},
 		"project": {
 			"wantsToGetActive": "Dio wants to get the active project",

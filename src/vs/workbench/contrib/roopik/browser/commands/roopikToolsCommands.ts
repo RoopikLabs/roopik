@@ -388,6 +388,47 @@ export function registerRoopikToolsCommands(): void {
 		}
 	});
 
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserFindElement',
+				title: { value: 'Find Element', original: 'Find Element' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: {
+			selector: string;
+			tabId?: number;
+		}): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('browser_find_element', args || {});
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserWaitForElement',
+				title: { value: 'Wait For Element', original: 'Wait For Element' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: {
+			selector: string;
+			timeout?: number;
+			tabId?: number;
+		}): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('browser_wait_for_element', args || {});
+		}
+	});
+
 	// --------------------------------------------------------------------------
 	// Project Tools (3)
 	// --------------------------------------------------------------------------
