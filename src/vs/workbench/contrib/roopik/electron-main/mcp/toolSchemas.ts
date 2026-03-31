@@ -26,7 +26,7 @@ const tabIdField = z.number().optional().describe(
 );
 
 // ============================================================================
-// Browser Tool Schemas (14)
+// Browser Tool Schemas (16)
 // ============================================================================
 
 export const browserOpenSchema = z.object({
@@ -117,7 +117,7 @@ export const browserFindElementSchema = z.object({
 });
 
 export const browserWaitForElementSchema = z.object({
-	selector: z.string().describe('CSS selector to wait for'),
+	selector: z.string().describe('Smart selector to wait for. Supports: css= (default), text=, role=, xpath=, id=, data-testid= prefixes.'),
 	timeout: z.number().optional().describe('Timeout in ms (default: 5000)'),
 	tabId: tabIdField
 });
@@ -606,7 +606,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 	},
 	{
 		name: 'browser_wait_for_element',
-		description: 'Wait for a CSS selector to appear and become visible, with timeout. Useful after navigation or dynamic content loading.',
+		description: 'Wait for a selector to appear and become visible, with timeout. Supports smart selectors (text=, role=, css=). Useful after navigation or dynamic content loading.',
 		schema: browserWaitForElementSchema
 	},
 

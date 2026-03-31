@@ -250,36 +250,45 @@ export function buildQuerySelectorScript(selector: string, maxResults: number = 
 				// Playwright text= semantics:
 				// - Quoted string ("Submit") = exact match (after whitespace normalization)
 				// - Unquoted string = substring match, case-insensitive
+				// Pierces shadow DOM (Playwright default behavior for locators)
 				const isExact = /^["'].*["']$/.test(query);
 				const searchText = normalizeText(query.replace(/^["']|["']$/g, ''));
 				const searchLower = searchText.toLowerCase();
 
-				const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_ELEMENT);
-				let node;
-				while ((node = walker.nextNode())) {
-					const visibleText = normalizeText(getVisibleText(node));
-					if (!visibleText) continue;
+				function walkTextMatches(root) {
+					const results = [];
+					const els = root.querySelectorAll('*');
+					for (const node of els) {
+						const visibleText = normalizeText(getVisibleText(node));
+						if (!visibleText) continue;
 
-					const match = isExact
-						? normalizeText(visibleText).toLowerCase() === searchLower
-						: visibleText.toLowerCase().includes(searchLower);
+						const match = isExact
+							? visibleText.toLowerCase() === searchLower
+							: visibleText.toLowerCase().includes(searchLower);
 
-					if (match) {
-						// Prefer deepest (most specific) matching element
-						let hasChildMatch = false;
-						for (const child of node.children) {
-							const childText = normalizeText(getVisibleText(child));
-							if (!childText) continue;
-							const childMatch = isExact
-								? childText.toLowerCase() === searchLower
-								: childText.toLowerCase().includes(searchLower);
-							if (childMatch) { hasChildMatch = true; break; }
+						if (match) {
+							// Prefer deepest (most specific) matching element
+							let hasChildMatch = false;
+							for (const child of node.children) {
+								const childText = normalizeText(getVisibleText(child));
+								if (!childText) continue;
+								const childMatch = isExact
+									? childText.toLowerCase() === searchLower
+									: childText.toLowerCase().includes(searchLower);
+								if (childMatch) { hasChildMatch = true; break; }
+							}
+							if (!hasChildMatch) {
+								results.push(node);
+							}
 						}
-						if (!hasChildMatch) {
-							elements.push(node);
+						// Pierce shadow DOM
+						if (node.shadowRoot) {
+							results.push(...walkTextMatches(node.shadowRoot));
 						}
 					}
+					return results;
 				}
+				elements = walkTextMatches(document.body || document.documentElement);
 				break;
 			}
 
@@ -289,17 +298,23 @@ export function buildQuerySelectorScript(selector: string, maxResults: number = 
 				const targetRole = roleMatch[1];
 				const targetName = roleMatch[2];
 
-				// Walk all elements including shadow DOM
+				// Walk ALL elements including shadow DOM — check every element for role match,
+				// then recurse into shadow roots regardless of whether the host matched.
 				function walkElements(root) {
 					const results = [];
 					for (const el of root.querySelectorAll('*')) {
 						const role = el.getAttribute('role') || getImplicitRole(el);
-						if (role !== targetRole) continue;
-						if (targetName) {
-							const name = getAccessibleName(el);
-							if (!name.toLowerCase().includes(targetName.toLowerCase())) continue;
+						if (role === targetRole) {
+							if (targetName) {
+								const name = getAccessibleName(el);
+								if (name.toLowerCase().includes(targetName.toLowerCase())) {
+									results.push(el);
+								}
+							} else {
+								results.push(el);
+							}
 						}
-						results.push(el);
+						// Always recurse into shadow roots, regardless of whether host matched
 						if (el.shadowRoot) results.push(...walkElements(el.shadowRoot));
 					}
 					return results;
@@ -378,28 +393,30 @@ export function buildQuerySelectorScript(selector: string, maxResults: number = 
 // ============================================================================
 
 /**
- * Waits for a CSS selector to appear in the DOM and become visible.
+ * Waits for a smart selector to appear in the DOM and become visible.
+ * Supports all selector engines: css=, text=, role=, xpath=, id=, data-testid=.
  * Uses MutationObserver + polling fallback.
  * Returns a Promise that resolves when found or rejects on timeout.
  */
 export function buildWaitForSelectorScript(selector: string, timeoutMs: number = 5000): string {
-	const escapedSelector = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+	// Embed the full querySelector script inline so waitForElement has the same selector power
+	const queryScript = buildQuerySelectorScript(selector, 1);
+
 	return `new Promise((resolve) => {
-		const selector = '${escapedSelector}';
 		const timeout = ${timeoutMs};
 		const start = performance.now();
 
 		function check() {
-			const el = document.querySelector(selector);
-			if (el) {
-				const rect = el.getBoundingClientRect();
-				if (rect.width > 0 && rect.height > 0) {
+			const result = ${queryScript};
+			if (result && result.found && result.elements.length > 0) {
+				const el = result.elements[0];
+				if (el.rect.width > 0 && el.rect.height > 0) {
 					return {
 						found: true,
-						tag: el.tagName.toLowerCase(),
-						rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-						centerX: rect.x + rect.width / 2,
-						centerY: rect.y + rect.height / 2,
+						tag: el.tag,
+						rect: el.rect,
+						centerX: el.centerX,
+						centerY: el.centerY,
 					};
 				}
 			}
@@ -414,7 +431,7 @@ export function buildWaitForSelectorScript(selector: string, timeoutMs: number =
 		let observer;
 		const timer = setTimeout(() => {
 			if (observer) observer.disconnect();
-			resolve({ found: false, reason: 'timeout', message: 'Selector "' + selector + '" not found within ' + timeout + 'ms' });
+			resolve({ found: false, reason: 'timeout', message: 'Selector not found within ' + timeout + 'ms' });
 		}, timeout);
 
 		function tryCheck() {

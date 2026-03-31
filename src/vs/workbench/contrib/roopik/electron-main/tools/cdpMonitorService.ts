@@ -540,8 +540,8 @@ export class CDPMonitorService {
 		monitor.consoleLogs = [];
 		// Keep network requests - agents need these after page loads!
 		// Network requests will accumulate until browser is closed or manually cleared
-		// Reset networkidle tracker for fresh page
-		monitor.networkIdleTracker.reset();
+		// Signal lifecycle event — does NOT clear inflight requests (they persist across load events)
+		monitor.networkIdleTracker.onLifecycleEvent();
 	}
 
 	/**

@@ -1164,6 +1164,7 @@ export class NativeToolCallParser {
 							modifiers: args.modifiers,
 							deltaX: args.deltaX,
 							deltaY: args.deltaY,
+							tabId: args.tabId,
 						} as NativeArgsFor<TName>
 					}
 					break

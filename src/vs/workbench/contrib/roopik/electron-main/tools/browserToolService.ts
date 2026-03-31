@@ -20,6 +20,8 @@ import {
 	waitForReadyState,
 	querySelector,
 	waitForSelector,
+	ACTION_TIMEOUT_MS,
+	NAVIGATION_TIMEOUT_MS,
 	type EvaluateJS,
 } from '../projectMode/browserActionability.js';
 import type {
@@ -85,6 +87,65 @@ export class BrowserToolService {
 	 */
 	private getEvaluator(browserViewId: number): EvaluateJS {
 		return (script: string) => this.browserViewService.executeScript(browserViewId, script);
+	}
+
+	/**
+	 * Playwright-style locator resolution: re-resolve selector + actionability check
+	 * in a unified retry loop. Each retry re-resolves the selector to get fresh coordinates,
+	 * handling DOM re-renders and layout shifts. Fails if element not found or not actionable
+	 * within timeout.
+	 */
+	private async resolveAndWaitForSelector(
+		evaluate: EvaluateJS,
+		selector: string,
+		timeoutMs: number
+	): Promise<{ success: boolean; x?: number; y?: number; info: string; error?: string }> {
+		const BACKOFF = [0, 20, 100, 100, 500];
+		const start = Date.now();
+		let attempt = 0;
+		let lastError = '';
+
+		while (Date.now() - start < timeoutMs) {
+			if (attempt > 0) {
+				const delay = BACKOFF[Math.min(attempt - 1, BACKOFF.length - 1)];
+				if (delay > 0) { await new Promise(r => setTimeout(r, delay)); }
+			}
+
+			try {
+				// Re-resolve selector each attempt (Playwright's core locator guarantee)
+				const selectorResult = await querySelector(evaluate, selector, 1);
+				if (!selectorResult.found || selectorResult.elements.length === 0) {
+					lastError = `Element not found: ${selector}`;
+					attempt++;
+					continue;
+				}
+
+				const el = selectorResult.elements[0];
+				const x = el.centerX;
+				const y = el.centerY;
+
+				// Check actionability at the fresh coordinates
+				const remaining = timeoutMs - (Date.now() - start);
+				const actionResult = await waitForActionable(evaluate, x, y, {
+					timeout: Math.min(remaining, 3000),
+					scrollIntoView: true,
+				});
+
+				if (!actionResult.actionable) {
+					lastError = `Element found but not actionable: ${actionResult.message || actionResult.reason}${actionResult.obscuredBy ? ` (obscured by ${actionResult.obscuredBy})` : ''}`;
+					attempt++;
+					continue;
+				}
+
+				const info = ` on <${el.tag}>${el.id ? '#' + el.id : ''}`;
+				return { success: true, x, y, info };
+			} catch {
+				lastError = 'Selector evaluation failed (page may be navigating)';
+				attempt++;
+			}
+		}
+
+		return { success: false, info: '', error: lastError || `Selector "${selector}" timed out after ${timeoutMs}ms` };
 	}
 
 	// ==========================================================================
@@ -251,27 +312,27 @@ export class BrowserToolService {
 			await this.browserViewService.navigate(target.browserViewId, url);
 			await this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
 
-			// Wait for page readiness — authoritative, reports actual state
+			// Wait for page readiness — authoritative like Playwright's goto():
+			// fails on timeout so agents don't chain actions on an unloaded page.
 			const waitState = waitUntil || 'load';
-			let waitResult: { ready: boolean; detail: string } = { ready: true, detail: '' };
 
 			if (waitState === 'networkidle') {
-				const result = await this.cdpMonitorService.waitForNetworkIdle(target.browserViewId, 10000);
-				waitResult = {
-					ready: result.idle,
-					detail: result.idle ? 'network idle' : `network still active (${result.inflightCount} inflight requests)`
-				};
+				const result = await this.cdpMonitorService.waitForNetworkIdle(target.browserViewId, NAVIGATION_TIMEOUT_MS);
+				if (!result.idle) {
+					return {
+						success: false,
+						error: `Navigation to ${url} timed out waiting for networkidle (${result.inflightCount} requests still inflight after ${NAVIGATION_TIMEOUT_MS}ms)`
+					};
+				}
 			} else {
 				const targetReadyState = waitState === 'domcontentloaded' ? 'interactive' as const : 'complete' as const;
-				try {
-					const evaluate = this.getEvaluator(target.browserViewId);
-					const result = await waitForReadyState(evaluate, targetReadyState, 10000);
-					waitResult = {
-						ready: result.ready,
-						detail: result.ready ? waitState : `${waitState} timeout (readyState: ${result.readyState})`
+				const evaluate = this.getEvaluator(target.browserViewId);
+				const result = await waitForReadyState(evaluate, targetReadyState, NAVIGATION_TIMEOUT_MS);
+				if (!result.ready) {
+					return {
+						success: false,
+						error: `Navigation to ${url} timed out waiting for '${waitState}' (readyState: ${result.readyState} after ${NAVIGATION_TIMEOUT_MS}ms)`
 					};
-				} catch {
-					waitResult = { ready: false, detail: `${waitState} check failed (page may have redirected)` };
 				}
 			}
 
@@ -279,9 +340,7 @@ export class BrowserToolService {
 				success: true,
 				data: {
 					url,
-					message: `Navigated to ${url}`,
-					...(waitResult.detail ? { waitStatus: waitResult.detail } : {}),
-					...(waitResult.ready ? {} : { warning: `Page did not reach '${waitState}' state: ${waitResult.detail}` }),
+					message: `Navigated to ${url} (${waitState})`,
 					tabId: target.tabId
 				}
 			};
@@ -300,27 +359,26 @@ export class BrowserToolService {
 			await this.browserViewService.reload(target.browserViewId, ignoreCache);
 			await this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
 
-			// Wait for page readiness — authoritative, reports actual state
+			// Wait for page readiness — authoritative like Playwright: fails on timeout
 			const waitState = waitUntil || 'load';
-			let waitResult: { ready: boolean; detail: string } = { ready: true, detail: '' };
 
 			if (waitState === 'networkidle') {
-				const result = await this.cdpMonitorService.waitForNetworkIdle(target.browserViewId, 10000);
-				waitResult = {
-					ready: result.idle,
-					detail: result.idle ? 'network idle' : `network still active (${result.inflightCount} inflight requests)`
-				};
+				const result = await this.cdpMonitorService.waitForNetworkIdle(target.browserViewId, NAVIGATION_TIMEOUT_MS);
+				if (!result.idle) {
+					return {
+						success: false,
+						error: `Reload timed out waiting for networkidle (${result.inflightCount} requests still inflight after ${NAVIGATION_TIMEOUT_MS}ms)`
+					};
+				}
 			} else {
 				const targetReadyState = waitState === 'domcontentloaded' ? 'interactive' as const : 'complete' as const;
-				try {
-					const evaluate = this.getEvaluator(target.browserViewId);
-					const result = await waitForReadyState(evaluate, targetReadyState, 10000);
-					waitResult = {
-						ready: result.ready,
-						detail: result.ready ? waitState : `${waitState} timeout (readyState: ${result.readyState})`
+				const evaluate = this.getEvaluator(target.browserViewId);
+				const result = await waitForReadyState(evaluate, targetReadyState, NAVIGATION_TIMEOUT_MS);
+				if (!result.ready) {
+					return {
+						success: false,
+						error: `Reload timed out waiting for '${waitState}' (readyState: ${result.readyState} after ${NAVIGATION_TIMEOUT_MS}ms)`
 					};
-				} catch {
-					waitResult = { ready: false, detail: `${waitState} check failed` };
 				}
 			}
 
@@ -331,9 +389,7 @@ export class BrowserToolService {
 				success: true,
 				data: {
 					url: currentUrl,
-					message: `Reloaded page${ignoreCache ? ' (cache ignored)' : ''}`,
-					...(waitResult.detail ? { waitStatus: waitResult.detail } : {}),
-					...(waitResult.ready ? {} : { warning: `Page did not reach '${waitState}' state: ${waitResult.detail}` }),
+					message: `Reloaded page${ignoreCache ? ' (cache ignored)' : ''} (${waitState})`,
 					tabId: target.tabId
 				}
 			};
@@ -364,25 +420,24 @@ export class BrowserToolService {
 			const target = this.resolveTarget(params.tabId);
 
 			const { action, coordinate, selector, text, key, modifiers, deltaX, deltaY } = params;
-			const actionTimeout = 30000; // Match Playwright's default actionTimeout
 			const evaluate = this.getEvaluator(target.browserViewId);
+			const isPointerAction = ['click', 'right_click', 'double_click', 'hover'].includes(action);
 
-			// Resolve coordinates: from selector (re-resolved at action time) or from coordinate string
 			let x: number | undefined;
 			let y: number | undefined;
 			let autoWaitInfo = '';
 
-			if (selector && ['click', 'right_click', 'double_click', 'hover'].includes(action)) {
-				// Selector-based action — Playwright's locator model: re-resolve right before action.
-				// This prevents stale coordinates from layout shifts between findElements() and actionInput().
-				const selectorResult = await querySelector(evaluate, selector, 1);
-				if (!selectorResult.found || selectorResult.elements.length === 0) {
-					return { success: false, error: `Element not found: ${selector}` };
+			if (selector && isPointerAction) {
+				// Selector-based action — Playwright's locator model:
+				// Re-resolve selector AND check actionability in a unified retry loop.
+				// If DOM re-renders or element moves during retries, we get fresh coordinates each time.
+				const result = await this.resolveAndWaitForSelector(evaluate, selector, ACTION_TIMEOUT_MS);
+				if (!result.success) {
+					return { success: false, error: result.error! };
 				}
-				const el = selectorResult.elements[0];
-				x = el.centerX;
-				y = el.centerY;
-				autoWaitInfo = ` on <${el.tag}>${el.id ? '#' + el.id : ''}`;
+				x = result.x;
+				y = result.y;
+				autoWaitInfo = result.info;
 			} else if (coordinate) {
 				const parts = coordinate.split(',').map(p => parseFloat(p.trim()));
 				if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
@@ -391,17 +446,16 @@ export class BrowserToolService {
 			}
 
 			// Auto-wait: For coordinate-based actions, verify element is actionable.
-			// This is authoritative — if the element is not actionable, the action FAILS.
-			// Playwright does the same: wait → check → fail if not ready.
-			if (x !== undefined && y !== undefined && ['click', 'right_click', 'double_click', 'hover'].includes(action)) {
-				const result = await waitForActionable(evaluate, x, y, { timeout: actionTimeout });
+			// Authoritative — if the element is not actionable, the action FAILS.
+			if (x !== undefined && y !== undefined && isPointerAction && !selector) {
+				const result = await waitForActionable(evaluate, x, y, { timeout: ACTION_TIMEOUT_MS });
 				if (!result.actionable) {
 					return {
 						success: false,
 						error: `Element not actionable: ${result.message || result.reason || 'unknown'}${result.obscuredBy ? ` (obscured by ${result.obscuredBy})` : ''}`
 					};
 				}
-				if (result.tag && !autoWaitInfo) {
+				if (result.tag) {
 					autoWaitInfo = ` on <${result.tag}>`;
 				}
 			}

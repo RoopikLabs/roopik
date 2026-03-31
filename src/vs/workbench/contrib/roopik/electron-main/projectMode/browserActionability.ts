@@ -98,7 +98,11 @@ export interface ActionabilityOptions {
 /** Progressive backoff intervals (ms) — adapted from Playwright */
 const RETRY_INTERVALS = [0, 20, 100, 100, 500];
 
-const DEFAULT_TIMEOUT = 5000;
+/** Default timeout for actionability checks — matches Playwright's default actionTimeout */
+export const ACTION_TIMEOUT_MS = 30_000;
+
+/** Default timeout for navigation waitForLoadState */
+export const NAVIGATION_TIMEOUT_MS = 30_000;
 
 // ============================================================================
 // Core Actionability Functions
@@ -117,7 +121,7 @@ export async function waitForActionable(
 	y: number,
 	options: ActionabilityOptions = {}
 ): Promise<ActionabilityResult> {
-	const timeout = options.timeout ?? DEFAULT_TIMEOUT;
+	const timeout = options.timeout ?? ACTION_TIMEOUT_MS;
 	const doScroll = options.scrollIntoView ?? true;
 	const start = Date.now();
 	let lastResult: ActionabilityResult | null = null;
@@ -294,12 +298,40 @@ export class NetworkIdleTracker {
 	}
 
 	/**
-	 * Reset on page navigation.
-	 * Clears inflight state but does NOT resolve waiters — they must wait for the
-	 * new page's requests to settle. This prevents the race where Page.loadEventFired
-	 * fires before post-load XHR/fetch requests start, which would falsely signal idle.
-	 * Playwright handles this the same way: networkidle is computed over the full
-	 * lifecycle, not reset-and-resolve on load events.
+	 * Signal a page lifecycle event (e.g., Page.loadEventFired).
+	 * Does NOT clear inflight requests — requests that started before load and are
+	 * still in-flight must continue to be tracked (Playwright does the same: inflight
+	 * requests persist across lifecycle transitions and networkidle is only computed
+	 * when ALL requests have finished + 500ms silence).
+	 *
+	 * If there are no inflight requests, starts the idle timer so networkidle can fire.
+	 * If there ARE inflight requests, does nothing — those requests finishing will
+	 * naturally trigger the idle check.
+	 */
+	onLifecycleEvent(): void {
+		if (this.idleTimer) {
+			clearTimeout(this.idleTimer);
+			this.idleTimer = null;
+		}
+		this._isIdle = false;
+
+		// If no inflight requests, start idle timer (post-load XHR/fetch may arrive soon)
+		if (this.inflightRequests.size === 0) {
+			this.idleTimer = setTimeout(() => {
+				this._isIdle = true;
+				this.idleTimer = null;
+				for (const resolve of this.idleResolvers) {
+					resolve();
+				}
+				this.idleResolvers = [];
+			}, this.threshold);
+		}
+		// If there are inflight requests, they'll call requestFinished() which triggers idle check
+	}
+
+	/**
+	 * Full reset — only call when the browser view is destroyed or a completely new page context starts.
+	 * NOT called on Page.loadEventFired (use onLifecycleEvent instead).
 	 */
 	reset(): void {
 		this.inflightRequests.clear();
@@ -307,17 +339,8 @@ export class NetworkIdleTracker {
 			clearTimeout(this.idleTimer);
 			this.idleTimer = null;
 		}
-		// Mark as NOT idle — new page load means new requests are about to come.
-		// Start a fresh idle timer: if no requests arrive within threshold, then it's truly idle.
-		this._isIdle = false;
-		this.idleTimer = setTimeout(() => {
-			this._isIdle = true;
-			this.idleTimer = null;
-			for (const resolve of this.idleResolvers) {
-				resolve();
-			}
-			this.idleResolvers = [];
-		}, this.threshold);
+		this._isIdle = true;
+		this.idleResolvers = [];
 	}
 
 	/** Whether the network is currently idle */

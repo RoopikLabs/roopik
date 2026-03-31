@@ -473,14 +473,14 @@ export const browser_wait_for_element: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_wait_for_element",
 		description:
-			"[Roopik IDE] Wait for a CSS selector to appear and become visible, with timeout. Useful after navigation or dynamic content loading.",
+			"[Roopik IDE] Wait for a selector to appear and become visible, with timeout. Supports smart selectors (text=, role=, css=). Useful after navigation or dynamic content loading.",
 		strict: true,
 		parameters: {
 			type: "object",
 			properties: {
 				selector: {
 					type: "string",
-					description: "CSS selector to wait for.",
+					description: "Smart selector to wait for. Supports: css= (default), text=, role=, xpath=, id=, data-testid= prefixes.",
 				},
 				timeout: {
 					type: "number",
