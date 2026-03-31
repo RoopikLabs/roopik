@@ -4,6 +4,14 @@ npm-debug.log
 Thumbs.db
 node_modules/
 .build/
+!.vscode/
+.vscode/*
+!.vscode/extensions/
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/notebooks/
+!.vscode/mcp.json
 .vscode/extensions/**/out/
 extensions/**/dist/
 src/vs/base/browser/ui/codicons/codicon/codicon.ttf

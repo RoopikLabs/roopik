@@ -58,6 +58,9 @@ export const dirs = [
 	'test/monaco',
 	'test/smoke',
 	'test/mcp',
+	'.vscode/extensions/vscode-selfhost-import-aid',
+	'.vscode/extensions/vscode-selfhost-test-provider',
+	'.vscode/extensions/vscode-extras',
 ];
 
 if (existsSync(`${import.meta.dirname}/../../.build/distro/npm`)) {
