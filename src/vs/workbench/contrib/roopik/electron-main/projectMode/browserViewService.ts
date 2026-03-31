@@ -673,7 +673,16 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		this.logger.debug('navigate forwarding to webContents.loadURL', { browserViewId, webContentsId: browserView.webContents.id });
 
-		await browserView.webContents.loadURL(normalizedUrl);
+		// Fire-and-forget: don't await loadURL() which blocks until the 'load' event.
+		// Ad-heavy pages may never fire 'load' due to stuck sub-frame scripts.
+		// Callers (MCP browser_navigate, browser_open) use their own waitForReadyState
+		// or waitForNetworkIdle to determine when the page is usable.
+		browserView.webContents.loadURL(normalizedUrl).catch((err) => {
+			// ERR_ABORTED (-3) is expected when navigation is interrupted by another navigation
+			if (err?.message && !err.message.includes('ERR_ABORTED')) {
+				this.logger.error('loadURL failed', { browserViewId, url: normalizedUrl, error: err.message });
+			}
+		});
 	}
 
 	/**
