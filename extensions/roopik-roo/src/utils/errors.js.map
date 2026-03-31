@@ -1,0 +1,1 @@
+{"version":3,"file":"errors.js","sourceRoot":"","sources":["errors.ts"],"names":[],"mappings":"AAAA,MAAM,OAAO,mCAAoC,SAAQ,KAAK;IAC7D,YAAY,OAAe,EAAE;QAC5B,KAAK,CAAC,OAAO,CAAC,CAAA;IAAA,CACd;CACD","sourcesContent":["export class OrganizationAllowListViolationError extends Error {\n\tconstructor(message: string) {\n\t\tsuper(message)\n\t}\n}\n"]}

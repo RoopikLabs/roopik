@@ -1,0 +1,1 @@
+{"version":3,"file":"types.js","sourceRoot":"","sources":["types.ts"],"names":[],"mappings":"","sourcesContent":["import type { TextContent, ToolUse, McpToolUse } from \"../../shared/tools\"\n\nexport type AssistantMessageContent = TextContent | ToolUse | McpToolUse\n"]}
