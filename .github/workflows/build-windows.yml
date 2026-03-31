@@ -1,0 +1,214 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch: # Manual trigger
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-windows:
+    name: Build Windows (x64)
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Setup Python 3
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install tsx (TypeScript runner)
+        run: npm install -g tsx
+
+      - name: Run preinstall script manually
+        run: tsx build/npm/preinstall.ts
+
+      - name: Install dependencies (skip scripts)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm install --ignore-scripts
+
+      - name: Run postinstall script manually
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: tsx build/npm/postinstall.ts
+
+      - name: Rebuild native modules
+        run: npm rebuild
+
+      - name: Generate DOM whitelist from MDN
+        run: node build/scripts/generateDOMWhitelist.mjs
+
+      - name: Install roopik-roo extension dependencies
+        working-directory: extensions/roopik-roo
+        shell: bash
+        run: |
+          if ! npm install; then
+            echo "Normal install failed, trying with --legacy-peer-deps..."
+            npm install --legacy-peer-deps
+            node ../../.github/scripts/install-all-peer-deps.js || true
+          fi
+
+      - name: Install @roo-code/types dependencies
+        working-directory: extensions/roopik-roo/packages/types
+        run: npm install
+
+      - name: Build @roo-code/types package
+        working-directory: extensions/roopik-roo/packages/types
+        run: npm run build
+
+      - name: Install @roo-code/build dependencies
+        working-directory: extensions/roopik-roo/packages/build
+        run: npm install
+
+      - name: Build @roo-code/build package
+        working-directory: extensions/roopik-roo/packages/build
+        run: npm run build
+
+      - name: Create .env file for roopik-roo
+        working-directory: extensions/roopik-roo
+        shell: bash
+        env:
+          ROO_CODE_API_URL: ${{ secrets.ROO_CODE_API_URL || 'https://app.roocode.com' }}
+          ROO_CODE_PROVIDER_URL: ${{ secrets.ROO_CODE_PROVIDER_URL || 'https://app.roocode.com/proxy/v1' }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY || '' }}
+        run: |
+          cat > .env << EOF
+          ROO_CODE_API_URL=${ROO_CODE_API_URL}
+          ROO_CODE_PROVIDER_URL=${ROO_CODE_PROVIDER_URL}
+          POSTHOG_API_KEY=${POSTHOG_API_KEY}
+          EOF
+
+      - name: Build roopik-roo extension
+        working-directory: extensions/roopik-roo
+        run: npm run build
+
+      - name: Install roopik extension dependencies (skip postinstall)
+        working-directory: extensions/roopik
+        run: npm install --ignore-scripts
+
+      - name: Install roopik webview dependencies
+        working-directory: extensions/roopik/webview
+        run: npm install
+
+      - name: Build roopik extension
+        working-directory: extensions/roopik
+        run: npm run build
+
+      - name: Build MCP STDIO binary (Windows)
+        working-directory: tools/roopik/mcp-stdio-server
+        shell: bash
+        run: |
+          npm ci
+          mkdir -p ../../../resources/mcp-binaries
+          npm run build:binary:win
+
+      - name: Clean non-Windows prebuilds from node_modules
+        shell: bash
+        run: |
+          # Remove macOS and Linux prebuilds to prevent rcedit.exe errors
+          find node_modules -type d -name "prebuilds" -exec sh -c '
+            for dir in "$1"/*; do
+              case "$(basename "$dir")" in
+                darwin-*|linux-*) rm -rf "$dir" ;;
+              esac
+            done
+          ' sh {} \;
+
+      - name: Build Windows application
+        env:
+          BUILD_SOURCEVERSION: ${{ github.sha }}
+        run: npm run gulp vscode-win32-x64
+
+      - name: Prepare Inno Setup tools
+        env:
+          BUILD_SOURCEVERSION: ${{ github.sha }}
+        run: npm run gulp vscode-win32-x64-inno-updater
+
+      - name: Build Windows installer (User)
+        env:
+          BUILD_SOURCEVERSION: ${{ github.sha }}
+        run: npm run gulp vscode-win32-x64-user-setup
+
+      # System installer commented out - use User installer for most cases
+      # Uncomment if you need system-wide installation for all users
+      # - name: Build Windows installer (System)
+      #   run: npm run gulp vscode-win32-x64-system-setup
+
+      - name: Prepare Windows release artifact
+        shell: powershell
+        run: |
+          Copy-Item -Recurse -Force ..\VSCode-win32-x64 .\Roopik-Portable-win32-x64
+          New-Item -ItemType Directory -Force -Path .artifacts\public | Out-Null
+          $installer = Get-ChildItem -Path .build\win32-x64\user-setup -Filter RoopikSetup.exe | Select-Object -First 1
+          if (-not $installer) { throw "RoopikSetup.exe not found in .build\win32-x64\user-setup" }
+          Copy-Item $installer.FullName .artifacts\public\roopik-windows-latest.exe -Force
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: roopik-windows-release
+          path: |
+            .artifacts/public/
+            Roopik-Portable-win32-x64/
+          retention-days: 10
+
+      - name: Install AWS CLI
+        continue-on-error: true
+        run: choco install awscli -y
+
+      - name: Upload Windows installer to R2
+        continue-on-error: true
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          $endpoint = "https://$env:R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+          $prefix = "windows/"
+          $installer = Get-ChildItem -Path .build\win32-x64\user-setup -Filter RoopikSetup.exe | Select-Object -First 1
+          if (-not $installer) { throw "RoopikSetup.exe not found in .build\\win32-x64\\user-setup" }
+          $env:AWS_ACCESS_KEY_ID = $env:R2_ACCESS_KEY_ID
+          $env:AWS_SECRET_ACCESS_KEY = $env:R2_SECRET_ACCESS_KEY
+          $env:AWS_EC2_METADATA_DISABLED = "true"
+          aws s3 cp $installer.FullName "s3://$env:R2_BUCKET/${prefix}roopik-windows-latest.exe" --endpoint-url $endpoint --no-progress
+
+          if (-not $env:R2_PUBLIC_BASE_URL) {
+            Write-Host "R2_PUBLIC_BASE_URL not set, skipping update manifest upload."
+            exit 0
+          }
+
+          $version = node -p "require('./package.json').version"
+          $commit = "${{ github.sha }}"
+          $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash.ToLower()
+          $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          $base = $env:R2_PUBLIC_BASE_URL.TrimEnd('/')
+          $url = "$base/windows/roopik-windows-latest.exe"
+          $json = @{
+            version = $commit
+            productVersion = $version
+            url = $url
+            sha256hash = $hash
+            pub_date = $pubDate
+          } | ConvertTo-Json -Compress
+          $tmp = Join-Path $env:TEMP "latest.json"
+          $json | Out-File -Encoding utf8 $tmp
+          aws s3 cp $tmp "s3://$env:R2_BUCKET/windows/stable/latest.json" --endpoint-url $endpoint --no-progress
+
