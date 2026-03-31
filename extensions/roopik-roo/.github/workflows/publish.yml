@@ -1,0 +1,67 @@
+name: Publish to VS Code Marketplace
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version increment type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20.19.2'
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+      
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+      
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      
+      - name: Configure git
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+      
+      - name: Install dependencies
+        run: pnpm install --shamefully-hoist
+      
+      - name: Build all
+        run: pnpm run build:all
+      
+      - name: Bump version
+        run: npm version ${{ github.event.inputs.version_type }}
+      
+      - name: Package extension
+        run: npx vsce package
+      
+      - name: Publish to VS Code Marketplace
+        run: npx vsce publish -p ${{ secrets.VSCE_PAT }}
+      
+      - name: Push changes and tags
+        run: git push origin main --tags

@@ -1,0 +1,68 @@
+# Exclude everything
+**
+
+# Exclude node_modules (CRITICAL: prevents "too many open files" error)
+**/node_modules/**
+webview-ui/node_modules/**
+
+# Exclude build artifacts and development files
+out/
+.turbo/
+*.tsbuildinfo
+*.log
+.eslintcache
+.DS_Store
+Thumbs.db
+
+# Exclude test files
+**/__tests__/**
+**/*.spec.ts
+**/*.test.ts
+**/*.spec.tsx
+**/*.test.tsx
+packages/evals/**
+
+# Exclude source files (we only need built files)
+src/**
+webview-ui/src/**
+webview-ui/tsconfig.json
+webview-ui/vite.config.*
+webview-ui/vitest.config.*
+webview-ui/vitest.setup.*
+webview-ui/turbo.json
+webview-ui/components.json
+webview-ui/eslint.config.*
+webview-ui/package-lock.json
+
+# Exclude package manager files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Include README.md, CHANGELOG.md and LICENSE
+!README.md
+!CHANGELOG.md
+!LICENSE
+
+# Include package.json
+!package.json
+!package.nls.*
+
+# Include the built extension
+!dist/**
+
+# Include the built webview (all build files)
+!webview-ui/build/**
+!webview-ui/audio/**
+
+# Include default themes JSON files used in getTheme
+!integrations/theme/default-themes/**
+
+# Include icons and images (from dist/assets, not src/assets)
+!dist/assets/codicons/**
+!dist/assets/vscode-material-icons/**
+!dist/assets/icons/**
+!dist/assets/images/**
+
+# Include .env file for telemetry
+!.env
