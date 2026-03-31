@@ -113,11 +113,20 @@ export class BrowserToolService {
 
 			try {
 				// Re-resolve selector each attempt (Playwright's core locator guarantee)
-				const selectorResult = await querySelector(evaluate, selector, 1);
+				// Query up to 2 results to detect ambiguity
+				const selectorResult = await querySelector(evaluate, selector, 2);
 				if (!selectorResult.found || selectorResult.elements.length === 0) {
 					lastError = `Element not found: ${selector}`;
 					attempt++;
 					continue;
+				}
+
+				// Strict: fail if selector matches multiple elements (Playwright's locator contract)
+				if (selectorResult.count > 1) {
+					return {
+						success: false, info: '',
+						error: `Selector "${selector}" resolved to ${selectorResult.count} elements (strict mode requires exactly 1). Use a more specific selector.`
+					};
 				}
 
 				const el = selectorResult.elements[0];
@@ -139,8 +148,14 @@ export class BrowserToolService {
 
 				const info = ` on <${el.tag}>${el.id ? '#' + el.id : ''}`;
 				return { success: true, x, y, info };
-			} catch {
-				lastError = 'Selector evaluation failed (page may be navigating)';
+			} catch (e) {
+				// Preserve specific error from actionability checks, don't overwrite with generic message
+				const msg = e instanceof Error ? e.message : String(e);
+				if (msg.includes('not actionable') || msg.includes('obscured') || msg.includes('disabled') || msg.includes('not visible')) {
+					lastError = msg;
+				} else {
+					lastError = lastError || `Selector evaluation failed: ${msg}`;
+				}
 				attempt++;
 			}
 		}
@@ -309,8 +324,9 @@ export class BrowserToolService {
 		try {
 			const target = this.resolveTarget(tabId);
 
-			await this.browserViewService.navigate(target.browserViewId, url);
+			// Ensure monitoring BEFORE navigation so we don't miss early requests for networkidle
 			await this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
+			await this.browserViewService.navigate(target.browserViewId, url);
 
 			// Wait for page readiness — authoritative like Playwright's goto():
 			// fails on timeout so agents don't chain actions on an unloaded page.
@@ -356,8 +372,8 @@ export class BrowserToolService {
 		try {
 			const target = this.resolveTarget(tabId);
 
-			await this.browserViewService.reload(target.browserViewId, ignoreCache);
 			await this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
+			await this.browserViewService.reload(target.browserViewId, ignoreCache);
 
 			// Wait for page readiness — authoritative like Playwright: fails on timeout
 			const waitState = waitUntil || 'load';
@@ -461,6 +477,7 @@ export class BrowserToolService {
 			}
 
 			// Execute action based on type
+			let mayTriggerNavigation = false;
 			switch (action) {
 				case 'click':
 				case 'right_click':
@@ -470,6 +487,7 @@ export class BrowserToolService {
 						return { success: false, error: `${action} requires coordinate or selector parameter` };
 					}
 					await this.browserViewService.sendMouseEvent(target.browserViewId, action, x, y);
+					if (action !== 'hover') { mayTriggerNavigation = true; }
 					break;
 
 				case 'type':
@@ -484,6 +502,8 @@ export class BrowserToolService {
 						return { success: false, error: 'press action requires key parameter' };
 					}
 					await this.browserViewService.sendKeyEvent(target.browserViewId, key, modifiers);
+					// Enter key on forms can trigger navigation
+					if (key === 'Enter') { mayTriggerNavigation = true; }
 					break;
 
 				case 'scroll':
@@ -495,6 +515,32 @@ export class BrowserToolService {
 
 				default:
 					return { success: false, error: `Unknown action: ${action}` };
+			}
+
+			// Post-action navigation barrier (Playwright's SignalBarrier pattern):
+			// If the action may have triggered a navigation (click, Enter), wait briefly
+			// for the page to settle. This prevents the agent from racing its next command
+			// against a mid-navigation page.
+			if (mayTriggerNavigation) {
+				try {
+					const evaluate = this.getEvaluator(target.browserViewId);
+					// Short wait: check if readyState dropped (navigation started)
+					// then wait for it to come back to 'complete'
+					await new Promise(r => setTimeout(r, 100)); // Let navigation start
+					const state = await evaluate('document.readyState').catch(() => 'loading');
+					if (state !== 'complete') {
+						// Navigation in progress — wait for it to finish
+						await waitForReadyState(evaluate, 'complete', 10000).catch(() => { });
+					}
+				} catch {
+					// Page navigated away — readyState check on old page threw.
+					// Wait briefly for new page to load.
+					await new Promise(r => setTimeout(r, 500));
+					try {
+						const evaluate = this.getEvaluator(target.browserViewId);
+						await waitForReadyState(evaluate, 'complete', 10000).catch(() => { });
+					} catch { /* new page not ready yet, agent will see it on next action */ }
+				}
 			}
 
 			return {
