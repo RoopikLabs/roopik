@@ -236,15 +236,17 @@ async function handleBrowserActionInput(task: Task, block: ToolUse, callbacks: T
 		}
 	}
 
+	const args = block.nativeArgs as NativeToolArgs['browser_action_input'] | undefined
 	return roopikClient.browserAction({
 		action: action as any,
-		coordinate: block.params.coordinate,
+		coordinate: args?.coordinate ? String(args.coordinate) : block.params.coordinate,
+		selector: args?.selector || block.params.selector,
 		text: block.params.text,
 		key: block.params.key || block.params.args,
 		modifiers,
-		deltaX: block.params.deltaX ? parseFloat(block.params.deltaX) : undefined,
-		deltaY: block.params.deltaY ? parseFloat(block.params.deltaY) : undefined,
-		tabId: parseTabId(block),
+		deltaX: args?.deltaX ?? (block.params.deltaX ? parseFloat(block.params.deltaX) : undefined),
+		deltaY: args?.deltaY ?? (block.params.deltaY ? parseFloat(block.params.deltaY) : undefined),
+		tabId: args?.tabId ?? parseTabId(block),
 	})
 }
 

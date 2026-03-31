@@ -62,6 +62,8 @@ export interface BrowserScreenshotResult extends ImageResult {
 export interface BrowserNavigateResult {
 	url: string;
 	message: string;
+	waitStatus?: string;
+	warning?: string;
 	tabId?: number;
 }
 

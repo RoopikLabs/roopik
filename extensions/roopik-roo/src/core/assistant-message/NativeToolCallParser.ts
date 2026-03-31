@@ -654,6 +654,7 @@ export class NativeToolCallParser {
 				nativeArgs = {
 					action: partialArgs.action,
 					coordinate: partialArgs.coordinate,
+					selector: partialArgs.selector,
 					text: partialArgs.text,
 					key: partialArgs.key,
 					modifiers: partialArgs.modifiers,
@@ -1157,6 +1158,7 @@ export class NativeToolCallParser {
 						nativeArgs = {
 							action: args.action,
 							coordinate: args.coordinate,
+							selector: args.selector,
 							text: args.text,
 							key: args.key,
 							modifiers: args.modifiers,

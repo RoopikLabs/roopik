@@ -551,7 +551,13 @@ export class CDPMonitorService {
 	async waitForNetworkIdle(browserViewId: number, timeoutMs: number = 10000): Promise<{ idle: boolean; inflightCount: number }> {
 		const monitor = sharedMonitors.get(browserViewId);
 		if (!monitor) {
-			return { idle: true, inflightCount: 0 };
+			// No monitor means CDP monitoring hasn't attached yet — wait briefly for it
+			await new Promise(r => setTimeout(r, 500));
+			const retryMonitor = sharedMonitors.get(browserViewId);
+			if (!retryMonitor) {
+				return { idle: false, inflightCount: -1 }; // -1 = unknown, monitoring not attached
+			}
+			return retryMonitor.networkIdleTracker.waitForIdle(timeoutMs - 500);
 		}
 		return monitor.networkIdleTracker.waitForIdle(timeoutMs);
 	}

@@ -127,6 +127,7 @@ export class RoopikToolsChannel implements IServerChannel {
 					return this.handleBrowserAction(arg as {
 						action: string;
 						coordinate?: string;
+						selector?: string;
 						text?: string;
 						key?: string;
 						modifiers?: string[];
@@ -406,6 +407,7 @@ export class RoopikToolsChannel implements IServerChannel {
 	private async handleBrowserAction(args: {
 		action: string;
 		coordinate?: string;
+		selector?: string;
 		text?: string;
 		key?: string;
 		modifiers?: string[];
@@ -416,6 +418,7 @@ export class RoopikToolsChannel implements IServerChannel {
 		return this.browserToolService.actionInput({
 			action: args.action as 'click' | 'right_click' | 'double_click' | 'hover' | 'drag' | 'type' | 'press' | 'scroll',
 			coordinate: args.coordinate,
+			selector: args.selector,
 			text: args.text,
 			key: args.key,
 			modifiers: args.modifiers,

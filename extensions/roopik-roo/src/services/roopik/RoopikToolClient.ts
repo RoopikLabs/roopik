@@ -381,6 +381,7 @@ export class RoopikToolClient {
 	async browserAction(options: {
 		action: BrowserActionType
 		coordinate?: string
+		selector?: string
 		text?: string
 		key?: string
 		modifiers?: string[]

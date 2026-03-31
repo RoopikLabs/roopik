@@ -42,9 +42,9 @@ export function buildCheckActionableScript(x: number, y: number): string {
 			return { actionable: false, reason: 'not_visible', message: 'Element has zero size', tag: el.tagName };
 		}
 
-		// Check visibility CSS
+		// Check visibility CSS — Playwright considers opacity:0 as visible (still receives pointer events)
 		const style = window.getComputedStyle(el);
-		if (style.visibility === 'hidden' || style.display === 'none' || parseFloat(style.opacity) === 0) {
+		if (style.visibility === 'hidden' || style.display === 'none') {
 			return { actionable: false, reason: 'hidden', message: 'Element is hidden via CSS', tag: el.tagName };
 		}
 
@@ -61,15 +61,23 @@ export function buildCheckActionableScript(x: number, y: number): string {
 			parent = parent.parentElement;
 		}
 
-		// Check receives events (topmost at coordinates)
-		const topEl = document.elementFromPoint(x, y);
-		const receivesEvents = topEl === el || el.contains(topEl) || (topEl && topEl.contains(el));
+		// Check receives events — hit-target verification (Playwright's key protection)
+		// We find the element's center point, then check what elementFromPoint returns there.
+		// If an overlay/modal/tooltip is covering it, elementFromPoint returns the overlay instead.
+		const centerX = rect.x + rect.width / 2;
+		const centerY = rect.y + rect.height / 2;
+		const hitEl = document.elementFromPoint(centerX, centerY);
+		const receivesEvents = hitEl === el || el.contains(hitEl) || (hitEl && hitEl.contains(el));
 
 		if (!receivesEvents) {
+			const hitTag = hitEl ? hitEl.tagName.toLowerCase() : 'unknown';
+			const hitId = hitEl && hitEl.id ? '#' + hitEl.id : '';
+			const hitClass = hitEl && hitEl.className && typeof hitEl.className === 'string'
+				? '.' + hitEl.className.split(' ').filter(Boolean).join('.') : '';
 			return {
 				actionable: false, reason: 'obscured',
-				message: 'Element is obscured by another element at (' + x + ', ' + y + ')',
-				tag: el.tagName, obscuredBy: topEl ? topEl.tagName : 'unknown'
+				message: 'Element <' + el.tagName.toLowerCase() + '> is obscured by <' + hitTag + hitId + hitClass + '> at center (' + Math.round(centerX) + ', ' + Math.round(centerY) + ')',
+				tag: el.tagName.toLowerCase(), obscuredBy: hitTag + hitId + hitClass
 			};
 		}
 
@@ -77,7 +85,7 @@ export function buildCheckActionableScript(x: number, y: number): string {
 			actionable: true,
 			tag: el.tagName.toLowerCase(),
 			id: el.id || undefined,
-			className: el.className || undefined,
+			className: (typeof el.className === 'string' ? el.className : '') || undefined,
 			rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
 		};
 	})()`;
@@ -194,12 +202,41 @@ export function buildQuerySelectorScript(selector: string, maxResults: number = 
 		}
 
 		function normalizeText(text) {
-			return text.replace(/\\s+/g, ' ').trim().toLowerCase();
+			return text.replace(/\\s+/g, ' ').trim();
 		}
 
 		function getVisibleText(el) {
-			if (el.offsetParent === null && window.getComputedStyle(el).display !== 'contents') return '';
+			// Playwright considers opacity:0 elements as visible (they receive pointer events)
+			// Only skip elements with display:none or visibility:hidden
+			const style = window.getComputedStyle(el);
+			if (style.display === 'none' || style.visibility === 'hidden') return '';
 			return el.innerText || el.textContent || '';
+		}
+
+		// Compute accessible name per WAI-ARIA spec (simplified)
+		function getAccessibleName(el) {
+			// 1. aria-labelledby
+			const labelledBy = el.getAttribute('aria-labelledby');
+			if (labelledBy) {
+				const names = labelledBy.split(/\\s+/).map(id => {
+					const ref = document.getElementById(id);
+					return ref ? normalizeText(ref.textContent || '') : '';
+				}).filter(Boolean);
+				if (names.length) return names.join(' ');
+			}
+			// 2. aria-label
+			const ariaLabel = el.getAttribute('aria-label');
+			if (ariaLabel) return ariaLabel.trim();
+			// 3. For inputs: associated label element
+			if (el.id) {
+				const label = document.querySelector('label[for="' + el.id + '"]');
+				if (label) return normalizeText(label.textContent || '');
+			}
+			// 4. title attribute
+			const title = el.getAttribute('title');
+			if (title) return title.trim();
+			// 5. Text content (for buttons, links, etc.)
+			return normalizeText(el.textContent || '');
 		}
 
 		let elements = [];
@@ -210,19 +247,33 @@ export function buildQuerySelectorScript(selector: string, maxResults: number = 
 				break;
 
 			case 'text': {
+				// Playwright text= semantics:
+				// - Quoted string ("Submit") = exact match (after whitespace normalization)
+				// - Unquoted string = substring match, case-insensitive
+				const isExact = /^["'].*["']$/.test(query);
 				const searchText = normalizeText(query.replace(/^["']|["']$/g, ''));
-				const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT);
+				const searchLower = searchText.toLowerCase();
+
+				const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_ELEMENT);
 				let node;
 				while ((node = walker.nextNode())) {
 					const visibleText = normalizeText(getVisibleText(node));
-					if (visibleText.includes(searchText)) {
-						// Prefer the most specific (deepest) match
+					if (!visibleText) continue;
+
+					const match = isExact
+						? normalizeText(visibleText).toLowerCase() === searchLower
+						: visibleText.toLowerCase().includes(searchLower);
+
+					if (match) {
+						// Prefer deepest (most specific) matching element
 						let hasChildMatch = false;
 						for (const child of node.children) {
-							if (normalizeText(getVisibleText(child)).includes(searchText)) {
-								hasChildMatch = true;
-								break;
-							}
+							const childText = normalizeText(getVisibleText(child));
+							if (!childText) continue;
+							const childMatch = isExact
+								? childText.toLowerCase() === searchLower
+								: childText.toLowerCase().includes(searchLower);
+							if (childMatch) { hasChildMatch = true; break; }
 						}
 						if (!hasChildMatch) {
 							elements.push(node);
@@ -237,18 +288,23 @@ export function buildQuerySelectorScript(selector: string, maxResults: number = 
 				if (!roleMatch) break;
 				const targetRole = roleMatch[1];
 				const targetName = roleMatch[2];
-				const all = document.querySelectorAll('*');
-				for (const el of all) {
-					const role = el.getAttribute('role') || getImplicitRole(el);
-					if (role !== targetRole) continue;
-					if (targetName) {
-						const name = el.getAttribute('aria-label')
-							|| el.getAttribute('title')
-							|| el.textContent?.trim()
-							|| '';
-						if (!name.toLowerCase().includes(targetName.toLowerCase())) continue;
+
+				// Walk all elements including shadow DOM
+				function walkElements(root) {
+					const results = [];
+					for (const el of root.querySelectorAll('*')) {
+						const role = el.getAttribute('role') || getImplicitRole(el);
+						if (role !== targetRole) continue;
+						if (targetName) {
+							const name = getAccessibleName(el);
+							if (!name.toLowerCase().includes(targetName.toLowerCase())) continue;
+						}
+						results.push(el);
+						if (el.shadowRoot) results.push(...walkElements(el.shadowRoot));
 					}
-					elements.push(el);
+					return results;
+				}
+				elements = walkElements(document);
 				}
 				break;
 			}

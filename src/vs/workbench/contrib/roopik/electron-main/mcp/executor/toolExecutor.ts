@@ -199,6 +199,7 @@ export class ToolExecutor {
 				return this.browserToolService.actionInput({
 					action: params.action as 'click' | 'right_click' | 'double_click' | 'hover' | 'drag' | 'type' | 'press' | 'scroll',
 					coordinate: params.coordinate as string | undefined,
+					selector: params.selector as string | undefined,
 					text: params.text as string | undefined,
 					key: params.key as string | undefined,
 					modifiers: params.modifiers as string[] | undefined,

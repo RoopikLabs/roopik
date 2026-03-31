@@ -138,7 +138,7 @@ Coordinate format: 'x,y@WIDTHxHEIGHT' where WIDTH/HEIGHT are from browser_screen
 Example: '450,203@900x600' means click at (450,203) on a 900x600 viewport.
 
 Actions:
-- click/right_click/double_click/hover: requires 'coordinate'
+- click/right_click/double_click/hover: requires 'coordinate' or 'selector' (selector re-resolves at action time)
 - drag: requires 'coordinate' (start) + 'deltaX'/'deltaY' (offset to end)
 - type: requires 'text'
 - press: requires 'key' (e.g., 'Enter', 'Escape', 'Tab'), optional 'modifiers' (['ctrl', 'shift'])
@@ -155,6 +155,10 @@ Actions:
 				coordinate: {
 					type: "string",
 					description: "Coordinate string: 'x,y' or 'x,y@WIDTHxHEIGHT' for scaled coordinates",
+				},
+				selector: {
+					type: "string",
+					description: "Smart selector (alternative to coordinate). Re-resolved at action time. Supports: css=, text=, role= prefixes.",
 				},
 				text: {
 					type: "string",

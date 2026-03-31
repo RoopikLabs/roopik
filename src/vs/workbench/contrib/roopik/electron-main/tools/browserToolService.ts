@@ -249,31 +249,39 @@ export class BrowserToolService {
 			const target = this.resolveTarget(tabId);
 
 			await this.browserViewService.navigate(target.browserViewId, url);
-			this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
+			await this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
 
-			// Wait for page readiness based on waitUntil
+			// Wait for page readiness — authoritative, reports actual state
 			const waitState = waitUntil || 'load';
-			let waitMessage = '';
-			try {
-				if (waitState === 'networkidle') {
-					const result = await this.cdpMonitorService.waitForNetworkIdle(target.browserViewId, 10000);
-					waitMessage = result.idle ? ' (network idle)' : ' (network still active)';
-				} else {
-					const targetReadyState = waitState === 'domcontentloaded' ? 'interactive' : 'complete';
+			let waitResult: { ready: boolean; detail: string } = { ready: true, detail: '' };
+
+			if (waitState === 'networkidle') {
+				const result = await this.cdpMonitorService.waitForNetworkIdle(target.browserViewId, 10000);
+				waitResult = {
+					ready: result.idle,
+					detail: result.idle ? 'network idle' : `network still active (${result.inflightCount} inflight requests)`
+				};
+			} else {
+				const targetReadyState = waitState === 'domcontentloaded' ? 'interactive' as const : 'complete' as const;
+				try {
 					const evaluate = this.getEvaluator(target.browserViewId);
 					const result = await waitForReadyState(evaluate, targetReadyState, 10000);
-					waitMessage = result.ready ? ` (${waitState})` : ` (${waitState} timeout, readyState: ${result.readyState})`;
+					waitResult = {
+						ready: result.ready,
+						detail: result.ready ? waitState : `${waitState} timeout (readyState: ${result.readyState})`
+					};
+				} catch {
+					waitResult = { ready: false, detail: `${waitState} check failed (page may have redirected)` };
 				}
-			} catch {
-				// Navigation wait failed — page may have navigated away, still report success
-				waitMessage = ' (wait skipped)';
 			}
 
 			return {
 				success: true,
 				data: {
 					url,
-					message: `Navigated to ${url}${waitMessage}`,
+					message: `Navigated to ${url}`,
+					...(waitResult.detail ? { waitStatus: waitResult.detail } : {}),
+					...(waitResult.ready ? {} : { warning: `Page did not reach '${waitState}' state: ${waitResult.detail}` }),
 					tabId: target.tabId
 				}
 			};
@@ -290,20 +298,30 @@ export class BrowserToolService {
 			const target = this.resolveTarget(tabId);
 
 			await this.browserViewService.reload(target.browserViewId, ignoreCache);
-			this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
+			await this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
 
-			// Wait for page readiness
+			// Wait for page readiness — authoritative, reports actual state
 			const waitState = waitUntil || 'load';
-			try {
-				if (waitState === 'networkidle') {
-					await this.cdpMonitorService.waitForNetworkIdle(target.browserViewId, 10000);
-				} else {
-					const targetReadyState = waitState === 'domcontentloaded' ? 'interactive' : 'complete';
+			let waitResult: { ready: boolean; detail: string } = { ready: true, detail: '' };
+
+			if (waitState === 'networkidle') {
+				const result = await this.cdpMonitorService.waitForNetworkIdle(target.browserViewId, 10000);
+				waitResult = {
+					ready: result.idle,
+					detail: result.idle ? 'network idle' : `network still active (${result.inflightCount} inflight requests)`
+				};
+			} else {
+				const targetReadyState = waitState === 'domcontentloaded' ? 'interactive' as const : 'complete' as const;
+				try {
 					const evaluate = this.getEvaluator(target.browserViewId);
-					await waitForReadyState(evaluate, targetReadyState, 10000);
+					const result = await waitForReadyState(evaluate, targetReadyState, 10000);
+					waitResult = {
+						ready: result.ready,
+						detail: result.ready ? waitState : `${waitState} timeout (readyState: ${result.readyState})`
+					};
+				} catch {
+					waitResult = { ready: false, detail: `${waitState} check failed` };
 				}
-			} catch {
-				// Wait failed — continue anyway
 			}
 
 			const navState = await this.browserViewService.getNavigationState(target.browserViewId);
@@ -314,6 +332,8 @@ export class BrowserToolService {
 				data: {
 					url: currentUrl,
 					message: `Reloaded page${ignoreCache ? ' (cache ignored)' : ''}`,
+					...(waitResult.detail ? { waitStatus: waitResult.detail } : {}),
+					...(waitResult.ready ? {} : { warning: `Page did not reach '${waitState}' state: ${waitResult.detail}` }),
 					tabId: target.tabId
 				}
 			};
@@ -332,6 +352,7 @@ export class BrowserToolService {
 	async actionInput(params: {
 		action: 'click' | 'right_click' | 'double_click' | 'hover' | 'drag' | 'type' | 'press' | 'scroll';
 		coordinate?: string;
+		selector?: string;
 		text?: string;
 		key?: string;
 		modifiers?: string[];
@@ -342,30 +363,46 @@ export class BrowserToolService {
 		try {
 			const target = this.resolveTarget(params.tabId);
 
-			const { action, coordinate, text, key, modifiers, deltaX, deltaY } = params;
+			const { action, coordinate, selector, text, key, modifiers, deltaX, deltaY } = params;
+			const actionTimeout = 30000; // Match Playwright's default actionTimeout
+			const evaluate = this.getEvaluator(target.browserViewId);
 
-			// Parse coordinates if provided
+			// Resolve coordinates: from selector (re-resolved at action time) or from coordinate string
 			let x: number | undefined;
 			let y: number | undefined;
-			if (coordinate) {
+			let autoWaitInfo = '';
+
+			if (selector && ['click', 'right_click', 'double_click', 'hover'].includes(action)) {
+				// Selector-based action — Playwright's locator model: re-resolve right before action.
+				// This prevents stale coordinates from layout shifts between findElements() and actionInput().
+				const selectorResult = await querySelector(evaluate, selector, 1);
+				if (!selectorResult.found || selectorResult.elements.length === 0) {
+					return { success: false, error: `Element not found: ${selector}` };
+				}
+				const el = selectorResult.elements[0];
+				x = el.centerX;
+				y = el.centerY;
+				autoWaitInfo = ` on <${el.tag}>${el.id ? '#' + el.id : ''}`;
+			} else if (coordinate) {
 				const parts = coordinate.split(',').map(p => parseFloat(p.trim()));
 				if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
 					[x, y] = parts;
 				}
 			}
 
-			// Auto-wait: For coordinate-based actions, verify element is actionable
-			let autoWaitInfo = '';
+			// Auto-wait: For coordinate-based actions, verify element is actionable.
+			// This is authoritative — if the element is not actionable, the action FAILS.
+			// Playwright does the same: wait → check → fail if not ready.
 			if (x !== undefined && y !== undefined && ['click', 'right_click', 'double_click', 'hover'].includes(action)) {
-				try {
-					const evaluate = this.getEvaluator(target.browserViewId);
-					const result = await waitForActionable(evaluate, x, y, { timeout: 5000 });
-					if (result.tag) {
-						autoWaitInfo = ` on <${result.tag}>`;
-					}
-				} catch (e) {
-					// Auto-wait failed — still try the action (best effort, don't block)
-					autoWaitInfo = ` (auto-wait: ${e instanceof Error ? e.message : 'failed'})`;
+				const result = await waitForActionable(evaluate, x, y, { timeout: actionTimeout });
+				if (!result.actionable) {
+					return {
+						success: false,
+						error: `Element not actionable: ${result.message || result.reason || 'unknown'}${result.obscuredBy ? ` (obscured by ${result.obscuredBy})` : ''}`
+					};
+				}
+				if (result.tag && !autoWaitInfo) {
+					autoWaitInfo = ` on <${result.tag}>`;
 				}
 			}
 
@@ -376,7 +413,7 @@ export class BrowserToolService {
 				case 'double_click':
 				case 'hover':
 					if (x === undefined || y === undefined) {
-						return { success: false, error: `${action} requires coordinate parameter (e.g., "100,200")` };
+						return { success: false, error: `${action} requires coordinate or selector parameter` };
 					}
 					await this.browserViewService.sendMouseEvent(target.browserViewId, action, x, y);
 					break;

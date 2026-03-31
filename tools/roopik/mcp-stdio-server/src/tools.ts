@@ -56,6 +56,7 @@ export const browserActionInputSchema = z.object({
 	action: z.enum(['click', 'right_click', 'double_click', 'hover', 'drag', 'type', 'press', 'scroll'])
 		.describe('The action to perform'),
 	coordinate: z.string().optional().describe('Coordinates in "x,y" format for click/hover actions'),
+	selector: z.string().optional().describe('Alternative to coordinate — click by selector instead. Element is re-resolved at action time (no stale coordinates). Examples: "#submit-btn", "text=Submit", "role=button[name=\\"Save\\"]", "data-testid=login". Plain string = CSS selector.'),
 	text: z.string().optional().describe('Text to type (for type action)'),
 	key: z.string().optional().describe('Key to press (for press action)'),
 	modifiers: z.array(z.string()).optional().describe('Modifier keys (ctrl, alt, shift, meta)'),

@@ -160,7 +160,7 @@ export type NativeToolArgs = {
 	// Roopik Browser Tools
 	browser_open: { url?: string }
 	browser_close: { tabId?: number }
-	browser_action_input: { action: string; coordinate?: [number, number]; text?: string; key?: string; modifiers?: string[]; deltaX?: number; deltaY?: number; tabId?: number }
+	browser_action_input: { action: string; coordinate?: [number, number]; selector?: string; text?: string; key?: string; modifiers?: string[]; deltaX?: number; deltaY?: number; tabId?: number }
 	browser_navigate: { url: string; waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; tabId?: number }
 	browser_reload: { ignoreCache?: boolean; waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; tabId?: number }
 	browser_screenshot: { tabId?: number }

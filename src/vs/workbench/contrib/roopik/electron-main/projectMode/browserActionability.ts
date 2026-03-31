@@ -293,19 +293,31 @@ export class NetworkIdleTracker {
 		}
 	}
 
-	/** Reset on page navigation */
+	/**
+	 * Reset on page navigation.
+	 * Clears inflight state but does NOT resolve waiters — they must wait for the
+	 * new page's requests to settle. This prevents the race where Page.loadEventFired
+	 * fires before post-load XHR/fetch requests start, which would falsely signal idle.
+	 * Playwright handles this the same way: networkidle is computed over the full
+	 * lifecycle, not reset-and-resolve on load events.
+	 */
 	reset(): void {
 		this.inflightRequests.clear();
 		if (this.idleTimer) {
 			clearTimeout(this.idleTimer);
 			this.idleTimer = null;
 		}
-		this._isIdle = true;
-		// Resolve all waiters since we're starting fresh
-		for (const resolve of this.idleResolvers) {
-			resolve();
-		}
-		this.idleResolvers = [];
+		// Mark as NOT idle — new page load means new requests are about to come.
+		// Start a fresh idle timer: if no requests arrive within threshold, then it's truly idle.
+		this._isIdle = false;
+		this.idleTimer = setTimeout(() => {
+			this._isIdle = true;
+			this.idleTimer = null;
+			for (const resolve of this.idleResolvers) {
+				resolve();
+			}
+			this.idleResolvers = [];
+		}, this.threshold);
 	}
 
 	/** Whether the network is currently idle */
