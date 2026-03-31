@@ -3,7 +3,7 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import { BrowserWindow, WebContentsView, session, app } from 'electron';
+import { BrowserWindow, WebContentsView, session, app, ipcMain } from 'electron';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import type { IProjectModeService } from '../../common/projectMode/ipc.js';
 import type { ViewBounds, BrowserViewResult, DevToolsViewResult, NavigationState, CDPDomains, NavigationError, DevToolsOptions, DevToolsClosedEvent, NavigationStateChangedEvent, OpenSourceRequestEvent, BrowserBridgeEvent, BrowserBridgeMessage, McpBrowserOpenRequestEvent, McpBrowserCloseRequestEvent } from '../../common/projectMode/types.js';
@@ -14,11 +14,12 @@ import { LoadReason } from '../../../../../platform/window/electron-main/window.
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { CDPCssService } from './cssResolvers/cdpCssService.js';
 import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.js';
+// eslint-disable-next-line local/code-import-patterns
 import contextMenu from 'electron-context-menu';
 import { cleanupCDPMonitoring } from '../tools/cdpMonitorService.js';
 import { injectStealthPatches } from './browserStealth.js';
+import { DEFAULT_MAX_BROWSER_TABS, type IBrowserBackend, type TabInfo } from './browserBackend.js';
 import { FileAccess } from '../../../../../base/common/network.js';
-import { ipcMain } from 'electron';
 import { ILoggerService } from '../../../../../platform/log/common/log.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
 
@@ -32,7 +33,7 @@ import { getRoopikLogger } from '../../common/roopikLogger.js';
  * - Device emulation via CDP
  * - Graceful cleanup on window reload (via ILifecycleMainService)
  */
-export class BrowserViewService extends Disposable implements IProjectModeService {
+export class BrowserViewService extends Disposable implements IProjectModeService, IBrowserBackend {
 	readonly _serviceBrand: undefined;
 
 	// ============================================
@@ -70,6 +71,16 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	private readonly _onBrowserViewDestroyed = new Emitter<{ browserViewId: number }>();
 	readonly onBrowserViewDestroyed: Event<{ browserViewId: number }> = this._onBrowserViewDestroyed.event;
 
+	// Tab Events (multi-tab)
+	private readonly _onTabCreated = new Emitter<{ tabId: number; url?: string }>();
+	readonly onTabCreated: Event<{ tabId: number; url?: string }> = this._onTabCreated.event;
+
+	private readonly _onTabClosed = new Emitter<{ tabId: number }>();
+	readonly onTabClosed: Event<{ tabId: number }> = this._onTabClosed.event;
+
+	private readonly _onActiveTabChanged = new Emitter<{ tabId: number }>();
+	readonly onActiveTabChanged: Event<{ tabId: number }> = this._onActiveTabChanged.event;
+
 	// Static set of managed webContents IDs for navigation whitelist
 	// This is used by app.ts to allow navigation for our browser views
 	private static managedWebContentsIds = new Set<number>();
@@ -94,6 +105,14 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// Map: windowId -> Set of browserViewIds that have listeners on this window
 	private windowSafetyLeashListeners = new Map<number, Set<number>>();
 
+	// ============================================
+	// Multi-tab tracking
+	// ============================================
+	private nextTabId = 1;
+	private tabToBrowserViewId = new Map<number, number>();   // tabId → browserViewId
+	private browserViewIdToTab = new Map<number, number>();   // browserViewId → tabId (reverse)
+	private activeTabId: number | undefined;
+	private openNewTabQueue: Promise<number> = Promise.resolve(0); // Serializes concurrent openNewTab calls
 
 	// CDP debugger state
 	private debuggerAttached = new Map<number, boolean>();
@@ -120,15 +139,20 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// Logger
 	private readonly logger;
 
+	// Max tabs (configurable via roopik.browser.maxTabs setting)
+	private readonly maxTabs: number;
+
 	// ============================================
 	// Constructor & Lifecycle Setup
 	// ============================================
 
 	constructor(
 		@ILoggerService loggerService: ILoggerService,
-		private readonly lifecycleMainService?: ILifecycleMainService
+		private readonly lifecycleMainService?: ILifecycleMainService,
+		maxTabs?: number
 	) {
 		super();
+		this.maxTabs = maxTabs ?? DEFAULT_MAX_BROWSER_TABS;
 		this.logger = getRoopikLogger(loggerService, 'BROWSER_VIEW');
 		// Initialize CDP CSS Service with this as the browser service
 		this.cdpCssService = new CDPCssService(this);
@@ -187,14 +211,36 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	// Browser View Lifecycle
 	// ============================================
 
-	async createBrowserView(windowId: number): Promise<BrowserViewResult> {
-		this.logger.info('createBrowserView requested', { windowId });
+	async createBrowserView(windowId: number, tabId?: number): Promise<BrowserViewResult & { tabId: number }> {
+		this.logger.info('createBrowserView requested', { windowId, tabId });
 
-		// CRITICAL: Destroy any existing browser views first.
-		const existingIds = Array.from(this.browserViews.keys());
-		for (const oldId of existingIds) {
-			// this.logger.info('Destroying existing browser view before creating new one', { oldId });
-			await this.destroyBrowserView(oldId);
+		// If tabId is provided, this is a reattach (drag between groups) — try reattach first
+		if (tabId !== undefined) {
+			const existingBrowserViewId = this.tabToBrowserViewId.get(tabId);
+			if (existingBrowserViewId !== undefined) {
+				const existingView = this.browserViews.get(existingBrowserViewId);
+				if (existingView && !existingView.webContents.isDestroyed()) {
+					// Reattach existing view to new window
+					const targetWindow = BrowserWindow.fromId(windowId);
+					if (targetWindow) {
+						// Remove from old window first
+						const oldWindow = this.browserWindows.get(existingBrowserViewId);
+						if (oldWindow && !oldWindow.isDestroyed() && oldWindow.contentView) {
+							try { oldWindow.contentView.removeChildView(existingView); } catch { /* ignore */ }
+						}
+						targetWindow.contentView.addChildView(existingView);
+						this.browserWindows.set(existingBrowserViewId, targetWindow);
+						this.setActiveTabInternal(tabId);
+						this.logger.info('Reattached existing view for tab', { tabId, browserViewId: existingBrowserViewId });
+						return { browserViewId: existingBrowserViewId, debuggingPort: 0, tabId, isReattach: true };
+					}
+				}
+			}
+		}
+
+		// Check tab limit (embedded mode only)
+		if (this.tabToBrowserViewId.size >= this.maxTabs) {
+			throw new Error(`Tab limit reached (max ${this.maxTabs}). Close a tab first.`);
 		}
 
 		const window = BrowserWindow.fromId(windowId);
@@ -251,7 +297,6 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				.replace(/\s*roopik[-\w]*\/[\d.]+/gi, '')
 				.replace(/\s*Electron\/[\d.]+/gi, '');
 			browserSession.setUserAgent(cleanUA);
-			this.logger.info('Browser stealth: UA cleaned', { cleanUA });
 
 			// Override Accept-Language header to match real Chrome (multiple locales)
 			browserSession.webRequest.onBeforeSendHeaders((details, callback) => {
@@ -281,16 +326,16 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				preload: FileAccess.asFileUri('vs/platform/browserView/electron-main/preload-browser.js').fsPath,
 				session: browserSession // CRITICAL: Use our configured session for localhost support
 			}
-	});
+		});
 
-	// CRITICAL: Get ID and register BEFORE adding to window
-	// Adding to window can trigger immediate navigation attempts!
-	const browserViewId = browserView.webContents.id;
-	const debuggingPort = this.debuggingPortCounter++;
-	BrowserViewService.managedWebContentsIds.add(browserViewId);
+		// CRITICAL: Get ID and register BEFORE adding to window
+		// Adding to window can trigger immediate navigation attempts!
+		const browserViewId = browserView.webContents.id;
+		const debuggingPort = this.debuggingPortCounter++;
+		BrowserViewService.managedWebContentsIds.add(browserViewId);
 
-	// Now safe to add to window - ID is already whitelisted
-	window.contentView.addChildView(browserView);
+		// Now safe to add to window - ID is already whitelisted
+		window.contentView.addChildView(browserView);
 
 
 
@@ -323,7 +368,19 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		// Fire event for CDP monitoring to auto-initialize
 		this._onBrowserViewCreated.fire({ browserViewId });
 
-		return { browserViewId, debuggingPort };
+		// Assign stable tabId and track mapping
+		const assignedTabId = tabId ?? this.nextTabId++;
+		this.tabToBrowserViewId.set(assignedTabId, browserViewId);
+		this.browserViewIdToTab.set(browserViewId, assignedTabId);
+
+		// Hide other views, show this one (multi-tab visibility)
+		this.setActiveTabInternal(assignedTabId);
+
+		// Fire tab events
+		this._onTabCreated.fire({ tabId: assignedTabId });
+		this.logger.info('Tab created', { tabId: assignedTabId, browserViewId });
+
+		return { browserViewId, debuggingPort, tabId: assignedTabId };
 	}
 
 	async destroyBrowserView(browserViewId: number): Promise<void> {
@@ -334,6 +391,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// Cleanup CDP monitoring if active (from MCP CDP tools)
 		cleanupCDPMonitoring(browserViewId);
+
+		// Cleanup CDP CSS service caches and event listeners
+		this.cdpCssService.cleanup(browserViewId);
 
 		// Close DevTools if open
 		await this.closeDevTools(browserViewId);
@@ -384,6 +444,23 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			this.favicons.delete(browserViewId);
 			this.faviconReceivedForCurrentLoad.delete(browserViewId);
 
+			// 3b. Cleanup tab maps
+			const tabId = this.browserViewIdToTab.get(browserViewId);
+			if (tabId !== undefined) {
+				this.tabToBrowserViewId.delete(tabId);
+				this.browserViewIdToTab.delete(browserViewId);
+				this._onTabClosed.fire({ tabId });
+				// Update active tab to next available
+				if (this.activeTabId === tabId) {
+					const remaining = Array.from(this.tabToBrowserViewId.keys());
+					this.activeTabId = remaining.length > 0 ? remaining[remaining.length - 1] : undefined;
+					if (this.activeTabId !== undefined) {
+						this._onActiveTabChanged.fire({ tabId: this.activeTabId });
+					}
+				}
+				this.logger.info('Tab closed', { tabId, browserViewId });
+			}
+
 			// Clean up safety leash tracking (remove browserViewId from window's set)
 			if (browserWindow) {
 				const windowId = browserWindow.id;
@@ -410,10 +487,144 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	 * @returns browserViewId if a browser is open, undefined otherwise
 	 */
 	getActiveBrowserViewId(): number | undefined {
+		if (this.activeTabId !== undefined) {
+			return this.tabToBrowserViewId.get(this.activeTabId);
+		}
+		// Fallback: return last view (for legacy compatibility during transition)
 		const ids = Array.from(this.browserViews.keys());
-		// Return the LAST (most recently created) browser view ID
-		// Safety measure in case multiple views exist during a brief race window
 		return ids.length > 0 ? ids[ids.length - 1] : undefined;
+	}
+
+	// ============================================
+	// Multi-tab Management
+	// ============================================
+
+	async openNewTab(url?: string): Promise<number> {
+		// Serialize concurrent openNewTab calls via queue.
+		// Each call waits for the previous to complete before firing its own
+		// onTabCreated listener, preventing multiple callers from resolving
+		// to the same tab creation event.
+		const result = this.openNewTabQueue.then(
+			() => this.openNewTabImpl(url),
+			() => this.openNewTabImpl(url) // Continue even if previous failed
+		);
+		this.openNewTabQueue = result.then(() => 0, () => 0); // Reset queue (value unused)
+		return result;
+	}
+
+	private async openNewTabImpl(url?: string): Promise<number> {
+		if (this.tabToBrowserViewId.size >= this.maxTabs) {
+			throw new Error(`Tab limit reached (max ${this.maxTabs}). Close a tab first.`);
+		}
+
+		// Wait for the actual tab to be created by listening to onTabCreated.
+		// The renderer creates the editor tab, which calls createBrowserView(),
+		// which fires onTabCreated with the real tabId.
+		const tabCreatedPromise = new Promise<number>((resolve, reject) => {
+			const timeout = setTimeout(() => {
+				disposable.dispose();
+				reject(new Error('Timed out waiting for new tab creation'));
+			}, 10000);
+
+			const disposable = this._onTabCreated.event((event) => {
+				clearTimeout(timeout);
+				disposable.dispose();
+				resolve(event.tabId);
+			});
+		});
+
+		// Fire MCP browser open event with forceNew — renderer will create a NEW editor tab.
+		// IMPORTANT: Do NOT pass the URL here. Navigation is handled by the caller
+		// using the specific browserViewId AFTER the tab is created. This prevents
+		// race conditions when multiple tabs are opened rapidly — the renderer pane
+		// could switch context between creation and navigation.
+		this._onMcpBrowserOpenRequest.fire({ forceNew: true });
+
+		const tabId = await tabCreatedPromise;
+
+		// Navigate on the backend using the specific browserViewId (race-safe)
+		if (url) {
+			const browserViewId = this.tabToBrowserViewId.get(tabId);
+			if (browserViewId !== undefined) {
+				await this.navigate(browserViewId, url);
+			}
+		}
+
+		return tabId;
+	}
+
+	listTabs(): TabInfo[] {
+		const tabs: TabInfo[] = [];
+		for (const [tabId, browserViewId] of this.tabToBrowserViewId) {
+			const view = this.browserViews.get(browserViewId);
+			if (view && !view.webContents.isDestroyed()) {
+				tabs.push({
+					tabId,
+					url: view.webContents.getURL(),
+					title: view.webContents.getTitle(),
+					isActive: tabId === this.activeTabId,
+				});
+			}
+		}
+		return tabs;
+	}
+
+	getActiveTabId(): number | undefined {
+		return this.activeTabId;
+	}
+
+	async setActiveTab(tabId: number): Promise<void> {
+		const browserViewId = this.tabToBrowserViewId.get(tabId);
+		if (browserViewId === undefined) {
+			throw new Error(`Tab ${tabId} not found. Use browser_get_state to see available tabs.`);
+		}
+		this.setActiveTabInternal(tabId);
+	}
+
+	async closeTab(tabId: number): Promise<void> {
+		const browserViewId = this.tabToBrowserViewId.get(tabId);
+		if (browserViewId === undefined) {
+			throw new Error(`Tab ${tabId} not found.`);
+		}
+		await this.destroyBrowserView(browserViewId);
+	}
+
+	resolveTabId(tabId: number): number {
+		const browserViewId = this.tabToBrowserViewId.get(tabId);
+		if (browserViewId === undefined) {
+			throw new Error(`Tab ${tabId} not found. Use browser_get_state to see available tabs.`);
+		}
+		return browserViewId;
+	}
+
+	/**
+	 * Detach a browser view from its window WITHOUT destroying it.
+	 * Used when editor is being dragged between split groups — the view
+	 * will be reattached via createBrowserView(windowId, tabId).
+	 */
+	detachBrowserView(tabId: number): void {
+		const browserViewId = this.tabToBrowserViewId.get(tabId);
+		if (browserViewId === undefined) { return; }
+
+		const view = this.browserViews.get(browserViewId);
+		const window = this.browserWindows.get(browserViewId);
+		if (view && window && !window.isDestroyed() && window.contentView) {
+			try {
+				window.contentView.removeChildView(view);
+			} catch {
+				// View might already be removed
+			}
+		}
+		this.logger.info('Detached view for tab (not destroyed)', { tabId, browserViewId });
+	}
+
+	/** Internal: set active tab and manage view visibility */
+	private setActiveTabInternal(tabId: number): void {
+		this.activeTabId = tabId;
+		// NOTE: Do NOT toggle visibility here. When tabs are in different editor groups
+		// (split view), each view must remain visible in its own pane. The renderer's
+		// setInput() handles per-pane visibility (hides old tab, shows new tab in same group).
+		this._onActiveTabChanged.fire({ tabId });
 	}
 
 	async setBrowserBounds(browserViewId: number, bounds: ViewBounds): Promise<void> {
@@ -462,7 +673,16 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		this.logger.debug('navigate forwarding to webContents.loadURL', { browserViewId, webContentsId: browserView.webContents.id });
 
-		await browserView.webContents.loadURL(normalizedUrl);
+		// Fire-and-forget: don't await loadURL() which blocks until the 'load' event.
+		// Ad-heavy pages may never fire 'load' due to stuck sub-frame scripts.
+		// Callers (MCP browser_navigate, browser_open) use their own waitForReadyState
+		// or waitForNetworkIdle to determine when the page is usable.
+		browserView.webContents.loadURL(normalizedUrl).catch((err) => {
+			// ERR_ABORTED (-3) is expected when navigation is interrupted by another navigation
+			if (err?.message && !err.message.includes('ERR_ABORTED')) {
+				this.logger.error('loadURL failed', { browserViewId, url: normalizedUrl, error: err.message });
+			}
+		});
 	}
 
 	/**
@@ -735,6 +955,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		}
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	async sendCDPCommand(browserViewId: number, method: string, params?: any): Promise<any> {
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView || browserView.webContents.isDestroyed()) {
@@ -915,7 +1136,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			throw new Error(`Browser view ${browserViewId} not found`);
 		}
 
-		this.logger.info('captureElementScreenshot called', { browserViewId, selector });
+		// this.logger.info('captureElementScreenshot called', { browserViewId, selector });
 
 		try {
 			// Ensure debugger is attached
@@ -991,13 +1212,13 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 				return null;
 			}
 
-			this.logger.info('Capturing element screenshot', {
-				selector,
-				originalBounds: { x, y, width, height },
-				zoomFactor,
-				scaledBounds: { x: scaledX, y: scaledY, width: scaledWidth, height: scaledHeight },
-				clippedBounds: { x: clippedX, y: clippedY, width: clippedWidth, height: clippedHeight }
-			});
+			// this.logger.info('Capturing element screenshot', {
+			// 	selector,
+			// 	originalBounds: { x, y, width, height },
+			// 	zoomFactor,
+			// 	scaledBounds: { x: scaledX, y: scaledY, width: scaledWidth, height: scaledHeight },
+			// 	clippedBounds: { x: clippedX, y: clippedY, width: clippedWidth, height: clippedHeight }
+			// });
 
 			// Capture the screenshot of the element region
 			const image = await browserView.webContents.capturePage({
@@ -1368,6 +1589,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		return { width: bounds.width, height: bounds.height };
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	async executeScript(browserViewId: number, script: string): Promise<any> {
 		const browserView = this.browserViews.get(browserViewId);
 		if (!browserView || browserView.webContents.isDestroyed()) {
@@ -1415,9 +1637,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 	 * This triggers the full cleanup chain (stop dev server, destroy browser view, etc.)
 	 * This is the CORRECT way to close the browser - NOT calling destroyBrowserView directly!
 	 */
-	requestBrowserClose(): void {
-		this.logger.info('MCP browser close request');
-		this._onMcpBrowserCloseRequest.fire({});
+	requestBrowserClose(tabId?: number): void {
+		this.logger.info('MCP browser close request', { tabId });
+		this._onMcpBrowserCloseRequest.fire({ tabId });
 	}
 
 	// ============================================
@@ -1443,7 +1665,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			this.cdpCssService.resetForPageLoad(browserViewId);
 			await this.cdpCssService.ensureCSSEnabled(browserViewId);
 		} catch (error) {
-			this.logger.error('Failed to enable CSS domain', { error });
+			// Expected during tab close — webContents may already be destroyed
+			this.logger.debug('Failed to enable CSS domain (likely tab closing)', { error });
 		}
 	}
 
@@ -1551,7 +1774,8 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		const hadBrowserView = this.browserViews.has(browserViewId);
 		const activeIdsSnapshot = Array.from(this.browserViews.keys());
 
-		this.logger.warn('destroyBrowserViewSync invoked', {
+		// Debug-level: this fires on both explicit destroy and webcontents:destroyed event
+		this.logger.debug('destroyBrowserViewSync invoked', {
 			browserViewId,
 			source: source ?? 'unknown',
 			hadBrowserView,
@@ -1598,6 +1822,10 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 			}
 		}
 
+		// Cleanup CDP monitoring and CSS resolver (best-effort, swallow errors)
+		try { cleanupCDPMonitoring(browserViewId); } catch { /* ignore */ }
+		try { this.cdpCssService.cleanup(browserViewId); } catch { /* ignore */ }
+
 		// Cleanup all maps
 		this.browserViews.delete(browserViewId);
 		this.browserWindows.delete(browserViewId);
@@ -1607,7 +1835,19 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		this.faviconReceivedForCurrentLoad.delete(browserViewId);
 		BrowserViewService.managedWebContentsIds.delete(browserViewId);
 
-		this.logger.warn('destroyBrowserViewSync cleanup complete', {
+		// Cleanup tab maps
+		const tabId = this.browserViewIdToTab.get(browserViewId);
+		if (tabId !== undefined) {
+			this.tabToBrowserViewId.delete(tabId);
+			this.browserViewIdToTab.delete(browserViewId);
+			this._onTabClosed.fire({ tabId });
+			if (this.activeTabId === tabId) {
+				const remaining = Array.from(this.tabToBrowserViewId.keys());
+				this.activeTabId = remaining.length > 0 ? remaining[remaining.length - 1] : undefined;
+			}
+		}
+
+		this.logger.debug('destroyBrowserViewSync cleanup complete', {
 			browserViewId,
 			source: source ?? 'unknown',
 			activeIdsAfter: Array.from(this.browserViews.keys())
@@ -1643,7 +1883,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// Detect when this specific webContents dies (regardless of window events)
 		webContents.on('destroyed', () => {
-			this.logger.warn('webContents destroyed for browser view', {
+			this.logger.debug('webContents destroyed for browser view', {
 				browserViewId,
 				webContentsId: webContents.id
 			});
@@ -1656,9 +1896,15 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 		// =====================================================
 
 		// Standard load failure
-		webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+		webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
 			// Skip expected/normal errors
 			if (IGNORED_ERROR_CODES.has(errorCode)) {
+				return;
+			}
+			// Only handle main frame failures — sub-frame failures (ad iframes, trackers)
+			// should not replace the main page with an error screen
+			if (!isMainFrame) {
+				this.logger.warn('Sub-frame load failed (ignored)', { url: validatedURL, errorDescription, errorCode });
 				return;
 			}
 			this.logger.error('Load failed', { url: validatedURL, errorDescription, errorCode });
@@ -1670,9 +1916,15 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// Provisional load failure - catches CONNECTION_REFUSED, NAME_NOT_RESOLVED etc.
 		// This fires BEFORE did-fail-load for certain connection errors
-		webContents.on('did-fail-provisional-load', (_event, errorCode, errorDescription, validatedURL) => {
+		webContents.on('did-fail-provisional-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
 			// Skip expected/normal errors
 			if (IGNORED_ERROR_CODES.has(errorCode)) {
+				return;
+			}
+			// Only handle main frame failures — sub-frame failures (ad iframes, trackers)
+			// should not replace the main page with an error screen
+			if (!isMainFrame) {
+				this.logger.warn('Sub-frame provisional load failed (ignored)', { url: validatedURL, errorDescription, errorCode });
 				return;
 			}
 			this.logger.error('Provisional load failed', { url: validatedURL, errorDescription, errorCode });

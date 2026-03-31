@@ -641,53 +641,58 @@ export class NativeToolCallParser {
 			// Roopik IDE Tools - Partial args for streaming
 			// ============================================================================
 
-			// Browser Tools (12)
+			// Browser Tools (16)
 			case "browser_open":
-				nativeArgs = { url: partialArgs.url }
+				nativeArgs = {
+					url: partialArgs.url,
+				}
 				break
 			case "browser_close":
-				nativeArgs = {}
+				nativeArgs = { tabId: partialArgs.tabId }
 				break
 			case "browser_action_input":
 				nativeArgs = {
 					action: partialArgs.action,
 					coordinate: partialArgs.coordinate,
+					selector: partialArgs.selector,
 					text: partialArgs.text,
 					key: partialArgs.key,
 					modifiers: partialArgs.modifiers,
 					deltaX: partialArgs.deltaX,
 					deltaY: partialArgs.deltaY,
+					tabId: partialArgs.tabId,
 				}
 				break
 			case "browser_navigate":
-				nativeArgs = { url: partialArgs.url }
+				nativeArgs = { url: partialArgs.url, waitUntil: partialArgs.waitUntil, tabId: partialArgs.tabId }
 				break
 			case "browser_reload":
-				nativeArgs = { ignoreCache: partialArgs.ignoreCache }
+				nativeArgs = { ignoreCache: partialArgs.ignoreCache, waitUntil: partialArgs.waitUntil, tabId: partialArgs.tabId }
 				break
 			case "browser_screenshot":
-				nativeArgs = {}
+				nativeArgs = { tabId: partialArgs.tabId }
 				break
 			case "browser_execute_script":
-				nativeArgs = { script: partialArgs.script }
+				nativeArgs = { script: partialArgs.script, tabId: partialArgs.tabId }
 				break
 			case "browser_inspect_element":
 				nativeArgs = {
 					selector: partialArgs.selector,
 					includeInherited: partialArgs.includeInherited,
+					tabId: partialArgs.tabId,
 				}
 				break
 			case "browser_get_errors":
-				nativeArgs = { limit: partialArgs.limit }
+				nativeArgs = { limit: partialArgs.limit, tabId: partialArgs.tabId }
 				break
 			case "browser_get_console_logs":
-				nativeArgs = { limit: partialArgs.limit, type: partialArgs.type }
+				nativeArgs = { limit: partialArgs.limit, type: partialArgs.type, tabId: partialArgs.tabId }
 				break
 			case "browser_get_performance":
-				nativeArgs = {}
+				nativeArgs = { tabId: partialArgs.tabId }
 				break
 			case "browser_get_state":
-				nativeArgs = {}
+				nativeArgs = { tabId: partialArgs.tabId }
 				break
 			case "browser_set_viewport":
 				nativeArgs = {
@@ -695,6 +700,7 @@ export class NativeToolCallParser {
 					height: partialArgs.height,
 					deviceScaleFactor: partialArgs.deviceScaleFactor,
 					mobile: partialArgs.mobile,
+					tabId: partialArgs.tabId,
 				}
 				break
 			case "browser_get_network_requests":
@@ -704,6 +710,20 @@ export class NativeToolCallParser {
 					method: partialArgs.method,
 					statusFilter: partialArgs.statusFilter,
 					limit: partialArgs.limit,
+					tabId: partialArgs.tabId,
+				}
+				break
+			case "browser_find_element":
+				nativeArgs = {
+					selector: partialArgs.selector,
+					tabId: partialArgs.tabId,
+				}
+				break
+			case "browser_wait_for_element":
+				nativeArgs = {
+					selector: partialArgs.selector,
+					timeout: partialArgs.timeout,
+					tabId: partialArgs.tabId,
 				}
 				break
 
@@ -1124,10 +1144,11 @@ export class NativeToolCallParser {
 				// Roopik IDE Tools
 				// ============================================================================
 
-				// Browser Tools (12)
+				// Browser Tools (16)
 				case "browser_open":
-					// url is optional
-					nativeArgs = { url: args.url } as NativeArgsFor<TName>
+					nativeArgs = {
+						url: args.url,
+					} as NativeArgsFor<TName>
 					break
 				case "browser_close":
 					nativeArgs = {} as NativeArgsFor<TName>
@@ -1137,21 +1158,23 @@ export class NativeToolCallParser {
 						nativeArgs = {
 							action: args.action,
 							coordinate: args.coordinate,
+							selector: args.selector,
 							text: args.text,
 							key: args.key,
 							modifiers: args.modifiers,
 							deltaX: args.deltaX,
 							deltaY: args.deltaY,
+							tabId: args.tabId,
 						} as NativeArgsFor<TName>
 					}
 					break
 				case "browser_navigate":
 					if (args.url !== undefined) {
-						nativeArgs = { url: args.url } as NativeArgsFor<TName>
+						nativeArgs = { url: args.url, waitUntil: args.waitUntil } as NativeArgsFor<TName>
 					}
 					break
 				case "browser_reload":
-					nativeArgs = { ignoreCache: args.ignoreCache } as NativeArgsFor<TName>
+					nativeArgs = { ignoreCache: args.ignoreCache, waitUntil: args.waitUntil } as NativeArgsFor<TName>
 					break
 				case "browser_screenshot":
 					nativeArgs = {} as NativeArgsFor<TName>
@@ -1197,6 +1220,16 @@ export class NativeToolCallParser {
 						statusFilter: args.statusFilter,
 						limit: args.limit,
 					} as NativeArgsFor<TName>
+					break
+				case "browser_find_element":
+					if (args.selector !== undefined) {
+						nativeArgs = { selector: args.selector } as NativeArgsFor<TName>
+					}
+					break
+				case "browser_wait_for_element":
+					if (args.selector !== undefined) {
+						nativeArgs = { selector: args.selector, timeout: args.timeout } as NativeArgsFor<TName>
+					}
 					break
 
 				// Project Tools (3)

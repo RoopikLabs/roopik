@@ -20,7 +20,7 @@
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
+import * as path from '../../../../../../base/common/path.js';
 import { Emitter, Event } from '../../../../../../base/common/event.js';
 import { Disposable } from '../../../../../../base/common/lifecycle.js';
 import type {
@@ -238,7 +238,7 @@ export class McpInstaller extends Disposable {
 		await executeCommand(removeCmd);
 
 		// Add
-		const addCmd = buildClaudeExtensionAddCommand(claudeBinaryPath, this._binaryPath, this._wsPort);
+		const addCmd = buildClaudeExtensionAddCommand(claudeBinaryPath, this._binaryPath, this._wsPort, this._authToken);
 		const result = await executeCommand(addCmd);
 
 		if (result.success) {
@@ -296,7 +296,7 @@ export class McpInstaller extends Disposable {
 		await executeCommand(buildGlobalClaudeRemoveCommand());
 
 		// Add
-		const addCmd = buildGlobalClaudeAddCommand(this._binaryPath, this._wsPort);
+		const addCmd = buildGlobalClaudeAddCommand(this._binaryPath, this._wsPort, this._authToken);
 		const result = await executeCommand(addCmd);
 
 		if (result.success) {
@@ -353,7 +353,7 @@ export class McpInstaller extends Disposable {
 		await executeCommand(buildCodexExtensionRemoveCommand(codexBinaryPath));
 
 		// Add
-		const addCmd = buildCodexExtensionAddCommand(codexBinaryPath, this._binaryPath, this._wsPort);
+		const addCmd = buildCodexExtensionAddCommand(codexBinaryPath, this._binaryPath, this._wsPort, this._authToken);
 		const result = await executeCommand(addCmd);
 
 		if (result.success) {
@@ -414,7 +414,7 @@ export class McpInstaller extends Disposable {
 		await executeCommand(buildGlobalCodexRemoveCommand());
 
 		// Add
-		const addCmd = buildGlobalCodexAddCommand(this._binaryPath, this._wsPort);
+		const addCmd = buildGlobalCodexAddCommand(this._binaryPath, this._wsPort, this._authToken);
 		const result = await executeCommand(addCmd);
 
 		if (result.success) {
@@ -651,13 +651,13 @@ export class McpInstaller extends Disposable {
 		if (settings.claudeCode) {
 			const result = await this.register('claude-code');
 			results.push(result);
-			if (result.success) claudeInstalled = true;
+			if (result.success) { claudeInstalled = true; }
 		}
 
 		if (settings.claudeCli) {
 			const result = await this.register('claude-cli');
 			results.push(result);
-			if (result.success) claudeInstalled = true;
+			if (result.success) { claudeInstalled = true; }
 		}
 
 		// Add allow rules if any Claude integration succeeded
@@ -718,7 +718,7 @@ export class McpInstaller extends Disposable {
 		// Handle each agent
 		for (const [key, enabled] of Object.entries(settings)) {
 			const agent = this.settingsKeyToAgent(key);
-			if (!agent) continue;
+			if (!agent) { continue; }
 
 			const info = await this.getAgentInfo(agent);
 

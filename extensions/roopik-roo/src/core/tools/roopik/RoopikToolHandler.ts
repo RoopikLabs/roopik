@@ -9,7 +9,7 @@
  */
 
 import { Task } from "../../task/Task"
-import type { ToolUse, ToolResponse, HandleError, PushToolResult, AskApproval } from "../../../shared/tools"
+import type { ToolUse, ToolResponse, HandleError, PushToolResult, AskApproval, NativeToolArgs } from "../../../shared/tools"
 import { formatResponse } from "../../prompts/responses"
 import { roopikClient, RoopikToolResult } from "../../../services/roopik"
 import { isRoopikTool, type RoopikToolName } from "../../prompts/tools/roopik/roopik-tools"
@@ -70,7 +70,7 @@ export async function handleRoopikTool(
 		let result: RoopikToolResult
 
 		switch (toolName) {
-			// Browser Tools (14)
+			// Browser Tools (16)
 			case "browser_open":
 				result = await handleBrowserOpen(task, block, callbacks)
 				break
@@ -112,6 +112,12 @@ export async function handleRoopikTool(
 				break
 			case "browser_get_network_requests":
 				result = await handleBrowserGetNetworkRequests(task, block, callbacks)
+				break
+			case "browser_find_element":
+				result = await handleBrowserFindElement(task, block, callbacks)
+				break
+			case "browser_wait_for_element":
+				result = await handleBrowserWaitForElement(task, block, callbacks)
 				break
 
 			// Project Tools (3)
@@ -198,17 +204,24 @@ async function handleRoopikToolPartial(
 // Browser Tool Handlers
 // ============================================================================
 
+/** Parse optional tabId from block params (XML params are untyped strings) */
+function parseTabId(block: ToolUse): number | undefined {
+	const raw = block.params.tabId
+	return raw ? parseInt(raw, 10) : undefined
+}
+
 async function handleBrowserOpen(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const url = block.params.url || block.params.args
+	const args = block.nativeArgs as NativeToolArgs['browser_open'] | undefined
+	const url = args?.url || block.params.url || block.params.args
 	return roopikClient.browserOpen(url)
 }
 
 async function handleBrowserClose(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	return roopikClient.browserClose()
+	return roopikClient.browserClose(parseTabId(block))
 }
 
 async function handleBrowserActionInput(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const action = block.params.action as any
+	const action = block.params.action
 	if (!action) {
 		return { success: false, error: "Missing required parameter: action" }
 	}
@@ -223,57 +236,87 @@ async function handleBrowserActionInput(task: Task, block: ToolUse, callbacks: T
 		}
 	}
 
+	const args = block.nativeArgs as NativeToolArgs['browser_action_input'] | undefined
 	return roopikClient.browserAction({
-		action,
-		coordinate: block.params.coordinate,
+		action: action as any,
+		coordinate: args?.coordinate ? String(args.coordinate) : block.params.coordinate,
+		selector: args?.selector || block.params.selector,
 		text: block.params.text,
-		key: (block.params as any).key || block.params.args, // 'key' param or fallback to args
+		key: block.params.key || block.params.args,
 		modifiers,
-		deltaX: (block.params as any).deltaX ? parseFloat((block.params as any).deltaX) : undefined,
-		deltaY: (block.params as any).deltaY ? parseFloat((block.params as any).deltaY) : undefined,
+		deltaX: args?.deltaX ?? (block.params.deltaX ? parseFloat(block.params.deltaX) : undefined),
+		deltaY: args?.deltaY ?? (block.params.deltaY ? parseFloat(block.params.deltaY) : undefined),
+		tabId: args?.tabId ?? parseTabId(block),
 	})
 }
 
 async function handleScreenshot(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	return roopikClient.screenshot()
+	return roopikClient.screenshot(parseTabId(block))
 }
 
 async function handleBrowserGetPerformance(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	return roopikClient.browserGetPerformance()
+	return roopikClient.browserGetPerformance(parseTabId(block))
 }
 
 async function handleBrowserGetState(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	return roopikClient.browserGetState()
+	return roopikClient.browserGetState(parseTabId(block))
 }
 
 async function handleBrowserSetViewport(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const width = block.params.width ? parseInt(block.params.width, 10) : undefined
-	const height = block.params.height ? parseInt(block.params.height, 10) : undefined
-	const deviceScaleFactor = block.params.deviceScaleFactor ? parseFloat(block.params.deviceScaleFactor) : undefined
-	const mobile = block.params.mobile === "true"
-	return roopikClient.browserSetViewport(width, height, deviceScaleFactor, mobile)
+	const args = block.nativeArgs as NativeToolArgs['browser_set_viewport'] | undefined
+	const width = args?.width ?? (block.params.width ? parseInt(block.params.width, 10) : undefined)
+	const height = args?.height ?? (block.params.height ? parseInt(block.params.height, 10) : undefined)
+	const deviceScaleFactor = args?.deviceScaleFactor ?? (block.params.deviceScaleFactor ? parseFloat(block.params.deviceScaleFactor) : undefined)
+	const mobile = args?.mobile ?? (block.params.mobile === "true")
+	const tabId = args?.tabId ?? parseTabId(block)
+	return roopikClient.browserSetViewport(width, height, deviceScaleFactor, mobile, tabId)
 }
 
 async function handleBrowserGetNetworkRequests(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const includeStaticAssets = block.params.includeStaticAssets === "true"
-	const urlFilter = block.params.urlFilter
-	const method = block.params.method
-	const statusFilter = block.params.statusFilter as "success" | "error" | "all" | undefined
-	const limit = block.params.limit ? parseInt(block.params.limit, 10) : undefined
-	return roopikClient.browserGetNetworkRequests({ includeStaticAssets, urlFilter, method, statusFilter, limit })
+	const args = block.nativeArgs as NativeToolArgs['browser_get_network_requests'] | undefined
+	const includeStaticAssets = args?.includeStaticAssets ?? (block.params.includeStaticAssets === "true")
+	const urlFilter = args?.urlFilter ?? block.params.urlFilter
+	const method = args?.method ?? block.params.method
+	const statusFilter = (args?.statusFilter ?? block.params.statusFilter) as "success" | "error" | "all" | undefined
+	const limit = args?.limit ?? (block.params.limit ? parseInt(block.params.limit, 10) : undefined)
+	const tabId = args?.tabId ?? parseTabId(block)
+	return roopikClient.browserGetNetworkRequests({ includeStaticAssets, urlFilter, method, statusFilter, limit, tabId })
 }
 
 async function handleNavigate(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const url = block.params.url || block.params.args
+	const args = block.nativeArgs as NativeToolArgs['browser_navigate'] | undefined
+	const url = args?.url || block.params.url || block.params.args
 	if (!url) {
 		return { success: false, error: "Missing required parameter: url" }
 	}
-	return roopikClient.navigate(url)
+	const waitUntil = args?.waitUntil ?? (block.params.waitUntil as 'load' | 'domcontentloaded' | 'networkidle' | undefined)
+	return roopikClient.navigate(url, parseTabId(block), waitUntil)
 }
 
 async function handleReload(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const ignoreCache = block.params.args?.toLowerCase() === "true" || block.params.ignoreCache?.toLowerCase() === "true"
-	return roopikClient.reload(ignoreCache)
+	const args = block.nativeArgs as NativeToolArgs['browser_reload'] | undefined
+	const ignoreCache = args?.ignoreCache ?? (block.params.args?.toLowerCase() === "true" || block.params.ignoreCache?.toLowerCase() === "true")
+	const waitUntil = args?.waitUntil ?? (block.params.waitUntil as 'load' | 'domcontentloaded' | 'networkidle' | undefined)
+	return roopikClient.reload(ignoreCache, parseTabId(block), waitUntil)
+}
+
+async function handleBrowserFindElement(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const args = block.nativeArgs as NativeToolArgs['browser_find_element'] | undefined
+	const selector = args?.selector || block.params.selector || block.params.args
+	if (!selector) {
+		return { success: false, error: "Missing required parameter: selector" }
+	}
+	return roopikClient.browserFindElement(selector, parseTabId(block))
+}
+
+async function handleBrowserWaitForElement(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const args = block.nativeArgs as NativeToolArgs['browser_wait_for_element'] | undefined
+	const selector = args?.selector || block.params.selector || block.params.args
+	if (!selector) {
+		return { success: false, error: "Missing required parameter: selector" }
+	}
+	const timeout = args?.timeout ?? (block.params.timeout ? parseInt(block.params.timeout, 10) : undefined)
+	return roopikClient.browserWaitForElement(selector, timeout, parseTabId(block))
 }
 
 async function handleExecuteScript(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
@@ -281,7 +324,7 @@ async function handleExecuteScript(task: Task, block: ToolUse, callbacks: ToolCa
 	if (!script) {
 		return { success: false, error: "Missing required parameter: script" }
 	}
-	return roopikClient.executeScript(script)
+	return roopikClient.executeScript(script, parseTabId(block))
 }
 
 async function handleInspectElement(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
@@ -290,7 +333,7 @@ async function handleInspectElement(task: Task, block: ToolUse, callbacks: ToolC
 		return { success: false, error: "Missing required parameter: selector" }
 	}
 	const includeInherited = block.params.includeInherited?.toLowerCase() !== "false"
-	return roopikClient.inspectElement(selector, includeInherited)
+	return roopikClient.inspectElement(selector, includeInherited, parseTabId(block))
 }
 
 // ============================================================================
@@ -299,13 +342,13 @@ async function handleInspectElement(task: Task, block: ToolUse, callbacks: ToolC
 
 async function handleGetErrors(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
 	const limit = block.params.limit ? parseInt(block.params.limit, 10) : undefined
-	return roopikClient.getErrors(limit)
+	return roopikClient.getErrors(limit, parseTabId(block))
 }
 
 async function handleGetConsoleLogs(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
 	const limit = block.params.limit ? parseInt(block.params.limit, 10) : undefined
 	const type = block.params.type as "log" | "debug" | "info" | "warn" | "error" | undefined
-	return roopikClient.getConsoleLogs(limit, type)
+	return roopikClient.getConsoleLogs(limit, type, parseTabId(block))
 }
 
 // ============================================================================
@@ -440,11 +483,12 @@ async function handleAddComponents(task: Task, block: ToolUse, callbacks: ToolCa
 }
 
 async function handleRemoveComponent(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const componentId = block.params.componentId || block.params.args
+	const args = block.nativeArgs as NativeToolArgs['component_remove'] | undefined
+	const componentId = args?.componentId ?? block.params.componentId ?? block.params.args
 	if (!componentId) {
 		return { success: false, error: "Missing required parameter: componentId" }
 	}
-	const deleteSourceCode = block.params.deleteSourceCode === "true"
+	const deleteSourceCode = args?.deleteSourceCode ?? (block.params.deleteSourceCode === "true")
 	return roopikClient.removeComponent(componentId, deleteSourceCode)
 }
 

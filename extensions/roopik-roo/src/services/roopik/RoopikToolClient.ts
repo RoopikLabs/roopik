@@ -353,26 +353,25 @@ export class RoopikToolClient {
 	// ========================================================================
 
 	/**
-	 * Open the browser preview
-	 * Optionally navigate to a URL after opening
+	 * Open a browser tab. If browser is already open, opens a new tab.
 	 */
 	async browserOpen(url?: string): Promise<RoopikToolResult<{ url?: string; message: string }>> {
-		return this.executeCommand<{ url?: string; message: string }>("roopik.tools.browserOpen", { url })
+		return this.executeCommand<{ url?: string; message: string }>("roopik.tools.browserOpen", url ? { url } : {})
 	}
 
 	/**
-	 * Take a screenshot of the browser
-	 * Returns base64-encoded image with viewport metadata for pixel-perfect clicking
+	 * Take a screenshot of a browser tab
+	   * Returns base64-encoded image with viewport metadata for pixel-perfect clicking
 	 */
-	async screenshot(): Promise<RoopikToolResult<ScreenshotData>> {
-		return this.executeCommand<ScreenshotData>("roopik.tools.screenshot")
+	async screenshot(tabId?: number): Promise<RoopikToolResult<ScreenshotData>> {
+		return this.executeCommand<ScreenshotData>("roopik.tools.screenshot", { tabId })
 	}
 
 	/**
-	 * Close the browser view
+	 * Close browser tabs
 	 */
-	async browserClose(): Promise<RoopikToolResult<BrowserCloseData>> {
-		return this.executeCommand<BrowserCloseData>("roopik.tools.browserClose")
+	async browserClose(tabId?: number): Promise<RoopikToolResult<BrowserCloseData>> {
+		return this.executeCommand<BrowserCloseData>("roopik.tools.browserClose", { tabId })
 	}
 
 	/**
@@ -382,31 +381,33 @@ export class RoopikToolClient {
 	async browserAction(options: {
 		action: BrowserActionType
 		coordinate?: string
+		selector?: string
 		text?: string
 		key?: string
 		modifiers?: string[]
 		deltaX?: number
 		deltaY?: number
+		tabId?: number
 	}): Promise<RoopikToolResult<BrowserActionData>> {
 		return this.executeCommand<BrowserActionData>("roopik.tools.browserAction", options)
 	}
 
 	/**
-	 * Get browser performance metrics including Web Vitals
+	 * Get browser performance metrics from a tab including Web Vitals
 	 */
-	async browserGetPerformance(): Promise<RoopikToolResult<unknown>> {
-		return this.executeCommand<unknown>("roopik.tools.browserGetPerformance")
+	async browserGetPerformance(tabId?: number): Promise<RoopikToolResult<unknown>> {
+		return this.executeCommand<unknown>("roopik.tools.browserGetPerformance", { tabId })
 	}
 
 	/**
-	 * Get browser state information (open/closed, current URL, title)
+	 * Get browser state: all tabs with URLs, titles, loading status, viewports
 	 */
-	async browserGetState(): Promise<RoopikToolResult<unknown>> {
-		return this.executeCommand<unknown>("roopik.tools.browserGetState")
+	async browserGetState(tabId?: number): Promise<RoopikToolResult<unknown>> {
+		return this.executeCommand<unknown>("roopik.tools.browserGetState", { tabId })
 	}
 
 	/**
-	 * Set or clear browser viewport override
+	 * Set or clear browser viewport override on a tab
 	 * @param width Viewport width in pixels (omit to clear override)
 	 * @param height Viewport height in pixels (omit to clear override)
 	 * @param deviceScaleFactor Device scale factor (default: 1)
@@ -416,18 +417,20 @@ export class RoopikToolClient {
 		width?: number,
 		height?: number,
 		deviceScaleFactor?: number,
-		mobile?: boolean
+		mobile?: boolean,
+		tabId?: number
 	): Promise<RoopikToolResult<unknown>> {
 		return this.executeCommand<unknown>("roopik.tools.browserSetViewport", {
 			width,
 			height,
 			deviceScaleFactor,
 			mobile,
+			tabId,
 		})
 	}
 
 	/**
-	 * Get network requests
+	 * Get network requests from a tab
 	 * @param options Filter options for network requests
 	 */
 	async browserGetNetworkRequests(options?: {
@@ -436,43 +439,45 @@ export class RoopikToolClient {
 		method?: string
 		statusFilter?: "success" | "error" | "all"
 		limit?: number
+		tabId?: number
 	}): Promise<RoopikToolResult<unknown>> {
 		return this.executeCommand<unknown>("roopik.tools.browserGetNetworkRequests", options)
 	}
 
 	/**
-	 * Navigate the browser to a URL
+	 * Navigate a browser tab to a URL
 	 */
-	async navigate(url: string): Promise<RoopikToolResult<NavigateData>> {
-		return this.executeCommand<NavigateData>("roopik.tools.navigate", { url })
+	async navigate(url: string, tabId?: number, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'): Promise<RoopikToolResult<NavigateData>> {
+		return this.executeCommand<NavigateData>("roopik.tools.navigate", { url, waitUntil, tabId })
 	}
 
 	/**
-	 * Reload the current page
+	 * Reload a browser tab
 	 * @param ignoreCache - If true, performs hard reload (clears cache)
-	 */
-	async reload(ignoreCache?: boolean): Promise<RoopikToolResult<ReloadData>> {
-		return this.executeCommand<ReloadData>("roopik.tools.reload", { ignoreCache })
+	*/
+	async reload(ignoreCache?: boolean, tabId?: number, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'): Promise<RoopikToolResult<ReloadData>> {
+		return this.executeCommand<ReloadData>("roopik.tools.reload", { ignoreCache, waitUntil, tabId })
 	}
 
 	/**
-	 * Execute JavaScript in the browser context
+	 * Execute JavaScript in a browser tab context
 	 */
-	async executeScript(script: string): Promise<RoopikToolResult<ExecuteScriptData>> {
-		return this.executeCommand<ExecuteScriptData>("roopik.tools.executeScript", { script })
+	async executeScript(script: string, tabId?: number): Promise<RoopikToolResult<ExecuteScriptData>> {
+		return this.executeCommand<ExecuteScriptData>("roopik.tools.executeScript", { script, tabId })
 	}
 
 	/**
-	 * Inspect an element - THE MOAT
-	 * Returns computed styles, CSS source locations, element tree
+	 * Inspect CSS styles of an element with source file resolution
 	 */
 	async inspectElement(
 		selector: string,
-		includeInherited?: boolean
+		includeInherited?: boolean,
+		tabId?: number
 	): Promise<RoopikToolResult<InspectElementData>> {
 		return this.executeCommand<InspectElementData>("roopik.tools.inspectElement", {
 			selector,
 			includeInherited,
+			tabId,
 		})
 	}
 
@@ -481,20 +486,35 @@ export class RoopikToolClient {
 	// ========================================================================
 
 	/**
-	 * Get all errors from the browser (console errors + network failures)
+	 * Get console errors and network failures from a tab
 	 */
-	async getErrors(limit?: number): Promise<RoopikToolResult<ErrorsData>> {
-		return this.executeCommand<ErrorsData>("roopik.tools.getErrors", { limit })
+	async getErrors(limit?: number, tabId?: number): Promise<RoopikToolResult<ErrorsData>> {
+		return this.executeCommand<ErrorsData>("roopik.tools.getErrors", { limit, tabId })
 	}
 
 	/**
-	 * Get console logs from the browser
+	 * Get console logs from a browser tab
 	 */
 	async getConsoleLogs(
 		limit?: number,
-		type?: "log" | "debug" | "info" | "warn" | "error"
+		type?: "log" | "debug" | "info" | "warn" | "error",
+		tabId?: number
 	): Promise<RoopikToolResult<ConsoleLogsData>> {
-		return this.executeCommand<ConsoleLogsData>("roopik.tools.getConsoleLogs", { limit, type })
+		return this.executeCommand<ConsoleLogsData>("roopik.tools.getConsoleLogs", { limit, type, tabId })
+	}
+
+	/**
+	 * Find elements using smart selectors
+	 */
+	async browserFindElement(selector: string, tabId?: number): Promise<RoopikToolResult<unknown>> {
+		return this.executeCommand("roopik.tools.browserFindElement", { selector, tabId })
+	}
+
+	/**
+	 * Wait for a selector to appear and become visible
+	 */
+	async browserWaitForElement(selector: string, timeout?: number, tabId?: number): Promise<RoopikToolResult<unknown>> {
+		return this.executeCommand("roopik.tools.browserWaitForElement", { selector, timeout, tabId })
 	}
 
 	// ========================================================================

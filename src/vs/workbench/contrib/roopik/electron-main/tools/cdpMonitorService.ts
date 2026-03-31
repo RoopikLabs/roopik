@@ -20,7 +20,8 @@
  * - Classifies network requests as 'static' vs 'api' for compression
  */
 
-import type { BrowserViewService } from '../projectMode/browserViewService.js';
+import type { IBrowserBackend } from '../projectMode/browserBackend.js';
+import { NetworkIdleTracker } from '../projectMode/browserActionability.js';
 
 // ============================================================================
 // Noise Filtering Patterns
@@ -103,6 +104,7 @@ interface CDPMonitor {
 	networkResponses: NetworkResponse[];
 	requestStartTimes: Map<string, number>;
 	cleanupFunctions: Array<() => void>;
+	networkIdleTracker: NetworkIdleTracker;
 }
 
 // ============================================================================
@@ -119,6 +121,7 @@ interface CDPMonitor {
 export function cleanupCDPMonitoring(browserViewId: number): void {
 	const monitor = sharedMonitors.get(browserViewId);
 	if (monitor) {
+		monitor.networkIdleTracker.dispose();
 		for (const cleanup of monitor.cleanupFunctions) {
 			try {
 				cleanup();
@@ -130,13 +133,27 @@ export function cleanupCDPMonitoring(browserViewId: number): void {
 	}
 }
 
+/**
+ * Transfer CDP monitoring data from one browserViewId to another.
+ * Used when a view is recreated (e.g., drag between editor groups)
+ * but the tab stays the same — preserves console logs, network data.
+ */
+export function transferCDPMonitoring(oldBrowserViewId: number, newBrowserViewId: number): void {
+	const monitor = sharedMonitors.get(oldBrowserViewId);
+	if (monitor) {
+		monitor.browserViewId = newBrowserViewId;
+		sharedMonitors.delete(oldBrowserViewId);
+		sharedMonitors.set(newBrowserViewId, monitor);
+	}
+}
+
 // ============================================================================
 // CDP Monitor Service
 // ============================================================================
 
 export class CDPMonitorService {
 	constructor(
-		private readonly browserViewService: BrowserViewService
+		private readonly browserViewService: IBrowserBackend
 	) {
 		// Auto-initialize CDP monitoring for ALL browser views
 		// This ensures monitoring works regardless of how browser was opened (tool, manual, etc.)
@@ -162,12 +179,8 @@ export class CDPMonitorService {
 	 * Safe to call multiple times - only sets up once per browserViewId.
 	 */
 	async ensureMonitoring(browserViewId: number): Promise<void> {
-		// Cleanup stale monitors from other browser views
-		for (const [monitoredId] of sharedMonitors) {
-			if (monitoredId !== browserViewId) {
-				this.cleanup(monitoredId);
-			}
-		}
+		// Multi-tab: DO NOT clean up monitors for other browser views.
+		// Each tab has its own monitor that persists independently.
 
 		if (sharedMonitors.has(browserViewId)) {
 			return;
@@ -179,7 +192,8 @@ export class CDPMonitorService {
 			networkRequests: [],
 			networkResponses: [],
 			requestStartTimes: new Map(),
-			cleanupFunctions: []
+			cleanupFunctions: [],
+			networkIdleTracker: new NetworkIdleTracker(500),
 		};
 
 		// Attach debugger (throws on failure)
@@ -213,6 +227,9 @@ export class CDPMonitorService {
 					break;
 				case 'Network.loadingFailed':
 					this.handleNetworkFailed(monitor, params as Parameters<CDPMonitorService['handleNetworkFailed']>[1]);
+					break;
+				case 'Network.loadingFinished':
+					this.handleNetworkFinished(monitor, params as { requestId: string });
 					break;
 				case 'Page.loadEventFired':
 					// AUTO-CLEAR: Page reloaded (manual refresh or HMR)
@@ -523,6 +540,48 @@ export class CDPMonitorService {
 		monitor.consoleLogs = [];
 		// Keep network requests - agents need these after page loads!
 		// Network requests will accumulate until browser is closed or manually cleared
+		// Signal lifecycle event — does NOT clear inflight requests (they persist across load events)
+		monitor.networkIdleTracker.onLifecycleEvent();
+	}
+
+	/**
+	 * Wait for network to become idle (no inflight requests for 500ms).
+	 * Playwright's "networkidle" concept.
+	 */
+	async waitForNetworkIdle(browserViewId: number, timeoutMs: number = 10000): Promise<{ idle: boolean; inflightCount: number }> {
+		const startTime = Date.now();
+		let monitor = sharedMonitors.get(browserViewId);
+
+		if (!monitor) {
+			// CDP monitoring hasn't attached yet. Poll with progressive backoff until
+			// it appears or we exhaust a reasonable portion of the timeout budget.
+			// CDP attachment (debugger + domain enabling) typically takes 1-3 seconds.
+			const maxWaitForAttach = Math.min(timeoutMs * 0.5, 5000); // At most 5s or half the timeout
+			let waited = 0;
+			let delay = 100;
+			while (waited < maxWaitForAttach) {
+				await new Promise(r => setTimeout(r, delay));
+				waited += delay;
+				monitor = sharedMonitors.get(browserViewId);
+				if (monitor) { break; }
+				delay = Math.min(delay * 2, 1000); // Exponential backoff, cap at 1s
+			}
+			if (!monitor) {
+				return { idle: false, inflightCount: -1 }; // CDP never attached within budget
+			}
+		}
+
+		const elapsed = Date.now() - startTime;
+		const remaining = Math.max(timeoutMs - elapsed, 1000);
+		return monitor.networkIdleTracker.waitForIdle(remaining);
+	}
+
+	/**
+	 * Check if network is currently idle for a browser view.
+	 */
+	isNetworkIdle(browserViewId: number): boolean {
+		const monitor = sharedMonitors.get(browserViewId);
+		return monitor ? monitor.networkIdleTracker.isIdle : true;
 	}
 
 	/**
@@ -621,6 +680,7 @@ export class CDPMonitorService {
 		const { requestId, request, timestamp } = params;
 
 		monitor.requestStartTimes.set(requestId, timestamp);
+		monitor.networkIdleTracker.requestStarted(requestId);
 
 		// CLASSIFY: static assets vs API calls
 		// Static assets will be summarized, API calls shown in full
@@ -643,6 +703,10 @@ export class CDPMonitorService {
 		if (monitor.networkRequests.length > 500) {
 			monitor.networkRequests.shift();
 		}
+	}
+
+	private handleNetworkFinished(monitor: CDPMonitor, params: { requestId: string }): void {
+		monitor.networkIdleTracker.requestFinished(params.requestId);
 	}
 
 	private handleNetworkResponse(monitor: CDPMonitor, params: {
@@ -681,6 +745,7 @@ export class CDPMonitorService {
 		errorText?: string;
 	}): void {
 		const { requestId, timestamp } = params;
+		monitor.networkIdleTracker.requestFinished(requestId);
 
 		const request = monitor.networkRequests.find(r => r.requestId === requestId);
 

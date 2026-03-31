@@ -35,12 +35,13 @@ export interface ImageResult {
 
 /**
  * Browser open result
- * Note: browserViewId deliberately excluded - internal implementation detail
- * that agents never use (they call tools by name, not by ID)
+ * Note: browserViewId deliberately excluded - internal implementation detail.
+ * Agents use tabId to reference specific tabs.
  */
 export interface BrowserOpenResult {
 	url?: string;
 	message: string;
+	tabId?: number;
 }
 
 /**
@@ -52,6 +53,7 @@ export interface BrowserScreenshotResult extends ImageResult {
 		height: number;
 		devicePixelRatio: number;
 	};
+	tabId?: number;
 }
 
 /**
@@ -60,6 +62,7 @@ export interface BrowserScreenshotResult extends ImageResult {
 export interface BrowserNavigateResult {
 	url: string;
 	message: string;
+	tabId?: number;
 }
 
 /**
@@ -68,6 +71,7 @@ export interface BrowserNavigateResult {
 export interface BrowserActionResult {
 	action: string;
 	message: string;
+	tabId?: number;
 }
 
 /**
@@ -137,11 +141,17 @@ export interface BrowserPerformanceResult {
  */
 export interface BrowserStateResult {
 	browserOpen: boolean;
-	currentUrl?: string;
-	title?: string;
-	isLoading?: boolean;
 	devServerRunning: boolean;
-	message: string;
+	activeTabId?: number;
+	tabCount: number;
+	tabs: Array<{
+		tabId: number;
+		url: string;
+		title: string;
+		isActive: boolean;
+		isLoading: boolean;
+		viewport?: { width: number; height: number };
+	}>;
 }
 
 /**

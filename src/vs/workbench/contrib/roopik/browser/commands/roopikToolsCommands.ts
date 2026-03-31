@@ -22,12 +22,7 @@
 import { registerAction2, Action2 } from '../../../../../platform/actions/common/actions.js';
 import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { IMainProcessService } from '../../../../../platform/ipc/common/mainProcessService.js';
-import { IEditorService } from '../../../../services/editor/common/editorService.js';
-import { IEditorGroupsService } from '../../../../services/editor/common/editorGroupsService.js';
-import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
-import { ROOPIK_TOOLS_CHANNEL_NAME } from '../../common/tools/types.js';
-import type { RoopikToolResult } from '../../common/tools/types.js';
-import { openBrowserEditor } from './browserCommands.js';
+import { ROOPIK_TOOLS_CHANNEL_NAME, type RoopikToolResult } from '../../common/tools/types.js';
 
 /**
  * Generic tool call interface for extensions
@@ -105,58 +100,12 @@ export function registerRoopikToolsCommands(): void {
 
 		async run(accessor: ServicesAccessor, args?: { url?: string }): Promise<RoopikToolResult> {
 			try {
-				const editorService = accessor.get(IEditorService);
-				const editorGroupsService = accessor.get(IEditorGroupsService);
-				const configurationService = accessor.get(IConfigurationService);
-				// Get mainProcessService immediately - accessor is only valid during synchronous execution
 				const mainProcessService = accessor.get(IMainProcessService);
 
-				// Open/focus the browser editor tab (this triggers createBrowserView internally)
-				const browserPane = await openBrowserEditor(editorService, editorGroupsService, configurationService);
-
-				if (!browserPane) {
-					return {
-						success: false,
-						error: 'Failed to open browser editor'
-					};
-				}
-
-				// If URL provided, navigate via IPC channel
-				// The editor creates the browser asynchronously, so we use a short delay
-				// to ensure the browser is ready before navigating
-				if (args?.url) {
-					// Small delay to let browser initialize
-					await new Promise(resolve => setTimeout(resolve, 500));
-
-					const channel = getToolsChannel(mainProcessService);
-					// URL normalization is done in browserViewService.navigate()
-					const navResult = await channel.call('browser_navigate', { url: args.url }) as RoopikToolResult;
-
-					if (navResult?.success) {
-						return {
-							success: true,
-							data: {
-								url: args.url,
-								message: `Browser opened at ${args.url}`
-							}
-						};
-					}
-					// Navigation may fail if browser not ready yet, but browser is open
-					return {
-						success: true,
-						data: {
-							url: args.url,
-							message: `Browser opened. Navigation to ${args.url} may still be in progress.`
-						}
-					};
-				}
-
-				return {
-					success: true,
-					data: {
-						message: 'Browser opened'
-					}
-				};
+				// Both embedded and external mode: delegate to backend via IPC
+				// browserToolService.open() handles tab limits, warnings, and navigation
+				const channel = getToolsChannel(mainProcessService);
+				return await channel.call('browser_open', args) as RoopikToolResult;
 			} catch (error) {
 				return {
 					success: false,
@@ -176,10 +125,10 @@ export function registerRoopikToolsCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
+		async run(accessor: ServicesAccessor, args?: { tabId?: number }): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('browser_close');
+			return channel.call('browser_close', args || {});
 		}
 	});
 
@@ -201,6 +150,7 @@ export function registerRoopikToolsCommands(): void {
 			modifiers?: string[];
 			deltaX?: number;
 			deltaY?: number;
+			tabId?: number;
 		}): Promise<RoopikToolResult> {
 			if (!args?.action) {
 				return { success: false, error: 'Action is required' };
@@ -221,14 +171,14 @@ export function registerRoopikToolsCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor, args?: { url: string }): Promise<RoopikToolResult> {
+		async run(accessor: ServicesAccessor, args?: { url: string; tabId?: number }): Promise<RoopikToolResult> {
 			if (!args?.url) {
 				return { success: false, error: 'URL is required' };
 			}
 			// URL normalization is done in browserViewService.navigate()
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('browser_navigate', { url: args.url });
+			return channel.call('browser_navigate', args);
 		}
 	});
 
@@ -242,7 +192,7 @@ export function registerRoopikToolsCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor, args?: { ignoreCache?: boolean }): Promise<RoopikToolResult> {
+		async run(accessor: ServicesAccessor, args?: { ignoreCache?: boolean; tabId?: number }): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
 			return channel.call('browser_reload', args || {});
@@ -259,10 +209,10 @@ export function registerRoopikToolsCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
+		async run(accessor: ServicesAccessor, args?: { tabId?: number }): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('browser_screenshot');
+			return channel.call('browser_screenshot', args);
 		}
 	});
 
@@ -276,7 +226,7 @@ export function registerRoopikToolsCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor, args?: { script: string }): Promise<RoopikToolResult> {
+		async run(accessor: ServicesAccessor, args?: { script: string; tabId?: number }): Promise<RoopikToolResult> {
 			if (!args?.script) {
 				return { success: false, error: 'Script is required' };
 			}
@@ -296,7 +246,7 @@ export function registerRoopikToolsCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor, args?: { selector: string; includeInherited?: boolean }): Promise<RoopikToolResult> {
+		async run(accessor: ServicesAccessor, args?: { selector: string; includeInherited?: boolean; tabId?: number }): Promise<RoopikToolResult> {
 			if (!args?.selector) {
 				return { success: false, error: 'Selector is required' };
 			}
@@ -316,7 +266,7 @@ export function registerRoopikToolsCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor, args?: { limit?: number }): Promise<RoopikToolResult> {
+		async run(accessor: ServicesAccessor, args?: { limit?: number; tabId?: number }): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
 			return channel.call('browser_get_errors', args || {});
@@ -333,7 +283,7 @@ export function registerRoopikToolsCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor, args?: { limit?: number; type?: string }): Promise<RoopikToolResult> {
+		async run(accessor: ServicesAccessor, args?: { limit?: number; type?: string; tabId?: number }): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
 			return channel.call('browser_get_console_logs', args || {});
@@ -350,10 +300,10 @@ export function registerRoopikToolsCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
+		async run(accessor: ServicesAccessor, args?: { tabId?: number }): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('browser_get_performance');
+			return channel.call('browser_get_performance', args);
 		}
 	});
 
@@ -367,10 +317,10 @@ export function registerRoopikToolsCommands(): void {
 			});
 		}
 
-		async run(accessor: ServicesAccessor): Promise<RoopikToolResult> {
+		async run(accessor: ServicesAccessor, args?: { tabId?: number }): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
-			return channel.call('browser_get_state');
+			return channel.call('browser_get_state', args);
 		}
 	});
 
@@ -389,6 +339,7 @@ export function registerRoopikToolsCommands(): void {
 			height?: number;
 			deviceScaleFactor?: number;
 			mobile?: boolean;
+			tabId?: number;
 		}): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
@@ -411,10 +362,70 @@ export function registerRoopikToolsCommands(): void {
 			method?: string;
 			statusFilter?: string;
 			limit?: number;
+			tabId?: number;
 		}): Promise<RoopikToolResult> {
 			const mainProcessService = accessor.get(IMainProcessService);
 			const channel = getToolsChannel(mainProcessService);
 			return channel.call('browser_get_network_requests', args || {});
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserCloseTab',
+				title: { value: 'Close Browser Tab', original: 'Close Browser Tab' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: { tabId?: number }): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			// Delegates to unified browser_close: tabId = close specific, no tabId = close all
+			return channel.call('browser_close', args ? { tabId: args.tabId } : {});
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserFindElement',
+				title: { value: 'Find Element', original: 'Find Element' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: {
+			selector: string;
+			tabId?: number;
+		}): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('browser_find_element', args || {});
+		}
+	});
+
+	registerAction2(class extends Action2 {
+		constructor() {
+			super({
+				id: 'roopik.tools.browserWaitForElement',
+				title: { value: 'Wait For Element', original: 'Wait For Element' },
+				category: { value: 'Roopik', original: 'Roopik' },
+				f1: false
+			});
+		}
+
+		async run(accessor: ServicesAccessor, args?: {
+			selector: string;
+			timeout?: number;
+			tabId?: number;
+		}): Promise<RoopikToolResult> {
+			const mainProcessService = accessor.get(IMainProcessService);
+			const channel = getToolsChannel(mainProcessService);
+			return channel.call('browser_wait_for_element', args || {});
 		}
 	});
 

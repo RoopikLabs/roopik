@@ -4,6 +4,14 @@
  *--------------------------------------------------------------------------------------------*/
 
 /**
+ * Default maximum number of browser tabs allowed in embedded mode.
+ * External mode has no limit (Chrome manages its own tabs).
+ * Configurable via setting: roopik.browser.maxTabs
+ * Shared constant — imported by both renderer (browserCommands) and main (browserViewService).
+ */
+export const DEFAULT_MAX_BROWSER_TABS = 3;
+
+/**
  * Device preset for viewport emulation
  */
 export interface DevicePreset {
@@ -89,6 +97,8 @@ export interface NetworkRequest {
 export interface BrowserViewResult {
 	browserViewId: number;
 	debuggingPort: number;
+	/** True if an existing view was reattached (drag between groups), false if newly created */
+	isReattach?: boolean;
 }
 
 /**
@@ -359,6 +369,8 @@ export interface BrowserKeyEvent {
 export interface McpBrowserOpenRequestEvent {
 	/** URL to navigate to after browser opens (optional) */
 	url?: string;
+	/** If true, force creation of a new tab instead of reusing existing */
+	forceNew?: boolean;
 }
 
 /**
@@ -367,7 +379,7 @@ export interface McpBrowserOpenRequestEvent {
  * Renderer listens and closes the editor tab properly (which triggers full cleanup chain)
  */
 export interface McpBrowserCloseRequestEvent {
-	/** Placeholder for future use */
-	_?: undefined;
+	/** Specific tab to close. If undefined, close ALL browser tabs. */
+	tabId?: number;
 }
 

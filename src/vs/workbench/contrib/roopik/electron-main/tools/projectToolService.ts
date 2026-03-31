@@ -12,7 +12,7 @@
 
 import type { DevServerService } from '../projectMode/devServer/devServerService.js';
 import type { IRoopikStorageService } from '../../common/storage/storageService.js';
-import type { BrowserViewService } from '../projectMode/browserViewService.js';
+import type { IBrowserBackend } from '../projectMode/browserBackend.js';
 import type {
 	ToolResult,
 	ProjectServerInfo,
@@ -29,8 +29,8 @@ export class ProjectToolService {
 	constructor(
 		private readonly devServerService: DevServerService,
 		private readonly storageService: IRoopikStorageService,
-		private readonly browserViewService: BrowserViewService
-	) {}
+		private readonly browserViewService: IBrowserBackend
+	) { }
 
 	// ==========================================================================
 	// Get Active Project
@@ -109,14 +109,25 @@ export class ProjectToolService {
 			await this.waitForServerReady(url);
 
 			// Auto-open and navigate browser to the dev server URL
-			// This ensures browser shows the project immediately after starting
-			const browserViewId = this.browserViewService.getActiveBrowserViewId();
-			if (browserViewId !== undefined) {
-				// Browser already open - navigate to URL
-				await this.browserViewService.navigate(browserViewId, url);
-			} else {
-				// Browser not open - request to open with URL
+			// Multi-tab aware: only navigate the active tab if it's blank/placeholder.
+			// If the active tab has real content, open in a new tab instead.
+			const tabs = this.browserViewService.listTabs();
+			if (tabs.length === 0) {
+				// No browser open - request to open with URL
 				this.browserViewService.requestBrowserOpen(url);
+			} else {
+				const activeTabId = this.browserViewService.getActiveTabId();
+				const activeTab = tabs.find(t => t.tabId === activeTabId);
+				const activeHasContent = activeTab && activeTab.url && activeTab.url !== 'about:blank';
+
+				if (!activeHasContent && activeTabId !== undefined) {
+					// Active tab is blank/placeholder — safe to navigate in-place
+					const browserViewId = this.browserViewService.resolveTabId(activeTabId);
+					await this.browserViewService.navigate(browserViewId, url);
+				} else {
+					// Active tab has real content — open dev server in new tab
+					await this.browserViewService.openNewTab(url);
+				}
 			}
 
 			return {

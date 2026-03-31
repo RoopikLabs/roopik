@@ -19,10 +19,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
@@ -183,7 +183,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$SIGNED_ZIP"
 
       - name: Upload macOS artifacts (arm64)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: roopik-macos-arm64
           path: |
@@ -198,7 +198,7 @@ jobs:
 
     steps:
       - name: Download signed artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: roopik-macos-arm64
 
@@ -296,7 +296,7 @@ jobs:
           cp "$NOTARIZED_DMG" .artifacts/public/roopik-macos-latest.dmg
 
       - name: Upload macOS release artifact (arm64)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: roopik-macos-release
           path: .artifacts/public/

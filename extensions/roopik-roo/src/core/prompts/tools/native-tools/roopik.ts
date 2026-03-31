@@ -1,7 +1,7 @@
 import type OpenAI from "openai"
 
 // ============================================================================
-// Browser Tools (14)
+// Browser Tools (16)
 // ============================================================================
 
 export const browser_open: OpenAI.Chat.ChatCompletionTool = {
@@ -9,14 +9,14 @@ export const browser_open: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_open",
 		description:
-			"[Roopik IDE] Open the browser preview. Optionally navigate to a URL after opening. If browser is already open and URL is provided, navigates to that URL. Use this to get browser access without needing to start a dev server first.",
+			"[Roopik IDE] Open a browser tab. If the browser is not open, opens it. If already open, opens a new tab. Optionally provide a URL to navigate immediately.\n\nExamples:\n- `{}` — open a blank tab (or launch browser if closed)\n- `{url: \"https://example.com\"}` — open a new tab at the given URL",
 		strict: true,
 		parameters: {
 			type: "object",
 			properties: {
 				url: {
 					type: "string",
-					description: "URL to open after the browser is ready (optional)",
+					description: "URL to navigate to in the new tab. If omitted, opens a blank tab.",
 				},
 			},
 			required: [],
@@ -30,7 +30,7 @@ export const browser_navigate: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_navigate",
 		description:
-			"[Roopik IDE] Navigate the browser preview to a URL. Use this to load specific pages in the project (e.g., /login, /dashboard) or view different routes.",
+			"[Roopik IDE] Navigate to a URL in a browser tab. For local projects, use project_start first — it returns the server URL.",
 		strict: true,
 		parameters: {
 			type: "object",
@@ -39,6 +39,15 @@ export const browser_navigate: OpenAI.Chat.ChatCompletionTool = {
 					type: "string",
 					description:
 						"The URL to navigate to (e.g., http://localhost:5173/login or just /login for relative paths)",
+				},
+				waitUntil: {
+					type: "string",
+					enum: ["load", "domcontentloaded", "networkidle"],
+					description: 'When to consider navigation done. "load" (default) = all resources, "domcontentloaded" = DOM parsed, "networkidle" = no requests for 500ms.',
+				},
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab. Use browser_get_state to see all open tabs.",
 				},
 			},
 			required: ["url"],
@@ -52,7 +61,7 @@ export const browser_reload: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_reload",
 		description:
-			"[Roopik IDE] Reload the current page in the browser preview. Use ignoreCache=true for hard reload after changing static assets like CSS or images.",
+			"[Roopik IDE] Reload a browser tab.",
 		strict: true,
 		parameters: {
 			type: "object",
@@ -60,6 +69,15 @@ export const browser_reload: OpenAI.Chat.ChatCompletionTool = {
 				ignoreCache: {
 					type: "boolean",
 					description: "Set to true for hard reload (clears cache). Default is false.",
+				},
+				waitUntil: {
+					type: "string",
+					enum: ["load", "domcontentloaded", "networkidle"],
+					description: 'When to consider reload done. "load" (default) = all resources, "domcontentloaded" = DOM parsed, "networkidle" = no requests for 500ms.',
+				},
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab. Use browser_get_state to see all open tabs.",
 				},
 			},
 			required: [],
@@ -73,11 +91,16 @@ export const browser_screenshot: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_screenshot",
 		description:
-			"[Roopik IDE] Take a screenshot of the browser preview. Returns base64-encoded image with viewport metadata (width, height, devicePixelRatio). Use this for visual verification and to get coordinates for browser_action_input.",
+			"[Roopik IDE] Take a screenshot of a browser tab. Returns base64 PNG image with tabId.",
 		strict: true,
 		parameters: {
 			type: "object",
-			properties: {},
+			properties: {
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab. Use browser_get_state to see all open tabs.",
+				},
+			},
 			required: [],
 			additionalProperties: false,
 		},
@@ -89,11 +112,16 @@ export const browser_close: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_close",
 		description:
-			"[Roopik IDE] Close the browser view. Use this when done with browser testing or to free resources.",
+			"[Roopik IDE] Close browser tabs. With tabId: closes that specific tab. Without tabId: closes ALL open browser tabs.",
 		strict: true,
 		parameters: {
 			type: "object",
-			properties: {},
+			properties: {
+				tabId: {
+					type: "number",
+					description: "Tab ID to close. Omit to close ALL open browser tabs. Use browser_get_state to see all open tabs.",
+				},
+			},
 			required: [],
 			additionalProperties: false,
 		},
@@ -110,7 +138,7 @@ Coordinate format: 'x,y@WIDTHxHEIGHT' where WIDTH/HEIGHT are from browser_screen
 Example: '450,203@900x600' means click at (450,203) on a 900x600 viewport.
 
 Actions:
-- click/right_click/double_click/hover: requires 'coordinate'
+- click/right_click/double_click/hover: requires 'coordinate' or 'selector' (selector re-resolves at action time)
 - drag: requires 'coordinate' (start) + 'deltaX'/'deltaY' (offset to end)
 - type: requires 'text'
 - press: requires 'key' (e.g., 'Enter', 'Escape', 'Tab'), optional 'modifiers' (['ctrl', 'shift'])
@@ -127,6 +155,10 @@ Actions:
 				coordinate: {
 					type: "string",
 					description: "Coordinate string: 'x,y' or 'x,y@WIDTHxHEIGHT' for scaled coordinates",
+				},
+				selector: {
+					type: "string",
+					description: "Smart selector (alternative to coordinate). Re-resolved at action time. Supports: css=, text=, role= prefixes.",
 				},
 				text: {
 					type: "string",
@@ -149,6 +181,10 @@ Actions:
 					type: "number",
 					description: "Vertical offset for drag/scroll (negative = up)",
 				},
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab. Use browser_get_state to see all open tabs.",
+				},
 			},
 			required: ["action"],
 			additionalProperties: false,
@@ -161,7 +197,7 @@ export const browser_execute_script: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_execute_script",
 		description:
-			"[Roopik IDE] Execute JavaScript in the browser context. Use for DOM queries, checking application state, triggering interactions, or any browser-side logic. Returns the result of the script execution.",
+			"[Roopik IDE] Execute JavaScript in a browser tab context.",
 		strict: true,
 		parameters: {
 			type: "object",
@@ -169,6 +205,10 @@ export const browser_execute_script: OpenAI.Chat.ChatCompletionTool = {
 				script: {
 					type: "string",
 					description: "JavaScript code to execute in the browser",
+				},
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab. Use browser_get_state to see all open tabs.",
 				},
 			},
 			required: ["script"],
@@ -182,7 +222,7 @@ export const browser_inspect_element: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_inspect_element",
 		description:
-			"[Roopik IDE] Deep CSS inspection for an element. Returns matched CSS rules with source file locations (file:line:column), computed styles, specificity, and inheritance chain. This is THE critical tool for understanding exactly what CSS is applied to an element and WHERE it comes from - enabling precise, surgical CSS edits.",
+			"[Roopik IDE] Inspect CSS styles of an element with source file resolution. Returns exact file:line:column where styles are defined (requires source maps).",
 		strict: true,
 		parameters: {
 			type: "object",
@@ -196,6 +236,10 @@ export const browser_inspect_element: OpenAI.Chat.ChatCompletionTool = {
 					type: "boolean",
 					description: "Include inherited styles from parent elements. Default is true.",
 				},
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab. Use browser_get_state to see all open tabs.",
+				},
 			},
 			required: ["selector"],
 			additionalProperties: false,
@@ -208,7 +252,7 @@ export const browser_get_errors: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_get_errors",
 		description:
-			"[Roopik IDE] Get all errors from the browser: console errors (JavaScript exceptions, console.error) AND failed network requests (4xx, 5xx, network failures). This is the primary debugging tool - shows what is broken in the application.",
+			"[Roopik IDE] Get console errors and network failures from a tab. Auto-clears on page reload.",
 		strict: true,
 		parameters: {
 			type: "object",
@@ -216,6 +260,10 @@ export const browser_get_errors: OpenAI.Chat.ChatCompletionTool = {
 				limit: {
 					type: "number",
 					description: "Maximum errors to return. Default is 50.",
+				},
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab. Use browser_get_state to see all open tabs.",
 				},
 			},
 			required: [],
@@ -229,7 +277,7 @@ export const browser_get_console_logs: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_get_console_logs",
 		description:
-			"[Roopik IDE] Get console output from the browser (console.log, console.warn, console.info, etc.). Use type filter to focus on specific log types. For errors only, prefer browser_get_errors.",
+			"[Roopik IDE] Get browser console logs from a tab.",
 		strict: true,
 		parameters: {
 			type: "object",
@@ -243,6 +291,10 @@ export const browser_get_console_logs: OpenAI.Chat.ChatCompletionTool = {
 					description: "Filter by log type: log, debug, info, warn, error",
 					enum: ["log", "debug", "info", "warn", "error"],
 				},
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab. Use browser_get_state to see all open tabs.",
+				},
 			},
 			required: [],
 			additionalProperties: false,
@@ -255,11 +307,16 @@ export const browser_get_performance: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_get_performance",
 		description:
-			"[Roopik IDE] Get performance metrics from the browser including Web Vitals (LCP, CLS) and runtime metrics (JS heap, DOM nodes, layout count). Uses Chrome DevTools Protocol for accurate measurements.",
+			"[Roopik IDE] Get browser performance metrics (Web Vitals: LCP, CLS, FCP, TTFB and runtime metrics) from a tab.",
 		strict: true,
 		parameters: {
 			type: "object",
-			properties: {},
+			properties: {
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab. Use browser_get_state to see all open tabs.",
+				},
+			},
 			required: [],
 			additionalProperties: false,
 		},
@@ -271,11 +328,16 @@ export const browser_get_state: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_get_state",
 		description:
-			"[Roopik IDE] Get browser state information (open/closed, current URL, title).",
+			"[Roopik IDE] Get browser state: open/closed, dev server status, active tab ID, and all tabs with URLs, titles, loading status, and viewport sizes. Pass tabId to get only that tab's info.",
 		strict: true,
 		parameters: {
 			type: "object",
-			properties: {},
+			properties: {
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab. Use browser_get_state to see all open tabs.",
+				},
+			},
 			required: [],
 			additionalProperties: false,
 		},
@@ -287,7 +349,7 @@ export const browser_set_viewport: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_set_viewport",
 		description:
-			"[Roopik IDE] Set or clear browser viewport override. Provide width/height to set a specific size (e.g., mobile 375x812). Call with NO parameters to clear override and restore natural browser size.",
+			"[Roopik IDE] Set or clear browser viewport override on a tab. Provide width/height to set a specific size (e.g., mobile 375x812). Call with NO parameters to clear override.",
 		strict: true,
 		parameters: {
 			type: "object",
@@ -308,6 +370,10 @@ export const browser_set_viewport: OpenAI.Chat.ChatCompletionTool = {
 					type: "boolean",
 					description: "Emulate mobile device (default: false)",
 				},
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab. Use browser_get_state to see all open tabs.",
+				},
 			},
 			required: [],
 			additionalProperties: false,
@@ -320,7 +386,7 @@ export const browser_get_network_requests: OpenAI.Chat.ChatCompletionTool = {
 	function: {
 		name: "browser_get_network_requests",
 		description:
-			"[Roopik IDE] Get network requests. Use includeStaticAssets parameter to show all assets.",
+			"[Roopik IDE] Get network requests from a tab. Use includeStaticAssets to show all assets.",
 		strict: false,
 		parameters: {
 			type: "object",
@@ -346,6 +412,10 @@ export const browser_get_network_requests: OpenAI.Chat.ChatCompletionTool = {
 					type: "number",
 					description: "Maximum number of requests to return (default: 100, max: 500)",
 				},
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab. Use browser_get_state to see all open tabs.",
+				},
 			},
 			required: [],
 			additionalProperties: false,
@@ -368,6 +438,60 @@ export const project_get_active: OpenAI.Chat.ChatCompletionTool = {
 			type: "object",
 			properties: {},
 			required: [],
+			additionalProperties: false,
+		},
+	},
+}
+
+export const browser_find_element: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "browser_find_element",
+		description:
+			'[Roopik IDE] Find elements using smart selectors with shadow DOM piercing. Supports: css= (default), text=, role=, xpath=, id=, data-testid= prefixes. Returns coordinates for clicking.\n\nExamples:\n- `"text=Submit"` — find by visible text\n- `"role=button[name=\\"Save\\"]"` — find by ARIA role\n- `"#login-form"` — CSS selector (default)\n- `"data-testid=hero"` — by test ID',
+		strict: true,
+		parameters: {
+			type: "object",
+			properties: {
+				selector: {
+					type: "string",
+					description: "Smart selector string. Prefix with text=, role=, xpath=, id=, data-testid= or use plain CSS.",
+				},
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab.",
+				},
+			},
+			required: ["selector"],
+			additionalProperties: false,
+		},
+	},
+}
+
+export const browser_wait_for_element: OpenAI.Chat.ChatCompletionTool = {
+	type: "function",
+	function: {
+		name: "browser_wait_for_element",
+		description:
+			"[Roopik IDE] Wait for a selector to appear and become visible, with timeout. Supports smart selectors (text=, role=, css=). Useful after navigation or dynamic content loading.",
+		strict: true,
+		parameters: {
+			type: "object",
+			properties: {
+				selector: {
+					type: "string",
+					description: "Smart selector to wait for. Supports: css= (default), text=, role=, xpath=, id=, data-testid= prefixes.",
+				},
+				timeout: {
+					type: "number",
+					description: "Timeout in milliseconds (default: 5000).",
+				},
+				tabId: {
+					type: "number",
+					description: "Target tab ID. Omit for active tab.",
+				},
+			},
+			required: ["selector"],
 			additionalProperties: false,
 		},
 	},
@@ -701,7 +825,7 @@ export const canvas_validate_components: OpenAI.Chat.ChatCompletionTool = {
 // ============================================================================
 
 export const roopikNativeTools: OpenAI.Chat.ChatCompletionTool[] = [
-	// Browser (14 tools)
+	// Browser (16 tools)
 	browser_open,
 	browser_close,
 	browser_action_input,
@@ -716,6 +840,8 @@ export const roopikNativeTools: OpenAI.Chat.ChatCompletionTool[] = [
 	browser_get_state,
 	browser_set_viewport,
 	browser_get_network_requests,
+	browser_find_element,
+	browser_wait_for_element,
 	// Project (3 tools)
 	project_get_active,
 	project_start,

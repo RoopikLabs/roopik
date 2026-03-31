@@ -29,7 +29,7 @@ import { IConfigurationService } from '../../../../../platform/configuration/com
 import { IMcpServerService } from '../../common/mcp/mcpServerService.js';
 import type { McpServerStatus, McpConnectionInfo, AgentId, AgentStatus, McpIntegrationStatus } from '../../common/mcp/mcpServerService.js';
 import type { DevServerService } from '../projectMode/devServer/devServerService.js';
-import type { BrowserViewService } from '../projectMode/browserViewService.js';
+import type { IBrowserBackend } from '../projectMode/browserBackend.js';
 import type { ComponentService } from '../component/componentService.js';
 import type { ICanvasService } from '../../common/canvas/canvasService.js';
 import type { IRoopikStorageService } from '../../common/storage/storageService.js';
@@ -78,7 +78,7 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	constructor(
 		@ILoggerService loggerService: ILoggerService,
 		private readonly devServerService: DevServerService,
-		private readonly browserViewService: BrowserViewService,
+		private readonly browserViewService: IBrowserBackend,
 		private readonly componentService: ComponentService,
 		private readonly canvasService: ICanvasService,
 		private readonly storageService: IRoopikStorageService,
