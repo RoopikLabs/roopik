@@ -13,7 +13,7 @@ import { toErrorMessage } from '../../base/common/errorMessage.js';
 import { Event } from '../../base/common/event.js';
 import { parse } from '../../base/common/jsonc.js';
 import { getPathLabel } from '../../base/common/labels.js';
-import { Disposable, DisposableStore, MutableDisposable } from '../../base/common/lifecycle.js';
+import { Disposable, DisposableStore } from '../../base/common/lifecycle.js';
 import { Schemas, VSCODE_AUTHORITY } from '../../base/common/network.js';
 import { join, posix } from '../../base/common/path.js';
 import { INodeProcess, IProcessEnvironment, isLinux, isLinuxSnap, isMacintosh, isWindows, OS } from '../../base/common/platform.js';
@@ -41,6 +41,7 @@ import { ipcBrowserViewChannelName } from '../../platform/browserView/common/bro
 import { ipcBrowserViewGroupChannelName } from '../../platform/browserView/common/browserViewGroup.js';
 import { BrowserViewMainService, IBrowserViewMainService } from '../../platform/browserView/electron-main/browserViewMainService.js';
 import { BrowserViewGroupMainService, IBrowserViewGroupMainService } from '../../platform/browserView/electron-main/browserViewGroupMainService.js';
+import { BrowserViewCDPProxyServer, IBrowserViewCDPProxyServer } from '../../platform/browserView/electron-main/browserViewCDPProxyServer.js';
 import { NativeParsedArgs } from '../../platform/environment/common/argv.js';
 import { IEnvironmentMainService } from '../../platform/environment/electron-main/environmentMainService.js';
 import { isLaunchedFromCli } from '../../platform/environment/node/argvHelper.js';
@@ -49,8 +50,6 @@ import { IExtensionHostStarter, ipcExtensionHostStarterChannelName } from '../..
 import { ExtensionHostStarter } from '../../platform/extensions/electron-main/extensionHostStarter.js';
 import { IExternalTerminalMainService } from '../../platform/externalTerminal/electron-main/externalTerminal.js';
 import { LinuxExternalTerminalService, MacExternalTerminalService, WindowsExternalTerminalService } from '../../platform/externalTerminal/node/externalTerminalService.js';
-import { ISandboxHelperMainService } from '../../platform/sandbox/electron-main/sandboxHelperService.js';
-import { SandboxHelperService } from '../../platform/sandbox/node/sandboxHelper.js';
 import { LOCAL_FILE_SYSTEM_CHANNEL_NAME } from '../../platform/files/common/diskFileSystemProviderClient.js';
 import { IFileService } from '../../platform/files/common/files.js';
 import { DiskFileSystemProviderChannel } from '../../platform/files/electron-main/diskFileSystemProviderServer.js';
@@ -123,9 +122,6 @@ import { ipcUtilityProcessWorkerChannelName } from '../../platform/utilityProces
 import { ILocalPtyService, LocalReconnectConstants, TerminalIpcChannels, TerminalSettingId } from '../../platform/terminal/common/terminal.js';
 import { ElectronPtyHostStarter } from '../../platform/terminal/electron-main/electronPtyHostStarter.js';
 import { PtyHostService } from '../../platform/terminal/node/ptyHostService.js';
-import { ElectronAgentHostStarter } from '../../platform/agentHost/electron-main/electronAgentHostStarter.js';
-import { AgentHostProcessManager } from '../../platform/agentHost/node/agentHostService.js';
-import { AgentHostEnabledSettingId } from '../../platform/agentHost/common/agentService.js';
 import { NODE_REMOTE_RESOURCE_CHANNEL_NAME, NODE_REMOTE_RESOURCE_IPC_METHOD_NAME, NodeRemoteResourceResponse, NodeRemoteResourceRouter } from '../../platform/remote/common/electronRemoteResources.js';
 import { Lazy } from '../../base/common/lazy.js';
 import { IAuxiliaryWindowsMainService } from '../../platform/auxiliaryWindow/electron-main/auxiliaryWindows.js';
@@ -143,6 +139,8 @@ import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetr
 
 // ROOPIK: ProjectMode - Browser Preview with embedded DevTools
 import { BrowserViewService } from '../../workbench/contrib/roopik/electron-main/projectMode/browserViewService.js';
+import { ExternalBrowserBackend } from '../../workbench/contrib/roopik/electron-main/projectMode/externalBrowserBackend.js';
+import type { IBrowserBackend } from '../../workbench/contrib/roopik/electron-main/projectMode/browserBackend.js';
 import { ProjectModeChannel } from '../../workbench/contrib/roopik/electron-main/projectMode/projectModeChannel.js';
 import { PROJECT_MODE_CHANNEL } from '../../workbench/contrib/roopik/common/projectMode/ipc.js';
 // ROOPIK: DevServer - Vite dev server management
@@ -451,11 +449,7 @@ export class CodeApplication extends Disposable {
 
 			// Mac only event: open new window when we get activated
 			if (!hasVisibleWindows) {
-				if ((process as INodeProcess).isEmbeddedApp || (this.environmentMainService.args['sessions'] && this.productService.quality !== 'stable')) {
-					await this.windowsMainService?.openSessionsWindow({ context: OpenContext.DOCK });
-				} else {
-					await this.windowsMainService?.openEmptyWindow({ context: OpenContext.DOCK });
-				}
+				await this.windowsMainService?.openEmptyWindow({ context: OpenContext.DOCK });
 			}
 		});
 
@@ -805,7 +799,6 @@ export class CodeApplication extends Disposable {
 
 		const openables: IWindowOpenable[] = [];
 		const urls: IProtocolUrl[] = [];
-
 		for (const protocolUrl of protocolUrls) {
 			if (!protocolUrl) {
 				continue; // invalid
@@ -813,12 +806,6 @@ export class CodeApplication extends Disposable {
 
 			const windowOpenable = this.getWindowOpenableFromProtocolUrl(protocolUrl.uri);
 			if (windowOpenable) {
-				// Sessions app: skip all window openables (file/folder/workspace)
-				if ((process as INodeProcess).isEmbeddedApp) {
-					this.logService.trace('app#resolveInitialProtocolUrls() sessions app skipping window openable:', protocolUrl.uri.toString(true));
-					continue;
-				}
-
 				if (await this.shouldBlockOpenable(windowOpenable, windowsMainService, dialogMainService)) {
 					this.logService.trace('app#resolveInitialProtocolUrls() protocol url was blocked:', protocolUrl.uri.toString(true));
 
@@ -964,31 +951,10 @@ export class CodeApplication extends Disposable {
 	private async handleProtocolUrl(windowsMainService: IWindowsMainService, dialogMainService: IDialogMainService, urlService: IURLService, uri: URI, options?: IOpenURLOptions): Promise<boolean> {
 		this.logService.trace('app#handleProtocolUrl():', uri.toString(true), options);
 
-		// Sessions app: ensure the sessions window is open, then let other handlers process the URL.
-		if ((process as INodeProcess).isEmbeddedApp) {
-			this.logService.trace('app#handleProtocolUrl() sessions app handling protocol URL:', uri.toString(true));
-
-			// Skip window openables (file/folder/workspace) for security
-			const windowOpenable = this.getWindowOpenableFromProtocolUrl(uri);
-			if (windowOpenable) {
-				this.logService.trace('app#handleProtocolUrl() sessions app skipping window openable:', uri.toString(true));
-				return true;
-			}
-
-			// Ensure sessions window is open to receive the URL
-			const windows = await windowsMainService.openSessionsWindow({ context: OpenContext.LINK, contextWindowId: undefined });
-			const window = windows.at(0);
-			window?.focus();
-			await window?.ready();
-
-			// Return false to let subsequent handlers (e.g., URLHandlerChannelClient) forward the URL
-			return false;
-		}
-
 		// Support 'workspace' URLs (https://github.com/microsoft/vscode/issues/124263)
 		if (uri.scheme === this.productService.urlProtocol && uri.path === 'workspace') {
 			uri = uri.with({
-				authority: Schemas.file,
+				authority: 'file',
 				path: URI.parse(uri.query).path,
 				query: ''
 			});
@@ -1155,6 +1121,7 @@ export class CodeApplication extends Disposable {
 		services.set(INativeBrowserElementsMainService, new SyncDescriptor(NativeBrowserElementsMainService, undefined, false /* proxied to other processes */));
 
 		// Browser View
+		services.set(IBrowserViewCDPProxyServer, new SyncDescriptor(BrowserViewCDPProxyServer, undefined, true));
 		services.set(IBrowserViewMainService, new SyncDescriptor(BrowserViewMainService, undefined, false /* proxied to other processes */));
 		services.set(IBrowserViewGroupMainService, new SyncDescriptor(BrowserViewGroupMainService, undefined, false /* proxied to other processes */));
 
@@ -1198,12 +1165,6 @@ export class CodeApplication extends Disposable {
 		);
 		services.set(ILocalPtyService, ptyHostService);
 
-		// Agent Host
-		if (this.configurationService.getValue(AgentHostEnabledSettingId)) {
-			const agentHostStarter = new ElectronAgentHostStarter(this.environmentMainService, this.lifecycleMainService, this.logService);
-			this._register(new AgentHostProcessManager(agentHostStarter, this.logService, this.loggerService));
-		}
-
 		// External terminal
 		if (isWindows) {
 			services.set(IExternalTerminalMainService, new SyncDescriptor(WindowsExternalTerminalService));
@@ -1212,7 +1173,6 @@ export class CodeApplication extends Disposable {
 		} else if (isLinux) {
 			services.set(IExternalTerminalMainService, new SyncDescriptor(LinuxExternalTerminalService));
 		}
-		services.set(ISandboxHelperMainService, new SyncDescriptor(SandboxHelperService));
 
 		// Backups
 		const backupMainService = new BackupMainService(this.environmentMainService, this.configurationService, this.logService, this.stateService);
@@ -1232,7 +1192,7 @@ export class CodeApplication extends Disposable {
 			const isInternal = isInternalTelemetry(this.productService, this.configurationService);
 			const channel = getDelayedChannel(sharedProcessReady.then(client => client.getChannel('telemetryAppender')));
 			const appender = new TelemetryAppenderClient(channel);
-			const commonProperties = resolveCommonProperties(release(), hostname(), process.arch, this.productService.commit, this.productService.version, machineId, sqmId, devDeviceId, isInternal, this.productService.date, this.productService.telemetryAppName);
+			const commonProperties = resolveCommonProperties(release(), hostname(), process.arch, this.productService.commit, this.productService.version, machineId, sqmId, devDeviceId, isInternal, this.productService.date);
 			const piiPaths = getPiiPathsFromEnvironment(this.environmentMainService);
 			const config: ITelemetryServiceConfig = { appenders: [appender], commonProperties, piiPaths, sendErrorTelemetry: true };
 
@@ -1383,14 +1343,10 @@ export class CodeApplication extends Disposable {
 		const externalTerminalChannel = ProxyChannel.fromService(accessor.get(IExternalTerminalMainService), disposables);
 		mainProcessElectronServer.registerChannel('externalTerminal', externalTerminalChannel);
 
-		// Sandbox Helper
-		const sandboxHelperChannel = ProxyChannel.fromService(accessor.get(ISandboxHelperMainService), disposables);
-		mainProcessElectronServer.registerChannel('sandboxHelper', sandboxHelperChannel);
-
 		// MCP
 		const mcpDiscoveryChannel = ProxyChannel.fromService(accessor.get(INativeMcpDiscoveryHelperService), disposables);
 		mainProcessElectronServer.registerChannel(NativeMcpDiscoveryHelperChannelName, mcpDiscoveryChannel);
-		const mcpGatewayChannel = this._register(new McpGatewayChannel(mainProcessElectronServer, accessor.get(IMcpGatewayService), accessor.get(ILoggerMainService)));
+		const mcpGatewayChannel = this._register(new McpGatewayChannel(mainProcessElectronServer, accessor.get(IMcpGatewayService)));
 		mainProcessElectronServer.registerChannel(McpGatewayChannelName, mcpGatewayChannel);
 
 		// Logger
@@ -1411,10 +1367,32 @@ export class CodeApplication extends Disposable {
 		mainProcessElectronServer.registerChannel(ipcUtilityProcessWorkerChannelName, utilityProcessWorkerChannel);
 
 		// ROOPIK: -----------------------------------------------------------
-		// ROOPIK: Project Mode Service - Browser View management with CDP
-		const projectModeService = new BrowserViewService(accessor.get(ILoggerService), accessor.get(ILifecycleMainService));
-		const projectModeChannel = new ProjectModeChannel(projectModeService);
-		mainProcessElectronServer.registerChannel(PROJECT_MODE_CHANNEL, projectModeChannel);
+		// ROOPIK: Project Mode Service - Browser backend (embedded or external)
+		const browserMode = this.configurationService.getValue<string>('roopik.browser.mode') || 'embedded';
+		let browserBackend: IBrowserBackend;
+
+		if (browserMode === 'external') {
+			const cdpPort = this.configurationService.getValue<number>('roopik.browser.externalCdpPort') || 9222;
+			const chromePath = this.configurationService.getValue<string>('roopik.browser.externalChromePath') || undefined;
+			const profileMode = this.configurationService.getValue<string>('roopik.browser.externalChromeProfile') === 'fresh' ? 'fresh' as const : 'persistent' as const;
+			browserBackend = new ExternalBrowserBackend(cdpPort, chromePath, profileMode);
+			console.log(`[Roopik] Browser mode: external (CDP port ${cdpPort}, profile: ${profileMode})`);
+		} else {
+			const maxTabs = this.configurationService.getValue<number>('roopik.browser.maxTabs') || 3;
+			browserBackend = new BrowserViewService(accessor.get(ILoggerService), accessor.get(ILifecycleMainService), maxTabs);
+			console.log(`[Roopik] Browser mode: embedded (max ${maxTabs} tabs)`);
+		}
+
+		// Clean up browser backend on IDE shutdown (kills external Chrome if we spawned it)
+		Event.once(this.lifecycleMainService.onWillShutdown)(() => browserBackend.dispose());
+
+		// ProjectModeChannel still needs BrowserViewService for renderer ↔ main IPC
+		// (only available in embedded mode — external mode doesn't have WebContentsView)
+		const projectModeService = browserBackend instanceof BrowserViewService ? browserBackend : null;
+		if (projectModeService) {
+			const projectModeChannel = new ProjectModeChannel(projectModeService);
+			mainProcessElectronServer.registerChannel(PROJECT_MODE_CHANNEL, projectModeChannel);
+		}
 
 		// ROOPIK: Project Storage Service - Recent projects for Project Mode
 		// NOTE: Created before DevServerService so it can be injected
@@ -1446,7 +1424,7 @@ export class CodeApplication extends Disposable {
 		const mcpServerService = new McpServerService(
 			accessor.get(ILoggerService),
 			devServerService,
-			projectModeService,
+			browserBackend,        // IBrowserBackend (embedded or external)
 			componentService,
 			canvasService,
 			roopikStorageService,
@@ -1464,7 +1442,7 @@ export class CodeApplication extends Disposable {
 		// ROOPIK: Tools Channel - Direct IPC for agent roopik-roo extension
 		// Provides faster, timeout-free access to IDE tools (alternative to MCP HTTP)
 		const roopikToolsChannel = new RoopikToolsChannel(
-			projectModeService,    // BrowserViewService
+			browserBackend,        // IBrowserBackend (embedded or external)
 			devServerService,      // DevServerService
 			componentService,      // ComponentService
 			canvasService,         // ICanvasService
@@ -1678,100 +1656,40 @@ export class CodeApplication extends Disposable {
 				const initialGpuFeatureStatus = app.getGPUFeatureStatus() as GPUFeatureStatusWithSkiaGraphite;
 				const skiaGraphiteEnabled: string = initialGpuFeatureStatus['skia_graphite'];
 				if (skiaGraphiteEnabled === 'enabled') {
-					const gpuInfoUpdate = Event.fromNodeEventEmitter(app, 'gpu-info-update');
-					const pendingGpuInfoListener = this._register(new MutableDisposable());
 					this._register(Event.fromNodeEventEmitter<{ details: Details }>(app, 'child-process-gone', (event, details) => ({ event, details }))(({ details }) => {
 						if (details.type === 'GPU' && details.reason === 'crashed') {
-							// Wait for gpu-info-update which fires after the GPU process
-							// restarts and the feature status is refreshed. At the time
-							// child-process-gone fires, getGPUFeatureStatus() still
-							// returns the pre-crash status.
-							pendingGpuInfoListener.value = Event.once(gpuInfoUpdate)(() => {
-								const currentGpuFeatureStatus = app.getGPUFeatureStatus();
-								const currentRasterizationStatus: string = currentGpuFeatureStatus['rasterization'];
-								if (currentRasterizationStatus !== 'enabled') {
-									// Get last 10 GPU log messages (only the message field)
-									let gpuLogMessages: string[] = [];
-									type AppWithGPULogMethod = typeof app & {
-										getGPULogMessages(): IGPULogMessage[];
-									};
-									const customApp = app as AppWithGPULogMethod;
-									if (typeof customApp.getGPULogMessages === 'function') {
-										gpuLogMessages = customApp.getGPULogMessages().slice(-10).map(log => log.message);
-									}
-
-									type GpuCrashEvent = {
-										readonly gpuFeatureStatus: string;
-										readonly gpuLogMessages: string;
-									};
-									type GpuCrashClassification = {
-										gpuFeatureStatus: { classification: 'SystemMetaData'; purpose: 'PerformanceAndHealth'; comment: 'Current GPU feature status.' };
-										gpuLogMessages: { classification: 'SystemMetaData'; purpose: 'PerformanceAndHealth'; comment: 'Last 10 GPU log messages collected after the crash and GPU process restart.' };
-										owner: 'deepak1556';
-										comment: 'Tracks GPU process crashes that would result in fallback mode.';
-									};
-
-									telemetryService.publicLog2<GpuCrashEvent, GpuCrashClassification>('gpu.crash.fallback', {
-										gpuFeatureStatus: JSON.stringify(currentGpuFeatureStatus),
-										gpuLogMessages: JSON.stringify(gpuLogMessages)
-									});
+							const currentGpuFeatureStatus = app.getGPUFeatureStatus();
+							const currentRasterizationStatus: string = currentGpuFeatureStatus['rasterization'];
+							if (currentRasterizationStatus !== 'enabled') {
+								// Get last 10 GPU log messages (only the message field)
+								let gpuLogMessages: string[] = [];
+								type AppWithGPULogMethod = typeof app & {
+									getGPULogMessages(): IGPULogMessage[];
+								};
+								const customApp = app as AppWithGPULogMethod;
+								if (typeof customApp.getGPULogMessages === 'function') {
+									gpuLogMessages = customApp.getGPULogMessages().slice(-10).map(log => log.message);
 								}
-							});
+
+								type GpuCrashEvent = {
+									readonly gpuFeatureStatus: string;
+									readonly gpuLogMessages: string;
+								};
+								type GpuCrashClassification = {
+									gpuFeatureStatus: { classification: 'SystemMetaData'; purpose: 'PerformanceAndHealth'; comment: 'Current GPU feature status.' };
+									gpuLogMessages: { classification: 'SystemMetaData'; purpose: 'PerformanceAndHealth'; comment: 'Last 10 GPU log messages before crash.' };
+									owner: 'deepak1556';
+									comment: 'Tracks GPU process crashes that would result in fallback mode.';
+								};
+
+								telemetryService.publicLog2<GpuCrashEvent, GpuCrashClassification>('gpu.crash.fallback', {
+									gpuFeatureStatus: JSON.stringify(currentGpuFeatureStatus),
+									gpuLogMessages: JSON.stringify(gpuLogMessages)
+								});
+							}
 						}
 					}));
 				}
-			});
-		}
-
-		{
-			interface NetworkProcessLaunchedDetails {
-				readonly pid: number;
-			}
-			interface NetworkProcessGoneDetails {
-				readonly pid: number;
-				readonly exitCode: number;
-				readonly crashed: boolean;
-				readonly crashedPreIPC: boolean;
-			}
-
-			type AppWithNetworkProcessEvents = typeof app & {
-				on(event: 'network-process-launched', listener: (event: Electron.Event, details: NetworkProcessLaunchedDetails) => void): typeof app;
-				on(event: 'network-process-gone', listener: (event: Electron.Event, details: NetworkProcessGoneDetails) => void): typeof app;
-			};
-
-			const customApp = app as AppWithNetworkProcessEvents;
-
-			instantiationService.invokeFunction(accessor => {
-				const telemetryService = accessor.get(ITelemetryService);
-
-				type NetworkProcessLaunchedClassification = {
-					owner: 'deepak1556';
-					comment: 'Tracks network process launch events.';
-				};
-
-				type NetworkProcessGoneClassification = {
-					exitCode: { classification: 'SystemMetaData'; purpose: 'PerformanceAndHealth'; isMeasurement: true; comment: 'The exit code of the network process.' };
-					crashed: { classification: 'SystemMetaData'; purpose: 'PerformanceAndHealth'; comment: 'Whether the network process crashed.' };
-					crashedPreIPC: { classification: 'SystemMetaData'; purpose: 'PerformanceAndHealth'; comment: 'Whether the network process crashed before IPC was established.' };
-					owner: 'deepak1556';
-					comment: 'Tracks network process gone events for reliability insights.';
-				};
-
-				this._register(Event.fromNodeEventEmitter<NetworkProcessLaunchedDetails>(customApp, 'network-process-launched', (_event, details) => details)(details => {
-					this.logService.info(`[network process] launched with pid ${details.pid}`);
-
-					telemetryService.publicLog2<{}, NetworkProcessLaunchedClassification>('networkProcess.launched', {});
-				}));
-
-				this._register(Event.fromNodeEventEmitter<NetworkProcessGoneDetails>(customApp, 'network-process-gone', (_event, details) => details)(details => {
-					this.logService.info(`[network process] gone - pid: ${details.pid}, exitCode: ${details.exitCode}, crashed: ${details.crashed}, crashedPreIPC: ${details.crashedPreIPC}`);
-
-					telemetryService.publicLog2<{ exitCode: number; crashed: boolean; crashedPreIPC: boolean }, NetworkProcessGoneClassification>('networkProcess.gone', {
-						exitCode: details.exitCode,
-						crashed: details.crashed,
-						crashedPreIPC: details.crashedPreIPC
-					});
-				}));
 			});
 		}
 	}
