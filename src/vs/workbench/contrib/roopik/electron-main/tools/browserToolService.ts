@@ -383,7 +383,12 @@ export class BrowserToolService {
 	// ==========================================================================
 
 	async navigate(url: string, tabId?: number, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'): Promise<ToolResult<BrowserNavigateResult>> {
-		try {
+		// Hard timeout: ensures we ALWAYS return a response to the MCP client,
+		// even if executeJavaScript hangs (e.g., ad-heavy pages blocking main thread).
+		// This prevents the MCP client from hitting its own timeout with no response.
+		const HARD_TIMEOUT_MS = 25000; // 25s hard ceiling — MCP client timeout is ~30s, must stay well under it
+
+		const navigateInner = async (): Promise<ToolResult<BrowserNavigateResult>> => {
 			const target = this.resolveTarget(tabId);
 
 			// Kick off monitoring (non-blocking) — may already be attached from browser_open.
@@ -423,6 +428,23 @@ export class BrowserToolService {
 					tabId: target.tabId
 				}
 			};
+		};
+
+		try {
+			const result = await Promise.race([
+				navigateInner(),
+				new Promise<ToolResult<BrowserNavigateResult>>((resolve) =>
+					setTimeout(() => resolve({
+						success: true,
+						data: {
+							url,
+							message: `Navigated to ${url} (page may still be loading — readyState check timed out after ${HARD_TIMEOUT_MS}ms)`,
+							tabId: tabId ?? this.browserViewService.getActiveTabId() ?? -1
+						}
+					}), HARD_TIMEOUT_MS)
+				)
+			]);
+			return result;
 		} catch (error) {
 			return {
 				success: false,

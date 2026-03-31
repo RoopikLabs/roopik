@@ -549,17 +549,31 @@ export class CDPMonitorService {
 	 * Playwright's "networkidle" concept.
 	 */
 	async waitForNetworkIdle(browserViewId: number, timeoutMs: number = 10000): Promise<{ idle: boolean; inflightCount: number }> {
-		const monitor = sharedMonitors.get(browserViewId);
+		const startTime = Date.now();
+		let monitor = sharedMonitors.get(browserViewId);
+
 		if (!monitor) {
-			// No monitor means CDP monitoring hasn't attached yet — wait briefly for it
-			await new Promise(r => setTimeout(r, 500));
-			const retryMonitor = sharedMonitors.get(browserViewId);
-			if (!retryMonitor) {
-				return { idle: false, inflightCount: -1 }; // -1 = unknown, monitoring not attached
+			// CDP monitoring hasn't attached yet. Poll with progressive backoff until
+			// it appears or we exhaust a reasonable portion of the timeout budget.
+			// CDP attachment (debugger + domain enabling) typically takes 1-3 seconds.
+			const maxWaitForAttach = Math.min(timeoutMs * 0.5, 5000); // At most 5s or half the timeout
+			let waited = 0;
+			let delay = 100;
+			while (waited < maxWaitForAttach) {
+				await new Promise(r => setTimeout(r, delay));
+				waited += delay;
+				monitor = sharedMonitors.get(browserViewId);
+				if (monitor) { break; }
+				delay = Math.min(delay * 2, 1000); // Exponential backoff, cap at 1s
 			}
-			return retryMonitor.networkIdleTracker.waitForIdle(timeoutMs - 500);
+			if (!monitor) {
+				return { idle: false, inflightCount: -1 }; // CDP never attached within budget
+			}
 		}
-		return monitor.networkIdleTracker.waitForIdle(timeoutMs);
+
+		const elapsed = Date.now() - startTime;
+		const remaining = Math.max(timeoutMs - elapsed, 1000);
+		return monitor.networkIdleTracker.waitForIdle(remaining);
 	}
 
 	/**
