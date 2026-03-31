@@ -163,14 +163,39 @@ export class BrowserToolService {
 				}
 
 				const el = selectorResult.elements[0];
-				const x = el.centerX;
-				const y = el.centerY;
+				let x = el.centerX;
+				let y = el.centerY;
 
-				// Check actionability at the fresh coordinates
+				// Step 1: Scroll into view if off-screen.
+				// getBoundingClientRect returns viewport-relative coords, but if element
+				// is outside viewport, elementFromPoint returns null and actionability loops forever.
+				// Playwright's sequence: resolve → scroll → check → act.
+				const vp = await evaluate('({ w: window.innerWidth, h: window.innerHeight })').catch(() => null);
+				const isOffScreen = vp && (x < 0 || y < 0 || x > vp.w || y > vp.h);
+
+				if (isOffScreen) {
+					// First query found the element. Now scroll + re-query for fresh viewport coords.
+					const freshResult = await querySelector(evaluate, selector, 1);
+					if (freshResult?.found && freshResult.elements.length > 0) {
+						// Scroll using the element's page position
+						const pageY = freshResult.elements[0].centerY;
+						await evaluate(`window.scrollTo({ top: ${Math.max(0, pageY - (vp?.h ?? 400) / 2)}, behavior: 'instant' })`);
+						// Small wait for scroll to settle
+						await new Promise(r => setTimeout(r, 50));
+						// Re-query for fresh viewport-relative coords after scroll
+						const afterScroll = await querySelector(evaluate, selector, 1);
+						if (afterScroll?.found && afterScroll.elements.length > 0) {
+							x = afterScroll.elements[0].centerX;
+							y = afterScroll.elements[0].centerY;
+						}
+					}
+				}
+
+				// Step 2: Check actionability at (now viewport-relative) coordinates
 				const remaining = timeoutMs - (Date.now() - start);
 				const actionResult = await waitForActionable(evaluate, x, y, {
 					timeout: Math.min(remaining, 3000),
-					scrollIntoView: true,
+					scrollIntoView: false, // already handled above
 				});
 
 				if (!actionResult.actionable) {

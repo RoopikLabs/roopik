@@ -148,6 +148,8 @@ export function buildStabilityCheckScript(x: number, y: number, timeoutMs: numbe
 
 /**
  * Scrolls the element at given coordinates into view if needed.
+ * NOTE: Only works for elements already in the viewport (elementFromPoint limitation).
+ * For off-screen elements, use buildScrollIntoViewBySelectorScript instead.
  */
 export function buildScrollIntoViewScript(x: number, y: number): string {
 	return `(function() {
@@ -163,6 +165,33 @@ export function buildScrollIntoViewScript(x: number, y: number): string {
 	})()`;
 }
 
+/**
+ * Scrolls an element into view using a CSS selector (works for off-screen elements).
+ * Uses querySelector which searches the entire DOM, not just visible viewport.
+ * Returns the new viewport-relative center coordinates after scrolling.
+ */
+export function buildScrollIntoViewBySelectorScript(selector: string): string {
+	// eslint-disable-next-line local/code-no-unexternalized-strings
+	const escaped = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+	return `(function() {
+		const el = document.querySelector('${escaped}');
+		if (!el) return { scrolled: false, reason: 'not_found' };
+		if (el.scrollIntoViewIfNeeded) {
+			el.scrollIntoViewIfNeeded({ block: 'center', inline: 'center' });
+		} else {
+			el.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
+		}
+		// Return fresh viewport-relative coordinates after scroll
+		const rect = el.getBoundingClientRect();
+		return {
+			scrolled: true,
+			rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+			centerX: rect.x + rect.width / 2,
+			centerY: rect.y + rect.height / 2,
+		};
+	})()`;
+}
+
 // ============================================================================
 // Smart Selector Scripts
 // ============================================================================
@@ -174,6 +203,7 @@ export function buildScrollIntoViewScript(x: number, y: number): string {
  * Returns { found, count, elements: [{tag, id, className, rect, text}] }
  */
 export function buildQuerySelectorScript(selector: string, maxResults: number = 10): string {
+	// eslint-disable-next-line local/code-no-unexternalized-strings
 	const escapedSelector = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 	return `(function() {
 		const selector = '${escapedSelector}';
