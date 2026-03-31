@@ -69,6 +69,9 @@ export class TitlebarPart extends Part implements ITitlebarPart {
 	private readonly _onMenubarVisibilityChange = this._register(new Emitter<boolean>());
 	readonly onMenubarVisibilityChange = this._onMenubarVisibilityChange.event;
 
+	private readonly _onMenubarFocusStateChange = this._register(new Emitter<boolean>());
+	readonly onMenubarFocusStateChange = this._onMenubarFocusStateChange.event; // ROOPIK
+
 	private readonly _onWillDispose = this._register(new Emitter<void>());
 	readonly onWillDispose = this._onWillDispose.event;
 
@@ -381,6 +384,7 @@ export class TitleService extends MultiWindowParts<TitlebarPart> implements ITit
 
 		this.mainPart = this._register(this.createMainTitlebarPart());
 		this.onMenubarVisibilityChange = this.mainPart.onMenubarVisibilityChange;
+		this.onMenubarFocusStateChange = this.mainPart.onMenubarFocusStateChange; // ROOPIK
 		this._register(this.registerPart(this.mainPart));
 	}
 
@@ -417,6 +421,7 @@ export class TitleService extends MultiWindowParts<TitlebarPart> implements ITit
 	//#region Service Implementation
 
 	readonly onMenubarVisibilityChange: Event<boolean>;
+	readonly onMenubarFocusStateChange: Event<boolean>; // ROOPIK
 
 	updateProperties(properties: ITitleProperties): void {
 		for (const part of this.parts) {

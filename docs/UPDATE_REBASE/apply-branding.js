@@ -2160,6 +2160,87 @@ function updateTitlebarPart() {
 	return { updated: false, errors: 0 };
 }
 
+// Update sessions/browser/parts/titlebarPart.ts - Add onMenubarFocusStateChange to sessions implementations
+// This is needed because updateTitlebarPart() adds onMenubarFocusStateChange to the ITitlebarPart interface,
+// and src/vs/sessions/ (upstream Microsoft code) also implements ITitlebarPart, so it needs the property too.
+function updateSessionsTitlebarPart() {
+	const filePath = path.join(ROOT_DIR, 'src/vs/sessions/browser/parts/titlebarPart.ts');
+
+	if (!fileExists(filePath)) {
+		warning('src/vs/sessions/browser/parts/titlebarPart.ts not found (skipping - sessions may not exist in this version)');
+		return { updated: false, errors: 0 };
+	}
+
+	let content = readFile(filePath);
+	if (!content) {
+		return { updated: false, errors: 1 };
+	}
+
+	if (content.includes('onMenubarFocusStateChange')) {
+		success('sessions/titlebarPart.ts - onMenubarFocusStateChange already present');
+		return { updated: false, errors: 0 };
+	}
+
+	let changesMade = 0;
+
+	// Change 1: Add emitter and event in TitlebarPart class (after onMenubarVisibilityChange)
+	const emitterAnchor = 'readonly onMenubarVisibilityChange = this._onMenubarVisibilityChange.event;';
+	if (content.includes(emitterAnchor)) {
+		content = content.replace(
+			emitterAnchor,
+			emitterAnchor + '\n\n\tprivate readonly _onMenubarFocusStateChange = this._register(new Emitter<boolean>());\n\treadonly onMenubarFocusStateChange = this._onMenubarFocusStateChange.event; // ROOPIK'
+		);
+		changesMade++;
+		info('sessions/titlebarPart.ts - [1/3] Added emitter and event in TitlebarPart class');
+	} else {
+		warning('sessions/titlebarPart.ts - [1/3] Could not find onMenubarVisibilityChange anchor');
+	}
+
+	// Change 2: Add assignment in SessionsTitleService constructor (after onMenubarVisibilityChange assignment)
+	const assignAnchor = 'this.onMenubarVisibilityChange = this.mainPart.onMenubarVisibilityChange;';
+	if (content.includes(assignAnchor)) {
+		content = content.replace(
+			assignAnchor,
+			assignAnchor + '\n\t\tthis.onMenubarFocusStateChange = this.mainPart.onMenubarFocusStateChange; // ROOPIK'
+		);
+		changesMade++;
+		info('sessions/titlebarPart.ts - [2/3] Added assignment in SessionsTitleService constructor');
+	} else {
+		warning('sessions/titlebarPart.ts - [2/3] Could not find onMenubarVisibilityChange assignment anchor');
+	}
+
+	// Change 3: Add declaration in SessionsTitleService service implementation section
+	const declAnchor = 'readonly onMenubarVisibilityChange: Event<boolean>;';
+	// Find the one in the service section (after //#region Service Implementation)
+	const serviceRegionIndex = content.indexOf('//#region Service Implementation');
+	if (serviceRegionIndex !== -1) {
+		const declIndex = content.indexOf(declAnchor, serviceRegionIndex);
+		if (declIndex !== -1) {
+			content = content.substring(0, declIndex + declAnchor.length) +
+				'\n\treadonly onMenubarFocusStateChange: Event<boolean>; // ROOPIK' +
+				content.substring(declIndex + declAnchor.length);
+			changesMade++;
+			info('sessions/titlebarPart.ts - [3/3] Added declaration in SessionsTitleService');
+		} else {
+			warning('sessions/titlebarPart.ts - [3/3] Could not find onMenubarVisibilityChange declaration in service section');
+		}
+	} else {
+		warning('sessions/titlebarPart.ts - [3/3] Could not find Service Implementation region');
+	}
+
+	if (changesMade > 0) {
+		if (writeFile(filePath, content)) {
+			success(`sessions/titlebarPart.ts - Applied ${changesMade}/3 changes`);
+			return { updated: true, errors: 0 };
+		}
+		error('sessions/titlebarPart.ts - Failed to write file');
+		return { updated: false, errors: 1 };
+	}
+
+	warning('sessions/titlebarPart.ts - No changes applied');
+	return { updated: false, errors: 0 };
+}
+
 // Update Dio tab positioning in auxiliary bar (make Dio appear before GitHub Copilot Chat)
 function updateDioTabPositioning() {
 	let totalUpdated = 0;
@@ -3043,6 +3124,12 @@ function main() {
 		totalChanges++;
 	}
 	totalErrors += titlebarResult.errors;
+
+	const sessionsTitlebarResult = updateSessionsTitlebarPart();
+	if (sessionsTitlebarResult.updated) {
+		totalChanges++;
+	}
+	totalErrors += sessionsTitlebarResult.errors;
 
 	const dioTabResult = updateDioTabPositioning();
 	if (dioTabResult.updated) {
