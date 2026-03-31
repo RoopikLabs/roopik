@@ -61,12 +61,10 @@ const CONFIG = {
 	stagingDir: path.resolve(__dirname, '..', '.upstream-sync'),
 
 	// Path mapping: upstream path -> local path
-	// Files in upstream root go to extensions/roopik-roo/
+	// localRepoRoot is already extensions/roopik-roo/ (relative to this script),
+	// so no prefix needed — files map directly.
 	pathMapping: {
-		// Most files from upstream root go to extensions/roopik-roo
-		'': 'extensions/roopik-roo',
-		// Add specific overrides if needed
-		// 'src/': 'extensions/roopik-roo/src/',
+		'': '',
 	},
 
 	// Files/patterns to skip
@@ -77,7 +75,9 @@ const CONFIG = {
 		'README.md',
 		'.gitignore',
 		'package-lock.json',
-		// Add more patterns as needed
+		'apps/cli/',          // Roo Code standalone CLI — not used in Roopik IDE
+		'apps/web-roo-code/', // Roo Code marketing website — irrelevant
+		'packages/evals/',    // Roo Code eval framework — not used
 	],
 
 	// GitHub API settings
