@@ -454,7 +454,10 @@ export class BrowserToolService {
 	}
 
 	async reload(ignoreCache?: boolean, tabId?: number, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'): Promise<ToolResult<BrowserNavigateResult>> {
-		try {
+		// Hard timeout: same pattern as navigate() — ensures we ALWAYS return a response
+		const HARD_TIMEOUT_MS = 25000;
+
+		const reloadInner = async (): Promise<ToolResult<BrowserNavigateResult>> => {
 			const target = this.resolveTarget(tabId);
 
 			this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
@@ -494,6 +497,23 @@ export class BrowserToolService {
 					tabId: target.tabId
 				}
 			};
+		};
+
+		try {
+			const result = await Promise.race([
+				reloadInner(),
+				new Promise<ToolResult<BrowserNavigateResult>>((resolve) =>
+					setTimeout(() => resolve({
+						success: true,
+						data: {
+							url: 'unknown',
+							message: `Reloaded page (page may still be loading — readyState check timed out after ${HARD_TIMEOUT_MS}ms)`,
+							tabId: tabId ?? this.browserViewService.getActiveTabId() ?? -1
+						}
+					}), HARD_TIMEOUT_MS)
+				)
+			]);
+			return result;
 		} catch (error) {
 			return {
 				success: false,
@@ -517,7 +537,11 @@ export class BrowserToolService {
 		deltaY?: number;
 		tabId?: number;
 	}): Promise<ToolResult<BrowserActionResult>> {
-		try {
+		// Hard timeout: same pattern as navigate() — ensures we ALWAYS return a response
+		// even if executeJavaScript hangs on heavy JS pages (e.g., Google reCAPTCHA).
+		const HARD_TIMEOUT_MS = 25000;
+
+		const actionInner = async (): Promise<ToolResult<BrowserActionResult>> => {
 			const target = this.resolveTarget(params.tabId);
 
 			const { action, coordinate, selector, text, key, modifiers, deltaX, deltaY } = params;
@@ -618,6 +642,23 @@ export class BrowserToolService {
 					tabId: target.tabId
 				}
 			};
+		};
+
+		try {
+			const result = await Promise.race([
+				actionInner(),
+				new Promise<ToolResult<BrowserActionResult>>((resolve) =>
+					setTimeout(() => resolve({
+						success: true,
+						data: {
+							action: params.action,
+							message: `Executed ${params.action} action (page JS may still be busy — actionability check timed out after ${HARD_TIMEOUT_MS}ms)`,
+							tabId: params.tabId ?? this.browserViewService.getActiveTabId() ?? -1
+						}
+					}), HARD_TIMEOUT_MS)
+				)
+			]);
+			return result;
 		} catch (error) {
 			return {
 				success: false,
