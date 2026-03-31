@@ -21,6 +21,7 @@
  */
 
 import type { IBrowserBackend } from '../projectMode/browserBackend.js';
+import { NetworkIdleTracker } from '../projectMode/browserActionability.js';
 
 // ============================================================================
 // Noise Filtering Patterns
@@ -103,6 +104,7 @@ interface CDPMonitor {
 	networkResponses: NetworkResponse[];
 	requestStartTimes: Map<string, number>;
 	cleanupFunctions: Array<() => void>;
+	networkIdleTracker: NetworkIdleTracker;
 }
 
 // ============================================================================
@@ -119,6 +121,7 @@ interface CDPMonitor {
 export function cleanupCDPMonitoring(browserViewId: number): void {
 	const monitor = sharedMonitors.get(browserViewId);
 	if (monitor) {
+		monitor.networkIdleTracker.dispose();
 		for (const cleanup of monitor.cleanupFunctions) {
 			try {
 				cleanup();
@@ -189,7 +192,8 @@ export class CDPMonitorService {
 			networkRequests: [],
 			networkResponses: [],
 			requestStartTimes: new Map(),
-			cleanupFunctions: []
+			cleanupFunctions: [],
+			networkIdleTracker: new NetworkIdleTracker(500),
 		};
 
 		// Attach debugger (throws on failure)
@@ -223,6 +227,9 @@ export class CDPMonitorService {
 					break;
 				case 'Network.loadingFailed':
 					this.handleNetworkFailed(monitor, params as Parameters<CDPMonitorService['handleNetworkFailed']>[1]);
+					break;
+				case 'Network.loadingFinished':
+					this.handleNetworkFinished(monitor, params as { requestId: string });
 					break;
 				case 'Page.loadEventFired':
 					// AUTO-CLEAR: Page reloaded (manual refresh or HMR)
@@ -533,6 +540,28 @@ export class CDPMonitorService {
 		monitor.consoleLogs = [];
 		// Keep network requests - agents need these after page loads!
 		// Network requests will accumulate until browser is closed or manually cleared
+		// Reset networkidle tracker for fresh page
+		monitor.networkIdleTracker.reset();
+	}
+
+	/**
+	 * Wait for network to become idle (no inflight requests for 500ms).
+	 * Playwright's "networkidle" concept.
+	 */
+	async waitForNetworkIdle(browserViewId: number, timeoutMs: number = 10000): Promise<{ idle: boolean; inflightCount: number }> {
+		const monitor = sharedMonitors.get(browserViewId);
+		if (!monitor) {
+			return { idle: true, inflightCount: 0 };
+		}
+		return monitor.networkIdleTracker.waitForIdle(timeoutMs);
+	}
+
+	/**
+	 * Check if network is currently idle for a browser view.
+	 */
+	isNetworkIdle(browserViewId: number): boolean {
+		const monitor = sharedMonitors.get(browserViewId);
+		return monitor ? monitor.networkIdleTracker.isIdle : true;
 	}
 
 	/**
@@ -631,6 +660,7 @@ export class CDPMonitorService {
 		const { requestId, request, timestamp } = params;
 
 		monitor.requestStartTimes.set(requestId, timestamp);
+		monitor.networkIdleTracker.requestStarted(requestId);
 
 		// CLASSIFY: static assets vs API calls
 		// Static assets will be summarized, API calls shown in full
@@ -653,6 +683,10 @@ export class CDPMonitorService {
 		if (monitor.networkRequests.length > 500) {
 			monitor.networkRequests.shift();
 		}
+	}
+
+	private handleNetworkFinished(monitor: CDPMonitor, params: { requestId: string }): void {
+		monitor.networkIdleTracker.requestFinished(params.requestId);
 	}
 
 	private handleNetworkResponse(monitor: CDPMonitor, params: {
@@ -691,6 +725,7 @@ export class CDPMonitorService {
 		errorText?: string;
 	}): void {
 		const { requestId, timestamp } = params;
+		monitor.networkIdleTracker.requestFinished(requestId);
 
 		const request = monitor.networkRequests.find(r => r.requestId === requestId);
 

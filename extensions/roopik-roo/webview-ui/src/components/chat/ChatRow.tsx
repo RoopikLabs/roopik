@@ -1005,7 +1005,7 @@ export const ChatRowContent = ({
 			// Roopik IDE Tools
 			// ============================================================================
 
-			// Browser Tools (14)
+			// Browser Tools (16)
 			case "browser_open":
 				return (
 					<div style={headerStyle}>
@@ -1179,6 +1179,29 @@ export const ChatRowContent = ({
 							{message.type === "ask"
 								? t("chat:roopik.browser.wantsToGetNetworkRequests")
 								: t("chat:roopik.browser.didGetNetworkRequests")}
+						</span>
+					</div>
+				)
+
+			case "browser_find_element":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("search")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToFindElement")
+								: t("chat:roopik.browser.didFindElement")}
+						</span>
+					</div>
+				)
+			case "browser_wait_for_element":
+				return (
+					<div style={headerStyle}>
+						{toolIcon("watch")}
+						<span style={{ fontWeight: "bold" }}>
+							{message.type === "ask"
+								? t("chat:roopik.browser.wantsToWaitForElement")
+								: t("chat:roopik.browser.didWaitForElement")}
 						</span>
 					</div>
 				)

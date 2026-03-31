@@ -18,10 +18,11 @@
  * Tool Naming Convention: category_action (e.g., browser_navigate, component_add)
  *
  * Tool Categories:
- * - Browser Tools (14): browser_open, browser_close, browser_navigate, browser_reload, browser_screenshot,
+ * - Browser Tools (16): browser_open, browser_close, browser_navigate, browser_reload, browser_screenshot,
  *                       browser_action_input, browser_execute_script, browser_inspect_element, browser_get_errors,
  *                       browser_get_console_logs, browser_get_performance, browser_get_state,
- *                       browser_set_viewport, browser_get_network_requests
+ *                       browser_set_viewport, browser_get_network_requests, browser_find_element,
+ *                       browser_wait_for_element
  * - Project Tools (3): project_get_active, project_start, project_stop
  * - Canvas Tools (4): canvas_list, canvas_get_active, canvas_create, canvas_open
  * - Component Tools (7): component_add, component_add_batch, component_remove,
@@ -105,7 +106,7 @@ export class RoopikToolsChannel implements IServerChannel {
 		try {
 			switch (command) {
 				// ============================================================
-				// Browser Tools (14)
+				// Browser Tools (16)
 				// ============================================================
 				case 'browser_open':
 					return this.browserToolService.open(arg as { url?: string });
@@ -114,10 +115,10 @@ export class RoopikToolsChannel implements IServerChannel {
 					return this.browserToolService.close((arg as { tabId?: number })?.tabId);
 
 				case 'browser_navigate':
-					return this.handleNavigate(arg as { url: string; tabId?: number });
+					return this.handleNavigate(arg as { url: string; waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; tabId?: number });
 
 				case 'browser_reload':
-					return this.handleReload(arg as { ignoreCache?: boolean; tabId?: number });
+					return this.handleReload(arg as { ignoreCache?: boolean; waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; tabId?: number });
 
 				case 'browser_screenshot':
 					return this.handleScreenshot(arg as { tabId?: number } | undefined);
@@ -157,6 +158,19 @@ export class RoopikToolsChannel implements IServerChannel {
 
 				case 'browser_get_network_requests':
 					return this.handleGetNetworkRequests(arg as { urlFilter?: string; method?: string; statusFilter?: string; limit?: number; tabId?: number });
+
+				case 'browser_find_element':
+					return this.browserToolService.findElements(
+						(arg as { selector: string; tabId?: number }).selector,
+						(arg as { selector: string; tabId?: number }).tabId
+					);
+
+				case 'browser_wait_for_element':
+					return this.browserToolService.waitForElement(
+						(arg as { selector: string; timeout?: number; tabId?: number }).selector,
+						(arg as { selector: string; timeout?: number; tabId?: number }).timeout,
+						(arg as { selector: string; timeout?: number; tabId?: number }).tabId
+					);
 
 				// ============================================================
 				// Project Tools (3)
@@ -411,12 +425,12 @@ export class RoopikToolsChannel implements IServerChannel {
 		});
 	}
 
-	private async handleNavigate(args: { url: string; tabId?: number }): Promise<RoopikToolResult> {
-		return this.browserToolService.navigate(args.url, args.tabId);
+	private async handleNavigate(args: { url: string; waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; tabId?: number }): Promise<RoopikToolResult> {
+		return this.browserToolService.navigate(args.url, args.tabId, args.waitUntil);
 	}
 
-	private async handleReload(args: { ignoreCache?: boolean; tabId?: number }): Promise<RoopikToolResult> {
-		return this.browserToolService.reload(args.ignoreCache, args.tabId);
+	private async handleReload(args: { ignoreCache?: boolean; waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'; tabId?: number }): Promise<RoopikToolResult> {
+		return this.browserToolService.reload(args.ignoreCache, args.tabId, args.waitUntil);
 	}
 
 	private async handleExecuteScript(args: { script: string; tabId?: number }): Promise<RoopikToolResult> {

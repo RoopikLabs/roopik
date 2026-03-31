@@ -122,7 +122,7 @@ export class ToolExecutor {
 	 */
 	getAvailableTools(): string[] {
 		return [
-			// Browser tools (14)
+			// Browser tools (16)
 			'browser_open',
 			'browser_close',
 			'browser_screenshot',
@@ -137,6 +137,8 @@ export class ToolExecutor {
 			'browser_get_state',
 			'browser_set_viewport',
 			'browser_get_network_requests',
+			'browser_find_element',
+			'browser_wait_for_element',
 			// Canvas tools (5)
 			'canvas_list',
 			'canvas_get_active',
@@ -180,10 +182,18 @@ export class ToolExecutor {
 				return this.browserToolService.screenshot(tabId);
 
 			case 'browser_navigate':
-				return this.browserToolService.navigate(params.url as string, tabId);
+				return this.browserToolService.navigate(
+					params.url as string,
+					tabId,
+					params.waitUntil as 'load' | 'domcontentloaded' | 'networkidle' | undefined
+				);
 
 			case 'browser_reload':
-				return this.browserToolService.reload(params.ignoreCache as boolean | undefined, tabId);
+				return this.browserToolService.reload(
+					params.ignoreCache as boolean | undefined,
+					tabId,
+					params.waitUntil as 'load' | 'domcontentloaded' | 'networkidle' | undefined
+				);
 
 			case 'browser_action_input':
 				return this.browserToolService.actionInput({
@@ -247,6 +257,16 @@ export class ToolExecutor {
 					limit: params.limit as number | undefined,
 					tabId,
 				});
+
+			case 'browser_find_element':
+				return this.browserToolService.findElements(params.selector as string, tabId);
+
+			case 'browser_wait_for_element':
+				return this.browserToolService.waitForElement(
+					params.selector as string,
+					params.timeout as number | undefined,
+					tabId
+				);
 
 			default:
 				return {

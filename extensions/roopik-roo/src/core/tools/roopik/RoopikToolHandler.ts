@@ -70,7 +70,7 @@ export async function handleRoopikTool(
 		let result: RoopikToolResult
 
 		switch (toolName) {
-			// Browser Tools (14)
+			// Browser Tools (16)
 			case "browser_open":
 				result = await handleBrowserOpen(task, block, callbacks)
 				break
@@ -112,6 +112,12 @@ export async function handleRoopikTool(
 				break
 			case "browser_get_network_requests":
 				result = await handleBrowserGetNetworkRequests(task, block, callbacks)
+				break
+			case "browser_find_element":
+				result = await handleBrowserFindElement(task, block, callbacks)
+				break
+			case "browser_wait_for_element":
+				result = await handleBrowserWaitForElement(task, block, callbacks)
 				break
 
 			// Project Tools (3)
@@ -276,16 +282,39 @@ async function handleBrowserGetNetworkRequests(task: Task, block: ToolUse, callb
 }
 
 async function handleNavigate(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const url = block.params.url || block.params.args
+	const args = block.nativeArgs as NativeToolArgs['browser_navigate'] | undefined
+	const url = args?.url || block.params.url || block.params.args
 	if (!url) {
 		return { success: false, error: "Missing required parameter: url" }
 	}
-	return roopikClient.navigate(url, parseTabId(block))
+	const waitUntil = args?.waitUntil ?? (block.params.waitUntil as 'load' | 'domcontentloaded' | 'networkidle' | undefined)
+	return roopikClient.navigate(url, parseTabId(block), waitUntil)
 }
 
 async function handleReload(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
-	const ignoreCache = block.params.args?.toLowerCase() === "true" || block.params.ignoreCache?.toLowerCase() === "true"
-	return roopikClient.reload(ignoreCache, parseTabId(block))
+	const args = block.nativeArgs as NativeToolArgs['browser_reload'] | undefined
+	const ignoreCache = args?.ignoreCache ?? (block.params.args?.toLowerCase() === "true" || block.params.ignoreCache?.toLowerCase() === "true")
+	const waitUntil = args?.waitUntil ?? (block.params.waitUntil as 'load' | 'domcontentloaded' | 'networkidle' | undefined)
+	return roopikClient.reload(ignoreCache, parseTabId(block), waitUntil)
+}
+
+async function handleBrowserFindElement(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const args = block.nativeArgs as NativeToolArgs['browser_find_element'] | undefined
+	const selector = args?.selector || block.params.selector || block.params.args
+	if (!selector) {
+		return { success: false, error: "Missing required parameter: selector" }
+	}
+	return roopikClient.browserFindElement(selector, parseTabId(block))
+}
+
+async function handleBrowserWaitForElement(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {
+	const args = block.nativeArgs as NativeToolArgs['browser_wait_for_element'] | undefined
+	const selector = args?.selector || block.params.selector || block.params.args
+	if (!selector) {
+		return { success: false, error: "Missing required parameter: selector" }
+	}
+	const timeout = args?.timeout ?? (block.params.timeout ? parseInt(block.params.timeout, 10) : undefined)
+	return roopikClient.browserWaitForElement(selector, timeout, parseTabId(block))
 }
 
 async function handleExecuteScript(task: Task, block: ToolUse, callbacks: ToolCallbacks): Promise<RoopikToolResult> {

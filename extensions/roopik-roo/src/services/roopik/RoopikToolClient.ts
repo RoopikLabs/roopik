@@ -446,16 +446,16 @@ export class RoopikToolClient {
 	/**
 	 * Navigate a browser tab to a URL
 	 */
-	async navigate(url: string, tabId?: number): Promise<RoopikToolResult<NavigateData>> {
-		return this.executeCommand<NavigateData>("roopik.tools.navigate", { url, tabId })
+	async navigate(url: string, tabId?: number, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'): Promise<RoopikToolResult<NavigateData>> {
+		return this.executeCommand<NavigateData>("roopik.tools.navigate", { url, waitUntil, tabId })
 	}
 
 	/**
 	 * Reload a browser tab
 	 * @param ignoreCache - If true, performs hard reload (clears cache)
 	*/
-	async reload(ignoreCache?: boolean, tabId?: number): Promise<RoopikToolResult<ReloadData>> {
-		return this.executeCommand<ReloadData>("roopik.tools.reload", { ignoreCache, tabId })
+	async reload(ignoreCache?: boolean, tabId?: number, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'): Promise<RoopikToolResult<ReloadData>> {
+		return this.executeCommand<ReloadData>("roopik.tools.reload", { ignoreCache, waitUntil, tabId })
 	}
 
 	/**
@@ -500,6 +500,20 @@ export class RoopikToolClient {
 		tabId?: number
 	): Promise<RoopikToolResult<ConsoleLogsData>> {
 		return this.executeCommand<ConsoleLogsData>("roopik.tools.getConsoleLogs", { limit, type, tabId })
+	}
+
+	/**
+	 * Find elements using smart selectors
+	 */
+	async browserFindElement(selector: string, tabId?: number): Promise<RoopikToolResult<unknown>> {
+		return this.executeCommand("roopik.tools.browserFindElement", { selector, tabId })
+	}
+
+	/**
+	 * Wait for a selector to appear and become visible
+	 */
+	async browserWaitForElement(selector: string, timeout?: number, tabId?: number): Promise<RoopikToolResult<unknown>> {
+		return this.executeCommand("roopik.tools.browserWaitForElement", { selector, timeout, tabId })
 	}
 
 	// ========================================================================

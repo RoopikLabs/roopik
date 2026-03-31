@@ -37,13 +37,18 @@ export const browserOpenSchema = z.object({
 	url: z.string().optional().describe('URL to navigate to in the new tab. If omitted, opens a blank tab.')
 });
 
+const waitUntilField = z.enum(['load', 'domcontentloaded', 'networkidle']).optional()
+	.describe('When to consider navigation done. "load" (default) = all resources loaded, "domcontentloaded" = DOM parsed, "networkidle" = no requests for 500ms');
+
 export const browserNavigateSchema = z.object({
 	url: z.string().describe('URL to navigate to'),
+	waitUntil: waitUntilField,
 	tabId: tabIdField
 });
 
 export const browserReloadSchema = z.object({
 	ignoreCache: z.boolean().optional().describe('Whether to ignore cache when reloading'),
+	waitUntil: waitUntilField,
 	tabId: tabIdField
 });
 
@@ -107,6 +112,17 @@ export const browserTabIdOnlySchema = z.object({
 
 export const browserCloseSchema = z.object({
 	tabId: z.number().optional().describe('Tab ID to close. Omit to close ALL open browser tabs. Use browser_get_state to see all open tabs.')
+});
+
+export const browserFindElementSchema = z.object({
+	selector: z.string().describe('Smart selector. Supports: css= (default), text=, role=, xpath=, id=, data-testid= prefixes. Examples: "text=Submit", "role=button[name=\\"Save\\"]", "#login-form", "data-testid=hero"'),
+	tabId: tabIdField
+});
+
+export const browserWaitForElementSchema = z.object({
+	selector: z.string().describe('CSS selector to wait for'),
+	timeout: z.number().optional().describe('Timeout in ms (default: 5000)'),
+	tabId: tabIdField
 });
 
 // Empty schemas for tools with no parameters
@@ -515,7 +531,7 @@ export interface ToolDefinition {
 // ============================================================================
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
-	// ========== Browser Tools (14) ==========
+	// ========== Browser Tools (16) ==========
 	{
 		name: 'browser_open',
 		description: 'Open a browser tab. If the browser is not open, opens it. If already open, opens a new tab. Optionally provide a URL to navigate immediately.',
@@ -585,6 +601,16 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 		name: 'browser_get_network_requests',
 		description: 'Get network requests from a tab. Use includeStaticAssets to show all assets.',
 		schema: browserGetNetworkRequestsSchema
+	},
+	{
+		name: 'browser_find_element',
+		description: 'Find elements using smart selectors with shadow DOM piercing. Supports: css= (default), text=, role=, xpath=, id=, data-testid= prefixes. Returns coordinates for clicking. Examples: "text=Submit", "role=button[name=\\"Save\\"]", "#login-form".',
+		schema: browserFindElementSchema
+	},
+	{
+		name: 'browser_wait_for_element',
+		description: 'Wait for a CSS selector to appear and become visible, with timeout. Useful after navigation or dynamic content loading.',
+		schema: browserWaitForElementSchema
 	},
 
 	// ========== Canvas Tools (4) ==========
@@ -890,10 +916,11 @@ browser_get_errors → browser_get_console_logs → (fix code) → browser_reloa
 - **Browser Core** (6): browser_open, browser_close, browser_screenshot, browser_navigate, browser_reload, browser_action_input
 - **Browser Debug** (4): browser_execute_script, browser_inspect_element, browser_get_errors, browser_get_console_logs
 - **Browser Info** (4): browser_get_state, browser_get_performance, browser_set_viewport, browser_get_network_requests
+- **Browser Selectors** (2): browser_find_element, browser_wait_for_element
 - **Canvas Tools** (4): canvas_list, canvas_get_active, canvas_create, canvas_open
 - **Component Tools** (7): component_add, component_add_batch, component_remove, component_get_info, component_list, component_rebuild, canvas_validate_components
 
-## Total: 29 Tools`
+## Total: 31 Tools`
 	},
 	{
 		name: 'how-to-test-responsive',

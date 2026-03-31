@@ -15,6 +15,13 @@
 
 import type { IBrowserBackend } from '../projectMode/browserBackend.js';
 import type { CDPMonitorService } from './cdpMonitorService.js';
+import {
+	waitForActionable,
+	waitForReadyState,
+	querySelector,
+	waitForSelector,
+	type EvaluateJS,
+} from '../projectMode/browserActionability.js';
 import type {
 	ToolResult,
 	BrowserOpenResult,
@@ -66,6 +73,18 @@ export class BrowserToolService {
 			browserViewId: this.browserViewService.resolveTabId(activeTabId),
 			tabId: activeTabId,
 		};
+	}
+
+	// ==========================================================================
+	// Evaluate JS Helper (used by actionability layer)
+	// ==========================================================================
+
+	/**
+	 * Get an evaluate function bound to a specific browser view.
+	 * Works for both embedded (executeJavaScript) and external (Runtime.evaluate) modes.
+	 */
+	private getEvaluator(browserViewId: number): EvaluateJS {
+		return (script: string) => this.browserViewService.executeScript(browserViewId, script);
 	}
 
 	// ==========================================================================
@@ -225,18 +244,36 @@ export class BrowserToolService {
 	// Navigation
 	// ==========================================================================
 
-	async navigate(url: string, tabId?: number): Promise<ToolResult<BrowserNavigateResult>> {
+	async navigate(url: string, tabId?: number, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'): Promise<ToolResult<BrowserNavigateResult>> {
 		try {
 			const target = this.resolveTarget(tabId);
 
 			await this.browserViewService.navigate(target.browserViewId, url);
 			this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
 
+			// Wait for page readiness based on waitUntil
+			const waitState = waitUntil || 'load';
+			let waitMessage = '';
+			try {
+				if (waitState === 'networkidle') {
+					const result = await this.cdpMonitorService.waitForNetworkIdle(target.browserViewId, 10000);
+					waitMessage = result.idle ? ' (network idle)' : ' (network still active)';
+				} else {
+					const targetReadyState = waitState === 'domcontentloaded' ? 'interactive' : 'complete';
+					const evaluate = this.getEvaluator(target.browserViewId);
+					const result = await waitForReadyState(evaluate, targetReadyState, 10000);
+					waitMessage = result.ready ? ` (${waitState})` : ` (${waitState} timeout, readyState: ${result.readyState})`;
+				}
+			} catch {
+				// Navigation wait failed — page may have navigated away, still report success
+				waitMessage = ' (wait skipped)';
+			}
+
 			return {
 				success: true,
 				data: {
 					url,
-					message: `Navigated to ${url}`,
+					message: `Navigated to ${url}${waitMessage}`,
 					tabId: target.tabId
 				}
 			};
@@ -248,12 +285,26 @@ export class BrowserToolService {
 		}
 	}
 
-	async reload(ignoreCache?: boolean, tabId?: number): Promise<ToolResult<BrowserNavigateResult>> {
+	async reload(ignoreCache?: boolean, tabId?: number, waitUntil?: 'load' | 'domcontentloaded' | 'networkidle'): Promise<ToolResult<BrowserNavigateResult>> {
 		try {
 			const target = this.resolveTarget(tabId);
 
 			await this.browserViewService.reload(target.browserViewId, ignoreCache);
 			this.cdpMonitorService.ensureMonitoring(target.browserViewId).catch(() => { });
+
+			// Wait for page readiness
+			const waitState = waitUntil || 'load';
+			try {
+				if (waitState === 'networkidle') {
+					await this.cdpMonitorService.waitForNetworkIdle(target.browserViewId, 10000);
+				} else {
+					const targetReadyState = waitState === 'domcontentloaded' ? 'interactive' : 'complete';
+					const evaluate = this.getEvaluator(target.browserViewId);
+					await waitForReadyState(evaluate, targetReadyState, 10000);
+				}
+			} catch {
+				// Wait failed — continue anyway
+			}
 
 			const navState = await this.browserViewService.getNavigationState(target.browserViewId);
 			const currentUrl = navState.url || 'unknown';
@@ -303,6 +354,21 @@ export class BrowserToolService {
 				}
 			}
 
+			// Auto-wait: For coordinate-based actions, verify element is actionable
+			let autoWaitInfo = '';
+			if (x !== undefined && y !== undefined && ['click', 'right_click', 'double_click', 'hover'].includes(action)) {
+				try {
+					const evaluate = this.getEvaluator(target.browserViewId);
+					const result = await waitForActionable(evaluate, x, y, { timeout: 5000 });
+					if (result.tag) {
+						autoWaitInfo = ` on <${result.tag}>`;
+					}
+				} catch (e) {
+					// Auto-wait failed — still try the action (best effort, don't block)
+					autoWaitInfo = ` (auto-wait: ${e instanceof Error ? e.message : 'failed'})`;
+				}
+			}
+
 			// Execute action based on type
 			switch (action) {
 				case 'click':
@@ -344,7 +410,7 @@ export class BrowserToolService {
 				success: true,
 				data: {
 					action,
-					message: `Executed ${action} action`,
+					message: `Executed ${action} action${autoWaitInfo}`,
 					tabId: target.tabId
 				}
 			};
@@ -718,6 +784,85 @@ export class BrowserToolService {
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : 'Failed to set viewport'
+			};
+		}
+	}
+
+	// ==========================================================================
+	// Smart Selectors (text=, role=, css=, xpath=, id=, data-testid=)
+	// ==========================================================================
+
+	/**
+	 * Find elements using smart selectors with shadow DOM piercing.
+	 * Supports: css=, text=, role=, xpath=, id=, data-testid= prefixes.
+	 * Default (no prefix) = CSS selector.
+	 */
+	async findElements(selector: string, tabId?: number): Promise<ToolResult<{
+		found: boolean;
+		count: number;
+		elements: Array<{
+			tag: string;
+			id?: string;
+			className?: string;
+			text: string;
+			rect: { x: number; y: number; width: number; height: number };
+			centerX: number;
+			centerY: number;
+		}>;
+	}>> {
+		try {
+			const target = this.resolveTarget(tabId);
+			const evaluate = this.getEvaluator(target.browserViewId);
+			const result = await querySelector(evaluate, selector);
+			return { success: true, data: result };
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to find elements'
+			};
+		}
+	}
+
+	/**
+	 * Wait for a selector to appear in the DOM and become visible.
+	 */
+	async waitForElement(selector: string, timeoutMs?: number, tabId?: number): Promise<ToolResult<{
+		found: boolean;
+		tag?: string;
+		rect?: { x: number; y: number; width: number; height: number };
+		centerX?: number;
+		centerY?: number;
+		reason?: string;
+	}>> {
+		try {
+			const target = this.resolveTarget(tabId);
+			const evaluate = this.getEvaluator(target.browserViewId);
+			const result = await waitForSelector(evaluate, selector, timeoutMs);
+			return { success: true, data: result };
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to wait for element'
+			};
+		}
+	}
+
+	// ==========================================================================
+	// Network Idle
+	// ==========================================================================
+
+	/**
+	 * Wait for network to become idle (no inflight requests for 500ms).
+	 */
+	async waitForNetworkIdle(tabId?: number, timeoutMs: number = 10000): Promise<ToolResult<{ idle: boolean; inflightCount: number }>> {
+		try {
+			const target = this.resolveTarget(tabId);
+			const result = await this.cdpMonitorService.waitForNetworkIdle(target.browserViewId, timeoutMs);
+			return { success: true, data: result };
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : 'Failed to wait for network idle'
 			};
 		}
 	}

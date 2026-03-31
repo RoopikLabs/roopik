@@ -385,7 +385,7 @@ export async function presentAssistantMessage(cline: Task) {
 					case "generate_image":
 						return `[${block.name} for '${block.params.path}']`
 
-					// Roopik IDE Tools - Browser (14) -------------------------------
+					// Roopik IDE Tools - Browser (16) -------------------------------
 					case "browser_open":
 						return `[browser_open${block.params.url ? ` to '${block.params.url}'` : ""}]`
 					case "browser_close":
@@ -414,6 +414,10 @@ export async function presentAssistantMessage(cline: Task) {
 						return `[browser_set_viewport${block.params.width && block.params.height ? ` ${block.params.width}x${block.params.height}` : ""}]`
 					case "browser_get_network_requests":
 						return `[browser_get_network_requests]`
+					case "browser_find_element":
+						return `[browser_find_element '${block.params.selector}']`
+					case "browser_wait_for_element":
+						return `[browser_wait_for_element '${block.params.selector}']`
 					// Roopik IDE Tools - Project (3)
 					case "project_get_active":
 						return `[project_get_active]`
@@ -912,7 +916,7 @@ export async function presentAssistantMessage(cline: Task) {
 					})
 					break
 								// Roopik IDE Tools (28 tools)
-				// Browser (14)-// Project (3)-// Canvas (4)-// Component (8)
+				// Browser (16)-// Project (3)-// Canvas (4)-// Component (8)
 				case "browser_open":
 				case "browser_close":
 				case "browser_action_input":
@@ -927,6 +931,8 @@ export async function presentAssistantMessage(cline: Task) {
 				case "browser_get_state":
 				case "browser_set_viewport":
 				case "browser_get_network_requests":
+				case "browser_find_element":
+				case "browser_wait_for_element":
 				case "project_get_active":
 				case "project_start":
 				case "project_stop":
