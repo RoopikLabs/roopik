@@ -285,6 +285,12 @@ const desktopResourcePatterns = [
 	// Sessions - built-in prompts and skills
 	'vs/sessions/prompts/*.prompt.md',
 	'vs/sessions/skills/**/SKILL.md',
+
+	// Roopik
+	'vs/workbench/contrib/roopik/browser/media/*.svg',
+	'vs/workbench/contrib/roopik/browser/media/*.png',
+	'vs/workbench/contrib/roopik/resources/*.json',
+	'vs/workbench/contrib/roopik/electron-main/projectMode/devServer/**/*.mjs',
 ];
 
 // Resources for server target (minimal - no UI)

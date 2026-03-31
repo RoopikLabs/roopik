@@ -107,6 +107,10 @@ const vscodeResourceIncludes = [
 	'out-build/vs/workbench/contrib/extensions/browser/media/{theme-icon.png,language-icon.svg}',
 	'out-build/vs/workbench/services/extensionManagement/common/media/*.{svg,png}',
 
+	// Roopik
+	'out-build/vs/workbench/contrib/roopik/browser/media/*.{svg,png}',
+	'out-build/vs/workbench/contrib/roopik/resources/*.json',
+	'out-build/vs/workbench/contrib/roopik/electron-main/projectMode/devServer/**/*.mjs',
 	// Webview
 	'out-build/vs/workbench/contrib/webview/browser/pre/*.{js,html}',
 
@@ -459,6 +463,13 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 				'node_modules/vsda/**' // retain copy of `vsda` in node_modules for internal use
 			], 'node_modules.asar'));
 
+		// MCP STDIO binaries - include all platforms, only existing ones will be bundled
+		const mcpBinaries = gulp.src([
+			'resources/mcp-binaries/roopik-mcp-win-x64.exe',
+			'resources/mcp-binaries/roopik-mcp-linux-x64',
+			'resources/mcp-binaries/roopik-mcp-macos-arm64'
+		], { base: '.', allowEmpty: true });
+
 		const mergeStreams = [
 			packageJsonStream,
 			productJsonStream,
@@ -466,7 +477,8 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 			api,
 			telemetry,
 			sources,
-			deps
+			deps,
+			mcpBinaries
 		];
 		if (packageSubJsonStream) {
 			mergeStreams.push(packageSubJsonStream);
@@ -612,20 +624,27 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 				.pipe(rename(f => f.dirname = `policies/${f.dirname}`)));
 
 			if (quality === 'stable' || quality === 'insider') {
-				result = es.merge(result, gulp.src('.build/win32/appx/**', { base: '.build/win32' }));
-				const rawVersion = version.replace(/-\w+$/, '').split('.');
-				const appxVersion = `${rawVersion[0]}.0.${rawVersion[1]}.${rawVersion[2]}`;
-				result = es.merge(result, gulp.src('resources/win32/appx/AppxManifest.xml', { base: '.' })
-					.pipe(replace('@@AppxPackageName@@', product.win32AppUserModelId))
-					.pipe(replace('@@AppxPackageVersion@@', appxVersion))
-					.pipe(replace('@@AppxPackageDisplayName@@', product.nameLong))
-					.pipe(replace('@@AppxPackageDescription@@', product.win32NameVersion))
-					.pipe(replace('@@ApplicationIdShort@@', product.win32RegValueName))
-					.pipe(replace('@@ApplicationExe@@', product.nameShort + '.exe'))
-					.pipe(replace('@@FileExplorerContextMenuID@@', quality === 'stable' ? 'OpenWithCode' : 'OpenWithCodeInsiders'))
-					.pipe(replace('@@FileExplorerContextMenuCLSID@@', (product as { win32ContextMenu?: Record<string, { clsid: string }> }).win32ContextMenu![arch].clsid))
-					.pipe(replace('@@FileExplorerContextMenuDLL@@', `${quality === 'stable' ? 'code' : 'code_insider'}_explorer_command_${arch}.dll`))
-					.pipe(rename(f => f.dirname = `appx/manifest`)));
+				const win32ContextMenu = (product as { win32ContextMenu?: Record<string, { clsid: string }> }).win32ContextMenu;
+				const contextMenuClsid = win32ContextMenu?.[arch]?.clsid;
+
+				if (contextMenuClsid) {
+					result = es.merge(result, gulp.src('.build/win32/appx/**', { base: '.build/win32' }));
+					const rawVersion = version.replace(/-\w+$/, '').split('.');
+					const appxVersion = `${rawVersion[0]}.0.${rawVersion[1]}.${rawVersion[2]}`;
+					result = es.merge(result, gulp.src('resources/win32/appx/AppxManifest.xml', { base: '.' })
+						.pipe(replace('@@AppxPackageName@@', product.win32AppUserModelId))
+						.pipe(replace('@@AppxPackageVersion@@', appxVersion))
+						.pipe(replace('@@AppxPackageDisplayName@@', product.nameLong))
+						.pipe(replace('@@AppxPackageDescription@@', product.win32NameVersion))
+						.pipe(replace('@@ApplicationIdShort@@', product.win32RegValueName))
+						.pipe(replace('@@ApplicationExe@@', product.nameShort + '.exe'))
+						.pipe(replace('@@FileExplorerContextMenuID@@', quality === 'stable' ? 'OpenWithCode' : 'OpenWithCodeInsiders'))
+						.pipe(replace('@@FileExplorerContextMenuCLSID@@', contextMenuClsid))
+						.pipe(replace('@@FileExplorerContextMenuDLL@@', `${quality === 'stable' ? 'code' : 'code_insider'}_explorer_command_${arch}.dll`))
+						.pipe(rename(f => f.dirname = `appx/manifest`)));
+				} else {
+					console.warn(`[package-${platform}-${arch}] Skipping AppX manifest; win32ContextMenu.${arch}.clsid not set in product.json.`);
+				}
 			}
 		} else if (platform === 'linux') {
 			result = es.merge(result, gulp.src('resources/linux/bin/code.sh', { base: '.' })

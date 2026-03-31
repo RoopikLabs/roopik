@@ -1,37 +1,37 @@
 {
-	"nameShort": "Code - OSS",
-	"nameLong": "Code - OSS",
-	"applicationName": "code-oss",
-	"dataFolderName": ".vscode-oss",
-	"win32MutexName": "vscodeoss",
+	"nameShort": "Roopik",
+	"nameLong": "Roopik",
+	"applicationName": "roopik",
+	"dataFolderName": ".roopik",
+	"win32MutexName": "roopik",
 	"licenseName": "MIT",
 	"licenseUrl": "https://github.com/microsoft/vscode/blob/main/LICENSE.txt",
 	"serverLicenseUrl": "https://github.com/microsoft/vscode/blob/main/LICENSE.txt",
 	"serverGreeting": [],
 	"serverLicense": [],
 	"serverLicensePrompt": "",
-	"serverApplicationName": "code-server-oss",
-	"serverDataFolderName": ".vscode-server-oss",
-	"tunnelApplicationName": "code-tunnel-oss",
-	"win32DirName": "Microsoft Code OSS",
-	"win32NameVersion": "Microsoft Code OSS",
-	"win32RegValueName": "CodeOSS",
+	"serverApplicationName": "roopik-server",
+	"serverDataFolderName": ".roopik-server",
+	"tunnelApplicationName": "roopik-tunnel",
+	"win32DirName": "Roopik",
+	"win32NameVersion": "Roopik",
+	"win32RegValueName": "Roopik",
 	"win32x64AppId": "{{D77B7E06-80BA-4137-BCF4-654B95CCEBC5}",
 	"win32arm64AppId": "{{D1ACE434-89C5-48D1-88D3-E2991DF85475}",
 	"win32x64UserAppId": "{{CC6B787D-37A0-49E8-AE24-8559A032BE0C}",
 	"win32arm64UserAppId": "{{3AEBF0C8-F733-4AD4-BADE-FDB816D53D7B}",
-	"win32AppUserModelId": "Microsoft.CodeOSS",
-	"win32ShellNameShort": "C&ode - OSS",
-	"win32TunnelServiceMutex": "vscodeoss-tunnelservice",
-	"win32TunnelMutex": "vscodeoss-tunnel",
-	"darwinBundleIdentifier": "com.visualstudio.code.oss",
+	"win32AppUserModelId": "Roopik",
+	"win32ShellNameShort": "Ro&opik",
+	"win32TunnelServiceMutex": "roopik-tunnelservice",
+	"win32TunnelMutex": "roopik-tunnel",
+	"darwinBundleIdentifier": "com.roopik.code",
 	"darwinProfileUUID": "47827DD9-4734-49A0-AF80-7E19B11495CC",
 	"darwinProfilePayloadUUID": "CF808BE7-53F3-46C6-A7E2-7EDB98A5E959",
-	"linuxIconName": "code-oss",
+	"linuxIconName": "roopik-editor",
 	"licenseFileName": "LICENSE.txt",
-	"reportIssueUrl": "https://github.com/microsoft/vscode/issues/new",
+	"reportIssueUrl": "https://github.com/RoopikHQ/roopik/issues/new",
 	"nodejsRepository": "https://nodejs.org",
-	"urlProtocol": "code-oss",
+	"urlProtocol": "roopik",
 	"webviewContentExternalBaseUrlTemplate": "https://{{uuid}}.vscode-cdn.net/insider/ef65ac1ba57f57f2a3961bfe94aa20481caca4c6/out/vs/workbench/contrib/webview/browser/pre/",
 	"builtInExtensions": [
 		{
@@ -155,5 +155,480 @@
 		"github-enterprise": [
 			"GitHub.copilot-chat"
 		]
-	}
+	},
+	"win32ContextMenu": {
+		"x64": {
+			"clsid": "A8F3C9E1-5B2D-4F7A-9C3E-1D6A8B4E7F2C"
+		},
+		"arm64": {
+			"clsid": "B7E4D2F3-6C1A-4E8B-8D2F-3E7C9A5F8D1B"
+		}
+	},
+	"linkProtectionTrustedDomains": [
+		"https://roopik.com",
+		"https://www.roopik.com",
+		"https://github.com/RoopikHQ/roopik"
+	],
+	"languageExtensionTips": [
+		"ms-python.python",
+		"ms-vscode.cpptools-extension-pack",
+		"ms-dotnettools.csdevkit",
+		"ms-toolsai.jupyter",
+		"vscjava.vscode-java-pack",
+		"ecmel.vscode-html-css",
+		"vue.volar",
+		"bmewburn.vscode-intelephense-client",
+		"dsznajder.es7-react-js-snippets",
+		"golang.go",
+		"ms-vscode.powershell",
+		"dart-code.dart-code",
+		"rust-lang.rust-analyzer",
+		"Shopify.ruby-lsp",
+		"GitHub.copilot"
+	],
+	"commonlyUsedSettings": [
+		"files.autoSave",
+		"editor.fontSize",
+		"editor.fontFamily",
+		"editor.tabSize",
+		"editor.renderWhitespace",
+		"editor.cursorStyle",
+		"editor.multiCursorModifier",
+		"editor.insertSpaces",
+		"editor.wordWrap",
+		"files.exclude",
+		"files.associations",
+		"workbench.editor.enablePreview"
+	],
+	"crashReporter": {
+		"productName": "Roopik",
+		"companyName": "Roopik"
+	},
+	"extensionPublisherOrgs": [
+		"roopik",
+		"microsoft"
+	],
+	"trustedExtensionPublishers": [
+		"roopik",
+		"microsoft",
+		"github",
+		"openai"
+	],
+	"extensionAllowedBadgeProviders": [
+		"api.bintray.com",
+		"api.travis-ci.com",
+		"api.travis-ci.org",
+		"app.fossa.io",
+		"badge.buildkite.com",
+		"badge.fury.io",
+		"badge.waffle.io",
+		"badgen.net",
+		"badges.frapsoft.com",
+		"badges.gitter.im",
+		"badges.greenkeeper.io",
+		"cdn.travis-ci.com",
+		"cdn.travis-ci.org",
+		"ci.appveyor.com",
+		"circleci.com",
+		"cla.opensource.microsoft.com",
+		"codacy.com",
+		"codeclimate.com",
+		"codecov.io",
+		"coveralls.io",
+		"david-dm.org",
+		"deepscan.io",
+		"dev.azure.com",
+		"docs.rs",
+		"flat.badgen.net",
+		"gemnasium.com",
+		"githost.io",
+		"gitlab.com",
+		"godoc.org",
+		"goreportcard.com",
+		"img.shields.io",
+		"isitmaintained.com",
+		"marketplace.visualstudio.com",
+		"nodesecurity.io",
+		"opencollective.com",
+		"snyk.io",
+		"travis-ci.com",
+		"travis-ci.org",
+		"visualstudio.com",
+		"vsmarketplacebadge.apphb.com",
+		"www.bithound.io",
+		"www.versioneye.com"
+	],
+	"extensionAllowedBadgeProvidersRegex": [
+		"^https:\\/\\/github\\.com\\/[^/]+\\/[^/]+\\/(actions\\/)?workflows\\/.*badge\\.svg"
+	],
+	"releaseNotesUrl": "https://github.com/RoopikHQ/roopik/releases/tag/{{VERSION}}",
+	"updateUrl": "https://roopik-updates.humblebee.workers.dev",
+	"quality": "stable",
+	"extensionsGallery": {
+		"nlsBaseUrl": "https://www.vscode-unpkg.net/_lp/",
+		"serviceUrl": "https://marketplace.visualstudio.com/_apis/public/gallery",
+		"itemUrl": "https://marketplace.visualstudio.com/items",
+		"publisherUrl": "https://marketplace.visualstudio.com/publishers",
+		"resourceUrlTemplate": "https://{publisher}.vscode-unpkg.net/{publisher}/{name}/{version}/{path}",
+		"extensionUrlTemplate": "https://www.vscode-unpkg.net/_gallery/{publisher}/{name}/latest",
+		"controlUrl": "https://main.vscode-cdn.net/extensions/marketplace.json",
+		"mcpUrl": "https://main.vscode-cdn.net/mcp/servers.json",
+		"recommendationsUrl": "https://main.vscode-cdn.net/extensions/workspaceRecommendations.json.gz"
+	},
+	"mcpGallery": {
+		"serviceUrl": "https://api.mcp.github.com",
+		"itemWebUrl": "https://github.com/mcp/{name}",
+		"publisherUrl": "https://github.com/{name}",
+		"supportUrl": "https://support.github.com",
+		"privacyPolicyUrl": "https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement",
+		"termsOfServiceUrl": "https://docs.github.com/site-policy/github-terms/github-terms-of-service",
+		"reportUrl": "https://docs.github.com/communities/maintaining-your-safety-on-github/reporting-abuse-or-spam"
+	},
+	"extensionRecommendations": {
+		"ms-dotnettools.csdevkit": {
+			"onFileOpen": [
+				{
+					"pathGlob": "{**/*.cs,**/global.json,**/*.csproj,**/*.cshtml,**/*.sln}",
+					"important": true
+				},
+				{
+					"languages": [
+						"csharp"
+					],
+					"important": true
+				},
+				{
+					"pathGlob": "{**/project.json,**/appsettings.json}"
+				}
+			]
+		},
+		"ms-python.python": {
+			"onFileOpen": [
+				{
+					"pathGlob": "{**/*.py}",
+					"important": true
+				},
+				{
+					"languages": [
+						"python"
+					],
+					"important": true
+				},
+				{
+					"pathGlob": "{**/*.ipynb}"
+				}
+			]
+		},
+		"ms-toolsai.jupyter": {
+			"onFileOpen": [
+				{
+					"pathGlob": "{**/*.py}",
+					"contentPattern": "^#\\s*%%$",
+					"important": true,
+					"whenInstalled": [
+						"ms-python.python"
+					]
+				},
+				{
+					"pathGlob": "{**/*.ipynb}"
+				}
+			]
+		},
+		"ms-toolsai.datawrangler": {
+			"onFileOpen": [
+				{
+					"pathGlob": "{**/*.ipynb}",
+					"contentPattern": "import\\s*pandas|from\\s*pandas",
+					"whenInstalled": [
+						"ms-toolsai.jupyter"
+					]
+				}
+			]
+		},
+		"golang.Go": {
+			"onFileOpen": [
+				{
+					"pathGlob": "**/*.go",
+					"important": true
+				},
+				{
+					"languages": [
+						"go"
+					],
+					"important": true
+				}
+			]
+		},
+		"vscjava.vscode-java-pack": {
+			"onFileOpen": [
+				{
+					"pathGlob": "{**/*.java}",
+					"important": true,
+					"whenNotInstalled": [
+						"ASF.apache-netbeans-java",
+						"Oracle.oracle-java"
+					]
+				},
+				{
+					"languages": [
+						"java"
+					],
+					"important": true,
+					"whenNotInstalled": [
+						"ASF.apache-netbeans-java",
+						"Oracle.oracle-java"
+					]
+				}
+			]
+		},
+		"ms-vscode.PowerShell": {
+			"onFileOpen": [
+				{
+					"pathGlob": "{**/*.ps1,**/*.psd1,**/*.psm1}",
+					"important": true
+				},
+				{
+					"languages": [
+						"powershell"
+					],
+					"important": true
+				},
+				{
+					"pathGlob": "{**/*.ps.config,**/*.ps1.config}"
+				}
+			]
+		},
+		"ms-toolsai.prompty": {
+			"onFileOpen": [
+				{
+					"pathGlob": "{**/*.prompty}",
+					"important": false
+				}
+			]
+		},
+		"typespec.typespec-vscode": {
+			"onFileOpen": [
+				{
+					"pathGlob": "{**/*.tsp,**/tspconfig.yaml}",
+					"important": true
+				}
+			]
+		},
+		"ms-vscode.cpptools-extension-pack": {
+			"onFileOpen": [
+				{
+					"pathGlob": "{**/*.c,**/*.cpp,**/*.cc,**/.cxx,**/*.hh,**/*.hpp,**/*.hxx,**/*.h}",
+					"important": true,
+					"whenNotInstalled": [
+						"llvm-vs-code-extensions.vscode-clangd"
+					]
+				},
+				{
+					"languages": [
+						"c",
+						"cpp"
+					],
+					"important": true,
+					"whenNotInstalled": [
+						"llvm-vs-code-extensions.vscode-clangd"
+					]
+				}
+			]
+		},
+		"ms-azuretools.vscode-containers": {
+			"onFileOpen": [
+				{
+					"pathGlob": "{**/dockerfile,**/Dockerfile,**/docker-compose.yml,**/docker-compose.*.yml}",
+					"important": true,
+					"whenNotInstalled": [
+						"ms-azuretools.vscode-docker"
+					]
+				},
+				{
+					"languages": [
+						"dockerfile"
+					],
+					"important": true,
+					"whenNotInstalled": [
+						"ms-azuretools.vscode-docker"
+					]
+				},
+				{
+					"pathGlob": "{**/*.cs,**/project.json,**/global.json,**/*.csproj,**/*.cshtml,**/*.sln,**/appsettings.json,**/*.py,**/*.ipynb,**/*.js,**/*.ts,**/package.json}",
+					"whenNotInstalled": [
+						"ms-azuretools.vscode-docker"
+					]
+				}
+			]
+		},
+		"Redis.redis-for-vscode": {
+			"onFileOpen": [
+				{
+					"pathGlob": "{**/redis.*,**/redis-server.*,**/redis_*,**/redisinsight.*}",
+					"important": true
+				}
+			]
+		},
+		"SonarSource.sonarlint-vscode": {
+			"onFileOpen": [
+				{
+					"pathGlob": "{**/sonar-project.properties,**/sonarcloud.properties,**/sonarlint.*}",
+					"important": true
+				}
+			]
+		}
+	},
+	"keymapExtensionTips": [
+		"vscodevim.vim",
+		"ms-vscode.sublime-keybindings",
+		"ms-vscode.atom-keybindings",
+		"ms-vscode.brackets-keybindings",
+		"ms-vscode.vs-keybindings",
+		"ms-vscode.notepadplusplus-keybindings",
+		"k--kato.intellij-idea-keybindings",
+		"lfs.vscode-emacs-friendly",
+		"alphabotsec.vscode-eclipse-keybindings",
+		"alefragnani.delphi-keybindings"
+	],
+	"configBasedExtensionTips": {
+		"git": {
+			"configPath": ".git/config",
+			"configName": "Git",
+			"recommendations": {
+				"github.vscode-pull-request-github": {
+					"name": "GitHub Pull Request",
+					"contentPattern": "^\\s*url\\s*=\\s*https:\\/\\/github\\.com.*$"
+				},
+				"eamodio.gitlens": {
+					"name": "GitLens"
+				}
+			}
+		},
+		"devContainer": {
+			"configPath": ".devcontainer/devcontainer.json",
+			"configName": "Dev Container",
+			"recommendations": {
+				"ms-vscode-remote.remote-containers": {
+					"name": "Dev Containers",
+					"important": true
+				}
+			}
+		},
+		"maven": {
+			"configPath": "pom.xml",
+			"configName": "Maven",
+			"recommendations": {
+				"vscjava.vscode-java-pack": {
+					"name": "Java",
+					"important": true,
+					"isExtensionPack": true,
+					"whenNotInstalled": [
+						"ASF.apache-netbeans-java",
+						"Oracle.oracle-java"
+					]
+				},
+				"vmware.vscode-boot-dev-pack": {
+					"name": "Spring Boot Extension Pack",
+					"isExtensionPack": true
+				}
+			}
+		},
+		"gradle": {
+			"configPath": "build.gradle",
+			"configName": "Gradle",
+			"recommendations": {
+				"vscjava.vscode-java-pack": {
+					"name": "Java",
+					"important": true,
+					"isExtensionPack": true,
+					"whenNotInstalled": [
+						"ASF.apache-netbeans-java",
+						"Oracle.oracle-java"
+					]
+				}
+			}
+		},
+		"github-pull-request": {
+			"configPath": ".vscode/.github-pull-request.rec",
+			"configName": "GitHub",
+			"configScheme": "vscode-vfs",
+			"recommendations": {
+				"github.vscode-pull-request-github": {
+					"name": "GitHub Pull Request",
+					"important": true
+				}
+			}
+		}
+	},
+	"exeBasedExtensionTips": {
+		"docker": {
+			"friendlyName": "Docker",
+			"windowsPath": "%ProgramFiles%\\Docker\\Docker\\Resources\\bin\\docker.exe",
+			"recommendations": {
+				"ms-azuretools.vscode-docker": {
+					"name": "Docker",
+					"important": true
+				},
+				"ms-vscode-remote.remote-containers": {
+					"name": "Dev Containers",
+					"important": true
+				},
+				"ms-kubernetes-tools.vscode-kubernetes-tools": {
+					"name": "Kubernetes"
+				}
+			}
+		},
+		"kubectl": {
+			"friendlyName": "Kubernetes",
+			"windowsPath": "%ProgramFiles%\\Docker\\Docker\\Resources\\bin\\kubectl.exe",
+			"recommendations": {
+				"ms-azuretools.vscode-docker": {
+					"name": "Docker"
+				},
+				"ms-kubernetes-tools.vscode-kubernetes-tools": {
+					"name": "Kubernetes"
+				},
+				"ms-vscode-remote.remote-containers": {
+					"name": "Dev Containers"
+				}
+			}
+		},
+		"git": {
+			"friendlyName": "Git",
+			"windowsPath": "%ProgramFiles%\\Git\\git-bash.exe",
+			"recommendations": {
+				"eamodio.gitlens": {
+					"name": "GitLens"
+				}
+			}
+		},
+		"wsl": {
+			"friendlyName": "Windows Subsystem for Linux (WSL)",
+			"windowsPath": "%WINDIR%\\system32\\lxss\\LxssManager.dll",
+			"important": true,
+			"recommendations": {
+				"ms-vscode-remote.remote-wsl": {
+					"name": "WSL",
+					"important": true
+				}
+			}
+		}
+	},
+	"aiGeneratedWorkspaceTrust": {
+		"title": "This workspace was generated by AI",
+		"checkboxText": "Trust the contents of all files in this workspace",
+		"trustOption": "Yes, I trust the contents",
+		"dontTrustOption": "No, I don't trust the contents",
+		"startupTrustRequestLearnMore": "If you don't trust the contents of the files generated by AI, we recommend continuing in restricted mode. See [our docs](https://roopik.com/docs/workspace-trust) to learn more."
+	},
+	"extensionUntrustedWorkspaceSupport": {
+		"vscode.git": {
+			"override": true
+		}
+	},
+	"commandPaletteSuggestedCommandIds": [
+		"workbench.action.showCommands",
+		"workbench.action.quickOpen",
+		"workbench.action.files.newUntitledFile"
+	]
 }

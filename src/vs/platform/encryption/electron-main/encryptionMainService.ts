@@ -23,6 +23,12 @@ export class EncryptionMainService implements IEncryptionMainService {
 	constructor(
 		@ILogService private readonly logService: ILogService
 	) {
+		// Roopik: Force basic encryption on macOS to avoid Keychain prompts on unsigned builds
+		if (isMacintosh) {
+			this.logService.trace('[EncryptionMainService] Roopik: Force-enabling basic text encryption on macOS to bypass Keychain prompts.');
+			safeStorage.setUsePlainTextEncryption?.(true);
+		}
+
 		// if this commandLine switch is set, the user has opted in to using basic text encryption
 		if (app.commandLine.getSwitchValue('password-store') === PasswordStoreCLIOption.basic) {
 			this.logService.trace('[EncryptionMainService] setting usePlainTextEncryption to true...');

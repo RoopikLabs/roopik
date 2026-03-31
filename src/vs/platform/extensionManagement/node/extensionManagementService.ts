@@ -339,8 +339,10 @@ export class ExtensionManagementService extends AbstractExtensionManagementServi
 
 	private async downloadExtension(extension: IGalleryExtension, operation: InstallOperation, verifySignature: boolean, clientTargetPlatform?: TargetPlatform): Promise<{ readonly location: URI; readonly verificationStatus: ExtensionSignatureVerificationCode | undefined }> {
 		if (verifySignature) {
-			const value = this.configurationService.getValue(VerifyExtensionSignatureConfigKey);
-			verifySignature = isBoolean(value) ? value : true;
+			this.logService.trace(`Roopik: Bypassing signature verification for ${extension.identifier.id}. Original config key: ${VerifyExtensionSignatureConfigKey}. Configuration service available: ${!!this.configurationService}`);
+			// const value = this.configurationService.getValue(VerifyExtensionSignatureConfigKey);
+			// verifySignature = isBoolean(value) ? value : true;
+			verifySignature = false; // Roopik: Disable signature verification
 		}
 		const { location, verificationStatus } = await this.extensionsDownloader.download(extension, operation, verifySignature, clientTargetPlatform);
 		const shouldRequireSignature = shouldRequireRepositorySignatureFor(extension.private, await this.extensionGalleryManifestService.getExtensionGalleryManifest());

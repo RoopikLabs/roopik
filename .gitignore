@@ -20,7 +20,6 @@ vscode.db
 /.profile-oss
 /cli/target
 /cli/openssl
-product.overrides.json
 *.snap.actual
 *.tsbuildinfo
 .vscode-test
@@ -43,3 +42,14 @@ dist
 .github/prompts/*.local.prompt.md
 .agents/skills/.local/
 .github/skills/.local/
+
+# Microsoft-specific CI/CD and automation (not needed for Roopik fork)
+.github/workflows/
+.github/endgame/
+.github/CODEOWNERS
+.github/dependabot.yml
+.github/similarity.yml
+.github/classifier.json
+.github/CODENOTIFY
+.github/commands/
+.github/commands.json
