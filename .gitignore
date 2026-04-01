@@ -62,3 +62,6 @@ dist
 .github/commands/
 .github/commands.json
 /docs/UPDATE_REBASE
+
+# Roopik IDE metadata
+.roopik/
