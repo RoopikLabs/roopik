@@ -135,7 +135,7 @@ export class Editor extends EditorPane {
 		@IProjectStorageService private readonly projectStorageService: IProjectStorageService,
 		@IViewsService private readonly viewsService: IViewsService,
 		@ICommandService private readonly commandService: ICommandService,
-		@IConfigurationService private readonly configurationService: IConfigurationService
+		@IConfigurationService private readonly configurationService: IConfigurationService,
 	) {
 		super(Editor.ID, group, telemetryService, themeService, storageService);
 		this.logger = getRoopikLogger(loggerService, '[EDITOR]');
@@ -321,6 +321,25 @@ export class Editor extends EditorPane {
 			// this.logger.info(`[ProjectMode] Menubar closed`);
 			this.resumeBrowser();
 		}));
+
+		// 4. Modal editor detection (Settings, Profiles, Keyboard Shortcuts, Themes)
+		// VS Code 1.115+ opens these as modal editor overlays (.monaco-modal-editor-block)
+		// that render above everything. The WebContentsView (native Electron) covers HTML,
+		// so we must hide it when the modal appears.
+		const mainContainer = document.body;
+		let modalVisible = false;
+		const modalObserver = new MutationObserver(() => {
+			const hasModal = !!mainContainer.querySelector('.monaco-modal-editor-block');
+			if (hasModal && !modalVisible) {
+				modalVisible = true;
+				this.pauseBrowser();
+			} else if (!hasModal && modalVisible) {
+				modalVisible = false;
+				this.resumeBrowser();
+			}
+		});
+		modalObserver.observe(mainContainer, { childList: true, subtree: true });
+		this._register({ dispose: () => modalObserver.disconnect() });
 	}
 
 	/**
