@@ -50,14 +50,6 @@ npm run gulp vscode-linux-x64      # Linux
 npm run watch
 ```
 
-
-## Code Signing Policy
-
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
-
-- Committers and reviewers: [Members](https://github.com/orgs/RoopikLabs/people)
-- Approvers: [Owners](https://github.com/orgs/RoopikLabs/people?query=role%3Aowner)
-
 ## Privacy Policy
 
 This program does not collect or transfer any user data to external systems unless specifically requested by the user. Telemetry features inherited from upstream dependencies are disabled by default and can be manually controlled in settings.
