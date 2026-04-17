@@ -9,16 +9,11 @@ When fixing an unhandled error from the telemetry dashboard, the issue typically
 
 ### 1. Do NOT fix at the crash site
 
-The error manifests at a specific line in the stack trace, but **the fix almost never belongs there**. Fixing at the crash site (e.g., adding a `typeof` guard in a `revive()` function, swallowing the error with a try/catch, or returning a fallback value) only masks the real problem. The invalid data still flows through the system and will cause failures elsewhere.
+**The fix almost never belongs at the line in the stack trace.** Adding a `typeof` guard, swallowing with try/catch, or returning a fallback only masks the real problem — invalid data still flows through the system.
 
 ### 2. Trace the data flow upward through the call stack
 
-Read each frame in the stack trace from bottom to top. For each frame, understand:
-- What data is being passed and what is expected
-- Where that data originated (IPC message, extension API call, storage, user input, etc.)
-- Whether the data could have been corrupted or malformed at that point
-
-The goal is to find the **producer of invalid data**, not the consumer that crashes on it.
+Read each frame from bottom to top. For each frame, identify what data is passed, what is expected, and where it originated (IPC, extension API, storage, user input). The goal is to find the **producer of invalid data**, not the consumer that crashes on it.
 
 ### 3. When the producer cannot be identified from the stack alone
 

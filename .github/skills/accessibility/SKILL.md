@@ -1,6 +1,6 @@
 ---
 name: accessibility
-description: Accessibility guidelines for VS Code features — covers accessibility help dialogs, accessible views, verbosity settings, accessibility signals, ARIA alerts/status announcements, keyboard navigation, and ARIA labels/roles. Applies to both new interactive UI surfaces and updates to existing features. Use when creating new UI or updating existing UI features.
+description: "Accessibility guidelines for VS Code features — covers accessibility help dialogs, accessible views, verbosity settings, accessibility signals, ARIA alerts/status announcements, keyboard navigation, and ARIA labels/roles. Use when creating or updating UI features that need accessibility support, or when the user mentions accessibility, ARIA, screen readers, or keyboard navigation in VS Code."
 ---
 
 When adding a **new interactive UI surface** to VS Code — a panel, view, widget, editor overlay, dialog, or any rich focusable component the user interacts with — you **must** provide three accessibility components (if they do not already exist for the feature):
@@ -47,10 +47,7 @@ An accessibility help dialog tells the user what the feature does, which keyboar
 The simplest approach is to return an `AccessibleContentProvider` directly from `getProvider()`. This is the most common pattern in the codebase (used by chat, inline chat, quick chat, etc.):
 
 ```ts
-import { AccessibleViewType, AccessibleContentProvider, AccessibleViewProviderId } from '…/accessibleView.js';
-import { IAccessibleViewImplementation } from '…/accessibleViewRegistry.js';
-import { AccessibilityVerbositySettingId } from '…/accessibilityConfiguration.js';
-import { AccessibleViewType, AccessibleContentProvider, AccessibleViewProviderId, IAccessibleViewContentProvider, IAccessibleViewOptions } from '../../../../platform/accessibility/browser/accessibleView.js';
+import { AccessibleViewType, AccessibleContentProvider, AccessibleViewProviderId } from '../../../../platform/accessibility/browser/accessibleView.js';
 import { IAccessibleViewImplementation } from '../../../../platform/accessibility/browser/accessibleViewRegistry.js';
 import { AccessibilityVerbositySettingId } from '../../../../platform/accessibility/common/accessibilityConfiguration.js';
 
@@ -76,23 +73,7 @@ export class MyFeatureAccessibilityHelp implements IAccessibleViewImplementation
 }
 ```
 
-Alternatively, if the provider needs injected services or must track state (e.g., storing a reference to the previously focused element), create a custom class that extends `Disposable` and implements `IAccessibleViewContentProvider`, then instantiate it via `IInstantiationService` (see `CommentsAccessibilityHelpProvider` for an example):
-
-```ts
-class MyFeatureAccessibilityHelpProvider extends Disposable implements IAccessibleViewContentProvider {
-	readonly id = AccessibleViewProviderId.MyFeature;
-	readonly verbositySettingKey = AccessibilityVerbositySettingId.MyFeature;
-	readonly options: IAccessibleViewOptions = { type: AccessibleViewType.Help };
-
-	provideContent(): string { /* … */ }
-	onClose(): void { /* … */ }
-}
-
-// In getProvider():
-getProvider(accessor: ServicesAccessor) {
-	return accessor.get(IInstantiationService).createInstance(MyFeatureAccessibilityHelpProvider);
-}
-```
+For an advanced pattern using injected services and `IInstantiationService`, see [EXAMPLES.md](EXAMPLES.md) (modeled on `CommentsAccessibilityHelpProvider`).
 
 ---
 
@@ -209,57 +190,24 @@ this._accessibilitySignalService.playSignal(AccessibilitySignal.error, { userGes
 
 Use the `alert()` and `status()` functions from `src/vs/base/browser/ui/aria/aria.ts` to announce dynamic changes to screen readers.
 
-### `alert(msg)` — Assertive live region (`role="alert"`)
-- **Use for**: Urgent, important information that the user must know immediately.
-- **Examples**: Errors, warnings, critical state changes, results of a user-initiated action.
-- **Behavior**: Interrupts the screen reader's current speech.
-
-### `status(msg)` — Polite live region (`aria-live="polite"`)
-- **Use for**: Non-urgent, informational updates that should be spoken when the screen reader is idle.
-- **Examples**: Progress updates, search result counts, background state changes.
-- **Behavior**: Queued and spoken after the screen reader finishes its current output.
-
 ### Guidelines
 
-- **Prefer `status()` over `alert()`** unless the information is time-sensitive or the result of a direct user action. Overusing `alert()` creates a noisy, disruptive experience.
-- **Keep messages concise.** Screen readers read the entire message; long messages delay the user.
-- **Do not duplicate** — if an accessibility signal already announces the event, do not also call `alert()` / `status()` for the same information.
+- **`alert(msg)`** for urgent information (errors, user-initiated action results). **`status(msg)`** for non-urgent updates (progress, counts).
+- **Prefer `status()` over `alert()`** — overusing `alert()` creates a noisy experience.
+- **Do not duplicate** — if an accessibility signal already announces the event, skip `alert()`/`status()`.
 - **Localize** all messages with `nls.localize()`.
 
 ---
 
-## 6. Keyboard Navigation
+## 6. Keyboard Navigation & ARIA
 
-Every interactive UI element must be fully operable via the keyboard.
+VS Code-specific notes beyond standard WAI-ARIA patterns:
 
-### Requirements
-
-- **Tab order**: All interactive elements must be reachable via `Tab` / `Shift+Tab` in a logical order.
-- **Arrow key navigation**: Lists, trees, grids, and toolbars must support arrow key navigation following WAI-ARIA patterns.
-- **Focus visibility**: Focused elements must have a visible focus indicator (VS Code's theme system provides this via `focusBorder`).
-- **No mouse-only interactions**: Every action reachable by click or hover must also be reachable via keyboard (context menus, buttons, toggles, etc.).
-- **Escape to dismiss**: Overlays, dialogs, and popups must be dismissable with `Escape`, returning focus to the previous element.
-- **Focus trapping**: Modal dialogs must trap focus within the dialog until dismissed.
-
----
-
-## 7. ARIA Labels and Roles
-
-All interactive UI elements must have appropriate ARIA attributes so screen readers can identify and describe them.
-
-### Requirements
-
-- **`aria-label`**: Every interactive element without visible text (icon buttons, icon-only actions, custom widgets) must have a descriptive `aria-label`. Labels should be localized.
-- **`aria-labelledby`** / **`aria-describedby`**: Use these to associate elements with existing visible text rather than duplicating strings.
-- **`role`**: Custom widgets that do not use native HTML elements must declare the correct ARIA role (e.g., `role="button"`, `role="tree"`, `role="tablist"`).
-- **`aria-expanded`**, **`aria-selected`**, **`aria-checked`**: Toggle and selection states must be communicated via the appropriate ARIA state attributes.
-- **`aria-hidden="true"`**: Decorative or redundant elements (icons next to text labels, decorative separators) must be hidden from the accessibility tree.
-
-### Guidelines
-
-- Avoid generic labels like "button" or "icon" — describe the action: "Close panel", "Toggle sidebar", "Run task".
-- Test with a screen reader (VoiceOver on macOS, NVDA on Windows) to verify labels are spoken correctly in context.
-- Lists and trees should use `aria-setsize` and `aria-posinset` when virtualized so screen readers report the correct count.
+- **Focus visibility**: Use VS Code's theme `focusBorder` for focus indicators.
+- **Localize all `aria-label` values** with `nls.localize()`. Describe the action: "Close panel", "Toggle sidebar", "Run task".
+- **`aria-setsize` / `aria-posinset`**: Required on virtualized lists and trees so screen readers report correct counts.
+- **`aria-hidden="true"`**: Apply to decorative elements (icons next to text labels, separators).
+- Test with VoiceOver (macOS) or NVDA (Windows).
 
 ---
 

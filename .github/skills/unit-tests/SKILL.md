@@ -5,15 +5,21 @@ description: Use when running unit tests in the VS Code repo. Covers the runTest
 
 # Running Unit Tests
 
+## Prerequisite: Compilation
+
+Tests run against compiled JavaScript output. Ensure the `VS Code - Build` watch task is running or that compilation has completed before running tests. Test failures caused by stale output are a common pitfall.
+
 ## Preferred: Use the `runTests` tool
 
 If the `runTests` tool is available, **prefer it** over running shell commands. It provides structured output with detailed pass/fail information and supports filtering by file and test name.
 
-- Pass absolute paths to test files via the `files` parameter.
-- Pass test names via the `testNames` parameter to filter which tests run.
-- Set `mode="coverage"` to collect coverage.
-
-Example (conceptual): run tests in `src/vs/editor/test/common/model.test.ts` with test name filter `"should split lines"`.
+```
+runTests({
+  files: ["/absolute/path/to/src/vs/editor/test/common/model.test.ts"],
+  testNames: ["should split lines"],
+  mode: "run"
+})
+```
 
 ## Fallback: Shell scripts
 
@@ -22,39 +28,14 @@ When the `runTests` tool is not available (e.g. in CLI environments), use the pl
 - **macOS / Linux:** `./scripts/test.sh [options]`
 - **Windows:** `.\scripts\test.bat [options]`
 
-These scripts download Electron if needed and launch the Mocha test runner.
-
 ### Commonly used options
 
-#### Bare file paths - Run tests from specific files
+#### `--run <file>` - Run tests from specific files
 
-Pass source file paths directly as positional arguments. The test runner automatically treats bare `.ts`/`.js` positional arguments as `--run` values.
-
-```bash
-./scripts/test.sh src/vs/editor/test/common/model.test.ts
-```
-
-```bat
-.\scripts\test.bat src\vs\editor\test\common\model.test.ts
-```
-
-Multiple files:
-
-```bash
-./scripts/test.sh src/vs/editor/test/common/model.test.ts src/vs/editor/test/common/range.test.ts
-```
-
-#### `--run <file>` - Run tests from a specific file (explicit form)
-
-Accepts a **source file path** (starting with `src/`). The runner strips the `src/` prefix and the `.ts`/`.js` extension automatically to resolve the compiled module.
+Accepts a **source file path** (starting with `src/`). The runner strips the `src/` prefix and the `.ts`/`.js` extension automatically to resolve the compiled module. Bare file paths work identically (positional arguments are treated as `--run` values).
 
 ```bash
 ./scripts/test.sh --run src/vs/editor/test/common/model.test.ts
-```
-
-Multiple files can be specified by repeating `--run`:
-
-```bash
 ./scripts/test.sh --run src/vs/editor/test/common/model.test.ts --run src/vs/editor/test/common/range.test.ts
 ```
 
@@ -99,7 +80,3 @@ Override the default Mocha timeout for long-running tests.
 ### Integration tests
 
 Integration tests (files ending in `.integrationTest.ts` or located in `extensions/`) are **not run** by `scripts/test.sh`. Use `scripts/test-integration.sh` (or `scripts/test-integration.bat`) instead. See the `integration-tests` skill for details.
-
-### Compilation requirement
-
-Tests run against compiled JavaScript output. Ensure the `VS Code - Build` watch task is running or that compilation has completed before running tests. Test failures caused by stale output are a common pitfall.

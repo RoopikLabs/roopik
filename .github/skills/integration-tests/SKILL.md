@@ -79,44 +79,13 @@ Available suite names: `api-folder`, `api-workspace`, `colorize`, `terminal-sugg
 
 All other options (e.g. `--timeout`, `--coverage`, `--reporter`) are forwarded to the underlying `scripts/test.sh` runner for node.js integration tests. These extra options are **not** forwarded to extension host suites when using `--suite`.
 
-## Examples
-
-```bash
-# Run all integration tests (node.js + extension host)
-./scripts/test-integration.sh
-
-# Run a single integration test file
-./scripts/test-integration.sh --run src/vs/workbench/services/search/test/browser/search.integrationTest.ts
-
-# Run integration tests matching a grep pattern
-./scripts/test-integration.sh --grep "TextSearchProvider"
-
-# Run integration tests under a specific area
-./scripts/test-integration.sh --runGlob "**/workbench/**/*.integrationTest.js"
-
-# Run only Git extension host tests
-./scripts/test-integration.sh --suite git
-
-# Run API folder + workspace extension tests (glob)
-./scripts/test-integration.sh --suite 'api*'
-
-# Run multiple extension test suites
-./scripts/test-integration.sh --suite 'git,typescript,emmet'
-
-# Grep for specific tests in the API folder suite
-./scripts/test-integration.sh --suite api-folder --grep 'should open'
-
-# Combine file and grep
-./scripts/test-integration.sh --run src/vs/workbench/services/search/test/browser/search.integrationTest.ts --grep "should search"
-```
-
 ## Compilation requirement
 
 Tests run against compiled JavaScript output. Ensure the `VS Code - Build` watch task is running or that compilation has completed before running tests.
 
 ## Distinction from unit tests
 
-- **Unit tests** (`.test.ts`) → use `scripts/test.sh` or the `runTests` tool
+- **Unit tests** (`.test.ts`) → use `scripts/test.sh` or the `runTests` tool (see the `unit-tests` skill)
 - **Integration tests** (`.integrationTest.ts` and extension tests) → use `scripts/test-integration.sh`
 
 Do **not** mix these up: `scripts/test.sh` will not find integration test files unless you explicitly pass `--runGlob **/*.integrationTest.js`, and `scripts/test-integration.sh` is not intended for `.test.ts` files.
