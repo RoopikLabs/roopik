@@ -89,6 +89,29 @@ export function getMcpBinaryPath(): string {
 }
 
 /**
+ * Strip com.apple.quarantine from the MCP binary on macOS.
+ *
+ * When users download Roopik via a browser, Chrome stamps quarantine on every
+ * file inside the DMG — including this nested binary. Gatekeeper only clears
+ * quarantine for the top-level .app on first launch; the helper binary keeps
+ * its own quarantine attribute. External agents (Claude CLI, Cursor, Codex)
+ * spawn the binary directly in a fresh process tree, so AMFI re-evaluates it
+ * and kills it (SIGKILL, exit 137) before it can print a single byte.
+ * Stripping quarantine here — before any registration — fixes that.
+ */
+export function clearMacQuarantine(binaryPath: string): void {
+	if (!isMac || !fs.existsSync(binaryPath)) {
+		return;
+	}
+	try {
+		const { execSync } = require('child_process') as typeof import('child_process');
+		execSync(`xattr -dr com.apple.quarantine "${binaryPath}"`, { stdio: 'ignore' });
+	} catch {
+		// Non-fatal: binary may not have quarantine, or xattr may not be available
+	}
+}
+
+/**
  * Get the resources path (where binaries are stored)
  */
 function getResourcesPath(): string {

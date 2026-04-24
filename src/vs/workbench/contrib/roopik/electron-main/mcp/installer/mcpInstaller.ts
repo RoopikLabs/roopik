@@ -45,6 +45,7 @@ import {
 	// CLI helpers
 	isCommandAvailable,
 	executeCommand,
+	clearMacQuarantine,
 	getClaudeCodeBinaryPath,
 	getCodexBinaryPath,
 	buildClaudeExtensionAddCommand,
@@ -103,6 +104,7 @@ export class McpInstaller extends Disposable {
 	constructor() {
 		super();
 		this._binaryPath = getMcpBinaryPath();
+		clearMacQuarantine(this._binaryPath);
 	}
 
 	/**
