@@ -23,9 +23,10 @@
 import * as crypto from 'crypto';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
-import { ILoggerService } from '../../../../../platform/log/common/log.js';
+import { ILoggerService, ILogService } from '../../../../../platform/log/common/log.js';
 import { getRoopikLogger } from '../../common/roopikLogger.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
+import { getResolvedShellEnv } from '../../../../../platform/shell/node/shellEnv.js';
 import { IMcpServerService } from '../../common/mcp/mcpServerService.js';
 import type { McpServerStatus, McpConnectionInfo, AgentId, AgentStatus, McpIntegrationStatus } from '../../common/mcp/mcpServerService.js';
 import type { DevServerService } from '../projectMode/devServer/devServerService.js';
@@ -38,7 +39,7 @@ import type { IRoopikStorageService } from '../../common/storage/storageService.
 import { ToolExecutor } from './executor/index.js';
 import { McpWebSocketServer } from './websocket/index.js';
 import { McpInstaller, type McpPlatformAdapter, type McpIntegrationSettings } from './installer/index.js';
-import { getMcpBinaryPath } from './installer/mcpInstallerUtils.js';
+import { getMcpBinaryPath, setResolvedShellEnv } from './installer/mcpInstallerUtils.js';
 
 // ============================================================================
 // MCP Server Service Implementation
@@ -82,7 +83,8 @@ export class McpServerService extends Disposable implements IMcpServerService {
 		private readonly componentService: ComponentService,
 		private readonly canvasService: ICanvasService,
 		private readonly storageService: IRoopikStorageService,
-		private readonly configurationService: IConfigurationService
+		private readonly configurationService: IConfigurationService,
+		@ILogService private readonly logService: ILogService
 	) {
 		super();
 		this.logger = getRoopikLogger(loggerService, 'MCP');
@@ -186,6 +188,18 @@ export class McpServerService extends Disposable implements IMcpServerService {
 	// ============================================================================
 
 	private async initializeInstaller(): Promise<void> {
+		// Resolve the user's shell environment before registering with CLI-based
+		// agents. On macOS/Linux, Roopik launched from Finder/Dock inherits only
+		// the minimal system PATH and can't find CLIs like `claude` or `codex`
+		// installed in /opt/homebrew/bin, nvm paths, ~/.local/bin, etc.
+		// VSCode's canonical resolver returns {} on Windows, so this is a no-op there.
+		try {
+			const shellEnv = await getResolvedShellEnv(this.configurationService, this.logService, { _: [] }, process.env);
+			setResolvedShellEnv(shellEnv);
+		} catch (error) {
+			this.logger.warn('Failed to resolve user shell environment; falling back to process.env', error);
+		}
+
 		this.installer = new McpInstaller();
 		this.installer.setWsPort(this.wsPort);
 		// Pass token for external IDEs (Cursor, Windsurf) - they need it via --token arg

@@ -209,6 +209,24 @@ export function isAgentInstalled(agent: AiAgent): boolean {
 // ============================================================================
 
 /**
+ * User shell environment resolved once at startup by McpServerService via
+ * VSCode's canonical `getResolvedShellEnv()` (src/vs/platform/shell/node/shellEnv.ts).
+ *
+ * On macOS/Linux, GUI-launched apps (Finder/Dock) inherit only the minimal
+ * system PATH (/usr/bin:/bin:/usr/sbin:/sbin) — they don't source ~/.zshrc /
+ * ~/.bash_profile. So `claude`, `codex`, nvm-installed node, and anything in
+ * /opt/homebrew/bin or ~/.local/bin is invisible. The resolved env gives us
+ * the same PATH the user sees in their terminal.
+ *
+ * Starts as process.env; McpServerService overwrites it after resolution.
+ */
+let resolvedEnv: NodeJS.ProcessEnv = process.env;
+
+export function setResolvedShellEnv(env: NodeJS.ProcessEnv): void {
+	resolvedEnv = { ...process.env, ...env };
+}
+
+/**
  * Check if a command is available in PATH
  */
 export async function isCommandAvailable(command: string): Promise<boolean> {
@@ -216,7 +234,7 @@ export async function isCommandAvailable(command: string): Promise<boolean> {
 		const checkCommand = isWindows
 			? `where ${command}`
 			: `command -v ${command}`;
-		await execAsync(checkCommand);
+		await execAsync(checkCommand, { env: resolvedEnv });
 		return true;
 	} catch {
 		return false;
@@ -228,7 +246,7 @@ export async function isCommandAvailable(command: string): Promise<boolean> {
  */
 export async function executeCommand(command: string): Promise<{ success: boolean; stdout?: string; stderr?: string; error?: string }> {
 	try {
-		const { stdout, stderr } = await execAsync(command);
+		const { stdout, stderr } = await execAsync(command, { env: resolvedEnv });
 		return { success: true, stdout, stderr };
 	} catch (error: unknown) {
 		const err = error as { message?: string; stdout?: string; stderr?: string };
