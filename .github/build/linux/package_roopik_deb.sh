@@ -55,6 +55,7 @@ mkdir -p "$DEB_PKG/DEBIAN"
 mkdir -p "$DEB_PKG/usr/share/${APP_NAME}"
 mkdir -p "$DEB_PKG/usr/share/applications"
 mkdir -p "$DEB_PKG/usr/share/pixmaps"
+mkdir -p "$DEB_PKG/usr/share/icons/hicolor/512x512/apps"
 mkdir -p "$DEB_PKG/usr/bin"
 
 # Copy application files
@@ -85,8 +86,12 @@ Icon=${APP_NAME}
 EOF
 
 # Copy icon
+# Install at both the legacy pixmaps location (older desktops) and the hicolor
+# icon theme path (required by modern GNOME/Wayland and KDE — without this the
+# dock falls back to a generic settings icon).
 if [ -f "${REPO_ROOT}/resources/linux/code.png" ]; then
   cp "${REPO_ROOT}/resources/linux/code.png" "$DEB_PKG/usr/share/pixmaps/${APP_NAME}.png"
+  cp "${REPO_ROOT}/resources/linux/code.png" "$DEB_PKG/usr/share/icons/hicolor/512x512/apps/${APP_NAME}.png"
 fi
 
 # Create symlink in /usr/bin
@@ -136,6 +141,12 @@ if command -v update-mime-database > /dev/null 2>&1; then
     update-mime-database /usr/share/mime || true
 fi
 
+# Refresh the hicolor icon cache so the dock/launcher picks up the app icon
+# immediately (otherwise GNOME/KDE show a generic icon until next login).
+if command -v gtk-update-icon-cache > /dev/null 2>&1; then
+    gtk-update-icon-cache -q -f -t /usr/share/icons/hicolor || true
+fi
+
 exit 0
 EOF
 
@@ -154,6 +165,11 @@ fi
 # Update MIME database
 if command -v update-mime-database > /dev/null 2>&1; then
     update-mime-database /usr/share/mime || true
+fi
+
+# Refresh the hicolor icon cache so the removed icon stops showing in caches.
+if command -v gtk-update-icon-cache > /dev/null 2>&1; then
+    gtk-update-icon-cache -q -f -t /usr/share/icons/hicolor || true
 fi
 
 exit 0
