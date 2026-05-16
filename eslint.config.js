@@ -1548,7 +1548,16 @@ export default tseslint.config(
 						'yauzl',
 						'yazl',
 						'zlib',
-						'chrome-remote-interface'
+						'chrome-remote-interface',
+						// ROOPIK: dependencies for Roopik build/runtime
+						'zod',
+						'esbuild',
+						'esbuild-svelte',
+						'esbuild-plugin-vue3',
+						'esbuild-plugin-solid',
+						'@modelcontextprotocol/sdk',
+						'@modelcontextprotocol/sdk/server/mcp.js',
+						'@modelcontextprotocol/sdk/server/sse.js'
 					]
 				},
 				{
@@ -1856,6 +1865,13 @@ export default tseslint.config(
 						{
 							'when': 'hasBrowser',
 							'pattern': 'vs/workbench/services/*/~'
+						},
+						// ROOPIK: allow bridging from code/electron-main into our workbench
+						// contrib area for custom services (IPC channels, Canvas, ProjectMode,
+						// Component) while keeping other layering rules intact.
+						{
+							'when': 'hasElectron',
+							'pattern': 'vs/workbench/contrib/roopik/~'
 						}
 					]
 				},
@@ -2852,5 +2868,18 @@ export default tseslint.config(
 					'message': `Avoid casting with 'as sinon.SinonStub'. Prefer typed stubs from 'sinon.stub(...)' or capture the stub in a typed variable.`
 				},
 			],
+		}
+	},
+	// ROOPIK: Override the copyright header rule for Roopik-authored extension code
+	{
+		files: ['extensions/roopik/**/*.{ts,tsx,js,jsx}'],
+		plugins: { header: pluginHeader },
+		rules: {
+			'header/header': [2, 'block', [
+				'---------------------------------------------------------------------------------------------',
+				' *  Copyright (c) Roopik. All rights reserved.',
+				' *  Licensed under the MIT License. See License.txt in the project root for license information.',
+				' *--------------------------------------------------------------------------------------------'
+			]]
 		}
 	});
