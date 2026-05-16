@@ -143,6 +143,38 @@ import { AgentNetworkFilterService, IAgentNetworkFilterService } from '../../pla
 import { ITerminalSandboxService, NullTerminalSandboxService } from '../../platform/sandbox/common/terminalSandboxService.js';
 import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetry.js';
 
+// ROOPIK: ProjectMode - Browser Preview with embedded DevTools
+import { BrowserViewService } from '../../workbench/contrib/roopik/electron-main/projectMode/browserViewService.js';
+import { ExternalBrowserBackend } from '../../workbench/contrib/roopik/electron-main/projectMode/externalBrowserBackend.js';
+import type { IBrowserBackend } from '../../workbench/contrib/roopik/electron-main/projectMode/browserBackend.js';
+import { ProjectModeChannel } from '../../workbench/contrib/roopik/electron-main/projectMode/projectModeChannel.js';
+import { PROJECT_MODE_CHANNEL } from '../../workbench/contrib/roopik/common/projectMode/ipc.js';
+// ROOPIK: DevServer - Vite dev server management
+import { DevServerService } from '../../workbench/contrib/roopik/electron-main/projectMode/devServer/devServerService.js';
+import { DevServerChannel } from '../../workbench/contrib/roopik/electron-main/projectMode/devServer/devServerChannel.js';
+import { DEV_SERVER_CHANNEL } from '../../workbench/contrib/roopik/common/projectMode/devServer.js';
+// ROOPIK: Canvas Service - Canvas lifecycle and metadata management
+import { CanvasService } from '../../workbench/contrib/roopik/electron-main/canvas/canvasService.js';
+import { CanvasChannel } from '../../workbench/contrib/roopik/electron-main/channel/canvasChannel.js';
+import { CANVAS_CHANNEL_NAME } from '../../workbench/contrib/roopik/common/canvas/index.js';
+import { RoopikStorageService } from '../../workbench/contrib/roopik/electron-main/storage/storageService.js';
+// ROOPIK: Component Service - Component lifecycle, build queue, file watching
+import { ComponentService } from '../../workbench/contrib/roopik/electron-main/component/componentService.js';
+import { ComponentChannel } from '../../workbench/contrib/roopik/electron-main/channel/componentChannel.js';
+import { COMPONENT_CHANNEL_NAME } from '../../workbench/contrib/roopik/common/component/index.js';
+import { BuildService } from '../../workbench/contrib/roopik/electron-main/build/buildService.js';
+import { FileWatcher } from '../../workbench/contrib/roopik/electron-main/watch/fileWatcher.js';
+// ROOPIK: Project Storage Service - Recent projects for Project Mode
+import { ProjectStorageService } from '../../workbench/contrib/roopik/electron-main/projectStorage/projectStorageService.js';
+import { ProjectStorageChannel } from '../../workbench/contrib/roopik/electron-main/channel/projectStorageChannel.js';
+import { PROJECT_STORAGE_CHANNEL } from '../../workbench/contrib/roopik/common/projectStorage/index.js';
+// ROOPIK: MCP Server - AI Agent integration via Model Context Protocol
+import { McpServerService } from '../../workbench/contrib/roopik/electron-main/mcp/mcpServerService.js';
+import { McpServerChannel } from '../../workbench/contrib/roopik/electron-main/channel/mcpServerChannel.js';
+import { MCP_SERVER_CHANNEL } from '../../workbench/contrib/roopik/common/mcp/index.js';
+// ROOPIK: Tools Channel - Direct IPC for agent-roo (faster than MCP HTTP)
+import { RoopikToolsChannel, ROOPIK_TOOLS_CHANNEL_NAME } from '../../workbench/contrib/roopik/electron-main/channel/roopikToolsChannel.js';
+
 /**
  * The main VS Code application. There will only ever be one instance,
  * even if the user starts many instances (e.g. from the command line).
@@ -266,6 +298,8 @@ export class CodeApplication extends Disposable {
 			return false;
 		};
 
+		/*
+		// ROOPIK: Disabled, not used currently
 		const isAllowedWebviewRequest = (uri: URI, details: Electron.OnBeforeRequestListenerDetails): boolean => {
 			if (uri.path !== '/index.html') {
 				return true; // Only restrict top level page of webviews: index.html
@@ -287,14 +321,21 @@ export class CodeApplication extends Disposable {
 
 			return false;
 		};
+		*/
 
 		session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
 			const uri = URI.parse(details.url);
 			if (uri.scheme === Schemas.vscodeWebview) {
+				/*
 				if (!isAllowedWebviewRequest(uri, details)) {
 					this.logService.error('Blocked vscode-webview request', details.url);
 					return callback({ cancel: true });
 				}
+				*/
+				// ROOPIK: Allow all webview requests for Roopik browser preview (Electron webview tag)
+				// Original validation disabled to enable full browser preview functionality
+				return callback({ cancel: false });
+				// ROOPIK END
 			}
 
 			if (uri.scheme === Schemas.vscodeFileResource) {
@@ -439,12 +480,33 @@ export class CodeApplication extends Disposable {
 
 				this.logService.error('webContents#will-navigate: Prevented webcontent navigation');
 
+				// ROOPIK: Block any in-page navigation (except for ProjectMode browser views)
+				const webContentsId = contents.id;
+				if (BrowserViewService.isManagedWebContents(webContentsId)) {
+					this.logService.trace(`[ProjectMode] Allowing navigation for managed browser view ${webContentsId}`);
+					return; // Allow navigation
+				}
+				// ROOPIK END
+
 				event.preventDefault(); // Prevent any in-page navigation
 			});
 
 			// All Windows: only allow about:blank auxiliary windows to open
 			// For all other URLs, delegate to the OS.
+			// ROOPIK: For all other URLs, delegate to the OS (except for ProjectMode browser views)
 			contents.setWindowOpenHandler(details => {
+
+				// ROOPIK: ProjectMode browser views - redirect to same view instead of opening new window
+				// This handles Ctrl+Click, middle-click, target="_blank", etc.
+				const webContentsId = contents.id;
+				if (BrowserViewService.isManagedWebContents(webContentsId)) {
+					this.logService.info(`[ProjectMode] new-window requested: ${details.url} (disposition: ${details.disposition})`);
+					this.logService.info(`[ProjectMode] Redirecting new window to current view: ${details.url}`);
+					// Load URL in the same view
+					contents.loadURL(details.url);
+					return { action: 'deny' };
+				}
+				// ROOPIK END
 
 				// about:blank windows can open as window witho our default options
 				if (details.url === 'about:blank') {
@@ -1318,6 +1380,92 @@ export class CodeApplication extends Disposable {
 		// Utility Process Worker
 		const utilityProcessWorkerChannel = ProxyChannel.fromService(accessor.get(IUtilityProcessWorkerMainService), disposables);
 		mainProcessElectronServer.registerChannel(ipcUtilityProcessWorkerChannelName, utilityProcessWorkerChannel);
+
+		// ROOPIK: -----------------------------------------------------------
+		// ROOPIK: Project Mode Service - Browser backend (embedded or external)
+		const browserMode = this.configurationService.getValue<string>('roopik.browser.mode') || 'embedded';
+		let browserBackend: IBrowserBackend;
+
+		if (browserMode === 'external') {
+			const cdpPort = this.configurationService.getValue<number>('roopik.browser.externalCdpPort') || 9222;
+			const chromePath = this.configurationService.getValue<string>('roopik.browser.externalChromePath') || undefined;
+			const profileMode = this.configurationService.getValue<string>('roopik.browser.externalChromeProfile') === 'fresh' ? 'fresh' as const : 'persistent' as const;
+			browserBackend = new ExternalBrowserBackend(cdpPort, chromePath, profileMode);
+			console.log(`[Roopik] Browser mode: external (CDP port ${cdpPort}, profile: ${profileMode})`);
+		} else {
+			const maxTabs = this.configurationService.getValue<number>('roopik.browser.maxTabs') || 3;
+			browserBackend = new BrowserViewService(accessor.get(ILoggerService), accessor.get(ILifecycleMainService), maxTabs);
+			console.log(`[Roopik] Browser mode: embedded (max ${maxTabs} tabs)`);
+		}
+
+		// Clean up browser backend on IDE shutdown (kills external Chrome if we spawned it)
+		Event.once(this.lifecycleMainService.onWillShutdown)(() => browserBackend.dispose());
+
+		// ProjectModeChannel still needs BrowserViewService for renderer ↔ main IPC
+		// (only available in embedded mode — external mode doesn't have WebContentsView)
+		const projectModeService = browserBackend instanceof BrowserViewService ? browserBackend : null;
+		if (projectModeService) {
+			const projectModeChannel = new ProjectModeChannel(projectModeService);
+			mainProcessElectronServer.registerChannel(PROJECT_MODE_CHANNEL, projectModeChannel);
+		}
+
+		// ROOPIK: Project Storage Service - Recent projects for Project Mode
+		// NOTE: Created before DevServerService so it can be injected
+		const projectStorageService = new ProjectStorageService(accessor.get(ILoggerService));
+		const projectStorageChannel = new ProjectStorageChannel(projectStorageService);
+		mainProcessElectronServer.registerChannel(PROJECT_STORAGE_CHANNEL, projectStorageChannel);
+
+		// ROOPIK: DevServer - Vite dev server management for project preview
+		// Injects ProjectStorageService for unified active project tracking
+		const devServerService = new DevServerService(projectStorageService);
+		const devServerChannel = new DevServerChannel(devServerService);
+		mainProcessElectronServer.registerChannel(DEV_SERVER_CHANNEL, devServerChannel);
+
+		// ROOPIK: Canvas Service - Canvas lifecycle, metadata, panel state tracking
+		const roopikStorageService = new RoopikStorageService();
+		const canvasService = new CanvasService(accessor.get(ILoggerService), roopikStorageService);
+		const canvasChannel = new CanvasChannel(canvasService);
+		mainProcessElectronServer.registerChannel(CANVAS_CHANNEL_NAME, canvasChannel);
+
+		// ROOPIK: Component Service - Component lifecycle, build queue, file watching
+		const buildService = new BuildService(accessor.get(ILoggerService));
+		const fileWatcher = new FileWatcher(accessor.get(ILoggerService));
+		const componentService = new ComponentService(accessor.get(ILoggerService), roopikStorageService, buildService, canvasService, fileWatcher);
+		const componentChannel = new ComponentChannel(componentService);
+		mainProcessElectronServer.registerChannel(COMPONENT_CHANNEL_NAME, componentChannel);
+
+		// ROOPIK: MCP Server - AI Agent integration via Model Context Protocol
+		// Allows Claude Code, Copilot, and other AI agents to control Roopik IDE
+		const mcpServerService = new McpServerService(
+			accessor.get(ILoggerService),
+			devServerService,
+			browserBackend,        // IBrowserBackend (embedded or external)
+			componentService,
+			canvasService,
+			roopikStorageService,
+			this.configurationService
+		);
+		const mcpServerChannel = new McpServerChannel(mcpServerService);
+		mainProcessElectronServer.registerChannel(MCP_SERVER_CHANNEL, mcpServerChannel);
+
+		mcpServerService.start().then(() => {
+			console.log('[Roopik] MCP Server started successfully');
+		}).catch((error) => {
+			console.error('[Roopik] Failed to start MCP Server:', error);
+		});
+
+		// ROOPIK: Tools Channel - Direct IPC for agent roopik-roo extension
+		// Provides faster, timeout-free access to IDE tools (alternative to MCP HTTP)
+		const roopikToolsChannel = new RoopikToolsChannel(
+			browserBackend,        // IBrowserBackend (embedded or external)
+			devServerService,      // DevServerService
+			componentService,      // ComponentService
+			canvasService,         // ICanvasService
+			roopikStorageService   // IRoopikStorageService
+		);
+		mainProcessElectronServer.registerChannel(ROOPIK_TOOLS_CHANNEL_NAME, roopikToolsChannel);
+		// console.log('[Roopik] Tools Channel registered for agent roopik-roo IPC');
+		// ROOPIK END
 	}
 
 	private async openFirstWindow(accessor: ServicesAccessor, initialProtocolUrls: IInitialProtocolUrls | undefined): Promise<ICodeWindow[]> {
