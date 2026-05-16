@@ -1,0 +1,52 @@
+name: Build All Platforms
+
+on:
+  workflow_dispatch: # Manual trigger only
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  trigger-builds:
+    name: Trigger All Platform Builds
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Windows Build
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'build-windows.yml',
+              ref: context.ref
+            });
+
+      - name: Trigger macOS Build
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'build-macos.yml',
+              ref: context.ref
+            });
+
+      - name: Trigger Linux Build
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'build-linux.yml',
+              ref: context.ref
+            });
+
+      - name: Summary
+        run: |
+          echo "✅ Triggered all platform builds!"
+          echo "Check the Actions tab to see individual workflows running."

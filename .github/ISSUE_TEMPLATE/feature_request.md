@@ -1,14 +1,20 @@
 ---
-name: Feature request
-about: Suggest an idea for this project
+name: Feature Request
+about: Suggest a feature for Roopik IDE
 title: ''
-labels: ''
+labels: enhancement
 assignees: ''
 
 ---
 
-<!-- ⚠️⚠️ Do Not Delete This! feature_request_template ⚠️⚠️ -->
-<!-- Please read our Rules of Conduct: https://opensource.microsoft.com/codeofconduct/ -->
-<!-- Please search existing issues to avoid creating duplicates. -->
+**Description**
+<!-- Clear description of the feature -->
 
-<!-- Describe the feature you'd like. -->
+**Use Case**
+<!-- Why is this needed? What problem does it solve? -->
+
+**Proposed Solution**
+<!-- How would this work? -->
+
+**Alternatives Considered**
+<!-- Any other approaches you've thought about -->

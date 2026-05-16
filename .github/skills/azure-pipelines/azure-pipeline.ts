@@ -9,7 +9,7 @@
  * A unified command-line tool for managing Azure Pipeline builds.
  *
  * Usage:
- *   node azure-pipeline.ts <command> [options]
+ *   node --experimental-strip-types azure-pipeline.ts <command> [options]
  *
  * Commands:
  *   queue   - Queue a new pipeline build
@@ -38,8 +38,8 @@ const NUMERIC_ID_PATTERN = /^\d+$/;
 const MAX_ID_LENGTH = 15;
 const BRANCH_PATTERN = /^[a-zA-Z0-9_\-./]+$/;
 const MAX_BRANCH_LENGTH = 256;
-const PARAMETER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*=[a-zA-Z0-9_\-./: +]*$/;
-const MAX_PARAMETER_LENGTH = 256;
+const VARIABLE_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*=[a-zA-Z0-9_\-./: ]*$/;
+const MAX_VARIABLE_LENGTH = 256;
 const ARTIFACT_NAME_PATTERN = /^[a-zA-Z0-9_\-.]+$/;
 const MAX_ARTIFACT_NAME_LENGTH = 256;
 const MIN_WATCH_INTERVAL = 5;
@@ -88,7 +88,7 @@ interface Artifact {
 interface QueueArgs {
 	branch: string;
 	definitionId: string;
-	parameters: string[];
+	variables: string;
 	dryRun: boolean;
 	help: boolean;
 }
@@ -159,18 +159,19 @@ function validateBranch(value: string): void {
 	}
 }
 
-function validateParameters(values: string[]): void {
-	if (!values.length) {
+function validateVariables(value: string): void {
+	if (!value) {
 		return;
 	}
-	for (const parameter of values) {
-		if (parameter.length > MAX_PARAMETER_LENGTH) {
-			console.error(colors.red(`Error: Parameter '${parameter.substring(0, 20)}...' is too long (max ${MAX_PARAMETER_LENGTH} characters)`));
+	const vars = value.split(' ').filter(v => v.length > 0);
+	for (const v of vars) {
+		if (v.length > MAX_VARIABLE_LENGTH) {
+			console.error(colors.red(`Error: Variable '${v.substring(0, 20)}...' is too long (max ${MAX_VARIABLE_LENGTH} characters)`));
 			process.exit(1);
 		}
-		if (!PARAMETER_PATTERN.test(parameter)) {
-			console.error(colors.red(`Error: Invalid parameter format '${parameter}'`));
-			console.log('Expected format: KEY=value (alphanumeric, underscores, hyphens, dots, slashes, colons, plus signs, spaces in value)');
+		if (!VARIABLE_PATTERN.test(v)) {
+			console.error(colors.red(`Error: Invalid variable format '${v}'`));
+			console.log('Expected format: KEY=value (alphanumeric, underscores, hyphens, dots, slashes, colons, spaces in value)');
 			process.exit(1);
 		}
 	}
@@ -556,11 +557,7 @@ class AzureDevOpsClient {
 
 	protected runAzCommand(args: string[]): Promise<string> {
 		return new Promise((resolve, reject) => {
-			// Use shell: false so that argument values with spaces are passed verbatim
-			// to the process without shell word-splitting. On Windows, az is a .cmd
-			// file and cannot be executed directly, so we must use az.cmd.
-			const azBin = process.platform === 'win32' ? 'az.cmd' : 'az';
-			const proc = spawn(azBin, args, { shell: false });
+			const proc = spawn('az', args, { shell: true });
 			let stdout = '';
 			let stderr = '';
 
@@ -615,7 +612,7 @@ class AzureDevOpsClient {
 		return JSON.parse(result);
 	}
 
-	async queueBuild(definitionId: string, branch: string, parameters: string[] = []): Promise<Build> {
+	async queueBuild(definitionId: string, branch: string, variables?: string): Promise<Build> {
 		const args = [
 			'pipelines', 'run',
 			'--organization', this.organization,
@@ -624,8 +621,8 @@ class AzureDevOpsClient {
 			'--branch', branch,
 		];
 
-		if (parameters.length > 0) {
-			args.push('--parameters', ...parameters);
+		if (variables) {
+			args.push('--variables', ...variables.split(' '));
 		}
 
 		args.push('--output', 'json');
@@ -774,7 +771,7 @@ class AzureDevOpsClient {
 // ============================================================================
 
 function printQueueUsage(): void {
-	const scriptName = 'node .github/skills/azure-pipelines/azure-pipeline.ts queue';
+	const scriptName = 'node --experimental-strip-types .github/skills/azure-pipelines/azure-pipeline.ts queue';
 	console.log(`Usage: ${scriptName} [options]`);
 	console.log('');
 	console.log('Queue an Azure DevOps pipeline build for VS Code.');
@@ -782,23 +779,21 @@ function printQueueUsage(): void {
 	console.log('Options:');
 	console.log('  --branch <name>       Source branch to build (default: current git branch)');
 	console.log('  --definition <id>     Pipeline definition ID (default: 111)');
-	console.log('  --parameter <entry>   Pipeline parameter in "KEY=value" format (repeatable); use this for values with spaces');
-	console.log('  --parameters <list>   Space-separated parameter list in "KEY=value KEY2=value2" format (values must not contain spaces)');
+	console.log('  --variables <vars>    Pipeline variables in "KEY=value KEY2=value2" format');
 	console.log('  --dry-run             Print the command without executing');
 	console.log('  --help                Show this help message');
 	console.log('');
 	console.log('Examples:');
 	console.log(`  ${scriptName}                                    # Queue build on current branch`);
 	console.log(`  ${scriptName} --branch my-feature                # Queue build on specific branch`);
-	console.log(`  ${scriptName} --parameter "VSCODE_BUILD_WEB=false" --parameter "VSCODE_PUBLISH=false"`);
-	console.log(`  ${scriptName} --parameter "VSCODE_BUILD_TYPE=Product Build"  # Parameter values with spaces`);
+	console.log(`  ${scriptName} --variables "SKIP_TESTS=true"      # Queue with custom variables`);
 }
 
 function parseQueueArgs(args: string[]): QueueArgs {
 	const result: QueueArgs = {
 		branch: '',
 		definitionId: DEFAULT_DEFINITION_ID,
-		parameters: [],
+		variables: '',
 		dryRun: false,
 		help: false,
 	};
@@ -812,15 +807,8 @@ function parseQueueArgs(args: string[]): QueueArgs {
 			case '--definition':
 				result.definitionId = args[++i] || DEFAULT_DEFINITION_ID;
 				break;
-			case '--parameter': {
-				const parameter = args[++i] || '';
-				if (parameter) {
-					result.parameters.push(parameter);
-				}
-				break;
-			}
-			case '--parameters':
-				result.parameters.push(...(args[++i] || '').split(' ').filter(v => v.length > 0));
+			case '--variables':
+				result.variables = args[++i] || '';
 				break;
 			case '--dry-run':
 				result.dryRun = true;
@@ -841,7 +829,7 @@ function parseQueueArgs(args: string[]): QueueArgs {
 function validateQueueArgs(args: QueueArgs): void {
 	validateNumericId(args.definitionId, '--definition');
 	validateBranch(args.branch);
-	validateParameters(args.parameters);
+	validateVariables(args.variables);
 }
 
 async function runQueueCommand(args: string[]): Promise<void> {
@@ -872,8 +860,8 @@ async function runQueueCommand(args: string[]): Promise<void> {
 	console.log(`Project:      ${colors.green(PROJECT)}`);
 	console.log(`Definition:   ${colors.green(parsedArgs.definitionId)}`);
 	console.log(`Branch:       ${colors.green(branch)}`);
-	if (parsedArgs.parameters.length > 0) {
-		console.log(`Parameters:   ${colors.green(parsedArgs.parameters.join(' '))}`);
+	if (parsedArgs.variables) {
+		console.log(`Variables:    ${colors.green(parsedArgs.variables)}`);
 	}
 	console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 	console.log('');
@@ -887,12 +875,11 @@ async function runQueueCommand(args: string[]): Promise<void> {
 			'--id', parsedArgs.definitionId,
 			'--branch', branch,
 		];
-		if (parsedArgs.parameters.length > 0) {
-			cmdArgs.push('--parameters', ...parsedArgs.parameters);
+		if (parsedArgs.variables) {
+			cmdArgs.push('--variables', ...parsedArgs.variables.split(' '));
 		}
 		cmdArgs.push('--output', 'json');
-		const displayArgs = cmdArgs.map(a => a.includes(' ') ? `"${a}"` : a);
-		console.log(`az ${displayArgs.join(' ')}`);
+		console.log(`az ${cmdArgs.join(' ')}`);
 		process.exit(0);
 	}
 
@@ -900,7 +887,7 @@ async function runQueueCommand(args: string[]): Promise<void> {
 
 	try {
 		const client = new AzureDevOpsClient(ORGANIZATION, PROJECT);
-		const data = await client.queueBuild(parsedArgs.definitionId, branch, parsedArgs.parameters);
+		const data = await client.queueBuild(parsedArgs.definitionId, branch, parsedArgs.variables);
 
 		const buildId = data.id;
 		const buildNumber = data.buildNumber;
@@ -917,10 +904,10 @@ async function runQueueCommand(args: string[]): Promise<void> {
 		console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 		console.log('');
 		console.log('To check status, run:');
-		console.log(`  node .github/skills/azure-pipelines/azure-pipeline.ts status --build-id ${buildId}`);
+		console.log(`  node --experimental-strip-types .github/skills/azure-pipelines/azure-pipeline.ts status --build-id ${buildId}`);
 		console.log('');
 		console.log('To watch progress:');
-		console.log(`  node .github/skills/azure-pipelines/azure-pipeline.ts status --build-id ${buildId} --watch`);
+		console.log(`  node --experimental-strip-types .github/skills/azure-pipelines/azure-pipeline.ts status --build-id ${buildId} --watch`);
 	} catch (e) {
 		const error = e instanceof Error ? e : new Error(String(e));
 		console.error(colors.red('Error queuing build:'));
@@ -934,7 +921,7 @@ async function runQueueCommand(args: string[]): Promise<void> {
 // ============================================================================
 
 function printStatusUsage(): void {
-	const scriptName = 'node .github/skills/azure-pipelines/azure-pipeline.ts status';
+	const scriptName = 'node --experimental-strip-types .github/skills/azure-pipelines/azure-pipeline.ts status';
 	console.log(`Usage: ${scriptName} [options]`);
 	console.log('');
 	console.log('Get status and logs of an Azure DevOps pipeline build.');
@@ -1081,7 +1068,7 @@ async function runStatusCommand(args: string[]): Promise<void> {
 
 		if (!buildId) {
 			console.error(colors.red(`Error: No builds found for branch '${branch}'.`));
-			console.log('You can queue a new build with: node .github/skills/azure-pipelines/azure-pipeline.ts queue');
+			console.log('You can queue a new build with: node --experimental-strip-types .github/skills/azure-pipelines/azure-pipeline.ts queue');
 			process.exit(1);
 		}
 	}
@@ -1175,7 +1162,7 @@ async function runStatusCommand(args: string[]): Promise<void> {
 // ============================================================================
 
 function printCancelUsage(): void {
-	const scriptName = 'node .github/skills/azure-pipelines/azure-pipeline.ts cancel';
+	const scriptName = 'node --experimental-strip-types .github/skills/azure-pipelines/azure-pipeline.ts cancel';
 	console.log(`Usage: ${scriptName} --build-id <id> [options]`);
 	console.log('');
 	console.log('Cancel a running Azure DevOps pipeline build.');
@@ -1246,7 +1233,7 @@ async function runCancelCommand(args: string[]): Promise<void> {
 		console.error(colors.red('Error: --build-id is required.'));
 		console.log('');
 		console.log('To find build IDs, run:');
-		console.log('  node .github/skills/azure-pipelines/azure-pipeline.ts status');
+		console.log('  node --experimental-strip-types .github/skills/azure-pipelines/azure-pipeline.ts status');
 		process.exit(1);
 	}
 
@@ -1300,7 +1287,7 @@ async function runCancelCommand(args: string[]): Promise<void> {
 		console.log('');
 		console.log('The build will transition to "cancelling" state and then "canceled".');
 		console.log('Check status with:');
-		console.log(`  node .github/skills/azure-pipelines/azure-pipeline.ts status --build-id ${buildId}`);
+		console.log(`  node --experimental-strip-types .github/skills/azure-pipelines/azure-pipeline.ts status --build-id ${buildId}`);
 	} catch (e) {
 		const error = e instanceof Error ? e : new Error(String(e));
 		console.error('');
@@ -1403,15 +1390,15 @@ async function runAllTests(): Promise<void> {
 			validateBranch('');
 		});
 
-		it('validateParameters accepts valid parameter formats', () => {
-			validateParameters(['KEY=value']);
-			validateParameters(['MY_VAR=some-value']);
-			validateParameters(['A=1', 'B=2', 'C=3']);
-			validateParameters(['PATH=/usr/bin:path']);
+		it('validateVariables accepts valid variable formats', () => {
+			validateVariables('KEY=value');
+			validateVariables('MY_VAR=some-value');
+			validateVariables('A=1 B=2 C=3');
+			validateVariables('PATH=/usr/bin:path');
 		});
 
-		it('validateParameters accepts empty list', () => {
-			validateParameters([]);
+		it('validateVariables accepts empty string', () => {
+			validateVariables('');
 		});
 
 		it('validateArtifactName accepts valid artifact names', () => {
@@ -1442,14 +1429,9 @@ async function runAllTests(): Promise<void> {
 			assert.strictEqual(args.definitionId, '222');
 		});
 
-		it('parseQueueArgs parses --parameters correctly', () => {
-			const args = parseQueueArgs(['--parameters', 'KEY=value']);
-			assert.deepStrictEqual(args.parameters, ['KEY=value']);
-		});
-
-		it('parseQueueArgs parses repeated --parameter correctly', () => {
-			const args = parseQueueArgs(['--parameter', 'A=1', '--parameter', 'B=two words']);
-			assert.deepStrictEqual(args.parameters, ['A=1', 'B=two words']);
+		it('parseQueueArgs parses --variables correctly', () => {
+			const args = parseQueueArgs(['--variables', 'KEY=value']);
+			assert.strictEqual(args.variables, 'KEY=value');
 		});
 
 		it('parseQueueArgs parses --dry-run correctly', () => {
@@ -1458,10 +1440,10 @@ async function runAllTests(): Promise<void> {
 		});
 
 		it('parseQueueArgs parses combined arguments', () => {
-			const args = parseQueueArgs(['--branch', 'main', '--definition', '333', '--parameters', 'A=1 B=2', '--dry-run']);
+			const args = parseQueueArgs(['--branch', 'main', '--definition', '333', '--variables', 'A=1 B=2', '--dry-run']);
 			assert.strictEqual(args.branch, 'main');
 			assert.strictEqual(args.definitionId, '333');
-			assert.deepStrictEqual(args.parameters, ['A=1', 'B=2']);
+			assert.strictEqual(args.variables, 'A=1 B=2');
 			assert.strictEqual(args.dryRun, true);
 		});
 
@@ -1534,23 +1516,14 @@ async function runAllTests(): Promise<void> {
 			assert.ok(cmd.includes('json'));
 		});
 
-		it('queueBuild includes parameters when provided', async () => {
+		it('queueBuild includes variables when provided', async () => {
 			const client = new TestableAzureDevOpsClient(ORGANIZATION, PROJECT);
-			await client.queueBuild('111', 'main', ['KEY=value', 'OTHER=test']);
+			await client.queueBuild('111', 'main', 'KEY=value OTHER=test');
 
 			const cmd = client.capturedCommands[0];
-			assert.ok(cmd.includes('--parameters'));
+			assert.ok(cmd.includes('--variables'));
 			assert.ok(cmd.includes('KEY=value'));
 			assert.ok(cmd.includes('OTHER=test'));
-		});
-
-		it('queueBuild passes parameter values with spaces verbatim', async () => {
-			const client = new TestableAzureDevOpsClient(ORGANIZATION, PROJECT);
-			await client.queueBuild('111', 'main', ['VSCODE_BUILD_TYPE=Product Build']);
-
-			const cmd = client.capturedCommands[0];
-			assert.ok(cmd.includes('--parameters'));
-			assert.deepStrictEqual(cmd[cmd.indexOf('--parameters') + 1], 'VSCODE_BUILD_TYPE=Product Build');
 		});
 
 		it('getBuild constructs correct az command', async () => {
@@ -1745,7 +1718,7 @@ async function runAllTests(): Promise<void> {
 	describe('Integration Tests', () => {
 		it('full queue command flow constructs correct az commands', async () => {
 			const client = new TestableAzureDevOpsClient(ORGANIZATION, PROJECT);
-			await client.queueBuild('111', 'feature/test', ['DEBUG=true']);
+			await client.queueBuild('111', 'feature/test', 'DEBUG=true');
 
 			assert.strictEqual(client.capturedCommands.length, 1);
 			const cmd = client.capturedCommands[0];
@@ -1760,7 +1733,7 @@ async function runAllTests(): Promise<void> {
 			assert.ok(cmd.includes('111'));
 			assert.ok(cmd.includes('--branch'));
 			assert.ok(cmd.includes('feature/test'));
-			assert.ok(cmd.includes('--parameters'));
+			assert.ok(cmd.includes('--variables'));
 			assert.ok(cmd.includes('DEBUG=true'));
 		});
 
@@ -1824,7 +1797,7 @@ async function runAllTests(): Promise<void> {
 // ============================================================================
 
 function printMainUsage(): void {
-	const scriptName = 'node .github/skills/azure-pipelines/azure-pipeline.ts';
+	const scriptName = 'node --experimental-strip-types .github/skills/azure-pipelines/azure-pipeline.ts';
 	console.log(`Usage: ${scriptName} <command> [options]`);
 	console.log('');
 	console.log('Azure DevOps Pipeline CLI for VS Code builds.');
