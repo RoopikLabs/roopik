@@ -1,0 +1,43 @@
+{
+  "name": "roopik-mcp-stdio-server",
+  "version": "1.0.0",
+  "description": "Roopik MCP STDIO Server - Bridges external AI agents to Roopik IDE",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "bundle": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/bundle.cjs",
+    "sync-schemas": "node scripts/sync-schemas.js",
+    "build:binary:win": "npm run sync-schemas && npm run bundle && pkg dist/bundle.cjs -t node22-win-x64 -o ../../../resources/mcp-binaries/roopik-mcp-win-x64.exe",
+    "build:binary:mac-x64": "npm run sync-schemas && npm run bundle && pkg dist/bundle.cjs -t node22-macos-x64 -o ../../../resources/mcp-binaries/roopik-mcp-macos-x64",
+    "build:binary:mac-arm64": "npm run sync-schemas && npm run bundle && pkg dist/bundle.cjs -t node22-macos-arm64 -o ../../../resources/mcp-binaries/roopik-mcp-macos-arm64",
+    "build:binary:linux": "npm run sync-schemas && npm run bundle && pkg dist/bundle.cjs -t node22-linux-x64 -o ../../../resources/mcp-binaries/roopik-mcp-linux-x64",
+    "build:binaries": "npm run sync-schemas && npm run bundle && npm run build:binary:win && npm run build:binary:mac-x64 && npm run build:binary:mac-arm64 && npm run build:binary:linux",
+    "dev": "tsx src/index.ts",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.0",
+    "esbuild": "^0.20.0",
+    "@yao-pkg/pkg": "^6.18.2",
+    "rimraf": "^5.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "roopik",
+    "stdio",
+    "ai-agent"
+  ],
+  "license": "MIT"
+}

@@ -1,0 +1,33 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+.toast {
+	position: fixed;
+	top: 20px;
+	left: 50%;
+	transform: translateX(-50%);
+	padding: 12px 24px;
+	background: rgba(30, 30, 35, 0.95);
+	backdrop-filter: blur(12px);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	border-radius: 8px;
+	color: rgba(255, 255, 255, 0.95);
+	font-size: 14px;
+	font-weight: 500;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+	z-index: 10000;
+	pointer-events: none;
+	transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.toast-visible {
+	opacity: 1;
+	transform: translateX(-50%) translateY(0);
+}
+
+.toast-hidden {
+	opacity: 0;
+	transform: translateX(-50%) translateY(-10px);
+}

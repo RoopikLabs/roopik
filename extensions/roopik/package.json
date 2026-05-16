@@ -1,0 +1,45 @@
+{
+  "name": "roopik",
+	"displayName": "Roopik Canvas",
+	"description": "Canvas webview for Roopik IDE",
+  "version": "0.1.0",
+  "publisher": "roopik",
+  "engines": {
+    "vscode": "^1.107.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "roopik.canvas.open",
+        "title": "Roopik: Open Canvas Panel"
+      },
+      {
+        "command": "roopik.canvas.importComponent",
+        "title": "Roopik: Import Component to Canvas"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "build": "npm run compile && npm run build:webview",
+    "build:extension": "npm run compile",
+    "build:webview": "npm run build --prefix webview",
+    "watch:all": "npm-run-all -p watch watch:webview",
+    "watch:webview": "npm run dev --prefix webview",
+    "postinstall": "npm --prefix webview install && npm --prefix webview run build"
+
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.0.0"
+  }
+ }
