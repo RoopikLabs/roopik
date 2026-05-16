@@ -1,10 +1,12 @@
 {
-	"name": "Code - OSS",
-	"short_name": "Code- OSS",
+	"name": "Roopik",
+	"short_name": "Roopik",
 	"start_url": "/",
 	"lang": "en-US",
 	"display": "standalone",
-	"display_override": ["window-controls-overlay"],
+	"display_override": [
+		"window-controls-overlay"
+	],
 	"icons": [
 		{
 			"src": "code-192.png",

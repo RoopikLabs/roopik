@@ -62,7 +62,7 @@ export class Win32UpdateService extends AbstractUpdateService implements IRelaun
 
 	@memoize
 	get cachePath(): Promise<string> {
-		const result = path.join(tmpdir(), `vscode-${this.productService.quality}-${this.productService.target}-${process.arch}`);
+		const result = path.join(tmpdir(), `${this.productService.applicationName}-${this.productService.quality}-${this.productService.target}-${process.arch}`);
 		return mkdir(result, { recursive: true }).then(() => result);
 	}
 

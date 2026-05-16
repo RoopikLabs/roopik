@@ -220,6 +220,10 @@ import './contrib/notebook/browser/notebook.contribution.js';
 // Speech
 import './contrib/speech/browser/speech.contribution.js';
 
+// Roopik Design IDE
+import './contrib/roopik/browser/roopik.contribution.js';
+import './contrib/roopik/browser/roodioChatActions.js';  // ROOPIK AGENT CHAT ICON
+
 // Chat
 import './contrib/chat/browser/chat.contribution.js';
 import './contrib/chat/browser/chat.view.contribution.js';

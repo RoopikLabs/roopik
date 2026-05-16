@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=@@NAME_LONG@@
-Comment=Code Editing. Redefined.
+Comment=AI-Native Canvas-First IDE
 GenericName=Text Editor
 Exec=@@EXEC@@ %F
 Icon=@@ICON@@

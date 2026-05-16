@@ -77,6 +77,13 @@ export interface ITitlebarPart extends IDisposable {
 	readonly onMenubarVisibilityChange: Event<boolean>;
 
 	/**
+	 * // ROOPIK
+	 * An event when the menubar focus state changes (e.g., when a menu is opened/closed).
+	 * Fires true when a menu is opened (focused), false when closed.
+	 */
+	readonly onMenubarFocusStateChange: Event<boolean>;
+
+	/**
 	 * Update some environmental title properties.
 	 */
 	updateProperties(properties: ITitleProperties): void;
@@ -102,6 +109,7 @@ export class BrowserTitleService extends MultiWindowParts<BrowserTitlebarPart> i
 
 		this.mainPart = this._register(this.createMainTitlebarPart());
 		this.onMenubarVisibilityChange = this.mainPart.onMenubarVisibilityChange;
+		this.onMenubarFocusStateChange = this.mainPart.onMenubarFocusStateChange; // ROOPIK
 		this._register(this.registerPart(this.mainPart));
 
 		this.registerActions();
@@ -189,6 +197,9 @@ export class BrowserTitleService extends MultiWindowParts<BrowserTitlebarPart> i
 
 	readonly onMenubarVisibilityChange: Event<boolean>;
 
+	// ROOPIK
+	readonly onMenubarFocusStateChange: Event<boolean>;
+
 	private properties: ITitleProperties | undefined = undefined;
 
 	updateProperties(properties: ITitleProperties): void {
@@ -248,6 +259,10 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 
 	private _onMenubarVisibilityChange = this._register(new Emitter<boolean>());
 	readonly onMenubarVisibilityChange = this._onMenubarVisibilityChange.event;
+
+	// ROOPIK
+	private _onMenubarFocusStateChange = this._register(new Emitter<boolean>());
+	readonly onMenubarFocusStateChange = this._onMenubarFocusStateChange.event;
 
 	private readonly _onWillDispose = this._register(new Emitter<void>());
 	readonly onWillDispose = this._onWillDispose.event;
@@ -430,6 +445,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		this.menubar.setAttribute('role', 'menubar');
 
 		this._register(this.customMenubar.value.onVisibilityChange(e => this.onMenubarVisibilityChanged(e)));
+
+		// ROOPIK: Fire event when menubar focus state changes (menu opened/closed)
+		this._register(this.customMenubar.value.onFocusStateChange(focused => this._onMenubarFocusStateChange.fire(focused)));
 
 		this.customMenubar.value.create(this.menubar);
 	}
