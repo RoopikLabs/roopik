@@ -11,6 +11,9 @@ concurrency:
   group: build-macos-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  VSCODE_QUALITY: stable
+
 jobs:
   build-macos-arm64:
     name: Build macOS (ARM64)

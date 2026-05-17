@@ -11,6 +11,9 @@ concurrency:
   group: build-linux-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  VSCODE_QUALITY: stable
+
 jobs:
   build-linux-x64:
     name: Build Linux (x64)

@@ -28,7 +28,7 @@ let manager: RoopikExtensionManager | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
 	const workspaceFolders = vscode.workspace.workspaceFolders;
-	if (!workspaceFolders) {
+	if (!workspaceFolders || workspaceFolders.length === 0) {
 		vscode.window.showErrorMessage('Please open a workspace folder to use Roopik.');
 		return;
 	}

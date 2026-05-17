@@ -64,7 +64,7 @@ dist
 .github/CODENOTIFY
 .github/commands/
 .github/commands.json
-/docs/UPDATE_REBASE
+/docs
 
 # Roopik IDE metadata
 .roopik/

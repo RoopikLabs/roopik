@@ -10,6 +10,7 @@ import { ServicesAccessor } from '../../../../platform/instantiation/common/inst
 import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
 import { IViewsService } from '../../../services/views/common/viewsService.js';
 import { FileAccess } from '../../../../base/common/network.js';
+import { TitleBarLeadingActionsGroup } from '../../../browser/parts/titlebar/titlebarActions.js';
 
 const ROODIO_CATEGORY = localize2('roodio.category', 'Dio');
 const ROODIO_OPEN_CHAT_ACTION_ID = 'workbench.action.roodio.openChat';
@@ -51,14 +52,13 @@ registerAction2(class OpenRoodioChatAction extends Action2 {
 	}
 });
 
-// Add to the global title bar on the RIGHT side
 MenuRegistry.appendMenuItem(MenuId.TitleBar, {
 	command: {
 		id: ROODIO_OPEN_CHAT_ACTION_ID,
 		title: localize('roodioChatTitle', "Dio"),
 		icon: ROOPIK_DIO_ICON
 	},
-	group: 'navigation',
-	order: 10002, // After GitHub Copilot chat (which is at 10001)
+	group: TitleBarLeadingActionsGroup,
+	order: -1000,
 	when: ContextKeyExpr.has('config.roodio.titleBarIcon.enabled')
 });

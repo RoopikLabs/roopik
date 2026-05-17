@@ -11,6 +11,9 @@ concurrency:
   group: build-windows-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  VSCODE_QUALITY: stable
+
 jobs:
   build-windows:
     name: Build Windows (x64)
