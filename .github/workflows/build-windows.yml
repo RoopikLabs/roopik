@@ -132,6 +132,7 @@ jobs:
               esac
             done
           ' sh {} \;
+          find node_modules -type d \( -path '*/lib/linux' -o -path '*/lib/darwin' -o -path '*/lib/mac' \) -prune -exec rm -rf {} +
 
       - name: Build Windows application
         env:
