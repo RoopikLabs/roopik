@@ -1443,7 +1443,8 @@ export class CodeApplication extends Disposable {
 			componentService,
 			canvasService,
 			roopikStorageService,
-			this.configurationService
+			this.configurationService,
+			accessor.get(ILogService)
 		);
 		const mcpServerChannel = new McpServerChannel(mcpServerService);
 		mainProcessElectronServer.registerChannel(MCP_SERVER_CHANNEL, mcpServerChannel);
