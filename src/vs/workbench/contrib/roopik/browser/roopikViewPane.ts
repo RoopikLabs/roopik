@@ -278,58 +278,40 @@ export class RoopikDashboardView extends ViewPane {
 		container.style.boxSizing = 'border-box';
 
 		// ============================================================================
-		// Action Bar - Grouped layout for better UX
+		// Action Bar - Outlined wrapper, responsive grid (auto-collapses on narrow widths)
 		// ============================================================================
 		const actionsContainer = document.createElement('div');
 		actionsContainer.style.display = 'flex';
 		actionsContainer.style.flexDirection = 'column';
 		actionsContainer.style.gap = '10px';
+		actionsContainer.style.padding = '10px';
+		actionsContainer.style.borderRadius = '8px';
+		actionsContainer.style.border = '1px solid var(--vscode-panel-border, var(--vscode-contrastBorder, rgba(128, 128, 128, 0.4)))';
+		actionsContainer.style.background = 'var(--vscode-sideBarSectionHeader-background, transparent)';
+		actionsContainer.style.maxWidth = '320px';
+		actionsContainer.style.boxSizing = 'border-box';
 
-		// Row 1: Canvas Group + Project Group
-		const groupsRow = document.createElement('div');
-		groupsRow.style.display = 'flex';
-		groupsRow.style.alignItems = 'stretch';
-		groupsRow.style.gap = '8px';
-		groupsRow.style.flexWrap = 'wrap';
-
-		// Canvas Group (Canvas + Import)
-		const canvasGroup = document.createElement('div');
-		canvasGroup.style.display = 'flex';
-		canvasGroup.style.alignItems = 'center';
-		canvasGroup.style.gap = '8px';
-		canvasGroup.style.padding = '6px 8px';
-		canvasGroup.style.borderRadius = '6px';
-		canvasGroup.style.border = '1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4))';
-		canvasGroup.style.flex = '1'; // Equal width
+		// Primary actions grid: 4 buttons that auto-collapse based on available width.
+		// At full width: 4 columns. Narrow: drops to 2 then 1 automatically via auto-fit + minmax.
+		const actionsGrid = document.createElement('div');
+		actionsGrid.style.display = 'grid';
+		actionsGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(110px, 1fr))';
+		actionsGrid.style.gap = '6px';
 
 		const newCanvasBtn = this.createActionButton('Canvas', 'codicon-paintcan', 'roopik.openCanvas', true);
 		const importBtn = this.createActionButton('Import', 'codicon-cloud-download', 'roopik.import.showPicker', false);
 		importBtn.title = 'Import Component';
 
-		canvasGroup.appendChild(newCanvasBtn);
-		canvasGroup.appendChild(importBtn);
-
-		// Project Group (Project + Browser)
-		const projectGroup = document.createElement('div');
-		projectGroup.style.display = 'flex';
-		projectGroup.style.alignItems = 'center';
-		projectGroup.style.gap = '8px';
-		projectGroup.style.padding = '6px 8px';
-		projectGroup.style.borderRadius = '6px';
-		projectGroup.style.border = '1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4))';
-		projectGroup.style.flex = '1'; // Equal width
-
 		const projectModeBtn = this.createActionButton('Project', 'codicon-folder-opened', 'roopik.openProjectPicker', false);
 		const browserBtn = this.createActionButton('Browser', 'codicon-globe', 'roopik.openProjectPreview', false);
 		browserBtn.title = 'Open in Browser';
 
-		projectGroup.appendChild(projectModeBtn);
-		projectGroup.appendChild(browserBtn);
+		actionsGrid.appendChild(newCanvasBtn);
+		actionsGrid.appendChild(importBtn);
+		actionsGrid.appendChild(projectModeBtn);
+		actionsGrid.appendChild(browserBtn);
 
-		groupsRow.appendChild(canvasGroup);
-		groupsRow.appendChild(projectGroup);
-
-		// Row 2: MCP (standalone)
+		// MCP row (standalone, sits below the grid inside the same outlined container)
 		const mcpRow = document.createElement('div');
 		mcpRow.style.display = 'flex';
 		mcpRow.style.alignItems = 'center';
@@ -341,7 +323,7 @@ export class RoopikDashboardView extends ViewPane {
 		this.mcpDetailsPanel = document.createElement('div');
 		this.mcpDetailsPanel.style.display = 'none'; // Hidden by default
 
-		actionsContainer.appendChild(groupsRow);
+		actionsContainer.appendChild(actionsGrid);
 		actionsContainer.appendChild(mcpRow);
 		actionsContainer.appendChild(this.mcpDetailsPanel);
 		container.appendChild(actionsContainer);
@@ -674,7 +656,7 @@ export class RoopikDashboardView extends ViewPane {
 		btn.style.display = 'inline-flex';
 		btn.style.alignItems = 'center';
 		btn.style.justifyContent = 'center';
-		btn.style.padding = '7px 14px';
+		btn.style.padding = '7px 10px';
 		btn.style.borderRadius = '6px';
 		btn.style.border = 'none';
 		btn.style.cursor = 'pointer';
@@ -682,6 +664,10 @@ export class RoopikDashboardView extends ViewPane {
 		btn.style.fontWeight = '500';
 		btn.style.fontFamily = 'inherit';
 		btn.style.transition = 'all 0.12s ease';
+		btn.style.width = '100%';
+		btn.style.minWidth = '0';
+		btn.style.whiteSpace = 'nowrap';
+		btn.style.overflow = 'hidden';
 		btn.title = label;
 
 		if (primary) {
