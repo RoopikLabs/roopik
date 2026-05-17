@@ -72,17 +72,6 @@ export const registerCommands = (options: RegisterCommandOptions) => {
 
 const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOptions): Record<CommandId, any> => ({
 	activationCompleted: () => {},
-	cloudButtonClicked: () => {
-		const visibleProvider = getVisibleProviderOrLog(outputChannel)
-
-		if (!visibleProvider) {
-			return
-		}
-
-		TelemetryService.instance.captureTitleButtonClicked("cloud")
-
-		visibleProvider.postMessageToWebview({ type: "action", action: "cloudButtonClicked" })
-	},
 	plusButtonClicked: async () => {
 		const visibleProvider = getVisibleProviderOrLog(outputChannel)
 
@@ -194,49 +183,6 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 			type: "action",
 			action: "toggleAutoApprove",
 		})
-	},
-	externalContext: async (options?: { promptText?: string; autoSend?: boolean; images?: string[] }) => {
-		const promptText = options?.promptText?.trim() || ""
-
-		// Allow empty prompt if images are provided
-		if (!promptText && (!options?.images || options.images.length === 0)) {
-			return
-		}
-
-		const visibleProvider = getVisibleProviderOrLog(outputChannel)
-
-		if (!visibleProvider) {
-			return
-		}
-
-		// Focus the chat panel first
-		await vscode.commands.executeCommand("roodio.ChatPanel.focus")
-
-		// Small delay to ensure the webview is ready
-		await delay(100)
-
-		// Add spacing after context for better readability
-		const formattedText = promptText ? `${promptText}\n\n` : ""
-
-		if (options?.autoSend) {
-			// Send message immediately (user already typed message in inspect mode)
-			await visibleProvider.postMessageToWebview({
-				type: "invoke",
-				invoke: "sendMessage",
-				text: formattedText,
-				images: options?.images ?? [],
-			})
-		} else {
-			// Just set the chat box content (silent attachment - user types message)
-			await visibleProvider.postMessageToWebview({
-				type: "invoke",
-				invoke: "setChatBoxMessage",
-				text: formattedText,
-				images: options?.images ?? [],
-			})
-			// Focus input so user can immediately type
-			await visibleProvider.postMessageToWebview({ type: "action", action: "focusInput" })
-		}
 	},
 })
 
