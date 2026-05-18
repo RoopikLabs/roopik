@@ -252,3 +252,9 @@ es5-ext/**
 # foundry-local-sdk ships per-platform .node binaries under prebuilds/.
 # Same rcedit incompatibility as above.
 foundry-local-sdk/prebuilds/**
+
+# @picovoice/pvrecorder-node (nested under @github/copilot/pvrecorder) ships
+# pv_recorder.node binaries under lib/{mac,linux,windows}/. Keep windows/ so
+# the Windows build retains its native binary; strip the rest.
+@picovoice/pvrecorder-node/lib/mac/**
+@picovoice/pvrecorder-node/lib/linux/**
