@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { convertHeadersToObject } from "./utils/headers"
 import { useDebounce } from "react-use"
-import { VSCodeLink } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeLink, VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
 import { ExternalLinkIcon } from "@radix-ui/react-icons"
 
 import {
@@ -10,6 +10,7 @@ import {
 	isRetiredProvider,
 	DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
 	openRouterDefaultModelId,
+	poeDefaultModelId,
 	requestyDefaultModelId,
 	litellmDefaultModelId,
 	openAiNativeDefaultModelId,
@@ -28,7 +29,6 @@ import {
 	internationalZAiDefaultModelId,
 	mainlandZAiDefaultModelId,
 	fireworksDefaultModelId,
-	rooDefaultModelId,
 	vercelAiGatewayDefaultModelId,
 	minimaxDefaultModelId,
 	unboundDefaultModelId,
@@ -47,6 +47,7 @@ import { validateApiConfigurationExcludingModelErrors, getModelValidationError }
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { useRouterModels } from "@src/components/ui/hooks/useRouterModels"
 import { useSelectedModel } from "@src/components/ui/hooks/useSelectedModel"
+import { requestLmStudioModels } from "@src/components/ui/hooks/useLmStudioModels"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import {
 	useOpenRouterModelProviders,
@@ -80,9 +81,9 @@ import {
 	OpenAICompatible,
 	OpenAICodex,
 	OpenRouter,
+	Poe,
 	QwenCode,
 	Requesty,
-	Roo,
 	SambaNova,
 	Unbound,
 	Vertex,
@@ -105,7 +106,6 @@ import { TemperatureControl } from "./TemperatureControl"
 import { RateLimitSecondsControl } from "./RateLimitSecondsControl"
 import { ConsecutiveMistakeLimitControl } from "./ConsecutiveMistakeLimitControl"
 import { BedrockCustomArn } from "./providers/BedrockCustomArn"
-import { RooBalanceDisplay } from "./providers/RooBalanceDisplay"
 import { buildDocLink } from "@src/utils/docLinks"
 import { BookOpenText } from "lucide-react"
 
@@ -131,7 +131,7 @@ const ApiOptions = ({
 	setErrorMessage,
 }: ApiOptionsProps) => {
 	const { t } = useAppTranslation()
-	const { organizationAllowList, cloudIsAuthenticated, openAiCodexIsAuthenticated } = useExtensionState()
+	const { organizationAllowList, openAiCodexIsAuthenticated } = useExtensionState()
 
 	const [customHeaders, setCustomHeaders] = useState<[string, string][]>(() => {
 		const headers = apiConfiguration?.openAiHeaders || {}
@@ -182,11 +182,13 @@ const ApiOptions = ({
 		id: selectedModelId,
 		info: selectedModelInfo,
 	} = useSelectedModel(apiConfiguration)
+	const isLegacyRooSelected = apiConfiguration.apiProvider === "roo"
 	const activeSelectedProvider: ProviderName | undefined = isRetiredProvider(selectedProvider)
 		? undefined
 		: selectedProvider
 	const isRetiredSelectedProvider =
-		typeof apiConfiguration.apiProvider === "string" && isRetiredProvider(apiConfiguration.apiProvider)
+		isLegacyRooSelected ||
+		(typeof apiConfiguration.apiProvider === "string" && isRetiredProvider(apiConfiguration.apiProvider))
 
 	const { data: routerModels, refetch: refetchRouterModels } = useRouterModels()
 
@@ -235,10 +237,10 @@ const ApiOptions = ({
 			} else if (selectedProvider === "ollama") {
 				vscode.postMessage({ type: "requestOllamaModels" })
 			} else if (selectedProvider === "lmstudio") {
-				vscode.postMessage({ type: "requestLmStudioModels" })
+				requestLmStudioModels(apiConfiguration?.lmStudioBaseUrl)
 			} else if (selectedProvider === "vscode-lm") {
 				vscode.postMessage({ type: "requestVsCodeLmModels" })
-			} else if (selectedProvider === "litellm" || selectedProvider === "roo") {
+			} else if (selectedProvider === "litellm" || selectedProvider === "poe") {
 				vscode.postMessage({ type: "requestRouterModels" })
 			}
 		},
@@ -252,6 +254,8 @@ const ApiOptions = ({
 			apiConfiguration?.lmStudioBaseUrl,
 			apiConfiguration?.litellmBaseUrl,
 			apiConfiguration?.litellmApiKey,
+			apiConfiguration?.poeApiKey,
+			apiConfiguration?.poeBaseUrl,
 			customHeaders,
 		],
 	)
@@ -356,7 +360,7 @@ const ApiOptions = ({
 							: internationalZAiDefaultModelId,
 				},
 				fireworks: { field: "apiModelId", default: fireworksDefaultModelId },
-				roo: { field: "apiModelId", default: rooDefaultModelId },
+				poe: { field: "apiModelId", default: poeDefaultModelId },
 				"vercel-ai-gateway": { field: "vercelAiGatewayModelId", default: vercelAiGatewayDefaultModelId },
 				openai: { field: "openAiModelId" },
 				ollama: { field: "ollamaModelId" },
@@ -434,19 +438,7 @@ const ApiOptions = ({
 			label,
 		}))
 
-		// Pin "roo" to the top if not on welcome screen
-		if (!fromWelcomeView) {
-			const rooIndex = options.findIndex((opt) => opt.value === "roo")
-			if (rooIndex > 0) {
-				const [rooOption] = options.splice(rooIndex, 1)
-				options.unshift(rooOption)
-			}
-		} else {
-			// Filter out roo from the welcome view
-			const filteredOptions = options.filter((opt) => opt.value !== "roo")
-			options.length = 0
-			options.push(...filteredOptions)
-
+		if (fromWelcomeView) {
 			const openRouterIndex = options.findIndex((opt) => opt.value === "openrouter")
 			if (openRouterIndex > 0) {
 				const [openRouterOption] = options.splice(openRouterIndex, 1)
@@ -454,23 +446,26 @@ const ApiOptions = ({
 			}
 		}
 
+		if (isLegacyRooSelected) {
+			options.unshift({
+				value: "roo",
+				label: "Roo Code Router",
+			})
+		}
+
 		return options
-	}, [organizationAllowList, apiConfiguration.apiProvider, fromWelcomeView])
+	}, [organizationAllowList, apiConfiguration.apiProvider, fromWelcomeView, isLegacyRooSelected])
 
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="flex flex-col gap-1 relative">
 				<div className="flex justify-between items-center">
 					<label className="block font-medium">{t("settings:providers.apiProvider")}</label>
-					{selectedProvider === "roo" && cloudIsAuthenticated ? (
-						<RooBalanceDisplay />
-					) : (
-						docs && (
-							<VSCodeLink href={docs.url} target="_blank" className="flex gap-2">
-								{t("settings:providers.apiProviderDocs")}
-								<BookOpenText className="size-4 inline ml-2" />
-							</VSCodeLink>
-						)
+					{docs && (
+						<VSCodeLink href={docs.url} target="_blank" className="flex gap-2">
+							{t("settings:providers.apiProviderDocs")}
+							<BookOpenText className="size-4 inline ml-2" />
+						</VSCodeLink>
 					)}
 				</div>
 				<SearchableSelect
@@ -619,7 +614,6 @@ const ApiOptions = ({
 						<DeepSeek
 							apiConfiguration={apiConfiguration}
 							setApiConfigurationField={setApiConfigurationField}
-							simplifySettings={fromWelcomeView}
 						/>
 					)}
 
@@ -703,12 +697,10 @@ const ApiOptions = ({
 						/>
 					)}
 
-					{selectedProvider === "roo" && (
-						<Roo
+					{selectedProvider === "poe" && (
+						<Poe
 							apiConfiguration={apiConfiguration}
 							setApiConfigurationField={setApiConfigurationField}
-							routerModels={routerModels}
-							cloudIsAuthenticated={cloudIsAuthenticated}
 							organizationAllowList={organizationAllowList}
 							modelValidationError={modelValidationError}
 							simplifySettings={fromWelcomeView}
@@ -800,6 +792,17 @@ const ApiOptions = ({
 									}
 									onChange={(value) => setApiConfigurationField("consecutiveMistakeLimit", value)}
 								/>
+								{selectedProvider === "poe" && (
+									<VSCodeTextField
+										value={apiConfiguration?.poeBaseUrl || ""}
+										onInput={handleInputChange("poeBaseUrl")}
+										placeholder="https://api.poe.com/v1"
+										className="w-full">
+										<label className="block font-medium mb-1">
+											{t("settings:providers.poeBaseUrl")}
+										</label>
+									</VSCodeTextField>
+								)}
 								{selectedProvider === "openrouter" &&
 									openRouterModelProviders &&
 									Object.keys(openRouterModelProviders).length > 0 && (

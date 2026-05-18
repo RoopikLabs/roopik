@@ -1,5 +1,5 @@
 {
-	"greeting": "Welcome to Dio Code!",
+	"greeting": "Welcome to Zoo Code!",
 	"task": {
 		"title": "Task",
 		"expand": "Expand task",
@@ -14,17 +14,7 @@
 		"contextWindow": "Context Length",
 		"closeAndStart": "Close task and start a new one",
 		"export": "Export task history",
-		"share": "Share task",
 		"delete": "Delete Task (Shift + Click to skip confirmation)",
-		"shareWithOrganization": "Share with Organization",
-		"shareWithOrganizationDescription": "Only members of your organization can access",
-		"sharePublicly": "Share Publicly",
-		"sharePubliclyDescription": "Anyone with the link can access",
-		"connectToCloud": "Connect to Cloud",
-		"connectToCloudDescription": "Sign in to Code Cloud to share tasks",
-		"sharingDisabledByOrganization": "Sharing disabled by organization",
-		"shareSuccessOrganization": "Organization link copied to clipboard",
-		"shareSuccessPublic": "Public link copied to clipboard",
 		"openApiHistory": "Open API History",
 		"openUiHistory": "Open UI History",
 		"backToParentTask": "Parent task"
@@ -124,7 +114,8 @@
 		"placeholder": "Edit your message..."
 	},
 	"scrollToBottom": "Scroll to bottom of chat",
-	"about": "Dio is your agent co-pilot!",
+	"scrollToLatestCheckpoint": "Scroll to previous checkpoint",
+	"about": "Zoo is a whole AI dev team in your editor",
 	"docs": "Check our <DocsLink>docs</DocsLink> to get started",
 	"onboarding": "What would you like to do?",
 	"rooTips": {
@@ -134,7 +125,7 @@
 		},
 		"modelAgnostic": {
 			"title": "Bring your own model, no markup or lock-in",
-			"description": "Use your own provider key or even run local inference — Dio doesn't charge for it"
+			"description": "Use your own provider key or even run local inference — Zoo doesn't charge for it"
 		}
 	},
 	"selectMode": "Select mode for interaction",
@@ -146,7 +137,7 @@
 		"title": "Modes",
 		"marketplace": "Mode Marketplace",
 		"settings": "Mode Settings",
-		"description": "Specialized personas that tailor Dio's behavior.",
+		"description": "Specialized personas that tailor Zoo's behavior.",
 		"searchPlaceholder": "Search modes...",
 		"noResults": "No results found"
 	},
@@ -184,7 +175,7 @@
 			"docs": "Docs",
 			"goToSettings": "Settings",
 			"connection": "Connection error. Make sure you have a working internet connection.",
-			"unknown": "Unknown API error. Please contact Dio Code support.",
+			"unknown": "Unknown API error. Please contact Zoo Code support.",
 			"claudeCodeNotAuthenticated": "You need to sign in to use Claude Code. Go to Settings and click \"Sign in to Claude Code\" to authenticate."
 		}
 	},
@@ -223,46 +214,46 @@
 		}
 	},
 	"skill": {
-		"wantsToLoad": "Dio wants to load a skill",
-		"didLoad": "Dio loaded a skill"
+		"wantsToLoad": "Zoo wants to load a skill",
+		"didLoad": "Zoo loaded a skill"
 	},
 	"fileOperations": {
-		"wantsToRead": "Dio wants to read this file",
-		"wantsToReadMultiple": "Dio wants to read multiple files",
-		"wantsToReadAndXMore": "Dio wants to read this file and {{count}} more",
-		"wantsToReadOutsideWorkspace": "Dio wants to read this file outside of the workspace",
-		"didRead": "Dio read this file",
-		"wantsToEdit": "Dio wants to edit this file",
-		"wantsToEditOutsideWorkspace": "Dio wants to edit this file outside of the workspace",
-		"wantsToEditProtected": "Dio wants to edit a protected configuration file",
-		"wantsToApplyBatchChanges": "Dio wants to apply changes to multiple files",
-		"wantsToGenerateImage": "Dio wants to generate an image",
-		"wantsToGenerateImageOutsideWorkspace": "Dio wants to generate an image outside of the workspace",
-		"wantsToGenerateImageProtected": "Dio wants to generate an image in a protected location",
-		"didGenerateImage": "Dio generated an image",
-		"wantsToCreate": "Dio wants to create a new file",
-		"wantsToInsert": "Dio wants to insert content into this file",
-		"wantsToInsertWithLineNumber": "Dio wants to insert content into this file at line {{lineNumber}}",
-		"wantsToInsertAtEnd": "Dio wants to append content to the end of this file"
+		"wantsToRead": "Zoo wants to read this file",
+		"wantsToReadMultiple": "Zoo wants to read multiple files",
+		"wantsToReadAndXMore": "Zoo wants to read this file and {{count}} more",
+		"wantsToReadOutsideWorkspace": "Zoo wants to read this file outside of the workspace",
+		"didRead": "Zoo read this file",
+		"wantsToEdit": "Zoo wants to edit this file",
+		"wantsToEditOutsideWorkspace": "Zoo wants to edit this file outside of the workspace",
+		"wantsToEditProtected": "Zoo wants to edit a protected configuration file",
+		"wantsToApplyBatchChanges": "Zoo wants to apply changes to multiple files",
+		"wantsToGenerateImage": "Zoo wants to generate an image",
+		"wantsToGenerateImageOutsideWorkspace": "Zoo wants to generate an image outside of the workspace",
+		"wantsToGenerateImageProtected": "Zoo wants to generate an image in a protected location",
+		"didGenerateImage": "Zoo generated an image",
+		"wantsToCreate": "Zoo wants to create a new file",
+		"wantsToInsert": "Zoo wants to insert content into this file",
+		"wantsToInsertWithLineNumber": "Zoo wants to insert content into this file at line {{lineNumber}}",
+		"wantsToInsertAtEnd": "Zoo wants to append content to the end of this file"
 	},
 	"directoryOperations": {
-		"wantsToViewTopLevel": "Dio wants to view the top level files in this directory",
-		"didViewTopLevel": "Dio viewed the top level files in this directory",
-		"wantsToViewTopLevelOutsideWorkspace": "Dio wants to view the top level files in this directory (outside workspace)",
-		"didViewTopLevelOutsideWorkspace": "Dio viewed the top level files in this directory (outside workspace)",
-		"wantsToViewRecursive": "Dio wants to recursively view all files in this directory",
-		"didViewRecursive": "Dio recursively viewed all files in this directory",
-		"wantsToViewRecursiveOutsideWorkspace": "Dio wants to recursively view all files in this directory (outside workspace)",
-		"didViewRecursiveOutsideWorkspace": "Dio recursively viewed all files in this directory (outside workspace)",
-		"wantsToViewMultipleDirectories": "Dio wants to view multiple directories",
-		"wantsToSearch": "Dio wants to search this directory for <code>{{regex}}</code>",
-		"didSearch": "Dio searched this directory for <code>{{regex}}</code>",
-		"wantsToSearchOutsideWorkspace": "Dio wants to search this directory (outside workspace) for <code>{{regex}}</code>",
-		"didSearchOutsideWorkspace": "Dio searched this directory (outside workspace) for <code>{{regex}}</code>"
+		"wantsToViewTopLevel": "Zoo wants to view the top level files in this directory",
+		"didViewTopLevel": "Zoo viewed the top level files in this directory",
+		"wantsToViewTopLevelOutsideWorkspace": "Zoo wants to view the top level files in this directory (outside workspace)",
+		"didViewTopLevelOutsideWorkspace": "Zoo viewed the top level files in this directory (outside workspace)",
+		"wantsToViewRecursive": "Zoo wants to recursively view all files in this directory",
+		"didViewRecursive": "Zoo recursively viewed all files in this directory",
+		"wantsToViewRecursiveOutsideWorkspace": "Zoo wants to recursively view all files in this directory (outside workspace)",
+		"didViewRecursiveOutsideWorkspace": "Zoo recursively viewed all files in this directory (outside workspace)",
+		"wantsToViewMultipleDirectories": "Zoo wants to view multiple directories",
+		"wantsToSearch": "Zoo wants to search this directory for <code>{{regex}}</code>",
+		"didSearch": "Zoo searched this directory for <code>{{regex}}</code>",
+		"wantsToSearchOutsideWorkspace": "Zoo wants to search this directory (outside workspace) for <code>{{regex}}</code>",
+		"didSearchOutsideWorkspace": "Zoo searched this directory (outside workspace) for <code>{{regex}}</code>"
 	},
 	"codebaseSearch": {
-		"wantsToSearch": "Dio wants to search the codebase for <code>{{query}}</code>",
-		"wantsToSearchWithPath": "Dio wants to search the codebase for <code>{{query}}</code> in <code>{{path}}</code>",
+		"wantsToSearch": "Zoo wants to search the codebase for <code>{{query}}</code>",
+		"wantsToSearchWithPath": "Zoo wants to search the codebase for <code>{{query}}</code> in <code>{{path}}</code>",
 		"didSearch_one": "Found 1 result",
 		"didSearch_other": "Found {{count}} results",
 		"resultTooltip": "Similarity score: {{score}} (click to open file)"
@@ -287,24 +278,24 @@
 	"response": "Response",
 	"arguments": "Arguments",
 	"text": {
-		"rooSaid": "Dio said"
+		"rooSaid": "Zoo said"
 	},
 	"feedback": {
 		"youSaid": "You said"
 	},
 	"mcp": {
-		"wantsToUseTool": "Dio wants to use a tool on the {{serverName}} MCP server",
-		"wantsToAccessResource": "Dio wants to access a resource on the {{serverName}} MCP server"
+		"wantsToUseTool": "Zoo wants to use a tool on the {{serverName}} MCP server",
+		"wantsToAccessResource": "Zoo wants to access a resource on the {{serverName}} MCP server"
 	},
 	"modes": {
-		"wantsToSwitch": "Dio wants to switch to {{mode}} mode",
-		"wantsToSwitchWithReason": "Dio wants to switch to {{mode}} mode because: {{reason}}",
-		"didSwitch": "Dio switched to {{mode}} mode",
-		"didSwitchWithReason": "Dio switched to {{mode}} mode because: {{reason}}"
+		"wantsToSwitch": "Zoo wants to switch to {{mode}} mode",
+		"wantsToSwitchWithReason": "Zoo wants to switch to {{mode}} mode because: {{reason}}",
+		"didSwitch": "Zoo switched to {{mode}} mode",
+		"didSwitchWithReason": "Zoo switched to {{mode}} mode because: {{reason}}"
 	},
 	"subtasks": {
-		"wantsToCreate": "Dio wants to create a new subtask in {{mode}} mode",
-		"wantsToFinish": "Dio wants to mark this as completed",
+		"wantsToCreate": "Zoo wants to create a new subtask in {{mode}} mode",
+		"wantsToFinish": "Zoo wants to mark this as completed",
 		"newTaskContent": "Subtask Instructions",
 		"resultContent": "Subtask completed",
 		"defaultResult": "Please continue to the next task.",
@@ -312,7 +303,7 @@
 		"goToSubtask": "View task"
 	},
 	"questions": {
-		"hasQuestion": "Dio has a question"
+		"hasQuestion": "Zoo has a question"
 	},
 	"taskCompleted": "Task Completed",
 	"error": "Error",
@@ -329,12 +320,12 @@
 		"copyToClipboard": "Copy basic error info",
 		"copied": "Copied!",
 		"diagnostics": "Get detailed error info",
-		"proxyProvider": "You seem to be using a proxy-based provider. Make sure to check its logs and to ensure it's not rewriting Dio's requests."
+		"proxyProvider": "You seem to be using a proxy-based provider. Make sure to check its logs and to ensure it's not rewriting Zoo's requests."
 	},
 	"diffError": {
 		"title": "Edit Unsuccessful"
 	},
-	"troubleMessage": "Dio is having trouble...",
+	"troubleMessage": "Zoo is having trouble...",
 	"powershell": {
 		"issues": "It seems like you're having Windows PowerShell issues, please see this"
 	},
@@ -356,27 +347,25 @@
 		"triggerLabelAll": "BRRR"
 	},
 	"announcement": {
-		"title": "Dio Code {{version}} Released",
-		"support": "Please support Dio Code by starring us on <githubLink>GitHub</githubLink>.",
-		"stealthModel": {
-			"feature": "<bold>Limited-time FREE stealth model</bold> - Code Supernova: Now upgraded with a <bold>1M token context window</bold>! A versatile agentic coding model that supports image inputs, accessible through Code Cloud.",
-			"note": "(Note: prompts and completions are logged by the model creator and used to improve the model)",
-			"connectButton": "Connect to Code Cloud",
-			"selectModel": "Select <code>roo/code-supernova</code> from the Code Cloud provider in Settings to get started.",
-			"goToSettingsButton": "Go to Settings"
+		"title": "Zoo Code {{version}} Released",
+		"support": "Please support Zoo Code by starring us on <githubLink>GitHub</githubLink>.",
+		"handoff": {
+			"heading": "Roo Code is back! Now as a community-maintained plugin called Zoo Code!!",
+			"description": "If you haven't been following, the Roo Code team recently announced they are sun setting the development of Roo Code and are archiving the work they have done. But fear not, the community has stepped up to continue the legacy of Roo Code with a new name and a new home! We are not just a single \"Roo\" anymore, we are a community, a \"Zoo\" if you will, Zoo Code is a community-maintained plugin that picks up where Roo Code left off, and we're committed to keeping the spirit of Roo alive while also introducing new features and improvements. We want to give a huge shoutout to the entire Roo Code team for their incredible work and for creating such an amazing tool for developers. We're excited to continue building on their foundation and to see where the community takes Zoo Code in the future!",
+			"readMore": "See the new home page of Zoo Code and read the full announcement"
 		},
 		"release": {
 			"heading": "What's New:",
-			"gpt54": "OpenAI GPT-5.4 Support: Added OpenAI GPT-5.4 and GPT-5.3 Chat Latest so you can use the newest OpenAI chat models in Dio Code.",
-			"slashSkills": "Slash Command Skills: Skills can now be exposed as slash commands with fallback execution for faster workflows."
+			"gpt55": "GPT-5.5 via OpenAI Codex: Added GPT-5.5 support in the OpenAI Codex provider so you can use the latest model straight from Zoo Code.",
+			"claudeOpus47": "Claude Opus 4.7 on Vertex AI: Added Claude Opus 4.7 to the Vertex AI provider for Anthropic's newest flagship reasoning model.",
+			"checkpointNav": "Previous Checkpoint Navigation: Added controls in chat to jump back through prior checkpoints, with full i18n support."
 		},
 		"cloudAgents": {
 			"heading": "New in the Cloud:",
 			"specialized": "Introducing <bold>Explainer</bold>, <bold>Planner</bold>, and <bold>Coder</bold> - three specialized cloud agents to enhance your workflows.",
 			"description": "The agents work together in the cloud and can be triggered from the web or through Slack.",
 			"tryButton": "Try Cloud Agents"
-		},
-		"careers": "Also, <careersLink>we're hiring!</careersLink>"
+		}
 	},
 	"reasoning": {
 		"thinking": "Thinking",
@@ -401,18 +390,18 @@
 	"profileViolationWarning": "The current profile isn't compatible with your organization's settings",
 	"shellIntegration": {
 		"title": "Command Execution Warning",
-		"description": "Your command is being executed without VSCode terminal shell integration. To suppress this warning you can disable shell integration in the <strong>Terminal</strong> section of the <settingsLink>Dio Code settings</settingsLink> or troubleshoot VSCode terminal integration using the link below.",
+		"description": "Your command is being executed without VSCode terminal shell integration. To suppress this warning you can disable shell integration in the <strong>Terminal</strong> section of the <settingsLink>Zoo Code settings</settingsLink> or troubleshoot VSCode terminal integration using the link below.",
 		"troubleshooting": "Click here for shell integration documentation."
 	},
 	"ask": {
 		"autoApprovedRequestLimitReached": {
 			"title": "Auto-Approved Request Limit Reached",
-			"description": "Dio has reached the auto-approved limit of {{count}} API request(s). Would you like to reset the count and proceed with the task?",
+			"description": "Zoo has reached the auto-approved limit of {{count}} API request(s). Would you like to reset the count and proceed with the task?",
 			"button": "Reset and Continue"
 		},
 		"autoApprovedCostLimitReached": {
 			"title": "Auto-Approved Cost Limit Reached",
-			"description": "Dio has reached the auto-approved cost limit of ${{count}}. Would you like to reset the cost and proceed with the task?",
+			"description": "Zoo has reached the auto-approved cost limit of ${{count}}. Would you like to reset the cost and proceed with the task?",
 			"button": "Reset and Continue"
 		}
 	},
@@ -451,8 +440,8 @@
 		}
 	},
 	"slashCommand": {
-		"wantsToRun": "Dio wants to run a slash command",
-		"didRun": "Dio ran a slash command"
+		"wantsToRun": "Zoo wants to run a slash command",
+		"didRun": "Zoo ran a slash command"
 	},
 	"queuedMessages": {
 		"title": "Queued Messages",
@@ -482,80 +471,80 @@
 	},
 	"roopik": {
 		"browser": {
-			"wantsToOpen": "Dio wants to open the browser",
-			"didOpen": "Dio opened the browser",
-			"wantsToClose": "Dio wants to close the browser",
-			"didClose": "Dio closed the browser",
-			"wantsToInteract": "Dio wants to interact with the browser",
-			"didInteract": "Dio interacted with the browser",
-			"wantsToNavigate": "Dio wants to navigate the browser",
-			"didNavigate": "Dio navigated the browser",
-			"wantsToReload": "Dio wants to reload the page",
-			"didReload": "Dio reloaded the page",
-			"wantsToScreenshot": "Dio wants to take a screenshot",
-			"didScreenshot": "Dio took a screenshot",
-			"wantsToExecuteScript": "Dio wants to execute JavaScript",
-			"didExecuteScript": "Dio executed JavaScript",
-			"wantsToInspect": "Dio wants to inspect an element",
-			"didInspect": "Dio inspected an element",
-			"wantsToGetErrors": "Dio wants to get browser errors",
-			"didGetErrors": "Dio retrieved browser errors",
-			"wantsToGetLogs": "Dio wants to get console logs",
-			"didGetLogs": "Dio retrieved console logs",
-			"wantsToGetPerformance": "Dio wants to get performance metrics",
-			"didGetPerformance": "Dio retrieved performance metrics",
-			"wantsToGetState": "Dio wants to get browser state",
-			"didGetState": "Dio retrieved browser state",
-			"wantsToSetViewport": "Dio wants to set viewport size",
-			"didSetViewport": "Dio set viewport size",
-			"wantsToGetNetworkRequests": "Dio wants to get network requests",
-			"didGetNetworkRequests": "Dio retrieved network requests",
-			"wantsToFindElement": "Dio wants to find an element",
-			"didFindElement": "Dio found element",
-			"wantsToWaitForElement": "Dio wants to wait for an element",
-			"didWaitForElement": "Dio waited for element"
+			"wantsToOpen": "Zoo wants to open the browser",
+			"didOpen": "Zoo opened the browser",
+			"wantsToClose": "Zoo wants to close the browser",
+			"didClose": "Zoo closed the browser",
+			"wantsToInteract": "Zoo wants to interact with the browser",
+			"didInteract": "Zoo interacted with the browser",
+			"wantsToNavigate": "Zoo wants to navigate the browser",
+			"didNavigate": "Zoo navigated the browser",
+			"wantsToReload": "Zoo wants to reload the page",
+			"didReload": "Zoo reloaded the page",
+			"wantsToScreenshot": "Zoo wants to take a screenshot",
+			"didScreenshot": "Zoo took a screenshot",
+			"wantsToExecuteScript": "Zoo wants to execute JavaScript",
+			"didExecuteScript": "Zoo executed JavaScript",
+			"wantsToInspect": "Zoo wants to inspect an element",
+			"didInspect": "Zoo inspected an element",
+			"wantsToGetErrors": "Zoo wants to get browser errors",
+			"didGetErrors": "Zoo retrieved browser errors",
+			"wantsToGetLogs": "Zoo wants to get console logs",
+			"didGetLogs": "Zoo retrieved console logs",
+			"wantsToGetPerformance": "Zoo wants to get performance metrics",
+			"didGetPerformance": "Zoo retrieved performance metrics",
+			"wantsToGetState": "Zoo wants to get browser state",
+			"didGetState": "Zoo retrieved browser state",
+			"wantsToSetViewport": "Zoo wants to set viewport size",
+			"didSetViewport": "Zoo set viewport size",
+			"wantsToGetNetworkRequests": "Zoo wants to get network requests",
+			"didGetNetworkRequests": "Zoo retrieved network requests",
+			"wantsToFindElement": "Zoo wants to find an element",
+			"didFindElement": "Zoo found element",
+			"wantsToWaitForElement": "Zoo wants to wait for an element",
+			"didWaitForElement": "Zoo waited for element"
 		},
 		"project": {
-			"wantsToGetActive": "Dio wants to get the active project",
-			"didGetActive": "Dio retrieved the active project",
-			"wantsToStart": "Dio wants to start the dev server",
-			"didStart": "Dio started the dev server",
-			"wantsToStop": "Dio wants to stop the dev server",
-			"didStop": "Dio stopped the dev server"
+			"wantsToGetActive": "Zoo wants to get the active project",
+			"didGetActive": "Zoo retrieved the active project",
+			"wantsToStart": "Zoo wants to start the dev server",
+			"didStart": "Zoo started the dev server",
+			"wantsToStop": "Zoo wants to stop the dev server",
+			"didStop": "Zoo stopped the dev server"
 		},
 		"canvas": {
-			"wantsToList": "Dio wants to list canvases",
-			"didList": "Dio listed canvases",
-			"wantsToGetActive": "Dio wants to get the active canvas",
-			"didGetActive": "Dio retrieved the active canvas",
-			"wantsToCreate": "Dio wants to create a canvas",
-			"didCreate": "Dio created a canvas",
-			"wantsToOpen": "Dio wants to open a canvas",
-			"didOpen": "Dio opened a canvas",
-			"wantsToValidateComponents": "Dio wants to validate components",
-			"didValidateComponents": "Dio validated components"
+			"wantsToList": "Zoo wants to list canvases",
+			"didList": "Zoo listed canvases",
+			"wantsToGetActive": "Zoo wants to get the active canvas",
+			"didGetActive": "Zoo retrieved the active canvas",
+			"wantsToCreate": "Zoo wants to create a canvas",
+			"didCreate": "Zoo created a canvas",
+			"wantsToOpen": "Zoo wants to open a canvas",
+			"didOpen": "Zoo opened a canvas",
+			"wantsToValidateComponents": "Zoo wants to validate components",
+			"didValidateComponents": "Zoo validated components"
 		},
 		"component": {
-			"wantsToAdd": "Dio wants to add a component to the canvas",
-			"didAdd": "Dio added a component to the canvas",
-			"wantsToAddBatch": "Dio wants to add multiple components",
-			"didAddBatch": "Dio added multiple components",
-			"wantsToRemove": "Dio wants to remove a component",
-			"didRemove": "Dio removed a component",
-			"wantsToGetInfo": "Dio wants to get component info",
-			"didGetInfo": "Dio retrieved component info",
-			"wantsToList": "Dio wants to list components",
-			"didList": "Dio listed components",
-			"wantsToRebuild": "Dio wants to rebuild a component",
-			"didRebuild": "Dio rebuilt a component"
+			"wantsToAdd": "Zoo wants to add a component to the canvas",
+			"didAdd": "Zoo added a component to the canvas",
+			"wantsToAddBatch": "Zoo wants to add multiple components",
+			"didAddBatch": "Zoo added multiple components",
+			"wantsToRemove": "Zoo wants to remove a component",
+			"didRemove": "Zoo removed a component",
+			"wantsToGetInfo": "Zoo wants to get component info",
+			"didGetInfo": "Zoo retrieved component info",
+			"wantsToList": "Zoo wants to list components",
+			"didList": "Zoo listed components",
+			"wantsToRebuild": "Zoo wants to rebuild a component",
+			"didRebuild": "Zoo rebuilt a component"
 		}
 	},
 	"readCommandOutput": {
-		"title": "Dio read command output"
+		"title": "Zoo read command output"
 	},
 	"retiredProvider": {
 		"title": "Provider no longer supported",
-		"message": "Sorry, this provider is no longer supported. We saw very few Dio users actually using it and we need to reduce the surface area of our codebase so we can keep shipping fast and serving our community well in this space. It was a really hard decision but it lets us focus on what matters most to you. It sucks, we know.",
+		"message": "This provider is no longer available. Select a supported provider to continue.",
 		"openSettings": "Open Settings"
 	}
 }

@@ -1,7 +1,7 @@
 import { HTMLAttributes } from "react"
 import { useAppTranslation } from "@/i18n/TranslationContext"
 import { Trans } from "react-i18next"
-import { Download, Upload, TriangleAlert, Bug, Lightbulb, Shield, MessageCircle, MessagesSquare } from "lucide-react"
+import { Download, Upload, TriangleAlert, Bug, Lightbulb, Shield, MessagesSquare } from "lucide-react"
 import { VSCodeCheckbox, VSCodeLink } from "@vscode/webview-ui-toolkit/react"
 
 import type { TelemetrySetting } from "@roo-code/types"
@@ -9,6 +9,7 @@ import type { TelemetrySetting } from "@roo-code/types"
 import { Package } from "@roo/package"
 
 import { vscode } from "@/utils/vscode"
+import { EXTERNAL_LINKS } from "@/constants/externalLinks"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui"
 
@@ -30,7 +31,6 @@ export const About = ({ telemetrySetting, setTelemetrySetting, debug, setDebug, 
 		<div className={cn("flex flex-col gap-2", className)} {...props}>
 			<SectionHeader>{t("settings:sections.about")}</SectionHeader>
 
-			{/* Integration Note */}
 			<Section>
 				<p>
 					{Package.sha
@@ -51,16 +51,15 @@ export const About = ({ telemetrySetting, setTelemetrySetting, debug, setDebug, 
 					</VSCodeCheckbox>
 					<p className="text-vscode-descriptionForeground text-sm mt-0">
 						<Trans
-							i18nKey="settings:about.integrationNote"
+							i18nKey="settings:footer.telemetry.description"
 							components={{
-								privacyLink: <VSCodeLink href="https://roocode.com/privacy" />,
+								privacyLink: <VSCodeLink href="https://www.zoocode.dev/privacy" />,
 							}}
 						/>
 					</p>
 				</SearchableSetting>
 			</Section>
 
-			{/* Disabled Contact & Community Section
 			<Section className="space-y-0">
 				<h3>{t("settings:about.contactAndCommunity")}</h3>
 				<div className="flex flex-col gap-3">
@@ -68,7 +67,7 @@ export const About = ({ telemetrySetting, setTelemetrySetting, debug, setDebug, 
 						<Bug className="size-4 text-vscode-descriptionForeground shrink-0" />
 						<span>
 							{t("settings:about.bugReport.label")}{" "}
-							<VSCodeLink href="https://github.com/RooCodeInc/Roo-Code/issues/new?template=bug_report.yml">
+							<VSCodeLink href={EXTERNAL_LINKS.BUG_REPORT}>
 								{t("settings:about.bugReport.link")}
 							</VSCodeLink>
 						</span>
@@ -77,7 +76,7 @@ export const About = ({ telemetrySetting, setTelemetrySetting, debug, setDebug, 
 						<Lightbulb className="size-4 text-vscode-descriptionForeground shrink-0" />
 						<span>
 							{t("settings:about.featureRequest.label")}{" "}
-							<VSCodeLink href="https://github.com/RooCodeInc/Roo-Code/issues/new?template=feature_request.yml">
+							<VSCodeLink href={EXTERNAL_LINKS.FEATURE_REQUEST}>
 								{t("settings:about.featureRequest.link")}
 							</VSCodeLink>
 						</span>
@@ -86,16 +85,9 @@ export const About = ({ telemetrySetting, setTelemetrySetting, debug, setDebug, 
 						<Shield className="size-4 text-vscode-descriptionForeground shrink-0" />
 						<span>
 							{t("settings:about.securityIssue.label")}{" "}
-							<VSCodeLink href="https://github.com/RooCodeInc/Roo-Code/security/policy">
+							<VSCodeLink href={EXTERNAL_LINKS.SECURITY_POLICY}>
 								{t("settings:about.securityIssue.link")}
 							</VSCodeLink>
-						</span>
-					</div>
-					<div className="flex items-start gap-2">
-						<MessageCircle className="size-4 text-vscode-descriptionForeground shrink-0" />
-						<span>
-							{t("settings:about.contact.label")}{" "}
-							<VSCodeLink href="mailto:support@roocode.com">support@roocode.com</VSCodeLink>
 						</span>
 					</div>
 					<div className="flex items-start gap-2">
@@ -104,8 +96,8 @@ export const About = ({ telemetrySetting, setTelemetrySetting, debug, setDebug, 
 							<Trans
 								i18nKey="settings:about.community"
 								components={{
-									redditLink: <VSCodeLink href="https://reddit.com/r/RooCode" />,
-									discordLink: <VSCodeLink href="https://discord.gg/roocode" />,
+									redditLink: <VSCodeLink href={EXTERNAL_LINKS.REDDIT} />,
+									discordLink: <VSCodeLink href={EXTERNAL_LINKS.DISCORD} />,
 								}}
 							/>
 						</span>
@@ -131,7 +123,6 @@ export const About = ({ telemetrySetting, setTelemetrySetting, debug, setDebug, 
 					)}
 				</div>
 			</Section>
-			*/}
 
 			<Section className="space-y-0">
 				<SearchableSetting

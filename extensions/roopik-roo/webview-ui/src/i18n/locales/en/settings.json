@@ -41,10 +41,10 @@
 		"ui": "UI",
 		"experimental": "Experimental",
 		"language": "Language",
-		"about": "About Dio Code"
+		"about": "About Zoo Code"
 	},
 	"about": {
-		"integrationNote": "This extension is forked from Roo-Code and rebuilt with Roopik IDE's browser preview, canvas, and component toolchain.",
+		"integrationNote": "This extension is forked from Zoo-Code (formerly Roo-Code) and rebuilt with Roopik IDE's browser preview, canvas, and component toolchain.",
 		"bugReport": {
 			"label": "Found a bug?",
 			"link": "Report on GitHub"
@@ -57,10 +57,7 @@
 			"label": "Discovered a vulnerability?",
 			"link": "Follow our disclosure process"
 		},
-		"contact": {
-			"label": "Need to talk to us? Write"
-		},
-		"community": "Want tips or to just hang out with other Dio Code users? Join <redditLink>reddit.com/r/roopik</redditLink> or <discordLink>https://discord.gg/YGRzEmQU</discordLink>",
+		"community": "Want tips or to just hang out with other Zoo Code users? Join <redditLink>reddit.com/r/ZooCode</redditLink> or <discordLink>discord.gg/VxfP4Vx3gX</discordLink>",
 		"contactAndCommunity": "Contact & Community",
 		"manageSettings": "Manage Settings",
 		"debugMode": {
@@ -167,7 +164,7 @@
 		}
 	},
 	"prompts": {
-		"description": "Configure support prompts that are used for quick actions like enhancing prompts, explaining code, and fixing issues. These prompts help Dio provide better assistance for common development tasks."
+		"description": "Configure support prompts that are used for quick actions like enhancing prompts, explaining code, and fixing issues. These prompts help Zoo provide better assistance for common development tasks."
 	},
 	"codeIndex": {
 		"title": "Codebase Indexing",
@@ -288,10 +285,10 @@
 		"enabled": "Auto-Approve Enabled",
 		"readOnly": {
 			"label": "Read",
-			"description": "When enabled, Dio will automatically view directory contents and read files without requiring you to click the Approve button.",
+			"description": "When enabled, Zoo will automatically view directory contents and read files without requiring you to click the Approve button.",
 			"outsideWorkspace": {
 				"label": "Include files outside workspace",
-				"description": "Allow Dio to read files outside the current workspace without requiring approval."
+				"description": "Allow Zoo to read files outside the current workspace without requiring approval."
 			}
 		},
 		"write": {
@@ -300,20 +297,16 @@
 			"delayLabel": "Delay after writes to allow diagnostics to detect potential problems",
 			"outsideWorkspace": {
 				"label": "Include files outside workspace",
-				"description": "Allow Dio to create and edit files outside the current workspace without requiring approval."
+				"description": "Allow Zoo to create and edit files outside the current workspace without requiring approval."
 			},
 			"protected": {
 				"label": "Include protected files",
-				"description": "Allow Dio to create and edit protected files (like .rooignore and .roo/ configuration files) without requiring approval."
+				"description": "Allow Zoo to create and edit protected files (like .rooignore and .roo/ configuration files) without requiring approval."
 			}
 		},
 		"mcp": {
 			"label": "MCP",
 			"description": "Enable auto-approval of individual MCP tools in the MCP Servers view (requires both this setting and the tool's individual \"Always allow\" checkbox)"
-		},
-		"roopik": {
-			"label": "Roopik",
-			"description": "Automatically approve Roopik IDE tools for browser preview, CSS inspection, canvas, and component and project management"
 		},
 		"modeSwitch": {
 			"label": "Mode",
@@ -377,7 +370,7 @@
 		"searchProviderPlaceholder": "Search providers",
 		"noProviderMatchFound": "No providers found",
 		"noMatchFound": "No matching profiles found",
-		"retiredProviderMessage": "Sorry, this provider is no longer supported. We saw very few Roo users actually using it and we need to reduce the surface area of our codebase so we can keep shipping fast and serving our community well in this space. It was a really hard decision but it lets us focus on what matters most to you. It sucks, we know.",
+		"retiredProviderMessage": "This provider is no longer available. Select a supported provider to continue.",
 		"vscodeLmDescription": " The VS Code Language Model API allows you to run models provided by other VS Code extensions (including but not limited to GitHub Copilot). The easiest way to get started is to install the Copilot and Copilot Chat extensions from the VS Code Marketplace.",
 		"awsCustomArnUse": "Enter a valid Amazon Bedrock ARN for the model you want to use. Format examples:",
 		"awsCustomArnDesc": "Make sure the region in the ARN matches your selected AWS Region above.",
@@ -448,6 +441,9 @@
 		"vertex1MContextBetaDescription": "Extends context window to 1 million tokens for Claude Sonnet 4.x / Claude Opus 4.6",
 		"basetenApiKey": "Baseten API Key",
 		"getBasetenApiKey": "Get Baseten API Key",
+		"poeApiKey": "Poe API Key",
+		"getPoeApiKey": "Get Poe API Key",
+		"poeBaseUrl": "Poe Base URL",
 		"fireworksApiKey": "Fireworks API Key",
 		"getFireworksApiKey": "Get Fireworks API Key",
 		"deepSeekApiKey": "DeepSeek API Key",
@@ -524,7 +520,7 @@
 			"draftModelDesc": "Draft model must be from the same model family for speculative decoding to work correctly.",
 			"selectDraftModel": "Select Draft Model",
 			"noModelsFound": "No draft models found. Please ensure LM Studio is running with Server Mode enabled.",
-			"description": "LM Studio allows you to run models locally on your computer. For instructions on how to get started, see their <a>quickstart guide</a>. You will also need to start LM Studio's <b>local server</b> feature to use it with this extension. <span>Note:</span> Dio Code uses complex prompts and works best with Claude models. Less capable models may not work as expected."
+			"description": "LM Studio allows you to run models locally on your computer. For instructions on how to get started, see their <a>quickstart guide</a>. You will also need to start LM Studio's <b>local server</b> feature to use it with this extension. <span>Note:</span> Zoo Code uses complex prompts and works best with Claude models. Less capable models may not work as expected."
 		},
 		"ollama": {
 			"baseUrl": "Base URL (optional)",
@@ -534,11 +530,7 @@
 			"numCtx": "Context Window Size (num_ctx)",
 			"numCtxHelp": "Override the model's default context window size. Leave empty to use the model's Modelfile configuration. Minimum value is 128.",
 			"description": "Ollama allows you to run models locally on your computer. For instructions on how to get started, see their quickstart guide.",
-			"warning": "Note: Dio Code uses complex prompts and works best with Claude models. Less capable models may not work as expected."
-		},
-		"roo": {
-			"authenticatedMessage": "Securely authenticated through your Code Cloud account.",
-			"connectButton": "Connect to Code Cloud"
+			"warning": "Note: Zoo Code uses complex prompts and works best with Claude models. Less capable models may not work as expected."
 		},
 		"openRouter": {
 			"providerRouting": {
@@ -548,7 +540,7 @@
 			}
 		},
 		"customModel": {
-			"capabilities": "Configure the capabilities and pricing for your custom OpenAI-compatible model. Be careful when specifying the model capabilities, as they can affect how Dio Code performs.",
+			"capabilities": "Configure the capabilities and pricing for your custom OpenAI-compatible model. Be careful when specifying the model capabilities, as they can affect how Zoo Code performs.",
 			"maxTokens": {
 				"label": "Max Output Tokens",
 				"description": "Maximum number of tokens the model can generate in a response. (Specify -1 to allow the server to set the max tokens.)"
@@ -595,7 +587,7 @@
 		},
 		"consecutiveMistakeLimit": {
 			"label": "Error & Repetition Limit",
-			"description": "Number of consecutive errors or repeated actions before showing 'Dio is having trouble' dialog. Set to 0 to disable this safety mechanism (it will never trigger).",
+			"description": "Number of consecutive errors or repeated actions before showing 'Zoo is having trouble' dialog. Set to 0 to disable this safety mechanism (it will never trigger).",
 			"unlimitedDescription": "Unlimited retries enabled (auto-proceed). The dialog will never appear.",
 			"warning": "⚠️ Setting to 0 allows unlimited retries which may consume significant API usage"
 		},
@@ -631,18 +623,18 @@
 		},
 		"enable": {
 			"label": "Enable automatic checkpoints",
-			"description": "When enabled, Dio will automatically create checkpoints during task execution, making it easy to review changes or revert to earlier states. <0>Learn more</0>"
+			"description": "When enabled, Zoo will automatically create checkpoints during task execution, making it easy to review changes or revert to earlier states. <0>Learn more</0>"
 		}
 	},
 	"notifications": {
 		"sound": {
 			"label": "Enable sound effects",
-			"description": "When enabled, Dio will play sound effects for notifications and events.",
+			"description": "When enabled, Zoo will play sound effects for notifications and events.",
 			"volumeLabel": "Volume"
 		},
 		"tts": {
 			"label": "Enable text-to-speech",
-			"description": "When enabled, Dio will read aloud its responses using text-to-speech.",
+			"description": "When enabled, Zoo will read aloud its responses using text-to-speech.",
 			"speedLabel": "Speed"
 		}
 	},
@@ -650,7 +642,7 @@
 		"description": "Control what information is included in the AI's context window, affecting token usage and response quality",
 		"autoCondenseContextPercent": {
 			"label": "Threshold to trigger intelligent context condensing",
-			"description": "When the context window reaches this threshold, Dio will automatically condense it."
+			"description": "When the context window reaches this threshold, Zoo will automatically condense it."
 		},
 		"condensingApiConfiguration": {
 			"label": "API Configuration for Context Condensing",
@@ -666,7 +658,7 @@
 		},
 		"autoCondenseContext": {
 			"name": "Automatically trigger intelligent context condensing",
-			"description": "When enabled, Dio will automatically condense the context when the threshold is reached. When disabled, you can still manually trigger context condensing."
+			"description": "When enabled, Zoo will automatically condense the context when the threshold is reached. When disabled, you can still manually trigger context condensing."
 		},
 		"openTabs": {
 			"label": "Open tabs context limit",
@@ -686,7 +678,7 @@
 		},
 		"maxReadFile": {
 			"label": "File read auto-truncate threshold",
-			"description": "Dio reads this number of lines when the model omits start/end values. If this number is less than the file's total, Dio generates a line number index of code definitions. Special cases: -1 instructs Dio to read the entire file (without indexing), and 0 instructs it to read no lines and provides line indexes only for minimal context. Lower values minimize initial context usage, enabling precise subsequent line-range reads. Explicit start/end requests are not limited by this setting.",
+			"description": "Zoo reads this number of lines when the model omits start/end values. If this number is less than the file's total, Zoo generates a line number index of code definitions. Special cases: -1 instructs Zoo to read the entire file (without indexing), and 0 instructs it to read no lines and provides line indexes only for minimal context. Lower values minimize initial context usage, enabling precise subsequent line-range reads. Explicit start/end requests are not limited by this setting.",
 			"lines": "lines",
 			"always_full_read": "Always read entire file"
 		},
@@ -753,15 +745,15 @@
 		},
 		"outputLineLimit": {
 			"label": "Terminal output limit",
-			"description": "Keeps the first and last lines and drops the middle to stay under the limit. Lower to save tokens; raise to give Dio more middle detail. Dio sees a placeholder where the content is skipped.<0>Learn more</0>"
+			"description": "Keeps the first and last lines and drops the middle to stay under the limit. Lower to save tokens; raise to give Zoo more middle detail. Zoo sees a placeholder where the content is skipped.<0>Learn more</0>"
 		},
 		"outputCharacterLimit": {
 			"label": "Terminal character limit",
-			"description": "Overrides the line limit to prevent memory issues by enforcing a hard cap on output size. If exceeded, keeps the beginning and end and shows a placeholder to Dio where content is skipped. <0>Learn more</0>"
+			"description": "Overrides the line limit to prevent memory issues by enforcing a hard cap on output size. If exceeded, keeps the beginning and end and shows a placeholder to Zoo where content is skipped. <0>Learn more</0>"
 		},
 		"outputPreviewSize": {
 			"label": "Command output preview size",
-			"description": "Controls how much command output Dio sees directly. Full output is always saved and accessible when needed.",
+			"description": "Controls how much command output Zoo sees directly. Full output is always saved and accessible when needed.",
 			"options": {
 				"small": "Small (5KB)",
 				"medium": "Medium (10KB)",
@@ -774,7 +766,7 @@
 		},
 		"shellIntegrationDisabled": {
 			"label": "Use Inline Terminal (recommended)",
-			"description": "Run commands in the Inline Terminal (chat) to bypass shell profiles/integration for faster, more reliable runs. When disabled Dio uses the VS Code terminal with your shell profile, prompts, and plugins. <0>Learn more</0>"
+			"description": "Run commands in the Inline Terminal (chat) to bypass shell profiles/integration for faster, more reliable runs. When disabled Zoo uses the VS Code terminal with your shell profile, prompts, and plugins. <0>Learn more</0>"
 		},
 		"commandDelay": {
 			"label": "Terminal command delay",
@@ -811,7 +803,7 @@
 	"advanced": {
 		"diff": {
 			"label": "Enable editing through diffs",
-			"description": "When enabled, Dio will be able to edit files more quickly and will automatically reject truncated full-file writes",
+			"description": "When enabled, Zoo will be able to edit files more quickly and will automatically reject truncated full-file writes",
 			"strategy": {
 				"label": "Diff strategy",
 				"options": {
@@ -828,7 +820,7 @@
 		},
 		"todoList": {
 			"label": "Enable todo list tool",
-			"description": "When enabled, Dio can create and manage todo lists to track task progress. This helps organize complex tasks into manageable steps."
+			"description": "When enabled, Zoo can create and manage todo lists to track task progress. This helps organize complex tasks into manageable steps."
 		}
 	},
 	"experimental": {
@@ -838,15 +830,15 @@
 		},
 		"INSERT_BLOCK": {
 			"name": "Use experimental insert content tool",
-			"description": "Enable the experimental insert content tool, allowing Dio to insert content at specific line numbers without needing to create a diff."
+			"description": "Enable the experimental insert content tool, allowing Zoo to insert content at specific line numbers without needing to create a diff."
 		},
 		"CONCURRENT_FILE_READS": {
 			"name": "Enable concurrent file reads",
-			"description": "When enabled, Dio can read multiple files in a single request. When disabled, Dio must read files one at a time. Disabling this can help when working with less capable models or when you want more control over file access."
+			"description": "When enabled, Zoo can read multiple files in a single request. When disabled, Zoo must read files one at a time. Disabling this can help when working with less capable models or when you want more control over file access."
 		},
 		"MULTI_SEARCH_AND_REPLACE": {
 			"name": "Use experimental multi block diff tool",
-			"description": "When enabled, Dio will use multi block diff tool. This will try to update multiple code blocks in the file in one request."
+			"description": "When enabled, Zoo will use multi block diff tool. This will try to update multiple code blocks in the file in one request."
 		},
 		"MARKETPLACE": {
 			"name": "Enable Marketplace",
@@ -854,7 +846,7 @@
 		},
 		"PREVENT_FOCUS_DISRUPTION": {
 			"name": "Background editing",
-			"description": "Prevent editor focus disruption when enabled. File edits happen in the background without opening diff views or stealing focus. You can continue working uninterrupted while Dio makes changes. Files can be opened without focus to capture diagnostics or kept closed entirely."
+			"description": "Prevent editor focus disruption when enabled. File edits happen in the background without opening diff views or stealing focus. You can continue working uninterrupted while Zoo makes changes. Files can be opened without focus to capture diagnostics or kept closed entirely."
 		},
 		"ASSISTANT_MESSAGE_PARSER": {
 			"name": "Use new message parser",
@@ -866,7 +858,7 @@
 		},
 		"IMAGE_GENERATION": {
 			"name": "Enable AI image generation",
-			"description": "When enabled, Dio can generate images from text prompts using image generation models.",
+			"description": "When enabled, Zoo can generate images from text prompts using image generation models.",
 			"providerLabel": "Provider",
 			"providerDescription": "Select which provider to use for image generation.",
 			"openRouterApiKeyLabel": "OpenRouter API Key",
@@ -879,11 +871,11 @@
 		},
 		"RUN_SLASH_COMMAND": {
 			"name": "Enable model-initiated slash commands",
-			"description": "When enabled, Roo can run your slash commands to execute workflows."
+			"description": "When enabled, Zoo can run your slash commands to execute workflows."
 		},
 		"CUSTOM_TOOLS": {
 			"name": "Enable custom tools",
-			"description": "When enabled, Dio can load and use custom TypeScript/JavaScript tools from your project's .roo/tools directory or ~/.roo/tools for global tools. Note: these tools will automatically be auto-approved.",
+			"description": "When enabled, Zoo can load and use custom TypeScript/JavaScript tools from your project's .roo/tools directory or ~/.roo/tools for global tools. Note: these tools will automatically be auto-approved.",
 			"toolsHeader": "Available Custom Tools",
 			"noTools": "No custom tools loaded. Add .ts or .js files to your project's .roo/tools directory or ~/.roo/tools for global tools.",
 			"refreshButton": "Refresh",
@@ -895,7 +887,7 @@
 	},
 	"promptCaching": {
 		"label": "Disable prompt caching",
-		"description": "When checked, Dio will not use prompt caching for this model."
+		"description": "When checked, Zoo will not use prompt caching for this model."
 	},
 	"temperature": {
 		"useCustom": "Use custom temperature",
@@ -925,7 +917,7 @@
 		}
 	},
 	"modelPicker": {
-		"automaticFetch": "The extension automatically fetches the latest list of models available on <serviceLink>{{serviceName}}</serviceLink>. If you're unsure which model to choose, Dio Code works best with <defaultModelLink>{{defaultModelId}}</defaultModelLink>. You can also try searching \"free\" for no-cost options currently available.",
+		"automaticFetch": "The extension automatically fetches the latest list of models available on <serviceLink>{{serviceName}}</serviceLink>. If you're unsure which model to choose, Zoo Code works best with <defaultModelLink>{{defaultModelId}}</defaultModelLink>. You can also try searching \"free\" for no-cost options currently available.",
 		"label": "Model",
 		"searchPlaceholder": "Search",
 		"noMatchFound": "No match found",
@@ -935,7 +927,7 @@
 	"footer": {
 		"telemetry": {
 			"label": "Allow anonymous error and usage reporting",
-			"description": "Help improve Dio Code by sending anonymous usage data and error reports. This telemetry does not collect code, prompts or personal information. See our <privacyLink>privacy policy</privacyLink> for more details."
+			"description": "Help improve Zoo Code by sending anonymous usage data and error reports. This telemetry does not collect code, prompts or personal information. See our <privacyLink>privacy policy</privacyLink> for more details."
 		},
 		"settings": {
 			"import": "Import",

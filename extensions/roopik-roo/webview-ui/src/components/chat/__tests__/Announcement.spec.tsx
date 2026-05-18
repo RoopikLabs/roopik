@@ -1,6 +1,7 @@
 import React from "react"
 
 import { render, screen } from "@/utils/test-utils"
+import { EXTERNAL_LINKS } from "@/constants/externalLinks"
 
 import Announcement from "../Announcement"
 
@@ -12,7 +13,7 @@ vi.mock("@src/utils/vscode", () => ({
 
 vi.mock("@roo/package", () => ({
 	Package: {
-		version: "3.51.0",
+		version: "3.53.0",
 	},
 }))
 
@@ -25,7 +26,13 @@ vi.mock("@vscode/webview-ui-toolkit/react", () => ({
 }))
 
 vi.mock("react-i18next", () => ({
-	Trans: ({ i18nKey }: { i18nKey: string }) => <span>{i18nKey}</span>,
+	Trans: ({ i18nKey, components }: { i18nKey: string; components?: Record<string, React.ReactElement> }) => {
+		if (i18nKey === "chat:announcement.support" && components?.githubLink) {
+			return React.cloneElement(components.githubLink, undefined, "GitHub")
+		}
+
+		return <span>{i18nKey}</span>
+	},
 }))
 
 vi.mock("@src/i18n/TranslationContext", () => ({
@@ -33,10 +40,13 @@ vi.mock("@src/i18n/TranslationContext", () => ({
 		t: (key: string, options?: { version?: string }) => {
 			const translations: Record<string, string> = {
 				"chat:announcement.release.heading": "What's New:",
-				"chat:announcement.release.gpt54":
-					"OpenAI GPT-5.4 Support: Added OpenAI GPT-5.4 and GPT-5.3 Chat Latest so you can use the newest OpenAI chat models in Roo Code.",
-				"chat:announcement.release.slashSkills":
-					"Slash Command Skills: Skills can now be exposed as slash commands with fallback execution for faster workflows.",
+				"chat:announcement.release.gpt55":
+					"GPT-5.5 via OpenAI Codex: Added GPT-5.5 support in the OpenAI Codex provider so you can use the latest model straight from Roo Code.",
+				"chat:announcement.release.claudeOpus47":
+					"Claude Opus 4.7 on Vertex AI: Added Claude Opus 4.7 to the Vertex AI provider for Anthropic's newest flagship reasoning model.",
+				"chat:announcement.release.checkpointNav":
+					"Previous Checkpoint Navigation: Added controls in chat to jump back through prior checkpoints, with full i18n support.",
+				"chat:announcement.handoff.heading": "The Roo Code plugin is not going away.",
 			}
 
 			if (key === "chat:announcement.title") {
@@ -49,25 +59,36 @@ vi.mock("@src/i18n/TranslationContext", () => ({
 }))
 
 describe("Announcement", () => {
-	it("renders the v3.51.0 announcement title and highlights", () => {
+	it("renders the v3.53.0 announcement title and highlights", () => {
 		render(<Announcement hideAnnouncement={vi.fn()} />)
 
-		expect(screen.getByText("Roo Code 3.51.0 Released")).toBeInTheDocument()
+		expect(screen.getByText("Roo Code 3.53.0 Released")).toBeInTheDocument()
 		expect(
 			screen.getByText(
-				"OpenAI GPT-5.4 Support: Added OpenAI GPT-5.4 and GPT-5.3 Chat Latest so you can use the newest OpenAI chat models in Roo Code.",
+				"GPT-5.5 via OpenAI Codex: Added GPT-5.5 support in the OpenAI Codex provider so you can use the latest model straight from Roo Code.",
 			),
 		).toBeInTheDocument()
 		expect(
 			screen.getByText(
-				"Slash Command Skills: Skills can now be exposed as slash commands with fallback execution for faster workflows.",
+				"Claude Opus 4.7 on Vertex AI: Added Claude Opus 4.7 to the Vertex AI provider for Anthropic's newest flagship reasoning model.",
+			),
+		).toBeInTheDocument()
+		expect(
+			screen.getByText(
+				"Previous Checkpoint Navigation: Added controls in chat to jump back through prior checkpoints, with full i18n support.",
 			),
 		).toBeInTheDocument()
 	})
 
-	it("renders exactly two release highlight bullets", () => {
+	it("renders exactly three release highlight bullets", () => {
 		render(<Announcement hideAnnouncement={vi.fn()} />)
 
-		expect(screen.getAllByRole("listitem")).toHaveLength(2)
+		expect(screen.getAllByRole("listitem")).toHaveLength(3)
+	})
+
+	it("links support users to the Zoo Code GitHub repository", () => {
+		render(<Announcement hideAnnouncement={vi.fn()} />)
+
+		expect(screen.getByRole("link", { name: "GitHub" })).toHaveAttribute("href", EXTERNAL_LINKS.GITHUB_REPO)
 	})
 })

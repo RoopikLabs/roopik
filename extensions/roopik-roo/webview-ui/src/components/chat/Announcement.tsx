@@ -7,6 +7,7 @@ import { Package } from "@roo/package"
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { vscode } from "@src/utils/vscode"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@src/components/ui"
+import { EXTERNAL_LINKS } from "@src/constants/externalLinks"
 
 interface AnnouncementProps {
 	hideAnnouncement: () => void
@@ -40,12 +41,34 @@ const Announcement = ({ hideAnnouncement }: AnnouncementProps) => {
 					<DialogTitle>{t("chat:announcement.title", { version: Package.version })}</DialogTitle>
 				</DialogHeader>
 				<div>
+					{/* Community Handoff Notice */}
+					<div className="mb-4 p-3 rounded border border-vscode-textLink-foreground/40 bg-vscode-textLink-foreground/5">
+						<p className="font-semibold mb-1.5 text-vscode-textLink-foreground">
+							{t("chat:announcement.handoff.heading")}
+						</p>
+						<p className="text-sm mb-2">
+							<Trans i18nKey="chat:announcement.handoff.description" components={{ bold: <strong /> }} />
+						</p>
+						<VSCodeLink
+							href="https://www.zoocode.dev?utm_source=zoocode&utm_medium=announcement&utm_campaign=community_handoff"
+							onClick={(e) => {
+								e.preventDefault()
+								vscode.postMessage({
+									type: "openExternal",
+									url: "https://www.zoocode.dev?utm_source=zoocode&utm_medium=announcement&utm_campaign=community_handoff",
+								})
+							}}>
+							{t("chat:announcement.handoff.readMore")}
+						</VSCodeLink>
+					</div>
+
 					{/* Regular Release Highlights */}
 					<div className="mb-4">
 						<p className="mb-3">{t("chat:announcement.release.heading")}</p>
 						<ul className="list-disc list-inside text-sm space-y-1.5">
-							<li>{t("chat:announcement.release.gpt54")}</li>
-							<li>{t("chat:announcement.release.slashSkills")}</li>
+							<li>{t("chat:announcement.release.gpt55")}</li>
+							<li>{t("chat:announcement.release.claudeOpus47")}</li>
+							<li>{t("chat:announcement.release.checkpointNav")}</li>
 						</ul>
 					</div>
 
@@ -54,33 +77,23 @@ const Announcement = ({ hideAnnouncement }: AnnouncementProps) => {
 							<SocialLink
 								icon={<SiX className="w-4 h-4" aria-hidden />}
 								label="X"
-								href="https://x.com/roocode"
+								href="https://x.com/ZooCodeDev"
 							/>
 							<SocialLink
 								icon={<SiDiscord className="w-4 h-4" aria-hidden />}
 								label="Discord"
-								href="https://discord.gg/rCQcvT7Fnt"
+								href="https://discord.gg/VxfP4Vx3gX"
 							/>
 							<SocialLink
 								icon={<SiReddit className="w-4 h-4" aria-hidden />}
 								label="Reddit"
-								href="https://www.reddit.com/r/RooCode/"
+								href="https://www.reddit.com/r/ZooCode/"
 							/>
 						</div>
 					</div>
 
 					<div className="mt-3 text-sm text-center text-vscode-descriptionForeground">
 						<Trans i18nKey="chat:announcement.support" components={{ githubLink: <GitHubLink /> }} />
-					</div>
-
-					{/* Careers Section */}
-					<div className="mt-2 text-sm text-center">
-						<Trans
-							i18nKey="chat:announcement.careers"
-							components={{
-								careersLink: <CareersLink />,
-							}}
-						/>
 					</div>
 				</div>
 			</DialogContent>
@@ -103,21 +116,10 @@ const SocialLink = ({ icon, label, href }: { icon: ReactNode; label: string; hre
 
 const GitHubLink = ({ children }: { children?: ReactNode }) => (
 	<VSCodeLink
-		href="https://github.com/RooCodeInc/Roo-Code"
+		href={EXTERNAL_LINKS.GITHUB_REPO}
 		onClick={(e) => {
 			e.preventDefault()
-			vscode.postMessage({ type: "openExternal", url: "https://github.com/RooCodeInc/Roo-Code" })
-		}}>
-		{children}
-	</VSCodeLink>
-)
-
-const CareersLink = ({ children }: { children?: ReactNode }) => (
-	<VSCodeLink
-		href="https://careers.roocode.com"
-		onClick={(e) => {
-			e.preventDefault()
-			vscode.postMessage({ type: "openExternal", url: "https://careers.roocode.com" })
+			vscode.postMessage({ type: "openExternal", url: EXTERNAL_LINKS.GITHUB_REPO })
 		}}>
 		{children}
 	</VSCodeLink>

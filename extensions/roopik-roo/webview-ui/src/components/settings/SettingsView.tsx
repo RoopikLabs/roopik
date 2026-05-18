@@ -524,7 +524,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 			{ id: "worktrees", icon: GitBranch },
 			{ id: "ui", icon: Glasses },
 			{ id: "experimental", icon: FlaskConical },
-			// { id: "language", icon: Globe }, // Disabled - English only
+			{ id: "language", icon: Globe },
 			{ id: "about", icon: Info },
 		],
 		[], // No dependencies needed now

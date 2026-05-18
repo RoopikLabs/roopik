@@ -285,7 +285,6 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 	})
 	const [skills, setSkills] = useState<SkillMetadata[]>([])
 	const [includeTaskHistoryInEnhance, setIncludeTaskHistoryInEnhance] = useState(true)
-	const [prevCloudIsAuthenticated, setPrevCloudIsAuthenticated] = useState(false)
 	const [includeCurrentTime, setIncludeCurrentTime] = useState(true)
 	const [includeCurrentCost, setIncludeCurrentCost] = useState(true)
 
@@ -475,17 +474,6 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 	useEffect(() => {
 		vscode.postMessage({ type: "webviewDidLaunch" })
 	}, [])
-
-	// Watch for authentication state changes and refresh Roo models
-	useEffect(() => {
-		const currentAuth = state.cloudIsAuthenticated ?? false
-		const currentProvider = state.apiConfiguration?.apiProvider
-		if (!prevCloudIsAuthenticated && currentAuth && currentProvider === "roo") {
-			// User just authenticated and Roo is the active provider - refresh Roo models
-			vscode.postMessage({ type: "requestRooModels" })
-		}
-		setPrevCloudIsAuthenticated(currentAuth)
-	}, [state.cloudIsAuthenticated, prevCloudIsAuthenticated, state.apiConfiguration?.apiProvider])
 
 	const contextValue: ExtensionStateContextType = {
 		...state,

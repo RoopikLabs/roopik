@@ -124,6 +124,7 @@ interface ChatRowProps {
 	isFollowUpAutoApprovalPaused?: boolean
 	editable?: boolean
 	hasCheckpoint?: boolean
+	onJumpToPreviousCheckpoint?: () => void
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -177,6 +178,7 @@ export const ChatRowContent = ({
 	onBatchFileResponse,
 	isFollowUpAnswered,
 	isFollowUpAutoApprovalPaused,
+	onJumpToPreviousCheckpoint,
 }: ChatRowContentProps) => {
 	const { t, i18n } = useTranslation()
 
@@ -1521,7 +1523,7 @@ export const ChatRowContent = ({
 								// Non-HTTP-status-code error message - store full text as errorDetails
 								body = t("chat:apiRequest.errorMessage.unknown")
 								docsURL =
-									"mailto:support@roopik.com?subject=Unknown API Error&body=[Please include full error details]"
+									"mailto:support@zoocode.dev?subject=Unknown API Error&body=[Please include full error details]"
 							}
 						}
 
@@ -1746,6 +1748,7 @@ export const ChatRowContent = ({
 							commitHash={message.text!}
 							currentHash={currentCheckpoint}
 							checkpoint={message.checkpoint}
+							onJumpToPreviousCheckpoint={onJumpToPreviousCheckpoint}
 						/>
 					)
 				case "condense_context":
