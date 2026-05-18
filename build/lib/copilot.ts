@@ -60,16 +60,7 @@ export function getCopilotExcludeFilter(platform: string, arch: string): string[
 	// resolves `node-pty` from VS Code's own node_modules via `hostRequire`.
 	const excludes = nonTargetPlatforms.map(p => `!**/node_modules/@github/copilot-${p}/**`);
 
-	// Strip wrong-architecture @anthropic-ai/claude-agent-sdk audio-capture binaries.
-	// audio-capture ships per-platform .node files under vendor/audio-capture/{arch-platform}/
-	// (note: reversed naming from copilot's {platform-arch}). Non-target platform .node
-	// files break Windows packaging because rcedit only understands Windows PE format.
-	const audioCaptureExcludes = nonTargetPlatforms.map(p => {
-		const [plat, ar] = p.split('-');
-		return `!**/node_modules/@anthropic-ai/claude-agent-sdk/vendor/audio-capture/${ar}-${plat}/**`;
-	});
-
-	return ['**', ...excludes, ...audioCaptureExcludes];
+	return ['**', ...excludes];
 }
 
 /**
