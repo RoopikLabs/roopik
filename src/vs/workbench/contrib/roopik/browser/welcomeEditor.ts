@@ -217,7 +217,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 	}
 
 	/**
-	 * Submit AI prompt to roopik-roo extension
+	 * Submit AI prompt to roopik-zoo extension
 	 *
 	 * Strategy: Use IViewsService.openView() to open the secondary sidebar (right side)
 	 *

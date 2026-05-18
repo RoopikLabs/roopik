@@ -1455,7 +1455,7 @@ export class CodeApplication extends Disposable {
 			console.error('[Roopik] Failed to start MCP Server:', error);
 		});
 
-		// ROOPIK: Tools Channel - Direct IPC for agent roopik-roo extension
+		// ROOPIK: Tools Channel - Direct IPC for agent roopik-zoo extension
 		// Provides faster, timeout-free access to IDE tools (alternative to MCP HTTP)
 		const roopikToolsChannel = new RoopikToolsChannel(
 			browserBackend,        // IBrowserBackend (embedded or external)
@@ -1465,7 +1465,7 @@ export class CodeApplication extends Disposable {
 			roopikStorageService   // IRoopikStorageService
 		);
 		mainProcessElectronServer.registerChannel(ROOPIK_TOOLS_CHANNEL_NAME, roopikToolsChannel);
-		// console.log('[Roopik] Tools Channel registered for agent roopik-roo IPC');
+		// console.log('[Roopik] Tools Channel registered for agent roopik-zoo IPC');
 		// ROOPIK END
 	}
 

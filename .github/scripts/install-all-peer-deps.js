@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const EXTENSION_DIR = join(__dirname, '../../extensions/roopik-roo');
+const EXTENSION_DIR = join(__dirname, '../../extensions/roopik-zoo');
 
 function findPackageJsonFiles(dir, depth = 0, maxDepth = 5) {
 	if (depth > maxDepth) return [];

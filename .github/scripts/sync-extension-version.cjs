@@ -3,7 +3,7 @@
 /**
  * Sync Extension Version Script
  *
- * Automatically syncs the extension version from extensions/roopik-roo/package.json
+ * Automatically syncs the extension version from extensions/roopik-zoo/package.json
  * to the builtInExtensions array in product.json.
  *
  * This ensures the IDE build downloads the correct version from the marketplace.
@@ -17,7 +17,7 @@ const path = require('path');
 
 const ROOT_DIR = path.join(__dirname, '..', '..');
 const PRODUCT_JSON_PATH = path.join(ROOT_DIR, 'product.json');
-const EXTENSION_PACKAGE_JSON_PATH = path.join(ROOT_DIR, 'extensions', 'roopik-roo', 'package.json');
+const EXTENSION_PACKAGE_JSON_PATH = path.join(ROOT_DIR, 'extensions', 'roopik-zoo', 'package.json');
 
 function syncVersion() {
 	try {

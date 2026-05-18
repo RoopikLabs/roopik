@@ -50,7 +50,7 @@ npm run gulp vscode-linux-x64       # Linux
 ### Building the Agent Dio Extension
 
 ```bash
-cd extensions/roopik-roo
+cd extensions/roopik-zoo
 npm install
 cd packages/types && npm install && npm run build && cd ../..
 cd packages/build && npm install && npm run build && cd ../..
@@ -76,7 +76,7 @@ npm run build
 ## Project Structure
 
 - `src/vs/workbench/contrib/roopik/` — Core Roopik features (Canvas, Project,Browser, MCP, tools)
-- `extensions/roopik-roo/` — Dio agent (built on Roo Code)
+- `extensions/roopik-zoo/` — Dio agent (built on Roo Code)
 
 ## License
 
