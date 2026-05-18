@@ -3,7 +3,7 @@
 /**
  * Sync Extension Version Script
  *
- * Automatically syncs the extension version from extensions/roopik-roo/package.json
+ * Automatically syncs the extension version from extensions/roopik-zoo/package.json
  * to the builtInExtensions array in product.json.
  *
  * This ensures the IDE build downloads the correct version from the marketplace.
@@ -17,7 +17,7 @@ const path = require('path');
 
 const ROOT_DIR = path.join(__dirname, '..', '..');
 const PRODUCT_JSON_PATH = path.join(ROOT_DIR, 'product.json');
-const EXTENSION_PACKAGE_JSON_PATH = path.join(ROOT_DIR, 'extensions', 'roopik-roo', 'package.json');
+const EXTENSION_PACKAGE_JSON_PATH = path.join(ROOT_DIR, 'extensions', 'roopik-zoo', 'package.json');
 
 function syncVersion() {
 	try {
@@ -33,15 +33,15 @@ function syncVersion() {
 		// Read product.json
 		const productJson = JSON.parse(fs.readFileSync(PRODUCT_JSON_PATH, 'utf8'));
 
-		// Find the roopik.roodio extension in builtInExtensions
-		const roodioExtension = productJson.builtInExtensions?.find(ext => ext.name === 'roopik.roodio');
+		// Find the roopik.roopik-zoo extension in builtInExtensions
+		const roopikZooExtension = productJson.builtInExtensions?.find(ext => ext.name === 'roopik.roopik-zoo');
 
-		if (!roodioExtension) {
-			console.error('Error: Could not find roopik.roodio extension in product.json builtInExtensions');
+		if (!roopikZooExtension) {
+			console.error('Error: Could not find roopik.roopik-zoo extension in product.json builtInExtensions');
 			process.exit(1);
 		}
 
-		const currentProductVersion = roodioExtension.version;
+		const currentProductVersion = roopikZooExtension.version;
 
 		if (currentProductVersion === extensionVersion) {
 			console.log(`Versions already in sync: ${extensionVersion}`);
@@ -49,7 +49,7 @@ function syncVersion() {
 		}
 
 		// Update the version
-		roodioExtension.version = extensionVersion;
+		roopikZooExtension.version = extensionVersion;
 
 		// Write back to product.json
 		fs.writeFileSync(PRODUCT_JSON_PATH, JSON.stringify(productJson, null, '\t') + '\n', 'utf8');

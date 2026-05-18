@@ -608,7 +608,7 @@ export class CanvasPanel implements vscode.Disposable {
 		}
 
 		try {
-			await vscode.commands.executeCommand('roodio.externalContext', {
+			await vscode.commands.executeCommand('roopik-zoo.externalContext', {
 				promptText: lines.join('\n'),
 				images,
 				autoSend: payload.autoSend === true,

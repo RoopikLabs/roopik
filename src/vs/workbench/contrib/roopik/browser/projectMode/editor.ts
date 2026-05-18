@@ -615,13 +615,13 @@ export class Editor extends EditorPane {
 			}
 
 			// Send to AI agent
-			await this.viewsService.openView('roodio.ChatPanel', true);
+			await this.viewsService.openView('roopik-zoo.ChatPanel', true);
 
 			// Small delay to ensure view is mounted
 			await new Promise(resolve => setTimeout(resolve, 300));
 
 			// Send clipped screenshot to AI agent with empty context
-			await this.commandService.executeCommand('roodio.externalContext', {
+			await this.commandService.executeCommand('roopik-zoo.externalContext', {
 				promptText: '',
 				autoSend: false,
 				images: [dataUrl]
@@ -657,7 +657,7 @@ export class Editor extends EditorPane {
 
 		try {
 			// Open chat panel (ensures extension is activated)
-			await this.viewsService.openView('roodio.ChatPanel', true);
+			await this.viewsService.openView('roopik-zoo.ChatPanel', true);
 
 			// Small delay to ensure view is mounted
 			await new Promise(resolve => setTimeout(resolve, 300));
@@ -695,7 +695,7 @@ export class Editor extends EditorPane {
 			contextText += `\nHTML:\n\`\`\`html\n${message.html}\n\`\`\``;
 
 			// Send to AI agent with optional screenshot (autoSend = true - send immediately since user typed a message)
-			await this.commandService.executeCommand('roodio.externalContext', {
+			await this.commandService.executeCommand('roopik-zoo.externalContext', {
 				promptText: contextText,
 				images: elementScreenshot ? [elementScreenshot] : undefined,
 				autoSend: true
@@ -718,7 +718,7 @@ export class Editor extends EditorPane {
 
 		try {
 			// Open chat panel (ensures extension is activated)
-			await this.viewsService.openView('roodio.ChatPanel', true);
+			await this.viewsService.openView('roopik-zoo.ChatPanel', true);
 
 			// Small delay to ensure view is mounted
 			await new Promise(resolve => setTimeout(resolve, 300));
@@ -759,7 +759,7 @@ export class Editor extends EditorPane {
 
 			// Send to AI agent as context with optional screenshot
 			// The command accepts images as an array of data URLs
-			await this.commandService.executeCommand('roodio.externalContext', {
+			await this.commandService.executeCommand('roopik-zoo.externalContext', {
 				promptText: contextText,
 				images: elementScreenshot ? [elementScreenshot] : undefined,
 				autoSend: false
@@ -2269,7 +2269,7 @@ export class Editor extends EditorPane {
 			const dataUrl = await this.browserService.takeScreenshot(this.browserViewId);
 
 			// Send to AI agent
-			await this.viewsService.openView('roodio.ChatPanel', true);
+			await this.viewsService.openView('roopik-zoo.ChatPanel', true);
 
 			// Small delay to ensure view is mounted
 			await new Promise(resolve => setTimeout(resolve, 300));
@@ -2280,7 +2280,7 @@ export class Editor extends EditorPane {
 			// Build prompt with context and send screenshot to AI agent
 			const contextInfo = `Browser Screenshot\nURL: ${currentUrl}`;
 
-			await this.commandService.executeCommand('roodio.externalContext', {
+			await this.commandService.executeCommand('roopik-zoo.externalContext', {
 				promptText: contextInfo,
 				autoSend: false,
 				images: [dataUrl]
