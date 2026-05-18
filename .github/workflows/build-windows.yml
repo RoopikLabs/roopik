@@ -58,8 +58,8 @@ jobs:
       - name: Generate DOM whitelist from MDN
         run: node build/scripts/generateDOMWhitelist.mjs
 
-      - name: Install roopik-roo extension dependencies
-        working-directory: extensions/roopik-roo
+      - name: Install roopik-zoo extension dependencies
+        working-directory: extensions/roopik-zoo
         shell: bash
         run: |
           if ! npm install; then
@@ -69,23 +69,23 @@ jobs:
           fi
 
       - name: Install @roo-code/types dependencies
-        working-directory: extensions/roopik-roo/packages/types
+        working-directory: extensions/roopik-zoo/packages/types
         run: npm install
 
       - name: Build @roo-code/types package
-        working-directory: extensions/roopik-roo/packages/types
+        working-directory: extensions/roopik-zoo/packages/types
         run: npm run build
 
       - name: Install @roo-code/build dependencies
-        working-directory: extensions/roopik-roo/packages/build
+        working-directory: extensions/roopik-zoo/packages/build
         run: npm install
 
       - name: Build @roo-code/build package
-        working-directory: extensions/roopik-roo/packages/build
+        working-directory: extensions/roopik-zoo/packages/build
         run: npm run build
 
-      - name: Create .env file for roopik-roo
-        working-directory: extensions/roopik-roo
+      - name: Create .env file for roopik-zoo
+        working-directory: extensions/roopik-zoo
         shell: bash
         env:
           ROO_CODE_API_URL: ${{ secrets.ROO_CODE_API_URL || 'https://app.roocode.com' }}
@@ -98,8 +98,8 @@ jobs:
           POSTHOG_API_KEY=${POSTHOG_API_KEY}
           EOF
 
-      - name: Build roopik-roo extension
-        working-directory: extensions/roopik-roo
+      - name: Build roopik-zoo extension
+        working-directory: extensions/roopik-zoo
         run: npm run build
 
       - name: Install roopik extension dependencies (skip postinstall)
