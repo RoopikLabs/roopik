@@ -82,7 +82,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 			// Show the auxiliary bar (right sidebar) first
 			this.layoutService.setPartHidden(false, Parts.AUXILIARYBAR_PART);
 			// Then open the chat panel view
-			this.viewsService.openView('roodio.ChatPanel', false).catch(() => {
+			this.viewsService.openView('roopik-zoo.ChatPanel', false).catch(() => {
 				// Agent not available - ignore silently
 			});
 		}, 1500);
@@ -226,14 +226,14 @@ export class RoopikWelcomeEditor extends EditorPane {
 	 * 2. Waits for the view to be created and visible
 	 * 3. Returns the view instance (or null if failed)
 	 *
-	 * We open roodio.ChatPanel (right side auxiliary bar) instead of
-	 * roodio.SidebarProvider (left activity bar) as the preferred default.
+	 * We open roopik-zoo.ChatPanel (right side auxiliary bar) instead of
+	 * roopik-zoo.SidebarProvider (left activity bar) as the preferred default.
 	 */
 	private async submitAiPrompt(promptText: string): Promise<void> {
 		try {
 			// Use IViewsService to open the ChatPanel in the secondary sidebar (right side)
 			// This activates the extension and waits for the view to be ready
-			const view = await this.viewsService.openView('roodio.ChatPanel', true);
+			const view = await this.viewsService.openView('roopik-zoo.ChatPanel', true);
 
 			if (!view) {
 				console.debug('AI agent view not available');
@@ -246,7 +246,7 @@ export class RoopikWelcomeEditor extends EditorPane {
 			await new Promise(resolve => setTimeout(resolve, 500));
 
 			// Now send the message - webview should be ready
-			await this.commandService.executeCommand('roodio.externalContext', {
+			await this.commandService.executeCommand('roopik-zoo.externalContext', {
 				promptText: promptText,
 				autoSend: true,
 			});

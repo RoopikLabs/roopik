@@ -260,9 +260,9 @@ configurationRegistry.registerConfiguration({
 			description: nls.localize('interactiveSession.editor.lineHeight', "Controls the line height in pixels in chat codeblocks. Use 0 to compute the line height from the font size."),
 			default: 0
 		},
-		'roodio.titleBarIcon.enabled': {
+		'roopik-zoo.titleBarIcon.enabled': {
 			type: 'boolean',
-			description: nls.localize('roodio.titleBarIcon.enabled', "Controls whether the Roo Dio chat icon is shown in the title bar."),
+			description: nls.localize('roopik-zoo.titleBarIcon.enabled', "Controls whether the Roopik Zoo chat icon is shown in the title bar."),
 			default: true
 		},
 
