@@ -443,8 +443,23 @@ function patchWin32DependenciesTask(destinationFolderName: string) {
 
 		const patchPromises = deps.map<Promise<unknown>>(async dep => {
 			const basename = path.basename(dep);
+			const fullPath = path.join(cwd, dep);
 
-			await rcedit(path.join(cwd, dep), {
+			// Roopik: rcedit.exe only handles Windows PE-format binaries. Skip any
+			// file whose first two bytes are not 'MZ' (Mach-O / ELF prebuilds from
+			// cross-platform deps would otherwise crash the packaging step).
+			const handle = await fs.promises.open(fullPath, 'r');
+			try {
+				const header = Buffer.alloc(2);
+				await handle.read(header, 0, 2, 0);
+				if (header[0] !== 0x4D || header[1] !== 0x5A) {
+					return;
+				}
+			} finally {
+				await handle.close();
+			}
+
+			await rcedit(fullPath, {
 				'file-version': baseVersion,
 				'version-string': {
 					'CompanyName': 'Microsoft Corporation',
