@@ -1,0 +1,135 @@
+name: Release - Publish
+
+on:
+  workflow_run:
+    workflows: [ "Build Linux", "Build macOS", "Build Windows" ]
+    types: [ completed ]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          startsWith(github.event.workflow_run.head_branch, 'v') }}
+    steps:
+      - name: Resolve tag from triggering run
+        id: tag
+        run: |
+          TAG="${{ github.event.workflow_run.head_branch }}"
+          SHA="${{ github.event.workflow_run.head_sha }}"
+          echo "tag=$TAG"  >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA"  >> "$GITHUB_OUTPUT"
+          echo "Triggered by run for tag $TAG at $SHA"
+
+      - name: Checkout at tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.tag.outputs.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify all three platform builds succeeded for this tag
+        id: verify
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const tag = '${{ steps.tag.outputs.tag }}';
+            const sha = '${{ steps.tag.outputs.sha }}';
+            const required = ['Build Linux', 'Build macOS', 'Build Windows'];
+
+            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head_sha: sha,
+              per_page: 100,
+            });
+
+            const status = {};
+            for (const name of required) {
+              const run = runs.find(r => r.name === name);
+              status[name] = run ? run.conclusion : null;
+            }
+
+            core.info('Platform build status for ' + tag + ':');
+            for (const [k, v] of Object.entries(status)) core.info('  ' + k + ': ' + (v ?? 'not-found'));
+
+            const allGreen = required.every(n => status[n] === 'success');
+            const anyFailed = required.some(n => status[n] === 'failure' || status[n] === 'cancelled');
+            core.setOutput('all_green', allGreen);
+            core.setOutput('any_failed', anyFailed);
+
+            if (anyFailed) {
+              core.setFailed('At least one platform build failed for ' + tag + '. Release skipped.');
+              return;
+            }
+            if (!allGreen) {
+              core.notice('Not all platform builds for ' + tag + ' are finished yet. Waiting for the others.');
+            }
+
+      - name: Download Linux artifacts
+        if: steps.verify.outputs.all_green == 'true'
+        uses: dawidd6/action-download-artifact@v11
+        with:
+          workflow: build-linux.yml
+          commit: ${{ steps.tag.outputs.sha }}
+          name: roopik-linux-release
+          path: dist/linux
+          if_no_artifact_found: fail
+
+      - name: Download Linux archive artifact
+        if: steps.verify.outputs.all_green == 'true'
+        uses: dawidd6/action-download-artifact@v11
+        with:
+          workflow: build-linux.yml
+          commit: ${{ steps.tag.outputs.sha }}
+          name: roopik-linux-archive
+          path: dist/linux
+          if_no_artifact_found: warn
+
+      - name: Download macOS artifacts
+        if: steps.verify.outputs.all_green == 'true'
+        uses: dawidd6/action-download-artifact@v11
+        with:
+          workflow: build-macos.yml
+          commit: ${{ steps.tag.outputs.sha }}
+          name: roopik-macos-release
+          path: dist/macos
+          if_no_artifact_found: fail
+
+      - name: Download Windows artifacts
+        if: steps.verify.outputs.all_green == 'true'
+        uses: dawidd6/action-download-artifact@v11
+        with:
+          workflow: build-windows.yml
+          commit: ${{ steps.tag.outputs.sha }}
+          name: roopik-windows-release
+          path: dist/windows
+          if_no_artifact_found: fail
+
+      - name: List collected artifacts
+        if: steps.verify.outputs.all_green == 'true'
+        run: |
+          echo "Artifacts to attach to release:"
+          find dist -type f | sort
+
+      - name: Create or update GitHub Release
+        if: steps.verify.outputs.all_green == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; uploading assets with --clobber."
+            gh release upload "$TAG" dist/linux/* dist/macos/* dist/windows/* --clobber
+          else
+            gh release create "$TAG" \
+              --title "Roopik $TAG" \
+              --generate-notes \
+              --latest \
+              dist/linux/* dist/macos/* dist/windows/*
+          fi

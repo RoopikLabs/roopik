@@ -1,0 +1,279 @@
+name: Build Linux
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch: # Manual trigger
+
+concurrency:
+  group: build-linux-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  VSCODE_QUALITY: stable
+
+jobs:
+  build-linux-x64:
+    name: Build Linux (x64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Setup Python 3
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install tsx (TypeScript runner)
+        run: npm install -g tsx
+
+      - name: Setup GCC
+        uses: egor-tensin/setup-gcc@v1
+        with:
+          version: 10
+          platform: x64
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            dpkg-dev \
+            fakeroot \
+            build-essential \
+            pkg-config \
+            libkrb5-dev
+
+      - name: Run preinstall script manually
+        run: tsx build/npm/preinstall.ts
+
+      - name: Install dependencies (skip scripts)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm install --ignore-scripts
+
+      - name: Run postinstall script manually
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: tsx build/npm/postinstall.ts
+
+      - name: Install native module build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev \
+            libxkbfile-dev \
+            libkrb5-dev \
+            libsecret-1-dev
+
+      - name: Rebuild native modules
+        run: npm rebuild
+
+      - name: Generate DOM whitelist from MDN
+        run: node build/scripts/generateDOMWhitelist.mjs
+
+      - name: Install roopik-zoo extension dependencies
+        working-directory: extensions/roopik-zoo
+        run: |
+          if ! npm install; then
+            echo "Normal install failed, trying with --legacy-peer-deps..."
+            npm install --legacy-peer-deps
+            node ../../.github/scripts/install-all-peer-deps.js || true
+          fi
+
+      - name: Install @roo-code/types dependencies
+        working-directory: extensions/roopik-zoo/packages/types
+        run: npm install
+
+      - name: Build @roo-code/types package
+        working-directory: extensions/roopik-zoo/packages/types
+        run: npm run build
+
+      - name: Install @roo-code/build dependencies
+        working-directory: extensions/roopik-zoo/packages/build
+        run: npm install
+
+      - name: Build @roo-code/build package
+        working-directory: extensions/roopik-zoo/packages/build
+        run: npm run build
+
+      - name: Create .env file for roopik-zoo
+        working-directory: extensions/roopik-zoo
+        env:
+          ROO_CODE_API_URL: ${{ secrets.ROO_CODE_API_URL || 'https://app.roocode.com' }}
+          ROO_CODE_PROVIDER_URL: ${{ secrets.ROO_CODE_PROVIDER_URL || 'https://app.roocode.com/proxy/v1' }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY || '' }}
+        run: |
+          cat > .env << EOF
+          ROO_CODE_API_URL=${ROO_CODE_API_URL}
+          ROO_CODE_PROVIDER_URL=${ROO_CODE_PROVIDER_URL}
+          POSTHOG_API_KEY=${POSTHOG_API_KEY}
+          EOF
+
+      - name: Build roopik-zoo extension
+        working-directory: extensions/roopik-zoo
+        run: npm run build
+
+      - name: Install roopik extension dependencies (skip postinstall)
+        working-directory: extensions/roopik
+        run: npm install --ignore-scripts
+
+      - name: Install roopik webview dependencies
+        working-directory: extensions/roopik/webview
+        run: npm install
+
+      - name: Build roopik extension
+        working-directory: extensions/roopik
+        run: npm run build
+
+      - name: Build MCP STDIO binary (Linux)
+        working-directory: tools/roopik/mcp-stdio-server
+        run: |
+          npm ci
+          mkdir -p ../../../resources/mcp-binaries
+          npm run build:binary:linux
+
+      - name: Build Linux application (x64)
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          BUILD_SOURCEVERSION: ${{ github.sha }}
+        run: npm run gulp vscode-linux-x64
+
+      - name: Build DEB package (custom)
+        env:
+          APP_NAME: roopik
+          VSCODE_ARCH: x64
+          BUILD_SOURCEVERSION: ${{ github.sha }}
+        run: bash .github/build/linux/package_roopik_deb.sh
+        continue-on-error: true
+
+      - name: Prepare Linux release artifact
+        run: |
+          mkdir -p .artifacts/installer
+          mkdir -p .artifacts/public
+          mkdir -p .artifacts/archive
+
+          # Copy and rename portable version
+          cp -r ../VSCode-linux-x64 ./Roopik-Portable-linux-x64
+
+          # Copy DEB file if it exists
+          DEB_FILE=$(find .build/linux/deb -name "roopik_*.deb" -type f | head -n 1)
+          if [ -n "$DEB_FILE" ]; then
+            echo "Found DEB file: $DEB_FILE"
+            cp "$DEB_FILE" .artifacts/installer/
+            cp "$DEB_FILE" .artifacts/public/roopik-linux-latest.deb
+          else
+            echo "Warning: DEB file not found, skipping installer artifact"
+          fi
+
+          # Distro-agnostic tar.gz archive — for AUR (roopik-bin) and any
+          # non-Debian Linux user. Uploaded as a SEPARATE GitHub artifact.
+          TARBALL=".artifacts/archive/roopik-linux-x64-latest.tar.gz"
+          tar -czf "$TARBALL" -C .. VSCode-linux-x64
+          sha256sum "$TARBALL" | awk '{print $1}' > "${TARBALL}.sha256"
+
+          # List what we're uploading
+          echo "Artifact contents:"
+          ls -lah Roopik-Portable-linux-x64/
+          ls -lah .artifacts/
+          ls -lah .artifacts/archive/
+
+      - name: Upload Linux artifacts (x64)
+        uses: actions/upload-artifact@v6
+        with:
+          name: roopik-linux-release
+          path: |
+            .artifacts/public/
+            Roopik-Portable-linux-x64/
+          retention-days: 10
+
+      - name: Upload Linux archive artifact (x64)
+        uses: actions/upload-artifact@v6
+        with:
+          name: roopik-linux-archive
+          path: .artifacts/archive/
+          retention-days: 10
+
+      - name: Install AWS CLI
+        continue-on-error: true
+        run: |
+          python3 -m pip install --user awscli
+
+      - name: Upload Linux installer to R2
+        continue-on-error: true
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          set -euo pipefail
+          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          deb_file="$(find .artifacts/installer -name 'roopik_*.deb' -type f | head -n 1)"
+          if [ -z "$deb_file" ]; then
+            echo "DEB file not found in .artifacts/installer"
+            exit 1
+          fi
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          export AWS_EC2_METADATA_DISABLED=true
+
+          # Per-format folders so each install type has its own update channel.
+          # A .deb install must only ever see .deb updates; an arch/tarball
+          # install must only see tarball updates. They cannot share a manifest.
+          aws s3 cp "$deb_file" "s3://${R2_BUCKET}/linux/deb/roopik-linux-latest.deb" --endpoint-url "$endpoint" --no-progress
+          # Back-compat: keep the legacy path so already-installed clients
+          # pointing at linux/roopik-linux-latest.deb keep updating.
+          aws s3 cp "$deb_file" "s3://${R2_BUCKET}/linux/roopik-linux-latest.deb" --endpoint-url "$endpoint" --no-progress
+
+          tarball=".artifacts/archive/roopik-linux-x64-latest.tar.gz"
+          tarball_sha_file="${tarball}.sha256"
+          tarball_present=0
+          if [ -f "$tarball" ]; then
+            tarball_present=1
+            aws s3 cp "$tarball" "s3://${R2_BUCKET}/linux/archive/roopik-linux-x64-latest.tar.gz" --endpoint-url "$endpoint" --no-progress
+            aws s3 cp "$tarball_sha_file" "s3://${R2_BUCKET}/linux/archive/roopik-linux-x64-latest.tar.gz.sha256" --endpoint-url "$endpoint" --no-progress
+          else
+            echo "Tarball not found at $tarball, skipping tarball upload."
+          fi
+
+          if [ -z "${R2_PUBLIC_BASE_URL:-}" ]; then
+            echo "R2_PUBLIC_BASE_URL not set, skipping update manifest upload."
+            exit 0
+          fi
+
+          version="$(node -p "require('./package.json').version")"
+          commit="${{ github.sha }}"
+          deb_hash="$(sha256sum "$deb_file" | awk '{print tolower($1)}')"
+          pub_date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          base="${R2_PUBLIC_BASE_URL%/}"
+
+          # --- DEB channel manifest ---
+          deb_url="${base}/linux/deb/roopik-linux-latest.deb"
+          deb_json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$commit" "$version" "$deb_url" "$deb_hash" "$pub_date")"
+          printf '%s' "$deb_json" > latest-deb.json
+          aws s3 cp latest-deb.json "s3://${R2_BUCKET}/linux/deb/stable/latest.json" --endpoint-url "$endpoint" --no-progress
+          # Back-compat: legacy manifest path used by older installs.
+          aws s3 cp latest-deb.json "s3://${R2_BUCKET}/linux/stable/latest.json" --endpoint-url "$endpoint" --no-progress
+
+          # --- Archive (tar.gz) channel manifest ---
+          if [ "$tarball_present" = "1" ]; then
+            tarball_url="${base}/linux/archive/roopik-linux-x64-latest.tar.gz"
+            tarball_hash="$(sha256sum "$tarball" | awk '{print tolower($1)}')"
+            archive_json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$commit" "$version" "$tarball_url" "$tarball_hash" "$pub_date")"
+            printf '%s' "$archive_json" > latest-archive.json
+            aws s3 cp latest-archive.json "s3://${R2_BUCKET}/linux/archive/stable/latest.json" --endpoint-url "$endpoint" --no-progress
+          fi
+
