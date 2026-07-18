@@ -86,7 +86,7 @@ const rawGroupEntryArraySchema = z.array(groupEntrySchema).refine(
  * The type assertion to `z.ZodType<GroupEntry[], z.ZodTypeDef, GroupEntry[]>` is
  * required because `z.preprocess` erases the input type to `unknown`, which
  * propagates through `modeConfigSchema → rooCodeSettingsSchema → createRunSchema`
- * and breaks `zodResolver` generic inference in downstream consumers (e.g., web-evals).
+ * and breaks `zodResolver` generic inference in downstream consumers.
  */
 export const groupEntryArraySchema = z.preprocess((val) => {
 	if (!Array.isArray(val)) return val
@@ -102,6 +102,12 @@ export const modeConfigSchema = z.object({
 	customInstructions: z.string().optional(),
 	groups: groupEntryArraySchema,
 	source: z.enum(["global", "project"]).optional(),
+	allowedMcpServers: z
+		.array(z.string())
+		.describe(
+			"Optional list of MCP server names to include. When omitted, all servers are available. When set, only the listed servers are injected.",
+		)
+		.optional(),
 })
 
 export type ModeConfig = z.infer<typeof modeConfigSchema>

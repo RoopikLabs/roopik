@@ -20,7 +20,7 @@
 		"clean": "rimraf .turbo"
 	},
 	"dependencies": {
-		"@roo-code/types": "workspace:^",
+		"@roo-code/types": "file:../types",
 		"esbuild": "^0.28.1",
 		"execa": "^9.5.2",
 		"ignore": "^7.0.3",
@@ -28,8 +28,8 @@
 		"zod": "^3.25.61"
 	},
 	"devDependencies": {
-		"@roo-code/config-eslint": "workspace:^",
-		"@roo-code/config-typescript": "workspace:^",
+		"@roo-code/config-eslint": "file:../config-eslint",
+		"@roo-code/config-typescript": "file:../config-typescript",
 		"@types/node": "20.19.43",
 		"@vitest/coverage-v8": "4.1.9",
 		"vitest": "4.1.9"

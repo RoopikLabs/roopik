@@ -28,8 +28,8 @@
 		"zod": "3.25.76"
 	},
 	"devDependencies": {
-		"@roo-code/config-eslint": "workspace:^",
-		"@roo-code/config-typescript": "workspace:^",
+		"@roo-code/config-eslint": "file:../config-eslint",
+		"@roo-code/config-typescript": "file:../config-typescript",
 		"@types/node": "20.19.43",
 		"globals": "16.3.0",
 		"tsup": "8.5.1",

@@ -1,19 +1,18 @@
 import { z } from "zod"
 
-import { type Keys } from "./type-fu.js"
+import { codebaseIndexConfigSchema, codebaseIndexModelsSchema } from "./codebase-index.js"
+import { experimentsSchema } from "./experiment.js"
+import { historyItemSchema } from "./history.js"
+import { customModePromptsSchema, customSupportPromptsSchema, modeConfigSchema } from "./mode.js"
 import {
 	type ProviderSettings,
 	PROVIDER_SETTINGS_KEYS,
 	providerSettingsEntrySchema,
 	providerSettingsSchema,
 } from "./provider-settings.js"
-import { historyItemSchema } from "./history.js"
-import { codebaseIndexModelsSchema, codebaseIndexConfigSchema } from "./codebase-index.js"
-import { experimentsSchema } from "./experiment.js"
 import { telemetrySettingsSchema } from "./telemetry.js"
-import { modeConfigSchema } from "./mode.js"
-import { customModePromptsSchema, customSupportPromptsSchema } from "./mode.js"
 import { toolNamesSchema } from "./tool.js"
+import { type Keys } from "./type-fu.js"
 import { languagesSchema } from "./vscode.js"
 
 /**
@@ -22,6 +21,30 @@ import { languagesSchema } from "./vscode.js"
  * need time to automatically clean up unused imports.
  */
 export const DEFAULT_WRITE_DELAY_MS = 1000
+
+/**
+ * Default values for the "auto-close files Zoo opened" settings.
+ *
+ * These are defined once here and consumed by every site that reads the setting
+ * (DiffViewProvider save/revert, ClineProvider state serialization, and the
+ * UISettings checkboxes) so there is a single source of truth for the default
+ * behavior. Auto-closing edited tabs is opt-in: by default, files Zoo edits stay
+ * open in the editor (the long-standing behavior). Users who want to save
+ * context tokens by closing the edited tab after each edit can enable it.
+ */
+export const DEFAULT_AUTO_CLOSE_ZOO_OPENED_FILES = false
+export const DEFAULT_AUTO_CLOSE_ZOO_OPENED_FILES_AFTER_USER_EDITED = false
+export const DEFAULT_AUTO_CLOSE_ZOO_OPENED_NEW_FILES = false
+
+/**
+ * Default fuzzy matching threshold for the multi-search-replace diff strategy.
+ * A value of 1.0 (exact match) is used by default for safety, especially when
+ * auto-approval for writes is enabled. This prevents unintended changes from
+ * being applied due to minor mismatches. Users can lower this threshold manually
+ * in settings to reduce "Edit Unsuccessful" errors caused by minor whitespace
+ * or formatting differences, accepting a higher risk of unintended edits.
+ */
+export const DEFAULT_DIFF_FUZZY_THRESHOLD = 1.0
 
 /**
  * Terminal output preview size options for persisted command output.
@@ -89,7 +112,7 @@ export const globalSettingsSchema = z.object({
 	dismissedUpsells: z.array(z.string()).optional(),
 
 	// Image generation settings (experimental) - flattened for simplicity
-	imageGenerationProvider: z.enum(["openrouter", "roo"]).optional(),
+	imageGenerationProvider: z.enum(["openrouter"]).optional(),
 	openRouterImageApiKey: z.string().optional(),
 	openRouterImageGenerationSelectedModel: z.string().optional(),
 
@@ -102,6 +125,12 @@ export const globalSettingsSchema = z.object({
 	alwaysAllowWriteOutsideWorkspace: z.boolean().optional(),
 	alwaysAllowWriteProtected: z.boolean().optional(),
 	writeDelayMs: z.number().min(0).optional(),
+	/**
+	 * Fuzzy matching threshold for the multi-search-replace diff strategy.
+	 * Range: 0.5 (50% minimum similarity) to 1.0 (exact match only).
+	 * `@default` 1.0
+	 */
+	diffFuzzyThreshold: z.number().min(0.5).max(1).optional(),
 	requestDelaySeconds: z.number().optional(),
 	alwaysAllowMcp: z.boolean().optional(),
 	alwaysAllowRoopik: z.boolean().optional(),
@@ -177,9 +206,13 @@ export const globalSettingsSchema = z.object({
 	terminalZshOhMy: z.boolean().optional(),
 	terminalZshP10k: z.boolean().optional(),
 	terminalZdotdir: z.boolean().optional(),
+	terminalProfile: z.string().optional(),
 	execaShellPath: z.string().optional(),
 
 	diagnosticsEnabled: z.boolean().optional(),
+	autoCloseZooOpenedFiles: z.boolean().optional(),
+	autoCloseZooOpenedFilesAfterUserEdited: z.boolean().optional(),
+	autoCloseZooOpenedNewFiles: z.boolean().optional(),
 
 	rateLimitSeconds: z.number().optional(),
 	experiments: experimentsSchema.optional(),
@@ -202,6 +235,11 @@ export const globalSettingsSchema = z.object({
 	includeTaskHistoryInEnhance: z.boolean().optional(),
 	historyPreviewCollapsed: z.boolean().optional(),
 	reasoningBlockCollapsed: z.boolean().optional(),
+	/**
+	 * Font size (in pixels) for the Zoo Code chat/webview UI.
+	 * When unset (or `null`), the webview inherits VS Code's `--vscode-font-size`.
+	 */
+	chatFontSize: z.number().int().min(8).max(32).nullish(),
 	/**
 	 * Controls the keyboard behavior for sending messages in the chat input.
 	 * - "send": Enter sends message, Shift+Enter creates newline (default)
@@ -279,7 +317,10 @@ export const SECRET_STATE_KEYS = [
 	"sambaNovaApiKey",
 	"zaiApiKey",
 	"fireworksApiKey",
+	"friendliApiKey",
 	"vercelAiGatewayApiKey",
+	"opencodeGoApiKey",
+	"kenariApiKey",
 	"basetenApiKey",
 ] as const
 
@@ -312,74 +353,3 @@ export const GLOBAL_STATE_KEYS = [...GLOBAL_SETTINGS_KEYS, ...PROVIDER_SETTINGS_
 
 export const isGlobalStateKey = (key: string): key is Keys<GlobalState> =>
 	GLOBAL_STATE_KEYS.includes(key as Keys<GlobalState>)
-
-/**
- * Evals
- */
-
-// Default settings when running evals (unless overridden).
-export const EVALS_SETTINGS: RooCodeSettings = {
-	apiProvider: "openrouter",
-
-	lastShownAnnouncementId: "jul-09-2025-3-23-0",
-
-	pinnedApiConfigs: {},
-
-	autoApprovalEnabled: true,
-	alwaysAllowReadOnly: true,
-	alwaysAllowReadOnlyOutsideWorkspace: false,
-	alwaysAllowWrite: true,
-	alwaysAllowWriteOutsideWorkspace: false,
-	alwaysAllowWriteProtected: false,
-	writeDelayMs: 1000,
-	requestDelaySeconds: 10,
-	alwaysAllowMcp: true,
-	alwaysAllowRoopik: true,
-	alwaysAllowModeSwitch: true,
-	alwaysAllowSubtasks: true,
-	alwaysAllowExecute: true,
-	alwaysAllowFollowupQuestions: true,
-	followupAutoApproveTimeoutMs: 0,
-	allowedCommands: ["*"],
-	commandExecutionTimeout: 20,
-	commandTimeoutAllowlist: [],
-	preventCompletionWithOpenTodos: false,
-
-	ttsEnabled: false,
-	ttsSpeed: 1,
-	soundEnabled: false,
-	soundVolume: 0.5,
-
-	terminalShellIntegrationTimeout: 30000,
-	terminalCommandDelay: 0,
-	terminalPowershellCounter: false,
-	terminalZshOhMy: true,
-	terminalZshClearEolMark: true,
-	terminalZshP10k: false,
-	terminalZdotdir: true,
-	terminalShellIntegrationDisabled: true,
-
-	diagnosticsEnabled: true,
-
-	enableCheckpoints: false,
-
-	rateLimitSeconds: 0,
-	maxOpenTabsContext: 20,
-	maxWorkspaceFiles: 200,
-	maxGitStatusFiles: 20,
-	showRooIgnoredFiles: true,
-
-	includeDiagnosticMessages: true,
-	maxDiagnosticMessages: 50,
-
-	language: "en",
-	telemetrySetting: "disabled",
-
-	mcpEnabled: false,
-
-	mode: "code", // "architect",
-
-	customModes: [],
-}
-
-export const EVALS_TIMEOUT = 5 * 60 * 1_000

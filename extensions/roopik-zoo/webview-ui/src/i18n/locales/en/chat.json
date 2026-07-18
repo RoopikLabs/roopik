@@ -32,6 +32,14 @@
 		"title": "Start New Task",
 		"tooltip": "Begin a new task"
 	},
+	"seeNewChanges": {
+		"title": "See New Changes",
+		"tooltip": "View changes made since your last prompt"
+	},
+	"restoreChanges": {
+		"title": "Restore Changes",
+		"tooltip": "Restore files and task state to your last prompt"
+	},
 	"proceedAnyways": {
 		"title": "Proceed Anyways",
 		"tooltip": "Continue while command executes"
@@ -264,6 +272,7 @@
 		"running": "Running",
 		"pid": "PID: {{pid}}",
 		"exitStatus": "Exited with status {{exitCode}}",
+		"malformedCommand": "Malformed command: shell syntax error",
 		"manageCommands": "Auto-approved commands",
 		"addToAllowed": "Add to allowed list",
 		"removeFromAllowed": "Remove from allowed list",
@@ -349,16 +358,11 @@
 	"announcement": {
 		"title": "Zoo Code {{version}} Released",
 		"support": "Please support Zoo Code by starring us on <githubLink>GitHub</githubLink>.",
-		"handoff": {
-			"heading": "Roo Code is back! Now as a community-maintained plugin called Zoo Code!!",
-			"description": "If you haven't been following, the Roo Code team recently announced they are sun setting the development of Roo Code and are archiving the work they have done. But fear not, the community has stepped up to continue the legacy of Roo Code with a new name and a new home! We are not just a single \"Roo\" anymore, we are a community, a \"Zoo\" if you will, Zoo Code is a community-maintained plugin that picks up where Roo Code left off, and we're committed to keeping the spirit of Roo alive while also introducing new features and improvements. We want to give a huge shoutout to the entire Roo Code team for their incredible work and for creating such an amazing tool for developers. We're excited to continue building on their foundation and to see where the community takes Zoo Code in the future!",
-			"readMore": "See the new home page of Zoo Code and read the full announcement"
-		},
 		"release": {
 			"heading": "What's New:",
-			"gpt55": "GPT-5.5 via OpenAI Codex: Added GPT-5.5 support in the OpenAI Codex provider so you can use the latest model straight from Zoo Code.",
-			"claudeOpus47": "Claude Opus 4.7 on Vertex AI: Added Claude Opus 4.7 to the Vertex AI provider for Anthropic's newest flagship reasoning model.",
-			"checkpointNav": "Previous Checkpoint Navigation: Added controls in chat to jump back through prior checkpoints, with full i18n support."
+			"highlight1": "OpenAI GPT-5.6 family (Sol, Terra, Luna) — available across both the OpenAI Codex and OpenAI Native provider paths.",
+			"highlight2": "Grok 4.5 support — xAI's new flagship model, plus a reasoning-effort fix that also benefits Grok 4 Mini.",
+			"highlight3": "Kenari provider — a first-class OpenAI-compatible AI gateway billed in Rupiah, covering Claude, GPT, DeepSeek, GLM, Kimi and more."
 		},
 		"cloudAgents": {
 			"heading": "New in the Cloud:",

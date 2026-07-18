@@ -61,7 +61,7 @@ import { sanitizeToolUseId } from "../../utils/tool-id"
 
 export async function presentAssistantMessage(cline: Task) {
 	if (cline.abort) {
-		throw new Error(`[Task#presentAssistantMessage] task ${cline.taskId}.${cline.instanceId} aborted`)
+		return
 	}
 
 	if (cline.presentAssistantMessageLocked) {
@@ -1063,8 +1063,7 @@ export async function presentAssistantMessage(cline: Task) {
 		if (cline.currentStreamingContentIndex < cline.assistantMessageContent.length) {
 			// There are already more content blocks to stream, so we'll call
 			// this function ourselves.
-			presentAssistantMessage(cline)
-			return
+			return presentAssistantMessage(cline)
 		} else {
 			// CRITICAL FIX: If we're out of bounds and the stream is complete, set userMessageContentReady
 			// This handles the case where assistantMessageContent is empty or becomes empty after processing
@@ -1076,7 +1075,7 @@ export async function presentAssistantMessage(cline: Task) {
 
 	// Block is partial, but the read stream may have finished.
 	if (cline.presentAssistantMessageHasPendingUpdates) {
-		presentAssistantMessage(cline)
+		return presentAssistantMessage(cline)
 	}
 }
 

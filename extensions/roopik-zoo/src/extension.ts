@@ -1,16 +1,14 @@
 import * as vscode from "vscode"
-import * as dotenvx from "@dotenvx/dotenvx"
+import * as dotenv from "dotenv"
 import * as fs from "fs"
 import * as path from "path"
 
 // Load environment variables from .env file
 // The extension-level .env is optional (not shipped in production builds).
-// Avoid calling dotenvx when the file doesn't exist, otherwise dotenvx emits
-// a noisy [MISSING_ENV_FILE] error to the extension host console.
 const envPath = path.join(__dirname, "..", ".env")
 if (fs.existsSync(envPath)) {
 	try {
-		dotenvx.config({ path: envPath })
+		dotenv.config({ path: envPath })
 	} catch (e) {
 		// Best-effort only: never fail extension activation due to optional env loading.
 		console.warn("Failed to load environment variables:", e)
@@ -31,6 +29,7 @@ import { formatLanguage } from "./shared/language"
 import { ContextProxy } from "./core/config/ContextProxy"
 import { ClineProvider } from "./core/webview/ClineProvider"
 import { DIFF_VIEW_URI_SCHEME } from "./integrations/editor/DiffViewProvider"
+import { Terminal } from "./integrations/terminal/Terminal"
 import { TerminalRegistry } from "./integrations/terminal/TerminalRegistry"
 import { openAiCodexOAuthManager } from "./integrations/openai-codex/oauth"
 import { McpServerManager } from "./services/mcp/McpServerManager"
@@ -197,61 +196,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Initialize Roo Code Cloud service.
 	const postStateListener = () => ClineProvider.getVisibleInstance()?.postStateToWebviewWithoutClineMessages()
 
-	authStateChangedHandler = async (data: { state: AuthState; previousState: AuthState }) => {
+	authStateChangedHandler = async (_data: { state: AuthState; previousState: AuthState }) => {
 		postStateListener()
-
-		// Handle Roo models cache based on auth state (ROO-202)
-		const handleRooModelsCache = async () => {
-			try {
-				if (data.state === "active-session") {
-					// Refresh with auth token to get authenticated models
-					const sessionToken = CloudService.hasInstance()
-						? CloudService.instance.authService?.getSessionToken()
-						: undefined
-					await refreshModels({
-						provider: "roo",
-						baseUrl: process.env.ROO_CODE_PROVIDER_URL ?? "https://api.roocode.com/proxy",
-						apiKey: sessionToken,
-					})
-				} else {
-					// Flush without refresh on logout
-					await flushModels({ provider: "roo" }, false)
-				}
-			} catch (error) {
-				cloudLogger(
-					`[authStateChangedHandler] Failed to handle Roo models cache: ${error instanceof Error ? error.message : String(error)}`,
-				)
-			}
-		}
-
-		if (data.state === "active-session" || data.state === "logged-out") {
-			await handleRooModelsCache()
-
-			// Apply stored provider model to API configuration if present
-			if (data.state === "active-session") {
-				try {
-					const storedModel = context.globalState.get<string>("roo-provider-model")
-					if (storedModel) {
-						cloudLogger(`[authStateChangedHandler] Applying stored provider model: ${storedModel}`)
-						// Get the current API configuration name
-						const currentConfigName =
-							provider.contextProxy.getGlobalState("currentApiConfigName") || "default"
-						// Update it with the stored model using upsertProviderProfile
-						await provider.upsertProviderProfile(currentConfigName, {
-							apiProvider: "roo",
-							apiModelId: storedModel,
-						})
-						// Clear the stored model after applying
-						await context.globalState.update("roo-provider-model", undefined)
-						cloudLogger(`[authStateChangedHandler] Applied and cleared stored provider model`)
-					}
-				} catch (error) {
-					cloudLogger(
-						`[authStateChangedHandler] Failed to apply stored provider model: ${error instanceof Error ? error.message : String(error)}`,
-					)
-				}
-			}
-		}
 	}
 
 	settingsUpdatedHandler = async () => {
@@ -484,5 +430,6 @@ export async function deactivate() {
 
 	await McpServerManager.cleanup(extensionContext)
 	TelemetryService.instance.shutdown()
+	Terminal.setTerminalProfile(undefined)
 	TerminalRegistry.cleanup()
 }
