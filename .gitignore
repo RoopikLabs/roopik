@@ -3,18 +3,9 @@
 npm-debug.log
 Thumbs.db
 node_modules/
-.env
-.env.*
-!.env.example
+.tmp/
 .build/
-!.vscode/
-.vscode/*
-!.vscode/extensions/
-!.vscode/launch.json
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/notebooks/
-!.vscode/mcp.json
+/extensionsCG/
 .vscode/extensions/**/out/
 extensions/**/dist/
 src/vs/base/browser/ui/codicons/codicon/codicon.ttf
@@ -31,15 +22,19 @@ vscode.db
 /.profile-oss
 /cli/target
 /cli/openssl
+product.overrides.json
 *.snap.actual
 *.tsbuildinfo
+.eslintcache
 .vscode-test
+.chat-simulation-data
 vscode-telemetry-docs/
 test-output.json
 test/componentFixtures/.screenshots/*
 !test/componentFixtures/.screenshots/baseline/
 dist
 .playwright-cli
+.playwright-mcp
 .claude/
 .agents/agents/*.local.md
 .github/agents/*.local.md
@@ -53,6 +48,19 @@ dist
 .github/prompts/*.local.prompt.md
 .agents/skills/.local/
 .github/skills/.local/
+
+# ROOPIK: repo-local ignores carried from develop
+.env
+.env.*
+!.env.example
+!.vscode/
+.vscode/*
+!.vscode/extensions/
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/notebooks/
+!.vscode/mcp.json
 
 # Microsoft-specific CI/CD and automation (not needed for Roopik fork)
 .github/workflows/

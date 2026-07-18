@@ -1,4 +1,3 @@
-**/build/*/**/*.js
 **/dist/**/*
 **/extensions/**/*.d.ts
 **/extensions/**/build/**
@@ -31,7 +30,7 @@
 **/extensions/mermaid-markdown-features/markdown-preview-out/**
 **/extensions/mermaid-markdown-features/notebook-out/**
 **/extensions/notebook-renderers/renderer-out/index.js
-**/extensions/roopik-roo/**
+**/extensions/roopik-zoo/**
 **/extensions/simple-browser/media/index.js
 **/extensions/terminal-suggest/src/completions/upstream/**
 **/extensions/terminal-suggest/src/shell/zshBuiltinsCache.ts
@@ -51,9 +50,14 @@
 **/src/typings/**/*.d.ts
 **/src/vs/*/**/*.d.ts
 **/src/vs/base/test/common/filters.perf.data.js
+**/src/vs/platform/agentHost/node/codex/protocol/generated/**
 **/test/unit/assert.js
 **/test/automation/out/**
 **/typings/**
 **/.build/**
 **/.vscode-test/**
 !.vscode
+
+# Vendored third-party libraries
+src/vs/base/common/lit-html/**
+src/vs/base/common/signals-core/**

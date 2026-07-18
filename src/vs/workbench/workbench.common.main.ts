@@ -51,6 +51,7 @@ import './api/browser/viewsExtensionPoint.js';
 //#region --- workbench parts
 
 import './browser/parts/editor/editor.contribution.js';
+import './browser/parts/editor/diffEditor.workbench.contribution.js';
 import './browser/parts/editor/editorParts.js';
 import './browser/parts/paneCompositePartService.js';
 import './browser/parts/banner/bannerPart.js';
@@ -143,7 +144,8 @@ import './services/editor/common/customEditorLabelService.js';
 import './services/dataChannel/browser/dataChannelService.js';
 import './services/inlineCompletions/common/inlineCompletionsUnification.js';
 import './services/chat/common/chatEntitlementService.js';
-import './services/agentHost/common/agentHostPermissionService.js';
+import './services/agentHost/common/agentHostResourceService.js';
+import '../platform/agentHost/browser/agentHostConnectionsService.js';
 import './services/log/common/defaultLogLevels.js';
 
 import { InstantiationType, registerSingleton } from '../platform/instantiation/common/extensions.js';
@@ -225,9 +227,13 @@ import './contrib/roopik/browser/roopik.contribution.js';
 import './contrib/roopik/browser/roopikZooChatActions.js';  // ROOPIK AGENT CHAT ICON
 
 // Chat
+import './contrib/chat/browser/chat.shared.contribution.js';
 import './contrib/chat/browser/chat.contribution.js';
 import './contrib/chat/browser/chat.view.contribution.js';
 import './contrib/inlineChat/browser/inlineChat.contribution.js';
+
+// Copilot Voice
+import './contrib/agentsVoice/browser/agentsVoice.contribution.js';
 import './contrib/mcp/browser/mcp.contribution.js';
 import './contrib/mcp/browser/mcp.view.contribution.js';
 import './contrib/chat/browser/chatSessions/chatSessions.contribution.js';
@@ -334,6 +340,9 @@ import './contrib/externalTerminal/browser/externalTerminal.contribution.js';
 // Relauncher
 import './contrib/relauncher/browser/relauncher.contribution.js';
 
+// Style Overrides (experimental)
+import './contrib/styleOverrides/browser/styleOverrides.contribution.js';
+
 // Tasks
 import './contrib/tasks/browser/task.contribution.js';
 
@@ -387,6 +396,9 @@ import './contrib/welcomeViews/common/newFile.contribution.js';
 
 // Welcome Onboarding
 import './contrib/welcomeOnboarding/browser/welcomeOnboarding.contribution.js';
+
+// Onboarding (scenario engine)
+import './contrib/onboarding/browser/onboarding.contribution.js';
 
 // Call Hierarchy
 import './contrib/callHierarchy/browser/callHierarchy.contribution.js';
