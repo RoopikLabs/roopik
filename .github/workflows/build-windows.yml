@@ -137,6 +137,13 @@ jobs:
           ' sh {} \;
           find node_modules -type d \( -name linux -o -name darwin -o -name mac \) -exec rm -rf {} +
 
+      - name: Add Windows SDK signtool to PATH
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw 'signtool.exe not found under Windows Kits' }
+          Add-Content $env:GITHUB_PATH $signtool.DirectoryName
+
       - name: Build Windows application
         env:
           BUILD_SOURCEVERSION: ${{ github.sha }}
