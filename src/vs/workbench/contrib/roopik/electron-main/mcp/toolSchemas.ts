@@ -15,7 +15,7 @@
  * DRY Principle: Define once, use everywhere.
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v4';
 
 // ============================================================================
 // Common field: tabId (used by all browser tools that target a specific tab)
@@ -702,7 +702,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
 
 // ============================================================================
 // Helper: Convert to JSON Schema format for MCP protocol
-// Uses Zod v4 native .toJSONSchema() method
+// Uses zod v4's native z.toJSONSchema() (via the zod/v4 subpath shipped
+// inside upstream's zod 3.25.x pin)
 // ============================================================================
 
 export function getToolDefinitionsAsJsonSchema(): Array<{
@@ -713,7 +714,7 @@ export function getToolDefinitionsAsJsonSchema(): Array<{
 	return TOOL_DEFINITIONS.map(tool => ({
 		name: tool.name,
 		description: tool.description,
-		inputSchema: tool.schema.toJSONSchema() as Record<string, unknown>
+		inputSchema: z.toJSONSchema(tool.schema) as Record<string, unknown>
 	}));
 }
 
