@@ -78,7 +78,7 @@ if (process.arch !== os.arch()) {
 function hasSupportedVisualStudioVersion() {
 	// Translated over from
 	// https://source.chromium.org/chromium/chromium/src/+/master:build/vs_toolchain.py;l=140-175
-	const supportedVersions = ['2026', '2022', '2019'];
+	const supportedVersions = ['18', '2022', '2019'];
 
 	const availableVersions = [];
 	for (const version of supportedVersions) {
