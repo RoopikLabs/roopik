@@ -151,6 +151,8 @@ export function defaultBrowserWindowOptions(accessor: ServicesAccessor, windowSt
 		height: windowState.height,
 		webPreferences: {
 			...webPreferences,
+			// ROOPIK: Enable webview tag for Roopik browser preview
+			webviewTag: true,
 			enableWebSQL: false,
 			spellcheck: false,
 			zoomFactor: zoomLevelToZoomFactor(windowState.zoomLevel ?? windowSettings?.zoomLevel),

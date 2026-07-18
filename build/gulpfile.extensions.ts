@@ -51,6 +51,8 @@ function onExtensionCompilationEnd(): void {
 // 	ignore: ['**/out/**', '**/node_modules/**']
 // });
 const compilations = [
+	'extensions/roopik/tsconfig.json', // ROOPIK: Our canvas-first IDE extension,
+	'extensions/roopik-zoo/tsconfig.json', // ROOPIK DIO: AI agent integration,
 	'extensions/configuration-editing/tsconfig.json',
 	'extensions/css-language-features/client/tsconfig.json',
 	'extensions/css-language-features/server/tsconfig.json',

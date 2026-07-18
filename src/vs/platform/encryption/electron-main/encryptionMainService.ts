@@ -23,6 +23,11 @@ export class EncryptionMainService implements IEncryptionMainService {
 	constructor(
 		@ILogService private readonly logService: ILogService
 	) {
+		// Roopik: bypass macOS Keychain prompt for unsigned dev builds only.
+		if (isMacintosh && !app.isPackaged) {
+			safeStorage.setUsePlainTextEncryption?.(true);
+		}
+
 		// if this commandLine switch is set, the user has opted in to using basic text encryption
 		if (app.commandLine.getSwitchValue('password-store') === PasswordStoreCLIOption.basic) {
 			this.logService.trace('[EncryptionMainService] setting usePlainTextEncryption to true...');

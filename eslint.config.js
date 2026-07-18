@@ -1532,6 +1532,14 @@ export default defineConfig(
 					// - electron-main
 					'when': 'hasNode',
 					'allow': [
+						'@modelcontextprotocol/sdk',
+						'@modelcontextprotocol/sdk/server/mcp.js',
+						'@modelcontextprotocol/sdk/server/sse.js',
+						'esbuild-plugin-solid',
+						'esbuild-plugin-vue3',
+						'esbuild-svelte',
+						// ROOPIK: dependencies for Roopik build/runtime
+						'esbuild',
 						'@github/copilot-sdk',
 						'zod',
 						'@microsoft/dev-tunnels-contracts',
@@ -1893,6 +1901,13 @@ export default defineConfig(
 						'vs/editor/~',
 						'vs/editor/contrib/*/~',
 						'vs/code/~',
+						// ROOPIK: allow bridging from code/electron-main into our workbench
+						// contrib area for custom services (IPC channels, Canvas, ProjectMode,
+						// Component) while keeping other layering rules intact.
+						{
+							'when': 'hasElectron',
+							'pattern': 'vs/workbench/contrib/roopik/~'
+						},
 						{
 							'when': 'hasBrowser',
 							'pattern': 'vs/workbench/workbench.web.main.js'
@@ -2955,4 +2970,17 @@ export default defineConfig(
 		rules: {
 			'local/code-no-new-javascript-files': 'error',
 		},
+	},
+	// ROOPIK: Override the copyright header rule for Roopik-authored extension code
+	{
+		files: ['extensions/roopik/**/*.{ts,tsx,js,jsx}'],
+		plugins: { header: pluginHeader },
+		rules: {
+			'header/header': [2, 'block', [
+				'---------------------------------------------------------------------------------------------',
+				' *  Copyright (c) Roopik. All rights reserved.',
+				' *  Licensed under the MIT License. See License.txt in the project root for license information.',
+				' *--------------------------------------------------------------------------------------------'
+			]]
+		}
 	});

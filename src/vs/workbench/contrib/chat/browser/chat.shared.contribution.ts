@@ -277,6 +277,12 @@ configurationRegistry.registerConfiguration({
 			description: nls.localize('interactiveSession.editor.lineHeight', "Controls the line height in pixels in chat codeblocks. Use 0 to compute the line height from the font size."),
 			default: 0
 		},
+		'roopik-zoo.titleBarIcon.enabled': {
+			type: 'boolean',
+			description: nls.localize('roopik-zoo.titleBarIcon.enabled', "Controls whether the Roopik Zoo chat icon is shown in the title bar."),
+			default: true
+		},
+
 		[ChatConfiguration.AgentStatusEnabled]: {
 			type: 'string',
 			enum: ['hidden', 'badge', 'compact'],
