@@ -1,0 +1,118 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Roopik. All rights reserved.
+ *  Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
+/* ============================================================
+   App Container - Full viewport
+   ============================================================ */
+
+.app {
+	width: 100vw;
+	height: 100vh;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	font-family: var(--vscode-font-family);
+	color: var(--vscode-foreground);
+	background-color: #1a1a1a;
+	margin: 0;
+	padding: 0;
+	position: relative;
+}
+
+/* ============================================================
+   Canvas Container - Takes up all remaining space
+   ============================================================ */
+
+.canvas-container {
+	flex: 1;
+	position: relative;
+	overflow: hidden;
+	min-height: 0;
+}
+
+/* ============================================================
+   Global Scrollbars
+   ============================================================ */
+
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+::-webkit-scrollbar-track {
+	background: var(--vscode-editor-background);
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--vscode-scrollbarSlider-background);
+	border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+/* ============================================================
+   Drop Zone Overlay (for drag-drop import from OS file manager)
+   ============================================================ */
+
+.drop-zone-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(59, 130, 246, 0.15);
+	backdrop-filter: blur(4px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 10000;
+	pointer-events: none;
+	animation: dropZoneFadeIn 0.15s ease-out;
+}
+
+.drop-zone-content {
+	background: rgba(30, 30, 35, 0.95);
+	border: 2px dashed rgba(59, 130, 246, 0.6);
+	border-radius: 16px;
+	padding: 48px 64px;
+	text-align: center;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.drop-zone-icon {
+	font-size: 48px;
+	margin-bottom: 16px;
+}
+
+.drop-zone-text {
+	font-size: 18px;
+	font-weight: 600;
+	color: rgba(255, 255, 255, 0.95);
+	margin-bottom: 8px;
+}
+
+.drop-zone-hint {
+	font-size: 13px;
+	color: rgba(255, 255, 255, 0.5);
+}
+
+@keyframes dropZoneFadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+/* ============================================================
+   Component styles are now in separate files:
+   - canvasView/styles/floatingToolbar.css
+   - canvasView/styles/infiniteCanvas.css
+   - canvasView/styles/statusPanel.css
+   - canvasView/styles/sandboxPreview.css
+   ============================================================ */
