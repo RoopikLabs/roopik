@@ -15,7 +15,6 @@ import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { CDPCssService } from './cssResolvers/cdpCssService.js';
 import { StyleSourceOrchestrator } from './cssResolvers/styleSourceOrchestrator.js';
 // eslint-disable-next-line local/code-import-patterns
-import contextMenu from 'electron-context-menu';
 import { cleanupCDPMonitoring } from '../tools/cdpMonitorService.js';
 import { injectStealthPatches } from './browserStealth.js';
 import { DEFAULT_MAX_BROWSER_TABS, type IBrowserBackend, type TabInfo } from './browserBackend.js';
@@ -2065,7 +2064,9 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 		// Enable standard browser context menu with custom navigation items
 		// Disable "Search with Google" and "Select All", add Back/Forward/Reload, keep Inspect Element
-		contextMenu({
+		// Lazy import: packaged builds ship this dependency inside node_modules.asar,
+		// which static ESM imports cannot resolve
+		import('electron-context-menu').then(({ default: contextMenu }) => contextMenu({
 			window: browserView, // WebContentsView is accepted as a window option
 			showSearchWithGoogle: false, // Disable "Search with Google"
 			showSelectAll: false, // Disable "Select All" (irrelevant)
@@ -2296,7 +2297,7 @@ export class BrowserViewService extends Disposable implements IProjectModeServic
 
 				return menuItems;
 			}
-		});
+		}), err => this.logger.error('Failed to load electron-context-menu', { err }));
 
 	}
 

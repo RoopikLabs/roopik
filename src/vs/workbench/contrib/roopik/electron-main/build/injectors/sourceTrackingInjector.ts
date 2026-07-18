@@ -32,9 +32,17 @@ import type { ParseOptions } from './sourceTrackingCore.js';
 // Type declaration for @babel/core (types are in @types/babel__core)
 /// \u003creference types="@types/babel__core" /\u003e
 
-// Import Babel statically - this ensures it's bundled/resolved correctly
-// eslint-disable-next-line local/code-amd-node-module
-import * as babelCoreModule from '@babel/core';
+// Lazy import: packaged builds ship @babel/core inside node_modules.asar, which
+// static ESM imports cannot resolve. Loaded in the background at module init;
+// until it arrives, the regex fallback path is used.
+let babelCoreModule: IBabelCore | null = null;
+import('@babel/core').then(m => {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const mod: any = typeof (m as any).transformSync === 'function' ? m : (m as any).default;
+	if (mod && typeof mod.transformSync === 'function') {
+		babelCoreModule = mod as IBabelCore;
+	}
+}, () => undefined);
 
 /**
  * Framework-specific configuration for source tracking
@@ -110,24 +118,20 @@ export class SourceTrackingInjector extends BaseInjector {
 	override readonly name = 'source-tracking';
 	override readonly priority = 5; // Run FIRST, before error boundary
 
-	// Cache Babel to avoid re-requiring it on every file
+	// Cache Babel to avoid re-checking it on every file
 	private babelCore: IBabelCore | null = null;
-	private babelLoadAttempted = false;
 
 	/**
 	 * Try to load Babel for AST-based transformation.
-	 * Returns null if Babel is not available.
+	 * Returns null if Babel is not available (yet).
 	 */
 	private getBabel(): IBabelCore | null {
-		if (this.babelLoadAttempted) {
+		if (this.babelCore) {
 			return this.babelCore;
 		}
 
-		this.babelLoadAttempted = true;
-
-		// Use statically imported Babel module
-		if (babelCoreModule && typeof babelCoreModule.transformSync === 'function') {
-			this.babelCore = babelCoreModule as IBabelCore;
+		if (babelCoreModule) {
+			this.babelCore = babelCoreModule;
 			console.log('[SourceTracking] Babel module loaded - using AST transformation');
 			return this.babelCore;
 		}
@@ -355,17 +359,14 @@ export function createSourceTrackingTransform(framework: string = 'react', logge
 
 	// Cache Babel loading for performance
 	let babelCore: IBabelCore | null = null;
-	let babelLoadAttempted = false;
 
 	function getBabel(): IBabelCore | null {
-		if (babelLoadAttempted) {
+		if (babelCore) {
 			return babelCore;
 		}
-		babelLoadAttempted = true;
 
-		// Use statically imported Babel module
-		if (babelCoreModule && typeof babelCoreModule.transformSync === 'function') {
-			babelCore = babelCoreModule as IBabelCore;
+		if (babelCoreModule) {
+			babelCore = babelCoreModule;
 			if (logger) logger.debug('[SOURCE_TRACKING] Babel loaded - using AST transformation');
 			return babelCore;
 		}

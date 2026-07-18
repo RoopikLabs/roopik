@@ -3,10 +3,7 @@
  *  Licensed under the MIT License.
  *--------------------------------------------------------------------------------------------*/
 
-import * as esbuild from 'esbuild';
-import sveltePlugin from 'esbuild-svelte';
-import vuePlugin from 'esbuild-plugin-vue3';
-import { solidPlugin } from 'esbuild-plugin-solid';
+import type * as esbuild from 'esbuild';
 import * as fs from 'fs';
 import * as path from '../../../../../base/common/path.js';
 import * as os from 'os';
@@ -218,11 +215,50 @@ function getCDNUrl(
 type BuildMode = 'virtual' | 'disk';
 
 /**
+ * Build toolchain loaded on demand. Lazy imports: packaged builds ship these
+ * dependencies inside node_modules.asar, which static ESM imports cannot resolve.
+ */
+type PluginFactory = (options?: never) => esbuild.Plugin;
+
+interface BuildTools {
+	esbuild: typeof import('esbuild');
+	sveltePlugin: typeof import('esbuild-svelte').default;
+	vuePlugin: PluginFactory;
+	solidPlugin: typeof import('esbuild-plugin-solid').solidPlugin;
+}
+
+/** CJS/ESM default-export interop: the factory may sit on the namespace, .default, or .default.default */
+function interopPluginFactory<T>(mod: unknown): T {
+	// eslint-disable-next-line local/code-no-any-casts, @typescript-eslint/no-explicit-any
+	const m: any = mod;
+	return (typeof m === 'function' ? m : (typeof m?.default === 'function' ? m.default : m?.default?.default)) as T;
+}
+
+let buildToolsPromise: Promise<BuildTools> | undefined;
+
+function loadBuildTools(): Promise<BuildTools> {
+	if (!buildToolsPromise) {
+		buildToolsPromise = Promise.all([
+			import('esbuild'),
+			import('esbuild-svelte'),
+			import('esbuild-plugin-vue3'),
+			import('esbuild-plugin-solid')
+		]).then(([esbuildModule, svelteModule, vueModule, solidModule]) => ({
+			esbuild: esbuildModule,
+			sveltePlugin: interopPluginFactory<BuildTools['sveltePlugin']>(svelteModule),
+			vuePlugin: interopPluginFactory<PluginFactory>(vueModule),
+			solidPlugin: solidModule.solidPlugin
+		}));
+	}
+	return buildToolsPromise;
+}
+
+/**
  * Framework configuration for build process
  */
 interface FrameworkBuildConfig {
 	mode: BuildMode;
-	getPlugins: () => esbuild.Plugin[];
+	getPlugins: (tools: BuildTools) => esbuild.Plugin[];
 }
 
 /**
@@ -237,7 +273,7 @@ const FRAMEWORK_BUILD_CONFIGS: Record<Framework, FrameworkBuildConfig> = {
 	},
 	solid: {
 		mode: 'disk', // Solid plugin (Babel-based) requires disk access
-		getPlugins: () => [solidPlugin({ solid: { generate: 'dom' } })]
+		getPlugins: tools => [tools.solidPlugin({ solid: { generate: 'dom' } })]
 	},
 	preact: {
 		mode: 'virtual',
@@ -245,14 +281,14 @@ const FRAMEWORK_BUILD_CONFIGS: Record<Framework, FrameworkBuildConfig> = {
 	},
 	vue: {
 		mode: 'disk', // Vue plugin requires disk access for .vue files
-		getPlugins: () => [vuePlugin()]
+		getPlugins: tools => [tools.vuePlugin()]
 	},
 	svelte: {
 		mode: 'disk', // Svelte plugin requires disk access for .svelte files
-		getPlugins: () => {
+		getPlugins: tools => {
 			// esbuild-svelte with Svelte 5 compiler options
 			// eslint-disable-next-line local/code-no-any-casts, @typescript-eslint/no-explicit-any
-			const pluginFn = (sveltePlugin as any).default || sveltePlugin;
+			const pluginFn = (tools.sveltePlugin as any).default || tools.sveltePlugin;
 			const plugin = pluginFn({
 				compilerOptions: {
 					// Generate client-side code (not SSR)
@@ -561,7 +597,8 @@ export class ESBuildTransformer {
 			const jsxImportSource = JSX_IMPORT_SOURCES[framework];
 
 			// Run ESBuild with disk-based entry point
-			const result = await esbuild.build({
+			const buildTools = await loadBuildTools();
+			const result = await buildTools.esbuild.build({
 				entryPoints: [path.join(tempDir, entryPath)],
 				bundle: true,
 				format: 'esm',
@@ -576,7 +613,7 @@ export class ESBuildTransformer {
 					jsxImportSource
 				} : {}),
 				plugins: [
-					...buildConfig.getPlugins(),
+					...buildConfig.getPlugins(buildTools),
 					this.createCDNResolverPlugin(dependencies, resolvedDeps, frameworkDeps, stableVersions, localFiles)
 				]
 			});
@@ -611,7 +648,8 @@ export class ESBuildTransformer {
 		// Get JSX import source for this framework (React, Preact, Solid use JSX)
 		const jsxImportSource = JSX_IMPORT_SOURCES[framework];
 
-		const result = await esbuild.build({
+		const buildTools = await loadBuildTools();
+		const result = await buildTools.esbuild.build({
 			entryPoints: [entryPath],
 			bundle: true,
 			format: 'esm',
@@ -625,7 +663,7 @@ export class ESBuildTransformer {
 				jsxImportSource
 			} : {}),
 			plugins: [
-				...buildConfig.getPlugins(),
+				...buildConfig.getPlugins(buildTools),
 				this.createVirtualFSPlugin(files),
 				this.createCDNResolverPlugin(dependencies, resolvedDeps, frameworkDeps, stableVersions)
 			]
