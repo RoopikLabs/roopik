@@ -9,10 +9,12 @@ import { ApiHandlerOptions } from "../../shared/api"
 
 import { ApiStream, ApiStreamUsageChunk } from "../transform/stream"
 import { convertToOpenAiMessages } from "../transform/openai-format"
+import { GEMINI_THOUGHT_SIGNATURE_BYPASS } from "../transform/gemini-format"
 import { sanitizeOpenAiCallId } from "../../utils/tool-id"
 
-import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
 import { RouterProvider } from "./router-provider"
+import { extractReasoningFromDelta } from "./utils/extract-reasoning"
 
 /**
  * LiteLLM provider handler
@@ -71,7 +73,7 @@ export class LiteLLMHandler extends RouterProvider implements SingleCompletionHa
 	 *
 	 * Per LiteLLM documentation:
 	 * - Thought signatures are stored in provider_specific_fields.thought_signature of tool calls
-	 * - The dummy signature base64("skip_thought_signature_validator") bypasses validation
+	 * - The bypass token (GEMINI_THOUGHT_SIGNATURE_BYPASS) skips signature validation
 	 *
 	 * We inject the dummy signature on EVERY tool call unconditionally to ensure Gemini
 	 * doesn't complain about missing/corrupted signatures when conversation history
@@ -80,8 +82,7 @@ export class LiteLLMHandler extends RouterProvider implements SingleCompletionHa
 	private injectThoughtSignatureForGemini(
 		openAiMessages: OpenAI.Chat.ChatCompletionMessageParam[],
 	): OpenAI.Chat.ChatCompletionMessageParam[] {
-		// Base64 encoded "skip_thought_signature_validator" as per LiteLLM docs
-		const dummySignature = Buffer.from("skip_thought_signature_validator").toString("base64")
+		const dummySignature = GEMINI_THOUGHT_SIGNATURE_BYPASS
 
 		return openAiMessages.map((msg) => {
 			if (msg.role === "assistant") {
@@ -184,7 +185,7 @@ export class LiteLLMHandler extends RouterProvider implements SingleCompletionHa
 		}
 
 		// Required by some providers; others default to max tokens allowed
-		let maxTokens: number | undefined = info.maxTokens ?? undefined
+		const maxTokens: number | undefined = info.maxTokens ?? undefined
 
 		// Check if this is a GPT-5 model that requires max_completion_tokens instead of max_tokens
 		const isGPT5Model = this.isGpt5(modelId)
@@ -222,8 +223,22 @@ export class LiteLLMHandler extends RouterProvider implements SingleCompletionHa
 			requestOptions.temperature = this.options.modelTemperature ?? 0
 		}
 
+		// LiteLLM recognizes X-<vendor>-Session-ID for per-conversation request correlation.
+		// This header enables LiteLLM to group related API calls by task for logging and tracing.
+		// Unlike Zoo gateways (which use X-Zoo-Task-ID to correlate requests across multiple
+		// models within a single conversation), this header is specific to the LiteLLM provider
+		// and facilitates provider-level logging and debugging on LiteLLM's admin panel.
+		// Matches the convention used by Claude Code (x-claude-code-session-id) and
+		// GitHub Copilot (x-copilot-session-id).
+		const requestHeaders: Record<string, string> = {}
+		if (metadata?.taskId) {
+			requestHeaders["X-Zoo-Session-ID"] = metadata.taskId
+		}
+
 		try {
-			const { data: completion } = await this.client.chat.completions.create(requestOptions).withResponse()
+			const { data: completion } = await this.client.chat.completions
+				.create(requestOptions, { headers: requestHeaders })
+				.withResponse()
 
 			let lastUsage
 
@@ -233,6 +248,11 @@ export class LiteLLMHandler extends RouterProvider implements SingleCompletionHa
 
 				if (delta?.content) {
 					yield { type: "text", text: delta.content }
+				}
+
+				const reasoningText = extractReasoningFromDelta(delta)
+				if (reasoningText) {
+					yield { type: "reasoning", text: reasoningText }
 				}
 
 				// Handle tool calls in stream - emit partial chunks for NativeToolCallParser
@@ -291,7 +311,7 @@ export class LiteLLMHandler extends RouterProvider implements SingleCompletionHa
 		}
 	}
 
-	async completePrompt(prompt: string): Promise<string> {
+	async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
 		const { id: modelId, info } = await this.fetchModel()
 
 		// Check if this is a GPT-5 model that requires max_completion_tokens instead of max_tokens

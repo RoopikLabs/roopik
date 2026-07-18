@@ -41,7 +41,8 @@
 		"experimental": "Sperimentale",
 		"language": "Lingua",
 		"about": "Informazioni su Zoo Code",
-		"skills": "Skills"
+		"skills": "Skills",
+		"rules": "Regole"
 	},
 	"about": {
 		"bugReport": {
@@ -62,6 +63,24 @@
 		"debugMode": {
 			"label": "Abilita modalità debug",
 			"description": "Abilita la modalità debug per mostrare pulsanti aggiuntivi nell'intestazione dell'attività che consentano di visualizzare la cronologia delle conversazioni API e i messaggi dell'interfaccia utente come JSON formattato in file temporanei."
+		},
+		"rooHistoryImport": {
+			"settingLabel": "Importa la cronologia da Roo Code",
+			"cardTitle": "Cronologia Roo Code",
+			"cardDescription": "Copia le conversazioni salvate di Roo Code in Zoo Code.",
+			"statusImporting": "Importazione cronologia",
+			"statusFailed": "Importazione fallita",
+			"statusComplete": "Importazione completata",
+			"buttonImporting": "Importazione da Roo Code...",
+			"buttonIdle": "Importa la cronologia da Roo Code",
+			"summaryFailedWithFiles": "{{copied}} di {{total}} file copiati prima dell'interruzione dell'importazione.",
+			"summaryFailedNoFiles": "L'importazione si è interrotta prima che venissero copiati dei file.",
+			"summaryCopied": "{{copied}} di {{total}} file copiati",
+			"detailFailed": "Avvia un nuovo tentativo di importazione per riprovare.",
+			"detailTasksImported_one": "Importato {{count}} di {{total}} cronologia attività.",
+			"detailTasksImported_other": "Importati {{count}} di {{total}} cronologie attività.",
+			"detailPreparing": "Preparazione dell'importazione della cronologia Roo Code.",
+			"progressAriaLabel": "Avanzamento importazione cronologia Roo Code"
 		}
 	},
 	"slashCommands": {
@@ -98,6 +117,52 @@
 			"nameInvalid": "Il nome può contenere solo lettere, numeri, trattini e sottolineature"
 		},
 		"footer": "Usa i comandi slash per accedere rapidamente ai prompt e ai flussi di lavoro utilizzati di frequente."
+	},
+	"rules": {
+		"description": "Gestisci i file delle regole di Zoo Code dalle directory .roo/rules globali e dell’area di lavoro. Crea regole generali o specifiche per modalità senza esplorare manualmente le cartelle di configurazione.",
+		"workspaceRules": "Regole dell’area di lavoro",
+		"globalRules": "Regole globali",
+		"noWorkspaceRules": "Nessuna regola in questo progetto per ora.",
+		"noGlobalRules": "Nessuna regola globale per ora.",
+		"addRule": "Aggiungi regola",
+		"editRule": "Modifica regola",
+		"deleteRule": "Elimina regola",
+		"modeLabel": "Modalità: {{mode}}",
+		"deleteDialog": {
+			"title": "Elimina regola",
+			"description": "Vuoi davvero eliminare la regola \"{{name}}\"? Questa azione non può essere annullata.",
+			"confirm": "Elimina",
+			"cancel": "Annulla"
+		},
+		"createDialog": {
+			"title": "Crea nuova regola",
+			"nameLabel": "Nome",
+			"namePlaceholder": "nome-della-mia-regola",
+			"nameHint": "Solo lettere minuscole, numeri, trattini e underscore. .md viene aggiunto automaticamente.",
+			"scopeLabel": "Posizione",
+			"kindLabel": "Tipo di regola",
+			"modeLabel": "Modalità",
+			"modePlaceholder": "Seleziona una modalità",
+			"create": "Crea",
+			"cancel": "Annulla"
+		},
+		"scope": {
+			"global": "Globale (disponibile in tutte le aree di lavoro)",
+			"project": "Area di lavoro"
+		},
+		"kind": {
+			"generic": "Regole generali",
+			"mode": "Regole specifiche per modalità",
+			"genericBadge": "Generale",
+			"modeBadge": "Modalità"
+		},
+		"validation": {
+			"nameRequired": "Il nome è obbligatorio",
+			"nameTooLong": "Il nome deve avere al massimo 64 caratteri",
+			"nameInvalid": "Il nome può contenere solo lettere minuscole, numeri, trattini e underscore",
+			"modeRequired": "La modalità è obbligatoria per le regole specifiche per modalità"
+		},
+		"footer": "Le regole caricano la guida specifica per modalità prima della guida generale. Le regole globali vengono caricate prima delle regole dell’area di lavoro."
 	},
 	"prompts": {
 		"description": "Configura i prompt di supporto utilizzati per azioni rapide come il miglioramento dei prompt, la spiegazione del codice e la risoluzione dei problemi. Questi prompt aiutano Zoo a fornire una migliore assistenza per le attività di sviluppo comuni."
@@ -213,7 +278,8 @@
 		"stoppingButton": "Interruzione...",
 		"workspaceToggleLabel": "Abilita l'indicizzazione per questo workspace",
 		"workspaceDisabledMessage": "L'indicizzazione è configurata ma non abilitata per questo workspace.",
-		"autoEnableDefaultLabel": "Abilita automaticamente l'indicizzazione per i nuovi workspace"
+		"autoEnableDefaultLabel": "Abilita automaticamente l'indicizzazione per i nuovi workspace",
+		"sembleProvider": "Semble - Locale"
 	},
 	"autoApprove": {
 		"toggleShortcut": "Puoi configurare una scorciatoia globale per questa impostazione <SettingsLink>nelle preferenze del tuo IDE</SettingsLink>.",
@@ -314,6 +380,10 @@
 		"getOpenRouterApiKey": "Ottieni chiave API OpenRouter",
 		"vercelAiGatewayApiKey": "Chiave API Vercel AI Gateway",
 		"getVercelAiGatewayApiKey": "Ottieni chiave API Vercel AI Gateway",
+		"opencodeGoApiKey": "Chiave API Opencode Go",
+		"getOpencodeGoApiKey": "Ottieni chiave API Opencode Go",
+		"kenariApiKey": "Chiave API Kenari",
+		"getKenariApiKey": "Ottieni chiave API Kenari",
 		"apiKeyStorageNotice": "Le chiavi API sono memorizzate in modo sicuro nell'Archivio Segreto di VSCode",
 		"openAiCodexRateLimits": {
 			"title": "Usage Limits for Codex{{planLabel}}",
@@ -382,6 +452,8 @@
 		"poeBaseUrl": "URL base Poe",
 		"fireworksApiKey": "Chiave API Fireworks",
 		"getFireworksApiKey": "Ottieni chiave API Fireworks",
+		"friendliApiKey": "Chiave API Friendli",
+		"getFriendliApiKey": "Ottieni chiave API Friendli",
 		"deepSeekApiKey": "Chiave API DeepSeek",
 		"getDeepSeekApiKey": "Ottieni chiave API DeepSeek",
 		"moonshotApiKey": "Chiave API Moonshot",
@@ -394,6 +466,13 @@
 		"minimaxApiKey": "Chiave API MiniMax",
 		"getMiniMaxApiKey": "Ottieni chiave API MiniMax",
 		"minimaxBaseUrl": "Punto di ingresso MiniMax",
+		"mimoApiKey": "Chiave API MiMo",
+		"getMimoApiKey": "Ottieni chiave API MiMo",
+		"mimoBaseUrl": "Punto di ingresso MiMo",
+		"mimoBaseUrlSingapore": "Token Plan - Singapore (Predefinito)",
+		"mimoBaseUrlChina": "Token Plan - Cina",
+		"mimoBaseUrlEurope": "Token Plan - Europa (AMS)",
+		"mimoBaseUrlPayg": "Pay-as-you-go",
 		"geminiApiKey": "Chiave API Gemini",
 		"getSambaNovaApiKey": "Ottieni chiave API SambaNova",
 		"sambaNovaApiKey": "Chiave API SambaNova",
@@ -445,6 +524,7 @@
 			"step3": "3. Oppure creare un account di servizio con credenziali."
 		},
 		"googleCloudCredentials": "Credenziali Google Cloud",
+		"googleCloudCredentialsPathWarning": "Questo campo si aspetta il contenuto JSON di un file di chiave di account di servizio, non un percorso. Se hai un percorso, incollalo nel campo <strong>Percorso file chiave Google Cloud</strong> qui sotto, oppure svuota questo campo e usa la variabile d'ambiente <code>GOOGLE_APPLICATION_CREDENTIALS</code>.",
 		"googleCloudKeyFile": "Percorso file chiave Google Cloud",
 		"googleCloudProjectId": "ID progetto Google Cloud",
 		"googleCloudRegion": "Regione Google Cloud",
@@ -465,6 +545,8 @@
 			"apiKeyHelp": "Chiave API opzionale per istanze Ollama autenticate o servizi cloud. Lascia vuoto per installazioni locali.",
 			"numCtx": "Dimensione della finestra di contesto (num_ctx)",
 			"numCtxHelp": "Sovrascrive la dimensione predefinita della finestra di contesto del modello. Lasciare vuoto per utilizzare la configurazione del Modelfile del modello. Il valore minimo è 128.",
+			"thinking": "Abilita ragionamento",
+			"thinkingHelp": "Abilita il ragionamento nativo di Ollama per i modelli di ragionamento (es. qwen3, deepseek-r1). Quando abilitato, il ragionamento del modello viene trasmesso e mostrato separatamente. I modelli non supportati ignoreranno questa impostazione.",
 			"description": "Ollama ti permette di eseguire modelli localmente sul tuo computer. Per iniziare, consulta la guida rapida.",
 			"warning": "Nota: Zoo Code utiliza prompt complessi e funziona meglio con i modelli Claude. I modelli con capacità inferiori potrebbero non funzionare come previsto."
 		},
@@ -533,6 +615,7 @@
 			"minimal": "Minimo (più veloce)",
 			"high": "Alto",
 			"xhigh": "Molto alto",
+			"max": "Massimo",
 			"medium": "Medio",
 			"low": "Basso"
 		},
@@ -550,6 +633,13 @@
 			"placeholder": "Predefinito: claude",
 			"maxTokensLabel": "Token di output massimi",
 			"maxTokensDescription": "Numero massimo di token di output per le risposte di Claude Code. Il valore predefinito è 8000."
+		},
+		"zooGateway": {
+			"account": "Account Zoo Code",
+			"signInButton": "Accedi a Zoo Code",
+			"signInDescription": "Accedi per utilizzare Zoo Gateway con il tuo account",
+			"authenticated": "Autenticato",
+			"authenticatedAs": "Autenticato come {{name}}"
 		}
 	},
 	"checkpoints": {
@@ -632,6 +722,12 @@
 			"delayAfterWrite": {
 				"label": "Ritardo dopo le scritture per consentire alla diagnostica di rilevare potenziali problemi",
 				"description": "Tempo di attesa dopo la scrittura dei file prima di procedere, consentendo agli strumenti di diagnostica di elaborare le modifiche e rilevare i problemi."
+			}
+		},
+		"fileEdits": {
+			"diffFuzzyThreshold": {
+				"label": "Soglia di corrispondenza diff",
+				"description": "Soglie più basse rendono le modifiche ai file più resilienti a variazioni di formattazione e spazi bianchi. Una soglia del 100% richiede una corrispondenza esatta."
 			}
 		},
 		"condensingThreshold": {
@@ -731,6 +827,13 @@
 		"inheritEnv": {
 			"label": "Eredita variabili d'ambiente",
 			"description": "Attiva per ereditare le variabili d'ambiente dal processo padre di VS Code. <0>Scopri di più</0>"
+		},
+		"profile": {
+			"label": "Shell per Zoo Code",
+			"followVscode": "Segui il profilo di VS Code (consigliato)",
+			"description": "Per impostazione predefinita Zoo Code usa la shell configurata in VS Code. Seleziona un profilo shell dall'elenco per scegliere un profilo shell con percorso esposto da VS Code. I profili solo sorgente (es. la voce PowerShell integrata) non possono essere elencati qui. <0>Ulteriori informazioni</0>",
+			"configureButton": "Scegli il profilo predefinito in VS Code",
+			"noProfiles": "(nessun profilo con percorso trovato in terminal.integrated.profiles)"
 		}
 	},
 	"advancedSettings": {
@@ -891,7 +994,8 @@
 		"providerNotAllowed": "Il fornitore '{{provider}}' non è consentito dalla tua organizzazione",
 		"modelNotAllowed": "Il modello '{{model}}' non è consentito per il fornitore '{{provider}}' dalla tua organizzazione.",
 		"profileInvalid": "Questo profilo contiene un fornitore o un modello non consentito dalla tua organizzazione.",
-		"qwenCodeOauthPath": "Devi fornire un percorso valido per le credenziali OAuth"
+		"qwenCodeOauthPath": "Devi fornire un percorso valido per le credenziali OAuth",
+		"zooGatewaySignIn": "Accedi a Zoo Code per utilizzare Zoo Gateway."
 	},
 	"placeholders": {
 		"apiKey": "Inserisci chiave API...",
@@ -953,6 +1057,23 @@
 		"requireCtrlEnterToSend": {
 			"label": "Richiedi {{primaryMod}}+Invio per inviare messaggi",
 			"description": "Quando abilitato, devi premere {{primaryMod}}+Invio per inviare messaggi invece di solo Invio"
+		},
+		"chatFontSize": {
+			"label": "Dimensione carattere della chat",
+			"description": "Imposta la dimensione del carattere (in pixel) per la chat di Zoo Code. Lascia il valore predefinito per adattarsi alla dimensione del carattere di VS Code.",
+			"reset": "Usa il valore predefinito di VS Code"
+		},
+		"autoCloseZooOpenedFiles": {
+			"label": "Chiudi automaticamente i file aperti da Zoo",
+			"description": "Quando abilitata, le schede dell'editor che Zoo ha aperto temporaneamente per un diff vengono chiuse automaticamente dopo l'accettazione o il rifiuto della modifica. Le schede che l'utente aveva già aperto prima della modifica non vengono mai chiuse automaticamente."
+		},
+		"autoCloseZooOpenedFilesAfterUserEdited": {
+			"label": "Chiudi automaticamente anche dopo l'interazione dell'utente",
+			"description": "Quando abilitata, le schede aperte da Zoo vengono chiuse anche se l'utente ha fatto clic o digitato nel file o nel diff durante la sessione di modifica. Non ha effetto se 'Chiudi automaticamente i file aperti da Zoo' è disabilitata."
+		},
+		"autoCloseZooOpenedNewFiles": {
+			"label": "Chiudi automaticamente i nuovi file creati",
+			"description": "Quando abilitata, le schede dei file che Zoo ha creato (invece di modificare) vengono chiuse automaticamente dopo l'accettazione della modifica."
 		}
 	},
 	"skills": {

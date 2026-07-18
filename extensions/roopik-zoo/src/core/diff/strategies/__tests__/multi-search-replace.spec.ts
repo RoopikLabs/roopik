@@ -878,6 +878,119 @@ function processData(data) {
 			expect(result.success).toBe(false)
 		})
 
+		it("should include line range debug info when search fails with start_line marker", async () => {
+			const originalContent = "line one\nline two"
+			const diffContent = `test.ts
+<<<<<<< SEARCH
+:start_line:999
+-------
+non-existent content that cannot be found in the file
+=======
+replacement content here
+>>>>>>> REPLACE`
+
+			const result = await strategy.applyDiff(originalContent, diffContent)
+			expect(result.success).toBe(false)
+			const error =
+				!result.success && result.failParts?.[0]
+					? "error" in result.failParts[0]
+						? result.failParts[0].error
+						: ""
+					: ""
+			expect(error).toContain("No sufficiently similar match found")
+			expect(error).toContain("at line: 999")
+			expect(error).toContain("Search Range: starting at line 999")
+			expect(error).toContain("Best Match Found:\n(no match)")
+			expect(error).toContain("Levenshtein Distance: N/A")
+			expect(error).toContain("Best Match Length: 0 characters")
+		})
+
+		it("should include scoped original content when search fails with start_line that has a low-score match", async () => {
+			const originalContent = "function existing() {\n    return 42;\n}\n"
+			const diffContent = `test.ts
+<<<<<<< SEARCH
+:start_line:1
+-------
+function different() {
+    return 99;
+}
+=======
+function newVersion() {
+    return 99;
+}
+>>>>>>> REPLACE`
+
+			const result = await strategy.applyDiff(originalContent, diffContent)
+			expect(result.success).toBe(false)
+			const error =
+				!result.success && result.failParts?.[0]
+					? "error" in result.failParts[0]
+						? result.failParts[0].error
+						: ""
+					: ""
+			expect(error).toContain("No sufficiently similar match found")
+			expect(error).toContain("at line: 1")
+			expect(error).toContain("Search Range: starting at line 1")
+			expect(error).toContain("Best Match Found:")
+			expect(error).toContain("Original Content:\n1 | function existing()")
+		})
+
+		it("should include best-match debug info when unscoped search is below threshold", async () => {
+			const strictStrategy = new MultiSearchReplaceDiffStrategy(1, 5)
+			const originalContent = "function processUsers(data) {\n    return data.map(user => user.name);\n}\n"
+			const diffContent = `test.ts
+<<<<<<< SEARCH
+function processUsers(data) {
+    return data.map(user => user.username);
+}
+=======
+function processUsers(data) {
+    return data.map(user => user.displayName);
+}
+>>>>>>> REPLACE`
+
+			const result = await strictStrategy.applyDiff(originalContent, diffContent)
+			expect(result.success).toBe(false)
+			const error =
+				!result.success && result.failParts?.[0]
+					? "error" in result.failParts[0]
+						? result.failParts[0].error
+						: ""
+					: ""
+			expect(error).toContain("Search Range: start to end")
+			expect(error).toContain("Levenshtein Distance:")
+			expect(error).toContain("characters")
+			expect(error).toContain("Best Match Length:")
+			expect(error).toContain("Best Match Found:\n1 | function processUsers(data)")
+		})
+
+		it("should include zero-match info when unscoped search finds no similarity at all", async () => {
+			const strictStrategy = new MultiSearchReplaceDiffStrategy(1, 0)
+			const originalContent = "xxxxxx\nyyyyyy\nzzzzzz"
+			const diffContent = `test.ts
+<<<<<<< SEARCH
+!!!!!!
+=======
+aaaaaa
+>>>>>>> REPLACE`
+
+			const result = await strictStrategy.applyDiff(originalContent, diffContent)
+			expect(result.success).toBe(false)
+			const error =
+				!result.success && result.failParts?.[0]
+					? "error" in result.failParts[0]
+						? result.failParts[0].error
+						: ""
+					: ""
+			expect(error).toContain("No sufficiently similar match found")
+			expect(error).toContain("Search Range: start to end")
+			expect(error).toContain("Best Match Found:\n(no match)")
+			expect(error).toContain("Levenshtein Distance: N/A")
+			expect(error).toContain("Best Match Length: 0 characters")
+			expect(error).toContain("Original Content:")
+			expect(error).toContain("1 | xxxxxx")
+		})
+
 		it("should match content with extra whitespace", async () => {
 			const originalContent = "function sum(a, b) {\n    return a + b;\n}"
 			const diffContent = `test.ts
@@ -1202,6 +1315,281 @@ function sum(a, b) {
 			expect(result.error).toContain("CORRECT FORMAT:")
 			expect(result.error).toContain("INCORRECT FORMAT:")
 			expect(result.error).toContain(":start_line:5    <-- Invalid location")
+		})
+	})
+
+	describe("repairTruncatedDiff", () => {
+		let strategy: MultiSearchReplaceDiffStrategy
+
+		beforeEach(() => {
+			strategy = new MultiSearchReplaceDiffStrategy()
+		})
+
+		it("should not modify a complete diff", () => {
+			const diff = "<<<<<<< SEARCH\n" + "original content\n" + "=======\n" + "new content\n" + ">>>>>>> REPLACE"
+			const result = strategy["repairTruncatedDiff"](diff)
+			expect(result).toBe(diff)
+		})
+
+		it("should not modify a diff with multiple complete blocks", () => {
+			const diff =
+				"<<<<<<< SEARCH\n" +
+				"content1\n" +
+				"=======\n" +
+				"new1\n" +
+				">>>>>>> REPLACE\n\n" +
+				"<<<<<<< SEARCH\n" +
+				"content2\n" +
+				"=======\n" +
+				"new2\n" +
+				">>>>>>> REPLACE"
+			const result = strategy["repairTruncatedDiff"](diff)
+			expect(result).toBe(diff)
+		})
+
+		it("should repair diff missing ======= and >>>>>>> REPLACE", () => {
+			const diff = "<<<<<<< SEARCH\n" + "original content\n" + "new content"
+			const result = strategy["repairTruncatedDiff"](diff)
+			expect(result).toBe(
+				"<<<<<<< SEARCH\n" + "original content\n" + "=======\n" + "new content\n" + ">>>>>>> REPLACE",
+			)
+		})
+
+		it("should repair diff missing only >>>>>>> REPLACE", () => {
+			const diff = "<<<<<<< SEARCH\n" + "original content\n" + "=======\n" + "new content"
+			const result = strategy["repairTruncatedDiff"](diff)
+			expect(result).toBe(
+				"<<<<<<< SEARCH\n" + "original content\n" + "=======\n" + "new content\n" + ">>>>>>> REPLACE",
+			)
+		})
+
+		it("should repair first truncated block while preserving subsequent complete blocks", () => {
+			const diff =
+				"<<<<<<< SEARCH\n" +
+				"content1\n" +
+				"new1\n\n" +
+				"<<<<<<< SEARCH\n" +
+				"content2\n" +
+				"=======\n" +
+				"new2\n" +
+				">>>>>>> REPLACE"
+			const result = strategy["repairTruncatedDiff"](diff)
+			expect(result).toBe(
+				"<<<<<<< SEARCH\n" +
+					"content1\n" +
+					"=======\n" +
+					"new1\n" +
+					">>>>>>> REPLACE\n\n" +
+					"<<<<<<< SEARCH\n" +
+					"content2\n" +
+					"=======\n" +
+					"new2\n" +
+					">>>>>>> REPLACE",
+			)
+		})
+
+		it("should handle empty search content with missing replace marker", () => {
+			const diff = "<<<<<<< SEARCH\n" + "replacement text"
+			const result = strategy["repairTruncatedDiff"](diff)
+			expect(result).toBe("<<<<<<< SEARCH\n" + "=======\n" + "replacement text\n" + ">>>>>>> REPLACE")
+		})
+
+		it("should not add trailing newline if content already ends with one", () => {
+			const diff = "<<<<<<< SEARCH\n" + "original\n" + "=======\n" + "new content\n"
+			const result = strategy["repairTruncatedDiff"](diff)
+			expect(result).toBe("<<<<<<< SEARCH\n" + "original\n" + "=======\n" + "new content\n" + ">>>>>>> REPLACE")
+		})
+
+		it("inserts ======= before an existing closer instead of synthesizing a second one", () => {
+			// Has >>>>>>> REPLACE but no ======= separator.
+			const diff = "<<<<<<< SEARCH\n" + "old line\n" + ">>>>>>> REPLACE"
+			const result = strategy["repairTruncatedDiff"](diff)
+			expect(result).toBe("<<<<<<< SEARCH\n" + "old line\n" + "=======\n" + ">>>>>>> REPLACE")
+			// Exactly one closer, exactly one separator.
+			expect(result.match(/>>>>>>> REPLACE/g)).toHaveLength(1)
+			expect(result.match(/^=======$/gm)).toHaveLength(1)
+		})
+
+		it("preserves :start_line: / ------- directives instead of treating them as SEARCH content", () => {
+			const diff = "<<<<<<< SEARCH\n" + ":start_line:5\n" + "-------\n" + "old line\n" + "new line"
+			const result = strategy["repairTruncatedDiff"](diff)
+			expect(result).toBe(
+				"<<<<<<< SEARCH\n" +
+					":start_line:5\n" +
+					"-------\n" +
+					"old line\n" +
+					"=======\n" +
+					"new line\n" +
+					">>>>>>> REPLACE",
+			)
+		})
+
+		it("treats a single content line after a directive header as the SEARCH target", () => {
+			const diff = "<<<<<<< SEARCH\n" + ":start_line:5\n" + "-------\n" + "old line"
+			const result = strategy["repairTruncatedDiff"](diff)
+			expect(result).toBe(
+				"<<<<<<< SEARCH\n" +
+					":start_line:5\n" +
+					"-------\n" +
+					"old line\n" +
+					"=======\n" +
+					"\n" +
+					">>>>>>> REPLACE",
+			)
+		})
+	})
+
+	// Regression guards for #186: Grok sometimes truncates the streamed diff and drops
+	// the closing markers, which previously surfaced as "Unable to apply diff - Expected
+	// '=======' was not found". These fixtures exercise the full applyDiff() path end-to-end.
+	describe("truncated Grok diff regression (#186)", () => {
+		const grokStrategy = new MultiSearchReplaceDiffStrategy(1.0, 5)
+		const originalContent = 'function greet() {\n\treturn "hello"\n}\n'
+		const expectedContent = 'function greet() {\n\treturn "hi there"\n}\n'
+
+		it("applies a diff whose closing >>>>>>> REPLACE marker was truncated", async () => {
+			const diff =
+				"src/greet.ts\n" + "<<<<<<< SEARCH\n" + '\treturn "hello"\n' + "=======\n" + '\treturn "hi there"'
+			const result = await grokStrategy.applyDiff(originalContent, diff)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toBe(expectedContent)
+			}
+		})
+
+		it("applies a diff truncated before the ======= separator", async () => {
+			const diff = "src/greet.ts\n" + "<<<<<<< SEARCH\n" + '\treturn "hello"\n' + '\treturn "hi there"'
+			const result = await grokStrategy.applyDiff(originalContent, diff)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toBe(expectedContent)
+			}
+		})
+
+		it("leaves a well-formed multi-block diff unchanged", async () => {
+			const multiBlock = "export const a = 1\nexport const b = 2\n"
+			const diff =
+				"src/consts.ts\n" +
+				"<<<<<<< SEARCH\n" +
+				"export const a = 1\n" +
+				"=======\n" +
+				"export const a = 10\n" +
+				">>>>>>> REPLACE\n" +
+				"<<<<<<< SEARCH\n" +
+				"export const b = 2\n" +
+				"=======\n" +
+				"export const b = 20\n" +
+				">>>>>>> REPLACE"
+			const result = await grokStrategy.applyDiff(multiBlock, diff)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toBe("export const a = 10\nexport const b = 20\n")
+			}
+		})
+	})
+
+	describe("fuzzyThreshold and diagnostics", () => {
+		const originalContent =
+			"function calculateTotal(price: number, tax: number) {\n\tconst subtotal = price;\n\treturn subtotal + tax;\n}\n"
+
+		it("should succeed with near-miss match (e.g. minor whitespace diff) when threshold is 0.90", async () => {
+			const strategy = new MultiSearchReplaceDiffStrategy(0.9)
+			// Near-miss search block with slightly different formatting/whitespace (e.g., spaces instead of tab, missing semicolon)
+			const diff =
+				"<<<<<<< SEARCH\n" +
+				"function calculateTotal(price: number, tax: number) {\n" +
+				"    const subtotal = price\n" +
+				"    return subtotal + tax;\n" +
+				"}\n" +
+				"=======\n" +
+				"function calculateTotal(price: number, tax: number) {\n" +
+				"    const subtotal = price;\n" +
+				"    return (subtotal + tax) * 1.1;\n" +
+				"}\n" +
+				">>>>>>> REPLACE"
+
+			const result = await strategy.applyDiff(originalContent, diff)
+			expect(result.success).toBe(true)
+			if (result.success) {
+				expect(result.content).toContain("(subtotal + tax) * 1.1")
+			}
+		})
+
+		it("should fail with near-miss match when threshold is set to 1.0", async () => {
+			const strategy = new MultiSearchReplaceDiffStrategy(1.0)
+			const diff =
+				"<<<<<<< SEARCH\n" +
+				"function calculateTotal(price: number, tax: number) {\n" +
+				"    const subtotal = price\n" +
+				"    return subtotal + tax;\n" +
+				"}\n" +
+				"=======\n" +
+				"function calculateTotal(price: number, tax: number) {\n" +
+				"    const subtotal = price;\n" +
+				"    return (subtotal + tax) * 1.1;\n" +
+				"}\n" +
+				">>>>>>> REPLACE"
+
+			const result = await strategy.applyDiff(originalContent, diff)
+			expect(result.success).toBe(false)
+			expect(result.failParts).toBeDefined()
+			expect(result.failParts!.length).toBeGreaterThan(0)
+			const failedPart = result.failParts![0]
+			expect(failedPart).toHaveProperty("error")
+			expect((failedPart as { error: string }).error).toContain("No sufficiently similar match found")
+		})
+
+		it("should output enhanced error diagnostics (Levenshtein distance, character counts) when a match fails", async () => {
+			const strategy = new MultiSearchReplaceDiffStrategy(0.95)
+			const diff =
+				"<<<<<<< SEARCH\n" +
+				"function calculateGrandTotal(initialPrice: number, standardTax: number) {\n" +
+				"    const totalVal = initialPrice\n" +
+				"    return totalVal + standardTax;\n" +
+				"}\n" +
+				"=======\n" +
+				"function calculateTotal(price: number, tax: number) {\n" +
+				"    const subtotal = price;\n" +
+				"    return (subtotal + tax) * 1.1;\n" +
+				"}\n" +
+				">>>>>>> REPLACE"
+
+			const result = await strategy.applyDiff(originalContent, diff)
+			expect(result.success).toBe(false)
+			expect(result.failParts).toBeDefined()
+			expect(result.failParts!.length).toBeGreaterThan(0)
+			const failedPart = result.failParts![0]
+			expect(failedPart).toHaveProperty("error")
+			const errorMsg = (failedPart as { error: string }).error
+			expect(errorMsg).toContain("Debug Info:")
+			expect(errorMsg).toContain("Similarity Score:")
+			expect(errorMsg).toContain("Required Threshold: 95%")
+			expect(errorMsg).toContain("Levenshtein Distance:")
+			expect(errorMsg).toContain("Search Length:")
+			expect(errorMsg).toContain("Best Match Length:")
+		})
+		it("should report no-match diagnostics when search content is completely different and no :start_line: is given", async () => {
+			const strategy = new MultiSearchReplaceDiffStrategy(0.9)
+			const diff =
+				"<<<<<<< SEARCH\n" +
+				"§§§§§§§§§§§§\n" +
+				"§§§§§§§§§§§§\n" +
+				"=======\n" +
+				"¤¤¤¤¤¤¤¤¤¤¤¤\n" +
+				"¤¤¤¤¤¤¤¤¤¤¤¤\n" +
+				">>>>>>> REPLACE"
+
+			const result = await strategy.applyDiff(originalContent, diff)
+			expect(result.success).toBe(false)
+			expect(result.failParts).toBeDefined()
+			expect(result.failParts!.length).toBeGreaterThan(0)
+			const failedPart = result.failParts![0]
+			expect(failedPart).toHaveProperty("error")
+			const errorMsg = (failedPart as { error: string }).error
+			expect(errorMsg).toContain("No sufficiently similar match found")
+			expect(errorMsg).toContain("Best Match Found:")
+			expect(errorMsg).toContain("Levenshtein Distance:")
+			expect(errorMsg).toContain("Search Range: start to end")
 		})
 	})
 })

@@ -3,6 +3,7 @@
 	"extends": ["config:best-practices"],
 	"forkProcessing": "enabled",
 	"timezone": "America/Los_Angeles",
+	"postUpdateOptions": ["pnpmDedupe"],
 	"prConcurrentLimit": 5,
 	"prCreation": "not-pending",
 	"ignoreDeps": ["@vscode/vsce"],
@@ -81,6 +82,11 @@
 			"matchPackageNames": ["/^@types\\//"],
 			"matchUpdateTypes": ["patch"],
 			"automerge": true
+		},
+		{
+			"description": "Update extension-host VS Code types only with an intentional minimum-version review.",
+			"matchPackageNames": ["@types/vscode"],
+			"enabled": false
 		}
 	],
 	"customManagers": [

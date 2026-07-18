@@ -21,9 +21,9 @@ import { getModelParams } from "../transform/model-params"
 
 import { DEFAULT_HEADERS } from "./constants"
 import { BaseProvider } from "./base-provider"
-import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
-import { getApiRequestTimeout } from "./utils/timeout-config"
-import { handleOpenAIError } from "./utils/openai-error-handler"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
+import { handleOpenAIError } from "./utils/error-handler"
+import { extractReasoningFromDelta } from "./utils/extract-reasoning"
 
 // TODO: Rename this to OpenAICompatibleHandler. Also, I think the
 // `OpenAINativeHandler` can subclass from this, since it's obviously
@@ -48,8 +48,6 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 			...(this.options.openAiHeaders || {}),
 		}
 
-		const timeout = getApiRequestTimeout()
-
 		if (isAzureAiInference) {
 			// Azure AI Inference Service (e.g., for DeepSeek) uses a different path structure
 			this.client = new OpenAI({
@@ -57,7 +55,7 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 				apiKey,
 				defaultHeaders: headers,
 				defaultQuery: { "api-version": this.options.azureApiVersion || "2024-05-01-preview" },
-				timeout,
+				timeout: this.timeoutMs,
 			})
 		} else if (isAzureOpenAi) {
 			// Azure API shape slightly differs from the core API shape:
@@ -67,14 +65,14 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 				apiKey,
 				apiVersion: this.options.azureApiVersion || azureOpenAiDefaultApiVersion,
 				defaultHeaders: headers,
-				timeout,
+				timeout: this.timeoutMs,
 			})
 		} else {
 			this.client = new OpenAI({
 				baseURL,
 				apiKey,
 				defaultHeaders: headers,
-				timeout,
+				timeout: this.timeoutMs,
 			})
 		}
 	}
@@ -154,7 +152,15 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 
 			const requestOptions: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
 				model: modelId,
-				temperature: this.options.modelTemperature ?? (deepseekReasoner ? DEEP_SEEK_DEFAULT_TEMPERATURE : 0),
+				// Some OpenAI-Compatible models (e.g. claude-opus-4-7, claude-opus-4-8) reject
+				// `temperature` as deprecated/unsupported, so honor the model's `supportsTemperature`
+				// flag and omit it when that flag is false. Beyond that, only send `temperature` when
+				// the user set a custom value or the model needs a specific default (deepseek-reasoner);
+				// otherwise omit it so the server's own default applies instead of forcing 0.
+				...(modelInfo.supportsTemperature !== false &&
+					(this.options.modelTemperature != null || deepseekReasoner) && {
+						temperature: this.options.modelTemperature ?? DEEP_SEEK_DEFAULT_TEMPERATURE,
+					}),
 				messages: convertedMessages,
 				stream: true as const,
 				...(isGrokXAI ? {} : { stream_options: { include_usage: true } }),
@@ -178,7 +184,7 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 			}
 
 			const matcher = new TagMatcher(
-				"think",
+				["think", "thought"],
 				(chunk) =>
 					({
 						type: chunk.matched ? "reasoning" : "text",
@@ -199,11 +205,9 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 					}
 				}
 
-				if ("reasoning_content" in delta && delta.reasoning_content) {
-					yield {
-						type: "reasoning",
-						text: (delta.reasoning_content as string | undefined) || "",
-					}
+				const reasoningText = extractReasoningFromDelta(delta)
+				if (reasoningText) {
+					yield { type: "reasoning", text: reasoningText }
 				}
 
 				yield* this.processToolCalls(delta, finishReason, activeToolCallIds)
@@ -292,7 +296,7 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 		return { id, info, ...params }
 	}
 
-	async completePrompt(prompt: string): Promise<string> {
+	async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
 		try {
 			const isAzureAiInference = this._isAzureAiInference(this.options.openAiBaseUrl)
 			const model = this.getModel()
@@ -463,7 +467,7 @@ export class OpenAiHandler extends BaseProvider implements SingleCompletionHandl
 	 * @param finishReason - The finish_reason from the stream chunk
 	 * @param activeToolCallIds - Set to track active tool call IDs (mutated in place)
 	 */
-	private *processToolCalls(
+	protected *processToolCalls(
 		delta: OpenAI.Chat.Completions.ChatCompletionChunk.Choice.Delta | undefined,
 		finishReason: string | null | undefined,
 		activeToolCallIds: Set<string>,

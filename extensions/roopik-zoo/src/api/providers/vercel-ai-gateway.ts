@@ -14,7 +14,7 @@ import { ApiStream } from "../transform/stream"
 import { convertToOpenAiMessages } from "../transform/openai-format"
 import { addCacheBreakpoints } from "../transform/caching/vercel-ai-gateway"
 
-import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
 import { RouterProvider } from "./router-provider"
 
 // Extend OpenAI's CompletionUsage to include Vercel AI Gateway specific fields
@@ -52,10 +52,12 @@ export class VercelAiGatewayHandler extends RouterProvider implements SingleComp
 			addCacheBreakpoints(systemPrompt, openAiMessages)
 		}
 
+		const supportsTemperature = info.supportsTemperature !== false && this.supportsTemperature(modelId)
+
 		const body: OpenAI.Chat.ChatCompletionCreateParams = {
 			model: modelId,
 			messages: openAiMessages,
-			temperature: this.supportsTemperature(modelId)
+			temperature: supportsTemperature
 				? (this.options.modelTemperature ?? VERCEL_AI_GATEWAY_DEFAULT_TEMPERATURE)
 				: undefined,
 			max_completion_tokens: info.maxTokens,
@@ -69,6 +71,17 @@ export class VercelAiGatewayHandler extends RouterProvider implements SingleComp
 		const completion = await this.client.chat.completions.create(body)
 
 		for await (const chunk of completion) {
+			// Vercel AI Gateway reports mid-stream failures as an in-band error chunk
+			// rather than throwing, so surface it instead of returning an empty response.
+			if ("error" in chunk && chunk.error) {
+				const raw = chunk.error as { message?: unknown }
+				const message =
+					typeof raw.message === "string" && raw.message.length > 0
+						? raw.message
+						: "Vercel AI Gateway stream error"
+				throw new Error(message)
+			}
+
 			const delta = chunk.choices[0]?.delta
 			if (delta?.content) {
 				yield {
@@ -104,7 +117,7 @@ export class VercelAiGatewayHandler extends RouterProvider implements SingleComp
 		}
 	}
 
-	async completePrompt(prompt: string): Promise<string> {
+	async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
 		const { id: modelId, info } = await this.fetchModel()
 
 		try {
@@ -114,7 +127,7 @@ export class VercelAiGatewayHandler extends RouterProvider implements SingleComp
 				stream: false,
 			}
 
-			if (this.supportsTemperature(modelId)) {
+			if (info.supportsTemperature !== false && this.supportsTemperature(modelId)) {
 				requestOptions.temperature = this.options.modelTemperature ?? VERCEL_AI_GATEWAY_DEFAULT_TEMPERATURE
 			}
 

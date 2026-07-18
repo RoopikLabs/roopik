@@ -2,7 +2,7 @@ import { Anthropic } from "@anthropic-ai/sdk"
 import * as vscode from "vscode"
 import OpenAI from "openai"
 
-import { type ModelInfo, openAiModelInfoSaneDefaults } from "@roo-code/types"
+import { type ModelInfo, openAiModelInfoSaneDefaults, vscodeLlmDefaultModelId, vscodeLlmModels } from "@roo-code/types"
 
 import type { ApiHandlerOptions } from "../../shared/api"
 import { SELECTOR_SEPARATOR, stringifyVsCodeLmModelSelector } from "../../shared/vsCodeSelectorUtils"
@@ -12,7 +12,7 @@ import { ApiStream } from "../transform/stream"
 import { convertToVsCodeLmMessages, extractTextCountFromMessage } from "../transform/vscode-lm-format"
 
 import { BaseProvider } from "./base-provider"
-import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
 
 /**
  * Converts OpenAI-format tools to VSCode Language Model tools.
@@ -562,7 +562,27 @@ export class VsCodeLmHandler extends BaseProvider implements SingleCompletionHan
 		}
 	}
 
-	async completePrompt(prompt: string): Promise<string> {
+	/**
+	 * Context window for auto-condense. The API's advertised `client.maxInputTokens` is far larger
+	 * than usable, so relying on it stops auto-condense from firing; measure against the curated
+	 * static table's `maxInputTokens` instead (the same value the bar uses). An unknown family (e.g.
+	 * a selector left over from a model dropped from the catalog) resolves to the default row rather
+	 * than the inflated live window; only a non-positive static `maxInputTokens` falls back to it.
+	 */
+	getCondenseContextWindow(): number {
+		const family = this.client?.family ?? this.options.vsCodeLmModelSelector?.family
+		const staticModel = family
+			? (vscodeLlmModels[family as keyof typeof vscodeLlmModels] ?? vscodeLlmModels[vscodeLlmDefaultModelId])
+			: vscodeLlmModels[vscodeLlmDefaultModelId]
+
+		if (staticModel && typeof staticModel.maxInputTokens === "number" && staticModel.maxInputTokens > 0) {
+			return staticModel.maxInputTokens
+		}
+
+		return this.getModel().info.contextWindow
+	}
+
+	async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
 		try {
 			const client = await this.getClient()
 			const response = await client.sendRequest(

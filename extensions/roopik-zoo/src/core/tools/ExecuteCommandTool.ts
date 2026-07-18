@@ -12,7 +12,15 @@ import { Task } from "../task/Task"
 import { ToolUse, ToolResponse } from "../../shared/tools"
 import { formatResponse } from "../prompts/responses"
 import { unescapeHtmlEntities } from "../../utils/text-normalization"
-import { ExitCodeDetails, RooTerminalCallbacks, RooTerminalProcess } from "../../integrations/terminal/types"
+import { parseCommand } from "../../shared/parse-command"
+import {
+	ExitCodeDetails,
+	RooTerminalCallbacks,
+	RooTerminalProvider,
+	RooTerminalProcess,
+	ShellIntegrationError,
+	ShellIntegrationErrorDetails,
+} from "../../integrations/terminal/types"
 import { TerminalRegistry } from "../../integrations/terminal/TerminalRegistry"
 import { Terminal } from "../../integrations/terminal/Terminal"
 import { OutputInterceptor } from "../../integrations/terminal/OutputInterceptor"
@@ -21,7 +29,21 @@ import { t } from "../../i18n"
 import { getTaskDirectoryPath } from "../../utils/storage"
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 
-class ShellIntegrationError extends Error {}
+export { ShellIntegrationError } from "../../integrations/terminal/types"
+
+export function canRetryShellIntegrationError(error: unknown): error is ShellIntegrationError {
+	return error instanceof ShellIntegrationError && !error.commandSubmitted
+}
+
+export function getTerminalProviderForExecution(terminalShellIntegrationDisabled: boolean): {
+	terminalProvider: RooTerminalProvider
+	isCmdExeFallback: boolean
+} {
+	const isCmdExeFallback = !terminalShellIntegrationDisabled && Terminal.isActiveShellCmdExe()
+	const terminalProvider = terminalShellIntegrationDisabled || isCmdExeFallback ? "execa" : "vscode"
+
+	return { terminalProvider, isCmdExeFallback }
+}
 
 interface ExecuteCommandParams {
 	command: string
@@ -64,6 +86,25 @@ export class ExecuteCommandTool extends BaseTool<"execute_command"> {
 			}
 
 			task.consecutiveMistakeCount = 0
+
+			// Detect shell syntax errors (unterminated quotes, unclosed heredocs) before
+			// presenting the command for approval. Surfacing this as a tool error gives
+			// the agent a precise, actionable message so it can retry with a corrected
+			// command, rather than receiving a generic denial from the approval dialog.
+			const { parseError } = parseCommand(canonicalCommand)
+			if (parseError !== null) {
+				const executionId = task.lastMessageTs?.toString() ?? Date.now().toString()
+				const provider = await task.providerRef.deref()
+				const errorStatus: CommandExecutionStatus = {
+					executionId,
+					status: "error",
+					message: parseError.message,
+				}
+				provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(errorStatus) })
+				task.didToolFailInCurrentTurn = true
+				pushToolResult(formatResponse.toolError(parseError.message))
+				return
+			}
 
 			const didApprove = await askApproval("command", canonicalCommand)
 
@@ -116,14 +157,14 @@ export class ExecuteCommandTool extends BaseTool<"execute_command"> {
 
 				pushToolResult(result)
 			} catch (error: unknown) {
-				const status: CommandExecutionStatus = { executionId, status: "fallback" }
-				provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(status) })
-				await task.say("shell_integration_warning")
-
 				// Invalidate pending ask from first execution to prevent race condition
 				task.supersedePendingAsk()
 
-				if (error instanceof ShellIntegrationError) {
+				if (canRetryShellIntegrationError(error)) {
+					// Silent retry via execa — shell startup race, command was not submitted.
+					const status: CommandExecutionStatus = { executionId, status: "fallback" }
+					provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(status) })
+
 					const [rejected, result] = await executeCommandInTerminal(task, {
 						...options,
 						terminalShellIntegrationDisabled: true,
@@ -135,7 +176,16 @@ export class ExecuteCommandTool extends BaseTool<"execute_command"> {
 
 					pushToolResult(result)
 				} else {
-					pushToolResult(`Command failed to execute in terminal due to a shell integration error.`)
+					// Command was submitted but shell integration lost track of it — show warning.
+					await task.say("shell_integration_warning")
+
+					if (error instanceof ShellIntegrationError) {
+						pushToolResult(
+							"Command was submitted in the VS Code terminal, but shell integration did not report its output or completion status. Do not run the command again automatically.",
+						)
+					} else {
+						pushToolResult(`Command failed to execute in terminal due to a shell integration error.`)
+					}
 				}
 			}
 
@@ -196,11 +246,18 @@ export async function executeCommandInTerminal(
 	let result: string = ""
 	let persistedResult: PersistedCommandOutput | undefined
 	let exitDetails: ExitCodeDetails | undefined
-	let shellIntegrationError: string | undefined
+	let shellIntegrationError: ShellIntegrationError | undefined
 	let hasAskedForCommandOutput = false
 
-	const terminalProvider = terminalShellIntegrationDisabled ? "execa" : "vscode"
+	const { terminalProvider, isCmdExeFallback } = getTerminalProviderForExecution(terminalShellIntegrationDisabled)
 	const provider = await task.providerRef.deref()
+
+	// cmd.exe can't use shell integration — tell the webview to expand the output
+	// panel immediately (same effect as the retry-fallback path).
+	if (isCmdExeFallback) {
+		const status: CommandExecutionStatus = { executionId, status: "fallback" }
+		provider?.postMessageToWebview({ type: "commandExecutionStatus", text: JSON.stringify(status) })
+	}
 
 	// Get global storage path for persisted output artifacts
 	const globalStoragePath = provider?.context?.globalStorageUri?.fsPath
@@ -278,9 +335,8 @@ export async function executeCommandInTerminal(
 	// Track when onCompleted callback finishes to avoid race condition.
 	// The callback is async but Terminal/ExecaTerminal don't await it, so we track completion
 	// explicitly to ensure persistedResult is set before we use it.
-	let onCompletedPromise: Promise<void> | undefined
 	let resolveOnCompleted: (() => void) | undefined
-	onCompletedPromise = new Promise((resolve) => {
+	const onCompletedPromise = new Promise<void>((resolve) => {
 		resolveOnCompleted = resolve
 	})
 
@@ -323,30 +379,38 @@ export async function executeCommandInTerminal(
 			}
 		},
 		onCompleted: async (output: string | undefined) => {
-			try {
-				clearTimeout(pendingCommandOutputEmitTimer)
-				pendingCommandOutputEmitTimer = undefined
+			clearTimeout(pendingCommandOutputEmitTimer)
+			pendingCommandOutputEmitTimer = undefined
 
+			try {
 				// Finalize interceptor and get persisted result.
 				// We await finalize() to ensure the artifact file is fully flushed
 				// before we advertise the artifact_id to the LLM.
 				if (interceptor) {
 					persistedResult = await interceptor.finalize()
 				}
-
-				// Continue using compressed output for UI display
-				result = Terminal.compressTerminalOutput(output ?? "")
-				latestCompressedOutput = result
-
-				// Preserve order: wait for queued partial updates, then emit the final
-				// non-partial command_output update.
-				await commandOutputSayChain
-				await queueCommandOutputMessage(result, false, true)
-				completed = true
-			} finally {
-				// Signal that onCompleted has finished, so the main code can safely use persistedResult
-				resolveOnCompleted?.()
+			} catch (error) {
+				console.error("[ExecuteCommandTool] interceptor.finalize() failed:", error)
 			}
+
+			// Continue using compressed output for UI display
+			result = Terminal.compressTerminalOutput(output ?? "")
+			latestCompressedOutput = result
+			completed = true
+
+			// Unblock the main code path: persistedResult, result, and completed are
+			// all set now. Resolve before draining the UI say chain so that a stalled
+			// or slow webview update cannot prevent the tool result from being returned.
+			resolveOnCompleted?.()
+
+			// Preserve order: wait for queued partial updates, then emit the final
+			// non-partial command_output update. Fire-and-forget from the main path —
+			// errors here are UI-only and must not surface to the tool result.
+			commandOutputSayChain
+				.then(() => queueCommandOutputMessage(result, false, true))
+				.catch((error) => {
+					console.error("[ExecuteCommandTool] Failed to flush final command_output:", error)
+				})
 		},
 		onShellExecutionStarted: (pid: number | undefined) => {
 			const status: CommandExecutionStatus = { executionId, status: "started", pid, command }
@@ -360,9 +424,9 @@ export async function executeCommandInTerminal(
 	}
 
 	if (terminalProvider === "vscode") {
-		callbacks.onNoShellIntegration = async (error: string) => {
+		callbacks.onNoShellIntegration = async (details: ShellIntegrationErrorDetails) => {
 			TelemetryService.instance.captureShellIntegrationError(task.taskId)
-			shellIntegrationError = error
+			shellIntegrationError = new ShellIntegrationError(details.message, details.commandSubmitted)
 		}
 	}
 
@@ -442,7 +506,7 @@ export async function executeCommandInTerminal(
 	}
 
 	if (shellIntegrationError) {
-		throw new ShellIntegrationError(shellIntegrationError)
+		throw shellIntegrationError
 	}
 
 	// Wait for a short delay to ensure all messages are sent to the webview.
@@ -452,10 +516,12 @@ export async function executeCommandInTerminal(
 	// grouping command_output messages despite any gaps anyways).
 	await delay(50)
 
-	// Wait for onCompleted callback to finish if shell execution completed.
-	// This ensures persistedResult is set before we try to use it, fixing the race
-	// condition where exitDetails is set (sync) before the async onCompleted finishes.
-	if (exitDetails && onCompletedPromise) {
+	// Wait for onCompleted callback to finish. onCompleted is async and sets
+	// `completed` and `persistedResult`; we must not read them until it resolves.
+	// Skip when returning a background result: the command is still running and
+	// onCompleted will fire later — awaiting it here would block until real completion,
+	// defeating the purpose of the agent-timeout background transition.
+	if (!runInBackground) {
 		await onCompletedPromise
 	}
 
@@ -482,30 +548,14 @@ export async function executeCommandInTerminal(
 			return [false, formatPersistedOutput(persistedResult, exitDetails, currentWorkingDir)]
 		}
 
-		// Use inline format for small outputs (original behavior with exit status)
-		let exitStatus: string = ""
-
-		if (exitDetails !== undefined) {
-			if (exitDetails.signalName) {
-				exitStatus = `Process terminated by signal ${exitDetails.signalName}`
-
-				if (exitDetails.coreDumpPossible) {
-					exitStatus += " - core dump possible"
-				}
-			} else if (exitDetails.exitCode === undefined) {
-				result += "<VSCE exit code is undefined: terminal output and command execution status is unknown.>"
-				exitStatus = `Exit code: <undefined, notify user>`
-			} else {
-				if (exitDetails.exitCode !== 0) {
-					exitStatus += "Command execution was not successful, inspect the cause and adjust as needed.\n"
-				}
-
-				exitStatus += `Exit code: ${exitDetails.exitCode}`
-			}
-		} else {
+		// Use inline format for small outputs (original behavior with exit status).
+		if (exitDetails === undefined) {
 			result += "<VSCE exitDetails == undefined: terminal output and command execution status is unknown.>"
-			exitStatus = `Exit code: <undefined, notify user>`
+		} else if (!exitDetails.signalName && exitDetails.exitCode === undefined) {
+			result += "<VSCE exit code is undefined: terminal output and command execution status is unknown.>"
 		}
+
+		const exitStatus = formatExitStatus(exitDetails)
 
 		return [
 			false,

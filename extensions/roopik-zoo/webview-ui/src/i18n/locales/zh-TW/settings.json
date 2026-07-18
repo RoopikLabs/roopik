@@ -41,7 +41,8 @@
 		"experimental": "實驗性",
 		"language": "語言",
 		"about": "關於 Zoo Code",
-		"skills": "Skills"
+		"skills": "Skills",
+		"rules": "規則"
 	},
 	"about": {
 		"bugReport": {
@@ -62,6 +63,24 @@
 		"debugMode": {
 			"label": "啟用偵錯模式",
 			"description": "啟用偵錯模式以在工作標題顯示額外按鈕，用於在暫存檔案中檢視 API 對話歷史記錄和 UI 訊息的格式化 JSON。"
+		},
+		"rooHistoryImport": {
+			"settingLabel": "從 Roo Code 匯入歷史記錄",
+			"cardTitle": "Roo Code 歷史記錄",
+			"cardDescription": "將已儲存的 Roo Code 對話複製到 Zoo Code。",
+			"statusImporting": "正在匯入歷史記錄",
+			"statusFailed": "匯入失敗",
+			"statusComplete": "匯入完成",
+			"buttonImporting": "正在從 Roo Code 匯入...",
+			"buttonIdle": "從 Roo Code 匯入歷史記錄",
+			"summaryFailedWithFiles": "匯入停止前已複製 {{total}} 個檔案中的 {{copied}} 個。",
+			"summaryFailedNoFiles": "匯入在複製任何檔案之前已停止。",
+			"summaryCopied": "已複製 {{total}} 個檔案中的 {{copied}} 個",
+			"detailFailed": "開始新的匯入嘗試以重試。",
+			"detailTasksImported_one": "已匯入 {{total}} 個工作歷史記錄中的 {{count}} 個。",
+			"detailTasksImported_other": "已匯入 {{total}} 個工作歷史記錄中的 {{count}} 個。",
+			"detailPreparing": "正在準備匯入 Roo Code 歷史記錄。",
+			"progressAriaLabel": "Roo Code 歷史記錄匯入進度"
 		}
 	},
 	"slashCommands": {
@@ -99,6 +118,52 @@
 		},
 		"footer": "使用斜線命令快速存取經常使用的提示詞和工作流程。"
 	},
+	"rules": {
+		"description": "從全域與工作區 .roo/rules 目錄管理 Zoo Code 規則檔案。無需手動瀏覽設定資料夾，即可建立一般規則或特定模式規則。",
+		"workspaceRules": "工作區規則",
+		"globalRules": "全域規則",
+		"noWorkspaceRules": "此專案尚無規則。",
+		"noGlobalRules": "尚無全域規則。",
+		"addRule": "新增規則",
+		"editRule": "編輯規則",
+		"deleteRule": "刪除規則",
+		"modeLabel": "模式：{{mode}}",
+		"deleteDialog": {
+			"title": "刪除規則",
+			"description": "確定要刪除規則「{{name}}」嗎？此動作無法復原。",
+			"confirm": "刪除",
+			"cancel": "取消"
+		},
+		"createDialog": {
+			"title": "建立新規則",
+			"nameLabel": "名稱",
+			"namePlaceholder": "my-rule-name",
+			"nameHint": "只能使用小寫字母、數字、連字號與底線。.md 會自動加入。",
+			"scopeLabel": "位置",
+			"kindLabel": "規則類型",
+			"modeLabel": "模式",
+			"modePlaceholder": "選擇模式",
+			"create": "建立",
+			"cancel": "取消"
+		},
+		"scope": {
+			"global": "全域（可用於所有工作區）",
+			"project": "工作區"
+		},
+		"kind": {
+			"generic": "一般規則",
+			"mode": "特定模式規則",
+			"genericBadge": "一般",
+			"modeBadge": "模式"
+		},
+		"validation": {
+			"nameRequired": "名稱為必填",
+			"nameTooLong": "名稱必須為 64 個字元或更少",
+			"nameInvalid": "名稱只能包含小寫字母、數字、連字號與底線",
+			"modeRequired": "特定模式規則需要選擇模式"
+		},
+		"footer": "規則會先載入特定模式指引，再載入一般指引。全域規則會先於工作區規則載入。"
+	},
 	"ui": {
 		"collapseThinking": {
 			"label": "預設折疊「思考」訊息",
@@ -107,6 +172,23 @@
 		"requireCtrlEnterToSend": {
 			"label": "需要 {{primaryMod}}+Enter 傳送訊息",
 			"description": "啟用後，必須按 {{primaryMod}}+Enter 傳送訊息，而不只是 Enter"
+		},
+		"chatFontSize": {
+			"label": "聊天字型大小",
+			"description": "設定 Zoo Code 聊天的字型大小（以像素為單位）。保留預設值以符合 VS Code 的字型大小。",
+			"reset": "使用 VS Code 預設值"
+		},
+		"autoCloseZooOpenedFiles": {
+			"label": "自動關閉 Zoo 開啟的檔案",
+			"description": "啟用後，Zoo 為 diff 暫時開啟的編輯器分頁將在接受或拒絕變更後自動關閉。使用者在編輯前已開啟的分頁不會被自動關閉。"
+		},
+		"autoCloseZooOpenedFilesAfterUserEdited": {
+			"label": "使用者操作後也自動關閉",
+			"description": "啟用後，即使使用者在編輯工作階段中點擊或輸入了檔案或 diff，Zoo 開啟的分頁也會被關閉。若「自動關閉 Zoo 開啟的檔案」已停用，則此選項無效。"
+		},
+		"autoCloseZooOpenedNewFiles": {
+			"label": "自動關閉新建立的檔案",
+			"description": "啟用後，Zoo 新建（而非修改）的檔案分頁在接受變更後也會自動關閉。"
 		}
 	},
 	"prompts": {
@@ -223,7 +305,8 @@
 		"stoppingButton": "正在停止...",
 		"workspaceToggleLabel": "為此工作區啟用索引",
 		"workspaceDisabledMessage": "索引已設定，但尚未為此工作區啟用。",
-		"autoEnableDefaultLabel": "自動為新工作區啟用索引"
+		"autoEnableDefaultLabel": "自動為新工作區啟用索引",
+		"sembleProvider": "Semble - 本機"
 	},
 	"autoApprove": {
 		"description": "無需詢問許可即可執行下列動作。請僅在您完全信任且了解安全風險的情況下啟用此功能。",
@@ -324,6 +407,10 @@
 		"getOpenRouterApiKey": "取得 OpenRouter API 金鑰",
 		"vercelAiGatewayApiKey": "Vercel AI Gateway API 金鑰",
 		"getVercelAiGatewayApiKey": "取得 Vercel AI Gateway API 金鑰",
+		"opencodeGoApiKey": "Opencode Go API 金鑰",
+		"getOpencodeGoApiKey": "取得 Opencode Go API 金鑰",
+		"kenariApiKey": "Kenari API 金鑰",
+		"getKenariApiKey": "取得 Kenari API 金鑰",
 		"apiKeyStorageNotice": "API 金鑰會安全地儲存在 VS Code 的 Secret Storage 中",
 		"openAiCodexRateLimits": {
 			"title": "Codex 用量限制{{planLabel}}",
@@ -392,6 +479,8 @@
 		"poeBaseUrl": "Poe 基礎 URL",
 		"fireworksApiKey": "Fireworks API 金鑰",
 		"getFireworksApiKey": "取得 Fireworks API 金鑰",
+		"friendliApiKey": "Friendli API 金鑰",
+		"getFriendliApiKey": "取得 Friendli API 金鑰",
 		"deepSeekApiKey": "DeepSeek API 金鑰",
 		"getDeepSeekApiKey": "取得 DeepSeek API 金鑰",
 		"moonshotApiKey": "Moonshot API 金鑰",
@@ -400,6 +489,13 @@
 		"minimaxApiKey": "MiniMax API 金鑰",
 		"getMiniMaxApiKey": "取得 MiniMax API 金鑰",
 		"minimaxBaseUrl": "MiniMax 服務端點",
+		"mimoApiKey": "MiMo API 金鑰",
+		"getMimoApiKey": "取得 MiMo API 金鑰",
+		"mimoBaseUrl": "MiMo 入口點",
+		"mimoBaseUrlSingapore": "Token 方案 - 新加坡（預設）",
+		"mimoBaseUrlChina": "Token 方案 - 中國",
+		"mimoBaseUrlEurope": "Token 方案 - 歐洲（AMS）",
+		"mimoBaseUrlPayg": "隨選付費",
 		"zaiApiKey": "Z AI API 金鑰",
 		"getZaiApiKey": "取得 Z AI API 金鑰",
 		"zaiEntrypoint": "Z AI 服務端點",
@@ -455,6 +551,7 @@
 			"step3": "3. 或建立具有憑證的服務帳戶。"
 		},
 		"googleCloudCredentials": "Google Cloud 憑證",
+		"googleCloudCredentialsPathWarning": "此欄位需要服務帳號金鑰檔案的 JSON 內容，而不是路徑。如果您有路徑，請將其貼到下方的<strong>Google Cloud 金鑰檔案路徑</strong>欄位，或清除此欄位並使用 <code>GOOGLE_APPLICATION_CREDENTIALS</code> 環境變數。",
 		"googleCloudKeyFile": "Google Cloud 金鑰檔案路徑",
 		"googleCloudProjectId": "Google Cloud 專案 ID",
 		"googleCloudRegion": "Google Cloud 區域",
@@ -475,6 +572,8 @@
 			"apiKeyHelp": "用於已驗證 Ollama 執行個體或雲端服務的選用 API 金鑰。本機安裝請留空。",
 			"numCtx": "上下文視窗大小（num_ctx）",
 			"numCtxHelp": "覆寫模型的預設上下文視窗大小。留空以使用模型的 Modelfile 設定。最小值為 128。",
+			"thinking": "啟用思考",
+			"thinkingHelp": "為推理模型（例如 qwen3、deepseek-r1）啟用 Ollama 的原生思考。啟用後，模型的推理將單獨串流和顯示。不支援的模型將忽略此設定。",
 			"description": "Ollama 允許您在本機電腦執行模型。請參閱快速入門指南。",
 			"warning": "注意：Zoo Code 使用複雜提示詞，與 Claude 模型搭配最佳。功能較弱的模型可能無法正常運作。"
 		},
@@ -544,7 +643,8 @@
 			"low": "低",
 			"medium": "中",
 			"high": "高",
-			"xhigh": "超高"
+			"xhigh": "超高",
+			"max": "最高"
 		},
 		"verbosity": {
 			"label": "輸出詳細程度",
@@ -560,6 +660,13 @@
 			"placeholder": "預設：claude",
 			"maxTokensLabel": "最大輸出 Token",
 			"maxTokensDescription": "Claude Code 回應的最大輸出 Token 數量。預設為 8000。"
+		},
+		"zooGateway": {
+			"account": "Zoo Code 帳戶",
+			"signInButton": "登入 Zoo Code",
+			"signInDescription": "登入以使用您的帳戶存取 Zoo Gateway",
+			"authenticated": "已認證",
+			"authenticatedAs": "已認證為 {{name}}"
 		}
 	},
 	"checkpoints": {
@@ -654,6 +761,12 @@
 				"description": "在繼續之前寫入檔案後等待的時間，允許診斷工具處理變更並偵測問題。"
 			}
 		},
+		"fileEdits": {
+			"diffFuzzyThreshold": {
+				"label": "差異匹配閾值",
+				"description": "較低的閾值使檔案編輯對格式和空白變化更具彈性。100%的閾值要求完全匹配。"
+			}
+		},
 		"condensingThreshold": {
 			"label": "壓縮觸發閾值",
 			"selectProfile": "設定檔的閾值",
@@ -741,6 +854,13 @@
 		"inheritEnv": {
 			"label": "繼承環境變數",
 			"description": "啟用此選項以從父 VS Code 程序繼承環境變數。<0>了解更多</0>"
+		},
+		"profile": {
+			"label": "Zoo Code 終端機設定檔",
+			"followVscode": "跟隨 VS Code 設定檔 （推薦）",
+			"description": "預設情況下，Zoo Code 使用 VS Code 設定的 Shell。從清單中選擇 VS Code 公開的路徑型 Shell 設定檔。僅含來源的設定檔（如內建的 PowerShell 項目）無法在此列出。 <0>了解更多</0>",
+			"configureButton": "在 VS Code 中選擇預設設定檔",
+			"noProfiles": "(在 terminal.integrated.profiles 中未找到路徑型設定檔)"
 		}
 	},
 	"advancedSettings": {
@@ -901,7 +1021,8 @@
 		"providerNotAllowed": "供應商 '{{provider}}' 不允許用於您的組織。",
 		"modelNotAllowed": "模型 '{{model}}' 不允許用於供應商 '{{provider}}'，此設定已被組織禁止",
 		"profileInvalid": "此設定檔包含您的組織不允許的供應商或模型",
-		"qwenCodeOauthPath": "您必須提供有效的 OAuth 憑證路徑"
+		"qwenCodeOauthPath": "您必須提供有效的 OAuth 憑證路徑",
+		"zooGatewaySignIn": "請登入 Zoo Code 以使用 Zoo Gateway。"
 	},
 	"placeholders": {
 		"apiKey": "請輸入 API 金鑰...",

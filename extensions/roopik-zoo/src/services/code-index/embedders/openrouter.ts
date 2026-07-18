@@ -12,7 +12,7 @@ import { withValidationErrorHandling, HttpError, formatEmbeddingError } from "..
 import { TelemetryEventName } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
 import { Mutex } from "async-mutex"
-import { handleOpenAIError } from "../../../api/providers/utils/openai-error-handler"
+import { handleOpenAIError } from "../../../api/providers/utils/error-handler"
 
 // Default provider name when no specific provider is selected
 export const OPENROUTER_DEFAULT_PROVIDER_NAME = "[default]"
@@ -76,8 +76,8 @@ export class OpenRouterEmbedder implements IEmbedder {
 				baseURL: this.baseUrl,
 				apiKey: apiKey,
 				defaultHeaders: {
-					"HTTP-Referer": "https://github.com/RooCodeInc/Roo-Code",
-					"X-Title": "Roo Code",
+					"HTTP-Referer": "https://github.com/Zoo-Code-Org/Zoo-Code",
+					"X-Title": "Zoo Code",
 				},
 			})
 		} catch (error) {

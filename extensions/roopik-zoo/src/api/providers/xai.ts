@@ -13,8 +13,8 @@ import { getModelParams } from "../transform/model-params"
 
 import { DEFAULT_HEADERS } from "./constants"
 import { BaseProvider } from "./base-provider"
-import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
-import { handleOpenAIError } from "./utils/openai-error-handler"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
+import { handleOpenAIError } from "./utils/error-handler"
 import { isMcpTool } from "../../utils/mcp-name"
 
 const XAI_DEFAULT_TEMPERATURE = 0
@@ -34,6 +34,7 @@ export class XAIHandler extends BaseProvider implements SingleCompletionHandler 
 			baseURL: "https://api.x.ai/v1",
 			apiKey: apiKey,
 			defaultHeaders: DEFAULT_HEADERS,
+			timeout: this.timeoutMs,
 		})
 	}
 
@@ -119,9 +120,11 @@ export class XAIHandler extends BaseProvider implements SingleCompletionHandler 
 			requestBody.parallel_tool_calls = metadata?.parallelToolCalls ?? true
 		}
 
-		// Pass reasoning effort for models that support it (e.g., mini models)
+		// Pass reasoning effort for models that support it (e.g., grok-4.5, grok-3-mini).
+		// The xAI Responses API uses `reasoning: { effort }` format (not `reasoning_effort`
+		// which is the Chat Completions format), so we convert from the OpenAI params shape.
 		if (model.reasoning) {
-			requestBody.reasoning = model.reasoning
+			requestBody.reasoning = { effort: model.reasoning.reasoning_effort }
 		}
 
 		let stream: AsyncIterable<any>
@@ -141,7 +144,7 @@ export class XAIHandler extends BaseProvider implements SingleCompletionHandler 
 		yield* processResponsesApiStream(stream, normalizeUsage)
 	}
 
-	async completePrompt(prompt: string): Promise<string> {
+	async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
 		const model = this.getModel()
 
 		try {

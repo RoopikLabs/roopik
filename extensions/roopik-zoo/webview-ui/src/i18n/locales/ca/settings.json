@@ -41,7 +41,8 @@
 		"experimental": "Experimental",
 		"language": "Idioma",
 		"about": "Sobre Zoo Code",
-		"skills": "Skills"
+		"skills": "Skills",
+		"rules": "Regles"
 	},
 	"about": {
 		"bugReport": {
@@ -62,6 +63,24 @@
 		"debugMode": {
 			"label": "Activa el mode de depuració",
 			"description": "Activa el mode de depuració per mostrar botons addicionals a la capçalera de la tasca que permetin veure l'historial de conversa de l'API i els missatges de la UI com a JSON formatejat en fitxers temporals."
+		},
+		"rooHistoryImport": {
+			"settingLabel": "Importa l'historial des de Roo Code",
+			"cardTitle": "Historial de Roo Code",
+			"cardDescription": "Copia les converses desades de Roo Code a Zoo Code.",
+			"statusImporting": "Important l'historial",
+			"statusFailed": "La importació ha fallat",
+			"statusComplete": "Importació completada",
+			"buttonImporting": "Important des de Roo Code...",
+			"buttonIdle": "Importa l'historial des de Roo Code",
+			"summaryFailedWithFiles": "S'han copiat {{copied}} de {{total}} fitxers abans que s'aturés la importació.",
+			"summaryFailedNoFiles": "La importació s'ha aturat abans de copiar cap fitxer.",
+			"summaryCopied": "S'han copiat {{copied}} de {{total}} fitxers",
+			"detailFailed": "Inicia un nou intent d'importació per tornar-ho a provar.",
+			"detailTasksImported_one": "S'ha importat {{count}} de {{total}} historial de tasques.",
+			"detailTasksImported_other": "S'han importat {{count}} de {{total}} historials de tasques.",
+			"detailPreparing": "Preparant la importació de l'historial de Roo Code.",
+			"progressAriaLabel": "Progrés de la importació de l'historial de Roo Code"
 		}
 	},
 	"slashCommands": {
@@ -98,6 +117,52 @@
 			"nameInvalid": "El nom ha de contenir només lletres, números, guions i subratllats"
 		},
 		"footer": "Utilitza comandes de barra per accedir ràpidament a indicacions i fluxos de treball utilitzats freqüentment."
+	},
+	"rules": {
+		"description": "Gestiona els fitxers de regles de Zoo Code des dels directoris .roo/rules globals i de l’espai de treball. Crea regles generals o específiques de mode sense haver de navegar manualment per carpetes de configuració.",
+		"workspaceRules": "Regles de l’espai de treball",
+		"globalRules": "Regles globals",
+		"noWorkspaceRules": "Encara no hi ha regles en aquest projecte.",
+		"noGlobalRules": "Encara no hi ha regles globals.",
+		"addRule": "Afegeix una regla",
+		"editRule": "Edita la regla",
+		"deleteRule": "Suprimeix la regla",
+		"modeLabel": "Mode: {{mode}}",
+		"deleteDialog": {
+			"title": "Suprimeix la regla",
+			"description": "Segur que vols suprimir la regla \"{{name}}\"? Aquesta acció no es pot desfer.",
+			"confirm": "Suprimeix",
+			"cancel": "Cancel·la"
+		},
+		"createDialog": {
+			"title": "Crea una regla nova",
+			"nameLabel": "Nom",
+			"namePlaceholder": "nom-de-la-meva-regla",
+			"nameHint": "Només lletres minúscules, números, guions i guions baixos. .md s’afegeix automàticament.",
+			"scopeLabel": "Ubicació",
+			"kindLabel": "Tipus de regla",
+			"modeLabel": "Mode",
+			"modePlaceholder": "Selecciona un mode",
+			"create": "Crea",
+			"cancel": "Cancel·la"
+		},
+		"scope": {
+			"global": "Global (disponible en tots els espais de treball)",
+			"project": "Espai de treball"
+		},
+		"kind": {
+			"generic": "Regles generals",
+			"mode": "Regles específiques de mode",
+			"genericBadge": "General",
+			"modeBadge": "Mode"
+		},
+		"validation": {
+			"nameRequired": "El nom és obligatori",
+			"nameTooLong": "El nom ha de tenir 64 caràcters o menys",
+			"nameInvalid": "El nom només pot contenir lletres minúscules, números, guions i guions baixos",
+			"modeRequired": "El mode és obligatori per a les regles específiques de mode"
+		},
+		"footer": "Les regles carreguen la guia específica de mode abans de la guia general. Les regles globals es carreguen abans que les regles de l’espai de treball."
 	},
 	"prompts": {
 		"description": "Configura les indicacions de suport utilitzades per a accions ràpides com millorar indicacions, explicar codi i solucionar problemes. Aquestes indicacions ajuden Zoo a proporcionar millor assistència per a tasques comunes de desenvolupament."
@@ -213,7 +278,8 @@
 		"stoppingButton": "Aturant...",
 		"workspaceToggleLabel": "Activar la indexació per a aquest espai de treball",
 		"workspaceDisabledMessage": "La indexació està configurada però no habilitada per a aquest espai de treball.",
-		"autoEnableDefaultLabel": "Habilitar automàticament la indexació per a nous espais de treball"
+		"autoEnableDefaultLabel": "Habilitar automàticament la indexació per a nous espais de treball",
+		"sembleProvider": "Semble - Local"
 	},
 	"autoApprove": {
 		"toggleShortcut": "Pots configurar una drecera global per a aquesta configuració <SettingsLink>a les preferències del teu IDE</SettingsLink>.",
@@ -314,6 +380,10 @@
 		"getOpenRouterApiKey": "Obtenir clau API d'OpenRouter",
 		"vercelAiGatewayApiKey": "Clau API de Vercel AI Gateway",
 		"getVercelAiGatewayApiKey": "Obtenir clau API de Vercel AI Gateway",
+		"opencodeGoApiKey": "Clau API de Opencode Go",
+		"getOpencodeGoApiKey": "Obtenir clau API de Opencode Go",
+		"kenariApiKey": "Clau API de Kenari",
+		"getKenariApiKey": "Obtenir clau API de Kenari",
 		"apiKeyStorageNotice": "Les claus API s'emmagatzemen de forma segura a l'Emmagatzematge Secret de VSCode",
 		"openAiCodexRateLimits": {
 			"title": "Usage Limits for Codex{{planLabel}}",
@@ -382,6 +452,8 @@
 		"poeBaseUrl": "URL base de Poe",
 		"fireworksApiKey": "Clau API de Fireworks",
 		"getFireworksApiKey": "Obtenir clau API de Fireworks",
+		"friendliApiKey": "Clau API de Friendli",
+		"getFriendliApiKey": "Obtenir clau API de Friendli",
 		"deepSeekApiKey": "Clau API de DeepSeek",
 		"getDeepSeekApiKey": "Obtenir clau API de DeepSeek",
 		"moonshotApiKey": "Clau API de Moonshot",
@@ -394,6 +466,13 @@
 		"minimaxApiKey": "Clau API de MiniMax",
 		"getMiniMaxApiKey": "Obtenir clau API de MiniMax",
 		"minimaxBaseUrl": "Punt d'entrada de MiniMax",
+		"mimoApiKey": "Clau API de MiMo",
+		"getMimoApiKey": "Obtenir clau API de MiMo",
+		"mimoBaseUrl": "Punt d'entrada de MiMo",
+		"mimoBaseUrlSingapore": "Token Plan - Singapur (Predeterminat)",
+		"mimoBaseUrlChina": "Token Plan - Xina",
+		"mimoBaseUrlEurope": "Token Plan - Europa (AMS)",
+		"mimoBaseUrlPayg": "Pagament segons ús",
 		"geminiApiKey": "Clau API de Gemini",
 		"getSambaNovaApiKey": "Obtenir clau API de SambaNova",
 		"sambaNovaApiKey": "Clau API de SambaNova",
@@ -445,6 +524,7 @@
 			"step3": "3. O crear un compte de servei amb credencials."
 		},
 		"googleCloudCredentials": "Credencials de Google Cloud",
+		"googleCloudCredentialsPathWarning": "Aquest camp espera el contingut JSON d'un fitxer de clau de compte de servei, no una ruta. Si tens una ruta, enganxa-la al camp <strong>Ruta del fitxer de clau de Google Cloud</strong> a continuació, o buida aquest camp i utilitza la variable d'entorn <code>GOOGLE_APPLICATION_CREDENTIALS</code>.",
 		"googleCloudKeyFile": "Ruta del fitxer de clau de Google Cloud",
 		"googleCloudProjectId": "ID del projecte de Google Cloud",
 		"googleCloudRegion": "Regió de Google Cloud",
@@ -465,6 +545,8 @@
 			"apiKeyHelp": "Clau API opcional per a instàncies d'Ollama autenticades o serveis al núvol. Deixa-ho buit per a instal·lacions locals.",
 			"numCtx": "Mida de la finestra de context (num_ctx)",
 			"numCtxHelp": "Sobreescriu la mida de la finestra de context per defecte del model. Deixeu-ho en blanc per utilitzar la configuració del Modelfile del model. El valor mínim és 128.",
+			"thinking": "Activa el raonament",
+			"thinkingHelp": "Activa el raonament natiu d'Ollama per a models de raonament (p. ex. qwen3, deepseek-r1). Quan està activat, el raonament del model es transmet i es mostra per separat. Els models no compatibles ignoraran aquesta configuració.",
 			"description": "Ollama permet executar models localment al vostre ordinador. Per a instruccions sobre com començar, consulteu la Guia d'inici ràpid.",
 			"warning": "Nota: Zoo Code utilitza prompts complexos i funciona millor amb models Claude. Els models menys capaços poden no funcionar com s'espera."
 		},
@@ -533,6 +615,7 @@
 			"minimal": "Mínim (el més ràpid)",
 			"high": "Alt",
 			"xhigh": "Molt alt",
+			"max": "Màxim",
 			"medium": "Mitjà",
 			"low": "Baix"
 		},
@@ -550,6 +633,13 @@
 			"placeholder": "Per defecte: claude",
 			"maxTokensLabel": "Tokens màxims de sortida",
 			"maxTokensDescription": "Nombre màxim de tokens de sortida per a les respostes de Claude Code. El valor per defecte és 8000."
+		},
+		"zooGateway": {
+			"account": "Compte de Zoo Code",
+			"signInButton": "Iniciar sessió a Zoo Code",
+			"signInDescription": "Inicia sessió per utilitzar Zoo Gateway amb el teu compte",
+			"authenticated": "Autenticat",
+			"authenticatedAs": "Autenticat com a {{name}}"
 		}
 	},
 	"checkpoints": {
@@ -632,6 +722,12 @@
 			"delayAfterWrite": {
 				"label": "Retard després d'escriptures per permetre que els diagnòstics detectin possibles problemes",
 				"description": "Temps d'espera després d'escriptures de fitxers abans de continuar, permetent que les eines de diagnòstic processin els canvis i detectin problemes."
+			}
+		},
+		"fileEdits": {
+			"diffFuzzyThreshold": {
+				"label": "Llindar de coincidència de diff",
+				"description": "Els llindars més baixos fan que les edicions de fitxer siguin més resistents a variacions de format i espais en blanc. Un llindar del 100% requereix una coincidència exacta."
 			}
 		},
 		"condensingThreshold": {
@@ -731,6 +827,13 @@
 		"inheritEnv": {
 			"label": "Hereta variables d'entorn",
 			"description": "Activa per heretar variables d'entorn del procés pare de VS Code. <0>Aprèn-ne més</0>"
+		},
+		"profile": {
+			"label": "Perfil de terminal de Zoo Code",
+			"followVscode": "Seguint el perfil de VS Code (recomanat)",
+			"description": "Per defecte, Zoo Code utilitza la shell que VS Code té configurada. Seleccioneu un perfil de la llista per triar un perfil de shell amb ruta explícita exposat per VS Code. Els perfils de només font (p. ex., l'entrada integrada de PowerShell) no es poden llistar aquí. <0>Més informació</0>",
+			"configureButton": "Trieu el perfil predeterminat a VS Code",
+			"noProfiles": "(no s'han trobat perfils amb ruta a terminal.integrated.profiles)"
 		}
 	},
 	"advancedSettings": {
@@ -891,7 +994,8 @@
 		"providerNotAllowed": "El proveïdor '{{provider}}' no està permès per la vostra organització",
 		"modelNotAllowed": "El model '{{model}}' no està permès per al proveïdor '{{provider}}' per la vostra organització",
 		"profileInvalid": "Aquest perfil conté un proveïdor o model que no està permès per la vostra organització",
-		"qwenCodeOauthPath": "Has de proporcionar una ruta vàlida de credencials OAuth"
+		"qwenCodeOauthPath": "Has de proporcionar una ruta vàlida de credencials OAuth",
+		"zooGatewaySignIn": "Inicia sessió a Zoo Code per utilitzar Zoo Gateway."
 	},
 	"placeholders": {
 		"apiKey": "Introduïu la clau API...",
@@ -953,6 +1057,23 @@
 		"requireCtrlEnterToSend": {
 			"label": "Requereix {{primaryMod}}+Intro per enviar missatges",
 			"description": "Quan estigui activat, has de prémer {{primaryMod}}+Intro per enviar missatges en lloc de només Intro"
+		},
+		"chatFontSize": {
+			"label": "Mida de lletra del xat",
+			"description": "Defineix la mida de la lletra (en píxels) del xat de Zoo Code. Deixa-ho al valor per defecte per coincidir amb la mida de lletra del VS Code.",
+			"reset": "Utilitza el valor per defecte del VS Code"
+		},
+		"autoCloseZooOpenedFiles": {
+			"label": "Tanca automaticament els fitxers oberts per Zoo",
+			"description": "Quan esta activat, les pestanyes de l'editor que Zoo ha obert temporalment per a un diff es tanquen automaticament despres d'acceptar o rebutjar el canvi. Les pestanyes que l'usuari ja tenia obertes abans de l'edicio mai no es tanquen automaticament."
+		},
+		"autoCloseZooOpenedFilesAfterUserEdited": {
+			"label": "Tanca automaticament fins i tot despres de la interaccio de l'usuari",
+			"description": "Quan esta activat, les pestanyes obertes per Zoo es tanquen fins i tot si l'usuari ha fet clic o ha escrit al fitxer o al diff durant la sessio d'edicio. No te cap efecte si 'Tanca automaticament els fitxers oberts per Zoo' esta desactivat."
+		},
+		"autoCloseZooOpenedNewFiles": {
+			"label": "Tanca automaticament els fitxers nous creats",
+			"description": "Quan esta activat, les pestanyes dels fitxers que Zoo ha creat (en lloc de modificar) tambe es tanquen automaticament despres d'acceptar el canvi."
 		}
 	},
 	"skills": {

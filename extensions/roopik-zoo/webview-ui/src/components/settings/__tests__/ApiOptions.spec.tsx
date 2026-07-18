@@ -4,7 +4,7 @@ import { render, screen, fireEvent, within } from "@/utils/test-utils"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 import { type ModelInfo, type ProviderSettings, openAiModelInfoSaneDefaults } from "@roo-code/types"
-import { openAiCodexDefaultModelId } from "@roo-code/types"
+import { openAiCodexDefaultModelId, zooGatewayDefaultModelId } from "@roo-code/types"
 
 import * as ExtensionStateContext from "@src/context/ExtensionStateContext"
 const { ExtensionStateContextProvider } = ExtensionStateContext
@@ -229,9 +229,26 @@ vi.mock("../providers/LiteLLM", () => ({
 	),
 }))
 
-// Mock Roo provider for tests
-vi.mock("../providers/Roo", () => ({
-	Roo: () => <div data-testid="roo-provider">Roo Provider</div>,
+// Mock Kenari provider for tests
+vi.mock("../providers/Kenari", () => ({
+	Kenari: ({ apiConfiguration, setApiConfigurationField }: any) => (
+		<div data-testid="kenari-provider">
+			<input
+				data-testid="kenari-api-key"
+				type="password"
+				value={apiConfiguration.kenariApiKey || ""}
+				onChange={(e) => setApiConfigurationField("kenariApiKey", e.target.value)}
+				placeholder="API Key"
+			/>
+		</div>
+	),
+}))
+
+// Mock Friendli provider for tests
+vi.mock("../providers/Friendli", () => ({
+	Friendli: ({ apiConfiguration }: any) => (
+		<div data-testid="friendli-provider" data-key={apiConfiguration?.friendliApiKey || ""} />
+	),
 }))
 
 vi.mock("@src/components/ui/hooks/useSelectedModel", () => ({
@@ -303,6 +320,40 @@ describe("ApiOptions", () => {
 		expect(mockSetApiConfigurationField).toHaveBeenCalledWith("apiProvider", "openai-codex")
 		// Model is reset to the provider default since the previous value is invalid for this provider
 		expect(mockSetApiConfigurationField).toHaveBeenCalledWith("apiModelId", openAiCodexDefaultModelId, false)
+	})
+
+	it("initializes zooGatewayModelId to its default when switching provider to zoo-gateway", () => {
+		// Regression: zoo-gateway was previously missing from PROVIDER_MODEL_CONFIG, so switching
+		// providers never seeded zooGatewayModelId. Configs were left without a model id, which
+		// blocked completion flows that require a dynamic-provider model id.
+		const mockSetApiConfigurationField = vi.fn()
+
+		renderApiOptions({
+			apiConfiguration: {
+				apiProvider: "anthropic",
+				// No prior zooGatewayModelId.
+			},
+			setApiConfigurationField: mockSetApiConfigurationField,
+		})
+
+		const providerSelectContainer = screen.getByTestId("provider-select")
+		const providerSelect = providerSelectContainer.querySelector("select") as HTMLSelectElement
+		fireEvent.change(providerSelect, { target: { value: "zoo-gateway" } })
+
+		expect(mockSetApiConfigurationField).toHaveBeenCalledWith("apiProvider", "zoo-gateway")
+		expect(mockSetApiConfigurationField).toHaveBeenCalledWith("zooGatewayModelId", zooGatewayDefaultModelId, false)
+	})
+
+	it("renders the Friendli provider form when friendli is selected", () => {
+		renderApiOptions({
+			apiConfiguration: {
+				apiProvider: "friendli" as const,
+				friendliApiKey: "k",
+			},
+		})
+
+		expect(screen.getByTestId("friendli-provider")).toBeInTheDocument()
+		expect(screen.getByTestId("friendli-provider")).toHaveAttribute("data-key", "k")
 	})
 
 	it("shows temperature and rate limit controls by default", () => {
@@ -579,83 +630,27 @@ describe("ApiOptions", () => {
 		})
 	})
 
-	describe("Roo provider tests", () => {
-		it("renders the retired provider message for legacy roo selections without cloud account UI", () => {
-			const useExtensionStateMock = vi.spyOn(ExtensionStateContext, "useExtensionState")
-			useExtensionStateMock.mockReturnValue({
-				cloudIsAuthenticated: false,
-				organizationAllowList: { providers: {} },
-			} as any)
-
+	describe("Kenari provider tests", () => {
+		it("renders Kenari component when provider is selected", () => {
 			renderApiOptions({
 				apiConfiguration: {
-					apiProvider: "roo",
+					apiProvider: "kenari",
+					kenariApiKey: "kn-test-key",
 				},
 			})
 
-			expect(screen.getByTestId("retired-provider-message")).toHaveTextContent(
-				"settings:providers.retiredProviderMessage",
-			)
-			expect(screen.queryByText("Authenticated")).not.toBeInTheDocument()
-			expect(screen.queryByText("Not Authenticated")).not.toBeInTheDocument()
+			expect(screen.getByTestId("kenari-provider")).toBeInTheDocument()
+			expect(screen.getByTestId("kenari-api-key")).toHaveValue("kn-test-key")
 		})
 
-		it("pins roo provider to the top when not on welcome screen", () => {
-			// Mock useExtensionState to ensure no filtering
-			const useExtensionStateMock = vi.spyOn(ExtensionStateContext, "useExtensionState")
-			useExtensionStateMock.mockReturnValue({
-				cloudIsAuthenticated: false,
-				organizationAllowList: { providers: {} },
-			} as any)
-
+		it("does not render Kenari component when other provider is selected", () => {
 			renderApiOptions({
-				apiConfiguration: {},
-				fromWelcomeView: false,
+				apiConfiguration: {
+					apiProvider: "anthropic",
+				},
 			})
 
-			const providerSelectContainer = screen.getByTestId("provider-select")
-			const providerSelect = providerSelectContainer.querySelector("select") as HTMLSelectElement
-			const options = Array.from(providerSelect.querySelectorAll("option"))
-
-			// Filter out the placeholder option (empty value)
-			const providerOptions = options.filter((opt) => opt.value !== "")
-
-			// Find the roo option
-			const rooOption = providerOptions.find((opt) => opt.value === "roo")
-
-			// If roo is available, verify it's pinned to the top
-			if (rooOption) {
-				expect(providerOptions[0].value).toBe("roo")
-			}
-
-			useExtensionStateMock.mockRestore()
-		})
-
-		it("filters out roo provider on welcome screen", () => {
-			// Mock useExtensionState to ensure no filtering
-			const useExtensionStateMock = vi.spyOn(ExtensionStateContext, "useExtensionState")
-			useExtensionStateMock.mockReturnValue({
-				cloudIsAuthenticated: false,
-				organizationAllowList: { providers: {} },
-			} as any)
-
-			renderApiOptions({
-				apiConfiguration: {},
-				fromWelcomeView: true,
-			})
-
-			const providerSelectContainer = screen.getByTestId("provider-select")
-			const providerSelect = providerSelectContainer.querySelector("select") as HTMLSelectElement
-			const options = Array.from(providerSelect.querySelectorAll("option"))
-
-			// Filter out the placeholder option (empty value)
-			const providerOptions = options.filter((opt) => opt.value !== "")
-
-			// Check that roo is NOT in the list when on welcome screen
-			const rooOption = providerOptions.find((opt) => opt.value === "roo")
-			expect(rooOption).toBeUndefined()
-
-			useExtensionStateMock.mockRestore()
+			expect(screen.queryByTestId("kenari-provider")).not.toBeInTheDocument()
 		})
 	})
 

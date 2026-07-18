@@ -22,12 +22,22 @@ import { getAnthropicProviderReasoning } from "../transform/reasoning"
 import { handleProviderError } from "./utils/error-handler"
 
 import { BaseProvider } from "./base-provider"
-import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
 import { calculateApiCostAnthropic } from "../../shared/cost"
 import {
 	convertOpenAIToolsToAnthropic,
 	convertOpenAIToolChoiceToAnthropic,
 } from "../../core/prompts/tools/native-tools/converters"
+
+// Pre-sorted list of known Anthropic model IDs (lowercased) by length (descending) for case-insensitive substring matching.
+const ANTHROPIC_MODEL_IDS_SORTED_LOWER = (Object.keys(anthropicModels) as AnthropicModelId[])
+	.map((id) => id.toLowerCase())
+	.sort((a, b) => b.length - a.length) as string[]
+
+// Original-case mapping: lowercase key → original AnthropicModelId for lookup.
+const ANTHROPIC_MODEL_ID_LOWER_TO_ORIGINAL = Object.fromEntries(
+	(Object.keys(anthropicModels) as AnthropicModelId[]).map((id) => [id.toLowerCase(), id]),
+)
 
 export class AnthropicHandler extends BaseProvider implements SingleCompletionHandler {
 	private options: ApiHandlerOptions
@@ -44,6 +54,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		this.client = new Anthropic({
 			baseURL: this.options.anthropicBaseUrl || undefined,
 			[apiKeyFieldName]: this.options.apiKey,
+			timeout: this.timeoutMs,
 		})
 	}
 
@@ -54,7 +65,7 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 	): ApiStream {
 		let stream: AnthropicStream<Anthropic.Messages.RawMessageStreamEvent>
 		const cacheControl: CacheControlEphemeral = { type: "ephemeral" }
-		let {
+		const {
 			id: modelId,
 			betas = ["fine-grained-tool-streaming-2025-05-14"],
 			maxTokens,
@@ -65,7 +76,6 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		const thinking = getAnthropicProviderReasoning({
 			model: info,
 			reasoningBudget,
-			reasoningEffort: undefined,
 			settings: this.options,
 		})
 
@@ -89,11 +99,14 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		}
 
 		switch (modelId) {
+			case "claude-sonnet-5":
 			case "claude-sonnet-4-6":
 			case "claude-sonnet-4-5":
 			case "claude-sonnet-4-20250514":
 			case "claude-opus-4-6":
 			case "claude-opus-4-7":
+			case "claude-opus-4-8":
+			case "claude-fable-5":
 			case "claude-opus-4-5-20251101":
 			case "claude-opus-4-1-20250805":
 			case "claude-opus-4-20250514":
@@ -157,11 +170,14 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 
 							// Then check for models that support prompt caching
 							switch (modelId) {
+								case "claude-sonnet-5":
 								case "claude-sonnet-4-6":
 								case "claude-sonnet-4-5":
 								case "claude-sonnet-4-20250514":
 								case "claude-opus-4-6":
 								case "claude-opus-4-7":
+								case "claude-opus-4-8":
+								case "claude-fable-5":
 								case "claude-opus-4-5-20251101":
 								case "claude-opus-4-1-20250805":
 								case "claude-opus-4-20250514":
@@ -347,10 +363,29 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		}
 	}
 
+	// Guesses capabilities for an unrecognized model ID via known-family substring match.
+	private guessModelInfoFromId(modelId: string): ModelInfo {
+		const lowerModelId = modelId.toLowerCase()
+		const matchedLower = ANTHROPIC_MODEL_IDS_SORTED_LOWER.find((knownId) => lowerModelId.includes(knownId))
+
+		if (!matchedLower) {
+			return anthropicModels[anthropicDefaultModelId]
+		}
+
+		const originalId = ANTHROPIC_MODEL_ID_LOWER_TO_ORIGINAL[matchedLower] as AnthropicModelId
+		return anthropicModels[originalId]
+	}
+
 	getModel() {
 		const modelId = this.options.apiModelId
-		let id = modelId && modelId in anthropicModels ? (modelId as AnthropicModelId) : anthropicDefaultModelId
-		let info: ModelInfo = anthropicModels[id]
+		const isKnownModel = modelId !== undefined && modelId in anthropicModels
+
+		// Always honor a user-configured apiModelId, even if it's not a known model.
+		const id = isKnownModel ? (modelId as AnthropicModelId) : (modelId ?? anthropicDefaultModelId)
+
+		let info: ModelInfo = isKnownModel
+			? anthropicModels[modelId as AnthropicModelId]
+			: this.guessModelInfoFromId(id)
 
 		// If 1M context beta is enabled for supported models, update the model info
 		if (
@@ -394,8 +429,8 @@ export class AnthropicHandler extends BaseProvider implements SingleCompletionHa
 		}
 	}
 
-	async completePrompt(prompt: string) {
-		let { id: model, temperature } = this.getModel()
+	async completePrompt(prompt: string, options?: CompletePromptOptions) {
+		const { id: model, temperature } = this.getModel()
 
 		let message
 		try {

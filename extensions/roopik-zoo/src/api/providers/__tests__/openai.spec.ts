@@ -4,9 +4,15 @@ import { OpenAiHandler, getOpenAiModels } from "../openai"
 import { ApiHandlerOptions } from "../../../shared/api"
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
-import { openAiModelInfoSaneDefaults } from "@roo-code/types"
+import { openAiModelInfoSaneDefaults, DEEP_SEEK_DEFAULT_TEMPERATURE } from "@roo-code/types"
 import { Package } from "../../../shared/package"
 import axios from "axios"
+
+vitest.mock("../utils/timeout-config", () => ({
+	getApiRequestTimeout: vitest.fn().mockReturnValue(300_000),
+}))
+
+const MOCK_TIMEOUT_MS = 300_000
 
 const mockCreate = vitest.fn()
 
@@ -14,43 +20,18 @@ vitest.mock("openai", () => {
 	const mockConstructor = vitest.fn()
 	return {
 		__esModule: true,
-		default: mockConstructor.mockImplementation(() => ({
-			chat: {
-				completions: {
-					create: mockCreate.mockImplementation(async (options) => {
-						if (!options.stream) {
-							return {
-								id: "test-completion",
-								choices: [
-									{
-										message: { role: "assistant", content: "Test response", refusal: null },
-										finish_reason: "stop",
-										index: 0,
-									},
-								],
-								usage: {
-									prompt_tokens: 10,
-									completion_tokens: 5,
-									total_tokens: 15,
-								},
-							}
-						}
-
-						return {
-							[Symbol.asyncIterator]: async function* () {
-								yield {
+		default: mockConstructor.mockImplementation(function () {
+			return {
+				chat: {
+					completions: {
+						create: mockCreate.mockImplementation(async (options) => {
+							if (!options.stream) {
+								return {
+									id: "test-completion",
 									choices: [
 										{
-											delta: { content: "Test response" },
-											index: 0,
-										},
-									],
-									usage: null,
-								}
-								yield {
-									choices: [
-										{
-											delta: {},
+											message: { role: "assistant", content: "Test response", refusal: null },
+											finish_reason: "stop",
 											index: 0,
 										},
 									],
@@ -60,12 +41,39 @@ vitest.mock("openai", () => {
 										total_tokens: 15,
 									},
 								}
-							},
-						}
-					}),
+							}
+
+							return {
+								[Symbol.asyncIterator]: async function* () {
+									yield {
+										choices: [
+											{
+												delta: { content: "Test response" },
+												index: 0,
+											},
+										],
+										usage: null,
+									}
+									yield {
+										choices: [
+											{
+												delta: {},
+												index: 0,
+											},
+										],
+										usage: {
+											prompt_tokens: 10,
+											completion_tokens: 5,
+											total_tokens: 15,
+										},
+									}
+								},
+							}
+						}),
+					},
 				},
-			},
-		})),
+			}
+		}),
 	}
 })
 
@@ -111,11 +119,11 @@ describe("OpenAiHandler", () => {
 				baseURL: expect.any(String),
 				apiKey: expect.any(String),
 				defaultHeaders: {
-					"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
-					"X-Title": "Roo Code",
-					"User-Agent": `RooCode/${Package.version}`,
+					"HTTP-Referer": "https://github.com/Zoo-Code-Org/Zoo-Code",
+					"X-Title": "Zoo Code",
+					"User-Agent": `ZooCode/${Package.version}`,
 				},
-				timeout: expect.any(Number),
+				timeout: MOCK_TIMEOUT_MS,
 			})
 		})
 	})
@@ -217,6 +225,77 @@ describe("OpenAiHandler", () => {
 			const textChunks = chunks.filter((chunk) => chunk.type === "text")
 			expect(textChunks).toHaveLength(1)
 			expect(textChunks[0].text).toBe("Test response")
+		})
+
+		it("streams reasoning chunks from delta.reasoning_content", async () => {
+			mockCreate.mockImplementationOnce(async () => ({
+				[Symbol.asyncIterator]: async function* () {
+					yield { choices: [{ delta: { reasoning_content: "thinking..." }, index: 0 }] }
+					yield { choices: [{ delta: { content: "answer" }, index: 0 }] }
+					yield {
+						choices: [{ delta: {}, index: 0 }],
+						usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+					}
+				},
+			}))
+
+			const chunks: any[] = []
+			for await (const chunk of handler.createMessage(systemPrompt, messages)) {
+				chunks.push(chunk)
+			}
+
+			expect(chunks).toContainEqual({ type: "reasoning", text: "thinking..." })
+		})
+
+		it("falls back to delta.reasoning when reasoning_content is absent", async () => {
+			mockCreate.mockImplementationOnce(async () => ({
+				[Symbol.asyncIterator]: async function* () {
+					yield { choices: [{ delta: { reasoning: "router-style thought" }, index: 0 }] }
+					yield {
+						choices: [{ delta: {}, index: 0 }],
+						usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+					}
+				},
+			}))
+
+			const chunks: any[] = []
+			for await (const chunk of handler.createMessage(systemPrompt, messages)) {
+				chunks.push(chunk)
+			}
+
+			expect(chunks).toContainEqual({ type: "reasoning", text: "router-style thought" })
+		})
+
+		it("prefers delta.reasoning_content over delta.reasoning when both are present", async () => {
+			mockCreate.mockImplementationOnce(async () => ({
+				[Symbol.asyncIterator]: async function* () {
+					yield {
+						choices: [
+							{
+								delta: {
+									reasoning_content: "primary thought",
+									reasoning: "fallback thought",
+								},
+								index: 0,
+							},
+						],
+					}
+					yield {
+						choices: [{ delta: {}, index: 0 }],
+						usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+					}
+				},
+			}))
+
+			const chunks: any[] = []
+
+			for await (const chunk of handler.createMessage(systemPrompt, messages)) {
+				chunks.push(chunk)
+			}
+
+			const reasoningChunks = chunks.filter((chunk) => chunk.type === "reasoning")
+
+			expect(reasoningChunks).toEqual([{ type: "reasoning", text: "primary thought" }])
 		})
 
 		it("should handle tool calls in streaming responses", async () => {
@@ -391,6 +470,66 @@ describe("OpenAiHandler", () => {
 			expect(callArgs.reasoning_effort).toBeUndefined()
 		})
 
+		it("should omit temperature when the model sets supportsTemperature to false", async () => {
+			const noTempOptions: ApiHandlerOptions = {
+				...mockOptions,
+				openAiCustomModelInfo: {
+					contextWindow: 128_000,
+					supportsPromptCache: false,
+					supportsTemperature: false,
+				},
+			}
+			const noTempHandler = new OpenAiHandler(noTempOptions)
+			const stream = noTempHandler.createMessage(systemPrompt, messages)
+			for await (const _chunk of stream) {
+			}
+			expect(mockCreate).toHaveBeenCalled()
+			const callArgs = mockCreate.mock.calls[0][0]
+			expect(callArgs).not.toHaveProperty("temperature")
+		})
+
+		it("should omit temperature by default when no custom temperature is set", async () => {
+			// Option A: when "use custom temperature" is off (modelTemperature unset) and the model has no
+			// required default, omit `temperature` so the server's own default applies instead of forcing 0.
+			const stream = handler.createMessage(systemPrompt, messages)
+			for await (const _chunk of stream) {
+			}
+			expect(mockCreate).toHaveBeenCalled()
+			const callArgs = mockCreate.mock.calls[0][0]
+			expect(callArgs).not.toHaveProperty("temperature")
+		})
+
+		it("should use the configured modelTemperature when supportsTemperature is not false", async () => {
+			const customTempHandler = new OpenAiHandler({ ...mockOptions, modelTemperature: 0.5 })
+			const stream = customTempHandler.createMessage(systemPrompt, messages)
+			for await (const _chunk of stream) {
+			}
+			expect(mockCreate).toHaveBeenCalled()
+			const callArgs = mockCreate.mock.calls[0][0]
+			expect(callArgs.temperature).toBe(0.5)
+		})
+
+		it("should default to DEEP_SEEK_DEFAULT_TEMPERATURE for deepseek-reasoner models", async () => {
+			const deepseekHandler = new OpenAiHandler({ ...mockOptions, openAiModelId: "deepseek-reasoner" })
+			const stream = deepseekHandler.createMessage(systemPrompt, messages)
+			for await (const _chunk of stream) {
+			}
+			expect(mockCreate).toHaveBeenCalled()
+			const callArgs = mockCreate.mock.calls[0][0]
+			expect(callArgs.temperature).toBe(DEEP_SEEK_DEFAULT_TEMPERATURE)
+		})
+
+		it("should still send temperature when the user sets a custom value of 0", async () => {
+			// A deliberate 0 must be distinguished from "unset" — it is sent, not omitted.
+			const zeroTempHandler = new OpenAiHandler({ ...mockOptions, modelTemperature: 0 })
+			const stream = zeroTempHandler.createMessage(systemPrompt, messages)
+			for await (const _chunk of stream) {
+			}
+			expect(mockCreate).toHaveBeenCalled()
+			const callArgs = mockCreate.mock.calls[0][0]
+			expect(callArgs.temperature).toBe(0)
+		})
+
 		it("should include max_tokens when includeMaxTokens is true", async () => {
 			const optionsWithMaxTokens: ApiHandlerOptions = {
 				...mockOptions,
@@ -496,6 +635,214 @@ describe("OpenAiHandler", () => {
 			expect(mockCreate).toHaveBeenCalled()
 			const callArgs = mockCreate.mock.calls[0][0]
 			expect(callArgs.max_completion_tokens).toBe(4096)
+		})
+
+		describe("TagMatcher reasoning tags", () => {
+			it("should treat stray closing tag as plain text when no tag is open", async () => {
+				mockCreate.mockImplementationOnce(() => ({
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: { choices: [{ delta: { content: "final</think>text" } }] },
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}))
+
+				const stream = handler.createMessage(systemPrompt, messages)
+				const chunks: any[] = []
+				for await (const chunk of stream) {
+					chunks.push(chunk)
+				}
+
+				expect(chunks).toEqual([{ type: "text", text: "final</think>text" }])
+			})
+
+			it("should treat extra closing tag after a closed block as plain text", async () => {
+				mockCreate.mockImplementationOnce(() => ({
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: {
+									choices: [{ delta: { content: "<think>thinking</think>final</think>text" } }],
+								},
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}))
+
+				const stream = handler.createMessage(systemPrompt, messages)
+				const chunks: any[] = []
+				for await (const chunk of stream) {
+					chunks.push(chunk)
+				}
+
+				expect(chunks).toEqual([
+					{ type: "reasoning", text: "thinking" },
+					{ type: "text", text: "final</think>text" },
+				])
+			})
+
+			it("should handle nested mixed tags with correct closure matching", async () => {
+				mockCreate.mockImplementationOnce(() => ({
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: { choices: [{ delta: { content: "<think>outer" } }] },
+							})
+							.mockResolvedValueOnce({
+								done: false,
+								value: { choices: [{ delta: { content: "<thought>inner</thought>" } }] },
+							})
+							.mockResolvedValueOnce({
+								done: false,
+								value: { choices: [{ delta: { content: " middle</think>" } }] },
+							})
+							.mockResolvedValueOnce({
+								done: false,
+								value: { choices: [{ delta: { content: "final text" } }] },
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}))
+
+				const stream = handler.createMessage(systemPrompt, messages)
+				const chunks: any[] = []
+				for await (const chunk of stream) {
+					chunks.push(chunk)
+				}
+
+				// With the tag stack fix, </thought> closes <thought> inner tag,
+				// and </think> correctly closes the outer <think> tag.
+				// inner content inside <thought> is reasoning, middle is still reasoning under <think>
+				expect(chunks).toEqual([
+					{ type: "reasoning", text: "outer" },
+					{ type: "reasoning", text: "<thought>inner</thought>" },
+					{ type: "reasoning", text: " middle" },
+					{ type: "text", text: "final text" },
+				])
+			})
+
+			it("should handle nested <think> tags with correct stack unwinding", async () => {
+				mockCreate.mockImplementationOnce(() => ({
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: { choices: [{ delta: { content: "<think>outer" } }] },
+							})
+							.mockResolvedValueOnce({
+								done: false,
+								value: { choices: [{ delta: { content: "<think>inner</think>" } }] },
+							})
+							.mockResolvedValueOnce({
+								done: false,
+								value: { choices: [{ delta: { content: " middle</think>" } }] },
+							})
+							.mockResolvedValueOnce({
+								done: false,
+								value: { choices: [{ delta: { content: "final text" } }] },
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}))
+
+				const stream = handler.createMessage(systemPrompt, messages)
+				const chunks: any[] = []
+				for await (const chunk of stream) {
+					chunks.push(chunk)
+				}
+
+				// With the tag stack fix, </thought> closes <thought> inner tag,
+				// and </think> correctly closes the outer <think> tag.
+				// inner content inside <thought> is reasoning, middle is still reasoning under <think>
+				expect(chunks).toEqual([
+					{ type: "reasoning", text: "outer" },
+					{ type: "reasoning", text: "<think>inner</think>" },
+					{ type: "reasoning", text: " middle" },
+					{ type: "text", text: "final text" },
+				])
+			})
+
+			it("should handle reasoning_content alongside tag matching", async () => {
+				mockCreate.mockImplementationOnce(() => ({
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: { choices: [{ delta: { reasoning_content: "native reasoning" } }] },
+							})
+							.mockResolvedValueOnce({
+								done: false,
+								value: { choices: [{ delta: { content: "<think>tag based</think>" } }] },
+							})
+							.mockResolvedValueOnce({
+								done: false,
+								value: { choices: [{ delta: { content: " final output" } }] },
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}))
+
+				const stream = handler.createMessage(systemPrompt, messages)
+				const chunks: any[] = []
+				for await (const chunk of stream) {
+					chunks.push(chunk)
+				}
+
+				expect(chunks).toEqual([
+					{ type: "reasoning", text: "native reasoning" },
+					{ type: "reasoning", text: "tag based" },
+					{ type: "text", text: " final output" },
+				])
+			})
+		})
+
+		it("should include reasoning_content on assistant history messages when preserveReasoning is set", async () => {
+			// Regression guard for issue #201: OpenAI-compatible providers (e.g. DeepSeek via custom
+			// base URL) must pass reasoning_content back in history when thinking mode is active.
+			// This exercises OpenAiHandler -> convertToOpenAiMessages directly.
+			const thinkingHandler = new OpenAiHandler({
+				...mockOptions,
+				openAiCustomModelInfo: {
+					contextWindow: 128_000,
+					supportsPromptCache: false,
+					preserveReasoning: true,
+				},
+			})
+
+			const messagesWithReasoning: Anthropic.Messages.MessageParam[] = [
+				{ role: "user", content: "What files are in the project?" },
+				{
+					role: "assistant",
+					content: [
+						{ type: "reasoning", text: "I should use the read_file tool.", summary: [] } as any,
+						{ type: "tool_use", id: "call_001", name: "read_file", input: { path: "README.md" } },
+					],
+				},
+				{
+					role: "user",
+					content: [{ type: "tool_result", tool_use_id: "call_001", content: "# Project\nHello." }],
+				},
+			]
+
+			const stream = thinkingHandler.createMessage(systemPrompt, messagesWithReasoning)
+			for await (const _chunk of stream) {
+			}
+
+			expect(mockCreate).toHaveBeenCalled()
+			const sentMessages: any[] = mockCreate.mock.calls[0][0].messages
+			const assistantMsg = sentMessages.find((m: any) => m.role === "assistant" && m.tool_calls?.length)
+			expect(assistantMsg).toBeDefined()
+			expect(assistantMsg.reasoning_content).toBe("I should use the read_file tool.")
 		})
 	})
 
@@ -632,7 +979,7 @@ describe("OpenAiHandler", () => {
 					],
 					stream: true,
 					stream_options: { include_usage: true },
-					temperature: 0,
+					// No custom temperature set → `temperature` is omitted.
 					tools: undefined,
 					tool_choice: undefined,
 					parallel_tool_calls: true,

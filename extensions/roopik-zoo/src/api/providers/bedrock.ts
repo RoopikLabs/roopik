@@ -44,7 +44,7 @@ import { convertToBedrockConverseMessages as sharedConverter } from "../transfor
 import { getModelParams } from "../transform/model-params"
 import { shouldUseReasoningBudget } from "../../shared/api"
 import { normalizeToolSchema } from "../../utils/json-schema"
-import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
 
 /************************************************************************************
  *
@@ -61,9 +61,20 @@ interface BedrockInferenceConfig {
 // Define interface for Bedrock additional model request fields
 // This includes thinking configuration, 1M context beta, and other model-specific parameters
 interface BedrockAdditionalModelFields {
-	thinking?: {
-		type: "enabled"
-		budget_tokens: number
+	thinking?:
+		| {
+				type: "enabled"
+				budget_tokens: number
+		  }
+		| {
+				// Claude 4.7+ adaptive thinking — no budget_tokens, uses output_config.effort instead
+				type: "adaptive"
+				// "summarized" shows thinking content in UI; omit to keep thinking internal only
+				display?: "summarized" | "none"
+		  }
+	output_config?: {
+		// Claude 4.7+ effort levels: "low" | "medium" | "high" | "xhigh" | "max"
+		effort: string
 	}
 	anthropic_beta?: string[]
 	[key: string]: any // Add index signature to be compatible with DocumentType
@@ -205,7 +216,7 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 	constructor(options: ProviderSettings) {
 		super()
 		this.options = options
-		let region = this.options.awsRegion
+		const region = this.options.awsRegion
 
 		// process the various user input options, be opinionated about the intent of the options
 		// and determine the model to use during inference and for cost calculations
@@ -252,7 +263,7 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		this.costModelConfig = this.getModel()
 
 		const clientConfig: BedrockRuntimeClientConfig = {
-			userAgentAppId: `RooCode#${Package.version}`,
+			userAgentAppId: `ZooCode#${Package.version}`,
 			region: this.options.awsRegion,
 			// Add the endpoint configuration when specified and enabled
 			...(this.options.awsBedrockEndpoint &&
@@ -284,6 +295,34 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		}
 
 		this.client = new BedrockRuntimeClient(clientConfig)
+	}
+
+	/**
+	 * Detect models that require the adaptive-thinking API contract.
+	 *
+	 * Starting with Claude Opus 4.7 (and the matching Sonnet 4.7), and continuing
+	 * in Opus 4.8 / Sonnet 4.8, Claude Fable 5, and Claude Sonnet 5, Anthropic
+	 * removed sampling parameters (temperature/top_p/top_k) and replaced
+	 * budget_tokens-based thinking with `thinking.type: "adaptive"` plus
+	 * `output_config.effort`. The migration guide from 4.7 → 4.8 confirms there
+	 * are no further breaking API changes, and Fable 5 / Sonnet 5 keep the same
+	 * adaptive-thinking contract, so a single guard matches all generations.
+	 * Shared by createMessage and completePrompt so both request paths omit
+	 * temperature for these models (sending it causes a 400).
+	 *
+	 * Accepts a model ID (with or without a cross-region/global prefix) and strips
+	 * the prefix via parseBaseModelId before matching.
+	 */
+	private isAdaptiveThinkingModel(modelId: string): boolean {
+		const baseModelId = this.parseBaseModelId(modelId)
+		return (
+			baseModelId.includes("opus-4-7") ||
+			baseModelId.includes("opus-4-8") ||
+			baseModelId.includes("fable-5") ||
+			baseModelId.includes("sonnet-4-7") ||
+			baseModelId.includes("sonnet-4-8") ||
+			baseModelId.includes("sonnet-5")
+		)
 	}
 
 	// Helper to guess model info from custom modelId string if not in bedrockModels
@@ -381,6 +420,12 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		let additionalModelRequestFields: BedrockAdditionalModelFields | undefined
 		let thinkingEnabled = false
 
+		// Detect models that require the adaptive-thinking API contract (Opus/Sonnet
+		// 4.7 and 4.8). See isAdaptiveThinkingModel for details. The same guard is
+		// reused in completePrompt so both request paths stay consistent.
+		const baseModelId = this.parseBaseModelId(modelConfig.id)
+		const isAdaptiveThinkingModel = this.isAdaptiveThinkingModel(modelConfig.id)
+
 		// Determine if thinking should be enabled
 		// metadata?.thinking?.enabled: Explicitly enabled through API metadata (direct request)
 		// shouldUseReasoningBudget(): Enabled through user settings (enableReasoningEffort = true)
@@ -392,27 +437,43 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 
 		if ((isThinkingExplicitlyEnabled || isThinkingEnabledBySettings) && modelConfig.info.supportsReasoningBudget) {
 			thinkingEnabled = true
-			additionalModelRequestFields = {
-				thinking: {
-					type: "enabled",
-					budget_tokens: metadata?.thinking?.maxThinkingTokens || modelConfig.reasoningBudget || 4096,
-				},
+			if (isAdaptiveThinkingModel) {
+				// Claude 4.7+ (incl. 4.8 and Fable 5) uses adaptive thinking with effort levels —
+				// budget_tokens causes a 400 error.
+				// display: "summarized" surfaces thinking content in Zoo Code UI.
+				// effort "xhigh" remains the recommended level for agentic coding tasks
+				// across 4.7, 4.8, and Fable 5 (4.8 changed the API default to "high"
+				// but the models continue to honour "xhigh" for deeper reasoning).
+				additionalModelRequestFields = {
+					thinking: { type: "adaptive", display: "summarized" },
+					output_config: { effort: "xhigh" },
+				}
+			} else {
+				additionalModelRequestFields = {
+					thinking: {
+						type: "enabled",
+						budget_tokens: metadata?.thinking?.maxThinkingTokens || modelConfig.reasoningBudget || 4096,
+					},
+				}
 			}
 			logger.info("Extended thinking enabled for Bedrock request", {
 				ctx: "bedrock",
 				modelId: modelConfig.id,
-				thinking: additionalModelRequestFields.thinking,
+				thinking: additionalModelRequestFields?.thinking,
 			})
 		}
 
 		const inferenceConfig: BedrockInferenceConfig = {
 			maxTokens: modelConfig.maxTokens || (modelConfig.info.maxTokens as number),
-			temperature: modelConfig.temperature ?? (this.options.modelTemperature as number),
+			// Claude 4.7+ (including 4.8) removed sampling parameters entirely —
+			// sending temperature causes a 400 error.
+			...(isAdaptiveThinkingModel
+				? {}
+				: { temperature: modelConfig.temperature ?? (this.options.modelTemperature as number) }),
 		}
 
 		// Check if 1M context is enabled for supported Claude 4 models
-		// Use parseBaseModelId to handle cross-region inference prefixes
-		const baseModelId = this.parseBaseModelId(modelConfig.id)
+		// Use parseBaseModelId to handle cross-region inference prefixes (computed above)
 		const is1MContextEnabled =
 			BEDROCK_1M_CONTEXT_MODEL_IDS.includes(baseModelId as any) && this.options.awsBedrock1MContext
 
@@ -532,8 +593,11 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 						//so that pricing, context window, caching etc have values that can be used
 						//However, we want to keep the id of the model to be the ID for the router for
 						//subsequent requests so they are sent back through the router
-						let invokedArnInfo = this.parseArn(streamEvent.trace.promptRouter.invokedModelId)
-						let invokedModel = this.getModelById(invokedArnInfo.modelId as string, invokedArnInfo.modelType)
+						const invokedArnInfo = this.parseArn(streamEvent.trace.promptRouter.invokedModelId)
+						const invokedModel = this.getModelById(
+							invokedArnInfo.modelId as string,
+							invokedArnInfo.modelType,
+						)
 						if (invokedModel) {
 							invokedModel.id = modelConfig.id
 							this.costModelConfig = invokedModel
@@ -734,7 +798,7 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		}
 	}
 
-	async completePrompt(prompt: string): Promise<string> {
+	async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
 		try {
 			const modelConfig = this.getModel()
 
@@ -747,7 +811,12 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 
 			const inferenceConfig: BedrockInferenceConfig = {
 				maxTokens: modelConfig.maxTokens || (modelConfig.info.maxTokens as number),
-				temperature: modelConfig.temperature ?? (this.options.modelTemperature as number),
+				// Claude 4.7+ (including 4.8) removed sampling parameters entirely —
+				// sending temperature causes a 400 error. Guard the non-stream path the
+				// same way createMessage does so completePrompt also works for these models.
+				...(this.isAdaptiveThinkingModel(modelConfig.id)
+					? {}
+					: { temperature: modelConfig.temperature ?? (this.options.modelTemperature as number) }),
 			}
 
 			// For completePrompt, use a unique conversation ID based on the prompt
@@ -870,7 +939,7 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		}
 
 		// Get cache point placements
-		let strategy = new MultiPointStrategy(config)
+		const strategy = new MultiPointStrategy(config)
 		const cacheResult = strategy.determineOptimalCachePoints()
 
 		// Store cache point placements for future use if conversation ID is provided
@@ -934,7 +1003,7 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		 */
 
 		const arnRegex = /^arn:[^:]+:(?:bedrock|sagemaker):([^:]+):([^:]*):(?:([^\/]+)\/([\w\.\-:]+)|([^\/]+))$/
-		let match = arn.match(arnRegex)
+		const match = arn.match(arnRegex)
 
 		if (match && match[1] && match[3] && match[4]) {
 			// Create the result object
@@ -961,7 +1030,7 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			// Check if the original model ID had a region prefix
 			if (originalModelId && result.modelId !== originalModelId) {
 				// If the model ID changed after parsing, it had a region prefix
-				let prefix = originalModelId.replace(result.modelId, "")
+				const prefix = originalModelId.replace(result.modelId, "")
 				result.crossRegionInference = AwsBedrockHandler.isSystemInferenceProfile(prefix)
 			}
 

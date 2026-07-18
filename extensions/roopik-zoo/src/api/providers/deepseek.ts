@@ -16,7 +16,9 @@ import { getModelParams } from "../transform/model-params"
 import { convertToR1Format } from "../transform/r1-format"
 
 import { OpenAiHandler } from "./openai"
+import { extractReasoningFromDelta } from "./utils/extract-reasoning"
 import type { ApiHandlerCreateMessageMetadata } from "../index"
+import { handleOpenAIError } from "./utils/error-handler"
 
 // Custom interface for DeepSeek params to support thinking mode
 type DeepSeekChatCompletionParams = Omit<OpenAI.Chat.ChatCompletionCreateParamsStreaming, "reasoning_effort"> & {
@@ -136,7 +138,6 @@ export class DeepSeekHandler extends OpenAiHandler {
 				isAzureAiInference ? { path: OPENAI_AZURE_AI_INFERENCE_PATH } : {},
 			)
 		} catch (error) {
-			const { handleOpenAIError } = await import("./utils/openai-error-handler")
 			throw handleOpenAIError(error, "DeepSeek")
 		}
 
@@ -155,11 +156,9 @@ export class DeepSeekHandler extends OpenAiHandler {
 
 			// Handle reasoning_content from DeepSeek's interleaved thinking
 			// This is the proper way DeepSeek sends thinking content in streaming
-			if ("reasoning_content" in delta && delta.reasoning_content) {
-				yield {
-					type: "reasoning",
-					text: (delta.reasoning_content as string) || "",
-				}
+			const reasoningText = extractReasoningFromDelta(delta)
+			if (reasoningText) {
+				yield { type: "reasoning", text: reasoningText }
 			}
 
 			// Handle tool calls

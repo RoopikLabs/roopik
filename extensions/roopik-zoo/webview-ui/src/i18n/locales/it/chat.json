@@ -40,6 +40,14 @@
 		"title": "Inizia nuova attività",
 		"tooltip": "Inizia una nuova attività"
 	},
+	"seeNewChanges": {
+		"title": "Vedi nuove modifiche",
+		"tooltip": "Mostra le modifiche fatte dal tuo ultimo prompt"
+	},
+	"restoreChanges": {
+		"title": "Ripristina modifiche",
+		"tooltip": "Ripristina file e stato dell'attività al tuo ultimo prompt"
+	},
 	"proceedAnyways": {
 		"title": "Procedi comunque",
 		"tooltip": "Continua mentre il comando è in esecuzione"
@@ -221,6 +229,7 @@
 		"running": "In esecuzione",
 		"pid": "PID: {{pid}}",
 		"exitStatus": "Uscito con stato {{exitCode}}",
+		"malformedCommand": "Comando non valido: errore di sintassi della shell",
 		"manageCommands": "Comandi approvati automaticamente",
 		"addToAllowed": "Aggiungi alla lista dei permessi",
 		"removeFromAllowed": "Rimuovi dalla lista dei permessi",
@@ -330,16 +339,11 @@
 	"announcement": {
 		"title": "Rilasciato Zoo Code {{version}}",
 		"support": "Sostieni Zoo Code lasciandoci una stella su <githubLink>GitHub</githubLink>.",
-		"handoff": {
-			"heading": "Roo Code è tornato! Ora come plugin mantenuto dalla community chiamato Zoo Code!!",
-			"description": "Se non l'hai seguito, il team di Roo Code ha annunciato di recente che interromperà lo sviluppo di Roo Code e archivierà il lavoro svolto. Ma niente paura: la community si è fatta avanti per continuare l'eredità di Roo Code con un nuovo nome e una nuova casa! Non siamo più solo un singolo \"Roo\", ma una community, uno \"Zoo\" se vuoi. Zoo Code è un plugin mantenuto dalla community che riprende da dove Roo Code si era fermato, e ci impegniamo a mantenere vivo lo spirito di Roo introducendo anche nuove funzionalità e miglioramenti. Vogliamo ringraziare di cuore tutto il team di Roo Code per il lavoro incredibile e per aver creato uno strumento così straordinario per gli sviluppatori. Siamo entusiasti di continuare a costruire sulla loro base e di vedere dove la community porterà Zoo Code in futuro!",
-			"readMore": "Vai alla nuova home page di Zoo Code e leggi l'annuncio completo"
-		},
 		"release": {
 			"heading": "Novità:",
-			"gpt55": "GPT-5.5 via OpenAI Codex: Aggiunto il supporto a GPT-5.5 nel provider OpenAI Codex così puoi usare il modello più recente direttamente da Zoo Code.",
-			"claudeOpus47": "Claude Opus 4.7 su Vertex AI: Aggiunto Claude Opus 4.7 al provider Vertex AI, il nuovo modello di ragionamento di punta di Anthropic.",
-			"checkpointNav": "Navigazione Checkpoint Precedenti: Aggiunti controlli nella chat per tornare indietro ai checkpoint precedenti, con pieno supporto i18n."
+			"highlight1": "Famiglia OpenAI GPT-5.6 (Sol, Terra, Luna) — disponibile sia su OpenAI Codex sia su OpenAI Native.",
+			"highlight2": "Supporto per Grok 4.5 — il nuovo modello di punta di xAI, più una correzione del reasoning effort che avvantaggia anche Grok 4 Mini.",
+			"highlight3": "Provider Kenari — un gateway AI di prima classe compatibile con OpenAI, fatturato in rupie, che copre Claude, GPT, DeepSeek, GLM, Kimi e altro."
 		},
 		"cloudAgents": {
 			"heading": "Novità nel Cloud:",

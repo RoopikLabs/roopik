@@ -38,7 +38,10 @@ export type DeepSeekAssistantMessage = AssistantMessage & {
  */
 export function convertToR1Format(
 	messages: AnthropicMessage[],
-	options?: { mergeToolResultText?: boolean },
+	options?: {
+		mergeToolResultText?: boolean
+		normalizeToolCallId?: (id: string) => string
+	},
 ): Message[] {
 	const result: Message[] = []
 
@@ -58,10 +61,12 @@ export function convertToR1Format(
 					if (part.type === "text") {
 						textParts.push(part.text)
 					} else if (part.type === "image") {
-						imageParts.push({
-							type: "image_url",
-							image_url: { url: `data:${part.source.media_type};base64,${part.source.data}` },
-						})
+						if (part.source.type === "base64") {
+							imageParts.push({
+								type: "image_url",
+								image_url: { url: `data:${part.source.media_type};base64,${part.source.data}` },
+							})
+						}
 					} else if (part.type === "tool_result") {
 						// Convert tool_result to OpenAI tool message format
 						let content: string
@@ -90,7 +95,9 @@ export function convertToR1Format(
 				for (const toolResult of toolResults) {
 					const toolMessage: ToolMessage = {
 						role: "tool",
-						tool_call_id: toolResult.tool_use_id,
+						tool_call_id: options?.normalizeToolCallId
+							? options.normalizeToolCallId(toolResult.tool_use_id)
+							: toolResult.tool_use_id,
 						content: toolResult.content,
 					}
 					result.push(toolMessage)
@@ -174,7 +181,7 @@ export function convertToR1Format(
 						textParts.push(part.text)
 					} else if (part.type === "tool_use") {
 						toolCalls.push({
-							id: part.id,
+							id: options?.normalizeToolCallId ? options.normalizeToolCallId(part.id) : part.id,
 							type: "function",
 							function: {
 								name: part.name,

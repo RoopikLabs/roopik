@@ -1,12 +1,27 @@
-# Contributing to Roopik Agent Dio
+<div align="center">
+<sub>
 
-Roopik Agent Dio is a community-driven, open-source agentic IDE built on top of Roo Code with custom tool chains and enhancements. We deeply value every contribution. To streamline collaboration, we operate on an [Issue-First](#issue-first-approach) basis, meaning all [Pull Requests (PRs)](#submitting-a-pull-request) must first be linked to a GitHub Issue. Please review this guide carefully.
+<b>English</b> • [Català](locales/ca/CONTRIBUTING.md) • [Deutsch](locales/de/CONTRIBUTING.md) • [Español](locales/es/CONTRIBUTING.md) • [Français](locales/fr/CONTRIBUTING.md) • [हिंदी](locales/hi/CONTRIBUTING.md) • [Bahasa Indonesia](locales/id/CONTRIBUTING.md) • [Italiano](locales/it/CONTRIBUTING.md) • [日本語](locales/ja/CONTRIBUTING.md)
+
+</sub>
+<sub>
+
+[한국어](locales/ko/CONTRIBUTING.md) • [Nederlands](locales/nl/CONTRIBUTING.md) • [Polski](locales/pl/CONTRIBUTING.md) • [Português (BR)](locales/pt-BR/CONTRIBUTING.md) • [Русский](locales/ru/CONTRIBUTING.md) • [Türkçe](locales/tr/CONTRIBUTING.md) • [Tiếng Việt](locales/vi/CONTRIBUTING.md) • [简体中文](locales/zh-CN/CONTRIBUTING.md) • [繁體中文](locales/zh-TW/CONTRIBUTING.md)
+
+</sub>
+</div>
+
+# Contributing to Zoo Code
+
+Zoo Code is a community-driven project, and we deeply value every contribution. To streamline collaboration, we operate on an [Issue-First](#issue-first-approach) basis, meaning all [Pull Requests (PRs)](#submitting-a-pull-request) must first be linked to a GitHub Issue. Please review this guide carefully.
 
 ## Table of Contents
 
 - [Before You Contribute](#before-you-contribute)
 - [Finding & Planning Your Contribution](#finding--planning-your-contribution)
 - [Development & Submission Process](#development--submission-process)
+    - [Pull Request Expectations](#pull-request-expectations)
+    - [AI-Assisted Contributions](#ai-assisted-contributions)
 - [Legal](#legal)
 
 ## Before You Contribute
@@ -39,10 +54,10 @@ Our roadmap guides the project's direction. Align your contributions with these 
 
 Mention alignment with these areas in your PRs.
 
-### 3. Join the Roopik Community
+### 3. Join the Zoo Code Community
 
-- **GitHub:** Open issues and discussions on [GitHub](https://github.com/RoopikHQ/agent-dio).
-- **Contact:** Reach out to the maintainers for collaboration opportunities.
+- **Discord:** Join our [Discord](https://discord.gg/VxfP4Vx3gX).
+- **Reddit:** Join our [Reddit](https://www.reddit.com/r/ZooCode/).
 
 ## Finding & Planning Your Contribution
 
@@ -54,28 +69,28 @@ Mention alignment with these areas in your PRs.
 
 ### Issue-First Approach
 
-All contributions start with a GitHub Issue using our templates.
+All contributions start with a GitHub Issue using our skinny templates.
 
-- **Check existing issues**: Search [GitHub Issues](https://github.com/RoopikHQ/agent-dio/issues).
+- **Check existing issues**: Search [GitHub Issues](https://github.com/Zoo-Code-Org/Zoo-Code/issues).
 - **Create an issue** using:
     - **Enhancements:** "Enhancement Request" template (plain language focused on user benefit).
     - **Bugs:** "Bug Report" template (minimal repro + expected vs actual + version).
-- **Want to work on it?** Comment "Claiming" on the issue to express interest.
+- **Want to work on it?** Comment "Claiming" on the issue and reach out to the core team on [Discord](https://discord.gg/VxfP4Vx3gX) to get assigned. Assignment will be confirmed in the thread.
 - **PRs must link to the issue.** Unlinked PRs may be closed.
 
 ### Deciding What to Work On
 
-- Check the [GitHub Issues](https://github.com/RoopikHQ/agent-dio/issues) for open items.
-- Review the [README](./README.md) for project priorities.
+- Check the [GitHub Issues page](https://github.com/Zoo-Code-Org/Zoo-Code/issues) for issues.
+- For docs, visit [Zoo Code Docs](https://github.com/Zoo-Code-Org/Zoo-Code-Docs).
 
 ### Reporting Bugs
 
 - Check for existing reports first.
-- Create a new bug using the ["Bug Report" template](https://github.com/RoopikHQ/agent-dio/issues/new/choose) with:
+- Create a new bug using the ["Bug Report" template](https://github.com/Zoo-Code-Org/Zoo-Code/issues/new/choose) with:
     - Clear, numbered reproduction steps
     - Expected vs actual result
-    - Agent Dio version (required); provider/model details if relevant
-- **Security issues**: Report privately via [security advisories](https://github.com/RoopikHQ/agent-dio/security/advisories/new).
+    - Zoo Code version (required); API provider/model if relevant
+- **Security issues**: Report privately via [security advisories](https://github.com/Zoo-Code-Org/Zoo-Code/security/advisories/new).
 
 ## Development & Submission Process
 
@@ -84,7 +99,7 @@ All contributions start with a GitHub Issue using our templates.
 1. **Fork & Clone:**
 
 ```
-git clone https://github.com/YOUR_USERNAME/agent-dio.git
+git clone https://github.com/YOUR_USERNAME/Zoo-Code.git
 ```
 
 2. **Install Dependencies:**
@@ -113,9 +128,9 @@ pnpm install
 
 ### Pull Request Policy
 
-- Must reference an assigned GitHub Issue. To get assigned: comment "Claiming" on the issue.
+- Must reference an assigned GitHub Issue. To get assigned: comment "Claiming" on the issue and reach out to the core team on [Discord](https://discord.gg/VxfP4Vx3gX). Assignment will be confirmed in the thread.
 - Unlinked PRs may be closed.
-- PRs should pass CI tests, align with project goals, and have clear documentation.
+- PRs should pass CI tests, align with the roadmap, and have clear documentation.
 
 ### Review Process
 
@@ -123,6 +138,39 @@ pnpm install
 - **Weekly In-depth Review:** Comprehensive assessment.
 - **Iterate promptly** based on feedback.
 
+### Pull Request Expectations
+
+Pull requests should be reviewable, tested, and maintainable. Before opening a PR, please make sure that:
+
+- The change is scoped to a specific issue, bug, or improvement.
+- You can explain what the change does and why it is correct.
+- You have tested the change locally where practical.
+- You are willing to respond to review feedback and make reasonable follow-up changes.
+- The PR does not require maintainers to substantially rewrite, redesign, or take ownership of the implementation before it can be merged.
+
+Maintainers may close PRs that are incomplete, too broad, inactive, not aligned with the project direction, or that create disproportionate review or maintenance burden. Closing a PR is not a judgment on the contributor; it is a maintainer decision that the change cannot be accepted in its present form.
+
+PRs are also closed automatically by bot:
+
+- **60-day inactivity:** A PR with no activity for 60 days is marked stale and closed after a further 7 days if there is still no activity. Any new comment, commit, or review resets the timer.
+- **14-day author inactivity:** After a reviewer requests changes, the PR is labelled `awaiting-author`. Author activity resets the inactivity timer. Once the changes are ready, re-request review from the reviewer; the PR will move to `awaiting-review` and is no longer eligible for automatic closure under this policy.
+
+To opt a PR out of automatic closure, apply the `do-not-close`, `pinned`, or `work-in-progress` label.
+
+### AI-Assisted Contributions
+
+Use of AI tools is allowed, but contributors remain fully responsible for their submissions.
+
+If you use AI tools to help create a PR, you must:
+
+- Review and understand every meaningful change.
+- Be able to explain the implementation and tradeoffs in your own words.
+- Test the change yourself. If testing is impractical for your environment, explain why in the PR description and describe how reviewers can verify the change instead.
+- Verify that generated code is correct, necessary, and compatible with the project license.
+- Consider disclosing AI assistance in the PR description when it materially shaped the code, tests, or design — this helps reviewers give better feedback.
+
+Please do not submit AI-generated changes that you do not understand or cannot maintain through review. Maintainers may close PRs that appear substantially AI-assisted but lack human verification, clear rationale, or review follow-through.
+
 ## Legal
 
-By contributing, you agree your contributions will be licensed under the Apache 2.0 License, consistent with Roopik Agent Dio's licensing.
+By contributing, you agree your contributions will be licensed under the Apache 2.0 License, consistent with Zoo Code's licensing.

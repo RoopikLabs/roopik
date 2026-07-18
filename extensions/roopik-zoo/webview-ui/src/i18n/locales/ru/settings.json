@@ -41,7 +41,8 @@
 		"experimental": "Экспериментальное",
 		"language": "Язык",
 		"about": "О Zoo Code",
-		"skills": "Skills"
+		"skills": "Skills",
+		"rules": "Правила"
 	},
 	"about": {
 		"bugReport": {
@@ -62,6 +63,24 @@
 		"debugMode": {
 			"label": "Включить режим отладки",
 			"description": "Включите режим отладки для отображения дополнительных кнопок в заголовке задачи для просмотра истории разговоров API и сообщений UI в виде форматированного JSON во временных файлах."
+		},
+		"rooHistoryImport": {
+			"settingLabel": "Импортировать историю из Roo Code",
+			"cardTitle": "История Roo Code",
+			"cardDescription": "Скопировать сохранённые разговоры Roo Code в Zoo Code.",
+			"statusImporting": "Импорт истории",
+			"statusFailed": "Импорт не удался",
+			"statusComplete": "Импорт завершён",
+			"buttonImporting": "Импорт из Roo Code...",
+			"buttonIdle": "Импортировать историю из Roo Code",
+			"summaryFailedWithFiles": "Скопировано {{copied}} из {{total}} файлов до остановки импорта.",
+			"summaryFailedNoFiles": "Импорт остановился до копирования каких-либо файлов.",
+			"summaryCopied": "Скопировано {{copied}} из {{total}} файлов",
+			"detailFailed": "Начни новую попытку импорта, чтобы повторить.",
+			"detailTasksImported_one": "Импортирована {{count}} из {{total}} история задач.",
+			"detailTasksImported_other": "Импортировано {{count}} из {{total}} историй задач.",
+			"detailPreparing": "Подготовка импорта истории Roo Code.",
+			"progressAriaLabel": "Ход импорта истории Roo Code"
 		}
 	},
 	"slashCommands": {
@@ -98,6 +117,52 @@
 			"nameInvalid": "Имя может содержать только буквы, цифры, дефисы и подчеркивания"
 		},
 		"footer": "Используйте слэш-команды для быстрого доступа к часто используемым подсказкам и рабочим процессам."
+	},
+	"rules": {
+		"description": "Управляй файлами правил Zoo Code из глобальных и workspace-каталогов .roo/rules. Создавай общие или специфичные для режима правила без ручного поиска в папках конфигурации.",
+		"workspaceRules": "Правила workspace",
+		"globalRules": "Глобальные правила",
+		"noWorkspaceRules": "В этом проекте пока нет правил.",
+		"noGlobalRules": "Глобальных правил пока нет.",
+		"addRule": "Добавить правило",
+		"editRule": "Редактировать правило",
+		"deleteRule": "Удалить правило",
+		"modeLabel": "Режим: {{mode}}",
+		"deleteDialog": {
+			"title": "Удалить правило",
+			"description": "Точно удалить правило \"{{name}}\"? Это действие нельзя отменить.",
+			"confirm": "Удалить",
+			"cancel": "Отмена"
+		},
+		"createDialog": {
+			"title": "Создать новое правило",
+			"nameLabel": "Имя",
+			"namePlaceholder": "my-rule-name",
+			"nameHint": "Только строчные буквы, цифры, дефисы и подчёркивания. .md добавляется автоматически.",
+			"scopeLabel": "Расположение",
+			"kindLabel": "Тип правила",
+			"modeLabel": "Режим",
+			"modePlaceholder": "Выбери режим",
+			"create": "Создать",
+			"cancel": "Отмена"
+		},
+		"scope": {
+			"global": "Глобально (доступно во всех workspace)",
+			"project": "Workspace"
+		},
+		"kind": {
+			"generic": "Общие правила",
+			"mode": "Правила для режима",
+			"genericBadge": "Общее",
+			"modeBadge": "Режим"
+		},
+		"validation": {
+			"nameRequired": "Имя обязательно",
+			"nameTooLong": "Имя должно быть не длиннее 64 символов",
+			"nameInvalid": "Имя может содержать только строчные буквы, цифры, дефисы и подчёркивания",
+			"modeRequired": "Для правил режима нужно выбрать режим"
+		},
+		"footer": "Правила загружают инструкции для режима перед общими инструкциями. Глобальные правила загружаются перед правилами workspace."
 	},
 	"prompts": {
 		"description": "Настройте промпты поддержки, используемые для быстрых действий, таких как улучшение промптов, объяснение кода и исправление проблем. Эти промпты помогают Zoo обеспечить лучшую поддержку для общих задач разработки."
@@ -213,7 +278,8 @@
 		"stoppingButton": "Остановка...",
 		"workspaceToggleLabel": "Включить индексацию для этого рабочего пространства",
 		"workspaceDisabledMessage": "Индексация настроена, но не включена для этого рабочего пространства.",
-		"autoEnableDefaultLabel": "Автоматически включать индексацию для новых рабочих пространств"
+		"autoEnableDefaultLabel": "Автоматически включать индексацию для новых рабочих пространств",
+		"sembleProvider": "Semble - Локальный"
 	},
 	"autoApprove": {
 		"toggleShortcut": "Вы можете настроить глобальное сочетание клавиш для этого параметра <SettingsLink>в настройках вашей IDE</SettingsLink>.",
@@ -314,6 +380,10 @@
 		"getOpenRouterApiKey": "Получить OpenRouter API-ключ",
 		"vercelAiGatewayApiKey": "Ключ API Vercel AI Gateway",
 		"getVercelAiGatewayApiKey": "Получить ключ API Vercel AI Gateway",
+		"opencodeGoApiKey": "Ключ API Opencode Go",
+		"getOpencodeGoApiKey": "Получить ключ API Opencode Go",
+		"kenariApiKey": "Ключ API Kenari",
+		"getKenariApiKey": "Получить ключ API Kenari",
 		"apiKeyStorageNotice": "API-ключи хранятся безопасно в Secret Storage VSCode",
 		"openAiCodexRateLimits": {
 			"title": "Usage Limits for Codex{{planLabel}}",
@@ -382,6 +452,8 @@
 		"poeBaseUrl": "Базовый URL Poe",
 		"fireworksApiKey": "Fireworks API-ключ",
 		"getFireworksApiKey": "Получить Fireworks API-ключ",
+		"friendliApiKey": "Friendli API-ключ",
+		"getFriendliApiKey": "Получить Friendli API-ключ",
 		"deepSeekApiKey": "DeepSeek API-ключ",
 		"getDeepSeekApiKey": "Получить DeepSeek API-ключ",
 		"moonshotApiKey": "Moonshot API-ключ",
@@ -394,6 +466,13 @@
 		"minimaxApiKey": "MiniMax API-ключ",
 		"getMiniMaxApiKey": "Получить MiniMax API-ключ",
 		"minimaxBaseUrl": "Точка входа MiniMax",
+		"mimoApiKey": "API-ключ MiMo",
+		"getMimoApiKey": "Получить API-ключ MiMo",
+		"mimoBaseUrl": "Точка входа MiMo",
+		"mimoBaseUrlSingapore": "Токен-план - Сингапур (По умолчанию)",
+		"mimoBaseUrlChina": "Токен-план - Китай",
+		"mimoBaseUrlEurope": "Токен-план - Европа (AMS)",
+		"mimoBaseUrlPayg": "Поминутная оплата",
 		"geminiApiKey": "Gemini API-ключ",
 		"getSambaNovaApiKey": "Получить SambaNova API-ключ",
 		"sambaNovaApiKey": "SambaNova API-ключ",
@@ -445,6 +524,7 @@
 			"step3": "3. Или создайте сервисный аккаунт с ключом."
 		},
 		"googleCloudCredentials": "Учётные данные Google Cloud",
+		"googleCloudCredentialsPathWarning": "Это поле ожидает JSON-содержимое файла ключа сервисного аккаунта, а не путь. Если у вас есть путь, вставьте его в поле <strong>Путь к ключу Google Cloud</strong> ниже, либо очистите это поле и используйте переменную окружения <code>GOOGLE_APPLICATION_CREDENTIALS</code>.",
 		"googleCloudKeyFile": "Путь к ключу Google Cloud",
 		"googleCloudProjectId": "ID проекта Google Cloud",
 		"googleCloudRegion": "Регион Google Cloud",
@@ -465,6 +545,8 @@
 			"apiKeyHelp": "Опциональный API-ключ для аутентифицированных экземпляров Ollama или облачных сервисов. Оставьте пустым для локальных установок.",
 			"numCtx": "Размер контекстного окна (num_ctx)",
 			"numCtxHelp": "Переопределяет размер контекстного окна модели по умолчанию. Оставьте пустым, чтобы использовать конфигурацию Modelfile модели. Минимальное значение — 128.",
+			"thinking": "Включить рассуждение",
+			"thinkingHelp": "Включает собственное рассуждение Ollama для моделей рассуждения (например, qwen3, deepseek-r1). При включении рассуждение модели передаётся и отображается отдельно. Неподдерживаемые модели проигнорируют эту настройку.",
 			"description": "Ollama позволяет запускать модели локально на вашем компьютере. Для начала ознакомьтесь с кратким руководством.",
 			"warning": "Примечание: Zoo Code использует сложные подсказки и лучше всего работает с моделями Claude. Менее мощные модели могут работать некорректно."
 		},
@@ -533,6 +615,7 @@
 			"minimal": "Минимальный (самый быстрый)",
 			"high": "Высокие",
 			"xhigh": "Очень высокие",
+			"max": "Максимальные",
 			"medium": "Средние",
 			"low": "Низкие"
 		},
@@ -550,6 +633,13 @@
 			"placeholder": "По умолчанию: claude",
 			"maxTokensLabel": "Макс. выходных токенов",
 			"maxTokensDescription": "Максимальное количество выходных токенов для ответов Claude Code. По умолчанию 8000."
+		},
+		"zooGateway": {
+			"account": "Учетная запись Zoo Code",
+			"signInButton": "Войти в Zoo Code",
+			"signInDescription": "Войдите, чтобы использовать Zoo Gateway с вашей учетной записью",
+			"authenticated": "Аутентифицирован",
+			"authenticatedAs": "Аутентифицирован как {{name}}"
 		}
 	},
 	"checkpoints": {
@@ -632,6 +722,12 @@
 			"delayAfterWrite": {
 				"label": "Задержка после записи, чтобы диагностика могла обнаружить потенциальные проблемы",
 				"description": "Время ожидания после записи файлов перед продолжением, чтобы средства диагностики могли обработать изменения и выявить проблемы."
+			}
+		},
+		"fileEdits": {
+			"diffFuzzyThreshold": {
+				"label": "Порог совпадения diff",
+				"description": "Более низкие пороги делают редактирование файлов более устойчивым к изменениям форматирования и пробелов. Порог 100% требует точного совпадения."
 			}
 		},
 		"condensingThreshold": {
@@ -731,6 +827,13 @@
 		"inheritEnv": {
 			"label": "Наследовать переменные среды",
 			"description": "Включите для наследования переменных среды от родительского процесса VS Code. <0>Подробнее</0>"
+		},
+		"profile": {
+			"label": "Профиль терминала Zoo Code",
+			"followVscode": "Следовать профилю VS Code (рекомендуется)",
+			"description": "По умолчанию Zoo Code использует оболочку, настроенную в VS Code. Выберите профиль оболочки из списка, чтобы указать профиль оболочки с путём, предоставленный VS Code. Профили только с источником (например, встроенная запись PowerShell) не могут быть перечислены здесь. <0>Подробнее</0>",
+			"configureButton": "Выбрать профиль по умолчанию в VS Code",
+			"noProfiles": "(профили с путём в terminal.integrated.profiles не найдены)"
 		}
 	},
 	"advancedSettings": {
@@ -891,7 +994,8 @@
 		"providerNotAllowed": "Провайдер '{{provider}}' не разрешен вашей организацией",
 		"modelNotAllowed": "Модель '{{model}}' не разрешена для провайдера '{{provider}}' вашей организацией",
 		"profileInvalid": "Этот профиль содержит провайдера или модель, которые не разрешены вашей организацией",
-		"qwenCodeOauthPath": "Вы должны указать допустимый путь к учетным данным OAuth"
+		"qwenCodeOauthPath": "Вы должны указать допустимый путь к учетным данным OAuth",
+		"zooGatewaySignIn": "Войдите в Zoo Code, чтобы использовать Zoo Gateway."
 	},
 	"placeholders": {
 		"apiKey": "Введите API-ключ...",
@@ -953,6 +1057,23 @@
 		"requireCtrlEnterToSend": {
 			"label": "Требовать {{primaryMod}}+Enter для отправки сообщений",
 			"description": "Если включено, необходимо нажать {{primaryMod}}+Enter для отправки сообщений вместо простого Enter"
+		},
+		"chatFontSize": {
+			"label": "Размер шрифта чата",
+			"description": "Задайте размер шрифта (в пикселях) для чата Zoo Code. Оставьте значение по умолчанию, чтобы соответствовать размеру шрифта VS Code.",
+			"reset": "Использовать значение по умолчанию VS Code"
+		},
+		"autoCloseZooOpenedFiles": {
+			"label": "Автоматически закрывать файлы, открытые Zoo",
+			"description": "Если включено, вкладки редактора, которые Zoo временно открыл для diff, автоматически закрываются после принятия или отклонения изменения. Вкладки, которые пользователь открыл до редактирования, никогда не закрываются автоматически."
+		},
+		"autoCloseZooOpenedFilesAfterUserEdited": {
+			"label": "Автоматически закрывать даже после взаимодействия пользователя",
+			"description": "Если включено, вкладки, открытые Zoo, закрываются, даже если пользователь щёлкнул или печатал в файле или diff во время сеанса редактирования. Не действует, если параметр «Автоматически закрывать файлы, открытые Zoo» отключён."
+		},
+		"autoCloseZooOpenedNewFiles": {
+			"label": "Автоматически закрывать новые созданные файлы",
+			"description": "Если включено, вкладки файлов, которые Zoo создал (а не изменил), также автоматически закрываются после принятия изменения."
 		}
 	},
 	"skills": {

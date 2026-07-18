@@ -41,7 +41,8 @@
 		"experimental": "実験的",
 		"language": "言語",
 		"about": "Zoo Codeについて",
-		"skills": "Skills"
+		"skills": "Skills",
+		"rules": "ルール"
 	},
 	"about": {
 		"bugReport": {
@@ -62,6 +63,24 @@
 		"debugMode": {
 			"label": "デバッグモードを有効にする",
 			"description": "デバッグモードを有効にすると、タスクヘッダーにAPI会話履歴とUIメッセージをフォーマットされたJSONとして一時ファイルで表示するための追加ボタンが表示されます。"
+		},
+		"rooHistoryImport": {
+			"settingLabel": "Roo Code から履歴をインポート",
+			"cardTitle": "Roo Code の履歴",
+			"cardDescription": "保存済みの Roo Code の会話を Zoo Code にコピーします。",
+			"statusImporting": "履歴をインポート中",
+			"statusFailed": "インポート失敗",
+			"statusComplete": "インポート完了",
+			"buttonImporting": "Roo Code からインポート中...",
+			"buttonIdle": "Roo Code から履歴をインポート",
+			"summaryFailedWithFiles": "インポートが停止する前に {{total}} 件中 {{copied}} 件のファイルがコピーされました。",
+			"summaryFailedNoFiles": "ファイルがコピーされる前にインポートが停止しました。",
+			"summaryCopied": "{{total}} 件中 {{copied}} 件のファイルをコピー済み",
+			"detailFailed": "新しいインポートを開始して再試行してください。",
+			"detailTasksImported_one": "{{total}} 件中 {{count}} 件のタスク履歴をインポートしました。",
+			"detailTasksImported_other": "{{total}} 件中 {{count}} 件のタスク履歴をインポートしました。",
+			"detailPreparing": "Roo Code の履歴インポートを準備中です。",
+			"progressAriaLabel": "Roo Code の履歴インポートの進行状況"
 		}
 	},
 	"slashCommands": {
@@ -98,6 +117,52 @@
 			"nameInvalid": "名前は文字、数字、ハイフン、アンダースコアのみを含める必要があります"
 		},
 		"footer": "スラッシュコマンドを使用して、頻繁に使用するプロンプトとワークフローにすばやくアクセスします。"
+	},
+	"rules": {
+		"description": "グローバルおよびワークスペースの .roo/rules ディレクトリから Zoo Code ルールファイルを管理します。設定フォルダーを手動で探さずに、一般ルールまたはモード固有ルールを作成できます。",
+		"workspaceRules": "ワークスペースルール",
+		"globalRules": "グローバルルール",
+		"noWorkspaceRules": "このプロジェクトにはまだルールがありません。",
+		"noGlobalRules": "グローバルルールはまだありません。",
+		"addRule": "ルールを追加",
+		"editRule": "ルールを編集",
+		"deleteRule": "ルールを削除",
+		"modeLabel": "モード: {{mode}}",
+		"deleteDialog": {
+			"title": "ルールを削除",
+			"description": "ルール「{{name}}」を削除してもよろしいですか？この操作は元に戻せません。",
+			"confirm": "削除",
+			"cancel": "キャンセル"
+		},
+		"createDialog": {
+			"title": "新しいルールを作成",
+			"nameLabel": "名前",
+			"namePlaceholder": "my-rule-name",
+			"nameHint": "小文字、数字、ハイフン、アンダースコアのみ使用できます。.md は自動的に追加されます。",
+			"scopeLabel": "場所",
+			"kindLabel": "ルールの種類",
+			"modeLabel": "モード",
+			"modePlaceholder": "モードを選択",
+			"create": "作成",
+			"cancel": "キャンセル"
+		},
+		"scope": {
+			"global": "グローバル（すべてのワークスペースで利用可能）",
+			"project": "ワークスペース"
+		},
+		"kind": {
+			"generic": "一般ルール",
+			"mode": "モード固有ルール",
+			"genericBadge": "一般",
+			"modeBadge": "モード"
+		},
+		"validation": {
+			"nameRequired": "名前は必須です",
+			"nameTooLong": "名前は64文字以内にしてください",
+			"nameInvalid": "名前には小文字、数字、ハイフン、アンダースコアのみ使用できます",
+			"modeRequired": "モード固有ルールにはモードが必要です"
+		},
+		"footer": "ルールは一般ガイダンスの前にモード固有ガイダンスを読み込みます。グローバルルールはワークスペースルールより先に読み込まれます。"
 	},
 	"prompts": {
 		"description": "プロンプトの強化、コードの説明、問題の修正などの迅速なアクションに使用されるサポートプロンプトを設定します。これらのプロンプトは、Rooが一般的な開発タスクでより良いサポートを提供するのに役立ちます。"
@@ -213,7 +278,8 @@
 		"stoppingButton": "停止中...",
 		"workspaceToggleLabel": "このワークスペースのインデックス作成を有効にする",
 		"workspaceDisabledMessage": "インデックス作成は設定済みですが、このワークスペースでは有効になっていません。",
-		"autoEnableDefaultLabel": "新しいワークスペースのインデックス作成を自動的に有効にする"
+		"autoEnableDefaultLabel": "新しいワークスペースのインデックス作成を自動的に有効にする",
+		"sembleProvider": "Semble - ローカル"
 	},
 	"autoApprove": {
 		"toggleShortcut": "<SettingsLink>IDEの環境設定</SettingsLink>で、この設定のグローバルショートカットを設定できます。",
@@ -314,6 +380,10 @@
 		"getOpenRouterApiKey": "OpenRouter APIキーを取得",
 		"vercelAiGatewayApiKey": "Vercel AI Gateway APIキー",
 		"getVercelAiGatewayApiKey": "Vercel AI Gateway APIキーを取得",
+		"opencodeGoApiKey": "Opencode Go APIキー",
+		"getOpencodeGoApiKey": "Opencode Go APIキーを取得",
+		"kenariApiKey": "Kenari APIキー",
+		"getKenariApiKey": "Kenari APIキーを取得",
 		"apiKeyStorageNotice": "APIキーはVSCodeのシークレットストレージに安全に保存されます",
 		"openAiCodexRateLimits": {
 			"title": "Usage Limits for Codex{{planLabel}}",
@@ -382,6 +452,8 @@
 		"poeBaseUrl": "Poe ベースURL",
 		"fireworksApiKey": "Fireworks APIキー",
 		"getFireworksApiKey": "Fireworks APIキーを取得",
+		"friendliApiKey": "Friendli APIキー",
+		"getFriendliApiKey": "Friendli APIキーを取得",
 		"deepSeekApiKey": "DeepSeek APIキー",
 		"getDeepSeekApiKey": "DeepSeek APIキーを取得",
 		"moonshotApiKey": "Moonshot APIキー",
@@ -394,6 +466,13 @@
 		"minimaxApiKey": "MiniMax APIキー",
 		"getMiniMaxApiKey": "MiniMax APIキーを取得",
 		"minimaxBaseUrl": "MiniMax エントリーポイント",
+		"mimoApiKey": "MiMo APIキー",
+		"getMimoApiKey": "MiMo APIキーを取得",
+		"mimoBaseUrl": "MiMo エントリーポイント",
+		"mimoBaseUrlSingapore": "トークンプラン - シンガポール（デフォルト）",
+		"mimoBaseUrlChina": "トークンプラン - 中国",
+		"mimoBaseUrlEurope": "トークンプラン - ヨーロッパ（AMS）",
+		"mimoBaseUrlPayg": "従量課金",
 		"geminiApiKey": "Gemini APIキー",
 		"getSambaNovaApiKey": "SambaNova APIキーを取得",
 		"sambaNovaApiKey": "SambaNova APIキー",
@@ -445,6 +524,7 @@
 			"step3": "3. または、認証情報付きのサービスアカウントを作成します。"
 		},
 		"googleCloudCredentials": "Google Cloud認証情報",
+		"googleCloudCredentialsPathWarning": "このフィールドは、パスではなく、サービスアカウントキーファイルのJSON内容を期待します。パスをお持ちの場合は、下の<strong>Google Cloudキーファイルパス</strong>フィールドに貼り付けるか、このフィールドをクリアして<code>GOOGLE_APPLICATION_CREDENTIALS</code>環境変数を使用してください。",
 		"googleCloudKeyFile": "Google Cloudキーファイルパス",
 		"googleCloudProjectId": "Google Cloudプロジェクトid",
 		"googleCloudRegion": "Google Cloudリージョン",
@@ -465,6 +545,8 @@
 			"apiKeyHelp": "認証されたOllamaインスタンスやクラウドサービス用のオプションAPIキー。ローカルインストールの場合は空のままにしてください。",
 			"numCtx": "コンテキストウィンドウサイズ (num_ctx)",
 			"numCtxHelp": "モデルのデフォルトのコンテキストウィンドウサイズを上書きします。モデルのModelfile構成を使用するには、空のままにします。最小値は128です。",
+			"thinking": "思考を有効化",
+			"thinkingHelp": "推論モデル（例: qwen3、deepseek-r1）に対してOllamaのネイティブな思考を有効にします。有効にすると、モデルの推論が個別にストリーミングおよび表示されます。サポートされていないモデルはこの設定を無視します。",
 			"description": "Ollamaを使用すると、ローカルコンピューターでモデルを実行できます。始め方については、クイックスタートガイドをご覧ください。",
 			"warning": "注意：Zoo Codeは複雑なプロンプトを使用し、Claudeモデルで最適に動作します。能力の低いモデルは期待通りに動作しない場合があります。"
 		},
@@ -533,6 +615,7 @@
 			"minimal": "最小 (最速)",
 			"high": "高",
 			"xhigh": "非常に高い",
+			"max": "最高",
 			"medium": "中",
 			"low": "低"
 		},
@@ -550,6 +633,13 @@
 			"placeholder": "デフォルト：claude",
 			"maxTokensLabel": "最大出力トークン",
 			"maxTokensDescription": "Claude Codeレスポンスの最大出力トークン数。デフォルトは8000です。"
+		},
+		"zooGateway": {
+			"account": "Zoo Code アカウント",
+			"signInButton": "Zoo Code にサインイン",
+			"signInDescription": "Zoo Gateway をアカウントで使用するにはサインインしてください",
+			"authenticated": "認証済み",
+			"authenticatedAs": "{{name}} として認証済み"
 		}
 	},
 	"checkpoints": {
@@ -632,6 +722,12 @@
 			"delayAfterWrite": {
 				"label": "書き込み後に診断が潜在的な問題を検出できるように遅延させる",
 				"description": "ファイルの書き込み後に処理を続行するまでの待機時間。これにより、診断ツールが変更を処理して問題を検出できます。"
+			}
+		},
+		"fileEdits": {
+			"diffFuzzyThreshold": {
+				"label": "Diff一致しきい値",
+				"description": "しきい値を低くすると、ファイル編集が書式や空白のバリエーションに対してより柔軟になります。100%のしきい値は完全一致が必要です。"
 			}
 		},
 		"condensingThreshold": {
@@ -731,6 +827,13 @@
 		"inheritEnv": {
 			"label": "環境変数を継承",
 			"description": "親VS Codeプロセスから環境変数を継承するには、これをオンにします。<0>詳細情報</0>"
+		},
+		"profile": {
+			"label": "Zoo Code シェルプロファイル",
+			"followVscode": "VS Code プロファイルに従う（推奨）",
+			"description": "デフォルトでは Zoo Code は VS Code に設定されたシェルを使用します。VS Code が公開するパスベースのシェルプロファイルを選択するには一覧からシェルプロファイルを選択してください。ソースのみのプロファイル（例：組み込みの PowerShell エントリ）はここに表示できません。 <0>詳細を見る</0>",
+			"configureButton": "VS Code でデフォルトプロファイルを選択",
+			"noProfiles": "(terminal.integrated.profiles にパスベースのプロファイルが見つかりません)"
 		}
 	},
 	"advancedSettings": {
@@ -891,7 +994,8 @@
 		"providerNotAllowed": "プロバイダー「{{provider}}」は組織によって許可されていません",
 		"modelNotAllowed": "モデル「{{model}}」はプロバイダー「{{provider}}」に対して組織によって許可されていません",
 		"profileInvalid": "このプロファイルには、組織によって許可されていないプロバイダーまたはモデルが含まれています",
-		"qwenCodeOauthPath": "有効なOAuth認証情報のパスを提供する必要があります"
+		"qwenCodeOauthPath": "有効なOAuth認証情報のパスを提供する必要があります",
+		"zooGatewaySignIn": "Zoo Gatewayを使用するにはZoo Codeにサインインしてください。"
 	},
 	"placeholders": {
 		"apiKey": "API キーを入力...",
@@ -953,6 +1057,23 @@
 		"requireCtrlEnterToSend": {
 			"label": "メッセージを送信するには{{primaryMod}}+Enterが必要",
 			"description": "有効にすると、Enterだけでなく{{primaryMod}}+Enterを押してメッセージを送信する必要があります"
+		},
+		"chatFontSize": {
+			"label": "チャットのフォントサイズ",
+			"description": "Zoo Code チャットのフォントサイズ（ピクセル単位）を設定します。VS Code のフォントサイズに合わせるには既定値のままにしてください。",
+			"reset": "VS Code の既定値を使用"
+		},
+		"autoCloseZooOpenedFiles": {
+			"label": "Zooが開いたファイルを自動的に閉じる",
+			"description": "有効にすると、Zooがdiffのために一時的に開いたエディタタブが、変更を承認または拒否した後に自動的に閉じられます。編集前にユーザーがすでに開いていたタブは、自動的に閉じられることはありません。"
+		},
+		"autoCloseZooOpenedFilesAfterUserEdited": {
+			"label": "ユーザー操作後も自動的に閉じる",
+			"description": "有効にすると、ユーザーが編集セッション中にファイルまたはdiffをクリックまたは入力した場合でも、Zooが開いたタブが閉じられます。「Zooが開いたファイルを自動的に閉じる」が無効の場合は効果がありません。"
+		},
+		"autoCloseZooOpenedNewFiles": {
+			"label": "新しく作成されたファイルを自動的に閉じる",
+			"description": "有効にすると、Zooが作成した（変更ではなく）ファイルのタブも、変更を承認した後に自動的に閉じられます。"
 		}
 	},
 	"skills": {

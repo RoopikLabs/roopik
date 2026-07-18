@@ -21,7 +21,7 @@ import { ApiStream, ApiStreamUsageChunk } from "../transform/stream"
 import { getModelParams } from "../transform/model-params"
 
 import { BaseProvider } from "./base-provider"
-import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
 import { isMcpTool } from "../../utils/mcp-name"
 import { sanitizeOpenAiCallId } from "../../utils/tool-id"
 import { openAiCodexOAuthManager } from "../../integrations/openai-codex/oauth"
@@ -358,9 +358,9 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 
 				// Build Codex-specific headers. Authorization is provided by the SDK apiKey.
 				const codexHeaders: Record<string, string> = {
-					originator: "roo-code",
+					originator: "zoo-code",
 					session_id: taskId || this.sessionId,
-					"User-Agent": `roo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`,
+					"User-Agent": `zoo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`,
 					...(accountId ? { "ChatGPT-Account-Id": accountId } : {}),
 				}
 
@@ -371,6 +371,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 						apiKey: accessToken,
 						baseURL: CODEX_API_BASE_URL,
 						defaultHeaders: codexHeaders,
+						timeout: this.timeoutMs,
 					})
 
 				const stream = (await (client as any).responses.create(requestBody, {
@@ -428,8 +429,10 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 							content.push({ type: "input_text", text: block.text })
 						} else if (block.type === "image") {
 							const image = block as Anthropic.Messages.ImageBlockParam
-							const imageUrl = `data:${image.source.media_type};base64,${image.source.data}`
-							content.push({ type: "input_image", image_url: imageUrl })
+							if (image.source.type === "base64") {
+								const imageUrl = `data:${image.source.media_type};base64,${image.source.data}`
+								content.push({ type: "input_image", image_url: imageUrl })
+							}
 						} else if (block.type === "tool_result") {
 							const result =
 								typeof block.content === "string"
@@ -503,9 +506,9 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
 			Authorization: `Bearer ${accessToken}`,
-			originator: "roo-code",
+			originator: "zoo-code",
 			session_id: taskId || this.sessionId,
-			"User-Agent": `roo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`,
+			"User-Agent": `zoo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`,
 		}
 
 		// Add ChatGPT-Account-Id if available (required for organization subscriptions)
@@ -1117,7 +1120,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 	override getModel() {
 		const modelId = this.options.apiModelId
 
-		let id = modelId && modelId in openAiCodexModels ? (modelId as OpenAiCodexModelId) : openAiCodexDefaultModelId
+		const id = modelId && modelId in openAiCodexModels ? (modelId as OpenAiCodexModelId) : openAiCodexDefaultModelId
 
 		const info: ModelInfo = openAiCodexModels[id]
 
@@ -1151,7 +1154,7 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 		return this.lastResponseId
 	}
 
-	async completePrompt(prompt: string): Promise<string> {
+	async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
 		this.abortController = new AbortController()
 
 		try {
@@ -1199,9 +1202,9 @@ export class OpenAiCodexHandler extends BaseProvider implements SingleCompletion
 			const headers: Record<string, string> = {
 				"Content-Type": "application/json",
 				Authorization: `Bearer ${accessToken}`,
-				originator: "roo-code",
+				originator: "zoo-code",
 				session_id: this.sessionId,
-				"User-Agent": `roo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`,
+				"User-Agent": `zoo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`,
 			}
 
 			// Add ChatGPT-Account-Id if available

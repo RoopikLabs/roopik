@@ -41,7 +41,8 @@
 		"experimental": "Eksperimental",
 		"language": "Bahasa",
 		"about": "Tentang Zoo Code",
-		"skills": "Skills"
+		"skills": "Skills",
+		"rules": "Aturan"
 	},
 	"about": {
 		"bugReport": {
@@ -62,6 +63,24 @@
 		"debugMode": {
 			"label": "Aktifkan mode debug",
 			"description": "Aktifkan mode debug untuk menampilkan tombol tambahan di header tugas yang memungkinkan melihat riwayat percakapan API dan pesan UI sebagai JSON yang diformat dalam file sementara."
+		},
+		"rooHistoryImport": {
+			"settingLabel": "Impor riwayat dari Roo Code",
+			"cardTitle": "Riwayat Roo Code",
+			"cardDescription": "Salin percakapan Roo Code yang tersimpan ke Zoo Code.",
+			"statusImporting": "Mengimpor riwayat",
+			"statusFailed": "Impor gagal",
+			"statusComplete": "Impor selesai",
+			"buttonImporting": "Mengimpor dari Roo Code...",
+			"buttonIdle": "Impor riwayat dari Roo Code",
+			"summaryFailedWithFiles": "{{copied}} dari {{total}} file disalin sebelum impor berhenti.",
+			"summaryFailedNoFiles": "Impor berhenti sebelum file apa pun disalin.",
+			"summaryCopied": "{{copied}} dari {{total}} file disalin",
+			"detailFailed": "Mulai percobaan impor baru untuk mencoba lagi.",
+			"detailTasksImported_one": "{{count}} dari {{total}} riwayat tugas diimpor.",
+			"detailTasksImported_other": "{{count}} dari {{total}} riwayat tugas diimpor.",
+			"detailPreparing": "Mempersiapkan impor riwayat Roo Code.",
+			"progressAriaLabel": "Progres impor riwayat Roo Code"
 		}
 	},
 	"slashCommands": {
@@ -98,6 +117,52 @@
 			"nameInvalid": "Nama hanya dapat berisi huruf, angka, tanda hubung, dan garis bawah"
 		},
 		"footer": "Gunakan perintah slash untuk akses cepat ke prompt dan alur kerja yang sering digunakan."
+	},
+	"rules": {
+		"description": "Kelola file aturan Zoo Code dari direktori .roo/rules global dan workspace. Buat aturan umum atau aturan khusus mode tanpa menelusuri folder konfigurasi secara manual.",
+		"workspaceRules": "Aturan Workspace",
+		"globalRules": "Aturan Global",
+		"noWorkspaceRules": "Belum ada aturan di proyek ini.",
+		"noGlobalRules": "Belum ada aturan global.",
+		"addRule": "Tambah Aturan",
+		"editRule": "Edit aturan",
+		"deleteRule": "Hapus aturan",
+		"modeLabel": "Mode: {{mode}}",
+		"deleteDialog": {
+			"title": "Hapus Aturan",
+			"description": "Yakin ingin menghapus aturan \"{{name}}\"? Tindakan ini tidak bisa dibatalkan.",
+			"confirm": "Hapus",
+			"cancel": "Batal"
+		},
+		"createDialog": {
+			"title": "Buat Aturan Baru",
+			"nameLabel": "Nama",
+			"namePlaceholder": "nama-aturan-saya",
+			"nameHint": "Hanya huruf kecil, angka, tanda hubung, dan garis bawah. .md ditambahkan otomatis.",
+			"scopeLabel": "Lokasi",
+			"kindLabel": "Jenis aturan",
+			"modeLabel": "Mode",
+			"modePlaceholder": "Pilih mode",
+			"create": "Buat",
+			"cancel": "Batal"
+		},
+		"scope": {
+			"global": "Global (tersedia di semua workspace)",
+			"project": "Workspace"
+		},
+		"kind": {
+			"generic": "Aturan umum",
+			"mode": "Aturan khusus mode",
+			"genericBadge": "Umum",
+			"modeBadge": "Mode"
+		},
+		"validation": {
+			"nameRequired": "Nama wajib diisi",
+			"nameTooLong": "Nama harus 64 karakter atau kurang",
+			"nameInvalid": "Nama hanya boleh berisi huruf kecil, angka, tanda hubung, dan garis bawah",
+			"modeRequired": "Mode wajib untuk aturan khusus mode"
+		},
+		"footer": "Aturan memuat panduan khusus mode sebelum panduan umum. Aturan global dimuat sebelum aturan workspace."
 	},
 	"prompts": {
 		"description": "Konfigurasi support prompt yang digunakan untuk aksi cepat seperti meningkatkan prompt, menjelaskan kode, dan memperbaiki masalah. Prompt ini membantu Zoo memberikan bantuan yang lebih baik untuk tugas pengembangan umum."
@@ -213,7 +278,8 @@
 		"stoppingButton": "Menghentikan...",
 		"workspaceToggleLabel": "Aktifkan pengindeksan untuk ruang kerja ini",
 		"workspaceDisabledMessage": "Pengindeksan dikonfigurasi tetapi tidak diaktifkan untuk ruang kerja ini.",
-		"autoEnableDefaultLabel": "Aktifkan pengindeksan secara otomatis untuk ruang kerja baru"
+		"autoEnableDefaultLabel": "Aktifkan pengindeksan secara otomatis untuk ruang kerja baru",
+		"sembleProvider": "Semble - Lokal"
 	},
 	"autoApprove": {
 		"toggleShortcut": "Anda dapat mengonfigurasi pintasan global untuk pengaturan ini <SettingsLink>di preferensi IDE Anda</SettingsLink>.",
@@ -314,6 +380,10 @@
 		"getOpenRouterApiKey": "Dapatkan OpenRouter API Key",
 		"vercelAiGatewayApiKey": "Vercel AI Gateway API Key",
 		"getVercelAiGatewayApiKey": "Dapatkan Vercel AI Gateway API Key",
+		"opencodeGoApiKey": "Opencode Go API Key",
+		"getOpencodeGoApiKey": "Dapatkan Opencode Go API Key",
+		"kenariApiKey": "Kenari API Key",
+		"getKenariApiKey": "Dapatkan Kenari API Key",
 		"apiKeyStorageNotice": "API key disimpan dengan aman di Secret Storage VSCode",
 		"openAiCodexRateLimits": {
 			"title": "Usage Limits for Codex{{planLabel}}",
@@ -382,6 +452,8 @@
 		"poeBaseUrl": "Poe Base URL",
 		"fireworksApiKey": "Fireworks API Key",
 		"getFireworksApiKey": "Dapatkan Fireworks API Key",
+		"friendliApiKey": "Friendli API Key",
+		"getFriendliApiKey": "Dapatkan Friendli API Key",
 		"deepSeekApiKey": "DeepSeek API Key",
 		"getDeepSeekApiKey": "Dapatkan DeepSeek API Key",
 		"moonshotApiKey": "Kunci API Moonshot",
@@ -394,6 +466,13 @@
 		"minimaxApiKey": "Kunci API MiniMax",
 		"getMiniMaxApiKey": "Dapatkan Kunci API MiniMax",
 		"minimaxBaseUrl": "Titik Masuk MiniMax",
+		"mimoApiKey": "Kunci API MiMo",
+		"getMimoApiKey": "Dapatkan Kunci API MiMo",
+		"mimoBaseUrl": "Titik Masuk MiMo",
+		"mimoBaseUrlSingapore": "Token Plan - Singapura (Default)",
+		"mimoBaseUrlChina": "Token Plan - Tiongkok",
+		"mimoBaseUrlEurope": "Token Plan - Eropa (AMS)",
+		"mimoBaseUrlPayg": "Bayar sesuai penggunaan",
 		"geminiApiKey": "Gemini API Key",
 		"getSambaNovaApiKey": "Dapatkan SambaNova API Key",
 		"sambaNovaApiKey": "SambaNova API Key",
@@ -445,6 +524,7 @@
 			"step3": "3. Atau buat service account dengan credentials."
 		},
 		"googleCloudCredentials": "Google Cloud Credentials",
+		"googleCloudCredentialsPathWarning": "Bidang ini mengharapkan konten JSON dari file kunci akun layanan, bukan path. Jika Anda memiliki path, tempelkan ke bidang <strong>Path File Key Google Cloud</strong> di bawah, atau kosongkan bidang ini dan gunakan variabel lingkungan <code>GOOGLE_APPLICATION_CREDENTIALS</code>.",
 		"googleCloudKeyFile": "Path File Key Google Cloud",
 		"googleCloudProjectId": "Google Cloud Project ID",
 		"googleCloudRegion": "Google Cloud Region",
@@ -465,6 +545,8 @@
 			"apiKeyHelp": "API key opsional untuk instance Ollama yang terautentikasi atau layanan cloud. Biarkan kosong untuk instalasi lokal.",
 			"numCtx": "Ukuran Jendela Konteks (num_ctx)",
 			"numCtxHelp": "Ganti ukuran jendela konteks default model. Biarkan kosong untuk menggunakan konfigurasi Modelfile model. Nilai minimum adalah 128.",
+			"thinking": "Aktifkan Thinking",
+			"thinkingHelp": "Aktifkan thinking native Ollama untuk model reasoning (mis. qwen3, deepseek-r1). Saat diaktifkan, reasoning model dialirkan dan ditampilkan secara terpisah. Model yang tidak didukung akan mengabaikan pengaturan ini.",
 			"description": "Ollama memungkinkan kamu menjalankan model secara lokal di komputer. Untuk instruksi cara memulai, lihat panduan quickstart mereka.",
 			"warning": "Catatan: Zoo Code menggunakan prompt kompleks dan bekerja terbaik dengan model Claude. Model yang kurang mampu mungkin tidak bekerja seperti yang diharapkan."
 		},
@@ -533,6 +615,7 @@
 			"minimal": "Minimal (Tercepat)",
 			"high": "Tinggi",
 			"xhigh": "Sangat tinggi",
+			"max": "Maksimum",
 			"medium": "Sedang",
 			"low": "Rendah"
 		},
@@ -550,6 +633,13 @@
 			"placeholder": "Default: claude",
 			"maxTokensLabel": "Token Output Maks",
 			"maxTokensDescription": "Jumlah maksimum token output untuk respons Claude Code. Default adalah 8000."
+		},
+		"zooGateway": {
+			"account": "Akun Zoo Code",
+			"signInButton": "Masuk ke Zoo Code",
+			"signInDescription": "Masuk untuk menggunakan Zoo Gateway dengan akun Anda",
+			"authenticated": "Terautentikasi",
+			"authenticatedAs": "Terautentikasi sebagai {{name}}"
 		}
 	},
 	"checkpoints": {
@@ -610,6 +700,12 @@
 			"delayAfterWrite": {
 				"label": "Tunda setelah penulisan untuk memungkinkan diagnostik mendeteksi potensi masalah",
 				"description": "Waktu tunggu setelah penulisan file sebelum melanjutkan, memungkinkan alat diagnostik untuk memproses perubahan dan mendeteksi masalah."
+			}
+		},
+		"fileEdits": {
+			"diffFuzzyThreshold": {
+				"label": "Ambang batas pencocokan diff",
+				"description": "Ambang batas yang lebih rendah membuat pengeditan file lebih tahan terhadap variasi format dan spasi. Ambang batas 100% memerlukan kecocokan yang tepat."
 			}
 		},
 		"condensingThreshold": {
@@ -731,6 +827,13 @@
 		"inheritEnv": {
 			"label": "Warisi variabel lingkungan",
 			"description": "Aktifkan untuk mewarisi variabel lingkungan dari proses induk VS Code. <0>Pelajari lebih lanjut</0>"
+		},
+		"profile": {
+			"label": "Profil terminal Zoo Code",
+			"followVscode": "Mengikuti profil VS Code (disarankan)",
+			"description": "Secara default Zoo Code menggunakan shell yang dikonfigurasi VS Code. Pilih profil shell dari daftar untuk memilih profil shell berbasis jalur yang diekspos oleh VS Code. Profil hanya sumber (mis., entri PowerShell bawaan) tidak dapat tercantum di sini. <0>Pelajari lebih lanjut</0>",
+			"configureButton": "Pilih profil default di VS Code",
+			"noProfiles": "(tidak ada profil berbasis jalur di terminal.integrated.profiles)"
 		}
 	},
 	"advancedSettings": {
@@ -891,7 +994,8 @@
 		"providerNotAllowed": "Provider '{{provider}}' tidak diizinkan oleh organisasi kamu",
 		"modelNotAllowed": "Model '{{model}}' tidak diizinkan untuk provider '{{provider}}' oleh organisasi kamu",
 		"profileInvalid": "Profil ini berisi provider atau model yang tidak diizinkan oleh organisasi kamu",
-		"qwenCodeOauthPath": "Kamu harus memberikan jalur kredensial OAuth yang valid"
+		"qwenCodeOauthPath": "Kamu harus memberikan jalur kredensial OAuth yang valid",
+		"zooGatewaySignIn": "Masuk ke Zoo Code untuk menggunakan Zoo Gateway."
 	},
 	"placeholders": {
 		"apiKey": "Masukkan API Key...",
@@ -953,6 +1057,23 @@
 		"requireCtrlEnterToSend": {
 			"label": "Memerlukan {{primaryMod}}+Enter untuk mengirim pesan",
 			"description": "Ketika diaktifkan, kamu harus menekan {{primaryMod}}+Enter untuk mengirim pesan alih-alih hanya Enter"
+		},
+		"chatFontSize": {
+			"label": "Ukuran font obrolan",
+			"description": "Atur ukuran font (dalam piksel) untuk obrolan Zoo Code. Biarkan pada nilai default agar sesuai dengan ukuran font VS Code.",
+			"reset": "Gunakan default VS Code"
+		},
+		"autoCloseZooOpenedFiles": {
+			"label": "Tutup otomatis file yang dibuka Zoo",
+			"description": "Saat diaktifkan, tab editor yang dibuka Zoo untuk sementara waktu untuk diff akan ditutup secara otomatis setelah perubahan diterima atau ditolak. Tab yang sudah dibuka pengguna sebelum pengeditan tidak pernah ditutup secara otomatis."
+		},
+		"autoCloseZooOpenedFilesAfterUserEdited": {
+			"label": "Tutup otomatis meski setelah interaksi pengguna",
+			"description": "Saat diaktifkan, tab yang dibuka Zoo tetap ditutup meski pengguna mengklik atau mengetik di file atau diff selama sesi pengeditan. Tidak berpengaruh jika 'Tutup otomatis file yang dibuka Zoo' dinonaktifkan."
+		},
+		"autoCloseZooOpenedNewFiles": {
+			"label": "Tutup otomatis file baru yang dibuat",
+			"description": "Saat diaktifkan, tab untuk file yang dibuat Zoo (bukan dimodifikasi) juga ditutup secara otomatis setelah perubahan diterima."
 		}
 	},
 	"skills": {

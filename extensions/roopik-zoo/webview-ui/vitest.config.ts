@@ -1,10 +1,13 @@
 import { defineConfig } from "vitest/config"
+import react from "@vitejs/plugin-react"
 import path from "path"
 import { resolveVerbosity } from "../src/utils/vitest-verbosity"
 
 const { silent, reporters, onConsoleLog } = resolveVerbosity()
+const isCI = process.env.CI === "true"
 
 export default defineConfig({
+	plugins: [react()],
 	test: {
 		globals: true,
 		setupFiles: ["./vitest.setup.ts"],
@@ -14,9 +17,17 @@ export default defineConfig({
 		environment: "jsdom",
 		include: ["src/**/*.spec.ts", "src/**/*.spec.tsx"],
 		onConsoleLog,
+		maxWorkers: isCI ? 1 : undefined,
+		testTimeout: isCI ? 15000 : 5000,
+		server: {
+			deps: {
+				inline: ["@radix-ui/react-slot"],
+			},
+		},
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "lcov"],
+			include: ["src/**/*.ts", "src/**/*.tsx"],
 			exclude: [
 				"**/*.test.ts",
 				"**/*.test.tsx",

@@ -26,13 +26,15 @@ const vercelAiGatewayPricingSchema = z.object({
 const vercelAiGatewayModelSchema = z.object({
 	id: z.string(),
 	object: z.string(),
-	created: z.number(),
+	// Zoo Gateway / Bedrock catalog entries omit these; they are not used for routing.
+	created: z.number().optional(),
 	owned_by: z.string(),
 	name: z.string(),
-	description: z.string(),
+	description: z.string().optional(),
 	context_window: z.number(),
 	max_tokens: z.number(),
 	type: z.string(),
+	tags: z.array(z.string()).optional(),
 	pricing: vercelAiGatewayPricingSchema,
 })
 
@@ -42,7 +44,7 @@ export type VercelAiGatewayModel = z.infer<typeof vercelAiGatewayModelSchema>
  * VercelAiGatewayModelsResponse
  */
 
-const vercelAiGatewayModelsResponseSchema = z.object({
+export const vercelAiGatewayModelsResponseSchema = z.object({
 	object: z.string(),
 	data: z.array(vercelAiGatewayModelSchema),
 })
@@ -98,8 +100,9 @@ export const parseVercelAiGatewayModel = ({ id, model }: { id: string; model: Ve
 	const cacheReadsPrice = model.pricing?.input_cache_read ? parseApiPrice(model.pricing?.input_cache_read) : undefined
 
 	const supportsPromptCache = typeof cacheWritesPrice !== "undefined" && typeof cacheReadsPrice !== "undefined"
-	const supportsImages =
-		VERCEL_AI_GATEWAY_VISION_ONLY_MODELS.has(id) || VERCEL_AI_GATEWAY_VISION_AND_TOOLS_MODELS.has(id)
+	const supportsImages = Array.isArray(model.tags)
+		? model.tags.includes("vision")
+		: VERCEL_AI_GATEWAY_VISION_ONLY_MODELS.has(id) || VERCEL_AI_GATEWAY_VISION_AND_TOOLS_MODELS.has(id)
 
 	const modelInfo: ModelInfo = {
 		maxTokens: model.max_tokens,
@@ -110,7 +113,15 @@ export const parseVercelAiGatewayModel = ({ id, model }: { id: string; model: Ve
 		outputPrice: parseApiPrice(model.pricing?.output),
 		cacheWritesPrice,
 		cacheReadsPrice,
-		description: model.description,
+		description: model.description ?? model.name,
+	}
+
+	if (id === "anthropic/claude-fable-5") {
+		modelInfo.supportsTemperature = false
+	}
+
+	if (id === "anthropic/claude-sonnet-5") {
+		modelInfo.supportsTemperature = false
 	}
 
 	return modelInfo

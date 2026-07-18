@@ -1,6 +1,6 @@
 import { Anthropic } from "@anthropic-ai/sdk"
 import { AnthropicVertex } from "@anthropic-ai/vertex-sdk"
-import { GoogleAuth, JWTInput } from "google-auth-library"
+import { GoogleAuth } from "google-auth-library"
 
 import {
 	type ModelInfo,
@@ -10,7 +10,6 @@ import {
 	ANTHROPIC_DEFAULT_MAX_TOKENS,
 	VERTEX_1M_CONTEXT_MODEL_IDS,
 } from "@roo-code/types"
-import { safeJsonParse } from "@roo-code/core"
 
 import { ApiHandlerOptions } from "../../shared/api"
 
@@ -18,13 +17,15 @@ import { ApiStream } from "../transform/stream"
 import { addCacheBreakpoints } from "../transform/caching/vertex"
 import { getModelParams } from "../transform/model-params"
 import { filterNonAnthropicBlocks } from "../transform/anthropic-filter"
+import { getAnthropicProviderReasoning } from "../transform/reasoning"
 import {
 	convertOpenAIToolsToAnthropic,
 	convertOpenAIToolChoiceToAnthropic,
 } from "../../core/prompts/tools/native-tools/converters"
 
 import { BaseProvider } from "./base-provider"
-import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+import { parseVertexJsonCredentials } from "./utils/vertex-credentials"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
 
 // https://docs.anthropic.com/en/api/claude-on-vertex-ai
 export class AnthropicVertexHandler extends BaseProvider implements SingleCompletionHandler {
@@ -40,14 +41,17 @@ export class AnthropicVertexHandler extends BaseProvider implements SingleComple
 		const projectId = this.options.vertexProjectId ?? "not-provided"
 		const region = this.options.vertexRegion ?? "us-east5"
 
-		if (this.options.vertexJsonCredentials) {
+		const parsedVertexCredentials = parseVertexJsonCredentials(this.options.vertexJsonCredentials)
+
+		if (parsedVertexCredentials) {
 			this.client = new AnthropicVertex({
 				projectId,
 				region,
 				googleAuth: new GoogleAuth({
 					scopes: ["https://www.googleapis.com/auth/cloud-platform"],
-					credentials: safeJsonParse<JWTInput>(this.options.vertexJsonCredentials, undefined),
+					credentials: parsedVertexCredentials,
 				}),
+				timeout: this.timeoutMs,
 			})
 		} else if (this.options.vertexKeyFile) {
 			this.client = new AnthropicVertex({
@@ -57,9 +61,10 @@ export class AnthropicVertexHandler extends BaseProvider implements SingleComple
 					scopes: ["https://www.googleapis.com/auth/cloud-platform"],
 					keyFile: this.options.vertexKeyFile,
 				}),
+				timeout: this.timeoutMs,
 			})
 		} else {
-			this.client = new AnthropicVertex({ projectId, region })
+			this.client = new AnthropicVertex({ projectId, region, timeout: this.timeoutMs })
 		}
 	}
 
@@ -68,7 +73,7 @@ export class AnthropicVertexHandler extends BaseProvider implements SingleComple
 		messages: Anthropic.Messages.MessageParam[],
 		metadata?: ApiHandlerCreateMessageMetadata,
 	): ApiStream {
-		let { id, info, temperature, maxTokens, reasoning: thinking, betas } = this.getModel()
+		const { id, info, temperature, maxTokens, reasoning: thinking, betas } = this.getModel()
 
 		const { supportsPromptCache } = info
 
@@ -93,7 +98,7 @@ export class AnthropicVertexHandler extends BaseProvider implements SingleComple
 		 * This ensures we stay under the 4-block limit while maintaining effective caching
 		 * for the most relevant context.
 		 */
-		const params: Anthropic.Messages.MessageCreateParamsStreaming = {
+		const params = {
 			model: id,
 			max_tokens: maxTokens ?? ANTHROPIC_DEFAULT_MAX_TOKENS,
 			temperature,
@@ -105,7 +110,7 @@ export class AnthropicVertexHandler extends BaseProvider implements SingleComple
 			messages: supportsPromptCache ? addCacheBreakpoints(sanitizedMessages) : sanitizedMessages,
 			stream: true,
 			...nativeToolParams,
-		}
+		} as Anthropic.Messages.MessageCreateParamsStreaming
 
 		// and prompt caching
 		const requestOptions = betas?.length ? { headers: { "anthropic-beta": betas.join(",") } } : undefined
@@ -207,7 +212,7 @@ export class AnthropicVertexHandler extends BaseProvider implements SingleComple
 
 	getModel() {
 		const modelId = this.options.apiModelId
-		let id = modelId && modelId in vertexModels ? (modelId as VertexModelId) : vertexDefaultModelId
+		const id = modelId && modelId in vertexModels ? (modelId as VertexModelId) : vertexDefaultModelId
 		let info: ModelInfo = vertexModels[id]
 
 		// Check if 1M context beta should be enabled for supported models
@@ -238,6 +243,11 @@ export class AnthropicVertexHandler extends BaseProvider implements SingleComple
 			settings: this.options,
 			defaultTemperature: 0,
 		})
+		const thinking = getAnthropicProviderReasoning({
+			model: info,
+			reasoningBudget: params.reasoningBudget,
+			settings: this.options,
+		})
 
 		// Build betas array for request headers
 		const betas: string[] = []
@@ -256,12 +266,13 @@ export class AnthropicVertexHandler extends BaseProvider implements SingleComple
 			info,
 			betas: betas.length > 0 ? betas : undefined,
 			...params,
+			reasoning: thinking,
 		}
 	}
 
-	async completePrompt(prompt: string) {
+	async completePrompt(prompt: string, options?: CompletePromptOptions) {
 		try {
-			let {
+			const {
 				id,
 				info: { supportsPromptCache },
 				temperature,
@@ -269,7 +280,7 @@ export class AnthropicVertexHandler extends BaseProvider implements SingleComple
 				reasoning: thinking,
 			} = this.getModel()
 
-			const params: Anthropic.Messages.MessageCreateParamsNonStreaming = {
+			const params = {
 				model: id,
 				max_tokens: maxTokens,
 				temperature,
@@ -283,16 +294,12 @@ export class AnthropicVertexHandler extends BaseProvider implements SingleComple
 					},
 				],
 				stream: false,
-			}
+			} as Anthropic.Messages.MessageCreateParamsNonStreaming
 
 			const response = await this.client.messages.create(params)
-			const content = response.content[0]
+			const content = response.content.find(({ type }) => type === "text")
 
-			if (content.type === "text") {
-				return content.text
-			}
-
-			return ""
+			return content?.type === "text" ? content.text : ""
 		} catch (error) {
 			if (error instanceof Error) {
 				throw new Error(`Vertex completion error: ${error.message}`)

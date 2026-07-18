@@ -48,8 +48,6 @@ export class TerminalRegistry {
 		try {
 			const startDisposable = vscode.window.onDidStartTerminalShellExecution?.(
 				async (e: vscode.TerminalShellExecutionStartEvent) => {
-					// Get a handle to the stream as early as possible:
-					const stream = e.execution.read()
 					const terminal = this.getTerminalByVSCETerminal(e.terminal)
 
 					console.info("[onDidStartTerminalShellExecution]", {
@@ -57,9 +55,42 @@ export class TerminalRegistry {
 						terminalId: terminal?.id,
 					})
 
-					if (terminal) {
+					if (terminal instanceof Terminal) {
+						// Always call read() from this event — it fires when VSCode's shell
+						// integration confirms the command has actually started, which is the
+						// earliest point at which read() will reliably capture output. Calling
+						// read() earlier (e.g. immediately after executeCommand()) creates a
+						// stream window that misses data on cold terminals where the shell
+						// hasn't started yet: VSCode doesn't buffer retroactively.
+						//
+						// Guard: only set the stream for the execution we own. Stale start
+						// events for a previous execution on the same reused terminal must
+						// not overwrite the current command's stream.
+						const process = terminal.process
+						const isOwnExecution =
+							!(process instanceof TerminalProcess) ||
+							// Allow undefined only when the process hasn't started yet (cold
+							// terminal: process is assigned but run() hasn't called executeCommand).
+							// Once isHot is true, ownExecution is always set — a stale start
+							// event on a reused terminal must match exactly.
+							(!process.isHot && process.ownExecution === undefined) ||
+							process.ownExecution === e.execution
+						if (!isOwnExecution) {
+							console.info(
+								"[TerminalRegistry] Ignoring onDidStartTerminalShellExecution for a different execution",
+								{ terminalId: terminal.id },
+							)
+							return
+						}
+						const stream = e.execution.read()
 						terminal.setActiveStream(stream)
-						terminal.busy = true // Mark terminal as busy when shell execution starts
+						// Only mark busy when there is a live process to clear it later.
+						// If the end event already fired (early-completion race), process is
+						// undefined and setActiveStream returned early — setting busy here would
+						// leave the terminal stuck busy with nothing to clear it.
+						if (terminal.process) {
+							terminal.busy = true
+						}
 					} else {
 						console.error(
 							"[onDidStartTerminalShellExecution] Shell execution started, but not from a Roo-registered terminal:",
@@ -94,13 +125,49 @@ export class TerminalRegistry {
 						return
 					}
 
-					if (!terminal.running) {
-						console.error(
-							"[TerminalRegistry] Shell execution end event received, but process is not running for terminal:",
-							{ terminalId: terminal?.id, command: process?.command, exitCode: e.exitCode },
+					if (terminal instanceof Terminal && terminal.activeShellExecution === e.execution) {
+						terminal.activeShellExecution = undefined
+					}
+
+					// Guard against a late end event for an execution that has already been
+					// superseded on this terminal. This can happen when a process self-finalizes
+					// after TerminalProcess's own D-marker grace period elapses without ever
+					// seeing this event (see TerminalProcess.ts's finalize()): the terminal gets
+					// reused for a new command before VSCode's stale event for the OLD command
+					// finally arrives. Without this check, that stale event would call
+					// shellExecutionComplete() on whatever process/exit-code tracking is
+					// currently attached -- the NEW command's -- corrupting its state instead of
+					// being a harmless no-op for the command it actually belongs to.
+					const isStaleExecution =
+						process instanceof TerminalProcess &&
+						process.ownExecution !== undefined &&
+						process.ownExecution !== e.execution
+
+					if (isStaleExecution) {
+						console.info(
+							"[TerminalRegistry] Ignoring stale onDidEndTerminalShellExecution for a superseded execution",
+							{ terminalId: terminal.id, exitCode: e.exitCode },
 						)
 
-						terminal.busy = false
+						return
+					}
+
+					if (!terminal.running) {
+						// The end event can arrive before setActiveStream() has set
+						// running=true (race between the global VS Code event and the
+						// synchronous call in TerminalProcess.run). If a process is
+						// waiting for completion, deliver the signal so it doesn't
+						// hang forever. See #489 / #622.
+						if (process) {
+							console.info(
+								"[TerminalRegistry] End event arrived before running=true (race); delivering completion signal",
+								{ terminalId: terminal.id, exitCode: e.exitCode },
+							)
+							terminal.shellExecutionComplete(exitDetails)
+						} else {
+							terminal.busy = false
+						}
+
 						return
 					}
 
@@ -115,7 +182,6 @@ export class TerminalRegistry {
 
 					// Signal completion to any waiting processes.
 					terminal.shellExecutionComplete(exitDetails)
-					terminal.busy = false // Mark terminal as not busy when shell execution ends
 				},
 			)
 
@@ -155,13 +221,14 @@ export class TerminalRegistry {
 		provider: RooTerminalProvider = "vscode",
 	): Promise<RooTerminal> {
 		const terminals = this.getAllTerminals()
+		const reuseKey = provider === "vscode" ? Terminal.getReuseKey() : provider
 		let terminal: RooTerminal | undefined
 
 		// First priority: Find a terminal already assigned to this task with
 		// matching directory.
 		if (taskId) {
 			terminal = terminals.find((t) => {
-				if (t.busy || t.taskId !== taskId || t.provider !== provider) {
+				if (t.busy || t.taskId !== taskId || t.provider !== provider || t.reuseKey !== reuseKey) {
 					return false
 				}
 
@@ -178,7 +245,7 @@ export class TerminalRegistry {
 		// Second priority: Find any available terminal with matching directory.
 		if (!terminal) {
 			terminal = terminals.find((t) => {
-				if (t.busy || t.provider !== provider) {
+				if (t.busy || t.provider !== provider || t.reuseKey !== reuseKey) {
 					return false
 				}
 
@@ -277,6 +344,22 @@ export class TerminalRegistry {
 	}
 
 	/**
+	 * Disposes all idle (non-busy) VS Code terminals so they are not reused
+	 * after a shell profile change. Busy terminals are left untouched.
+	 */
+	public static closeIdleTerminals(): void {
+		this.terminals = this.terminals.filter((t) => {
+			if (t.busy || !(t instanceof Terminal)) {
+				return true
+			}
+
+			t.terminal.dispose()
+			ShellIntegrationManager.zshCleanupTmpDir(t.id)
+			return false
+		})
+	}
+
+	/**
 	 * Releases all terminals associated with a task.
 	 *
 	 * @param taskId The task ID
@@ -284,6 +367,22 @@ export class TerminalRegistry {
 	public static releaseTerminalsForTask(taskId: string): void {
 		this.terminals.forEach((terminal) => {
 			if (terminal.taskId === taskId) {
+				// #245: If the terminal is still executing a command when its task is torn
+				// down (user pressed cancel ✕, or the task was switched/removed), abort the
+				// process. Otherwise the command keeps running orphaned and the terminal stays
+				// stuck "busy" — the cancel-doesn't-terminate bug. abort() is safe when idle
+				// (Ctrl+C is gated on an active stream; Execa abort is idempotent).
+				if (terminal.busy) {
+					try {
+						terminal.process?.abort()
+					} catch (error) {
+						console.error(
+							`[TerminalRegistry] Error aborting process for terminal ${terminal.id} on release:`,
+							error,
+						)
+					}
+				}
+
 				terminal.taskId = undefined
 			}
 		})

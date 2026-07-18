@@ -41,7 +41,8 @@
 		"experimental": "Experimenteel",
 		"language": "Taal",
 		"about": "Over Zoo Code",
-		"skills": "Skills"
+		"skills": "Skills",
+		"rules": "Regels"
 	},
 	"about": {
 		"bugReport": {
@@ -62,6 +63,24 @@
 		"debugMode": {
 			"label": "Debugmodus inschakelen",
 			"description": "Schakel de debugmodus in om extra knoppen in de taakkoptekst te tonen voor het bekijken van API-gesprekgeschiedenis en UI-berichten als opgemaakte JSON in tijdelijke bestanden."
+		},
+		"rooHistoryImport": {
+			"settingLabel": "Geschiedenis importeren van Roo Code",
+			"cardTitle": "Roo Code-geschiedenis",
+			"cardDescription": "Opgeslagen Roo Code-gesprekken naar Zoo Code kopiëren.",
+			"statusImporting": "Geschiedenis importeren",
+			"statusFailed": "Importeren mislukt",
+			"statusComplete": "Importeren voltooid",
+			"buttonImporting": "Importeren van Roo Code...",
+			"buttonIdle": "Geschiedenis importeren van Roo Code",
+			"summaryFailedWithFiles": "{{copied}} van {{total}} bestanden gekopieerd voordat het importeren stopte.",
+			"summaryFailedNoFiles": "Het importeren is gestopt voordat er bestanden werden gekopieerd.",
+			"summaryCopied": "{{copied}} van {{total}} bestanden gekopieerd",
+			"detailFailed": "Start een nieuwe importpoging om het opnieuw te proberen.",
+			"detailTasksImported_one": "{{count}} van {{total}} taakgeschiedenis geïmporteerd.",
+			"detailTasksImported_other": "{{count}} van {{total}} taakgeschiedenissen geïmporteerd.",
+			"detailPreparing": "Importeren van Roo Code-geschiedenis voorbereiden.",
+			"progressAriaLabel": "Voortgang van import van Roo Code-geschiedenis"
 		}
 	},
 	"slashCommands": {
@@ -98,6 +117,52 @@
 			"nameInvalid": "Naam mag alleen letters, cijfers, streepjes en onderstrepen bevatten"
 		},
 		"footer": "Gebruik slash-commando's voor snelle toegang tot veelgebruikte prompts en workflows."
+	},
+	"rules": {
+		"description": "Beheer Zoo Code-regelbestanden vanuit globale en workspace .roo/rules-mappen. Maak algemene regels of modusspecifieke regels zonder handmatig door configuratiemappen te bladeren.",
+		"workspaceRules": "Workspace-regels",
+		"globalRules": "Globale regels",
+		"noWorkspaceRules": "Nog geen regels in dit project.",
+		"noGlobalRules": "Nog geen globale regels.",
+		"addRule": "Regel toevoegen",
+		"editRule": "Regel bewerken",
+		"deleteRule": "Regel verwijderen",
+		"modeLabel": "Modus: {{mode}}",
+		"deleteDialog": {
+			"title": "Regel verwijderen",
+			"description": "Weet je zeker dat je de regel \"{{name}}\" wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.",
+			"confirm": "Verwijderen",
+			"cancel": "Annuleren"
+		},
+		"createDialog": {
+			"title": "Nieuwe regel maken",
+			"nameLabel": "Naam",
+			"namePlaceholder": "mijn-regel-naam",
+			"nameHint": "Alleen kleine letters, cijfers, koppeltekens en underscores. .md wordt automatisch toegevoegd.",
+			"scopeLabel": "Locatie",
+			"kindLabel": "Regeltype",
+			"modeLabel": "Modus",
+			"modePlaceholder": "Selecteer een modus",
+			"create": "Maken",
+			"cancel": "Annuleren"
+		},
+		"scope": {
+			"global": "Globaal (beschikbaar in alle workspaces)",
+			"project": "Workspace"
+		},
+		"kind": {
+			"generic": "Algemene regels",
+			"mode": "Modusspecifieke regels",
+			"genericBadge": "Algemeen",
+			"modeBadge": "Modus"
+		},
+		"validation": {
+			"nameRequired": "Naam is vereist",
+			"nameTooLong": "Naam moet 64 tekens of minder zijn",
+			"nameInvalid": "Naam mag alleen kleine letters, cijfers, koppeltekens en underscores bevatten",
+			"modeRequired": "Modus is vereist voor modusspecifieke regels"
+		},
+		"footer": "Regels laden modusspecifieke richtlijnen vóór algemene richtlijnen. Globale regels worden vóór workspace-regels geladen."
 	},
 	"prompts": {
 		"description": "Configureer ondersteuningsprompts die worden gebruikt voor snelle acties zoals het verbeteren van prompts, het uitleggen van code en het oplossen van problemen. Deze prompts helpen Zoo om betere ondersteuning te bieden voor veelvoorkomende ontwikkelingstaken."
@@ -213,7 +278,8 @@
 		"stoppingButton": "Stoppen...",
 		"workspaceToggleLabel": "Indexering inschakelen voor deze werkruimte",
 		"workspaceDisabledMessage": "Indexering is geconfigureerd maar niet ingeschakeld voor deze werkruimte.",
-		"autoEnableDefaultLabel": "Indexering automatisch inschakelen voor nieuwe werkruimtes"
+		"autoEnableDefaultLabel": "Indexering automatisch inschakelen voor nieuwe werkruimtes",
+		"sembleProvider": "Semble - Lokaal"
 	},
 	"autoApprove": {
 		"toggleShortcut": "U kunt een globale sneltoets voor deze instelling configureren <SettingsLink>in de voorkeuren van uw IDE</SettingsLink>.",
@@ -314,6 +380,10 @@
 		"getOpenRouterApiKey": "OpenRouter API-sleutel ophalen",
 		"vercelAiGatewayApiKey": "Vercel AI Gateway API-sleutel",
 		"getVercelAiGatewayApiKey": "Vercel AI Gateway API-sleutel ophalen",
+		"opencodeGoApiKey": "Opencode Go API-sleutel",
+		"getOpencodeGoApiKey": "Opencode Go API-sleutel ophalen",
+		"kenariApiKey": "Kenari API-sleutel",
+		"getKenariApiKey": "Kenari API-sleutel ophalen",
 		"apiKeyStorageNotice": "API-sleutels worden veilig opgeslagen in de geheime opslag van VSCode",
 		"openAiCodexRateLimits": {
 			"title": "Usage Limits for Codex{{planLabel}}",
@@ -382,6 +452,8 @@
 		"poeBaseUrl": "Poe Basis-URL",
 		"fireworksApiKey": "Fireworks API-sleutel",
 		"getFireworksApiKey": "Fireworks API-sleutel ophalen",
+		"friendliApiKey": "Friendli API-sleutel",
+		"getFriendliApiKey": "Friendli API-sleutel ophalen",
 		"deepSeekApiKey": "DeepSeek API-sleutel",
 		"getDeepSeekApiKey": "DeepSeek API-sleutel ophalen",
 		"moonshotApiKey": "Moonshot API-sleutel",
@@ -394,6 +466,13 @@
 		"minimaxApiKey": "MiniMax API-sleutel",
 		"getMiniMaxApiKey": "MiniMax API-sleutel ophalen",
 		"minimaxBaseUrl": "MiniMax-ingangspunt",
+		"mimoApiKey": "MiMo API-sleutel",
+		"getMimoApiKey": "MiMo API-sleutel ophalen",
+		"mimoBaseUrl": "MiMo-toegangspunt",
+		"mimoBaseUrlSingapore": "Token Plan - Singapore (Standaard)",
+		"mimoBaseUrlChina": "Token Plan - China",
+		"mimoBaseUrlEurope": "Token Plan - Europa (AMS)",
+		"mimoBaseUrlPayg": "Pay-as-you-go",
 		"geminiApiKey": "Gemini API-sleutel",
 		"getSambaNovaApiKey": "SambaNova API-sleutel ophalen",
 		"sambaNovaApiKey": "SambaNova API-sleutel",
@@ -445,6 +524,7 @@
 			"step3": "3. Of maak een serviceaccount met referenties."
 		},
 		"googleCloudCredentials": "Google Cloud-referenties",
+		"googleCloudCredentialsPathWarning": "Dit veld verwacht de JSON-inhoud van een serviceaccount-sleutelbestand, geen pad. Als je een pad hebt, plak het dan in het veld <strong>Google Cloud-sleutelbestandspad</strong> hieronder, of leeg dit veld en gebruik de omgevingsvariabele <code>GOOGLE_APPLICATION_CREDENTIALS</code>.",
 		"googleCloudKeyFile": "Google Cloud-sleutelbestandspad",
 		"googleCloudProjectId": "Google Cloud-project-ID",
 		"googleCloudRegion": "Google Cloud-regio",
@@ -465,6 +545,8 @@
 			"apiKeyHelp": "Optionele API-sleutel voor geauthenticeerde Ollama-instanties of cloudservices. Laat leeg voor lokale installaties.",
 			"numCtx": "Contextvenstergrootte (num_ctx)",
 			"numCtxHelp": "Overschrijft de standaard contextvenstergrootte van het model. Laat leeg om de Modelfile-configuratie van het model te gebruiken. De minimumwaarde is 128.",
+			"thinking": "Redeneren inschakelen",
+			"thinkingHelp": "Schakel Ollama's native redeneren in voor redeneringsmodellen (bijv. qwen3, deepseek-r1). Indien ingeschakeld, wordt de redenering van het model apart gestreamd en weergegeven. Niet-ondersteunde modellen negeren deze instelling.",
 			"description": "Ollama laat je modellen lokaal op je computer draaien. Zie hun quickstart-gids voor instructies.",
 			"warning": "Let op: Zoo Code gebruikt complexe prompts en werkt het beste met Claude-modellen. Minder krachtige modellen werken mogelijk niet zoals verwacht."
 		},
@@ -533,6 +615,7 @@
 			"minimal": "Minimaal (Snelst)",
 			"high": "Hoog",
 			"xhigh": "Zeer hoog",
+			"max": "Maximum",
 			"medium": "Middel",
 			"low": "Laag"
 		},
@@ -550,6 +633,13 @@
 			"placeholder": "Standaard: claude",
 			"maxTokensLabel": "Max Output Tokens",
 			"maxTokensDescription": "Maximaal aantal output-tokens voor Claude Code-reacties. Standaard is 8000."
+		},
+		"zooGateway": {
+			"account": "Zoo Code Account",
+			"signInButton": "Inloggen bij Zoo Code",
+			"signInDescription": "Log in om Zoo Gateway met je account te gebruiken",
+			"authenticated": "Geauthenticeerd",
+			"authenticatedAs": "Geauthenticeerd als {{name}}"
 		}
 	},
 	"checkpoints": {
@@ -644,6 +734,12 @@
 				"description": "Wachttijd na het schrijven van bestanden voordat u doorgaat, zodat diagnostische hulpmiddelen wijzigingen kunnen verwerken en problemen kunnen detecteren."
 			}
 		},
+		"fileEdits": {
+			"diffFuzzyThreshold": {
+				"label": "Diff-match-drempelwaarde",
+				"description": "Lagere drempelwaarden maken bestandbewerkingen beter bestand tegen opmaak- en witruimtevariaties. Een drempelwaarde van 100% vereist een exacte overeenkomst."
+			}
+		},
 		"condensingThreshold": {
 			"label": "Compressie trigger drempelwaarde",
 			"selectProfile": "Drempelwaarde voor profiel configureren",
@@ -731,6 +827,13 @@
 		"inheritEnv": {
 			"label": "Omgevingsvariabelen overnemen",
 			"description": "Schakel in om omgevingsvariabelen over te nemen van het bovenliggende VS Code-proces. <0>Meer informatie</0>"
+		},
+		"profile": {
+			"label": "Zoo Code terminalprofiel",
+			"followVscode": "VS Code-profiel volgen (aanbevolen)",
+			"description": "Standaard gebruikt Zoo Code de shell die in VS Code is geconfigureerd. Selecteer een shell-profiel uit de lijst om een pad-gebaseerd shell-profiel te gebruiken dat VS Code beschikbaar stelt. Uitsluitend op bron gebaseerde profielen (bijv. de ingebouwde PowerShell-vermelding) kunnen hier niet worden vermeld. <0>Meer informatie</0>",
+			"configureButton": "Standaardprofiel kiezen in VS Code",
+			"noProfiles": "(geen profielen met pad gevonden in terminal.integrated.profiles)"
 		}
 	},
 	"advancedSettings": {
@@ -891,7 +994,8 @@
 		"providerNotAllowed": "Provider '{{provider}}' is niet toegestaan door je organisatie",
 		"modelNotAllowed": "Model '{{model}}' is niet toegestaan voor provider '{{provider}}' door je organisatie",
 		"profileInvalid": "Dit profiel bevat een provider of model dat niet is toegestaan door je organisatie",
-		"qwenCodeOauthPath": "Je moet een geldig OAuth-referentiepad opgeven"
+		"qwenCodeOauthPath": "Je moet een geldig OAuth-referentiepad opgeven",
+		"zooGatewaySignIn": "Log in bij Zoo Code om Zoo Gateway te gebruiken."
 	},
 	"placeholders": {
 		"apiKey": "Voer API-sleutel in...",
@@ -953,6 +1057,23 @@
 		"requireCtrlEnterToSend": {
 			"label": "Vereist {{primaryMod}}+Enter om berichten te versturen",
 			"description": "Wanneer ingeschakeld, moet je {{primaryMod}}+Enter indrukken om berichten te versturen in plaats van alleen Enter"
+		},
+		"chatFontSize": {
+			"label": "Lettergrootte van chat",
+			"description": "Stel de lettergrootte (in pixels) in voor de Zoo Code-chat. Laat op de standaardwaarde staan om overeen te komen met de lettergrootte van VS Code.",
+			"reset": "VS Code-standaard gebruiken"
+		},
+		"autoCloseZooOpenedFiles": {
+			"label": "Automatisch sluiten van door Zoo geopende bestanden",
+			"description": "Wanneer ingeschakeld, worden editor-tabbladen die Zoo tijdelijk heeft geopend voor een diff automatisch gesloten nadat de wijziging is geaccepteerd of geweigerd. Tabbladen die de gebruiker al had geopend voor de bewerking worden nooit automatisch gesloten."
+		},
+		"autoCloseZooOpenedFilesAfterUserEdited": {
+			"label": "Automatisch sluiten ook na gebruikersinteractie",
+			"description": "Wanneer ingeschakeld, worden door Zoo geopende tabbladen gesloten, zelfs als de gebruiker tijdens de bewerkingssessie in het bestand of de diff heeft geklikt of getypt. Heeft geen effect als 'Automatisch sluiten van door Zoo geopende bestanden' is uitgeschakeld."
+		},
+		"autoCloseZooOpenedNewFiles": {
+			"label": "Automatisch sluiten van nieuw gemaakte bestanden",
+			"description": "Wanneer ingeschakeld, worden tabbladen van bestanden die Zoo heeft aangemaakt (in plaats van gewijzigd) ook automatisch gesloten nadat de wijziging is geaccepteerd."
 		}
 	},
 	"skills": {

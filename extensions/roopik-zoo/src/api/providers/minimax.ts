@@ -12,7 +12,7 @@ import { getModelParams } from "../transform/model-params"
 import { mergeEnvironmentDetailsForMiniMax } from "../transform/minimax-format"
 
 import { BaseProvider } from "./base-provider"
-import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
 import { calculateApiCostAnthropic } from "../../shared/cost"
 import { convertOpenAIToolsToAnthropic } from "../../core/prompts/tools/native-tools/converters"
 
@@ -73,6 +73,7 @@ export class MiniMaxHandler extends BaseProvider implements SingleCompletionHand
 		this.client = new Anthropic({
 			baseURL,
 			apiKey: options.minimaxApiKey,
+			timeout: this.timeoutMs,
 		})
 	}
 
@@ -81,7 +82,6 @@ export class MiniMaxHandler extends BaseProvider implements SingleCompletionHand
 		messages: Anthropic.Messages.MessageParam[],
 		metadata?: ApiHandlerCreateMessageMetadata,
 	): ApiStream {
-		let stream: AnthropicStream<Anthropic.Messages.RawMessageStreamEvent>
 		const cacheControl: CacheControlEphemeral = { type: "ephemeral" }
 		const { id: modelId, info, maxTokens, temperature } = this.getModel()
 
@@ -113,7 +113,7 @@ export class MiniMaxHandler extends BaseProvider implements SingleCompletionHand
 			tool_choice: convertOpenAIToolChoice(metadata?.tool_choice),
 		}
 
-		stream = await this.client.messages.create(requestParams)
+		const stream = await this.client.messages.create(requestParams)
 
 		let inputTokens = 0
 		let outputTokens = 0
@@ -289,7 +289,7 @@ export class MiniMaxHandler extends BaseProvider implements SingleCompletionHand
 		}
 	}
 
-	async completePrompt(prompt: string) {
+	async completePrompt(prompt: string, options?: CompletePromptOptions) {
 		const { id: model, temperature } = this.getModel()
 
 		const message = await this.client.messages.create({

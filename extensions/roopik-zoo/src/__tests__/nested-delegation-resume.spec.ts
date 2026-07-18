@@ -2,6 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { RooCodeEventName } from "@roo-code/types"
+import { makeProviderStub } from "./helpers/provider-stub"
 
 // Mock safe-stable-stringify to avoid runtime error
 vi.mock("safe-stable-stringify", () => ({
@@ -43,7 +44,8 @@ vi.mock("vscode", () => {
 vi.mock("../core/task-persistence/taskMessages", () => ({
 	readTaskMessages: vi.fn().mockResolvedValue([]),
 }))
-vi.mock("../core/task-persistence", () => ({
+vi.mock("../core/task-persistence", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../core/task-persistence")>()),
 	readApiMessages: vi.fn().mockResolvedValue([]),
 	saveApiMessages: vi.fn().mockResolvedValue(undefined),
 	saveTaskMessages: vi.fn().mockResolvedValue(undefined),
@@ -148,7 +150,26 @@ describe("Nested delegation resume (A → B → C)", () => {
 			return Object.values(historyIndex)
 		})
 
-		const provider = {
+		const taskHistoryStore = {
+			atomicUpdatePair: vi.fn(
+				async (
+					firstId: string,
+					secondId: string,
+					firstUpdater: (h: any) => any,
+					secondUpdater: (h: any) => any,
+				) => {
+					// Apply both updaters and persist to historyIndex atomically
+					const updatedFirst = firstUpdater(historyIndex[firstId])
+					const updatedSecond = secondUpdater(historyIndex[secondId])
+					historyIndex[firstId] = updatedFirst
+					historyIndex[secondId] = updatedSecond
+					return Object.values(historyIndex)
+				},
+			),
+			get: vi.fn((id: string) => historyIndex[id]),
+		}
+
+		const provider = makeProviderStub({
 			contextProxy: { globalStorageUri: { fsPath: "/tmp" } },
 			getTaskWithId,
 			emit: emitSpy,
@@ -156,11 +177,12 @@ describe("Nested delegation resume (A → B → C)", () => {
 			removeClineFromStack,
 			createTaskWithHistoryItem,
 			updateTaskHistory,
+			taskHistoryStore,
 			// Wire through provider method so attemptCompletionTool can call it
 			reopenParentFromDelegation: vi.fn(async (params: any) => {
 				return await (ClineProvider.prototype as any).reopenParentFromDelegation.call(provider, params)
 			}),
-		} as unknown as ClineProvider
+		} as unknown as ClineProvider)
 
 		// Empty histories for simplicity
 		vi.mocked(readTaskMessages).mockResolvedValue([])

@@ -141,12 +141,18 @@
 			"streamProcessingError": "Error processing response stream: {{message}}",
 			"unexpectedStreamError": "Unexpected error processing response stream",
 			"completionError": "OpenAI Codex completion error: {{message}}"
-		}
+		},
+		"rooHistoryImport": "Gagal mengimpor riwayat Roo Code: {{error}}"
 	},
 	"warnings": {
 		"no_terminal_content": "Tidak ada konten terminal yang dipilih",
 		"missing_task_files": "File tugas ini hilang. Apakah kamu ingin menghapusnya dari daftar tugas?",
-		"auto_import_failed": "Gagal mengimpor pengaturan ZooCode secara otomatis: {{error}}"
+		"auto_import_failed": "Gagal mengimpor pengaturan ZooCode secara otomatis: {{error}}",
+		"rooHistoryImport": {
+			"nothingFound": "Tidak ada riwayat tugas Roo Code yang ditemukan untuk diimpor dari {{domain}}.",
+			"alreadyImported_one": "Semua {{count}} riwayat tugas Roo Code sudah diimpor ke Zoo Code.",
+			"alreadyImported_other": "Semua {{count}} riwayat tugas Roo Code sudah diimpor ke Zoo Code."
+		}
 	},
 	"info": {
 		"no_changes": "Tidak ada perubahan ditemukan.",
@@ -165,6 +171,10 @@
 		"mode_imported": "Mode berhasil diimpor",
 		"roo": {
 			"signInUnavailable": "Masuk ke Roo Code Cloud saat ini tidak tersedia. Konfigurasikan penyedia lain untuk melanjutkan."
+		},
+		"rooHistoryImport": {
+			"success_one": "{{count}} riwayat tugas Roo Code berhasil diimpor ke Zoo Code.",
+			"success_other": "{{count}} riwayat tugas Roo Code berhasil diimpor ke Zoo Code."
 		}
 	},
 	"answers": {
@@ -261,11 +271,26 @@
 			"invalid_token_received": "Zoo Code: Token autentikasi yang diterima tidak valid.",
 			"token_verification_failed": "Zoo Code: Verifikasi token gagal.",
 			"invalid_token": "Zoo Code: Token tidak valid.",
-			"could_not_verify_token": "Zoo Code: Tidak dapat memverifikasi token."
+			"could_not_verify_token": "Zoo Code: Tidak dapat memverifikasi token.",
+			"session_expired": "Sesi Zoo Code kedaluwarsa. Silakan masuk lagi untuk melanjutkan menggunakan Zoo Gateway.",
+			"out_of_credits": "Zoo Gateway: kredit tidak cukup. Tambahkan kredit untuk melanjutkan.",
+			"account_unavailable": "Zoo Gateway: akun Anda sedang tidak tersedia. Silakan hubungi dukungan.",
+			"budget_exceeded": "Zoo Gateway: anggaran penggunaan tercapai. Tunggu reset anggaran atau isi ulang."
 		},
 		"info": {
 			"connected": "Zoo Code: Berhasil terhubung! Kamu sekarang bisa menggunakan Zoo Code sebagai penyedia AI.",
 			"disconnected": "Zoo Code: Berhasil terputus."
+		},
+		"buttons": {
+			"sign_in": "Masuk",
+			"add_credits": "Tambah Kredit",
+			"contact_support": "Hubungi Dukungan"
 		}
+	},
+	"codeActions": {
+		"explain": "Jelaskan dengan Zoo Code",
+		"fix": "Perbaiki dengan Zoo Code",
+		"improve": "Tingkatkan dengan Zoo Code",
+		"addToContext": "Tambahkan ke Zoo Code"
 	}
 }

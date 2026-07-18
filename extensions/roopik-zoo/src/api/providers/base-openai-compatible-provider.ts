@@ -8,12 +8,12 @@ import { TagMatcher } from "../../utils/tag-matcher"
 import { ApiStream, ApiStreamUsageChunk } from "../transform/stream"
 import { convertToOpenAiMessages } from "../transform/openai-format"
 
-import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
 import { DEFAULT_HEADERS } from "./constants"
 import { BaseProvider } from "./base-provider"
-import { handleOpenAIError } from "./utils/openai-error-handler"
+import { handleOpenAIError } from "./utils/error-handler"
 import { calculateApiCostOpenAI } from "../../shared/cost"
-import { getApiRequestTimeout } from "./utils/timeout-config"
+import { extractReasoningFromDelta } from "./utils/extract-reasoning"
 
 type BaseOpenAiCompatibleProviderOptions<ModelName extends string> = ApiHandlerOptions & {
 	providerName: string
@@ -63,7 +63,7 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 			baseURL,
 			apiKey: this.options.apiKey,
 			defaultHeaders: DEFAULT_HEADERS,
-			timeout: getApiRequestTimeout(),
+			timeout: this.timeoutMs,
 		})
 	}
 
@@ -118,7 +118,7 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 		const stream = await this.createStream(systemPrompt, messages, metadata)
 
 		const matcher = new TagMatcher(
-			"think",
+			["think", "thought"],
 			(chunk) =>
 				({
 					type: chunk.matched ? "reasoning" : "text",
@@ -147,16 +147,9 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 				}
 			}
 
-			if (delta) {
-				for (const key of ["reasoning_content", "reasoning"] as const) {
-					if (key in delta) {
-						const reasoning_content = ((delta as any)[key] as string | undefined) || ""
-						if (reasoning_content?.trim()) {
-							yield { type: "reasoning", text: reasoning_content }
-						}
-						break
-					}
-				}
+			const reasoningText = extractReasoningFromDelta(delta)
+			if (reasoningText) {
+				yield { type: "reasoning", text: reasoningText }
 			}
 
 			// Emit raw tool call chunks - NativeToolCallParser handles state management
@@ -219,7 +212,7 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 		}
 	}
 
-	async completePrompt(prompt: string): Promise<string> {
+	async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
 		const { id: modelId, info: modelInfo } = this.getModel()
 
 		const params: OpenAI.Chat.Completions.ChatCompletionCreateParams = {

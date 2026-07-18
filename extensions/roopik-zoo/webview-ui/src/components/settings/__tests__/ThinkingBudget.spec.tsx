@@ -1,5 +1,7 @@
 // npx vitest src/components/settings/__tests__/ThinkingBudget.spec.tsx
 
+import React from "react"
+
 import { render, screen, fireEvent } from "@/utils/test-utils"
 
 import type { ModelInfo } from "@roo-code/types"
@@ -18,16 +20,20 @@ vi.mock("@/components/ui", () => ({
 			onChange={(e) => onValueChange([parseInt(e.target.value)])}
 		/>
 	),
-	Select: ({ children, value, onValueChange: _onValueChange }: any) => (
-		<div data-testid="select" data-value={value}>
-			{children}
+	Select: ({ children, value, onValueChange }: any) => (
+		<div data-testid="select" data-value={value} data-onvaluechange={onValueChange}>
+			{React.Children.map(children, (child) => React.cloneElement(child, { onValueChange }))}
 		</div>
 	),
 	SelectTrigger: ({ children }: any) => <button data-testid="select-trigger">{children}</button>,
 	SelectValue: ({ placeholder }: any) => <span data-testid="select-value">{placeholder}</span>,
-	SelectContent: ({ children }: any) => <div data-testid="select-content">{children}</div>,
-	SelectItem: ({ children, value }: any) => (
-		<div data-testid={`select-item-${value}`} data-value={value}>
+	SelectContent: ({ children, onValueChange }: any) => (
+		<div data-testid="select-content">
+			{React.Children.map(children, (child) => React.cloneElement(child, { onValueChange }))}
+		</div>
+	),
+	SelectItem: ({ children, value, onValueChange }: any) => (
+		<div data-testid={`select-item-${value}`} data-value={value} onClick={() => onValueChange?.(value)}>
 			{children}
 		</div>
 	),
@@ -266,6 +272,40 @@ describe("ThinkingBudget", () => {
 			expect(screen.getByTestId("select-item-high")).toBeInTheDocument()
 		})
 
+		it("should fall back to first available option when stored value is not in the explicit array", () => {
+			// Covers the clamp branch: defaultReasoningEffort="disable" but array omits "disable"
+			render(
+				<ThinkingBudget
+					{...defaultProps}
+					apiConfiguration={{}}
+					modelInfo={{
+						...reasoningEffortModelInfo,
+						supportsReasoningEffort: ["low", "high"],
+					}}
+				/>,
+			)
+
+			// The select value should be "low" (first item), not "disable"
+			expect(screen.getByTestId("select")).toHaveAttribute("data-value", "low")
+		})
+
+		it("should fall back to rawReasoningEffort when availableOptions is empty", () => {
+			// Covers the ?? rawReasoningEffort branch when availableOptions[0] is undefined
+			render(
+				<ThinkingBudget
+					{...defaultProps}
+					apiConfiguration={{ reasoningEffort: "medium" }}
+					modelInfo={{
+						...reasoningEffortModelInfo,
+						supportsReasoningEffort: [] as any,
+					}}
+				/>,
+			)
+
+			// With an empty options array, falls back to the stored value "medium"
+			expect(screen.getByTestId("select")).toHaveAttribute("data-value", "medium")
+		})
+
 		it("should show 'disable' option when supportsReasoningEffort array explicitly includes disable", () => {
 			render(
 				<ThinkingBudget
@@ -303,6 +343,146 @@ describe("ThinkingBudget", () => {
 			expect(screen.getByTestId("select-item-low")).toBeInTheDocument()
 			expect(screen.getByTestId("select-item-medium")).toBeInTheDocument()
 			expect(screen.getByTestId("select-item-high")).toBeInTheDocument()
+		})
+
+		it("should show 'xhigh' option when supportsReasoningEffort array includes xhigh (e.g. gpt-5.5)", () => {
+			render(
+				<ThinkingBudget
+					{...defaultProps}
+					modelInfo={{
+						...reasoningEffortModelInfo,
+						supportsReasoningEffort: ["none", "low", "medium", "high", "xhigh"],
+					}}
+				/>,
+			)
+
+			expect(screen.getByTestId("reasoning-effort")).toBeInTheDocument()
+			// Exactly the declared options — no unsupported tiers or auto-added "disable"
+			expect(screen.getByTestId("select-item-none")).toBeInTheDocument()
+			expect(screen.getByTestId("select-item-low")).toBeInTheDocument()
+			expect(screen.getByTestId("select-item-medium")).toBeInTheDocument()
+			expect(screen.getByTestId("select-item-high")).toBeInTheDocument()
+			expect(screen.getByTestId("select-item-xhigh")).toBeInTheDocument()
+			expect(screen.queryByTestId("select-item-disable")).not.toBeInTheDocument()
+			expect(screen.queryByTestId("select-item-max")).not.toBeInTheDocument()
+		})
+
+		it("should enable reasoning and persist 'xhigh' when xhigh is selected", () => {
+			const setApiConfigurationField = vi.fn()
+
+			render(
+				<ThinkingBudget
+					{...defaultProps}
+					setApiConfigurationField={setApiConfigurationField}
+					modelInfo={{
+						...reasoningEffortModelInfo,
+						supportsReasoningEffort: ["none", "low", "medium", "high", "xhigh"],
+					}}
+				/>,
+			)
+
+			fireEvent.click(screen.getByTestId("select-item-xhigh"))
+
+			expect(setApiConfigurationField).toHaveBeenCalledWith("enableReasoningEffort", true)
+			expect(setApiConfigurationField).toHaveBeenCalledWith("reasoningEffort", "xhigh")
+		})
+	})
+
+	describe("configurable max output tokens (supportsMaxTokens)", () => {
+		// Mirrors Z.ai GLM models: max output budget plus a reasoning-effort dropdown,
+		// but no reasoning-budget control.
+		const glmModelInfo: ModelInfo = {
+			supportsMaxTokens: true,
+			supportsReasoningEffort: ["disable", "medium"],
+			maxTokens: 131072,
+			contextWindow: 200000,
+			supportsPromptCache: true,
+		}
+
+		const glmApiConfiguration = { apiProvider: "zai", apiModelId: "glm-5.1" } as const
+
+		it("should render the max output tokens slider alongside the reasoning effort dropdown", () => {
+			render(<ThinkingBudget {...defaultProps} apiConfiguration={glmApiConfiguration} modelInfo={glmModelInfo} />)
+
+			expect(screen.getByTestId("max-output-tokens")).toBeInTheDocument()
+			expect(screen.getByTestId("reasoning-effort")).toBeInTheDocument()
+		})
+
+		it("should default the slider to the 20% clamp when modelMaxTokens is unset", () => {
+			render(<ThinkingBudget {...defaultProps} apiConfiguration={glmApiConfiguration} modelInfo={glmModelInfo} />)
+
+			// 20% of 200000 = 40000 (the runtime clamp), since maxTokens (131072) exceeds it.
+			const slider = screen.getByTestId("max-output-tokens").querySelector("input[type='range']")!
+			expect(slider).toHaveValue("40000")
+		})
+
+		it("should reflect an explicit modelMaxTokens override on the slider", () => {
+			render(
+				<ThinkingBudget
+					{...defaultProps}
+					apiConfiguration={{ ...glmApiConfiguration, modelMaxTokens: 100000 }}
+					modelInfo={glmModelInfo}
+				/>,
+			)
+
+			const slider = screen.getByTestId("max-output-tokens").querySelector("input[type='range']")!
+			expect(slider).toHaveValue("100000")
+		})
+
+		it("should NOT persist modelMaxTokens on initial render (no user action)", () => {
+			const setApiConfigurationField = vi.fn()
+			render(
+				<ThinkingBudget
+					{...defaultProps}
+					setApiConfigurationField={setApiConfigurationField}
+					apiConfiguration={glmApiConfiguration}
+					modelInfo={glmModelInfo}
+				/>,
+			)
+
+			// Initialization must not write the default clamp back to settings.
+			expect(setApiConfigurationField).not.toHaveBeenCalledWith("modelMaxTokens", expect.anything())
+			expect(setApiConfigurationField).not.toHaveBeenCalledWith(
+				"modelMaxTokens",
+				expect.anything(),
+				expect.anything(),
+			)
+		})
+
+		it("should persist modelMaxTokens as a user action when the slider changes", () => {
+			const setApiConfigurationField = vi.fn()
+			render(
+				<ThinkingBudget
+					{...defaultProps}
+					setApiConfigurationField={setApiConfigurationField}
+					apiConfiguration={glmApiConfiguration}
+					modelInfo={glmModelInfo}
+				/>,
+			)
+
+			const slider = screen.getByTestId("max-output-tokens").querySelector("input[type='range']")!
+			fireEvent.change(slider, { target: { value: "65536" } })
+
+			// A real user edit persists modelMaxTokens without the isUserAction=false flag.
+			expect(setApiConfigurationField).toHaveBeenCalledWith("modelMaxTokens", 65536)
+		})
+
+		it("should not render the standalone slider when supportsMaxTokens is absent", () => {
+			render(
+				<ThinkingBudget
+					{...defaultProps}
+					apiConfiguration={glmApiConfiguration}
+					modelInfo={{
+						supportsReasoningEffort: ["disable", "medium"],
+						maxTokens: 131072,
+						contextWindow: 200000,
+						supportsPromptCache: true,
+					}}
+				/>,
+			)
+
+			expect(screen.queryByTestId("max-output-tokens")).not.toBeInTheDocument()
+			expect(screen.getByTestId("reasoning-effort")).toBeInTheDocument()
 		})
 	})
 })

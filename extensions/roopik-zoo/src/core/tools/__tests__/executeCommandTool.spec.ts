@@ -7,6 +7,7 @@ import { Task } from "../../task/Task"
 import { formatResponse } from "../../prompts/responses"
 import { ToolUse, AskApproval, HandleError, PushToolResult } from "../../../shared/tools"
 import { unescapeHtmlEntities } from "../../../utils/text-normalization"
+import { Terminal } from "../../../integrations/terminal/Terminal"
 
 // Mock dependencies
 vitest.mock("execa", () => ({
@@ -28,7 +29,13 @@ vitest.mock("vscode", () => ({
 vitest.mock("../../../integrations/terminal/TerminalRegistry", () => ({
 	TerminalRegistry: {
 		getOrCreateTerminal: vitest.fn().mockResolvedValue({
-			runCommand: vitest.fn().mockResolvedValue(undefined),
+			runCommand: vitest.fn().mockImplementation((_cmd: string, callbacks: any) => {
+				// Invoke onCompleted so onCompletedPromise resolves and the tool returns.
+				callbacks?.onCompleted?.("")
+				const p = Promise.resolve()
+				// Attach promise-like properties so mergePromise callers don't throw.
+				return Object.assign(p, { continue: () => {}, abort: () => {} })
+			}),
 			getCurrentWorkingDirectory: vitest.fn().mockReturnValue("/test/workspace"),
 		}),
 	},
@@ -90,7 +97,9 @@ describe("executeCommandTool", () => {
 
 		// Setup vscode config mock
 		const mockConfig = {
-			get: vitest.fn().mockImplementation((key: string, defaultValue: any) => defaultValue),
+			get: vitest.fn().mockImplementation((key: string, defaultValue: any) => {
+				return defaultValue
+			}),
 		}
 		;(vscode.workspace.getConfiguration as any).mockReturnValue(mockConfig)
 
@@ -178,12 +187,12 @@ describe("executeCommandTool", () => {
 				pushToolResult: mockPushToolResult as unknown as PushToolResult,
 			})
 
-			// Verify - confirm the command was approved and result was pushed
-			// The custom path handling is tested in integration tests
+			// Verify - command approved, result pushed, and custom cwd passed to terminal
 			expect(mockAskApproval).toHaveBeenCalledWith("command", "echo test")
 			expect(mockPushToolResult).toHaveBeenCalled()
-			const result = mockPushToolResult.mock.calls[0][0]
-			expect(result).toContain("/custom/path")
+			const { TerminalRegistry } = await import("../../../integrations/terminal/TerminalRegistry")
+			const firstArg = (TerminalRegistry.getOrCreateTerminal as ReturnType<typeof vitest.fn>).mock.calls[0][0]
+			expect(firstArg).toBe("/custom/path")
 		})
 	})
 
@@ -255,6 +264,27 @@ describe("executeCommandTool", () => {
 			expect(mockPushToolResult).toHaveBeenCalledWith(mockRooIgnoreError)
 			expect(mockAskApproval).not.toHaveBeenCalled()
 			// executeCommandInTerminal should not be called since rooignore blocked it
+		})
+
+		it("allows Execa retry when shell integration fails before command submission", () => {
+			const error = new executeCommandModule.ShellIntegrationError("startup failed", false)
+
+			expect(executeCommandModule.canRetryShellIntegrationError(error)).toBe(true)
+		})
+
+		it("prevents Execa retry when shell integration fails after command submission", () => {
+			const error = new executeCommandModule.ShellIntegrationError("stream missing", true)
+
+			expect(executeCommandModule.canRetryShellIntegrationError(error)).toBe(false)
+		})
+
+		it("selects the Execa fallback provider for cmd.exe shell integration", () => {
+			vitest.spyOn(Terminal, "isActiveShellCmdExe").mockReturnValue(true)
+
+			expect(executeCommandModule.getTerminalProviderForExecution(false)).toEqual({
+				terminalProvider: "execa",
+				isCmdExeFallback: true,
+			})
 		})
 	})
 

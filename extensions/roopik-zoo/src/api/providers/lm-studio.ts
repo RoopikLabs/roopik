@@ -13,10 +13,9 @@ import { convertToOpenAiMessages } from "../transform/openai-format"
 import { ApiStream } from "../transform/stream"
 
 import { BaseProvider } from "./base-provider"
-import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
 import { getModelsFromCache } from "./fetchers/modelCache"
-import { getApiRequestTimeout } from "./utils/timeout-config"
-import { handleOpenAIError } from "./utils/openai-error-handler"
+import { handleOpenAIError } from "./utils/error-handler"
 
 export class LmStudioHandler extends BaseProvider implements SingleCompletionHandler {
 	protected options: ApiHandlerOptions
@@ -33,7 +32,7 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 		this.client = new OpenAI({
 			baseURL: (this.options.lmStudioBaseUrl || "http://localhost:1234") + "/v1",
 			apiKey: apiKey,
-			timeout: getApiRequestTimeout(),
+			timeout: this.timeoutMs,
 		})
 	}
 
@@ -105,7 +104,7 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 			}
 
 			const matcher = new TagMatcher(
-				"think",
+				["think", "thought"],
 				(chunk) =>
 					({
 						type: chunk.matched ? "reasoning" : "text",
@@ -171,7 +170,10 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 	}
 
 	override getModel(): { id: string; info: ModelInfo } {
-		const models = getModelsFromCache("lmstudio")
+		const models = getModelsFromCache({
+			provider: "lmstudio",
+			baseUrl: this.options.lmStudioBaseUrl,
+		})
 		if (models && this.options.lmStudioModelId && models[this.options.lmStudioModelId]) {
 			return {
 				id: this.options.lmStudioModelId,
@@ -185,7 +187,7 @@ export class LmStudioHandler extends BaseProvider implements SingleCompletionHan
 		}
 	}
 
-	async completePrompt(prompt: string): Promise<string> {
+	async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
 		try {
 			// Create params object with optional draft model
 			const params: any = {

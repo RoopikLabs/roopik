@@ -8,6 +8,7 @@ import {
 	bedrockModels,
 	deepSeekModels,
 	fireworksModels,
+	friendliModels,
 	geminiModels,
 	mistralModels,
 	moonshotModels,
@@ -20,6 +21,8 @@ import {
 	xaiModels,
 	internationalZAiModels,
 	minimaxModels,
+	mimoModels,
+	isOpencodeGoAnthropicFormatModel,
 } from "./providers/index.js"
 
 /**
@@ -37,12 +40,14 @@ export const DEFAULT_CONSECUTIVE_MISTAKE_LIMIT = 3
 export const dynamicProviders = [
 	"openrouter",
 	"vercel-ai-gateway",
+	"zoo-gateway",
 	"litellm",
 	"requesty",
-	"roo",
 	"unbound",
 	"poe",
 	"deepseek",
+	"opencode-go",
+	"kenari",
 ] as const
 
 export type DynamicProvider = (typeof dynamicProviders)[number]
@@ -116,15 +121,16 @@ export const providerNames = [
 	"baseten",
 	"deepseek",
 	"fireworks",
+	"friendli",
 	"gemini",
 	"gemini-cli",
 	"mistral",
 	"moonshot",
 	"minimax",
+	"mimo",
 	"openai-codex",
 	"openai-native",
 	"qwen-code",
-	"roo",
 	"sambanova",
 	"vertex",
 	"xai",
@@ -151,6 +157,7 @@ export const retiredProviderNames = [
 	"groq",
 	"huggingface",
 	"io-intelligence",
+	"roo",
 ] as const
 
 export const retiredProviderNamesSchema = z.enum(retiredProviderNames)
@@ -334,6 +341,18 @@ const minimaxSchema = apiModelIdProviderModelSchema.extend({
 	minimaxApiKey: z.string().optional(),
 })
 
+const mimoSchema = apiModelIdProviderModelSchema.extend({
+	mimoBaseUrl: z
+		.union([
+			z.literal("https://api.xiaomimimo.com/v1"),
+			z.literal("https://token-plan-cn.xiaomimimo.com/v1"),
+			z.literal("https://token-plan-sgp.xiaomimimo.com/v1"),
+			z.literal("https://token-plan-ams.xiaomimimo.com/v1"),
+		])
+		.optional(),
+	mimoApiKey: z.string().optional(),
+})
+
 const requestySchema = baseProviderSettingsSchema.extend({
 	requestyBaseUrl: z.string().optional(),
 	requestyApiKey: z.string().optional(),
@@ -377,18 +396,33 @@ const fireworksSchema = apiModelIdProviderModelSchema.extend({
 	fireworksApiKey: z.string().optional(),
 })
 
-const qwenCodeSchema = apiModelIdProviderModelSchema.extend({
-	qwenCodeOauthPath: z.string().optional(),
+const friendliSchema = apiModelIdProviderModelSchema.extend({
+	friendliApiKey: z.string().optional(),
 })
 
-const rooSchema = apiModelIdProviderModelSchema.extend({
-	// Can use cloud authentication or provide an API key (cli).
-	rooApiKey: z.string().optional(),
+const qwenCodeSchema = apiModelIdProviderModelSchema.extend({
+	qwenCodeOauthPath: z.string().optional(),
 })
 
 const vercelAiGatewaySchema = baseProviderSettingsSchema.extend({
 	vercelAiGatewayApiKey: z.string().optional(),
 	vercelAiGatewayModelId: z.string().optional(),
+})
+
+const opencodeGoSchema = baseProviderSettingsSchema.extend({
+	opencodeGoApiKey: z.string().optional(),
+	opencodeGoModelId: z.string().optional(),
+})
+
+const kenariSchema = baseProviderSettingsSchema.extend({
+	kenariApiKey: z.string().optional(),
+	kenariModelId: z.string().optional(),
+})
+
+const zooGatewaySchema = baseProviderSettingsSchema.extend({
+	zooSessionToken: z.string().optional(),
+	zooGatewayModelId: z.string().optional(),
+	zooGatewayBaseUrl: z.string().optional(),
 })
 
 const basetenSchema = apiModelIdProviderModelSchema.extend({
@@ -417,6 +451,7 @@ export const providerSettingsSchemaDiscriminated = z.discriminatedUnion("apiProv
 	poeSchema.merge(z.object({ apiProvider: z.literal("poe") })),
 	moonshotSchema.merge(z.object({ apiProvider: z.literal("moonshot") })),
 	minimaxSchema.merge(z.object({ apiProvider: z.literal("minimax") })),
+	mimoSchema.merge(z.object({ apiProvider: z.literal("mimo") })),
 	requestySchema.merge(z.object({ apiProvider: z.literal("requesty") })),
 	unboundSchema.merge(z.object({ apiProvider: z.literal("unbound") })),
 	fakeAiSchema.merge(z.object({ apiProvider: z.literal("fake-ai") })),
@@ -426,9 +461,12 @@ export const providerSettingsSchemaDiscriminated = z.discriminatedUnion("apiProv
 	sambaNovaSchema.merge(z.object({ apiProvider: z.literal("sambanova") })),
 	zaiSchema.merge(z.object({ apiProvider: z.literal("zai") })),
 	fireworksSchema.merge(z.object({ apiProvider: z.literal("fireworks") })),
+	friendliSchema.merge(z.object({ apiProvider: z.literal("friendli") })),
 	qwenCodeSchema.merge(z.object({ apiProvider: z.literal("qwen-code") })),
-	rooSchema.merge(z.object({ apiProvider: z.literal("roo") })),
 	vercelAiGatewaySchema.merge(z.object({ apiProvider: z.literal("vercel-ai-gateway") })),
+	opencodeGoSchema.merge(z.object({ apiProvider: z.literal("opencode-go") })),
+	kenariSchema.merge(z.object({ apiProvider: z.literal("kenari") })),
+	zooGatewaySchema.merge(z.object({ apiProvider: z.literal("zoo-gateway") })),
 	defaultSchema,
 ])
 
@@ -451,6 +489,7 @@ export const providerSettingsSchema = z.object({
 	...poeSchema.shape,
 	...moonshotSchema.shape,
 	...minimaxSchema.shape,
+	...mimoSchema.shape,
 	...requestySchema.shape,
 	...unboundSchema.shape,
 	...fakeAiSchema.shape,
@@ -460,9 +499,12 @@ export const providerSettingsSchema = z.object({
 	...sambaNovaSchema.shape,
 	...zaiSchema.shape,
 	...fireworksSchema.shape,
+	...friendliSchema.shape,
 	...qwenCodeSchema.shape,
-	...rooSchema.shape,
 	...vercelAiGatewaySchema.shape,
+	...opencodeGoSchema.shape,
+	...kenariSchema.shape,
+	...zooGatewaySchema.shape,
 	...codebaseIndexProviderSchema.shape,
 })
 
@@ -493,6 +535,9 @@ export const modelIdKeys = [
 	"unboundModelId",
 	"litellmModelId",
 	"vercelAiGatewayModelId",
+	"opencodeGoModelId",
+	"kenariModelId",
+	"zooGatewayModelId",
 ] as const satisfies readonly (keyof ProviderSettings)[]
 
 export type ModelIdKey = (typeof modelIdKeys)[number]
@@ -525,6 +570,7 @@ export const modelIdKeysByProvider: Record<TypicalProvider, ModelIdKey> = {
 	mistral: "apiModelId",
 	moonshot: "apiModelId",
 	minimax: "apiModelId",
+	mimo: "apiModelId",
 	deepseek: "apiModelId",
 	poe: "apiModelId",
 	"qwen-code": "apiModelId",
@@ -536,8 +582,11 @@ export const modelIdKeysByProvider: Record<TypicalProvider, ModelIdKey> = {
 	sambanova: "apiModelId",
 	zai: "apiModelId",
 	fireworks: "apiModelId",
-	roo: "apiModelId",
+	friendli: "apiModelId",
 	"vercel-ai-gateway": "vercelAiGatewayModelId",
+	"opencode-go": "opencodeGoModelId",
+	kenari: "kenariModelId",
+	"zoo-gateway": "zooGatewayModelId",
 }
 
 /**
@@ -556,13 +605,24 @@ export const getApiProtocol = (provider: ProviderName | undefined, modelId?: str
 		return "anthropic"
 	}
 
-	// Vercel AI Gateway uses anthropic protocol for anthropic models.
+	// Vercel AI Gateway and Zoo Gateway use the anthropic protocol for anthropic models.
 	if (
 		provider &&
-		["vercel-ai-gateway", "roo"].includes(provider) &&
+		["vercel-ai-gateway", "zoo-gateway"].includes(provider) &&
 		modelId &&
 		modelId.toLowerCase().startsWith("anthropic/")
 	) {
+		return "anthropic"
+	}
+
+	// Opencode Go routes a subset of its models (Qwen, MiniMax) through the
+	// Anthropic Messages wire format (`/v1/messages`), which reports usage in
+	// Anthropic style: `input_tokens` excludes cache tokens, with separate
+	// `cache_creation_input_tokens` / `cache_read_input_tokens` fields. These
+	// models must use the anthropic protocol so token/cost aggregation adds the
+	// cache tokens back into the input total — otherwise the cached prefix is
+	// dropped from `contextTokens`, undercounting context-window usage.
+	if (provider && provider === "opencode-go" && modelId && isOpencodeGoAnthropicFormatModel(modelId)) {
 		return "anthropic"
 	}
 
@@ -597,6 +657,11 @@ export const MODELS_BY_PROVIDER: Record<
 		label: "Fireworks",
 		models: Object.keys(fireworksModels),
 	},
+	friendli: {
+		id: "friendli",
+		label: "Friendli",
+		models: Object.keys(friendliModels),
+	},
 	gemini: {
 		id: "gemini",
 		label: "Google Gemini",
@@ -617,6 +682,11 @@ export const MODELS_BY_PROVIDER: Record<
 		label: "MiniMax",
 		models: Object.keys(minimaxModels),
 	},
+	mimo: {
+		id: "mimo",
+		label: "Xiaomi MiMo",
+		models: Object.keys(mimoModels),
+	},
 	"openai-codex": {
 		id: "openai-codex",
 		label: "OpenAI - ChatGPT Plus/Pro",
@@ -628,7 +698,6 @@ export const MODELS_BY_PROVIDER: Record<
 		models: Object.keys(openAiNativeModels),
 	},
 	"qwen-code": { id: "qwen-code", label: "Qwen Code", models: Object.keys(qwenCodeModels) },
-	roo: { id: "roo", label: "Roo Code Router", models: [] },
 	sambanova: {
 		id: "sambanova",
 		label: "SambaNova",
@@ -655,6 +724,9 @@ export const MODELS_BY_PROVIDER: Record<
 	requesty: { id: "requesty", label: "Requesty", models: [] },
 	unbound: { id: "unbound", label: "Unbound", models: [] },
 	"vercel-ai-gateway": { id: "vercel-ai-gateway", label: "Vercel AI Gateway", models: [] },
+	"opencode-go": { id: "opencode-go", label: "Opencode Go", models: [] },
+	kenari: { id: "kenari", label: "Kenari", models: [] },
+	"zoo-gateway": { id: "zoo-gateway", label: "Zoo Gateway", models: [] },
 
 	// Local providers; models discovered from localhost endpoints.
 	lmstudio: { id: "lmstudio", label: "LM Studio", models: [] },

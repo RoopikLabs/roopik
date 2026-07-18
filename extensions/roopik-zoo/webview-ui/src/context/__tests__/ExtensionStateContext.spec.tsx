@@ -1,4 +1,5 @@
 import { render, screen, act } from "@/utils/test-utils"
+import React from "react"
 
 import {
 	type ProviderSettings,
@@ -6,6 +7,7 @@ import {
 	type ExtensionState,
 	type ClineMessage,
 	DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
+	DEFAULT_DIFF_FUZZY_THRESHOLD,
 } from "@roo-code/types"
 
 import { ExtensionStateContextProvider, useExtensionState, mergeExtensionState } from "../ExtensionStateContext"
@@ -24,6 +26,28 @@ const TestComponent = () => {
 			</button>
 			<button data-testid="toggle-rooignore-button" onClick={() => setShowRooIgnoredFiles(!showRooIgnoredFiles)}>
 				Update Commands
+			</button>
+		</div>
+	)
+}
+
+const RulesTestComponent = () => {
+	const { rules } = useExtensionState()
+
+	return <div data-testid="rules">{JSON.stringify(rules)}</div>
+}
+
+const ChatFontSizeTestComponent = () => {
+	const { chatFontSize, setChatFontSize } = useExtensionState()
+
+	return (
+		<div>
+			<div data-testid="chat-font-size">{JSON.stringify(chatFontSize ?? null)}</div>
+			<button data-testid="set-font-size-button" onClick={() => setChatFontSize(20)}>
+				Set Font Size
+			</button>
+			<button data-testid="reset-font-size-button" onClick={() => setChatFontSize(undefined)}>
+				Reset Font Size
 			</button>
 		</div>
 	)
@@ -56,6 +80,85 @@ describe("ExtensionStateContext", () => {
 		)
 
 		expect(JSON.parse(screen.getByTestId("allowed-commands").textContent!)).toEqual([])
+	})
+
+	it("initializes with empty rules array", () => {
+		render(
+			<ExtensionStateContextProvider>
+				<RulesTestComponent />
+			</ExtensionStateContextProvider>,
+		)
+
+		expect(JSON.parse(screen.getByTestId("rules").textContent!)).toEqual([])
+	})
+
+	it("updates rules from incoming rules message", () => {
+		render(
+			<ExtensionStateContextProvider>
+				<RulesTestComponent />
+			</ExtensionStateContextProvider>,
+		)
+
+		act(() => {
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					data: {
+						type: "rules",
+						rules: [
+							{
+								id: "global:generic:generic:rule.md",
+								name: "rule.md",
+								scope: "global",
+								kind: "generic",
+								filePath: "/home/.roo/rules/rule.md",
+								relativePath: "rule.md",
+								directoryPath: "/home/.roo/rules",
+							},
+						],
+					},
+				}),
+			)
+		})
+
+		expect(JSON.parse(screen.getByTestId("rules").textContent!)).toEqual([
+			expect.objectContaining({ id: "global:generic:generic:rule.md", name: "rule.md" }),
+		])
+	})
+
+	it("clears rules when incoming rules message omits rules", () => {
+		render(
+			<ExtensionStateContextProvider>
+				<RulesTestComponent />
+			</ExtensionStateContextProvider>,
+		)
+
+		act(() => {
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					data: {
+						type: "rules",
+						rules: [
+							{
+								id: "global:generic:generic:rule.md",
+								name: "rule.md",
+								scope: "global",
+								kind: "generic",
+								filePath: "/home/.roo/rules/rule.md",
+								relativePath: "rule.md",
+								directoryPath: "/home/.roo/rules",
+							},
+						],
+					},
+				}),
+			)
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					data: { type: "rules" },
+				}),
+			)
+		})
+
+		expect(JSON.parse(screen.getByTestId("rules").textContent!)).toEqual([])
 	})
 
 	it("initializes with soundEnabled set to false", () => {
@@ -92,6 +195,43 @@ describe("ExtensionStateContext", () => {
 		expect(JSON.parse(screen.getByTestId("show-rooignored-files").textContent!)).toBe(false)
 	})
 
+	it("does not set the chat font-size CSS variable when unset (init)", () => {
+		document.documentElement.style.removeProperty("--zoo-chat-font-size")
+
+		render(
+			<ExtensionStateContextProvider>
+				<ChatFontSizeTestComponent />
+			</ExtensionStateContextProvider>,
+		)
+
+		expect(JSON.parse(screen.getByTestId("chat-font-size").textContent!)).toBe(null)
+		expect(document.documentElement.style.getPropertyValue("--zoo-chat-font-size")).toBe("")
+	})
+
+	it("applies the chat font-size CSS variable when set, and clears it on reset", () => {
+		document.documentElement.style.removeProperty("--zoo-chat-font-size")
+
+		render(
+			<ExtensionStateContextProvider>
+				<ChatFontSizeTestComponent />
+			</ExtensionStateContextProvider>,
+		)
+
+		act(() => {
+			screen.getByTestId("set-font-size-button").click()
+		})
+
+		expect(JSON.parse(screen.getByTestId("chat-font-size").textContent!)).toBe(20)
+		expect(document.documentElement.style.getPropertyValue("--zoo-chat-font-size")).toBe("20px")
+
+		act(() => {
+			screen.getByTestId("reset-font-size-button").click()
+		})
+
+		expect(JSON.parse(screen.getByTestId("chat-font-size").textContent!)).toBe(null)
+		expect(document.documentElement.style.getPropertyValue("--zoo-chat-font-size")).toBe("")
+	})
+
 	it("updates allowedCommands through setAllowedCommands", () => {
 		render(
 			<ExtensionStateContextProvider>
@@ -107,15 +247,15 @@ describe("ExtensionStateContext", () => {
 	})
 
 	it("throws error when used outside provider", () => {
-		// Suppress console.error for this test since we expect an error
-		const consoleSpy = vi.spyOn(console, "error")
-		consoleSpy.mockImplementation(() => {})
+		const useContextSpy = vi.spyOn(React, "useContext").mockReturnValue(undefined)
 
-		expect(() => {
-			render(<TestComponent />)
-		}).toThrow("useExtensionState must be used within an ExtensionStateContextProvider")
-
-		consoleSpy.mockRestore()
+		try {
+			expect(() => useExtensionState()).toThrow(
+				"useExtensionState must be used within an ExtensionStateContextProvider",
+			)
+		} finally {
+			useContextSpy.mockRestore()
+		}
 	})
 
 	it("updates apiConfiguration through setApiConfiguration", () => {
@@ -217,6 +357,7 @@ describe("mergeExtensionState", () => {
 			taskSyncEnabled: false,
 			checkpointTimeout: DEFAULT_CHECKPOINT_TIMEOUT_SECONDS, // Add the checkpoint timeout property
 			maxReadFileLine: -1,
+			diffFuzzyThreshold: DEFAULT_DIFF_FUZZY_THRESHOLD,
 		}
 
 		const prevState: ExtensionState = {
@@ -286,6 +427,7 @@ describe("mergeExtensionState", () => {
 			taskSyncEnabled: false,
 			checkpointTimeout: DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
 			maxReadFileLine: -1,
+			diffFuzzyThreshold: DEFAULT_DIFF_FUZZY_THRESHOLD,
 		}
 
 		const makeMessage = (ts: number, text: string): ClineMessage =>

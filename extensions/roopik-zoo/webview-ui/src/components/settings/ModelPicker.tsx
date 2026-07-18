@@ -34,6 +34,9 @@ type ModelIdKey = keyof Pick<
 	| "openAiModelId"
 	| "litellmModelId"
 	| "vercelAiGatewayModelId"
+	| "opencodeGoModelId"
+	| "kenariModelId"
+	| "zooGatewayModelId"
 	| "apiModelId"
 	| "ollamaModelId"
 	| "lmStudioModelId"
@@ -302,8 +305,8 @@ export const ModelPicker = ({
 							hidePricing={hidePricing}
 						/>
 					)}
-					{!hidePricing && (
-						<div className="text-sm text-vscode-descriptionForeground">
+					{!hidePricing && apiConfiguration.apiProvider !== "mimo" && (
+						<div className="text-sm text-vscode-descriptionForeground" data-testid="automatic-fetch-hint">
 							<Trans
 								i18nKey="settings:modelPicker.automaticFetch"
 								components={{

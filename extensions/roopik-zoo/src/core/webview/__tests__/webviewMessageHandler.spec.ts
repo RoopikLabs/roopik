@@ -4,6 +4,9 @@ import type { Mock } from "vitest"
 
 // Mock dependencies - must come before imports
 vi.mock("../../../api/providers/fetchers/modelCache")
+vi.mock("../../../services/zoo-code-auth", () => ({
+	disconnectZooCode: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock("../../../api/providers/fetchers/lmstudio", () => ({
 	getLMStudioModels: vi.fn(),
 }))
@@ -40,17 +43,33 @@ vi.mock("../diagnosticsHandler", () => ({
 	generateErrorDiagnostics: vi.fn().mockResolvedValue({ success: true, filePath: "/tmp/diagnostics.json" }),
 }))
 
+vi.mock("../rulesMessageHandler", () => ({
+	handleRequestRules: vi.fn(),
+	handleCreateRule: vi.fn(),
+	handleDeleteRule: vi.fn(),
+	handleOpenRuleFile: vi.fn(),
+	handleOpenRulesDirectory: vi.fn(),
+}))
+
 import type { ModelRecord } from "@roo-code/types"
 
 import { webviewMessageHandler } from "../webviewMessageHandler"
 import type { ClineProvider } from "../ClineProvider"
-import { getModels } from "../../../api/providers/fetchers/modelCache"
+import { flushModels, getModels } from "../../../api/providers/fetchers/modelCache"
 import { getLMStudioModels } from "../../../api/providers/fetchers/lmstudio"
 import { getCommands } from "../../../services/command/commands"
+import {
+	handleCreateRule,
+	handleDeleteRule,
+	handleOpenRuleFile,
+	handleOpenRulesDirectory,
+	handleRequestRules,
+} from "../rulesMessageHandler"
 const { openAiCodexOAuthManager } = await import("../../../integrations/openai-codex/oauth")
 const { fetchOpenAiCodexRateLimitInfo } = await import("../../../integrations/openai-codex/rate-limits")
 
 const mockGetModels = getModels as Mock<typeof getModels>
+const mockFlushModels = flushModels as Mock<typeof flushModels>
 const mockGetLMStudioModels = getLMStudioModels as Mock<typeof getLMStudioModels>
 const mockGetCommands = vi.mocked(getCommands)
 const mockGetAccessToken = vi.mocked(openAiCodexOAuthManager.getAccessToken)
@@ -103,6 +122,10 @@ vi.mock("vscode", () => {
 		workspace: {
 			workspaceFolders: [{ uri: { fsPath: "/mock/workspace" } }],
 			openTextDocument,
+			getConfiguration: vi.fn(() => ({ get: vi.fn() })),
+		},
+		commands: {
+			executeCommand: vi.fn().mockResolvedValue(undefined),
 		},
 	}
 })
@@ -167,6 +190,8 @@ vi.mock("../../mentions/resolveImageMentions", () => ({
 }))
 
 import { resolveImageMentions } from "../../mentions/resolveImageMentions"
+import { Terminal } from "../../../integrations/terminal/Terminal"
+import { TerminalRegistry } from "../../../integrations/terminal/TerminalRegistry"
 
 describe("webviewMessageHandler - requestLmStudioModels", () => {
 	beforeEach(() => {
@@ -357,6 +382,10 @@ describe("webviewMessageHandler - requestRouterModels", () => {
 			apiKey: "litellm-key",
 			baseUrl: "http://localhost:4000",
 		})
+		// Opencode Go's /models endpoint is public, so it is fetched like the other no-auth routers.
+		expect(mockGetModels).toHaveBeenCalledWith(expect.objectContaining({ provider: "opencode-go" }))
+		// Kenari's /models endpoint is public, so it is fetched like the other no-auth routers.
+		expect(mockGetModels).toHaveBeenCalledWith(expect.objectContaining({ provider: "kenari" }))
 
 		// Verify response was sent
 		expect(mockClineProvider.postMessageToWebview).toHaveBeenCalledWith({
@@ -365,15 +394,114 @@ describe("webviewMessageHandler - requestRouterModels", () => {
 				openrouter: mockModels,
 				requesty: mockModels,
 				unbound: mockModels,
+				"vercel-ai-gateway": mockModels,
+				"zoo-gateway": mockModels,
 				litellm: mockModels,
-				roo: {},
 				ollama: {},
 				lmstudio: {},
-				"vercel-ai-gateway": mockModels,
 				poe: {},
 				deepseek: {},
+				"opencode-go": mockModels,
+				kenari: mockModels,
 			},
 			values: undefined,
+		})
+	})
+
+	it("fetches Opencode Go models without an API key (public /models endpoint, regression for empty picker)", async () => {
+		mockClineProvider.getState = vi.fn().mockResolvedValue({
+			apiConfiguration: {
+				openRouterApiKey: "openrouter-key",
+				// Deliberately no opencodeGoApiKey — the endpoint is public.
+			},
+		})
+
+		const mockModels: ModelRecord = {
+			"glm-5.1": {
+				maxTokens: 4096,
+				contextWindow: 8192,
+				supportsPromptCache: false,
+				description: "GLM 5.1",
+			},
+		}
+		mockGetModels.mockResolvedValue(mockModels)
+
+		await webviewMessageHandler(mockClineProvider, { type: "requestRouterModels" })
+
+		// Must be fetched despite no configured key, forwarding apiKey: undefined.
+		expect(mockGetModels).toHaveBeenCalledWith({ provider: "opencode-go", apiKey: undefined })
+
+		const routerModelsCall = (mockClineProvider.postMessageToWebview as any).mock.calls.find(
+			([msg]: [{ type: string }]) => msg.type === "routerModels",
+		)
+		expect(routerModelsCall?.[0].routerModels["opencode-go"]).toEqual(mockModels)
+	})
+
+	it("flushes and fetches Opencode Go models when an explicit API key is supplied", async () => {
+		mockClineProvider.getState = vi.fn().mockResolvedValue({
+			apiConfiguration: {},
+		})
+		mockGetModels.mockResolvedValue({
+			"opencode/model": {
+				maxTokens: 4096,
+				contextWindow: 8192,
+				supportsPromptCache: false,
+				description: "Opencode model",
+			},
+		})
+
+		await webviewMessageHandler(mockClineProvider, {
+			type: "requestRouterModels",
+			values: {
+				provider: "opencode-go",
+				opencodeGoApiKey: "fresh-key",
+			},
+		})
+
+		expect(mockFlushModels).toHaveBeenCalledWith({ provider: "opencode-go", apiKey: "fresh-key" }, true)
+		expect(mockGetModels).toHaveBeenCalledWith({ provider: "opencode-go", apiKey: "fresh-key" })
+		expect(mockClineProvider.postMessageToWebview).toHaveBeenCalledWith({
+			type: "routerModels",
+			routerModels: {
+				"opencode-go": {
+					"opencode/model": expect.objectContaining({ description: "Opencode model" }),
+				},
+			},
+			values: { provider: "opencode-go" },
+		})
+	})
+
+	it("flushes and fetches Kenari models when an explicit API key is supplied", async () => {
+		mockClineProvider.getState = vi.fn().mockResolvedValue({
+			apiConfiguration: {},
+		})
+		mockGetModels.mockResolvedValue({
+			"glm-5-2": {
+				maxTokens: 32768,
+				contextWindow: 1048576,
+				supportsPromptCache: false,
+				description: "Kenari model",
+			},
+		})
+
+		await webviewMessageHandler(mockClineProvider, {
+			type: "requestRouterModels",
+			values: {
+				provider: "kenari",
+				kenariApiKey: "fresh-kenari-key",
+			},
+		})
+
+		expect(mockFlushModels).toHaveBeenCalledWith({ provider: "kenari", apiKey: "fresh-kenari-key" }, true)
+		expect(mockGetModels).toHaveBeenCalledWith({ provider: "kenari", apiKey: "fresh-kenari-key" })
+		expect(mockClineProvider.postMessageToWebview).toHaveBeenCalledWith({
+			type: "routerModels",
+			routerModels: {
+				kenari: {
+					"glm-5-2": expect.objectContaining({ description: "Kenari model" }),
+				},
+			},
+			values: { provider: "kenari" },
 		})
 	})
 
@@ -452,13 +580,15 @@ describe("webviewMessageHandler - requestRouterModels", () => {
 				openrouter: mockModels,
 				requesty: mockModels,
 				unbound: mockModels,
-				roo: {},
+				"vercel-ai-gateway": mockModels,
+				"zoo-gateway": mockModels,
 				litellm: {},
 				ollama: {},
 				lmstudio: {},
-				"vercel-ai-gateway": mockModels,
 				poe: {},
 				deepseek: {},
+				"opencode-go": mockModels,
+				kenari: mockModels,
 			},
 			values: undefined,
 		})
@@ -480,7 +610,9 @@ describe("webviewMessageHandler - requestRouterModels", () => {
 			.mockRejectedValueOnce(new Error("Requesty API error")) // requesty
 			.mockResolvedValueOnce(mockModels) // unbound
 			.mockResolvedValueOnce(mockModels) // vercel-ai-gateway
+			.mockResolvedValueOnce(mockModels) // zoo-gateway
 			.mockRejectedValueOnce(new Error("LiteLLM connection failed")) // litellm
+			.mockResolvedValueOnce(mockModels) // opencode-go
 
 		await webviewMessageHandler(mockClineProvider, {
 			type: "requestRouterModels",
@@ -508,13 +640,15 @@ describe("webviewMessageHandler - requestRouterModels", () => {
 				openrouter: mockModels,
 				requesty: {},
 				unbound: mockModels,
-				roo: {},
+				"vercel-ai-gateway": mockModels,
+				"zoo-gateway": mockModels,
 				litellm: {},
 				ollama: {},
 				lmstudio: {},
-				"vercel-ai-gateway": mockModels,
 				poe: {},
 				deepseek: {},
+				"opencode-go": mockModels,
+				kenari: mockModels,
 			},
 			values: undefined,
 		})
@@ -527,6 +661,7 @@ describe("webviewMessageHandler - requestRouterModels", () => {
 			.mockRejectedValueOnce(new Error("Requesty API error")) // requesty
 			.mockRejectedValueOnce(new Error("Unbound error")) // unbound
 			.mockRejectedValueOnce(new Error("Vercel AI Gateway error")) // vercel-ai-gateway
+			.mockRejectedValueOnce(new Error("Zoo Gateway error")) // zoo-gateway
 			.mockRejectedValueOnce(new Error("LiteLLM connection failed")) // litellm
 
 		await webviewMessageHandler(mockClineProvider, {
@@ -583,7 +718,7 @@ describe("webviewMessageHandler - requestRouterModels", () => {
 		})
 	})
 
-	it("prefers config values over message values for LiteLLM", async () => {
+	it("prefers message values over config values for LiteLLM", async () => {
 		const mockModels: ModelRecord = {}
 		mockGetModels.mockResolvedValue(mockModels)
 
@@ -595,11 +730,11 @@ describe("webviewMessageHandler - requestRouterModels", () => {
 			},
 		})
 
-		// Verify config values are used over message values
+		// Verify message values take precedence over saved config (current unsaved field state wins)
 		expect(mockGetModels).toHaveBeenCalledWith({
 			provider: "litellm",
-			apiKey: "litellm-key", // From config
-			baseUrl: "http://localhost:4000", // From config
+			apiKey: "message-key", // From message.values
+			baseUrl: "http://message-url", // From message.values
 		})
 	})
 })
@@ -863,6 +998,129 @@ describe("webviewMessageHandler - mcpEnabled", () => {
 	})
 })
 
+describe("webviewMessageHandler - terminalProfile", () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+		Terminal.setTerminalProfile(undefined)
+	})
+
+	afterEach(() => {
+		Terminal.setTerminalProfile(undefined)
+		vi.restoreAllMocks()
+	})
+
+	it("normalizes and persists a saved terminalProfile, then closes stale idle terminals", async () => {
+		const closeIdleTerminalsSpy = vi.spyOn(TerminalRegistry, "closeIdleTerminals").mockImplementation(() => {})
+
+		await webviewMessageHandler(mockClineProvider, {
+			type: "updateSettings",
+			updatedSettings: { terminalProfile: " Git Bash " },
+		})
+
+		expect(Terminal.getTerminalProfile()).toBe("Git Bash")
+		expect(mockClineProvider.contextProxy.setValue).toHaveBeenCalledWith("terminalProfile", "Git Bash")
+		expect(closeIdleTerminalsSpy).toHaveBeenCalledTimes(1)
+	})
+
+	it("does not close idle terminals when hydration sends the unchanged profile", async () => {
+		Terminal.setTerminalProfile("Git Bash")
+		const closeIdleTerminalsSpy = vi.spyOn(TerminalRegistry, "closeIdleTerminals").mockImplementation(() => {})
+
+		await webviewMessageHandler(mockClineProvider, {
+			type: "updateSettings",
+			updatedSettings: { terminalProfile: " Git Bash " },
+		})
+
+		expect(mockClineProvider.contextProxy.setValue).toHaveBeenCalledWith("terminalProfile", "Git Bash")
+		expect(closeIdleTerminalsSpy).not.toHaveBeenCalled()
+	})
+
+	it("clears the persisted profile when SettingsView sends the empty-string sentinel", async () => {
+		Terminal.setTerminalProfile("Git Bash")
+		const closeIdleTerminalsSpy = vi.spyOn(TerminalRegistry, "closeIdleTerminals").mockImplementation(() => {})
+
+		await webviewMessageHandler(mockClineProvider, {
+			type: "updateSettings",
+			updatedSettings: { terminalProfile: "" },
+		})
+
+		expect(Terminal.getTerminalProfile()).toBeUndefined()
+		expect(mockClineProvider.contextProxy.setValue).toHaveBeenCalledWith("terminalProfile", undefined)
+		expect(closeIdleTerminalsSpy).toHaveBeenCalledTimes(1)
+	})
+
+	it("does not close idle terminals when the empty-string sentinel leaves the profile unset", async () => {
+		const closeIdleTerminalsSpy = vi.spyOn(TerminalRegistry, "closeIdleTerminals").mockImplementation(() => {})
+
+		await webviewMessageHandler(mockClineProvider, {
+			type: "updateSettings",
+			updatedSettings: { terminalProfile: "" },
+		})
+
+		expect(mockClineProvider.contextProxy.setValue).toHaveBeenCalledWith("terminalProfile", undefined)
+		expect(closeIdleTerminalsSpy).not.toHaveBeenCalled()
+	})
+
+	it("treats non-string terminalProfile values as unset", async () => {
+		Terminal.setTerminalProfile("Git Bash")
+		const closeIdleTerminalsSpy = vi.spyOn(TerminalRegistry, "closeIdleTerminals").mockImplementation(() => {})
+
+		await webviewMessageHandler(mockClineProvider, {
+			type: "updateSettings",
+			updatedSettings: { terminalProfile: 42 as any },
+		})
+
+		expect(Terminal.getTerminalProfile()).toBeUndefined()
+		expect(mockClineProvider.contextProxy.setValue).toHaveBeenCalledWith("terminalProfile", undefined)
+		expect(closeIdleTerminalsSpy).toHaveBeenCalledTimes(1)
+	})
+})
+
+describe("webviewMessageHandler - requestTerminalProfiles", () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+	})
+
+	afterEach(() => {
+		vi.restoreAllMocks()
+	})
+
+	it("posts available profile names", async () => {
+		vi.spyOn(Terminal, "getAvailableProfileNames").mockReturnValue(["Git Bash", "bash"])
+
+		await webviewMessageHandler(mockClineProvider, { type: "requestTerminalProfiles" })
+
+		expect(mockClineProvider.postMessageToWebview).toHaveBeenCalledWith({
+			type: "terminalProfiles",
+			profiles: ["Git Bash", "bash"],
+		})
+	})
+
+	it("posts an empty array when profile discovery throws", async () => {
+		vi.spyOn(Terminal, "getAvailableProfileNames").mockImplementation(() => {
+			throw new Error("config error")
+		})
+
+		await webviewMessageHandler(mockClineProvider, { type: "requestTerminalProfiles" })
+
+		expect(mockClineProvider.postMessageToWebview).toHaveBeenCalledWith({
+			type: "terminalProfiles",
+			profiles: [],
+		})
+	})
+})
+
+describe("webviewMessageHandler - openTerminalProfilePicker", () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+	})
+
+	it("executes the VS Code selectDefaultShell command", async () => {
+		await webviewMessageHandler(mockClineProvider, { type: "openTerminalProfilePicker" })
+		expect(vscode.commands.executeCommand).toHaveBeenCalledWith("workbench.action.terminal.selectDefaultShell")
+	})
+})
+
 describe("webviewMessageHandler - requestCommands", () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
@@ -1039,6 +1297,45 @@ describe("webviewMessageHandler - requestCommands", () => {
 	})
 })
 
+describe("webviewMessageHandler - rules", () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+		vi.mocked(mockClineProvider.getCurrentTask).mockReturnValue(undefined)
+		;(mockClineProvider as any).cwd = "/mock/workspace"
+	})
+
+	it("routes rules management messages with the current workspace", async () => {
+		const messages = [
+			{ type: "requestRules" },
+			{ type: "createRule", values: { scope: "project", kind: "generic", fileName: "new.md" } },
+			{ type: "deleteRule", values: { scope: "project", kind: "generic", relativePath: "old.md" } },
+			{ type: "openRuleFile", values: { scope: "global", kind: "generic", relativePath: "global.md" } },
+			{ type: "openRulesDirectory", values: { scope: "project", kind: "mode", modeSlug: "code" } },
+		] as const
+
+		for (const message of messages) {
+			await webviewMessageHandler(mockClineProvider, message as any)
+		}
+
+		expect(handleRequestRules).toHaveBeenCalledWith(mockClineProvider, "/mock/workspace")
+		expect(handleCreateRule).toHaveBeenCalledWith(mockClineProvider, "/mock/workspace", messages[1])
+		expect(handleDeleteRule).toHaveBeenCalledWith(mockClineProvider, "/mock/workspace", messages[2])
+		expect(handleOpenRuleFile).toHaveBeenCalledWith(mockClineProvider, "/mock/workspace", messages[3])
+		expect(handleOpenRulesDirectory).toHaveBeenCalledWith(mockClineProvider, "/mock/workspace", messages[4])
+	})
+
+	it("uses the active task cwd when routing rule messages", async () => {
+		vi.mocked(mockClineProvider.getCurrentTask).mockReturnValue({
+			cwd: "/mock/task-workspace",
+		} as unknown as ReturnType<ClineProvider["getCurrentTask"]>)
+
+		const message = { type: "requestRules" } as const
+		await webviewMessageHandler(mockClineProvider, message as any)
+
+		expect(handleRequestRules).toHaveBeenCalledWith(mockClineProvider, "/mock/task-workspace")
+	})
+})
+
 describe("webviewMessageHandler - downloadErrorDiagnostics", () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
@@ -1090,5 +1387,83 @@ describe("webviewMessageHandler - downloadErrorDiagnostics", () => {
 
 		expect(vscode.window.showErrorMessage).toHaveBeenCalledWith("No active task to generate diagnostics for")
 		expect(generateErrorDiagnostics).not.toHaveBeenCalled()
+	})
+})
+
+describe("zooCodeSignOut", () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+	})
+
+	it("disconnects Zoo Code and clears tokens from all zoo-gateway profiles", async () => {
+		const { disconnectZooCode } = await import("../../../services/zoo-code-auth")
+		const upsertProviderProfile = vi.fn().mockResolvedValue(undefined)
+		const saveConfig = vi.fn().mockResolvedValue(undefined)
+
+		;(mockClineProvider as any).contextProxy = {
+			...mockClineProvider.contextProxy,
+			getProviderSettings: vi.fn().mockReturnValue({ apiProvider: "zoo-gateway" }),
+			getValues: vi.fn().mockReturnValue({ currentApiConfigName: "Zoo Gateway" }),
+		}
+		;(mockClineProvider as any).providerSettingsManager = {
+			listConfig: vi.fn().mockResolvedValue([
+				{ name: "Zoo Gateway", apiProvider: "zoo-gateway" },
+				{ name: "Backup Zoo", apiProvider: "zoo-gateway" },
+			]),
+			getProfile: vi
+				.fn()
+				.mockResolvedValueOnce({
+					apiProvider: "zoo-gateway",
+					zooSessionToken: "token-active",
+					zooGatewayModelId: "anthropic/claude-sonnet-4",
+				})
+				.mockResolvedValueOnce({
+					apiProvider: "zoo-gateway",
+					zooSessionToken: "token-backup",
+				}),
+			saveConfig,
+		}
+		;(mockClineProvider as any).upsertProviderProfile = upsertProviderProfile
+
+		await webviewMessageHandler(mockClineProvider, { type: "zooCodeSignOut" })
+
+		expect(disconnectZooCode).toHaveBeenCalled()
+		expect(upsertProviderProfile).toHaveBeenCalledWith(
+			"Zoo Gateway",
+			expect.not.objectContaining({ zooSessionToken: expect.anything() }),
+			true,
+		)
+		expect(saveConfig).toHaveBeenCalledWith(
+			"Backup Zoo",
+			expect.not.objectContaining({ zooSessionToken: expect.anything() }),
+		)
+		expect(mockClineProvider.postStateToWebview).toHaveBeenCalled()
+	})
+
+	it("still clears the in-memory handler when the active profile token is already empty on disk", async () => {
+		const upsertProviderProfile = vi.fn().mockResolvedValue(undefined)
+
+		;(mockClineProvider as any).contextProxy = {
+			...mockClineProvider.contextProxy,
+			getProviderSettings: vi.fn().mockReturnValue({ apiProvider: "zoo-gateway" }),
+			getValues: vi.fn().mockReturnValue({ currentApiConfigName: "Zoo Gateway" }),
+		}
+		;(mockClineProvider as any).providerSettingsManager = {
+			listConfig: vi.fn().mockResolvedValue([{ name: "Zoo Gateway", apiProvider: "zoo-gateway" }]),
+			getProfile: vi.fn().mockResolvedValue({
+				apiProvider: "zoo-gateway",
+				zooGatewayModelId: "anthropic/claude-sonnet-4",
+			}),
+			saveConfig: vi.fn(),
+		}
+		;(mockClineProvider as any).upsertProviderProfile = upsertProviderProfile
+
+		await webviewMessageHandler(mockClineProvider, { type: "zooCodeSignOut" })
+
+		expect(upsertProviderProfile).toHaveBeenCalledWith(
+			"Zoo Gateway",
+			expect.not.objectContaining({ zooSessionToken: expect.anything() }),
+			true,
+		)
 	})
 })

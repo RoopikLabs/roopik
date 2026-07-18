@@ -3,6 +3,7 @@ import type { Socket } from "net"
 
 import type { RooCodeEvents } from "./events.js"
 import type { RooCodeSettings } from "./global-settings.js"
+import type { HistoryItem } from "./history.js"
 import type { ProviderSettingsEntry, ProviderSettings } from "./provider-settings.js"
 import type { IpcMessage, IpcServerEvents } from "./ipc.js"
 
@@ -38,6 +39,18 @@ export interface RooCodeAPI extends EventEmitter<RooCodeAPIEvents> {
 	 * @returns True if the task is in the task history, false otherwise.
 	 */
 	isTaskInHistory(taskId: string): Promise<boolean>
+	/**
+	 * Returns the HistoryItem for a task by ID. Intended for use in tests only.
+	 * @param taskId The ID of the task.
+	 * @returns The HistoryItem, or undefined if not found.
+	 */
+	getTaskHistoryItem(taskId: string): Promise<HistoryItem | undefined>
+	/**
+	 * Returns the persisted API conversation history length for a task. Intended for use in tests only.
+	 * @param taskId The ID of the task.
+	 * @returns The number of persisted API conversation history entries, or 0 if unavailable.
+	 */
+	getTaskApiConversationHistoryLength(taskId: string): Promise<number>
 	/**
 	 * Returns the current task stack.
 	 * @returns An array of task IDs.
@@ -139,6 +152,13 @@ export interface RooCodeAPI extends EventEmitter<RooCodeAPIEvents> {
 	 * @throws Error if the profile does not exist
 	 */
 	setActiveProfile(name: string): Promise<string | undefined>
+	/**
+	 * Activates a process-wide VS Code terminal profile override for Zoo Code
+	 * commands. This is intended for trusted extension integrations.
+	 * Passing undefined restores the VS Code default profile behavior and
+	 * closes idle terminals so the next command starts fresh.
+	 */
+	setTerminalProfile(name: string | undefined): void
 }
 
 export interface RooCodeIpcServer extends EventEmitter<IpcServerEvents> {

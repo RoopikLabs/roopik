@@ -18,7 +18,7 @@ import { convertToAiSdkMessages, convertToolsForAiSdk, processAiSdkStreamPart } 
 import { ApiStream } from "../transform/stream"
 
 import { BaseProvider } from "./base-provider"
-import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
 import { getModelsFromCache } from "./fetchers/modelCache"
 
 const DEFAULT_THINKING_BUDGET = 8192
@@ -38,7 +38,11 @@ export class PoeHandler extends BaseProvider implements SingleCompletionHandler 
 
 	override getModel() {
 		const id = this.options.apiModelId ?? poeDefaultModelId
-		const cached = getModelsFromCache("poe")
+		const cached = getModelsFromCache({
+			provider: "poe",
+			apiKey: this.options.poeApiKey,
+			baseUrl: this.options.poeBaseUrl,
+		})
 		const info: ModelInfo = cached?.[id] ?? getPoeDefaultModelInfo()
 		return { id, info }
 	}
@@ -134,7 +138,7 @@ export class PoeHandler extends BaseProvider implements SingleCompletionHandler 
 		}
 	}
 
-	async completePrompt(prompt: string): Promise<string> {
+	async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
 		const { id } = this.getModel()
 		try {
 			const { text } = await generateText({

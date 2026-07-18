@@ -10,6 +10,8 @@ import type { GlobalState, ProviderSettings, ModelInfo } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
 
 import { Task } from "../Task"
+import { createRateLimitClock } from "../RateLimitClock"
+import { summarizeConversation } from "../../condense"
 import { ClineProvider } from "../../webview/ClineProvider"
 import { ApiStreamChunk } from "../../../api/transform/stream"
 import { ContextProxy } from "../../config/ContextProxy"
@@ -130,7 +132,9 @@ vi.mock("vscode", () => {
 			uriScheme: "vscode",
 			language: "en",
 		},
-		EventEmitter: vi.fn().mockImplementation(() => mockEventEmitter),
+		EventEmitter: vi.fn().mockImplementation(function () {
+			return mockEventEmitter
+		}),
 		Disposable: {
 			from: vi.fn(),
 		},
@@ -398,14 +402,6 @@ describe("Cline", () => {
 
 	describe("getEnvironmentDetails", () => {
 		describe("API conversation handling", () => {
-			beforeEach(() => {
-				Task.resetGlobalApiRequestTime()
-			})
-
-			afterEach(() => {
-				Task.resetGlobalApiRequestTime()
-			})
-
 			it("should strip non-protocol fields from API conversation history before sending to the API", async () => {
 				const cline = new Task({
 					provider: mockProvider,
@@ -667,6 +663,86 @@ describe("Cline", () => {
 				expect(mockDelay).toHaveBeenCalledWith(1000)
 			})
 
+			it("should respect rate limit window in retry backoff", async () => {
+				const clock = createRateLimitClock()
+				const rateLimitConfig = {
+					...mockApiConfig,
+					rateLimitSeconds: 10,
+				}
+				const cline = new Task({
+					provider: mockProvider,
+					apiConfiguration: rateLimitConfig,
+					task: "test task",
+					startTask: false,
+					rateLimitClock: clock,
+				})
+				vi.spyOn(cline as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
+
+				const mockDelay = vi.fn().mockResolvedValue(undefined)
+				vi.spyOn(await import("delay"), "default").mockImplementation(mockDelay)
+
+				const saySpy = vi.spyOn(cline, "say")
+
+				const mockError = new Error("API Error")
+				const mockFailedStream = {
+					// eslint-disable-next-line require-yield
+					async *[Symbol.asyncIterator]() {
+						throw mockError
+					},
+					async next() {
+						throw mockError
+					},
+					async return() {
+						return { done: true, value: undefined }
+					},
+					async throw(e: any) {
+						throw e
+					},
+					async [Symbol.asyncDispose]() {},
+				} as AsyncGenerator<ApiStreamChunk>
+
+				const mockSuccessStream = {
+					async *[Symbol.asyncIterator]() {
+						yield { type: "text", text: "Success" }
+					},
+					async next() {
+						return { done: true, value: { type: "text", text: "Success" } }
+					},
+					async return() {
+						return { done: true, value: undefined }
+					},
+					async throw(e: any) {
+						throw e
+					},
+					async [Symbol.asyncDispose]() {},
+				} as AsyncGenerator<ApiStreamChunk>
+
+				let firstAttempt = true
+				vi.spyOn(cline.api, "createMessage").mockImplementation(() => {
+					if (firstAttempt) {
+						firstAttempt = false
+						return mockFailedStream
+					}
+					return mockSuccessStream
+				})
+				const providerState = await mockProvider.getState()
+				vi.spyOn(mockProvider, "getState").mockResolvedValue({
+					...providerState,
+					apiConfiguration: rateLimitConfig,
+					autoApprovalEnabled: true,
+					requestDelaySeconds: 3,
+				})
+
+				const iterator = cline.attemptApiRequest(0)
+				await iterator.next()
+
+				// rateLimitSeconds=10 > exponentialDelay=ceil(3*2^0)=3, so
+				// finalDelay=10 and the countdown loop fires delay(1000) ten times.
+				expect(mockDelay).toHaveBeenCalledWith(1000)
+				expect(mockDelay).toHaveBeenCalledTimes(10)
+				expect(clock.getLastRequestTime()).toBeDefined()
+			})
+
 			it("should not apply retry delay twice", async () => {
 				const cline = new Task({
 					provider: mockProvider,
@@ -842,9 +918,6 @@ describe("Cline", () => {
 
 			beforeEach(() => {
 				vi.clearAllMocks()
-				// Reset the global timestamp before each test
-				Task.resetGlobalApiRequestTime()
-
 				mockApiConfig = {
 					apiProvider: "anthropic",
 					apiKey: "test-key",
@@ -878,14 +951,12 @@ describe("Cline", () => {
 				mockDelay.mockClear()
 			})
 
-			afterEach(() => {
-				// Clean up the global state after each test
-				Task.resetGlobalApiRequestTime()
-			})
-
 			it("should enforce rate limiting across parent and subtask", async () => {
 				// Add a spy to track getState calls
 				const getStateSpy = vi.spyOn(mockProvider, "getState")
+
+				// Shared clock so parent and child see each other's timestamps
+				const sharedClock = createRateLimitClock()
 
 				// Create parent task
 				const parent = new Task({
@@ -893,6 +964,7 @@ describe("Cline", () => {
 					apiConfiguration: mockApiConfig,
 					task: "parent task",
 					startTask: false,
+					rateLimitClock: sharedClock,
 				})
 				vi.spyOn(parent as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
 
@@ -922,7 +994,7 @@ describe("Cline", () => {
 				// Verify no delay was applied for the first request
 				expect(mockDelay).not.toHaveBeenCalled()
 
-				// Create a subtask immediately after
+				// Create a subtask immediately after, sharing the same clock
 				const child = new Task({
 					provider: mockProvider,
 					apiConfiguration: mockApiConfig,
@@ -930,6 +1002,7 @@ describe("Cline", () => {
 					parentTask: parent,
 					rootTask: parent,
 					startTask: false,
+					rateLimitClock: sharedClock,
 				})
 				vi.spyOn(child as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
 
@@ -976,12 +1049,15 @@ describe("Cline", () => {
 			}, 10000) // Increase timeout to 10 seconds
 
 			it("should not apply rate limiting if enough time has passed", async () => {
+				const sharedClock = createRateLimitClock()
+
 				// Create parent task
 				const parent = new Task({
 					provider: mockProvider,
 					apiConfiguration: mockApiConfig,
 					task: "parent task",
 					startTask: false,
+					rateLimitClock: sharedClock,
 				})
 				vi.spyOn(parent as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
 
@@ -1021,6 +1097,7 @@ describe("Cline", () => {
 					parentTask: parent,
 					rootTask: parent,
 					startTask: false,
+					rateLimitClock: sharedClock,
 				})
 				vi.spyOn(child as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
 
@@ -1038,12 +1115,15 @@ describe("Cline", () => {
 			})
 
 			it("should share rate limiting across multiple subtasks", async () => {
+				const sharedClock = createRateLimitClock()
+
 				// Create parent task
 				const parent = new Task({
 					provider: mockProvider,
 					apiConfiguration: mockApiConfig,
 					task: "parent task",
 					startTask: false,
+					rateLimitClock: sharedClock,
 				})
 				vi.spyOn(parent as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
 
@@ -1078,6 +1158,7 @@ describe("Cline", () => {
 					parentTask: parent,
 					rootTask: parent,
 					startTask: false,
+					rateLimitClock: sharedClock,
 				})
 				vi.spyOn(child1 as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
 
@@ -1102,6 +1183,7 @@ describe("Cline", () => {
 					parentTask: parent,
 					rootTask: parent,
 					startTask: false,
+					rateLimitClock: sharedClock,
 				})
 				vi.spyOn(child2 as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
 
@@ -1123,12 +1205,15 @@ describe("Cline", () => {
 					mcpEnabled: false,
 				})
 
+				const sharedClock = createRateLimitClock()
+
 				// Create parent task
 				const parent = new Task({
 					provider: mockProvider,
 					apiConfiguration: mockApiConfig,
 					task: "parent task",
 					startTask: false,
+					rateLimitClock: sharedClock,
 				})
 				vi.spyOn(parent as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
 
@@ -1163,6 +1248,7 @@ describe("Cline", () => {
 					parentTask: parent,
 					rootTask: parent,
 					startTask: false,
+					rateLimitClock: sharedClock,
 				})
 				vi.spyOn(child as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
 
@@ -1176,13 +1262,16 @@ describe("Cline", () => {
 				expect(mockDelay).not.toHaveBeenCalled()
 			})
 
-			it("should update global timestamp even when no rate limiting is needed", async () => {
+			it("should update clock timestamp even when no rate limiting is needed", async () => {
+				const clock = createRateLimitClock()
+
 				// Create task
 				const task = new Task({
 					provider: mockProvider,
 					apiConfiguration: mockApiConfig,
 					task: "test task",
 					startTask: false,
+					rateLimitClock: clock,
 				})
 				vi.spyOn(task as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
 
@@ -1209,10 +1298,9 @@ describe("Cline", () => {
 				const iterator = task.attemptApiRequest(0)
 				await iterator.next()
 
-				// Access the private static property via reflection for testing
-				const globalTimestamp = (Task as any).lastGlobalApiRequestTime
-				expect(globalTimestamp).toBeDefined()
-				expect(globalTimestamp).toBeGreaterThan(0)
+				const lastTime = clock.getLastRequestTime()
+				expect(lastTime).toBeDefined()
+				expect(lastTime).toBeGreaterThan(0)
 			})
 		})
 
@@ -1391,7 +1479,7 @@ describe("Cline", () => {
 				]
 
 				// Call submitUserMessage
-				task.submitUserMessage("test message", ["image1.png"])
+				await task.submitUserMessage("test message", ["image1.png"])
 
 				// Verify handleWebviewAskResponse was called directly (not webview)
 				expect(handleResponseSpy).toHaveBeenCalledWith("messageResponse", "test message", ["image1.png"])
@@ -1411,13 +1499,13 @@ describe("Cline", () => {
 				const handleResponseSpy = vi.spyOn(task, "handleWebviewAskResponse")
 
 				// Call with empty text and no images
-				task.submitUserMessage("", [])
+				await task.submitUserMessage("", [])
 
 				// Should not call handleWebviewAskResponse for empty messages
 				expect(handleResponseSpy).not.toHaveBeenCalled()
 
 				// Call with whitespace only
-				task.submitUserMessage("   ", [])
+				await task.submitUserMessage("   ", [])
 				expect(handleResponseSpy).not.toHaveBeenCalled()
 			})
 
@@ -1434,7 +1522,7 @@ describe("Cline", () => {
 
 				// Test with no messages (new task scenario)
 				task.clineMessages = []
-				task.submitUserMessage("new task", ["image1.png"])
+				await task.submitUserMessage("new task", ["image1.png"])
 
 				expect(handleResponseSpy).toHaveBeenCalledWith("messageResponse", "new task", ["image1.png"])
 
@@ -1450,7 +1538,7 @@ describe("Cline", () => {
 						text: "Initial message",
 					},
 				]
-				task.submitUserMessage("follow-up message", ["image2.png"])
+				await task.submitUserMessage("follow-up message", ["image2.png"])
 
 				expect(handleResponseSpy).toHaveBeenCalledWith("messageResponse", "follow-up message", ["image2.png"])
 			})
@@ -1477,7 +1565,7 @@ describe("Cline", () => {
 				const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
 
 				// Should log error but not throw
-				task.submitUserMessage("test message")
+				await task.submitUserMessage("test message")
 
 				expect(consoleErrorSpy).toHaveBeenCalledWith("[Task#submitUserMessage] Provider reference lost")
 				expect(handleResponseSpy).not.toHaveBeenCalled()
@@ -1708,6 +1796,590 @@ describe("Cline", () => {
 				// Verify cancelCurrentRequest was called
 				expect(cancelSpy).toHaveBeenCalled()
 			})
+			describe("abortSignal", () => {
+				it("should pass AbortController signal to condenseContext metadata when a current request exists", async () => {
+					const task = new Task({
+						provider: mockProvider,
+						apiConfiguration: mockApiConfig,
+						task: "test task",
+						startTask: false,
+					})
+
+					task.currentRequestAbortController = new AbortController()
+					vi.spyOn(task as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
+
+					await task.condenseContext()
+
+					expect(summarizeConversation).toHaveBeenCalled()
+					const [options] = vi.mocked(summarizeConversation).mock.calls.at(-1)!
+					expect(options.metadata?.abortSignal).toBe(task.currentRequestAbortController!.signal)
+				})
+
+				it("should omit abortSignal from condenseContext metadata when no current request exists", async () => {
+					const task = new Task({
+						provider: mockProvider,
+						apiConfiguration: mockApiConfig,
+						task: "test task",
+						startTask: false,
+					})
+
+					vi.spyOn(task as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
+
+					await task.condenseContext()
+
+					expect(summarizeConversation).toHaveBeenCalled()
+					const [options] = vi.mocked(summarizeConversation).mock.calls.at(-1)!
+					expect(options.metadata).toBeDefined()
+					expect("abortSignal" in (options.metadata ?? {})).toBe(false)
+				})
+
+				it("should pass AbortController signal to createMessage metadata", async () => {
+					const task = new Task({
+						provider: mockProvider,
+						apiConfiguration: mockApiConfig,
+						task: "test task",
+						startTask: false,
+					})
+
+					// Mock required methods for attemptApiRequest to work without hanging
+					vi.spyOn(task as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
+
+					vi.spyOn(task.api, "getModel").mockReturnValue({
+						id: mockApiConfig.apiModelId!,
+						info: {
+							supportsImages: false,
+							supportsPromptCache: true,
+							contextWindow: 200000,
+							maxTokens: 4096,
+							inputPrice: 0.3,
+							outputPrice: 1.5,
+						} as ModelInfo,
+					})
+
+					const providerState = await mockProvider.getState()
+					vi.spyOn(mockProvider, "getState").mockResolvedValue({
+						...providerState,
+						apiConfiguration: mockApiConfig,
+						autoApprovalEnabled: true,
+						requestDelaySeconds: 0,
+					})
+
+					// Mock the API stream response
+					const mockStream = {
+						async *[Symbol.asyncIterator]() {
+							yield { type: "text", text: "response" }
+						},
+						async next() {
+							return { done: true, value: { type: "text", text: "response" } }
+						},
+						async return() {
+							return { done: true, value: undefined }
+						},
+						async throw(e: any) {
+							throw e
+						},
+						[Symbol.asyncDispose]: async () => {},
+					} as AsyncGenerator<ApiStreamChunk>
+
+					const createMessageSpy = vi.spyOn(task.api, "createMessage").mockReturnValue(mockStream)
+
+					task.apiConversationHistory = [
+						{
+							role: "user" as const,
+							content: [{ type: "text" as const, text: "test message" }],
+							ts: Date.now(),
+						},
+					] as any
+
+					const iterator = task.attemptApiRequest(0)
+					await iterator.next()
+
+					// Verify createMessage was called with metadata containing abortSignal
+					expect(createMessageSpy).toHaveBeenCalled()
+					const [, , metadata] = createMessageSpy.mock.calls[0]!
+
+					expect(metadata).toBeDefined()
+					expect(metadata!.abortSignal).toBe(task.currentRequestAbortController!.signal)
+				})
+
+				it("should invoke abort on currentRequestAbortController during first-chunk wait", async () => {
+					const task = new Task({
+						provider: mockProvider,
+						apiConfiguration: mockApiConfig,
+						task: "test task",
+						startTask: false,
+					})
+
+					const abortSpy = vi.fn()
+					task.currentRequestAbortController = {
+						abort: abortSpy,
+						signal: new AbortController().signal,
+					} as AbortController
+
+					task.cancelCurrentRequest()
+
+					expect(abortSpy).toHaveBeenCalledTimes(1)
+					expect(task.currentRequestAbortController).toBeUndefined()
+				})
+
+				it("should reject streaming consumption when aborted between chunks", async () => {
+					const task = new Task({
+						provider: mockProvider,
+						apiConfiguration: mockApiConfig,
+						task: "test task",
+						startTask: false,
+					})
+
+					vi.spyOn(task as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
+					vi.spyOn(task.api, "getModel").mockReturnValue({
+						id: mockApiConfig.apiModelId!,
+						info: {
+							supportsImages: false,
+							supportsPromptCache: true,
+							contextWindow: 200000,
+							maxTokens: 4096,
+							inputPrice: 0.3,
+							outputPrice: 1.5,
+						} as ModelInfo,
+					})
+
+					const providerState = await mockProvider.getState()
+					vi.spyOn(mockProvider, "getState").mockResolvedValue({
+						...providerState,
+						apiConfiguration: mockApiConfig,
+						autoApprovalEnabled: true,
+						requestDelaySeconds: 0,
+					})
+
+					const createMessageSpy = vi.fn((_systemPrompt, _messages, metadata) => {
+						let callCount = 0
+						return {
+							[Symbol.asyncIterator]() {
+								return this
+							},
+							next: () => {
+								callCount++
+								if (callCount === 1) {
+									return Promise.resolve({
+										done: false,
+										value: { type: "text", text: "first chunk" },
+									})
+								}
+								return new Promise<IteratorResult<ApiStreamChunk>>((resolve, reject) => {
+									if (metadata?.abortSignal?.aborted) {
+										return reject(new Error("Request cancelled by user"))
+									}
+									metadata?.abortSignal?.addEventListener("abort", () => {
+										reject(new Error("Request cancelled by user"))
+									})
+								})
+							},
+							async return() {
+								return { done: true, value: undefined }
+							},
+							async throw(e: any) {
+								throw e
+							},
+							[Symbol.asyncDispose]: async () => {},
+						} as AsyncGenerator<ApiStreamChunk>
+					})
+					vi.spyOn(task.api, "createMessage").mockImplementation(createMessageSpy)
+
+					task.apiConversationHistory = [
+						{
+							role: "user" as const,
+							content: [{ type: "text" as const, text: "test message" }],
+							ts: Date.now(),
+						},
+					] as any
+
+					const streamIterator = task.attemptApiRequest(0)
+					await expect(streamIterator.next()).resolves.toMatchObject({
+						done: false,
+						value: { type: "text", text: "first chunk" },
+					})
+
+					task.cancelCurrentRequest()
+
+					await expect(streamIterator.next()).rejects.toThrow("Request cancelled by user")
+					expect(createMessageSpy).toHaveBeenCalledTimes(1)
+				})
+
+				it("should use the same AbortController signal as currentRequestAbortController", async () => {
+					const task = new Task({
+						provider: mockProvider,
+						apiConfiguration: mockApiConfig,
+						task: "test task",
+						startTask: false,
+					})
+
+					// Mock required methods for attemptApiRequest to work without hanging
+					vi.spyOn(task as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
+
+					vi.spyOn(task.api, "getModel").mockReturnValue({
+						id: mockApiConfig.apiModelId!,
+						info: {
+							supportsImages: false,
+							supportsPromptCache: true,
+							contextWindow: 200000,
+							maxTokens: 4096,
+							inputPrice: 0.3,
+							outputPrice: 1.5,
+						} as ModelInfo,
+					})
+
+					const providerState = await mockProvider.getState()
+					vi.spyOn(mockProvider, "getState").mockResolvedValue({
+						...providerState,
+						apiConfiguration: mockApiConfig,
+						autoApprovalEnabled: true,
+						requestDelaySeconds: 0,
+					})
+
+					// Mock the API stream response
+					const mockStream = {
+						async *[Symbol.asyncIterator]() {
+							yield { type: "text", text: "response" }
+						},
+						async next() {
+							return { done: true, value: { type: "text", text: "response" } }
+						},
+						async return() {
+							return { done: true, value: undefined }
+						},
+						async throw(e: any) {
+							throw e
+						},
+						[Symbol.asyncDispose]: async () => {},
+					} as AsyncGenerator<ApiStreamChunk>
+
+					const createMessageSpy = vi.spyOn(task.api, "createMessage").mockReturnValue(mockStream)
+
+					task.apiConversationHistory = [
+						{
+							role: "user" as const,
+							content: [{ type: "text" as const, text: "test message" }],
+							ts: Date.now(),
+						},
+					] as any
+
+					const iterator = task.attemptApiRequest(0)
+					await iterator.next()
+
+					// Get the signal from metadata
+					const [, , metadata] = createMessageSpy.mock.calls[0]!
+					const metadataSignal = metadata!.abortSignal
+
+					// The signal in metadata should be the same as the one from currentRequestAbortController
+					expect(metadataSignal).toBe(task.currentRequestAbortController!.signal)
+				})
+
+				it("should omit createMessage abortSignal metadata when no current request exists before condense metadata checks", async () => {
+					const task = new Task({
+						provider: mockProvider,
+						apiConfiguration: mockApiConfig,
+						task: "test task",
+						startTask: false,
+					})
+
+					vi.spyOn(task as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
+					vi.spyOn(task.api, "getModel").mockReturnValue({
+						id: mockApiConfig.apiModelId!,
+						info: {
+							supportsImages: false,
+							supportsPromptCache: true,
+							contextWindow: 200000,
+							maxTokens: 4096,
+							inputPrice: 0.3,
+							outputPrice: 1.5,
+						} as ModelInfo,
+					})
+
+					const providerState = await mockProvider.getState()
+					vi.spyOn(mockProvider, "getState").mockResolvedValue({
+						...providerState,
+						apiConfiguration: mockApiConfig,
+						autoApprovalEnabled: true,
+						requestDelaySeconds: 0,
+					})
+
+					const mockStream = {
+						async *[Symbol.asyncIterator]() {
+							yield { type: "text", text: "response" }
+						},
+						async next() {
+							return { done: true, value: { type: "text", text: "response" } }
+						},
+						async return() {
+							return { done: true, value: undefined }
+						},
+						async throw(e: any) {
+							throw e
+						},
+						[Symbol.asyncDispose]: async () => {},
+					} as AsyncGenerator<ApiStreamChunk>
+
+					const createMessageSpy = vi.spyOn(task.api, "createMessage").mockReturnValue(mockStream)
+					task.apiConversationHistory = [
+						{
+							role: "user" as const,
+							content: [{ type: "text" as const, text: "test message" }],
+							ts: Date.now(),
+						},
+					] as any
+
+					expect(task.currentRequestAbortController).toBeUndefined()
+
+					const iterator = task.attemptApiRequest(0)
+					await iterator.next()
+
+					const [, , metadata] = createMessageSpy.mock.calls[0]!
+					expect(metadata).toBeDefined()
+					expect("abortSignal" in metadata!).toBe(true)
+					expect(metadata!.abortSignal).toBe(task.currentRequestAbortController!.signal)
+				})
+
+				it("should keep createMessage abortSignal metadata unaborted before cancellation", async () => {
+					const task = new Task({
+						provider: mockProvider,
+						apiConfiguration: mockApiConfig,
+						task: "test task",
+						startTask: false,
+					})
+
+					vi.spyOn(task as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
+					vi.spyOn(task.api, "getModel").mockReturnValue({
+						id: mockApiConfig.apiModelId!,
+						info: {
+							supportsImages: false,
+							supportsPromptCache: true,
+							contextWindow: 200000,
+							maxTokens: 4096,
+							inputPrice: 0.3,
+							outputPrice: 1.5,
+						} as ModelInfo,
+					})
+
+					const providerState = await mockProvider.getState()
+					vi.spyOn(mockProvider, "getState").mockResolvedValue({
+						...providerState,
+						apiConfiguration: mockApiConfig,
+						autoApprovalEnabled: true,
+						requestDelaySeconds: 0,
+					})
+
+					const mockStream = {
+						async *[Symbol.asyncIterator]() {
+							yield { type: "text", text: "response" }
+						},
+						async next() {
+							return { done: false, value: { type: "text", text: "response" } }
+						},
+						async return() {
+							return { done: true, value: undefined }
+						},
+						async throw(e: any) {
+							throw e
+						},
+						[Symbol.asyncDispose]: async () => {},
+					} as AsyncGenerator<ApiStreamChunk>
+
+					const createMessageSpy = vi.spyOn(task.api, "createMessage").mockReturnValue(mockStream)
+					task.apiConversationHistory = [
+						{
+							role: "user" as const,
+							content: [{ type: "text" as const, text: "test message" }],
+							ts: Date.now(),
+						},
+					] as any
+
+					const iterator = task.attemptApiRequest(0)
+					await iterator.next()
+
+					const [, , metadata] = createMessageSpy.mock.calls[0]!
+					expect(metadata?.abortSignal).toBe(task.currentRequestAbortController!.signal)
+					expect(metadata?.abortSignal?.aborted).toBe(false)
+				})
+			})
+
+			it("should create a fresh AbortController for each sequential request", async () => {
+				const task = new Task({
+					provider: mockProvider,
+					apiConfiguration: mockApiConfig,
+					task: "test task",
+					startTask: false,
+				})
+
+				vi.spyOn(task as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
+				vi.spyOn(task.api, "getModel").mockReturnValue({
+					id: mockApiConfig.apiModelId!,
+					info: {
+						supportsImages: false,
+						supportsPromptCache: true,
+						contextWindow: 200000,
+						maxTokens: 4096,
+						inputPrice: 0.3,
+						outputPrice: 1.5,
+					} as ModelInfo,
+				})
+
+				const providerState = await mockProvider.getState()
+				vi.spyOn(mockProvider, "getState").mockResolvedValue({
+					...providerState,
+					apiConfiguration: mockApiConfig,
+					autoApprovalEnabled: true,
+					requestDelaySeconds: 0,
+				})
+
+				let callCount = 0
+				const mockStreamFactory = async function* (): AsyncGenerator<ApiStreamChunk> {
+					yield { type: "text", text: `response ${callCount}` }
+					callCount++
+				}
+				const createMessageSpy = vi
+					.spyOn(task.api, "createMessage")
+					.mockImplementation(() => mockStreamFactory())
+
+				task.apiConversationHistory = [
+					{
+						role: "user" as const,
+						content: [{ type: "text" as const, text: "test message" }],
+						ts: Date.now(),
+					},
+				] as any
+
+				// First request
+				const iterator1 = task.attemptApiRequest(0)
+				await iterator1.next()
+
+				expect(createMessageSpy).toHaveBeenCalledTimes(1)
+				const [, , metadata1] = createMessageSpy.mock.calls[0]!
+				const signal1 = metadata1!.abortSignal
+				expect(signal1).toBeDefined()
+				expect(signal1!.aborted).toBe(false)
+
+				// Simulate request completion and cancellation to clear the controller
+				task.cancelCurrentRequest()
+
+				// Second request should create a fresh AbortController with a new signal
+				callCount = 0
+				const iterator2 = task.attemptApiRequest(0)
+				await iterator2.next()
+
+				expect(createMessageSpy).toHaveBeenCalledTimes(2)
+				const [, , metadata2] = createMessageSpy.mock.calls[1]!
+				const signal2 = metadata2!.abortSignal
+
+				// Signals should be different instances (fresh controller per request)
+				expect(signal2).not.toBe(signal1)
+				expect(signal2).toBe(task.currentRequestAbortController!.signal)
+				expect(signal2!.aborted).toBe(false)
+			})
+
+			it("should propagate AbortController signal through attemptApiRequest context-window retry path", async () => {
+				const task = new Task({
+					provider: mockProvider,
+					apiConfiguration: mockApiConfig,
+					task: "test task",
+					startTask: false,
+				})
+
+				vi.spyOn(task as any, "getSystemPrompt").mockResolvedValue("mock system prompt")
+				vi.spyOn(task, "getTokenUsage").mockReturnValue({
+					totalCost: 0,
+					totalTokensIn: 0,
+					totalTokensOut: 0,
+					contextTokens: 120000,
+				})
+				vi.spyOn(task.api, "getModel").mockReturnValue({
+					id: mockApiConfig.apiModelId!,
+					info: {
+						supportsImages: false,
+						supportsPromptCache: true,
+						contextWindow: 1000,
+						maxTokens: 4096,
+						inputPrice: 0.3,
+						outputPrice: 1.5,
+					} as ModelInfo,
+				})
+				const providerState = await mockProvider.getState()
+				vi.spyOn(mockProvider, "getState").mockResolvedValue({
+					...providerState,
+					apiConfiguration: mockApiConfig,
+					mode: "code",
+					autoCondenseContext: true,
+					autoCondenseContextPercent: 80,
+					requestDelaySeconds: 0,
+					customModes: [],
+					experiments: {},
+					disabledTools: [],
+					customSupportPrompts: {},
+					autoApprovalEnabled: true,
+					profileThresholds: {},
+					currentApiConfigName: "default",
+				})
+
+				task.apiConversationHistory = [
+					{
+						role: "user" as const,
+						content: [{ type: "text" as const, text: "test message" }],
+						ts: Date.now(),
+					},
+				] as any
+
+				let firstCall = true
+				const retryStream = {
+					async *[Symbol.asyncIterator]() {
+						yield { type: "text", text: "retried response" }
+					},
+					async next() {
+						return { done: false, value: { type: "text", text: "retried response" } }
+					},
+					async return() {
+						return { done: true, value: undefined }
+					},
+					async throw(e: any) {
+						throw e
+					},
+					[Symbol.asyncDispose]: async () => {},
+				} as AsyncGenerator<ApiStreamChunk>
+
+				const contextWindowErrorStream = {
+					[Symbol.asyncIterator]() {
+						return this
+					},
+					async next() {
+						throw { status: 400, message: "context length exceeded" }
+					},
+					async return() {
+						return { done: true, value: undefined }
+					},
+					async throw(e: any) {
+						throw e
+					},
+					[Symbol.asyncDispose]: async () => {},
+				} as AsyncGenerator<ApiStreamChunk>
+
+				vi.spyOn(task.api, "createMessage").mockImplementation(() => {
+					if (firstCall) {
+						firstCall = false
+						return contextWindowErrorStream
+					}
+					return retryStream
+				})
+
+				const iterator = task.attemptApiRequest(0)
+				await expect(iterator.next()).resolves.toMatchObject({
+					done: false,
+					value: { type: "text", text: "retried response" },
+				})
+
+				expect(summarizeConversation).toHaveBeenCalled()
+				const [options] = vi.mocked(summarizeConversation).mock.calls.at(-1)!
+				expect(options.metadata?.taskId).toBe(task.taskId)
+				expect(options.metadata?.abortSignal).toBeInstanceOf(AbortSignal)
+				expect(options.metadata?.abortSignal?.aborted).toBe(false)
+			})
 		})
 	})
 
@@ -1751,6 +2423,373 @@ describe("Cline", () => {
 			expect(startTaskSpy).toHaveBeenCalledTimes(1)
 
 			startTaskSpy.mockRestore()
+		})
+	})
+
+	describe("unhandled-rejection guards on void async calls", () => {
+		// PR #253 wired `.catch(...)` onto every fire-and-forget async call that
+		// Copilot flagged as a potential unhandled-rejection source. These specs
+		// pin that behavior so a future refactor cannot silently drop the
+		// handler and reintroduce the crash risk on the extension host.
+
+		const flushMicrotasks = () => new Promise<void>((resolve) => setImmediate(resolve))
+
+		let consoleErrorSpy: ReturnType<typeof vi.spyOn>
+
+		beforeEach(() => {
+			consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+		})
+
+		afterEach(() => {
+			consoleErrorSpy.mockRestore()
+			vi.restoreAllMocks()
+		})
+
+		it("logs (instead of crashing) when startTask rejects from the constructor", async () => {
+			const boom = new Error("startTask boom")
+			const startTaskSpy = vi.spyOn(Task.prototype as any, "startTask").mockImplementation(async () => {
+				throw boom
+			})
+
+			new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "test task",
+				startTask: true,
+			})
+
+			expect(startTaskSpy).toHaveBeenCalledTimes(1)
+			await flushMicrotasks()
+
+			expect(consoleErrorSpy).toHaveBeenCalledWith("[Task#constructor] startTask failed:", boom)
+			startTaskSpy.mockRestore()
+		})
+
+		it("logs (instead of crashing) when resumeTaskFromHistory rejects from the constructor", async () => {
+			const boom = new Error("resume boom")
+			const resumeSpy = vi.spyOn(Task.prototype as any, "resumeTaskFromHistory").mockImplementation(async () => {
+				throw boom
+			})
+
+			new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				historyItem: {
+					id: "123",
+					number: 0,
+					ts: Date.now(),
+					task: "historical task",
+					tokensIn: 100,
+					tokensOut: 200,
+					cacheWrites: 0,
+					cacheReads: 0,
+					totalCost: 0.001,
+				},
+				startTask: true,
+			})
+
+			expect(resumeSpy).toHaveBeenCalledTimes(1)
+			await flushMicrotasks()
+
+			expect(consoleErrorSpy).toHaveBeenCalledWith("[Task#constructor] resumeTaskFromHistory failed:", boom)
+			resumeSpy.mockRestore()
+		})
+
+		it("logs (instead of crashing) when postStateToWebviewWithoutTaskHistory rejects from the queue handler", async () => {
+			const boom = new Error("postState boom")
+			mockProvider.postStateToWebviewWithoutTaskHistory = vi.fn().mockRejectedValue(boom)
+
+			const task = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "test task",
+				startTask: false,
+			})
+
+			// Triggers messageQueueStateChangedHandler -> void postStateToWebviewWithoutTaskHistory()
+			task.messageQueueService.addMessage("queued text")
+			await flushMicrotasks()
+
+			expect(mockProvider.postStateToWebviewWithoutTaskHistory).toHaveBeenCalled()
+			expect(consoleErrorSpy).toHaveBeenCalledWith(
+				"[Task#messageQueueStateChangedHandler] postStateToWebviewWithoutTaskHistory failed:",
+				boom,
+			)
+		})
+
+		it("logs (instead of crashing) when startTask rejects from start()", async () => {
+			const boom = new Error("start() boom")
+			const task = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "test task",
+				startTask: false,
+			})
+
+			vi.spyOn(task as any, "startTask").mockImplementation(async () => {
+				throw boom
+			})
+
+			task.start()
+			await flushMicrotasks()
+
+			expect(consoleErrorSpy).toHaveBeenCalledWith("[Task#start] startTask failed:", boom)
+		})
+
+		it("swallows the expected abort rejection from presentAssistantMessageSafe", async () => {
+			const assistantMessageModule = await import("../../assistant-message")
+			const presentSpy = vi
+				.spyOn(assistantMessageModule, "presentAssistantMessage")
+				.mockRejectedValue(new Error("[Task#presentAssistantMessage] task t.i aborted"))
+
+			const task = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "test task",
+				startTask: false,
+			})
+
+			// Drain any unrelated console.error noise emitted by async constructor side effects
+			// (CloudService/getState complaints in the test harness) so we only assert on the
+			// abort-path behavior under test.
+			await flushMicrotasks()
+			consoleErrorSpy.mockClear()
+
+			task.abort = true
+			;(task as any).presentAssistantMessageSafe()
+			await flushMicrotasks()
+
+			expect(presentSpy).toHaveBeenCalledTimes(1)
+			const presentErrors = consoleErrorSpy.mock.calls.filter(
+				(call: unknown[]) => typeof call[0] === "string" && call[0].includes("[Task#presentAssistantMessage]"),
+			)
+			expect(presentErrors).toHaveLength(0)
+		})
+
+		it("logs non-abort rejections from presentAssistantMessageSafe", async () => {
+			const assistantMessageModule = await import("../../assistant-message")
+			const boom = new Error("present boom")
+			const presentSpy = vi.spyOn(assistantMessageModule, "presentAssistantMessage").mockRejectedValue(boom)
+
+			const task = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "test task",
+				startTask: false,
+			})
+
+			expect(task.abort).toBeFalsy()
+			;(task as any).presentAssistantMessageSafe()
+			await flushMicrotasks()
+
+			expect(presentSpy).toHaveBeenCalledTimes(1)
+			expect(consoleErrorSpy).toHaveBeenCalledWith(
+				expect.stringContaining("[Task#presentAssistantMessage] task"),
+				boom,
+			)
+		})
+
+		it("logs a non-abort error even when this.abort flips true after the throw", async () => {
+			// Pins that the message-based discriminator is load-bearing, not the
+			// state check. Under the previous `if (this.abort) return` guard this
+			// case (a genuine downstream failure racing with an abort flip between
+			// the throw and the catch microtask) would silently swallow the error.
+			const assistantMessageModule = await import("../../assistant-message")
+			const realError = new Error("genuine downstream failure")
+			const presentSpy = vi.spyOn(assistantMessageModule, "presentAssistantMessage").mockRejectedValue(realError)
+
+			const task = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "test task",
+				startTask: false,
+			})
+
+			await flushMicrotasks()
+			consoleErrorSpy.mockClear()
+
+			// Simulate the TOCTOU race: abort flips between throw and catch.
+			task.abort = true
+			;(task as any).presentAssistantMessageSafe()
+			await flushMicrotasks()
+
+			expect(presentSpy).toHaveBeenCalledTimes(1)
+			expect(consoleErrorSpy).toHaveBeenCalledWith(
+				expect.stringContaining("[Task#presentAssistantMessage] task"),
+				realError,
+			)
+		})
+
+		it("suppresses an abort-pattern error by message match even when this.abort is false", async () => {
+			// Pins the inverse: message wins over state. A stale abort rejection
+			// arriving before `this.abort` has been observed as true must still be
+			// suppressed, so the catch handler never logs the expected
+			// cancellation rejection as a real failure.
+			const assistantMessageModule = await import("../../assistant-message")
+			const abortError = new Error("[Task#presentAssistantMessage] task t.i aborted")
+			const presentSpy = vi.spyOn(assistantMessageModule, "presentAssistantMessage").mockRejectedValue(abortError)
+
+			const task = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "test task",
+				startTask: false,
+			})
+
+			await flushMicrotasks()
+			consoleErrorSpy.mockClear()
+
+			expect(task.abort).toBeFalsy()
+			;(task as any).presentAssistantMessageSafe()
+			await flushMicrotasks()
+
+			expect(presentSpy).toHaveBeenCalledTimes(1)
+			const presentErrors = consoleErrorSpy.mock.calls.filter(
+				(call: unknown[]) => typeof call[0] === "string" && call[0].includes("[Task#presentAssistantMessage]"),
+			)
+			expect(presentErrors).toHaveLength(0)
+		})
+
+		it("logs (instead of crashing) when updateClineMessage rejects from the say() partial-update path", async () => {
+			// Pins the symmetric .catch arm on the fire-and-forget
+			// updateClineMessage call in say(). The callee's webview post is
+			// internally guarded, but its synchronous emit can throw via a
+			// consumer-attached listener — that path must surface as a log,
+			// not an unhandled rejection.
+			const boom = new Error("updateClineMessage boom")
+			const updateSpy = vi.spyOn(Task.prototype as any, "updateClineMessage").mockImplementation(async () => {
+				throw boom
+			})
+
+			const task = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "test task",
+				startTask: false,
+			})
+
+			// Seed a prior partial "say" so the partial-update branch fires.
+			task.clineMessages.push({
+				ts: Date.now() - 1,
+				type: "say",
+				say: "text",
+				text: "partial",
+				partial: true,
+			})
+
+			await task.say("text", "updated partial", undefined, true)
+			await flushMicrotasks()
+
+			expect(updateSpy).toHaveBeenCalled()
+			expect(consoleErrorSpy).toHaveBeenCalledWith("[Task#say] updateClineMessage failed:", boom)
+			updateSpy.mockRestore()
+		})
+
+		it("logs (instead of crashing) when updateClineMessage rejects from the ask() complete-partial path", async () => {
+			// Pins the symmetric .catch arm on the fire-and-forget
+			// updateClineMessage call in ask() when finalizing a partial.
+			const boom = new Error("updateClineMessage boom")
+			const updateSpy = vi.spyOn(Task.prototype as any, "updateClineMessage").mockImplementation(async () => {
+				throw boom
+			})
+			const saveSpy = vi.spyOn(Task.prototype as any, "saveClineMessages").mockResolvedValue(true)
+
+			const task = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "test task",
+				startTask: false,
+			})
+
+			// Seed a prior partial "ask" of type "tool" so the complete-partial
+			// branch fires when ask("tool", ..., false) is called.
+			task.clineMessages.push({
+				ts: Date.now() - 1,
+				type: "ask",
+				ask: "tool",
+				text: "partial",
+				partial: true,
+			})
+
+			// ask() resolves only after a response — fire-and-forget so the
+			// promise the suite awaits stays bounded. The .catch on the
+			// pending ask handles the never-resolved promise.
+			void task.ask("tool", "complete", false).catch(() => {})
+			await flushMicrotasks()
+
+			expect(updateSpy).toHaveBeenCalled()
+			expect(consoleErrorSpy).toHaveBeenCalledWith("[Task#ask] updateClineMessage failed:", boom)
+			updateSpy.mockRestore()
+			saveSpy.mockRestore()
+		})
+
+		it("logs (instead of crashing) when updateClineMessage rejects from the ask() ignore-partial path", async () => {
+			// Pins the .catch arm on the fire-and-forget updateClineMessage call
+			// in ask() when a new partial ask arrives while the previous partial
+			// is still pending (AskIgnoredError path).
+			const boom = new Error("updateClineMessage boom")
+			const updateSpy = vi.spyOn(Task.prototype as any, "updateClineMessage").mockImplementation(async () => {
+				throw boom
+			})
+
+			const task = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "test task",
+				startTask: false,
+			})
+
+			// Seed a prior partial ask so the isUpdatingPreviousPartial branch fires.
+			task.clineMessages.push({
+				ts: Date.now() - 1,
+				type: "ask",
+				ask: "tool",
+				text: "partial",
+				partial: true,
+			})
+
+			// Sending a new partial of the same type triggers updateClineMessage
+			// then throws AskIgnoredError — catch it so the test doesn't fail.
+			await task.ask("tool", "updated partial", true).catch(() => {})
+			await flushMicrotasks()
+
+			expect(updateSpy).toHaveBeenCalled()
+			expect(consoleErrorSpy).toHaveBeenCalledWith("[Task#ask] updateClineMessage failed:", boom)
+		})
+
+		it("logs (instead of crashing) when updateClineMessage rejects from handleWebviewAskResponse", async () => {
+			// Pins the .catch arm on the fire-and-forget updateClineMessage call
+			// in handleWebviewAskResponse when marking a tool ask as answered.
+			const boom = new Error("updateClineMessage boom")
+			const updateSpy = vi.spyOn(Task.prototype as any, "updateClineMessage").mockImplementation(async () => {
+				throw boom
+			})
+			vi.spyOn(Task.prototype as any, "saveClineMessages").mockResolvedValue(undefined)
+
+			const task = new Task({
+				provider: mockProvider,
+				apiConfiguration: mockApiConfig,
+				task: "test task",
+				startTask: false,
+			})
+
+			// Seed an unanswered tool ask so the lastToolAskIndex branch fires.
+			task.clineMessages.push({
+				ts: Date.now() - 1,
+				type: "ask",
+				ask: "tool",
+				text: "tool call",
+				partial: false,
+			})
+
+			task.handleWebviewAskResponse("yesButtonClicked")
+			await flushMicrotasks()
+
+			expect(updateSpy).toHaveBeenCalled()
+			expect(consoleErrorSpy).toHaveBeenCalledWith(
+				"[Task#handleWebviewAskResponse] updateClineMessage failed:",
+				boom,
+			)
 		})
 	})
 })

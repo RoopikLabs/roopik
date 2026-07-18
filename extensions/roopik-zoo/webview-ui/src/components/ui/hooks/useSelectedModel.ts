@@ -9,6 +9,7 @@ import {
 	deepSeekModels,
 	moonshotModels,
 	minimaxModels,
+	mimoModels,
 	geminiModels,
 	mistralModels,
 	openAiModelInfoSaneDefaults,
@@ -22,10 +23,13 @@ import {
 	internationalZAiModels,
 	mainlandZAiModels,
 	fireworksModels,
+	friendliModels,
 	basetenModels,
 	qwenCodeModels,
 	litellmDefaultModelInfo,
 	lMStudioDefaultModelInfo,
+	opencodeGoDefaultModelInfo,
+	kenariDefaultModelInfo,
 	BEDROCK_1M_CONTEXT_MODEL_IDS,
 	VERTEX_1M_CONTEXT_MODEL_IDS,
 	isDynamicProvider,
@@ -51,7 +55,7 @@ function getValidatedModelId(
 }
 
 export const useSelectedModel = (apiConfiguration?: ProviderSettings) => {
-	const provider = apiConfiguration?.apiProvider || "anthropic"
+	const provider = apiConfiguration?.apiProvider || "openrouter"
 	const activeProvider: ProviderName | undefined = isRetiredProvider(provider) ? undefined : provider
 	const dynamicProvider = activeProvider && isDynamicProvider(activeProvider) ? activeProvider : undefined
 	const openRouterModelId = activeProvider === "openrouter" ? apiConfiguration?.openRouterModelId : undefined
@@ -99,7 +103,7 @@ export const useSelectedModel = (apiConfiguration?: ProviderSettings) => {
 					lmStudioModels: (lmStudioModels.data || undefined) as ModelRecord | undefined,
 					ollamaModels: (ollamaModels.data || undefined) as ModelRecord | undefined,
 				})
-			: { id: getProviderDefaultModelId(activeProvider ?? "anthropic"), info: undefined }
+			: { id: getProviderDefaultModelId(activeProvider ?? "openrouter"), info: undefined }
 
 	return {
 		provider,
@@ -165,7 +169,15 @@ function getSelectedModel({
 			return { id, info: routerInfo }
 		}
 		case "litellm": {
-			const id = getValidatedModelId(apiConfiguration.litellmModelId, routerModels.litellm, defaultModelId)
+			// When the model list is empty (not yet loaded or still loading),
+			// preserve the configured model ID. LiteLLM is a proxy with no inherent
+			// default model, so we never substitute a hardcoded default here -- when
+			// nothing is configured we return an empty ID so the picker shows "no
+			// selection" rather than a phantom model that does not exist on the server.
+			const hasModels = routerModels.litellm && Object.keys(routerModels.litellm).length > 0
+			const id = hasModels
+				? getValidatedModelId(apiConfiguration.litellmModelId, routerModels.litellm, defaultModelId)
+				: (apiConfiguration.litellmModelId ?? "")
 			const routerInfo = routerModels.litellm?.[id]
 			return { id, info: routerInfo ?? litellmDefaultModelInfo }
 		}
@@ -250,6 +262,11 @@ function getSelectedModel({
 			const info = minimaxModels[id as keyof typeof minimaxModels]
 			return { id, info }
 		}
+		case "mimo": {
+			const id = apiConfiguration.apiModelId ?? defaultModelId
+			const info = mimoModels[id as keyof typeof mimoModels] ?? mimoModels["mimo-v2.5-pro"]
+			return { id, info }
+		}
 		case "zai": {
 			const isChina = apiConfiguration.zaiApiLine === "china_coding"
 			const models = isChina ? mainlandZAiModels : internationalZAiModels
@@ -303,8 +320,20 @@ function getSelectedModel({
 				? `${apiConfiguration.vsCodeLmModelSelector.vendor}/${apiConfiguration.vsCodeLmModelSelector.family}`
 				: vscodeLlmDefaultModelId
 			const modelFamily = apiConfiguration?.vsCodeLmModelSelector?.family ?? vscodeLlmDefaultModelId
-			const info = vscodeLlmModels[modelFamily as keyof typeof vscodeLlmModels]
-			return { id, info: { ...openAiModelInfoSaneDefaults, ...info, supportsImages: false } } // VSCode LM API currently doesn't support images.
+			// On a family miss, fall back to the default model entry, not openAiModelInfoSaneDefaults
+			// (whose 128K contextWindow would diverge from the gate and skew the bar).
+			const listedModel =
+				vscodeLlmModels[modelFamily as keyof typeof vscodeLlmModels] ?? vscodeLlmModels[vscodeLlmDefaultModelId]
+			// Set contextWindow = maxInputTokens so the UI bar shares one source of truth with the gate,
+			// whose primary window is getCondenseContextWindow() (static-table maxInputTokens); this
+			// info.contextWindow is only the gate's fallback.
+			const info: ModelInfo = {
+				...openAiModelInfoSaneDefaults,
+				...listedModel,
+				contextWindow: listedModel.maxInputTokens,
+				supportsImages: false, // VSCode LM API currently doesn't support images.
+			}
+			return { id, info }
 		}
 		case "sambanova": {
 			const id = apiConfiguration.apiModelId ?? defaultModelId
@@ -316,9 +345,9 @@ function getSelectedModel({
 			const info = fireworksModels[id as keyof typeof fireworksModels]
 			return { id, info }
 		}
-		case "roo": {
-			const id = getValidatedModelId(apiConfiguration.apiModelId, routerModels.roo, defaultModelId)
-			const info = routerModels.roo?.[id]
+		case "friendli": {
+			const id = apiConfiguration.apiModelId ?? defaultModelId
+			const info = friendliModels[id as keyof typeof friendliModels]
 			return { id, info }
 		}
 		case "poe": {
@@ -343,6 +372,33 @@ function getSelectedModel({
 				defaultModelId,
 			)
 			const info = routerModels["vercel-ai-gateway"]?.[id]
+			return { id, info }
+		}
+		case "opencode-go": {
+			const id = getValidatedModelId(
+				apiConfiguration.opencodeGoModelId,
+				routerModels["opencode-go"],
+				defaultModelId,
+			)
+			// Fall back to the provider's default ModelInfo so capability-driven UI
+			// keeps working when the /models list is empty or unavailable.
+			const info = routerModels["opencode-go"]?.[id] ?? opencodeGoDefaultModelInfo
+			return { id, info }
+		}
+		case "kenari": {
+			const id = getValidatedModelId(apiConfiguration.kenariModelId, routerModels["kenari"], defaultModelId)
+			// Fall back to the provider's default ModelInfo so capability-driven UI
+			// keeps working when the /models list is empty or unavailable.
+			const info = routerModels["kenari"]?.[id] ?? kenariDefaultModelInfo
+			return { id, info }
+		}
+		case "zoo-gateway": {
+			const id = getValidatedModelId(
+				apiConfiguration.zooGatewayModelId,
+				routerModels["zoo-gateway"],
+				defaultModelId,
+			)
+			const info = routerModels["zoo-gateway"]?.[id]
 			return { id, info }
 		}
 		// case "anthropic":

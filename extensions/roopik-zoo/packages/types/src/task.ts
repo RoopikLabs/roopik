@@ -4,7 +4,6 @@ import { RooCodeEventName } from "./events.js"
 import type { RooCodeSettings } from "./global-settings.js"
 import type { ClineMessage, QueuedMessage, TokenUsage } from "./message.js"
 import type { ToolUsage, ToolName } from "./tool.js"
-import type { StaticAppProperties, GitProperties, TelemetryProperties } from "./telemetry.js"
 import type { TodoItem } from "./todo.js"
 
 /**
@@ -36,10 +35,6 @@ export interface TaskProviderLike {
 	getProviderProfile(): Promise<string>
 	setProviderProfile(providerProfile: string): Promise<void>
 
-	// Telemetry
-	readonly appProperties: StaticAppProperties
-	readonly gitProperties: GitProperties | undefined
-	getTelemetryProperties(): Promise<TelemetryProperties>
 	readonly cwd: string
 
 	// Event Emitter
@@ -95,7 +90,7 @@ export interface CreateTaskOptions {
 	experiments?: Record<string, boolean>
 	initialTodos?: TodoItem[]
 	/** Initial status for the task's history item (e.g., "active" for child tasks) */
-	initialStatus?: "active" | "delegated" | "completed"
+	initialStatus?: "active" | "delegated" | "completed" | "interrupted"
 	/** Whether to start the task loop immediately (default: true).
 	 *  When false, the caller must invoke `task.start()` manually. */
 	startTask?: boolean

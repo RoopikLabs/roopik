@@ -1,6 +1,6 @@
 import { distance } from "fastest-levenshtein"
 
-import { ToolProgressStatus } from "@roo-code/types"
+import { ToolProgressStatus, DEFAULT_DIFF_FUZZY_THRESHOLD } from "@roo-code/types"
 
 import { addLineNumbers, everyLineHasLineNumbers, stripLineNumbers } from "../../../integrations/misc/extract-text"
 import { ToolUse, DiffStrategy, DiffResult } from "../../../shared/tools"
@@ -82,9 +82,12 @@ export class MultiSearchReplaceDiffStrategy implements DiffStrategy {
 
 	constructor(fuzzyThreshold?: number, bufferLines?: number) {
 		// Use provided threshold or default to exact matching (1.0)
-		// Note: fuzzyThreshold is inverted in UI (0% = 1.0, 10% = 0.9)
-		// so we use it directly here
-		this.fuzzyThreshold = fuzzyThreshold ?? 1.0
+		// A value of 0.9 means 90% similarity is required for a match,
+		// but the default remains 1.0 (exact match). Users can opt in
+		// to relaxed matching via diffFuzzyThreshold in settings.
+		// Clamp the threshold to [0.5, 1.0] as a defence-in-depth guard.
+		const thresholdVal = fuzzyThreshold ?? DEFAULT_DIFF_FUZZY_THRESHOLD
+		this.fuzzyThreshold = Math.max(0.5, Math.min(1.0, thresholdVal))
 		this.bufferLines = bufferLines ?? BUFFER_LINES
 	}
 
@@ -242,13 +245,117 @@ export class MultiSearchReplaceDiffStrategy implements DiffStrategy {
 				}
 	}
 
+	/**
+	 * Repairs truncated diffs (common with Grok) by adding missing ======= and >>>>>>> REPLACE markers.
+	 * When the model's output gets cut off mid-stream, the diff may end after SEARCH content
+	 * without the separator or closing marker. This method detects that pattern and appends
+	 * the missing markers so the diff can still be parsed and applied.
+	 */
+	private repairTruncatedDiff(diffContent: string): string {
+		// Only repair if the diff has at least one SEARCH marker
+		if (!/(?<!\\)<<<<<<< SEARCH/.test(diffContent)) {
+			return diffContent
+		}
+
+		// Split into blocks based on SEARCH markers
+		const blocks = diffContent.split(/(?=(?<!\\)<<<<<<< SEARCH)/)
+
+		let repaired = ""
+
+		for (let i = 0; i < blocks.length; i++) {
+			const block = blocks[i]
+
+			if (block.trim() === "") {
+				continue
+			}
+
+			// Skip prefix blocks that don't contain a SEARCH marker
+			// (e.g., the filename line before the first <<<<<<< SEARCH)
+			if (!/(?<!\\)<<<<<<< SEARCH/.test(block)) {
+				repaired += block
+				continue
+			}
+
+			// Check if this block is complete (has both ======= and >>>>>>> REPLACE)
+			const hasSeparator = /(?<=\n)(?<!\\)=======\s*\n/.test(block)
+			const hasCloser = /(?<=\n)(?<!\\)>>>>>>> REPLACE(?=\n|$)/.test(block)
+
+			if (hasSeparator && hasCloser) {
+				// Block is complete — emit verbatim (keeps its own trailing separator)
+				repaired += block
+				continue
+			}
+
+			// Block needs repair. Build a clean block ending at >>>>>>> REPLACE, then
+			// re-add an inter-block separator if more (non-empty) blocks follow, so the
+			// appended closer never gets glued to the next "<<<<<<< SEARCH".
+			const isLast = blocks.slice(i + 1).every((b) => b.trim() === "")
+			const separator = isLast ? "" : "\n\n"
+
+			if (hasSeparator && !hasCloser) {
+				// Has ======= but missing >>>>>>> REPLACE — append closing marker
+				const body = block.replace(/\s+$/, "")
+				repaired += body + "\n>>>>>>> REPLACE" + separator
+			} else if (hasCloser && !hasSeparator) {
+				// Has >>>>>>> REPLACE but missing the ======= separator. Don't synthesize a
+				// second closer; splice the separator in right before the existing closer so
+				// everything above it becomes the SEARCH section.
+				const body = block.replace(/\s+$/, "")
+				repaired += body.replace(/(\n)(>>>>>>> REPLACE)(?=\n|$)/, "$1=======\n$2") + separator
+			} else {
+				// Missing both ======= and >>>>>>> REPLACE.
+				const searchMatch = block.match(/^<<<<<<< SEARCH\n?([\s\S]*)$/)
+				let content = (searchMatch?.[1] ?? "").replace(/\s+$/, "")
+
+				// Peel off any leading Grok header directives (:start_line:, :end_line:, -------)
+				// so the "first line is SEARCH" heuristic sees real content, not metadata. The
+				// directives are preserved as a header on the SEARCH section.
+				let header = ""
+				const directiveLine = /^(?::start_line:\s*\d+|:end_line:\s*\d+|-------)\s*$/
+				let nlIdx: number
+				while ((nlIdx = content.indexOf("\n")) !== -1 && directiveLine.test(content.slice(0, nlIdx))) {
+					header += content.slice(0, nlIdx + 1)
+					content = content.slice(nlIdx + 1)
+				}
+
+				const firstNewlineIdx = content.indexOf("\n")
+				if (firstNewlineIdx !== -1) {
+					// First line is SEARCH content, rest is REPLACE content
+					const searchContent = content.substring(0, firstNewlineIdx)
+					const replaceContent = content.substring(firstNewlineIdx + 1)
+					repaired +=
+						"<<<<<<< SEARCH\n" +
+						header +
+						searchContent +
+						"\n=======\n" +
+						replaceContent +
+						"\n>>>>>>> REPLACE" +
+						separator
+				} else if (header) {
+					// Only a directive header plus a single content line: that line is the SEARCH
+					// target (the user pinned it with start_line); the REPLACE section is empty.
+					repaired += "<<<<<<< SEARCH\n" + header + content + "\n=======\n\n>>>>>>> REPLACE" + separator
+				} else {
+					// Single line — treat as empty SEARCH with content as REPLACE
+					repaired += "<<<<<<< SEARCH\n=======\n" + content + "\n>>>>>>> REPLACE" + separator
+				}
+			}
+		}
+
+		return repaired || diffContent
+	}
+
 	async applyDiff(
 		originalContent: string,
 		diffContent: string,
 		_paramStartLine?: number,
 		_paramEndLine?: number,
 	): Promise<DiffResult> {
-		const validseq = this.validateMarkerSequencing(diffContent)
+		// Repair truncated diffs before validation (common with Grok and other models
+		// whose output gets cut off mid-stream, leaving missing ======= and >>>>>>> REPLACE markers)
+		const repairedDiff = this.repairTruncatedDiff(diffContent)
+
+		const validseq = this.validateMarkerSequencing(repairedDiff)
 		if (!validseq.success) {
 			return {
 				success: false,
@@ -287,8 +394,8 @@ export class MultiSearchReplaceDiffStrategy implements DiffStrategy {
 			  Matches the final ">>>>>>> REPLACE" marker on its own line (and requires a following newline or the end of file).
 		*/
 
-		let matches = [
-			...diffContent.matchAll(
+		const matches = [
+			...repairedDiff.matchAll(
 				/(?:^|\n)(?<!\\)<<<<<<< SEARCH>?\s*\n((?:\:start_line:\s*(\d+)\s*\n))?((?:\:end_line:\s*(\d+)\s*\n))?((?<!\\)-------\s*\n)?([\s\S]*?)(?:\n)?(?:(?<=\n)(?<!\\)=======\s*\n)([\s\S]*?)(?:\n)?(?:(?<=\n)(?<!\\)>>>>>>> REPLACE)(?=\n|$)/g,
 			),
 		]
@@ -303,7 +410,7 @@ export class MultiSearchReplaceDiffStrategy implements DiffStrategy {
 		const lineEnding = originalContent.includes("\r\n") ? "\r\n" : "\n"
 		let resultLines = originalContent.split(/\r?\n/)
 		let delta = 0
-		let diffResults: DiffResult[] = []
+		const diffResults: DiffResult[] = []
 		let appliedCount = 0
 		const replacements = matches
 			.map((match) => ({
@@ -361,13 +468,13 @@ export class MultiSearchReplaceDiffStrategy implements DiffStrategy {
 				continue
 			}
 
-			let endLine = replacement.startLine + searchLines.length - 1
+			const endLine = replacement.startLine + searchLines.length - 1
 
 			// Initialize search variables
 			let matchIndex = -1
 			let bestMatchScore = 0
 			let bestMatchContent = ""
-			let searchChunk = searchLines.join("\n")
+			const searchChunk = searchLines.join("\n")
 
 			// Determine search bounds
 			let searchStartIndex = 0
@@ -433,7 +540,7 @@ export class MultiSearchReplaceDiffStrategy implements DiffStrategy {
 				} else {
 					// No match found with either method
 					const originalContentSection =
-						startLine !== undefined && endLine !== undefined
+						startLine && endLine
 							? `\n\nOriginal Content:\n${addLineNumbers(
 									resultLines
 										.slice(
@@ -443,7 +550,20 @@ export class MultiSearchReplaceDiffStrategy implements DiffStrategy {
 										.join("\n"),
 									Math.max(1, startLine - this.bufferLines),
 								)}`
-							: `\n\nOriginal Content:\n${addLineNumbers(resultLines.join("\n"))}`
+							: `\n\nOriginal Content:\n${addLineNumbers(
+									resultLines
+										.slice(
+											Math.max(0, (matchIndex >= 0 ? matchIndex : 0) - this.bufferLines),
+											Math.min(
+												resultLines.length,
+												(matchIndex >= 0 ? matchIndex : 0) +
+													searchLines.length +
+													this.bufferLines,
+											),
+										)
+										.join("\n"),
+									Math.max(1, (matchIndex >= 0 ? matchIndex : 0) - this.bufferLines + 1),
+								)}`
 
 					const bestMatchSection = bestMatchContent
 						? `\n\nBest Match Found:\n${addLineNumbers(bestMatchContent, matchIndex + 1)}`
@@ -451,9 +571,13 @@ export class MultiSearchReplaceDiffStrategy implements DiffStrategy {
 
 					const lineRange = startLine ? ` at line: ${startLine}` : ""
 
+					const levenDist = bestMatchContent
+						? distance(normalizeString(searchChunk), normalizeString(bestMatchContent))
+						: -1
+
 					diffResults.push({
 						success: false,
-						error: `No sufficiently similar match found${lineRange} (${Math.floor(bestMatchScore * 100)}% similar, needs ${Math.floor(this.fuzzyThreshold * 100)}%)\n\nDebug Info:\n- Similarity Score: ${Math.floor(bestMatchScore * 100)}%\n- Required Threshold: ${Math.floor(this.fuzzyThreshold * 100)}%\n- Search Range: ${startLine ? `starting at line ${startLine}` : "start to end"}\n- Tried both standard and aggressive line number stripping\n- Tip: Use the read_file tool to get the latest content of the file before attempting to use the apply_diff tool again, as the file content may have changed\n\nSearch Content:\n${searchChunk}${bestMatchSection}${originalContentSection}`,
+						error: `No sufficiently similar match found${lineRange} (${Math.floor(bestMatchScore * 100)}% similar, needs ${Math.floor(this.fuzzyThreshold * 100)}%)\n\nDebug Info:\n- Similarity Score: ${Math.floor(bestMatchScore * 100)}%\n- Required Threshold: ${Math.floor(this.fuzzyThreshold * 100)}%\n- Search Range: ${startLine ? `starting at line ${startLine}` : "start to end"}\n- Levenshtein Distance: ${levenDist >= 0 ? `${levenDist} characters` : "N/A"}\n- Search Length: ${searchChunk.length} characters\n- Best Match Length: ${bestMatchContent ? bestMatchContent.length : 0} characters\n- Tried both standard and aggressive line number stripping\n- Tip: Use the read_file tool to get the latest content of the file before attempting to use the apply_diff tool again, as the file content may have changed\n\nSearch Content:\n${searchChunk}${bestMatchSection}${originalContentSection}`,
 					})
 					continue
 				}

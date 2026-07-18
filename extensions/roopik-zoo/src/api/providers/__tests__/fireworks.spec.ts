@@ -12,13 +12,15 @@ const mockCreate = vi.fn()
 
 // Mock OpenAI module
 vi.mock("openai", () => ({
-	default: vi.fn(() => ({
-		chat: {
-			completions: {
-				create: mockCreate,
+	default: vi.fn(function () {
+		return {
+			chat: {
+				completions: {
+					create: mockCreate,
+				},
 			},
-		},
-	})),
+		}
+	}),
 }))
 
 describe("FireworksHandler", () => {
@@ -94,6 +96,48 @@ describe("FireworksHandler", () => {
 		expect(model.info).toEqual(expect.objectContaining(fireworksModels[testModelId]))
 	})
 
+	it.each([
+		{
+			modelId: "accounts/fireworks/models/glm-5p1" as const,
+			contextWindow: 202752,
+			inputPrice: 1.4,
+			outputPrice: 4.4,
+			cacheReadsPrice: 0.26,
+		},
+		{
+			modelId: "accounts/fireworks/models/kimi-k2p6" as const,
+			contextWindow: 262144,
+			inputPrice: 0.95,
+			outputPrice: 4.0,
+			cacheReadsPrice: 0.16,
+		},
+		{
+			modelId: "accounts/fireworks/models/deepseek-v4-pro" as const,
+			contextWindow: 1048576,
+			inputPrice: 1.74,
+			outputPrice: 3.48,
+			cacheReadsPrice: 0.14,
+		},
+	])(
+		"should expose newly added model $modelId",
+		({ modelId, contextWindow, inputPrice, outputPrice, cacheReadsPrice }) => {
+			expect(fireworksModels[modelId]).toBeDefined()
+			const info = fireworksModels[modelId]
+			expect(info.maxTokens).toBeGreaterThan(0)
+			expect(info.contextWindow).toBe(contextWindow)
+			expect(info.inputPrice).toBe(inputPrice)
+			expect(info.outputPrice).toBe(outputPrice)
+			expect(info.cacheReadsPrice).toBe(cacheReadsPrice)
+			expect(info.description).toBeTruthy()
+
+			const handlerWithModel = new FireworksHandler({
+				apiModelId: modelId,
+				fireworksApiKey: "test-fireworks-api-key",
+			})
+			expect(handlerWithModel.getModel().id).toBe(modelId)
+		},
+	)
+
 	it("should return Kimi K2 Instruct model with correct configuration", () => {
 		const testModelId: FireworksModelId = "accounts/fireworks/models/kimi-k2-instruct"
 		const handlerWithModel = new FireworksHandler({
@@ -135,6 +179,30 @@ describe("FireworksHandler", () => {
 				inputPrice: 0.6,
 				outputPrice: 2.5,
 				cacheReadsPrice: 0.15,
+			}),
+		)
+	})
+
+	it("should return Kimi K2.7 code model with correct configuration", () => {
+		const testModelId: FireworksModelId = "accounts/fireworks/models/kimi-k2p7-code"
+		const handlerWithModel = new FireworksHandler({
+			apiModelId: testModelId,
+			fireworksApiKey: "test-fireworks-api-key",
+		})
+		const model = handlerWithModel.getModel()
+		expect(model.id).toBe(testModelId)
+		expect(model.info).toEqual(
+			expect.objectContaining({
+				maxTokens: 16384,
+				contextWindow: 262144,
+				supportsImages: true,
+				supportsPromptCache: true,
+				supportsTemperature: true,
+				preserveReasoning: true,
+				defaultTemperature: 1.0,
+				inputPrice: 0.95,
+				outputPrice: 4.0,
+				cacheReadsPrice: 0.19,
 			}),
 		)
 	})

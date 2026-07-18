@@ -14,9 +14,10 @@ import { OpenAiReasoningParams } from "../transform/reasoning"
 import { DEFAULT_HEADERS } from "./constants"
 import { getModels } from "./fetchers/modelCache"
 import { BaseProvider } from "./base-provider"
-import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
-import { handleOpenAIError } from "./utils/openai-error-handler"
+import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata, CompletePromptOptions } from "../index"
+import { handleOpenAIError } from "./utils/error-handler"
 import { applyRouterToolPreferences } from "./utils/router-tool-preferences"
+import { extractReasoningFromDelta } from "./utils/extract-reasoning"
 
 // Unbound usage includes extra fields for Anthropic cache tokens.
 interface UnboundUsage extends OpenAI.CompletionUsage {
@@ -60,8 +61,9 @@ export class UnboundHandler extends BaseProvider implements SingleCompletionHand
 			apiKey: apiKey,
 			defaultHeaders: {
 				...DEFAULT_HEADERS,
-				"X-Unbound-Metadata": JSON.stringify({ labels: [{ key: "app", value: "roo-code" }] }),
+				"X-Unbound-Metadata": JSON.stringify({ labels: [{ key: "app", value: "zoo-code" }] }),
 			},
+			timeout: this.timeoutMs,
 		})
 	}
 
@@ -142,7 +144,7 @@ export class UnboundHandler extends BaseProvider implements SingleCompletionHand
 			...(thinking && { thinking }),
 			stream: true,
 			stream_options: { include_usage: true },
-			unbound_metadata: { originApp: "roo-code", taskId: metadata?.taskId, mode: metadata?.mode },
+			unbound_metadata: { originApp: "zoo-code", taskId: metadata?.taskId, mode: metadata?.mode },
 			tools: this.convertToolsForOpenAI(metadata?.tools),
 			tool_choice: metadata?.tool_choice,
 		}
@@ -162,8 +164,9 @@ export class UnboundHandler extends BaseProvider implements SingleCompletionHand
 				yield { type: "text", text: delta.content }
 			}
 
-			if (delta && "reasoning_content" in delta && delta.reasoning_content) {
-				yield { type: "reasoning", text: (delta.reasoning_content as string | undefined) || "" }
+			const reasoningText = extractReasoningFromDelta(delta)
+			if (reasoningText) {
+				yield { type: "reasoning", text: reasoningText }
 			}
 
 			// Handle native tool calls
@@ -189,10 +192,10 @@ export class UnboundHandler extends BaseProvider implements SingleCompletionHand
 		}
 	}
 
-	async completePrompt(prompt: string): Promise<string> {
+	async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
 		const { id: model, maxTokens: max_tokens, temperature } = await this.fetchModel()
 
-		let openAiMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [{ role: "system", content: prompt }]
+		const openAiMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [{ role: "system", content: prompt }]
 
 		const completionParams: UnboundChatCompletionParams = {
 			model,

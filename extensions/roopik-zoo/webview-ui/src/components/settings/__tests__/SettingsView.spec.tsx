@@ -1,10 +1,12 @@
 // pnpm --filter @roo-code/vscode-webview test src/components/settings/__tests__/SettingsView.spec.tsx
 
-import { render, screen, fireEvent, within } from "@/utils/test-utils"
+import { render, screen, fireEvent, within, waitFor } from "@/utils/test-utils"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { act } from "@testing-library/react"
 
 import { vscode } from "@/utils/vscode"
 import { ExtensionStateContextProvider } from "@/context/ExtensionStateContext"
+import { DEFAULT_CHECKPOINT_TIMEOUT_SECONDS } from "@roo-code/types"
 
 import SettingsView from "../SettingsView"
 
@@ -287,7 +289,7 @@ const mockPostMessage = (state: any) => {
 	)
 }
 
-const renderSettingsView = () => {
+const renderSettingsView = (initialState: any = {}) => {
 	const onDone = vi.fn()
 	const queryClient = new QueryClient()
 
@@ -300,7 +302,9 @@ const renderSettingsView = () => {
 	)
 
 	// Hydrate initial state.
-	mockPostMessage({})
+	act(() => {
+		mockPostMessage(initialState)
+	})
 
 	// Helper function to activate a tab and ensure its content is visible
 	const activateTab = (tabId: string) => {
@@ -409,6 +413,65 @@ describe("SettingsView - Sound Settings", () => {
 					soundEnabled: true,
 				}),
 			}),
+		)
+	})
+
+	it("saves the selected chat font size and persists null on reset", () => {
+		const { activateTab, getSettingsContent } = renderSettingsView()
+
+		activateTab("ui")
+
+		const content = getSettingsContent()
+		const slider = within(content).getByTestId("chat-font-size-slider")
+
+		// Pick a size, then Save — the boundary should forward it to the host.
+		fireEvent.change(slider, { target: { value: "18" } })
+		fireEvent.click(screen.getByTestId("save-button"))
+
+		expect(vscode.postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "updateSettings",
+				updatedSettings: expect.objectContaining({ chatFontSize: 18 }),
+			}),
+		)
+
+		// Reset clears the override; it is persisted as null (not undefined).
+		fireEvent.click(within(getSettingsContent()).getByTestId("chat-font-size-reset"))
+		fireEvent.click(screen.getByTestId("save-button"))
+
+		expect(vscode.postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "updateSettings",
+				updatedSettings: expect.objectContaining({ chatFontSize: null }),
+			}),
+		)
+	})
+
+	it("saves fallback defaults for checkpoint and terminal settings", async () => {
+		const { activateTab, getSettingsContent } = renderSettingsView({
+			enableCheckpoints: undefined,
+			checkpointTimeout: undefined,
+			terminalShellIntegrationTimeout: undefined,
+			settingsImportedAt: new Date().toISOString(),
+		})
+
+		activateTab("notifications")
+		const content = getSettingsContent()
+		fireEvent.click(await within(content).findByTestId("sound-enabled-checkbox"))
+		fireEvent.click(screen.getByTestId("save-button"))
+
+		await waitFor(() =>
+			expect(vscode.postMessage).toHaveBeenCalledWith(
+				expect.objectContaining({
+					type: "updateSettings",
+					updatedSettings: expect.objectContaining({
+						soundEnabled: true,
+						enableCheckpoints: false,
+						checkpointTimeout: DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
+						terminalShellIntegrationTimeout: 30_000,
+					}),
+				}),
+			),
 		)
 	})
 

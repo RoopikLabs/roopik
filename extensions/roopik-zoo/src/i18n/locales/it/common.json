@@ -141,12 +141,18 @@
 			"streamProcessingError": "Error processing response stream: {{message}}",
 			"unexpectedStreamError": "Unexpected error processing response stream",
 			"completionError": "OpenAI Codex completion error: {{message}}"
-		}
+		},
+		"rooHistoryImport": "Impossibile importare la cronologia di Roo Code: {{error}}"
 	},
 	"warnings": {
 		"no_terminal_content": "Nessun contenuto del terminale selezionato",
 		"missing_task_files": "I file di questa attività sono mancanti. Vuoi rimuoverla dall'elenco delle attività?",
-		"auto_import_failed": "Importazione automatica delle impostazioni ZooCode fallita: {{error}}"
+		"auto_import_failed": "Importazione automatica delle impostazioni ZooCode fallita: {{error}}",
+		"rooHistoryImport": {
+			"nothingFound": "Nessuna cronologia di attività Roo Code trovata da importare da {{domain}}.",
+			"alreadyImported_one": "La cronologia di {{count}} attività Roo Code è già stata importata in Zoo Code.",
+			"alreadyImported_other": "Tutte le {{count}} cronologie di attività Roo Code sono già state importate in Zoo Code."
+		}
 	},
 	"info": {
 		"no_changes": "Nessuna modifica trovata.",
@@ -165,6 +171,10 @@
 		"mode_imported": "Modalità importata con successo",
 		"roo": {
 			"signInUnavailable": "L'accesso a Roo Code Cloud non è attualmente disponibile. Configura un altro provider per continuare."
+		},
+		"rooHistoryImport": {
+			"success_one": "Importata {{count}} cronologia di attività Roo Code in Zoo Code.",
+			"success_other": "Importate {{count}} cronologie di attività Roo Code in Zoo Code."
 		}
 	},
 	"answers": {
@@ -261,11 +271,26 @@
 			"invalid_token_received": "Zoo Code: Ricevuto un token di autenticazione non valido.",
 			"token_verification_failed": "Zoo Code: Verifica del token non riuscita.",
 			"invalid_token": "Zoo Code: Token non valido.",
-			"could_not_verify_token": "Zoo Code: Impossibile verificare il token."
+			"could_not_verify_token": "Zoo Code: Impossibile verificare il token.",
+			"session_expired": "Sessione Zoo Code scaduta. Accedi di nuovo per continuare a usare Zoo Gateway.",
+			"out_of_credits": "Zoo Gateway: crediti insufficienti. Aggiungi crediti per continuare.",
+			"account_unavailable": "Zoo Gateway: il tuo account non è attualmente disponibile. Contatta l'assistenza.",
+			"budget_exceeded": "Zoo Gateway: budget di utilizzo raggiunto. Attendi il reset o ricarica."
 		},
 		"info": {
 			"connected": "Zoo Code: Connesso con successo! Ora puoi usare Zoo Code come fornitore AI.",
 			"disconnected": "Zoo Code: Disconnesso con successo."
+		},
+		"buttons": {
+			"sign_in": "Accedi",
+			"add_credits": "Aggiungi crediti",
+			"contact_support": "Contatta l'assistenza"
 		}
+	},
+	"codeActions": {
+		"explain": "Spiega con Zoo Code",
+		"fix": "Correggi con Zoo Code",
+		"improve": "Migliora con Zoo Code",
+		"addToContext": "Aggiungi a Zoo Code"
 	}
 }
