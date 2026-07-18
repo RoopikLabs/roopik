@@ -78,6 +78,8 @@ jobs:
             libsecret-1-dev
 
       - name: Rebuild native modules
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm rebuild
 
       - name: Generate DOM whitelist from MDN

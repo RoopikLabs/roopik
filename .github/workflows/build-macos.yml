@@ -53,6 +53,8 @@ jobs:
         run: tsx build/npm/postinstall.ts
 
       - name: Rebuild native modules
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm rebuild
 
       - name: Generate DOM whitelist from MDN
