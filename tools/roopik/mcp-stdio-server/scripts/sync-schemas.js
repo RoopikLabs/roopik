@@ -57,7 +57,11 @@ function syncSchemas() {
  * Source: src/vs/workbench/contrib/roopik/electron-main/mcp/toolSchemas.ts
  */`)
 		// Remove the helper function that's only used by WebSocket MCP
-		.replace(/\/\/ =+\s*\n\/\/ Helper:[\s\S]*$/, '');
+		.replace(/\/\/ =+\s*\n\/\/ Helper:[\s\S]*$/, '')
+		// The IDE imports zod v4 (upstream pins classic zod at the repo root), but this
+		// package uses classic zod v3 — index.ts extracts .shape from the same z instance,
+		// so the generated file must import the same zod as index.ts
+		.replace(/from 'zod\/v4'/g, "from 'zod'");
 
 	// Add prompts back
 	processedContent = processedContent.trimEnd() + '\n' + existingPrompts;

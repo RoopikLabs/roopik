@@ -104,10 +104,12 @@ async function main(): Promise<void> {
 
 		// 3. Register all tools
 		for (const tool of TOOL_DEFINITIONS) {
-			// Extract schema shape - handle both z.object() and empty schemas
-			const schemaShape = tool.schema instanceof z.ZodObject
-				? tool.schema.shape
-				: {};
+			// Duck-typed shape extraction: instanceof breaks across zod copies/versions,
+			// and silently registering an empty schema strips every tool argument
+			const schemaShape = (tool.schema as { shape?: z.ZodRawShape } | undefined)?.shape;
+			if (!schemaShape) {
+				throw new Error(`[Roopik MCP] Tool '${tool.name}' schema has no shape — tools.ts and index.ts are using different zod versions (run sync-schemas)`);
+			}
 
 			server.tool(
 				tool.name,
