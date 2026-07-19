@@ -329,6 +329,8 @@ jobs:
           export AWS_EC2_METADATA_DISABLED=true
           aws s3 cp "Roopik-macos-notarized.dmg" "s3://${R2_BUCKET}/${prefix}roopik-macos-latest.dmg" --endpoint-url "$endpoint" --no-progress
           aws s3 cp "Roopik-macos-notarized.zip" "s3://${R2_BUCKET}/${prefix}roopik-macos-latest.zip" --endpoint-url "$endpoint" --no-progress
+          # Commit-versioned copy: the update manifest points here so edge caches can never serve a stale build
+          aws s3 cp "Roopik-macos-notarized.zip" "s3://${R2_BUCKET}/${prefix}roopik-macos-${{ github.sha }}.zip" --endpoint-url "$endpoint" --no-progress
 
           if [ -z "${R2_PUBLIC_BASE_URL:-}" ]; then
             echo "R2_PUBLIC_BASE_URL not set, skipping update manifest upload."
@@ -357,7 +359,7 @@ jobs:
           hash="$(shasum -a 256 "Roopik-macos-notarized.zip" | awk '{print tolower($1)}')"
           pub_date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           base="${R2_PUBLIC_BASE_URL%/}"
-          url="${base}/macos/roopik-macos-latest.zip"
+          url="${base}/macos/roopik-macos-${commit}.zip"
           json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$commit" "$version" "$url" "$hash" "$pub_date")"
           printf '%s' "$json" > latest.json
           aws s3 cp latest.json "s3://${R2_BUCKET}/macos/stable/latest.json" --endpoint-url "$endpoint" --no-progress

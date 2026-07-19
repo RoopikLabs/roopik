@@ -203,6 +203,8 @@ jobs:
           $env:AWS_SECRET_ACCESS_KEY = $env:R2_SECRET_ACCESS_KEY
           $env:AWS_EC2_METADATA_DISABLED = "true"
           aws s3 cp $installer.FullName "s3://$env:R2_BUCKET/${prefix}roopik-windows-latest.exe" --endpoint-url $endpoint --no-progress
+          # Commit-versioned copy: the update manifest points here so edge caches can never serve a stale build
+          aws s3 cp $installer.FullName "s3://$env:R2_BUCKET/${prefix}roopik-windows-${{ github.sha }}.exe" --endpoint-url $endpoint --no-progress
 
           if (-not $env:R2_PUBLIC_BASE_URL) {
             Write-Host "R2_PUBLIC_BASE_URL not set, skipping update manifest upload."
@@ -214,7 +216,7 @@ jobs:
           $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash.ToLower()
           $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
           $base = $env:R2_PUBLIC_BASE_URL.TrimEnd('/')
-          $url = "$base/windows/roopik-windows-latest.exe"
+          $url = "$base/windows/roopik-windows-$commit.exe"
           $json = @{
             version = $commit
             productVersion = $version

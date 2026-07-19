@@ -239,6 +239,8 @@ jobs:
           # Back-compat: keep the legacy path so already-installed clients
           # pointing at linux/roopik-linux-latest.deb keep updating.
           aws s3 cp "$deb_file" "s3://${R2_BUCKET}/linux/roopik-linux-latest.deb" --endpoint-url "$endpoint" --no-progress
+          # Commit-versioned copy: the update manifest points here so edge caches can never serve a stale build
+          aws s3 cp "$deb_file" "s3://${R2_BUCKET}/linux/deb/roopik-linux-${{ github.sha }}.deb" --endpoint-url "$endpoint" --no-progress
 
           tarball=".artifacts/archive/roopik-linux-x64-latest.tar.gz"
           tarball_sha_file="${tarball}.sha256"
@@ -263,7 +265,7 @@ jobs:
           base="${R2_PUBLIC_BASE_URL%/}"
 
           # --- DEB channel manifest ---
-          deb_url="${base}/linux/deb/roopik-linux-latest.deb"
+          deb_url="${base}/linux/deb/roopik-linux-${commit}.deb"
           deb_json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$commit" "$version" "$deb_url" "$deb_hash" "$pub_date")"
           printf '%s' "$deb_json" > latest-deb.json
           aws s3 cp latest-deb.json "s3://${R2_BUCKET}/linux/deb/stable/latest.json" --endpoint-url "$endpoint" --no-progress
