@@ -58,9 +58,7 @@ function syncSchemas() {
  */`)
 		// Remove the helper function that's only used by WebSocket MCP
 		.replace(/\/\/ =+\s*\n\/\/ Helper:[\s\S]*$/, '')
-		// The IDE imports zod v4 (upstream pins classic zod at the repo root), but this
-		// package uses classic zod v3 — index.ts extracts .shape from the same z instance,
-		// so the generated file must import the same zod as index.ts
+		// index.ts extracts .shape via classic zod — generated schemas must use the same import
 		.replace(/from 'zod\/v4'/g, "from 'zod'");
 
 	// Add prompts back
