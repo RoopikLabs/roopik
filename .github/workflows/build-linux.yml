@@ -235,20 +235,28 @@ jobs:
           # Per-format folders so each install type has its own update channel.
           # A .deb install must only ever see .deb updates; an arch/tarball
           # install must only see tarball updates. They cannot share a manifest.
-          aws s3 cp "$deb_file" "s3://${R2_BUCKET}/linux/deb/roopik-linux-latest.deb" --endpoint-url "$endpoint" --no-progress
+          aws s3 cp "$deb_file" "s3://${R2_BUCKET}/linux/deb/roopik-linux-latest.deb" --cache-control "no-cache" --endpoint-url "$endpoint" --no-progress
           # Back-compat: keep the legacy path so already-installed clients
           # pointing at linux/roopik-linux-latest.deb keep updating.
-          aws s3 cp "$deb_file" "s3://${R2_BUCKET}/linux/roopik-linux-latest.deb" --endpoint-url "$endpoint" --no-progress
-          # Commit-versioned copy: the update manifest points here so edge caches can never serve a stale build
-          aws s3 cp "$deb_file" "s3://${R2_BUCKET}/linux/deb/roopik-linux-${{ github.sha }}.deb" --endpoint-url "$endpoint" --no-progress
+          aws s3 cp "$deb_file" "s3://${R2_BUCKET}/linux/roopik-linux-latest.deb" --cache-control "no-cache" --endpoint-url "$endpoint" --no-progress
+          aws s3 cp "$deb_file" "s3://${R2_BUCKET}/linux/deb/builds/roopik-linux-${{ github.sha }}.deb" --cache-control "public, max-age=31536000, immutable" --endpoint-url "$endpoint" --no-progress
+          old_keys="$(aws s3api list-objects-v2 --bucket "$R2_BUCKET" --prefix "linux/deb/builds/" --endpoint-url "$endpoint" --query "Contents[?!contains(Key, '${{ github.sha }}')].Key" --output text 2>/dev/null || true)"
+          for k in $old_keys; do
+            [ "$k" != "None" ] && aws s3 rm "s3://${R2_BUCKET}/$k" --endpoint-url "$endpoint"
+          done
 
           tarball=".artifacts/archive/roopik-linux-x64-latest.tar.gz"
           tarball_sha_file="${tarball}.sha256"
           tarball_present=0
           if [ -f "$tarball" ]; then
             tarball_present=1
-            aws s3 cp "$tarball" "s3://${R2_BUCKET}/linux/archive/roopik-linux-x64-latest.tar.gz" --endpoint-url "$endpoint" --no-progress
-            aws s3 cp "$tarball_sha_file" "s3://${R2_BUCKET}/linux/archive/roopik-linux-x64-latest.tar.gz.sha256" --endpoint-url "$endpoint" --no-progress
+            aws s3 cp "$tarball" "s3://${R2_BUCKET}/linux/archive/roopik-linux-x64-latest.tar.gz" --cache-control "no-cache" --endpoint-url "$endpoint" --no-progress
+            aws s3 cp "$tarball_sha_file" "s3://${R2_BUCKET}/linux/archive/roopik-linux-x64-latest.tar.gz.sha256" --cache-control "no-cache" --endpoint-url "$endpoint" --no-progress
+            aws s3 cp "$tarball" "s3://${R2_BUCKET}/linux/archive/builds/roopik-linux-x64-${{ github.sha }}.tar.gz" --cache-control "public, max-age=31536000, immutable" --endpoint-url "$endpoint" --no-progress
+            old_keys="$(aws s3api list-objects-v2 --bucket "$R2_BUCKET" --prefix "linux/archive/builds/" --endpoint-url "$endpoint" --query "Contents[?!contains(Key, '${{ github.sha }}')].Key" --output text 2>/dev/null || true)"
+            for k in $old_keys; do
+              [ "$k" != "None" ] && aws s3 rm "s3://${R2_BUCKET}/$k" --endpoint-url "$endpoint"
+            done
           else
             echo "Tarball not found at $tarball, skipping tarball upload."
           fi
@@ -265,19 +273,19 @@ jobs:
           base="${R2_PUBLIC_BASE_URL%/}"
 
           # --- DEB channel manifest ---
-          deb_url="${base}/linux/deb/roopik-linux-${commit}.deb"
+          deb_url="${base}/linux/deb/builds/roopik-linux-${commit}.deb"
           deb_json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$commit" "$version" "$deb_url" "$deb_hash" "$pub_date")"
           printf '%s' "$deb_json" > latest-deb.json
-          aws s3 cp latest-deb.json "s3://${R2_BUCKET}/linux/deb/stable/latest.json" --endpoint-url "$endpoint" --no-progress
+          aws s3 cp latest-deb.json "s3://${R2_BUCKET}/linux/deb/stable/latest.json" --cache-control "no-cache" --endpoint-url "$endpoint" --no-progress
           # Back-compat: legacy manifest path used by older installs.
-          aws s3 cp latest-deb.json "s3://${R2_BUCKET}/linux/stable/latest.json" --endpoint-url "$endpoint" --no-progress
+          aws s3 cp latest-deb.json "s3://${R2_BUCKET}/linux/stable/latest.json" --cache-control "no-cache" --endpoint-url "$endpoint" --no-progress
 
           # --- Archive (tar.gz) channel manifest ---
           if [ "$tarball_present" = "1" ]; then
-            tarball_url="${base}/linux/archive/roopik-linux-x64-latest.tar.gz"
+            tarball_url="${base}/linux/archive/builds/roopik-linux-x64-${commit}.tar.gz"
             tarball_hash="$(sha256sum "$tarball" | awk '{print tolower($1)}')"
             archive_json="$(printf '{"version":"%s","productVersion":"%s","url":"%s","sha256hash":"%s","pub_date":"%s"}' "$commit" "$version" "$tarball_url" "$tarball_hash" "$pub_date")"
             printf '%s' "$archive_json" > latest-archive.json
-            aws s3 cp latest-archive.json "s3://${R2_BUCKET}/linux/archive/stable/latest.json" --endpoint-url "$endpoint" --no-progress
+            aws s3 cp latest-archive.json "s3://${R2_BUCKET}/linux/archive/stable/latest.json" --cache-control "no-cache" --endpoint-url "$endpoint" --no-progress
           fi
 

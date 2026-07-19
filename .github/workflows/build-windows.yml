@@ -202,9 +202,12 @@ jobs:
           $env:AWS_ACCESS_KEY_ID = $env:R2_ACCESS_KEY_ID
           $env:AWS_SECRET_ACCESS_KEY = $env:R2_SECRET_ACCESS_KEY
           $env:AWS_EC2_METADATA_DISABLED = "true"
-          aws s3 cp $installer.FullName "s3://$env:R2_BUCKET/${prefix}roopik-windows-latest.exe" --endpoint-url $endpoint --no-progress
-          # Commit-versioned copy: the update manifest points here so edge caches can never serve a stale build
-          aws s3 cp $installer.FullName "s3://$env:R2_BUCKET/${prefix}roopik-windows-${{ github.sha }}.exe" --endpoint-url $endpoint --no-progress
+          aws s3 cp $installer.FullName "s3://$env:R2_BUCKET/${prefix}roopik-windows-latest.exe" --cache-control "no-cache" --endpoint-url $endpoint --no-progress
+          aws s3 cp $installer.FullName "s3://$env:R2_BUCKET/${prefix}builds/roopik-windows-${{ github.sha }}.exe" --cache-control "public, max-age=31536000, immutable" --endpoint-url $endpoint --no-progress
+          $oldKeys = aws s3api list-objects-v2 --bucket $env:R2_BUCKET --prefix "${prefix}builds/" --endpoint-url $endpoint --query "Contents[?!contains(Key, '${{ github.sha }}')].Key" --output text
+          if ($oldKeys -and $oldKeys -ne "None") {
+            $oldKeys -split "\s+" | Where-Object { $_ } | ForEach-Object { aws s3 rm "s3://$env:R2_BUCKET/$_" --endpoint-url $endpoint }
+          }
 
           if (-not $env:R2_PUBLIC_BASE_URL) {
             Write-Host "R2_PUBLIC_BASE_URL not set, skipping update manifest upload."
@@ -216,7 +219,7 @@ jobs:
           $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash.ToLower()
           $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
           $base = $env:R2_PUBLIC_BASE_URL.TrimEnd('/')
-          $url = "$base/windows/roopik-windows-$commit.exe"
+          $url = "$base/windows/builds/roopik-windows-$commit.exe"
           $json = @{
             version = $commit
             productVersion = $version
@@ -226,5 +229,5 @@ jobs:
           } | ConvertTo-Json -Compress
           $tmp = Join-Path $env:TEMP "latest.json"
           $json | Out-File -Encoding utf8 $tmp
-          aws s3 cp $tmp "s3://$env:R2_BUCKET/windows/stable/latest.json" --endpoint-url $endpoint --no-progress
+          aws s3 cp $tmp "s3://$env:R2_BUCKET/windows/stable/latest.json" --cache-control "no-cache" --endpoint-url $endpoint --no-progress
 
